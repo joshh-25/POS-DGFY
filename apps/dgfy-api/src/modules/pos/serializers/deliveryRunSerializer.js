@@ -59,6 +59,67 @@ export const serializeDeliveryRunMember = (deliveryJob) => {
     };
 };
 
+export const serializeDeliveryRunRemittanceVariance = (row) => {
+    const plain = toPlain(row);
+    if (!plain) return null;
+    const reversals = Array.isArray(plain.reversals) ? plain.reversals : [];
+    const reversal = reversals[0] || null;
+    return {
+        delivery_run_remittance_variance_id: plain.delivery_run_remittance_variance_id,
+        delivery_run_remittance_allocation_id: plain.delivery_run_remittance_allocation_id,
+        entry_type: plain.entry_type,
+        reversal_of_variance_id: plain.reversal_of_variance_id ?? null,
+        direction: plain.direction,
+        amount: plain.amount ?? null,
+        reason: plain.reason,
+        recorded_by: plain.recorded_by ?? null,
+        recorded_at: plain.recorded_at ?? null,
+        resolved: plain.entry_type === 'original' && Boolean(reversal),
+        resolved_by: reversal?.recorded_by ?? null,
+        resolved_at: reversal?.recorded_at ?? null,
+        resolution_reason: reversal?.reason ?? null
+    };
+};
+
+export const serializeDeliveryRunRemittanceAllocation = (row) => {
+    const plain = toPlain(row);
+    if (!plain) return null;
+    return {
+        delivery_run_remittance_allocation_id: plain.delivery_run_remittance_allocation_id,
+        delivery_run_remittance_id: plain.delivery_run_remittance_id,
+        pos_transaction_id: plain.pos_transaction_id,
+        delivery_personnel_id: plain.delivery_personnel_id ?? null,
+        delivery_personnel_name: plain.delivery_personnel_name ?? null,
+        expected_amount: plain.expected_amount ?? null,
+        remitted_amount: plain.remitted_amount ?? null,
+        variance_amount: plain.variance_amount ?? null,
+        created_at: plain.created_at ?? null,
+        variances: Array.isArray(plain.variances)
+            ? plain.variances.map(serializeDeliveryRunRemittanceVariance)
+            : []
+    };
+};
+
+export const serializeDeliveryRunRemittance = (row) => {
+    const plain = toPlain(row);
+    if (!plain) return null;
+    return {
+        delivery_run_remittance_id: plain.delivery_run_remittance_id,
+        delivery_run_id: plain.delivery_run_id,
+        location_id: plain.location_id,
+        confirmed_by: plain.confirmed_by,
+        confirmed_at: plain.confirmed_at,
+        total_expected_amount: plain.total_expected_amount,
+        total_remitted_amount: plain.total_remitted_amount,
+        total_variance_amount: plain.total_variance_amount,
+        created_at: plain.created_at ?? null,
+        updated_at: plain.updated_at ?? null,
+        allocations: Array.isArray(plain.allocations)
+            ? plain.allocations.map(serializeDeliveryRunRemittanceAllocation)
+            : []
+    };
+};
+
 // Phase 264 (#1487). No backend "settled" helper exists anywhere else in this codebase -- every
 // other call site (posDeviceUseCases.js, posUseCases.js) inlines `balance_due <= 0` for a single
 // order. This is the run-level equivalent, defined from scratch against the issue's own wording

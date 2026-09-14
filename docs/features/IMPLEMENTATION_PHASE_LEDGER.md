@@ -23107,3 +23107,67 @@ migration/repair pattern, and ADR 0034's 2026-09-14 loading-verification amendme
 ### Next eligible phase
 
 334 after Phase 333 acceptance evidence and deployed QA are complete.
+
+## Phase 334 - Courier cash custody, remittance, and variance ledger (#1887)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, implementing the tenant-local
+courier custody and remittance follow-up deferred by ADR 0083.
+
+### Objective and scope
+
+Add three tenant-local append-only tables for one remittance per delivery run,
+order-level allocations, and original/reversal variance entries. Expose atomic
+remittance confirmation plus list/detail reads and supervisor-authorized variance
+resolution through POS API routes. Derive expected cash from delivery-handover
+evidence, preserve provider/prepaid/non-cash exclusions, and never mutate
+payment, drawer, settlement, or fiscal records. No UI or collection endpoint is
+included.
+
+### Status
+
+`in_progress` — implementation and focused local validation are complete; commit,
+PR review, and deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership and lifecycle, Phase 228/#1273 dispatch
+and delivery completion, Phase 333/#1461 tenant-schema fan-out precedent, and
+ADR 0083's binding financial boundary.
+
+### Acceptance and validation evidence
+
+- [x] Tenant migration fans out the remittance, allocation, and variance tables
+      across landlord/active tenant schemas, with dependency-safe rollback and
+      fresh-tenant schema registry parity.
+- [x] Atomic remittance confirmation derives expected cash from
+      `cash_received - change_amount`, records order allocations, rejects
+      duplicate runs, and leaves payment fields unchanged.
+- [x] Shortage and overage reasons, provider/non-cash/non-delivered/non-member
+      boundaries, location isolation, idempotent replay, and supervisor-only
+      append-only variance resolution are covered by focused tests.
+- [x] Transport validators, handlers, route permissions, models, serializers,
+      repository methods, and API operation keys are covered by implementation
+      wiring and focused transport tests.
+- [ ] `node --check`, API version-bump, architecture, compliance, documentation,
+      and final diff gates pass on the complete worktree; deployed tenant-schema
+      and endpoint QA remain later verification steps.
+
+### Links
+
+- Issue: #1887 (behavior-changing implementation; PR linkage must use the issue's
+      reconciled acceptance-criteria contract).
+- Handoff: `.tmp/plan-1887.md` (planning head
+      `1dfcb709b7a0840e7bd06c5009808033403ec70b`).
+- ADR: `docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000002-create-delivery-run-remittances.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunRemittance.usecase.test.js`,
+      `apps/dgfy-api/tests/createDeliveryRunRemittances.migration.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRemittance.transport.test.js`.
+
+### Next eligible phase
+
+335 after Phase 334 acceptance evidence and deployed QA are complete.

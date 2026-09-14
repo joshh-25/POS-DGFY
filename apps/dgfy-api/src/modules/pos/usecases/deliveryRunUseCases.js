@@ -8,7 +8,13 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
-import { buildDeliveryRunLoadingSummary, serializeDeliveryRun, serializeDeliveryRunMember } from '../serializers/deliveryRunSerializer.js';
+import {
+    buildDeliveryRunLoadingSummary,
+    serializeDeliveryRun,
+    serializeDeliveryRunMember,
+    serializeDeliveryRunRemittance,
+    serializeDeliveryRunRemittanceVariance
+} from '../serializers/deliveryRunSerializer.js';
 import { resolveWorkflowCapabilitySettings } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -91,6 +97,14 @@ const RUN_DISPATCH_BLOCKED_STATUSES = Object.freeze(['completed', 'cancelled']);
 // which skips this check entirely, is unaffected by construction.
 const PRE_PACKED_FULFILLMENT_STATUSES = Object.freeze(['placed', 'confirmed', 'preparing']);
 const DELIVERY_RUN_LOADING_STATES = Object.freeze(['pending', 'loaded', 'not_loaded', 'exception']);
+
+const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
+const isDuplicateConstraintError = (error) => (
+    error?.name === 'SequelizeUniqueConstraintError'
+    || error?.parent?.code === 'ER_DUP_ENTRY'
+    || error?.original?.code === 'ER_DUP_ENTRY'
+);
 
 const isDeliveryAssignmentComplete = (deliveryJob) => {
     const hasPersonnel = Boolean(
@@ -1851,4 +1865,547 @@ export const buildDispatchDeliveryRunUseCase = ({
             return fail(mapPosUseCaseError(error, 'Failed to dispatch delivery run'));
         }
     };
+};
+
+// Phase 334 (#1887): one atomic remittance action records the run-level hand-back, every
+// order-level amount, and any shortage/overage entries. The payment tables remain read-only here;
+// cash custody is derived solely from the cash tender captured at delivery handover.
+export const buildCreateDeliveryRunRemittanceUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ deliveryRunId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const runId = parsePositiveInt(deliveryRunId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const requestAllocations = Array.isArray(payload?.allocations) ? payload.allocations : [];
+        const normalizedAllocations = requestAllocations
+            .map((allocation) => ({
+                pos_transaction_id: parsePositiveInt(allocation?.pos_transaction_id),
+                remitted_amount: round4(allocation?.remitted_amount)
+            }))
+            .sort((left, right) => left.pos_transaction_id - right.pos_transaction_id);
+        const requestHash = hashPayload({
+            delivery_run_id: runId,
+            location_id: payload?.location_id ?? null,
+            allocations: normalizedAllocations,
+            variance_reason: String(payload?.variance_reason || '').trim()
+        });
+
+        if (!runId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'deliveryRunId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!cashierId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'idempotency_key is required for delivery run remittance',
+                { statusCode: 422 }
+            ));
+        }
+        if (normalizedAllocations.length === 0 || normalizedAllocations.some((allocation) => !allocation.pos_transaction_id)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'At least one valid remittance allocation is required',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_REMITTANCE_CONFIRM,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            transaction = await getSequelize().transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_REMITTANCE_CONFIRM,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const run = await deliveryRunRepository.getRunById(runId, { transaction, lock: true });
+            if (!run) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Delivery run was not found.',
+                    { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
+                );
+            }
+            if (run.status === 'cancelled') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'A cancelled delivery run cannot be remitted.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_CANCELLED' } }
+                );
+            }
+
+            const runLocationId = parsePositiveInt(run.location_id);
+            const requestedLocationId = payload?.location_id == null
+                ? runLocationId
+                : parsePositiveInt(payload.location_id);
+            const locationScope = await resolveLocationScope({
+                requestedLocationId,
+                userId: cashierId,
+                operationLabel: 'Delivery run remittance',
+                transaction
+            });
+            const locationId = parsePositiveInt(locationScope?.location_id);
+            if (!locationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A receiving location is required for delivery run remittance.',
+                    { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_REMITTANCE_LOCATION_REQUIRED' } }
+                );
+            }
+            if (runLocationId && locationId !== runLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Remittance location must match the delivery run location.',
+                    { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_REMITTANCE_LOCATION_MISMATCH' } }
+                );
+            }
+
+            const existingRemittance = await deliveryRunRepository.getRemittanceByRunId(runId, { transaction, lock: true });
+            if (existingRemittance) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery run already has a remittance.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_REMITTANCE_ALREADY_EXISTS' } }
+                );
+            }
+
+            const members = await deliveryRunRepository.getRunRemittanceMembers(
+                runId,
+                normalizedAllocations.map((allocation) => allocation.pos_transaction_id),
+                { transaction, lock: true }
+            );
+            const memberByTransactionId = new Map(
+                members.map((member) => [Number(member.pos_transaction_id), member])
+            );
+            const varianceReason = String(payload?.variance_reason || '').trim();
+            let totalExpectedAmount = 0;
+            let totalRemittedAmount = 0;
+            let totalVarianceAmount = 0;
+            const allocations = [];
+            const variances = [];
+
+            for (const requestedAllocation of normalizedAllocations) {
+                const member = memberByTransactionId.get(requestedAllocation.pos_transaction_id);
+                if (!member) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'A requested order is not a member of this delivery run.',
+                        {
+                            statusCode: 404,
+                            details: {
+                                reason_code: 'DELIVERY_RUN_REMITTANCE_MEMBER_NOT_FOUND',
+                                pos_transaction_id: requestedAllocation.pos_transaction_id
+                            }
+                        }
+                    );
+                }
+                if (String(member.status || '').trim().toLowerCase() !== 'delivered') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Only delivered run members can be included in a remittance.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'DELIVERY_RUN_REMITTANCE_MEMBER_NOT_DELIVERED',
+                                pos_transaction_id: requestedAllocation.pos_transaction_id
+                            }
+                        }
+                    );
+                }
+                if (String(member.provider || '').trim().toLowerCase() !== 'manual') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Provider-owned delivery jobs are not eligible for remittance.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'DELIVERY_RUN_REMITTANCE_PROVIDER_UNSUPPORTED',
+                                pos_transaction_id: requestedAllocation.pos_transaction_id
+                            }
+                        }
+                    );
+                }
+
+                const order = member.transaction || {};
+                if (order.cash_received == null) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'This order has no cash collected at handover.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'DELIVERY_RUN_REMITTANCE_NOTHING_TO_COLLECT',
+                                pos_transaction_id: requestedAllocation.pos_transaction_id
+                            }
+                        }
+                    );
+                }
+                const expectedAmount = round4(Number(order.cash_received) - Number(order.change_amount || 0));
+                const remittedAmount = round4(requestedAllocation.remitted_amount);
+                const varianceAmount = round4(remittedAmount - expectedAmount);
+                if (expectedAmount < 0 || remittedAmount < 0) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Remittance amounts must not be negative.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'DELIVERY_RUN_REMITTANCE_AMOUNT_INVALID',
+                                pos_transaction_id: requestedAllocation.pos_transaction_id
+                            }
+                        }
+                    );
+                }
+
+                totalExpectedAmount = round4(totalExpectedAmount + expectedAmount);
+                totalRemittedAmount = round4(totalRemittedAmount + remittedAmount);
+                totalVarianceAmount = round4(totalVarianceAmount + varianceAmount);
+                allocations.push({
+                    pos_transaction_id: requestedAllocation.pos_transaction_id,
+                    delivery_personnel_id: member.delivery_personnel_id ?? null,
+                    delivery_personnel_name: member.delivery_personnel_name ?? null,
+                    expected_amount: expectedAmount,
+                    remitted_amount: remittedAmount,
+                    variance_amount: varianceAmount
+                });
+                if (varianceAmount !== 0) {
+                    variances.push({
+                        pos_transaction_id: requestedAllocation.pos_transaction_id,
+                        direction: varianceAmount < 0 ? 'shortage' : 'overage',
+                        amount: Math.abs(varianceAmount),
+                        reason: varianceReason,
+                        recorded_by: cashierId,
+                        recorded_at: new Date()
+                    });
+                }
+            }
+
+            if (variances.length > 0 && !varianceReason) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'variance_reason is required when a remittance has a shortage or overage.',
+                    { statusCode: 422, details: { reason_code: 'DELIVERY_RUN_VARIANCE_REASON_REQUIRED' } }
+                );
+            }
+
+            const remittance = await deliveryRunRepository.createRemittance({
+                deliveryRunId: runId,
+                locationId,
+                confirmedBy: cashierId,
+                confirmedAt: new Date(),
+                totalExpectedAmount,
+                totalRemittedAmount,
+                totalVarianceAmount,
+                allocations,
+                variances
+            }, { transaction });
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'delivery_run_remittance',
+                entity_id: remittance.delivery_run_remittance_id,
+                action: 'CREATE',
+                changes: {
+                    event: 'delivery_run_remittance_confirmed',
+                    delivery_run_id: runId,
+                    allocation_count: allocations.length,
+                    total_expected_amount: totalExpectedAmount,
+                    total_remitted_amount: totalRemittedAmount,
+                    total_variance_amount: totalVarianceAmount
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                remittance: serializeDeliveryRunRemittance(remittance),
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_REMITTANCE_CONFIRM,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            const failure = isDuplicateConstraintError(error)
+                ? new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery run already has a remittance.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_REMITTANCE_ALREADY_EXISTS' } }
+                )
+                : error;
+            if (failure instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_REMITTANCE_CONFIRM,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(failure),
+                    createdBy: cashierId
+                });
+            }
+            return fail(mapPosUseCaseError(failure, 'Failed to confirm delivery run remittance'));
+        }
+    };
+};
+
+const resolveDeliveryRunForRemittanceRead = async ({
+    deliveryRunRepository,
+    resolveLocationScope,
+    deliveryRunId,
+    userId,
+    operationLabel
+}) => {
+    const run = await deliveryRunRepository.getRunById(deliveryRunId);
+    if (!run) {
+        throw new DomainError(
+            DomainErrorCode.RESOURCE_NOT_FOUND,
+            'Delivery run was not found.',
+            { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_NOT_FOUND' } }
+        );
+    }
+    await resolveLocationScope({
+        requestedLocationId: run.location_id,
+        userId,
+        operationLabel
+    });
+    return run;
+};
+
+export const buildListDeliveryRunRemittancesUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => async ({ deliveryRunId, user = {} } = {}) => {
+    const runId = parsePositiveInt(deliveryRunId);
+    const cashierId = parsePositiveInt(user?.user_id);
+    if (!runId) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'deliveryRunId must be a positive integer', { statusCode: 400 }));
+    if (!cashierId) return fail(new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required', { statusCode: 401 }));
+    try {
+        await resolveDeliveryRunForRemittanceRead({
+            deliveryRunRepository,
+            resolveLocationScope,
+            deliveryRunId: runId,
+            userId: cashierId,
+            operationLabel: 'Delivery run remittance list'
+        });
+        const remittances = await deliveryRunRepository.listRemittancesForRun(runId);
+        return ok({ items: remittances.map(serializeDeliveryRunRemittance) });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to list delivery run remittances'));
+    }
+};
+
+export const buildGetDeliveryRunRemittanceUseCase = ({
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => async ({ deliveryRunId, remittanceId, user = {} } = {}) => {
+    const runId = parsePositiveInt(deliveryRunId);
+    const normalizedRemittanceId = parsePositiveInt(remittanceId);
+    const cashierId = parsePositiveInt(user?.user_id);
+    if (!runId || !normalizedRemittanceId) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'deliveryRunId and remittanceId must be positive integers', { statusCode: 400 }));
+    if (!cashierId) return fail(new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required', { statusCode: 401 }));
+    try {
+        await resolveDeliveryRunForRemittanceRead({
+            deliveryRunRepository,
+            resolveLocationScope,
+            deliveryRunId: runId,
+            userId: cashierId,
+            operationLabel: 'Delivery run remittance retrieval'
+        });
+        const remittance = await deliveryRunRepository.getRemittanceDetail(runId, normalizedRemittanceId);
+        if (!remittance) {
+            return fail(new DomainError(
+                DomainErrorCode.RESOURCE_NOT_FOUND,
+                'Delivery run remittance was not found.',
+                { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_REMITTANCE_NOT_FOUND' } }
+            ));
+        }
+        return ok(serializeDeliveryRunRemittance(remittance));
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to retrieve delivery run remittance'));
+    }
+};
+
+export const buildResolveDeliveryRunRemittanceVarianceUseCase = ({
+    posRepository,
+    deliveryRunRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => async ({ deliveryRunId, remittanceId, varianceId, payload = {}, user = {}, auditContext = {} } = {}) => {
+    const runId = parsePositiveInt(deliveryRunId);
+    const normalizedRemittanceId = parsePositiveInt(remittanceId);
+    const normalizedVarianceId = parsePositiveInt(varianceId);
+    const cashierId = parsePositiveInt(user?.user_id);
+    const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+    const resolutionReason = String(payload?.resolution_reason || '').trim();
+    const requestHash = hashPayload({
+        delivery_run_id: runId,
+        delivery_run_remittance_id: normalizedRemittanceId,
+        delivery_run_remittance_variance_id: normalizedVarianceId,
+        resolution_reason: resolutionReason
+    });
+    if (!runId || !normalizedRemittanceId || !normalizedVarianceId) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'deliveryRunId, remittanceId, and varianceId must be positive integers', { statusCode: 400 }));
+    if (!cashierId) return fail(new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated POS user is required', { statusCode: 401 }));
+    if (!idempotencyKey || !resolutionReason) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key and resolution_reason are required', { statusCode: 422 }));
+    if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.RESOLVE_DELIVERY_RUN_VARIANCE)) {
+        return fail(new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Supervisor or manager authority is required to resolve a delivery run variance.',
+            { statusCode: 403, details: { reason_code: 'DELIVERY_RUN_VARIANCE_RESOLUTION_PERMISSION_REQUIRED' } }
+        ));
+    }
+
+    let transaction = null;
+    try {
+        const replay = await findOperationReplayEntry({
+            posRepository,
+            operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_VARIANCE_RESOLVE,
+            idempotencyKey,
+            requestHash
+        });
+        if (replay) return ok(replay);
+
+        transaction = await getSequelize().transaction();
+        const transactionReplay = await findOperationReplayEntry({
+            posRepository,
+            operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_VARIANCE_RESOLVE,
+            idempotencyKey,
+            requestHash,
+            transaction
+        });
+        if (transactionReplay) {
+            await transaction.commit();
+            return ok(transactionReplay);
+        }
+
+        const variance = await deliveryRunRepository.getRemittanceVariance(
+            runId,
+            normalizedRemittanceId,
+            normalizedVarianceId,
+            { transaction, lock: true }
+        );
+        if (!variance) {
+            throw new DomainError(
+                DomainErrorCode.RESOURCE_NOT_FOUND,
+                'Delivery run remittance variance was not found.',
+                { statusCode: 404, details: { reason_code: 'DELIVERY_RUN_VARIANCE_NOT_FOUND' } }
+            );
+        }
+        const locationId = variance.allocation?.remittance?.location_id ?? null;
+        await resolveLocationScope({
+            requestedLocationId: locationId,
+            userId: cashierId,
+            operationLabel: 'Delivery run variance resolution',
+            transaction
+        });
+        if (Array.isArray(variance.reversals) && variance.reversals.length > 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'This delivery run variance has already been resolved.',
+                { statusCode: 409, details: { reason_code: 'DELIVERY_RUN_VARIANCE_ALREADY_RESOLVED' } }
+            );
+        }
+
+        const reversal = await deliveryRunRepository.createVarianceResolution({
+            allocationId: variance.delivery_run_remittance_allocation_id,
+            reversalOfVarianceId: variance.delivery_run_remittance_variance_id,
+            direction: variance.direction,
+            amount: variance.amount,
+            reason: resolutionReason,
+            recordedBy: cashierId,
+            recordedAt: new Date()
+        }, { transaction });
+        await posRepository.createAuditLog({
+            user_id: cashierId,
+            entity_type: 'delivery_run_remittance_variance',
+            entity_id: variance.delivery_run_remittance_variance_id,
+            action: 'CREATE',
+            changes: {
+                event: 'delivery_run_remittance_variance_resolved',
+                reversal_variance_id: reversal.delivery_run_remittance_variance_id,
+                reason: resolutionReason
+            },
+            ip_address: auditContext.ipAddress || null,
+            user_agent: auditContext.userAgent || null
+        }, { transaction });
+
+        const responsePayload = {
+            variance: serializeDeliveryRunRemittanceVariance(reversal),
+            original_variance: serializeDeliveryRunRemittanceVariance({
+                ...variance,
+                reversals: [reversal]
+            }),
+            idempotency: {
+                key: idempotencyKey,
+                request_fingerprint: requestHash,
+                outcome: 'processed',
+                idempotent_replay: false
+            }
+        };
+        await persistOperationReplay({
+            posRepository,
+            operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_VARIANCE_RESOLVE,
+            idempotencyKey,
+            requestHash,
+            replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+            responsePayload,
+            createdBy: cashierId,
+            transaction
+        });
+        await transaction.commit();
+        return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+    } catch (error) {
+        if (transaction && !transaction.finished) await transaction.rollback();
+        if (error instanceof DomainError && idempotencyKey) {
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_RUN_VARIANCE_RESOLVE,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                responsePayload: serializeReplayFailure(error),
+                createdBy: cashierId
+            });
+        }
+        return fail(mapPosUseCaseError(error, 'Failed to resolve delivery run remittance variance'));
+    }
 };

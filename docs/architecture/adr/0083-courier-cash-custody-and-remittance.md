@@ -90,13 +90,31 @@ permission, serializer, or UI change — that is follow-up implementation scope 
    direction a follow-up implementation issue will specify — this clause fixes the boundary, not
    the schema).
 
+## Amendments
+
+### 2026-09-14 — Courier custody/remittance ledger implementation (#1887, Phase 334)
+
+The deferred implementation now provides a tenant-local, append-only ledger for
+delivery-run remittances, per-order allocations, and shortage/overage variance
+entries. A single idempotent POS action confirms a remittance and derives each
+expected amount from the delivery-handover cash evidence; list/detail reads are
+location-scoped. Variance resolution requires
+`pos:delivery_run_variance_resolve` and inserts a reversal entry rather than
+editing the original row. Provider-owned jobs and orders without physical cash
+remain excluded, and no collection endpoint or UI is introduced.
+
+This amendment implements the schema/API follow-up without changing the binding
+financial boundary in clause 7: `pos_order_payments`, order payment status,
+cash-drawer reconciliation, revenue settlement, and fiscal receipts remain
+untouched. `[default]`
+
 ## Consequences
 
 - **Positive.** The till-reconciliation question "does the business physically have the cash" gets
   an owned, auditable answer instead of conflating payment recognition with custody.
-- **Negative / deferred.** Nothing is built by this ADR: the custody/remittance/variance ledger,
-  its endpoints, permissions, and read models are follow-up implementation scope via `/pm` after
-  this documentation lands. No migration, model, or UI changes ride along.
+- **Negative / deferred.** The custody/remittance/variance ledger is operational evidence only;
+  deployed tenant-schema and endpoint QA, UI, and any accounting/reconciliation integration remain
+  separately governed work.
 - **Reversible.** Widening or narrowing the scope (e.g. provider-owned jobs once integration
   exists, or additional verticals) is a tier-matched change per ADR 0039: `[binding]` clauses need
   a superseding ADR with tech-lead approval; `[default]` clauses take a dated amendment.
