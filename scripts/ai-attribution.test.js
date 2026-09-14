@@ -168,18 +168,25 @@ test('OpenCode plugin records provider/model identity and injects the formatter 
     fs.copyFileSync(path.join(root, '.opencode', 'plugins', 'dgfy-ai-attribution.js'), pluginPath);
     const { default: createPlugin } = await import(`${pathToFileURL(pluginPath).href}?fixture=${Date.now()}`);
     const hooks = await createPlugin({ worktree: cwd });
-    const input = {
-      sessionID: 'opencode-fixture',
-      model: { id: 'muse-spark-1.3-contributor' },
-      provider: { info: { id: 'opencode-go' } },
+    const messageInput = {
+      sessionID: 'opencode-message-fixture',
+      model: { providerID: 'fixture-provider', modelID: 'fixture-model' },
     };
-    await hooks['chat.message'](input, { message: {}, parts: [] });
+    await hooks['chat.message'](messageInput, { message: {}, parts: [] });
+    const paramsInput = {
+      sessionID: 'opencode-params-fixture',
+      model: { id: 'fixture-model' },
+      provider: { info: { id: 'fixture-provider' } },
+    };
+    await hooks['chat.params'](paramsInput, {});
     const output = { system: [] };
-    await hooks['experimental.chat.system.transform'](input, output);
-    const record = readRecord({ runtime: 'opencode', sessionId: 'opencode-fixture' }, cwd);
-    assert.deepEqual(record.identities, [{ providerId: 'opencode-go', modelId: 'muse-spark-1.3-contributor' }]);
+    await hooks['experimental.chat.system.transform'](messageInput, output);
+    const messageRecord = readRecord({ runtime: 'opencode', sessionId: messageInput.sessionID }, cwd);
+    const paramsRecord = readRecord({ runtime: 'opencode', sessionId: paramsInput.sessionID }, cwd);
+    assert.deepEqual(messageRecord.identities, [{ providerId: 'fixture-provider', modelId: 'fixture-model' }]);
+    assert.deepEqual(paramsRecord.identities, [{ providerId: 'fixture-provider', modelId: 'fixture-model' }]);
     assert.match(output.system[0], /runtime=OpenCode/);
-    assert.match(output.system[0], /format opencode opencode-fixture/);
+    assert.match(output.system[0], /format opencode opencode-message-fixture/);
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
