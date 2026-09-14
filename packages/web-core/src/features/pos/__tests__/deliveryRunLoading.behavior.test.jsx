@@ -97,6 +97,17 @@ describe('delivery run loading member controls', () => {
 });
 
 describe('loading confirmation and dispatch warning', () => {
+  it.each(['completed', 'cancelled'])('disables member loading controls on %s runs', async (status) => {
+    const selectedRun = run({ status });
+    fetchDeliveryRuns.mockResolvedValue({ items: [selectedRun], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(selectedRun);
+
+    render(<DeliveryRunsWorkspacePanel {...panelProps()} />);
+    fireEvent.click(await screen.findByRole('button', { name: /Evening Run/i }));
+
+    expect((await screen.findByRole('combobox', { name: /Loading state for order #9001/i })).disabled).toBe(true);
+  });
+
   it('retains the confirmation idempotency key across a retry after failure', async () => {
     const selectedRun = run({ loading_summary: { pending_count: 1, loaded_count: 0, not_loaded_count: 0, exception_count: 0, total_count: 1 } });
     fetchDeliveryRuns.mockResolvedValue({ items: [selectedRun], pagination: { total: 1, page: 1, limit: 100 } });

@@ -55,7 +55,7 @@ completion authority.
 - The migration contract covers landlord/active-tenant fanout, idempotency, dependency-safe down,
   foreign keys, and the loading index.
 - Focused POS behavior tests cover reason gating, per-member submission, confirmation-key retry,
-  and the non-blocking dispatch warning.
+  locked-run control disabling, and the non-blocking dispatch warning.
 - Static syntax, architecture, documentation, compliance, and frontend build gates are required
   before the implementation PR is opened; deployed tenant-schema and UI QA remain post-merge work.
 

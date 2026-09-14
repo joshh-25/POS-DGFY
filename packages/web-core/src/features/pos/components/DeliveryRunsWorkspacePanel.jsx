@@ -678,7 +678,7 @@ export default function DeliveryRunsWorkspacePanel({
                 run={selectedRun}
                 otherRuns={runs}
                 disabled={!canManage || selectedRunLocked}
-                loadingDisabled={!canManage}
+                loadingDisabled={!canManage || DISPATCH_BLOCKED_STATUSES.has(selectedRunStatus)}
                 savingKey={savingKey}
                 dispatchResult={dispatchResult}
                 onRemoveMember={handleRemoveMember}
