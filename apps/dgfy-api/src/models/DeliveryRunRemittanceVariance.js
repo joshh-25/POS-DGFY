@@ -43,8 +43,14 @@ const DeliveryRunRemittanceVariance = sequelize.define('DeliveryRunRemittanceVar
     tableName: 'delivery_run_remittance_variances',
     timestamps: false,
     indexes: [
-        { fields: ['delivery_run_remittance_allocation_id'] },
-        { fields: ['reversal_of_variance_id'] }
+        {
+            name: 'idx_delivery_run_remittance_variances_allocation',
+            fields: ['delivery_run_remittance_allocation_id']
+        },
+        {
+            name: 'idx_delivery_run_remittance_variances_reversal',
+            fields: ['reversal_of_variance_id']
+        }
     ]
 });
 
