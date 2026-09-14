@@ -641,6 +641,34 @@ x-company-token: <company-token>
 - `403` - Cannot remove Master Admin / Insufficient hierarchy level
 - `404` - User not found (including already removed users)
 
+### GET /users/me/capabilities
+Get the current authenticated user's effective permission set. Accepts an optional
+`?location_id=<id>` query param, validated against the user's location grants.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "capabilities": ["orders:pack", "delivery_runs:act"],
+    "location_id": null,
+    "staff_role": {
+      "staff_role_id": 4,
+      "name": "Packer",
+      "capabilities": ["orders:pack", "delivery_runs:act"],
+      "is_active": true
+    }
+  }
+}
+```
+
+`capabilities` is the single authoritative effective-permission set — identical to what backend
+authorization uses (`resolveEffectivePermissions`). `staff_role.capabilities` is informational only:
+the assigned staff role's own raw capability list, which is not merged into `capabilities` when a
+non-empty explicit legacy `permissions` array takes precedence over it, and is not applied at all
+once the staff role is deactivated (`staff_role.is_active: false`). Clients must read `capabilities`,
+never `staff_role.capabilities`, to determine what the user can actually do.
+
 ---
 
 ## Items (SKU Master) Endpoints

@@ -13,7 +13,14 @@ const assertLocationAccess = async (userId, locationId) => {
   if (!grant) throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'You do not have access to this location.', { statusCode: 403, details: { reason_code: 'LOCATION_NOT_GRANTED' } });
 };
 export const buildGetEffectiveCapabilitiesUseCase = () => async ({ user, locationId } = {}) => {
-  try { const normalizedLocationId = positive(locationId); if (normalizedLocationId) await assertLocationAccess(user.user_id, normalizedLocationId); return ok({ capabilities: resolveEffectivePermissions(user), location_id: normalizedLocationId, staff_role: user.staffRole ? plain(user.staffRole) : null }); } catch (error) { return fail(map(error, 'Failed to load effective capabilities')); }
+  try {
+    const normalizedLocationId = positive(locationId);
+    if (normalizedLocationId) await assertLocationAccess(user.user_id, normalizedLocationId);
+    // #1901: capabilities is the single authoritative effective-permission set used by backend
+    // authorization. staff_role.capabilities is informational raw role data only and is not
+    // necessarily included in capabilities; clients must read capabilities for access decisions.
+    return ok({ capabilities: resolveEffectivePermissions(user), location_id: normalizedLocationId, staff_role: user.staffRole ? plain(user.staffRole) : null });
+  } catch (error) { return fail(map(error, 'Failed to load effective capabilities')); }
 };
 export const buildGetStaffAssignmentsUseCase = ({ repository }) => async ({ user, locationId } = {}) => {
   try {
