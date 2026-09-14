@@ -203,3 +203,29 @@ test('SubagentStart injector stays silent when no record exists', () => {
     fs.rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+test('Antigravity wrapper records the stream conversation and explicit model dynamically', () => {
+  const cwd = worktree();
+  const root = path.resolve(__dirname, '..');
+  const fakeBin = fs.mkdtempSync(path.join(os.tmpdir(), 'dgfy-agy-bin-'));
+  const fakeAgy = path.join(fakeBin, 'agy');
+  try {
+    fs.mkdirSync(path.join(cwd, 'scripts'), { recursive: true });
+    fs.copyFileSync(path.join(root, 'scripts', 'ai-attribution.js'), path.join(cwd, 'scripts', 'ai-attribution.js'));
+    fs.writeFileSync(fakeAgy, '#!/bin/sh\nprintf \'%s\\n\' \'{"event":"init","conversation_id":"agy-fixture"}\' \'{"event":"result","result":{"status":"SUCCESS"}}\'\n');
+    fs.chmodSync(fakeAgy, 0o755);
+    const wrapper = path.join(root, 'scripts', 'agy-with-attribution.js');
+    execFileSync(process.execPath, [wrapper, '--print=fixture', '--model', 'fixture-model', '--effort', 'high'], {
+      cwd,
+      env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+      encoding: 'utf8',
+    });
+    const record = readRecord({ runtime: 'antigravity', sessionId: 'agy-fixture' }, cwd);
+    assert.deepEqual(record.identities, [{ modelId: 'fixture-model' }]);
+    assert.equal(record.effort, 'high');
+    assert.equal(formatTag(record, 'Review', 'pr-reviewer'), 'Review (Antigravity, fixture-model (high), pr-reviewer)');
+  } finally {
+    fs.rmSync(fakeBin, { recursive: true, force: true });
+    fs.rmSync(cwd, { recursive: true, force: true });
+  }
+});

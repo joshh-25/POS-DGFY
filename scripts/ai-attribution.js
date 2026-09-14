@@ -42,6 +42,7 @@ function extractPayload(runtime, payload) {
     runtime,
     sessionId: field(payload, ['session_id', 'sessionId', 'id']),
     worktree: field(payload, ['worktree', 'cwd', 'directory', 'project_dir']),
+    ...(field(payload, ['effort', 'variant']) ? { effort: field(payload, ['effort', 'variant']) } : {}),
     ...(providerId ? { providerId } : {}),
     modelId,
   };
@@ -131,10 +132,11 @@ function identityLabel(record) {
 function formatTag(record, action, role) {
   const runtime = runtimeLabel(record?.runtime);
   const identity = identityLabel(record);
+  const effort = typeof record?.effort === 'string' && record.effort.trim() ? ` (${record.effort.trim()})` : '';
   if (!runtime || !identity || !action || !role) return '';
   return action === 'Opened'
-    ? `Opened by (${runtime}, ${identity}, ${role})`
-    : `${action} (${runtime}, ${identity}, ${role})`;
+    ? `Opened by (${runtime}, ${identity}${effort}, ${role})`
+    : `${action} (${runtime}, ${identity}${effort}, ${role})`;
 }
 function main() {
   const [command, runtime, sessionId, action, role] = process.argv.slice(2);
