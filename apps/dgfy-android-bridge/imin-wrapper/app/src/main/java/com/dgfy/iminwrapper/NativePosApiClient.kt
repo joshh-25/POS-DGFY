@@ -49,6 +49,28 @@ class NativePosApiClient {
         val receiptText: String
     )
 
+    data class DeviceEnrollment(
+        val enrollmentId: Int,
+        val deviceId: String,
+        val terminalId: String,
+        val locationId: Int?,
+        val status: String,
+        val version: Int,
+        val publicKeyFingerprint: String?
+    )
+
+    data class DeviceChallenge(
+        val challenge: String,
+        val expiresAt: String,
+        val deviceId: String,
+        val terminalId: String,
+        val locationId: Int?,
+        val purpose: String,
+        val requestPath: String,
+        val requestMethod: String,
+        val sessionId: String
+    )
+
     fun login(
         apiBaseUrl: String,
         companyToken: String,
@@ -70,6 +92,81 @@ class NativePosApiClient {
             token = data.optString("token"),
             refreshToken = data.optString("refreshToken"),
             companyToken = companyToken.trim()
+        )
+    }
+
+    /**
+     * First enrollment uses the server's unauthenticated, one-use activation
+     * route. The private key is intentionally absent from this payload.
+     */
+    fun activateDevice(
+        apiBaseUrl: String,
+        companyToken: String,
+        activationCode: String,
+        identity: IminDeviceKeyService.Identity,
+        terminalId: String,
+        locationId: Int? = null,
+        reason: String? = null
+    ): DeviceEnrollment {
+        val body = JSONObject()
+            .put("activation_code", activationCode.trim())
+            .put("device_id", identity.deviceId)
+            .put("public_key", identity.publicKey)
+            .put("key_algorithm", identity.keyAlgorithm)
+            .put("client_type", identity.clientType)
+            .put("terminal_id", terminalId.trim())
+        if (locationId != null && locationId > 0) body.put("location_id", locationId)
+        if (!reason.isNullOrBlank()) body.put("reason", reason.trim())
+
+        val response = request(
+            method = "POST",
+            url = "${normalizeApiBase(apiBaseUrl)}/pos/terminal/devices/activate",
+            body = body,
+            companyToken = companyToken.trim()
+        )
+        return parseDeviceEnrollment(response.optJSONObject("data") ?: JSONObject())
+    }
+
+    /** Issues the short-lived challenge bound to the exact next request. */
+    fun issueDeviceChallenge(
+        apiBaseUrl: String,
+        identity: IminDeviceKeyService.Identity,
+        terminalId: String,
+        requestPath: String,
+        requestMethod: String = "POST",
+        purpose: String = PosDeviceProofProtocol.PURPOSE_REQUEST,
+        sessionId: String? = null,
+        session: Session? = null,
+        companyToken: String? = null,
+        preAuth: Boolean = false
+    ): DeviceChallenge {
+        val body = JSONObject()
+            .put("device_id", identity.deviceId)
+            .put("terminal_id", terminalId.trim())
+            .put("purpose", purpose.trim())
+            .put("request_path", requestPath.trim())
+            .put("request_method", requestMethod.trim())
+        if (!sessionId.isNullOrBlank()) body.put("session_id", sessionId.trim())
+
+        val endpoint = if (preAuth) "/auth/device-challenge" else "/terminal/devices/challenge"
+        val response = request(
+            method = "POST",
+            url = "${normalizeApiBase(apiBaseUrl)}/pos$endpoint",
+            body = body,
+            session = session,
+            companyToken = companyToken?.trim()
+        )
+        val data = response.optJSONObject("data") ?: JSONObject()
+        return DeviceChallenge(
+            challenge = data.optString("challenge"),
+            expiresAt = data.optString("expires_at"),
+            deviceId = data.optString("device_id"),
+            terminalId = data.optString("terminal_id"),
+            locationId = data.optInt("location_id", 0).takeIf { it > 0 },
+            purpose = data.optString("purpose"),
+            requestPath = data.optString("request_path"),
+            requestMethod = data.optString("request_method"),
+            sessionId = data.optString("session_id")
         )
     }
 
@@ -241,6 +338,20 @@ class NativePosApiClient {
             shiftId = shiftId,
             status = data.optString("status", ""),
             terminalId = data.optString("terminal_id", "")
+        )
+    }
+
+    private fun parseDeviceEnrollment(data: JSONObject): DeviceEnrollment {
+        val enrollmentId = data.optInt("enrollment_id", 0)
+        if (enrollmentId <= 0) throw IllegalStateException("Device enrollment response is invalid.")
+        return DeviceEnrollment(
+            enrollmentId = enrollmentId,
+            deviceId = data.optString("device_id"),
+            terminalId = data.optString("terminal_id"),
+            locationId = data.optInt("location_id", 0).takeIf { it > 0 },
+            status = data.optString("status"),
+            version = data.optInt("version", 1),
+            publicKeyFingerprint = data.optString("public_key_fingerprint").takeIf { it.isNotBlank() }
         )
     }
 

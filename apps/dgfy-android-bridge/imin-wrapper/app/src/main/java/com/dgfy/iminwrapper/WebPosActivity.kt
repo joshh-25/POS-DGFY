@@ -30,7 +30,13 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.webkit.JavaScriptReplyProxy
+import androidx.webkit.WebMessageCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class WebPosActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -42,6 +48,8 @@ class WebPosActivity : AppCompatActivity() {
     private lateinit var statusRetryButton: Button
     private lateinit var drawerController: DrawerController
     private lateinit var iminBridge: IminBridge
+    private lateinit var deviceKeyService: IminDeviceKeyService
+    private lateinit var deviceProofExecutor: ExecutorService
     private var runtimeCleanupCompleted = true
     private var webPosReadyReceived = false
     private var logoAnimating = false
@@ -117,6 +125,11 @@ class WebPosActivity : AppCompatActivity() {
             iminBridge,
             "iMinBridge"
         )
+        deviceKeyService = IminDeviceKeyService(this)
+        deviceProofExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "dgfy-device-proof").apply { isDaemon = true }
+        }
+        registerDeviceProofListener()
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val message = consoleMessage?.message().orEmpty()
@@ -202,6 +215,9 @@ class WebPosActivity : AppCompatActivity() {
         orderAlertRingtone = null
         orderAlertToneGenerator?.release()
         orderAlertToneGenerator = null
+        if (::deviceProofExecutor.isInitialized) {
+            deviceProofExecutor.shutdownNow()
+        }
         iminBridge.release()
         drawerController.release()
         super.onDestroy()
@@ -321,6 +337,92 @@ class WebPosActivity : AppCompatActivity() {
                 "{detail:{requestId:$safeRequestId,result:$safeResultJson}}));",
             null
         )
+    }
+
+    private fun registerDeviceProofListener() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            // The server-side strict policy fails closed when no proof channel
+            // is available. Do not fall back to addJavascriptInterface here.
+            Log.w(TAG, "Origin-bound device proof is unavailable in this WebView")
+            return
+        }
+
+        WebViewCompat.addWebMessageListener(
+            webView,
+            "iMinDeviceProof",
+            AppConfig.approvedDeviceProofOriginRules(),
+            object : WebViewCompat.WebMessageListener {
+                override fun onPostMessage(
+                    view: WebView,
+                    message: WebMessageCompat,
+                    sourceOrigin: Uri,
+                    isMainFrame: Boolean,
+                    replyProxy: JavaScriptReplyProxy
+                ) {
+                    val origin = sourceOrigin.toString()
+                    if (!DeviceProofOriginPolicy.isPermitted(origin, isMainFrame)) {
+                        postDeviceProofResponse(
+                            replyProxy,
+                            JSONObject()
+                                .put("id", "")
+                                .put("success", false)
+                                .put("error_code", if (isMainFrame) "ORIGIN_NOT_APPROVED" else "FRAME_NOT_APPROVED")
+                                .put("message", "The device proof channel is restricted to the approved POS main frame.")
+                        )
+                        return
+                    }
+
+                    val rawMessage = message.data.orEmpty()
+                    if (rawMessage.toByteArray(Charsets.UTF_8).size > MAX_DEVICE_PROOF_MESSAGE_BYTES) {
+                        postDeviceProofResponse(
+                            replyProxy,
+                            JSONObject()
+                                .put("id", "")
+                                .put("success", false)
+                                .put("error_code", "MESSAGE_TOO_LARGE")
+                                .put("message", "The device proof request is too large.")
+                        )
+                        return
+                    }
+
+                    val request = runCatching { JSONObject(rawMessage) }.getOrElse {
+                        postDeviceProofResponse(
+                            replyProxy,
+                            JSONObject()
+                                .put("id", "")
+                                .put("success", false)
+                                .put("error_code", "MALFORMED_REQUEST")
+                                .put("message", "The device proof request is not valid JSON.")
+                        )
+                        return
+                    }
+
+                    // WebMessageListener callbacks run on the WebView thread;
+                    // key-store access and signing must never block the UI.
+                    runCatching {
+                        deviceProofExecutor.execute {
+                            val response = deviceKeyService.handleMessage(request)
+                            postDeviceProofResponse(replyProxy, response)
+                        }
+                    }.onFailure {
+                        postDeviceProofResponse(
+                            replyProxy,
+                            JSONObject()
+                                .put("id", request.optString("id", ""))
+                                .put("success", false)
+                                .put("error_code", "DEVICE_PROOF_UNAVAILABLE")
+                                .put("message", "The device proof service is unavailable.")
+                        )
+                    }
+                }
+            }
+        )
+    }
+
+    private fun postDeviceProofResponse(replyProxy: JavaScriptReplyProxy, response: JSONObject) {
+        runOnUiThread {
+            runCatching { replyProxy.postMessage(response.toString()) }
+        }
     }
 
     private fun startLogoAnimation() {
@@ -459,5 +561,6 @@ class WebPosActivity : AppCompatActivity() {
         private const val TAG = "WebPosActivity"
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 7001
         private const val READY_SIGNAL_FALLBACK_MS = 10_000L
+        private const val MAX_DEVICE_PROOF_MESSAGE_BYTES = 64 * 1024
     }
 }
