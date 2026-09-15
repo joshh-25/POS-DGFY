@@ -211,6 +211,8 @@ export default function ItemFormModal({
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onTogglePosAlwaysAvailable,
+  onTogglePosLocationAvailability,
+  onResetPosLocationAvailability,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
@@ -334,6 +336,22 @@ export default function ItemFormModal({
   const storefrontLocationAvailability = item
     ? configuredStorefrontLocationAvailability
     : draftStorefrontLocationAvailability;
+  const configuredPosLocationAvailability = useMemo(() => {
+    const configuredRows = Array.isArray(posConfig?.pos_location_availability)
+      ? posConfig.pos_location_availability
+      : [];
+    const configuredByLocationId = new Map(configuredRows.map((row) => [String(row?.location_id), row]));
+    return activeLocations.map((location) => {
+      const configured = configuredByLocationId.get(String(location?.location_id));
+      return {
+        location_id: location.location_id,
+        name: location.name,
+        is_primary_storefront: location.is_primary_storefront === true,
+        pos_available: configured?.pos_available !== false,
+        source: configured?.source === 'override' ? 'override' : 'inherited'
+      };
+    });
+  }, [activeLocations, posConfig]);
   const modeItemTaxonomy = useMemo(
     () => resolveModeItemTaxonomy(workflowMode),
     [workflowMode]
@@ -1986,6 +2004,43 @@ export default function ItemFormModal({
                   disabled={isSaving}
                 />
               </div>
+
+              {item && configuredPosLocationAvailability.length > 0 && (
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">POS branch availability</p>
+                      <p className="text-xs text-slate-500">The company POS setting is inherited unless a branch override is saved.</p>
+                    </div>
+                    <Badge variant="outline">
+                      {configuredPosLocationAvailability.filter((row) => row.pos_available !== false).length}/{configuredPosLocationAvailability.length}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {configuredPosLocationAvailability.map((location) => (
+                      <div key={location.location_id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{location.name || `Location ${location.location_id}`}</p>
+                          <p className="text-xs text-slate-500">{location.source === 'override' ? 'Branch override' : 'Inherited company policy'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {location.source === 'override' && onResetPosLocationAvailability && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => onResetPosLocationAvailability(item, location.location_id)}>
+                              Inherit
+                            </Button>
+                          )}
+                          <Switch
+                            checked={location.pos_available !== false}
+                            onCheckedChange={(checked) => onTogglePosLocationAvailability && onTogglePosLocationAvailability(item, location.location_id, checked)}
+                            disabled={!onTogglePosLocationAvailability}
+                            aria-label={`Toggle POS availability for ${location.name || location.location_id}`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {Array.isArray(posConfig?.pos_readiness?.missing_requirements) && posConfig.pos_readiness.missing_requirements.length > 0 && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">

@@ -524,7 +524,7 @@ describe('dgfyCustomerUseCases', () => {
 
         const result = await useCase({
             account,
-            query: { type: 'fnb_order', tenant_id: 'tenant-1', status: 'paid', payment_status: 'paid', date_from: '2026-05-01', date_to: '2026-05-28', page: 2, limit: 5 }
+            query: { type: 'fnb_order', tenant_id: 'tenant-1', store_slug: 'cafe-main', location_id: 7, status: 'paid', payment_status: 'paid', date_from: '2026-05-01', date_to: '2026-05-28', page: 2, limit: 5 }
         });
 
         expect(result.success).toBe(true);
@@ -535,6 +535,8 @@ describe('dgfyCustomerUseCases', () => {
         expect(repository.listActivitiesForAccount).toHaveBeenCalledWith(account.id, expect.objectContaining({
             type: 'fnb_order',
             tenantId: 'tenant-1',
+            storeSlug: 'cafe-main',
+            locationId: 7,
             status: 'paid',
             paymentStatus: 'paid',
             dateFrom: '2026-05-01',

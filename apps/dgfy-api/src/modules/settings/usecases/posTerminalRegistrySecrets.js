@@ -28,7 +28,8 @@ const normalizeRegistryEntry = (entry = {}) => {
         is_active: entry.is_active !== false,
         is_default: entry.is_default === true,
         pairing_version: String(entry.pairing_version || '').trim(),
-        terminal_password_hash: String(entry.terminal_password_hash || '').trim()
+        terminal_password_hash: String(entry.terminal_password_hash || '').trim(),
+        device_enforcement: String(entry.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
     };
 };
 
@@ -53,6 +54,9 @@ export const hashTerminalRegistrySecrets = async ({ incomingEntries = [], curren
         entry.pairing_version = !current?.pairing_version || bindingChanged || rawEntry.rotate_pairing === true
             ? crypto.randomUUID()
             : current.pairing_version;
+        if (!Object.prototype.hasOwnProperty.call(rawEntry, 'device_enforcement') && current) {
+            entry.device_enforcement = current.device_enforcement;
+        }
         entry.terminal_password_hash = '';
         merged.push(entry);
     }
@@ -72,7 +76,8 @@ export const sanitizeTerminalRegistryForRead = (entries = []) => (
             is_active: normalized.is_active,
             is_default: normalized.is_default,
             pairing_version: normalized.pairing_version,
-            paired_device_ready: Boolean(normalized.pairing_version || normalized.terminal_password_hash)
+            paired_device_ready: Boolean(normalized.pairing_version || normalized.terminal_password_hash),
+            device_enforcement: normalized.device_enforcement
         };
     })
 );

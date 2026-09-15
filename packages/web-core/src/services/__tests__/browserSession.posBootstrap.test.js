@@ -34,6 +34,7 @@ describe('standalone POS browser session bootstrap', () => {
     const sessionStorage = createStorageMock();
     vi.stubGlobal('window', {
       sessionStorage,
+      location: { hash: '' },
       dispatchEvent: vi.fn()
     });
     globalThis.window.sessionStorage.clear();
@@ -64,6 +65,16 @@ describe('standalone POS browser session bootstrap', () => {
     await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     expect(session.getAccessToken()).toBe('refreshed-access-token');
+  });
+
+  it.each(['#/backoffice/overview', '#/business-admin/overview'])('allows cookie refresh for a fresh Back Office route (%s)', async (hash) => {
+    globalThis.window.location.hash = hash;
+    const session = await import('../browserSession.js');
+
+    expect(session.canRefreshBrowserSession()).toBe(true);
+    await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
+    expect(session.getAccessToken()).toBe('refreshed-access-token');
+    expect(session.getCompanyToken()).toBe('tenant-company-token');
   });
 
   it('restores the standalone POS session after a page reload', async () => {

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildPosAdminLocationMonitorScopeKey,
+  buildPosOperationalScopeKey,
   getIncomingOrderShiftReasonCode,
   hasUsableIncomingOrderShift,
   isIncomingOrderShiftUnavailableError,
-  isPosOnlineOrderQueueEnabled
+  isPosOnlineOrderQueueEnabled,
+  isCurrentPosOperationalRequest
 } from '../posOperationalVisibility.js';
 
 describe('POS operational visibility', () => {
@@ -48,5 +51,58 @@ describe('POS operational visibility', () => {
       workflowMode: 'msme',
       posDefaults: { show_online_queue: true }
     })).toBe(true);
+  });
+
+  it('rejects late responses from an older request or operational scope', () => {
+    const mainScope = buildPosOperationalScopeKey({ terminalId: 'POS-01', shiftId: 101, locationId: 1 });
+    const eastScope = buildPosOperationalScopeKey({ terminalId: 'POS-01', shiftId: 102, locationId: 2 });
+
+    expect(isCurrentPosOperationalRequest({
+      requestSequence: 2,
+      currentRequestSequence: 2,
+      requestScopeKey: eastScope,
+      currentScopeKey: eastScope
+    })).toBe(true);
+    expect(isCurrentPosOperationalRequest({
+      requestSequence: 1,
+      currentRequestSequence: 2,
+      requestScopeKey: mainScope,
+      currentScopeKey: eastScope
+    })).toBe(false);
+    expect(isCurrentPosOperationalRequest({
+      requestSequence: 2,
+      currentRequestSequence: 2,
+      requestScopeKey: mainScope,
+      currentScopeKey: eastScope
+    })).toBe(false);
+  });
+
+  it('binds admin monitor responses to tenant, terminal, shift, and viewing branch', () => {
+    const tenantAScope = buildPosAdminLocationMonitorScopeKey({
+      tenantId: 'tenant-a',
+      terminalId: 'POS-01',
+      shiftId: 0,
+      locationId: 2
+    });
+    const tenantBScope = buildPosAdminLocationMonitorScopeKey({
+      tenantId: 'tenant-b',
+      terminalId: 'POS-01',
+      shiftId: 0,
+      locationId: 2
+    });
+
+    expect(tenantAScope).not.toBe(tenantBScope);
+    expect(isCurrentPosOperationalRequest({
+      requestSequence: 3,
+      currentRequestSequence: 3,
+      requestScopeKey: tenantAScope,
+      currentScopeKey: tenantAScope
+    })).toBe(true);
+    expect(isCurrentPosOperationalRequest({
+      requestSequence: 3,
+      currentRequestSequence: 3,
+      requestScopeKey: tenantAScope,
+      currentScopeKey: tenantBScope
+    })).toBe(false);
   });
 });

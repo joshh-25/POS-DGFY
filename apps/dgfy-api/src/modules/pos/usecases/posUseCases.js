@@ -5,6 +5,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { getAllSettingsUseCase } from '../../settings/index.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
+import { normalizePosOperatingConflict } from './posUserOperatingScope.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
@@ -5632,13 +5633,28 @@ export const buildListPosSetupCashiersUseCase = ({ userService }) => {
     };
 };
 
-export const buildLoginPosCashierUseCase = ({ authService }) => {
+export const buildLoginPosCashierUseCase = ({ authService, assertPosDeviceProof = null }) => {
     if (!authService || typeof authService.loginUser !== 'function') {
         throw new Error('buildLoginPosCashierUseCase requires authService.loginUser');
     }
 
-    return async ({ payload = {} } = {}) => {
+    return async ({ payload = {}, deviceProof = null, request = null, tenantId = null } = {}) => {
         try {
+            if (!deviceProof && typeof assertPosDeviceProof === 'function') {
+                await assertPosDeviceProof({
+                    tenantId: tenantId || request?.tenant?.id || null,
+                    terminalId: request?.headers?.['x-pos-terminal-id'] || payload.terminal_id,
+                    deviceId: request?.headers?.['x-pos-device-id'],
+                    challenge: request?.headers?.['x-pos-device-challenge'],
+                    signature: request?.headers?.['x-pos-device-signature'],
+                    sessionId: request?.headers?.['x-pos-device-session-id'],
+                    purpose: 'session',
+                    method: request?.method || 'POST',
+                    path: request?.originalUrl || request?.path || '/api/v1/pos/auth/cashier-login',
+                    body: request?.body || payload,
+                    requestId: request?.requestId || request?.headers?.['x-request-id'] || null
+                });
+            }
             const session = await authService.loginUser(
                 payload.identifier,
                 payload.password,
@@ -6583,7 +6599,7 @@ export const buildListPosCatalogOverridesUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
+export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository, assertLocationAccess: checkLocationAccess }) => {
     return async ({ itemId, payload, user }) => {
         const normalizedItemId = parsePositiveInt(itemId);
         if (!normalizedItemId) {
@@ -6600,6 +6616,22 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                 'payload must be an object',
                 { statusCode: 400 }
             ));
+        }
+
+        const hasLocationAvailabilityPatch = Array.isArray(payload.location_availability);
+        if (hasLocationAvailabilityPatch) {
+            const invalidLocationEntries = payload.location_availability.filter((entry) => (
+                !parsePositiveInt(entry?.location_id) || (
+                    entry?.pos_available !== null && typeof entry?.pos_available !== 'boolean'
+                )
+            ));
+            if (invalidLocationEntries.length > 0) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'location_availability contains invalid branch entries',
+                    { statusCode: 422 }
+                ));
+            }
         }
 
         try {
@@ -6644,17 +6676,67 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                 }
             }
 
-            const data = await posRepository.upsertCatalogOverride(normalizedItemId, {
-                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
-                    ? { pos_visible: payload.pos_visible }
-                    : {}),
-                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
-                    ? { pos_always_available: payload.pos_always_available === true }
-                    : {}),
-                ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
-                    ? { pos_best_seller_mode: payload.pos_best_seller_mode }
-                    : {})
-            });
+            if (hasLocationAvailabilityPatch && user?.user_id != null) {
+                if (typeof checkLocationAccess !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.SERVICE_UNAVAILABLE,
+                        'Location grant service is unavailable.',
+                        { statusCode: 503 }
+                    );
+                }
+                for (const entry of payload.location_availability) {
+                    await checkLocationAccess({
+                        userId: user.user_id,
+                        locationId: entry.location_id,
+                        operationLabel: 'edit POS branch availability',
+                        requireGrant: true
+                    });
+                }
+            }
+
+            const hasGlobalPatch = ['pos_visible', 'pos_always_available', 'pos_best_seller_mode']
+                .some((field) => Object.prototype.hasOwnProperty.call(payload, field));
+            if (hasLocationAvailabilityPatch && typeof posRepository.upsertPosItemLocationAvailability !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'POS branch availability service is unavailable.',
+                    { statusCode: 503 }
+                );
+            }
+            if (hasLocationAvailabilityPatch && typeof posRepository.listPosItemLocationAvailability !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'POS branch availability read service is unavailable.',
+                    { statusCode: 503 }
+                );
+            }
+            const data = hasGlobalPatch
+                ? await posRepository.upsertCatalogOverride(normalizedItemId, {
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_visible')
+                        ? { pos_visible: payload.pos_visible }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')
+                        ? { pos_always_available: payload.pos_always_available === true }
+                        : {}),
+                    ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
+                        ? { pos_best_seller_mode: payload.pos_best_seller_mode }
+                        : {})
+                })
+                : await posRepository.findCatalogOverrideByItemId(normalizedItemId);
+
+            if (hasLocationAvailabilityPatch) {
+                await posRepository.upsertPosItemLocationAvailability(
+                    normalizedItemId,
+                    payload.location_availability.map((entry) => ({
+                        location_id: parsePositiveInt(entry.location_id),
+                        pos_available: entry.pos_available
+                    }))
+                );
+            }
+
+            const availabilityMap = typeof posRepository.listPosItemLocationAvailability === 'function'
+                ? await posRepository.listPosItemLocationAvailability([normalizedItemId])
+                : new Map();
             await createCatalogAuditLog({
                 posRepository,
                 user,
@@ -6669,10 +6751,17 @@ export const buildUpdatePosCatalogOverrideUseCase = ({ posRepository }) => {
                         : {}),
                     ...(Object.prototype.hasOwnProperty.call(payload, 'pos_best_seller_mode')
                         ? { pos_best_seller_mode: payload.pos_best_seller_mode }
+                        : {}),
+                    ...(hasLocationAvailabilityPatch
+                        ? { pos_location_availability: payload.location_availability }
                         : {})
                 }
             });
-            return ok(toSerializable(data));
+            return ok({
+                ...toSerializable(data || { item_id: normalizedItemId }),
+                item_id: normalizedItemId,
+                pos_location_availability: availabilityMap.get(normalizedItemId) || []
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to update POS catalog override'));
         }
@@ -7438,6 +7527,7 @@ const buildCashierHistorySalesSummary = async ({ posRepository, shiftId, shift }
 
 export const buildOpenTerminalShiftUseCase = ({
     posRepository,
+    assertUserOperatingScope = null,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope,
     onShiftOpened = null
@@ -7543,13 +7633,21 @@ export const buildOpenTerminalShiftUseCase = ({
                 opening_float_amount: openingFloatAmount,
                 opening_note: openingNote
             });
+            transaction = await sequelize.transaction();
+            // Revalidate the current branch grant before an idempotent replay;
+            // a revoked grant must not receive a previously successful unlock.
+            await assertUserOperatingScope?.({
+                userId: normalizedUserId, terminalId, locationId: enforcedShiftLocationId, transaction
+            });
             const replay = await findOperationReplayEntry({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
                 idempotencyKey,
-                requestHash: replayRequestHash
+                requestHash: replayRequestHash,
+                transaction
             });
             if (replay) {
+                await transaction.commit();
                 return ok(replay);
             }
 
@@ -7562,7 +7660,6 @@ export const buildOpenTerminalShiftUseCase = ({
                 user
             });
 
-            transaction = await sequelize.transaction();
             const transactionReplay = await findOperationReplayEntry({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
@@ -7763,12 +7860,18 @@ export const buildOpenTerminalShiftUseCase = ({
                     createdBy: normalizedUserId
                 });
             }
-            return fail(mapPosUseCaseError(error, 'Failed to open terminal shift'));
+            return fail(mapPosUseCaseError(normalizePosOperatingConflict(error), 'Failed to open terminal shift'));
         }
     };
 };
 
-export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
+export const buildSwitchTerminalShiftLocationUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope,
+    revokeOperatorSessionsForTerminal = null,
+    onShiftClosing = null,
+    onShiftOpened = null
+}) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         const normalizedShiftId = parsePositiveInt(shiftId);
@@ -7802,6 +7905,48 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 { statusCode: 422 }
             ));
         }
+        const requestedTerminalId = sanitizeTerminalId(payload?.terminal_id);
+        if (!requestedTerminalId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'An active destination terminal is required for a location switch.',
+                { statusCode: 422 }
+            ));
+        }
+        const rawClosingCashAmount = payload?.closing_cash_amount;
+        if (rawClosingCashAmount == null || String(rawClosingCashAmount).trim() === '') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'closing_cash_amount is required for a location switch.',
+                { statusCode: 422 }
+            ));
+        }
+        const closingCashAmount = round4(Number(rawClosingCashAmount));
+        if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'closing_cash_amount must be a non-negative number',
+                { statusCode: 422 }
+            ));
+        }
+        const rawOpeningFloatAmount = payload?.opening_float_amount;
+        if (rawOpeningFloatAmount == null || String(rawOpeningFloatAmount).trim() === '') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'opening_float_amount is required for a location switch.',
+                { statusCode: 422 }
+            ));
+        }
+        const openingFloatAmount = round4(Number(rawOpeningFloatAmount));
+        if (!Number.isFinite(openingFloatAmount) || openingFloatAmount < 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'opening_float_amount must be a non-negative number',
+                { statusCode: 422 }
+            ));
+        }
+        const closingNote = String(payload?.closing_note || '').trim() || null;
+        const openingNote = String(payload?.opening_note || '').trim() || null;
         const reason = String(payload.reason || '').trim();
         if (reason.length < 8) {
             return fail(new DomainError(
@@ -7812,12 +7957,15 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
         }
 
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
-        const requestedTerminalId = sanitizeTerminalId(payload?.terminal_id);
         const replayRequestHash = hashPayload({
             shift_id: normalizedShiftId,
             terminal_id: requestedTerminalId || null,
             target_location_id: targetLocationId,
-            reason
+            reason,
+            closing_cash_amount: closingCashAmount,
+            opening_float_amount: openingFloatAmount,
+            closing_note: closingNote,
+            opening_note: openingNote
         });
         logger.info('[POS][ShiftSwitch] Location switch requested', {
             shift_id: normalizedShiftId,
@@ -7878,14 +8026,14 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
             }
 
             if (sourceLocationId) {
-                await resolvePosReadLocationScope({
+                await resolveLocationScope({
                     requestedLocationId: sourceLocationId,
                     userId: normalizedUserId,
                     transaction,
                     operationLabel: 'POS shift location switch source scope'
                 });
             }
-            const targetLocationScope = await resolvePosReadLocationScope({
+            const targetLocationScope = await resolveLocationScope({
                 requestedLocationId: targetLocationId,
                 userId: normalizedUserId,
                 transaction,
@@ -7897,13 +8045,12 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 settings: {},
                 options: { transaction }
             });
-            const terminalPolicyContext = evaluateTerminalIdentityPolicy({
+            const terminalPolicyContext = requireRegisteredTerminalContext({
                 terminalId: requestedTerminalId || existingShiftPayload?.terminal_id,
                 policy: terminalPolicySettings,
                 operation: 'switch_location'
             });
-            const normalizedTerminalId = terminalPolicyContext.terminal_id
-                || sanitizeTerminalId(existingShiftPayload?.terminal_id);
+            const normalizedTerminalId = terminalPolicyContext.terminal_id;
             if (!normalizedTerminalId) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
@@ -7912,10 +8059,32 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 );
             }
             const enforcedTargetLocationId = enforceTerminalHomeLocationPolicy({
-                bindingEnforced: terminalPolicySettings.binding_enforced === true,
+                // A location switch must never move a physical register to a branch
+                // other than the selected terminal's registered home. This mirrors
+                // shift-open enforcement even when the registry is in warn mode.
+                bindingEnforced: true,
                 terminalPolicyContext,
                 targetLocationId: targetLocationScope.location_id
             });
+
+            const occupiedTargetShift = await posRepository.findOpenTerminalShift({
+                terminalId: normalizedTerminalId
+            }, { transaction, lock: true });
+            if (occupiedTargetShift) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The destination terminal already has an active shift. Close it before switching this register.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'POS_TARGET_TERMINAL_OCCUPIED',
+                            target_terminal_id: normalizedTerminalId,
+                            target_location_id: enforcedTargetLocationId,
+                            existing_shift_id: occupiedTargetShift.pos_terminal_shift_id
+                        }
+                    }
+                );
+            }
 
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
@@ -7926,23 +8095,53 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 user
             });
 
+            const cashCloseData = await buildShiftCloseCashData({
+                posRepository,
+                shiftId: normalizedShiftId,
+                shift: existingShift,
+                transaction,
+                closingCashAmount
+            });
+            const switchClosingNote = `location_switch to ${enforcedTargetLocationId}: ${closingNote || reason}`.slice(0, 255);
+            const switchOpeningNote = `location_switch from shift #${normalizedShiftId}: ${openingNote || reason}`.slice(0, 255);
+            const cashierLifecycle = typeof onShiftClosing === 'function'
+                ? await onShiftClosing({
+                    shift: existingShift,
+                    user,
+                    payload,
+                    requestId: idempotencyKey,
+                    transaction
+                })
+                : null;
             const closedShift = await posRepository.closeTerminalShift(normalizedShiftId, {
+                closing_cash_amount: closingCashAmount,
+                expected_cash_amount: cashCloseData.expectedCashAmount,
+                cash_variance_amount: cashCloseData.variance,
                 status: 'closed',
                 closed_at: new Date(),
                 closed_by: normalizedUserId,
-                closing_note: `location_switch: ${reason}`
+                closing_note: switchClosingNote
             }, {
                 transaction,
                 lock: true
             });
+
+            if (typeof revokeOperatorSessionsForTerminal === 'function') {
+                await revokeOperatorSessionsForTerminal({
+                    terminalId: existingShiftPayload?.terminal_id,
+                    reason: 'register_location_switched',
+                    transaction,
+                    at: new Date()
+                });
+            }
 
             const openedShift = await posRepository.createTerminalShift({
                 business_date: existingShiftPayload?.business_date || nowInManilaBusinessDate(),
                 terminal_id: normalizedTerminalId,
                 location_id: enforcedTargetLocationId,
                 cashier_id: parsePositiveInt(existingShiftPayload?.cashier_id) || normalizedUserId,
-                opening_float_amount: 0,
-                opening_note: `location_switch from shift #${normalizedShiftId}: ${reason}`,
+                opening_float_amount: openingFloatAmount,
+                opening_note: switchOpeningNote,
                 opened_at: new Date(),
                 status: 'open'
             }, { transaction });
@@ -7950,6 +8149,26 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 openedShift.pos_terminal_shift_id,
                 { transaction }
             );
+            const openedCashierLifecycle = typeof onShiftOpened === 'function'
+                ? await onShiftOpened({
+                    shift: hydratedOpenedShift || openedShift,
+                    user,
+                    lifecycleUser: {
+                        ...user,
+                        user_id: parsePositiveInt(existingShiftPayload?.cashier_id) || normalizedUserId
+                    },
+                    payload: {
+                        ...payload,
+                        location_id: enforcedTargetLocationId,
+                        terminal_id: normalizedTerminalId,
+                        opening_float_amount: openingFloatAmount,
+                        opening_note: switchOpeningNote
+                    },
+                    requestId: idempotencyKey,
+                    tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                    transaction
+                })
+                : null;
 
             const transition = await posRepository.createShiftLocationTransition({
                 from_shift_id: normalizedShiftId,
@@ -7969,7 +8188,23 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 terminal_identity_policy: terminalPolicyContext,
                 transition: toSerializable(transition),
                 from_shift: toSerializable(closedShift),
-                to_shift: toSerializable(hydratedOpenedShift || openedShift)
+                to_shift: toSerializable(hydratedOpenedShift || openedShift),
+                cash_reconciliation: {
+                    disposition: 'counted_close_then_explicit_destination_float',
+                    source: {
+                        ...cashCloseData.summary,
+                        closing_cash_amount: closingCashAmount,
+                        expected_cash_amount: cashCloseData.expectedCashAmount,
+                        cash_variance_amount: cashCloseData.variance
+                    },
+                    destination: {
+                        opening_float_amount: openingFloatAmount,
+                        terminal_id: normalizedTerminalId,
+                        location_id: enforcedTargetLocationId
+                    }
+                },
+                ...(cashierLifecycle ? { cashier_lifecycle: cashierLifecycle } : {}),
+                ...(openedCashierLifecycle ? { opened_cashier_lifecycle: openedCashierLifecycle } : {})
             };
             await createShiftAuditLog({
                 posRepository,
@@ -7985,6 +8220,11 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                     from_terminal_id: existingShiftPayload?.terminal_id || null,
                     to_terminal_id: normalizedTerminalId,
                     replacement_shift_id: openedShift.pos_terminal_shift_id,
+                    closing_cash_amount: closingCashAmount,
+                    expected_cash_amount: cashCloseData.expectedCashAmount,
+                    cash_variance_amount: cashCloseData.variance,
+                    destination_opening_float_amount: openingFloatAmount,
+                    cash_disposition: 'counted_close_then_explicit_destination_float',
                     reason
                 },
                 transaction
@@ -8497,6 +8737,62 @@ const assertNoInFlightOperatorMutationForShift = async ({ posRepository, shiftId
     );
 };
 
+const buildShiftCloseCashData = async ({
+    posRepository,
+    shiftId,
+    shift,
+    transaction,
+    closingCashAmount
+}) => {
+    await assertNoUnresolvedParkedSalesForShift({
+        posRepository,
+        shiftId,
+        transaction
+    });
+    await assertNoInFlightOperatorMutationForShift({
+        posRepository,
+        shiftId,
+        transaction
+    });
+    await assertNoInFlightPaymentSessionsForShift({
+        posRepository,
+        shiftId,
+        transaction
+    });
+    await assertNoUnresolvedFundedPaymentSessionsForShift({
+        posRepository,
+        shiftId,
+        transaction
+    });
+
+    const shiftPayload = toSerializable(shift);
+    const salesSummary = await buildShiftSalesSummary({
+        posRepository,
+        shiftId,
+        shift: shiftPayload,
+        transaction
+    });
+    const cashSales = cashSalesFromSalesSummary(salesSummary);
+    const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
+        shiftId,
+        { transaction }
+    );
+    const summary = buildShiftCashSummary({
+        shift: { ...shiftPayload, cashEvents },
+        cashSalesAmount: cashSales
+    });
+    const expectedCashAmount = round4(summary.expected_cash_amount || 0);
+    const variance = round4(closingCashAmount - expectedCashAmount);
+
+    return {
+        shiftPayload,
+        salesSummary,
+        summary,
+        expectedCashAmount,
+        variance
+    };
+};
+
 export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSessionsForTerminal = null, onShiftClosing = null }) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -8573,43 +8869,20 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 user
             });
 
-            await assertNoUnresolvedParkedSalesForShift({
+            const cashCloseData = await buildShiftCloseCashData({
                 posRepository,
                 shiftId: normalizedShiftId,
-                transaction
+                shift,
+                transaction,
+                closingCashAmount
             });
-            await assertNoInFlightOperatorMutationForShift({
-                posRepository,
-                shiftId: normalizedShiftId,
-                transaction
-            });
-            await assertNoInFlightPaymentSessionsForShift({
-                posRepository,
-                shiftId: normalizedShiftId,
-                transaction
-            });
-            await assertNoUnresolvedFundedPaymentSessionsForShift({
-                posRepository,
-                shiftId: normalizedShiftId,
-                transaction
-            });
-
-            const shiftPayload = toSerializable(shift);
-            const salesSummary = await buildShiftSalesSummary({
-                posRepository,
-                shiftId: normalizedShiftId,
-                shift: shiftPayload,
-                transaction
-            });
-            const cashSales = cashSalesFromSalesSummary(salesSummary);
-            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
-                normalizedShiftId,
-                { transaction }
-            );
-            const tempShift = { ...shiftPayload, cashEvents };
-            const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
-            const expectedCashAmount = round4(summary.expected_cash_amount || 0);
-            const variance = round4(closingCashAmount - expectedCashAmount);
+            const {
+                shiftPayload,
+                salesSummary,
+                summary,
+                expectedCashAmount,
+                variance
+            } = cashCloseData;
 
             const cashierLifecycle = typeof onShiftClosing === 'function'
                 ? await onShiftClosing({

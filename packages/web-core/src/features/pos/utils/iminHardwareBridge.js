@@ -620,7 +620,12 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
 export const printReceiptWithIminBridge = ({ transaction, businessSettings = {}, receiptContract = null, openDrawerAfterPrint = true }) => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.printReceipt !== 'function') {
+    if (!bridge || ![
+        'printReceiptWithLogoAsync',
+        'printReceiptAsync',
+        'printReceiptWithLogo',
+        'printReceipt'
+    ].some((methodName) => typeof bridge[methodName] === 'function')) {
         return { handled: false };
     }
 

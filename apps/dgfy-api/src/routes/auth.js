@@ -3,6 +3,7 @@ import * as authController from '../controllers/authController.js';
 import { validateRegister, validateLogin, validateRefreshToken, validateEmailLookup, validateAcceptInvite, validateInviteToken, validateEmailOtpRequest } from '../validators/authValidator.js';
 import { authenticate } from '../middleware/auth.js';
 import { authLimiter, lookupLimiter, emailOtpLimiter } from '../middleware/rateLimiter.js';
+import { requirePosDeviceProofIfStrict } from '../middleware/posDeviceProof.js';
 
 const router = express.Router();
 
@@ -10,9 +11,9 @@ router.post('/register', authLimiter, validateRegister, authController.register)
 router.post('/email-otp/request', emailOtpLimiter, validateEmailOtpRequest, authController.requestAuthEmailOtp);
 router.post('/login', authLimiter, validateLogin, authController.login);
 router.get('/csrf-token', authController.issueBrowserCsrfToken);
-router.post('/refresh-token', validateRefreshToken, authController.refreshToken);
+router.post('/refresh-token', requirePosDeviceProofIfStrict, validateRefreshToken, authController.refreshToken);
 // Logout - invalidates the token
-router.post('/logout', authenticate, authController.logout);
+router.post('/logout', authenticate, requirePosDeviceProofIfStrict, authController.logout);
 
 // Email lookup for token-less login (finds which tenant an email belongs to)
 router.post('/lookup', lookupLimiter, validateEmailLookup, authController.lookupEmail);

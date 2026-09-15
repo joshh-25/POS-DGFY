@@ -1005,7 +1005,10 @@ describe('posHandlers transport contracts', () => {
             validatedParams: { id: 77 },
             params: { id: 77 },
             validatedData: {
+                terminal_id: 'EAST-01',
                 target_location_id: 3,
+                closing_cash_amount: 195,
+                opening_float_amount: 100,
                 reason: 'Staff reassignment for lunch coverage',
                 idempotency_key: 'shift-switch-20260409-01'
             },
@@ -1021,7 +1024,10 @@ describe('posHandlers transport contracts', () => {
         expect(mockSwitchTerminalShiftLocationUseCase).toHaveBeenCalledWith({
             shiftId: 77,
             payload: {
+                terminal_id: 'EAST-01',
                 target_location_id: 3,
+                closing_cash_amount: 195,
+                opening_float_amount: 100,
                 reason: 'Staff reassignment for lunch coverage',
                 idempotency_key: 'shift-switch-20260409-01'
             },
@@ -1032,6 +1038,49 @@ describe('posHandlers transport contracts', () => {
             success: true,
             data: expect.objectContaining({
                 replay_outcome: 'processed'
+            }),
+            message: 'Terminal shift location switched successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('preserves idempotent replay metadata for a repeated shift location switch', async () => {
+        mockSwitchTerminalShiftLocationUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: true,
+                replay_outcome: 'replayed',
+                from_shift: { pos_terminal_shift_id: 77, location_id: 2 },
+                to_shift: { pos_terminal_shift_id: 78, location_id: 3 }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 77 },
+            params: { id: 77 },
+            validatedData: {
+                terminal_id: 'EAST-01',
+                target_location_id: 3,
+                closing_cash_amount: 195,
+                opening_float_amount: 100,
+                reason: 'Staff reassignment for lunch coverage',
+                idempotency_key: 'shift-switch-replayed-01'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-shift-switch-replayed'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await switchTerminalShiftLocation(req, res, next);
+
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: true,
+                replay_outcome: 'replayed'
             }),
             message: 'Terminal shift location switched successfully',
             timestamp: expect.any(String)

@@ -9,6 +9,7 @@ const checkoutViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/
 const catalogWorkflowPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js');
 const catalogImageFailureStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posCatalogImageFailureStore.js');
 const checkoutUtilsPath = path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js');
+const posItemImagePath = path.resolve(webCoreRoot, 'src/features/pos/components/PosItemImage.jsx');
 const layoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx');
 const sidebarPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
 const pendingPreviewStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posPendingItemImagePreviewStore.js');
@@ -22,12 +23,16 @@ describe('hosted POS catalog performance contracts', () => {
     const catalogWorkflowSource = readSource(catalogWorkflowPath);
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
     const pendingPreviewStoreSource = readSource(pendingPreviewStorePath);
+    const posItemImageSource = readSource(posItemImagePath);
     const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
     expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
     expect(checkoutSource).toContain("loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(posItemImageSource).toContain("import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';");
+    expect(posItemImageSource).toContain('sources={targetSources}');
+    expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');

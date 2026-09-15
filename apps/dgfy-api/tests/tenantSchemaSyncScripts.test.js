@@ -265,6 +265,21 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers the Phase 260 delivery-run date-range contract for tenant repair', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs).toHaveProperty('scheduled_date_end');
+
+    const [columnRepair] = buildTenantSchemaRepairSql([
+      { table: 'delivery_runs', column: 'scheduled_date_end' }
+    ]);
+    expect(columnRepair.sql).toContain('ADD COLUMN `scheduled_date_end` DATE NULL');
+
+    const [tableRepair] = buildTenantSchemaTableRepairSql(['delivery_runs']);
+    expect(tableRepair.sql).toContain('`scheduled_date_end` date DEFAULT NULL');
+    expect(tableRepair.sql).toContain('idx_delivery_runs_status_scheduled_range');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_runs)
+      .toHaveProperty('idx_delivery_runs_status_scheduled_range');
+  });
+
   it('registers online inventory reservation tables in dependency order', () => {
     const reservationTables = ['inventory_reservations', 'inventory_reservation_lines'];
     const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);

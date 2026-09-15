@@ -340,7 +340,7 @@ export const buildListStorefrontCatalogOverridesUseCase = ({ itemRepository }) =
   return async ({ query = {} } = {}) => itemRepository.listStorefrontCatalogOverrides(query);
 };
 
-export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) => {
+export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository, assertLocationAccess: checkLocationAccess }) => {
   return async ({ itemId, payload = {}, user }) => {
     assertCanEditItems(user, 'update');
     const normalizedItemId = parsePositiveInt(itemId);
@@ -366,6 +366,36 @@ export const buildUpdateStorefrontCatalogOverrideUseCase = ({ itemRepository }) 
 
     if (payload.storefront_visible === true) {
       assertStorefrontPriceReady(item, normalizedItemId, 'Storefront visibility');
+    }
+
+    if (hasLocationAvailabilityPatch) {
+      const invalidLocationEntries = payload.location_availability.filter((entry) => (
+        !parsePositiveInt(entry?.location_id)
+      ));
+      if (invalidLocationEntries.length > 0) {
+        throw new DomainError(
+          DomainErrorCode.VALIDATION_FAILED,
+          'location_availability contains invalid location_id values',
+          { statusCode: 422 }
+        );
+      }
+      if (user?.user_id != null) {
+        if (typeof checkLocationAccess !== 'function') {
+          throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'Location grant service is unavailable.',
+            { statusCode: 503 }
+          );
+        }
+        for (const entry of payload.location_availability) {
+          await checkLocationAccess({
+            userId: user.user_id,
+            locationId: entry.location_id,
+            operationLabel: 'edit Storefront branch availability',
+            requireGrant: true
+          });
+        }
+      }
     }
 
     const shouldUseTransaction = hasStorefrontVisiblePatch

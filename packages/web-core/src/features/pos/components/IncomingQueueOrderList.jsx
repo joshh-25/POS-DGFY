@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
+import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Phone, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   FULFILLMENT_STATUS_LABELS,
@@ -26,6 +26,8 @@ import { getRunAssignEligibility, getActiveRunMembership } from '../utils/delive
 import {
   formatOrderDateTime,
   formatOrderAmount,
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
   parseDeliveryCoords,
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel
@@ -613,6 +615,28 @@ function OrderCard({
                 <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
               </div>
             </div>
+            {order.order_method === 'delivery' && (
+              <>
+                <div className="flex items-center gap-3 py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center flex-1 min-w-0">
+                    <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Phone</span>
+                    <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatCustomerPhone(order.customer_phone)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center flex-1 min-w-0">
+                    <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Pin coordinates</span>
+                    <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatDeliveryCoordinates(deliveryCoords)}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

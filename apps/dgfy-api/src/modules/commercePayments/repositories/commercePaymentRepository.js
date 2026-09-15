@@ -3,6 +3,37 @@ import { Op } from 'sequelize';
 
 const toPlain = (row) => (row?.get ? row.get({ plain: true }) : row);
 
+const applyCreatedAtWindow = (where, filters = {}) => {
+  const from = filters.eventAtFrom || filters.createdAtFrom;
+  const to = filters.eventAtTo || filters.createdAtTo;
+  if (!from && !to) return where;
+  where.created_at = {};
+  if (from) where.created_at[Op.gte] = from;
+  if (to) where.created_at[Op.lt] = to;
+  return where;
+};
+
+const buildSessionWhere = (filters = {}) => {
+  const where = {};
+  if (filters.tenantId) where.tenant_id = filters.tenantId;
+  if (filters.status) {
+    where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
+  }
+  if (filters.targetType) where.target_type = filters.targetType;
+  if (filters.provider) where.provider = filters.provider;
+  return applyCreatedAtWindow(where, filters);
+};
+
+const buildRefundWhere = (filters = {}) => {
+  const where = {};
+  if (filters.tenantId) where.tenant_id = filters.tenantId;
+  if (filters.status) {
+    where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
+  }
+  if (filters.provider) where.provider = filters.provider;
+  return applyCreatedAtWindow(where, filters);
+};
+
 export const commercePaymentRepository = {
   findTenantPaymentAccount({ tenantId, provider = 'paymongo' } = {}, options = {}) {
     return db.TenantPaymentAccount.findOne({
@@ -78,13 +109,7 @@ export const commercePaymentRepository = {
   },
 
   listSessions(filters = {}, options = {}) {
-    const where = {};
-    if (filters.tenantId) where.tenant_id = filters.tenantId;
-    if (filters.status) {
-      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
-    }
-    if (filters.targetType) where.target_type = filters.targetType;
-    if (filters.provider) where.provider = filters.provider;
+    const where = buildSessionWhere(filters);
     return db.CommercePaymentSession.findAll({
       where,
       order: [['created_at', 'DESC']],
@@ -95,13 +120,7 @@ export const commercePaymentRepository = {
   },
 
   async countSessions(filters = {}, options = {}) {
-    const where = {};
-    if (filters.tenantId) where.tenant_id = filters.tenantId;
-    if (filters.status) {
-      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
-    }
-    if (filters.targetType) where.target_type = filters.targetType;
-    if (filters.provider) where.provider = filters.provider;
+    const where = buildSessionWhere(filters);
     return db.CommercePaymentSession.count({
       where,
       transaction: options.transaction
@@ -141,6 +160,37 @@ export const commercePaymentRepository = {
       transaction: options.transaction,
       lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
     }).then(toPlain);
+  },
+
+  async listSessionSummary(filters = {}, options = {}) {
+    const sequelize = db.sequelize;
+    return db.CommercePaymentSession.findAll({
+      where: buildSessionWhere(filters),
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('session_id')), 'session_count'],
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount_centavos')), 0), 'total_amount_centavos'],
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('platform_fee_centavos')), 0), 'platform_fee_centavos']
+      ],
+      group: ['status'],
+      raw: true,
+      transaction: options.transaction
+    });
+  },
+
+  async listRefundSummary(filters = {}, options = {}) {
+    const sequelize = db.sequelize;
+    return db.CommercePaymentRefund.findAll({
+      where: buildRefundWhere(filters),
+      attributes: [
+        'status',
+        [sequelize.fn('COUNT', sequelize.col('refund_id')), 'refund_count'],
+        [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('amount_centavos')), 0), 'amount_centavos']
+      ],
+      group: ['status'],
+      raw: true,
+      transaction: options.transaction
+    });
   },
 
   async createSession(payload = {}, options = {}) {
@@ -190,12 +240,7 @@ export const commercePaymentRepository = {
   },
 
   listRefunds(filters = {}, options = {}) {
-    const where = {};
-    if (filters.tenantId) where.tenant_id = filters.tenantId;
-    if (filters.status) {
-      where.status = Array.isArray(filters.status) ? { [Op.in]: filters.status } : filters.status;
-    }
-    if (filters.provider) where.provider = filters.provider;
+    const where = buildRefundWhere(filters);
     return db.CommercePaymentRefund.findAll({
       where,
       order: [['created_at', 'DESC']],

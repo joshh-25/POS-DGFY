@@ -1686,7 +1686,7 @@ export const buildStartDgfyPosSessionUseCase = ({
     createTenantSessionForDgfyAccount,
     repository = null,
     validateTerminalPolicy = null
-}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+}) => async ({ account, tenantId, body = {}, metadata = {}, deviceProof = null, request = null }) => {
     const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
     const terminalId = String(body?.terminal_id || body?.terminalId || '').trim().toUpperCase();
     if (!resolvedTenantId) {
@@ -1761,7 +1761,9 @@ export const buildStartDgfyPosSessionUseCase = ({
                 tenantUserId: membership?.tenant_user_id || session?.user_id || null,
                 userRole,
                 permissions,
-                isMasterAdmin: session?.is_master_admin === true
+                isMasterAdmin: session?.is_master_admin === true,
+                ...(deviceProof ? { deviceProof } : {}),
+                ...(request ? { request } : {})
             })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
         await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({

@@ -11,6 +11,7 @@ import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
+const TERMINAL_DEVICE_ENFORCEMENT_MODES = ['off', 'strict'];
 const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;
 const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile', 'gallery']);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
@@ -19,6 +20,11 @@ const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
   'pos_software_serial_number'
 ]);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE = 'Software name, software version, and software serial number are configured by platform admin for DGFY POS.';
+const expectedUpdatedAtSchema = Joi.date().iso().raw();
+const expectedUpdatedAtMapSchema = Joi.object().pattern(
+  Joi.string().trim().min(1).max(100),
+  expectedUpdatedAtSchema
+).optional();
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -117,7 +123,10 @@ const posTerminalRegistryEntrySchema = Joi.object({
   rotate_pairing: Joi.boolean().optional(),
   terminal_password: Joi.string().min(8).max(128).allow('').optional(),
   clear_terminal_password: Joi.boolean().optional(),
-  has_terminal_password: Joi.boolean().optional()
+  has_terminal_password: Joi.boolean().optional(),
+  device_enforcement: Joi.string().trim().lowercase().valid(...TERMINAL_DEVICE_ENFORCEMENT_MODES).optional().messages({
+    'any.only': 'Terminal device enforcement must be off or strict'
+  })
 });
 
 const posTerminalRegistrySchema = Joi.array()
@@ -500,6 +509,9 @@ const inventoryAuthoritySchema = Joi.string().trim().lowercase().valid(...INVENT
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
+  // Optimistic concurrency metadata is transport-only. The settings use case receives it
+  // separately so it can never become a persisted generic EAV key.
+  expected_updated_at: expectedUpdatedAtMapSchema,
   low_stock_threshold: Joi.number().min(0).optional(),
   critical_stock_threshold: Joi.number().min(0).optional(),
   enable_email_alerts: Joi.boolean().optional(),
@@ -623,12 +635,24 @@ export const updateSingleSettingSchema = Joi.object({
     Joi.object()
   ).required().messages({
     'any.required': 'Setting value is required'
-  })
+  }),
+  expected_updated_at: expectedUpdatedAtSchema.optional()
 });
 
 // Middleware to validate settings update
 export const validateUpdateSettings = (req, res, next) => {
   const normalizedBody = normalizeStorefrontSettingsPlaceholders(req?.body);
+  const providedSettingKeys = normalizedBody && typeof normalizedBody === 'object' && !Array.isArray(normalizedBody)
+    ? Object.keys(normalizedBody).filter((key) => key !== 'expected_updated_at')
+    : [];
+  if (providedSettingKeys.length === 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{ field: 'settings', message: 'At least one setting must be provided' }],
+      timestamp: new Date().toISOString()
+    });
+  }
   const rawOrderMethodFees = normalizedBody?.pos_order_method_fees;
   if (rawOrderMethodFees && typeof rawOrderMethodFees === 'object' && !Array.isArray(rawOrderMethodFees)) {
     const unsupportedKeys = Object.keys(rawOrderMethodFees).filter((key) => !ORDER_METHODS.includes(key));
@@ -660,6 +684,16 @@ export const validateUpdateSettings = (req, res, next) => {
       success: false,
       message: 'Validation failed',
       errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  const settingKeys = Object.keys(value).filter((key) => key !== 'expected_updated_at');
+  if (settingKeys.length === 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{ field: 'settings', message: 'At least one setting must be provided' }],
       timestamp: new Date().toISOString()
     });
   }

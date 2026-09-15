@@ -40,6 +40,8 @@ describe('usePosCheckoutLifecycle', () => {
         const { result } = renderHook(() => usePosCheckoutLifecycle(props));
         const lifecycle = props.onCheckoutLifecycleChange.mock.calls[0][0];
 
+        expect(lifecycle.hasBlockingCurrentSale).toBe(true);
+
         let mayLeave;
         act(() => {
             mayLeave = lifecycle.requestViewModeChange('items');
@@ -56,6 +58,14 @@ describe('usePosCheckoutLifecycle', () => {
         expect(props.resetCurrentSaleForNewSale).toHaveBeenCalledTimes(1);
         expect(props.onViewModeChange).toHaveBeenCalledWith('items');
         expect(posToast.info).toHaveBeenCalledWith('Current sale cleared before leaving checkout.');
+    });
+
+    it('does not mark an empty checkout as blocking a terminal context change', () => {
+        const props = createProps({ safeCartLength: 0, activeParkedSale: null });
+        renderHook(() => usePosCheckoutLifecycle(props));
+        const lifecycle = props.onCheckoutLifecycleChange.mock.calls[0][0];
+
+        expect(lifecycle.hasBlockingCurrentSale).toBe(false);
     });
 
     it('releases an active parked sale and clears local checkout state when ending the session', async () => {

@@ -126,8 +126,8 @@ describe('PosDeliveryPricingSettingsCard', () => {
     getAllSettings.mockResolvedValueOnce(fixedModeSettings());
     render(<PosDeliveryPricingSettingsCard terminalUser={adminUser()} locked sectionId="s" />);
 
-    // locked=true short-circuits the initial load effect entirely (matches
-    // DownpaymentSettingsPanel's own locked behavior) -- nothing is fetched.
-    expect(getAllSettings).not.toHaveBeenCalled();
+    expect(await screen.findByDisplayValue('75')).toBeTruthy();
+    expect(screen.getByDisplayValue('75').disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /^save$/i }).disabled).toBe(true);
   });
 });

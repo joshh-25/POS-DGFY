@@ -1,4 +1,5 @@
 import dbStore from '../../../utils/dbStore.js';
+import { normalizePosOperatingConflict } from './posUserOperatingScope.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
 const positiveInt = (value) => {
@@ -42,7 +43,18 @@ const audit = async ({ repository, user, row, eventType, action, shift, requestI
     }, { transaction });
 };
 
-const createOperatorAuthority = async ({ repository, authorityService, tenantId, shift, user, attendance, key, requestId, transaction }) => {
+const createOperatorAuthority = async ({
+    repository,
+    authorityService,
+    tenantId,
+    shift,
+    user,
+    auditUser = user,
+    attendance,
+    key,
+    requestId,
+    transaction
+}) => {
     const userId = positiveInt(user?.user_id);
     const shiftId = positiveInt(shift?.pos_terminal_shift_id);
     const startedAt = now();
@@ -81,7 +93,7 @@ const createOperatorAuthority = async ({ repository, authorityService, tenantId,
     });
     await audit({
         repository,
-        user,
+        user: auditUser,
         row: updated,
         eventType: 'pos_cashier_shift_operator_started',
         action: 'CREATE',
@@ -139,6 +151,7 @@ const resolveEmployeeId = async ({ repository, user, transaction }) => {
 
 export const createPosCashierLifecycleUseCases = ({
     repository,
+    assertUserOperatingScope = null,
     resolveFeature,
     authorityService,
     // #1045: injected rather than statically imported from ../services/, so this
@@ -198,18 +211,30 @@ export const createPosCashierLifecycleUseCases = ({
         return { feature, attendance, created: true };
     };
 
-    const onShiftOpened = async ({ shift, user, payload = {}, requestId, transaction, tenantId } = {}) => {
+    const onShiftOpened = async ({
+        shift,
+        user,
+        lifecycleUser = user,
+        payload = {},
+        requestId,
+        transaction,
+        tenantId
+    } = {}) => {
         const locationId = positiveInt(shift?.location_id);
         if (!locationId) throw lifecycleError('A location is required before opening a cashier shift.', 422);
+        await assertUserOperatingScope?.({
+            userId: positiveInt(shift?.cashier_id || lifecycleUser?.user_id),
+            terminalId: shift.terminal_id, locationId, transaction
+        });
         const feature = await resolveFeature({ locationId });
         if (!feature?.enabled) return { feature, attendance: null, authority_token: null };
-        assertLifecyclePermission(user);
+        assertLifecyclePermission(lifecycleUser);
 
-        const userId = positiveInt(user?.user_id);
+        const userId = positiveInt(shift?.cashier_id || lifecycleUser?.user_id);
         if (!userId) throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated cashier is required.', { statusCode: 401 });
         const existingAttendance = await repository.findOpenAttendanceByUser({ userId, locationId, transaction, lock: true });
         const attendance = existingAttendance || await repository.createAttendanceSession({
-            employee_id: await resolveEmployeeId({ repository, user, transaction }),
+            employee_id: await resolveEmployeeId({ repository, user: lifecycleUser, transaction }),
             user_id: userId,
             location_id: locationId,
             duty_type: 'regular',
@@ -252,7 +277,7 @@ export const createPosCashierLifecycleUseCases = ({
                 authorityService,
                 tenantId,
                 shift,
-                user,
+                user: lifecycleUser,
                 session: currentOperator,
                 transaction
             });
@@ -264,7 +289,8 @@ export const createPosCashierLifecycleUseCases = ({
             authorityService,
             tenantId,
             shift,
-            user,
+            user: lifecycleUser,
+            auditUser: user,
             attendance,
             key: normalizeKey(`${payload.idempotency_key || ''}-operator`, `shift-operator-${shift.pos_terminal_shift_id}`),
             requestId,
@@ -283,6 +309,9 @@ export const createPosCashierLifecycleUseCases = ({
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Terminal, location, and shift are required to resume.', { statusCode: 422 });
             }
             const feature = await resolveFeature({ locationId: resolvedLocationId });
+            await assertUserOperatingScope?.({
+                userId: positiveInt(user?.user_id), terminalId, locationId: resolvedLocationId, transaction
+            });
             if (!feature?.enabled) {
                 await transaction.commit();
                 return ok({ feature, resumed: false, authority_token: null });
@@ -372,7 +401,7 @@ export const createPosCashierLifecycleUseCases = ({
             return ok({ feature, resumed: true, attendance, break_segment: closedBreak, operator_session: operator.operatorSession, authority_token: operator.authorityToken });
         } catch (error) {
             if (!transaction.finished) await transaction.rollback();
-            return fail(error);
+            return fail(normalizePosOperatingConflict(error));
         }
     };
 

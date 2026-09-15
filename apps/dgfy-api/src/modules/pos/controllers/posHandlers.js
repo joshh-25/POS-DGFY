@@ -361,6 +361,9 @@ export const requireActiveOperatorForMutation = async (req, res, next) => {
         const operationKey = requestId(req, res) || crypto.randomUUID();
         const operationType = `${String(req.method || 'MUTATION').toUpperCase()} ${String(req.originalUrl || req.path || 'pos').split('?')[0]}`.slice(0, 120);
         const result = await authorizePosOperatorMutationUseCase({
+            userId: req.user?.user_id,
+            requiredPermissions: req.requiredPermissions || [],
+            requiredPermissionAlternatives: req.requiredPermissionAlternatives || [],
             authorityToken: getCookie(req, SESSION_COOKIE_NAMES.posOperatorAuthority),
             tenantId: tenantIdForOperator(req),
             scope: operatorScope(req),
@@ -662,7 +665,10 @@ export const listSetupCashiers = async (req, res, next) => {
 export const loginCashier = async (req, res, next) => {
     try {
         const result = await loginPosCashierUseCase({
-            payload: req.validatedData || req.body || {}
+            payload: req.validatedData || req.body || {},
+            deviceProof: req.posDeviceProof || null,
+            request: req,
+            tenantId: req.tenant?.id || null
         });
         if (result?.success) {
             setTenantSessionCookies(res, {

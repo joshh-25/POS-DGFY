@@ -747,6 +747,46 @@ describe('pos use-cases application result contract', () => {
         expect(upsertCatalogOverride).toHaveBeenCalledWith(101, { pos_visible: true });
     });
 
+    it('updates POS branch availability through a granted location override', async () => {
+        const assertLocationAccess = jest.fn().mockResolvedValue(undefined);
+        const upsertPosItemLocationAvailability = jest.fn().mockResolvedValue([
+            { item_id: 204, location_id: 7, pos_available: false, source: 'override' }
+        ]);
+        const listPosItemLocationAvailability = jest.fn().mockResolvedValue(new Map([
+            [204, [{ item_id: 204, location_id: 7, pos_available: false, source: 'override' }]]
+        ]));
+        const useCase = buildUpdatePosCatalogOverrideUseCase({
+            assertLocationAccess,
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 204, name: 'Branch-only item' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 204, pos_visible: true }),
+                upsertPosItemLocationAvailability,
+                listPosItemLocationAvailability,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
+        });
+
+        const result = await useCase({
+            itemId: 204,
+            payload: { location_availability: [{ location_id: 7, pos_available: false }] },
+            user: { user_id: 17, is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(assertLocationAccess).toHaveBeenCalledWith({
+            userId: 17,
+            locationId: 7,
+            operationLabel: 'edit POS branch availability',
+            requireGrant: true
+        });
+        expect(upsertPosItemLocationAvailability).toHaveBeenCalledWith(204, [
+            { location_id: 7, pos_available: false }
+        ]);
+        expect(result.data.pos_location_availability).toEqual([
+            { item_id: 204, location_id: 7, pos_available: false, source: 'override' }
+        ]);
+    });
+
     it('updatePosCatalogOverride blocks enabling pos visibility when readiness is incomplete', async () => {
         const getItemById = jest.fn().mockResolvedValue({ item_id: 202 });
         const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({

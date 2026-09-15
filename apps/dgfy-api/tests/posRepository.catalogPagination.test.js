@@ -71,4 +71,18 @@ describe('POS Items management catalog pagination', () => {
             with_scan_info: true
         }));
     });
+
+    it('requests category ordering only for the unfiltered management catalog', async () => {
+        const listCatalog = jest.spyOn(posRepository, 'listCatalog').mockResolvedValue({
+            data: [],
+            scanned_count: 0
+        });
+
+        await posRepository.listCatalogPage({ category_filter: 'all' });
+        expect(listCatalog).toHaveBeenCalledWith(expect.objectContaining({ order_by_category: true }));
+
+        listCatalog.mockClear();
+        await posRepository.listCatalogPage({ category_filter: 'folder:10' });
+        expect(listCatalog).toHaveBeenCalledWith(expect.objectContaining({ order_by_category: false }));
+    });
 });

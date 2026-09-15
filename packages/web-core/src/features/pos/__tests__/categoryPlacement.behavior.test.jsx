@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // Keep category-order coverage deterministic: DndContext captures the handler so the test can
 // exercise the same reorder path without depending on browser pointer geometry in jsdom.
 let capturedCategoryDragEnd = null;
+const draggablePointerDown = vi.hoisted(() => vi.fn());
+const draggableKeyDown = vi.hoisted(() => vi.fn());
 vi.mock('@dnd-kit/core', () => ({
   DndContext: ({ children, onDragEnd }) => {
     capturedCategoryDragEnd = onDragEnd;
@@ -17,7 +19,7 @@ vi.mock('@dnd-kit/core', () => ({
   PointerSensor: {},
   useDraggable: () => ({
     attributes: {},
-    listeners: {},
+    listeners: { onPointerDown: draggablePointerDown, onKeyDown: draggableKeyDown },
     setNodeRef: () => {},
     transform: null,
     isDragging: false
@@ -77,7 +79,7 @@ afterEach(() => {
 });
 
 describe('Items category placement', () => {
-  it('renders saved category order with drag handles and disables rearranging during search', async () => {
+  it('renders saved category order with whole-card drag surfaces and disables rearranging during search', async () => {
     getFolders.mockResolvedValue([
       { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true },
       { folder_id: 1, name: 'Mains', sort_order: 1, is_active: true }
@@ -85,13 +87,26 @@ describe('Items category placement', () => {
     render(<TerminalOperationsWorkspace {...buildProps()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
 
-    const drinksHandle = await screen.findByRole('button', { name: 'Move Drinks' });
-    const mainsHandle = screen.getByRole('button', { name: 'Move Mains' });
-    expect(drinksHandle.compareDocumentPosition(mainsHandle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(drinksHandle.disabled).toBe(false);
+    const drinksCard = await screen.findByTestId('pos-category-card-2');
+    const mainsCard = screen.getByTestId('pos-category-card-1');
+    expect(drinksCard.compareDocumentPosition(mainsCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(drinksCard.getAttribute('aria-label')).toBe('Reorder Drinks');
+    expect(drinksCard.getAttribute('aria-roledescription')).toBe('sortable category');
+    expect(drinksCard.getAttribute('role')).toBe('group');
+    expect(drinksCard.tabIndex).toBe(0);
+    expect(drinksCard.classList.contains('cursor-default')).toBe(true);
+    expect(drinksCard.classList.contains('cursor-grab')).toBe(false);
+    const editButtons = screen.getAllByRole('button', { name: 'Edit' });
+    fireEvent.pointerDown(editButtons[0]);
+    fireEvent.keyDown(editButtons[0], { code: 'Enter' });
+    expect(draggablePointerDown).not.toHaveBeenCalled();
+    expect(draggableKeyDown).not.toHaveBeenCalled();
+    fireEvent.pointerDown(drinksCard);
+    expect(draggablePointerDown).toHaveBeenCalledTimes(1);
 
     fireEvent.change(screen.getByPlaceholderText('Search categories'), { target: { value: 'Drink' } });
-    expect(screen.getByRole('button', { name: 'Move Drinks' }).disabled).toBe(true);
+    expect(screen.getByTestId('pos-category-card-2').tabIndex).toBe(-1);
+    expect(screen.getByTestId('pos-category-card-2').getAttribute('aria-disabled')).toBe('true');
   });
 
   it('saves the complete reordered ID list and leaves the optimistic order visible', async () => {
@@ -102,16 +117,16 @@ describe('Items category placement', () => {
     ]);
     render(<TerminalOperationsWorkspace {...buildProps()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
-    await screen.findByRole('button', { name: 'Move Mains' });
+    await screen.findByTestId('pos-category-card-1');
 
     await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
 
     await waitFor(() => expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]));
-    const handles = screen.getAllByRole('button', { name: /^Move / });
-    expect(handles.map((handle) => handle.getAttribute('aria-label'))).toEqual([
-      'Move Desserts',
-      'Move Mains',
-      'Move Drinks'
+    const cards = screen.getAllByTestId(/^pos-category-card-/);
+    expect(cards.map((card) => card.getAttribute('aria-label'))).toEqual([
+      'Reorder Desserts',
+      'Reorder Mains',
+      'Reorder Drinks'
     ]);
   });
 
@@ -136,15 +151,15 @@ describe('Items category placement', () => {
 
     render(<TerminalOperationsWorkspace {...buildProps()} />);
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
-    await screen.findByRole('button', { name: 'Move Mains' });
+    await screen.findByTestId('pos-category-card-1');
 
     await capturedCategoryDragEnd({ active: { id: 3 }, over: { id: 1 } });
 
     await waitFor(() => expect(getFolders.mock.calls.length).toBeGreaterThan(1));
     expect(reorderFolders).toHaveBeenCalledWith([3, 1, 2]);
-    expect(screen.queryByRole('button', { name: 'Move Mains' })).toBeNull();
-    expect(screen.getAllByRole('button', { name: /^Move / }).map((handle) => handle.getAttribute('aria-label')))
-      .toEqual(['Move Drinks', 'Move Desserts']);
+    expect(screen.queryByTestId('pos-category-card-1')).toBeNull();
+    expect(screen.getAllByTestId(/^pos-category-card-/).map((card) => card.getAttribute('aria-label')))
+      .toEqual(['Reorder Drinks', 'Reorder Desserts']);
   });
 
   it('queries the complete server catalog with search, filters, location, and page size', async () => {
@@ -166,6 +181,25 @@ describe('Items category placement', () => {
     }));
     expect(await screen.findByTitle('Edit Tomato Meatballs')).toBeTruthy();
     expect(screen.getByText('Showing 1–1 of 1 items')).toBeTruthy();
+  });
+
+  it('preserves the server-provided saved category order for All categories', async () => {
+    getFolders.mockResolvedValue([
+      { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true, show_in_pos_filter: true },
+      { folder_id: 1, name: 'Mains', sort_order: 1, is_active: true, show_in_pos_filter: true }
+    ]);
+    fetchPosCatalogPage.mockResolvedValue({
+      items: [
+        { item_id: 701, name: 'Zulu Drink', folder_id: 2, folder: { name: 'Drinks', sort_order: 0 } },
+        { item_id: 702, name: 'Alpha Main', folder_id: 1, folder: { name: 'Mains', sort_order: 1 } }
+      ],
+      pagination: { page: 1, page_size: 15, total: 2, total_pages: 1 }
+    });
+    render(<TerminalOperationsWorkspace {...buildProps({ canEditItems: true })} />);
+
+    const drinksEdit = await screen.findByTitle('Edit Zulu Drink');
+    const mainsEdit = screen.getByTitle('Edit Alpha Main');
+    expect(drinksEdit.compareDocumentPosition(mainsEdit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows Items and Categories as tabs for an authorized catalog administrator', () => {

@@ -152,6 +152,7 @@ export const dgfyCustomerRepository = {
             store_customer_id: payload.store_customer_id ?? activity.store_customer_id ?? null,
             store_slug: payload.store_slug ?? activity.store_slug ?? null,
             store_name: payload.store_name ?? activity.store_name ?? null,
+            location_id: payload.location_id ?? activity.location_id ?? null,
             status: payload.status ?? activity.status ?? null,
             status_label: payload.status_label ?? activity.status_label ?? null,
             payment_status: payload.payment_status ?? activity.payment_status ?? null,
@@ -178,6 +179,7 @@ export const dgfyCustomerRepository = {
         storeSlug = null,
         status = null,
         paymentStatus = null,
+        locationId = null,
         dateFrom = null,
         dateTo = null,
         limit = 25,
@@ -198,6 +200,7 @@ export const dgfyCustomerRepository = {
         }
         if (tenantId) where.tenant_id = String(tenantId).trim();
         if (storeSlug) where.store_slug = String(storeSlug).trim();
+        if (locationId !== null && locationId !== undefined) where.location_id = Number.parseInt(locationId, 10);
         if (status) where.status = String(status).trim();
         if (paymentStatus) where.payment_status = String(paymentStatus).trim();
         if (dateFrom || dateTo) {

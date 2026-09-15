@@ -1,7 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Phone, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -29,6 +29,8 @@ import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
   humanizeOrderStatus,
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel,
@@ -416,6 +418,78 @@ function OnlineOrderHistoryPanel({
   );
 }
 
+function AdminBranchOrdersPanel({
+  adminLocationMonitorState = { loading: false, orders: [], errorMessage: '' },
+  locationsState = { locations: [] },
+  viewingLocationId = null,
+  operatingLocationId = null,
+  isOnline = true,
+  refreshAdminLocationMonitor = async () => {}
+}) {
+  const locations = (Array.isArray(locationsState?.locations) ? locationsState.locations : [])
+    .filter((location) => location?.is_active !== false);
+  const selectedLocationId = Number(viewingLocationId || operatingLocationId || 0);
+  const selectedLocation = locations.find((location) => Number(location?.location_id || 0) === selectedLocationId);
+  const selectedLocationName = selectedLocation?.name || selectedLocation?.location_name || `Location #${selectedLocationId}`;
+  const stateLocationId = Number(adminLocationMonitorState?.locationId || 0);
+  const isCurrentScope = stateLocationId === selectedLocationId;
+  const orders = isCurrentScope && Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders
+    : [];
+  const loading = isCurrentScope && adminLocationMonitorState?.loading;
+  const errorMessage = isCurrentScope ? String(adminLocationMonitorState?.errorMessage || '').trim() : '';
+
+  return (
+    <div data-testid="admin-branch-orders" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+        <div>
+          <p className="text-sm leading-5 text-[#475569]">Viewing branch orders:</p>
+          <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
+          <p className="mt-1 text-[11px] text-slate-500">Read-only admin view. Open a register shift to process orders.</p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-lg border-slate-300 bg-white px-4 text-sm font-extrabold text-[#0F172A] hover:bg-slate-100"
+          onClick={() => refreshAdminLocationMonitor?.()}
+          disabled={Boolean(adminLocationMonitorState?.loading) || !isOnline}
+        >
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          {adminLocationMonitorState?.loading ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+      {errorMessage ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</p>
+      ) : loading ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading branch orders...</p>
+      ) : orders.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-sm text-slate-600">No active online orders for this branch.</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {orders.map((order) => (
+            <div key={`admin-order-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                  <p className="mt-1 text-xs text-slate-500">{order.tracking_pin || `Order #${order.pos_transaction_id}`}</p>
+                </div>
+                <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
+                  {String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <span>{String(order.order_method || '-').replace(/_/g, ' ')}</span>
+                <span className="text-right">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
+                <span className="col-span-2">{formatOrderDateTime(order.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IncomingQueueWorkspace({
   canViewPos,
   canTransactPos,
@@ -436,7 +510,12 @@ function IncomingQueueWorkspace({
   refreshIncomingOrders,
   refreshOrderHistory,
   locationsState,
+  operatingLocationId,
+  viewingLocationId,
   queueLocationScopeId,
+  adminLocationMonitorState,
+  canViewAdminLocationMonitor = false,
+  refreshAdminLocationMonitor,
   locked,
   isOnline = true,
   sectionId,
@@ -725,6 +804,7 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
+  const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
 
   // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
   // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
@@ -785,7 +865,8 @@ function IncomingQueueWorkspace({
       setSelectedOrderIds(new Set());
       setRunFilter(QUEUE_RUN_FILTER_ALL);
     }
-  }, [activeView, isDeliveryRunMode, isSplitViewportEligible]);
+    if (isAdminBranchMonitor && (activeView === 'runs' || activeView === 'split')) setActiveView('active');
+  }, [activeView, isAdminBranchMonitor, isDeliveryRunMode, isSplitViewportEligible]);
 
   if (activeView === 'history') {
     return (
@@ -809,6 +890,29 @@ function IncomingQueueWorkspace({
           isOnline={isOnline}
           orderHistoryPageSize={orderHistoryPageSize}
           setOrderHistoryPageSize={setOrderHistoryPageSize}
+        />
+      </div>
+    );
+  }
+
+  if (isAdminBranchMonitor) {
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={Array.isArray(adminLocationMonitorState?.orders) ? adminLocationMonitorState.orders.length : 0}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDeliveryRuns={false}
+          showSplitView={false}
+        />
+        <AdminBranchOrdersPanel
+          adminLocationMonitorState={adminLocationMonitorState}
+          locationsState={locationsState}
+          viewingLocationId={viewingLocationId}
+          operatingLocationId={operatingLocationId}
+          isOnline={isOnline}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
         />
       </div>
     );
@@ -1396,6 +1500,28 @@ function IncomingQueueWorkspace({
                           <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
                         </div>
                       </div>
+                      {order.order_method === 'delivery' && (
+                        <>
+                          <div className="flex items-center gap-3 py-1.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                              <Phone className="h-4 w-4" />
+                            </div>
+                            <div className="flex items-center flex-1 min-w-0">
+                              <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Phone</span>
+                              <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatCustomerPhone(order.customer_phone)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 py-1.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                              <MapPin className="h-4 w-4" />
+                            </div>
+                            <div className="flex items-center flex-1 min-w-0">
+                              <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Pin coordinates</span>
+                              <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatDeliveryCoordinates(deliveryCoords)}</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 

@@ -102,6 +102,7 @@ export default function TerminalPageLayout({
     canManageVouchers = false,
     canManagePricelists = false,
     canViewVouchers = false,
+    canAccessBusinessAdmin = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
     canOpenShift = false,
@@ -133,9 +134,11 @@ export default function TerminalPageLayout({
     onlineOrderSoundEnabled = true,
     locationsState,
     operatingLocationId,
+    viewingLocationId,
     queueLocationScopeId,
     handleSelectViewMode,
     settingsEntryViewMode = 'settings_profile',
+    onOpenBackOffice = () => {},
     handleLock,
     handleCashierSignIn = () => {},
     checkoutOperatorLocked = false,
@@ -174,6 +177,7 @@ export default function TerminalPageLayout({
     handleViewCashierHistoryShift = () => {},
     refreshOperationalContext,
     setOperatingLocationId,
+    setViewingLocationId,
     setQueueLocationScopeId,
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
@@ -642,6 +646,7 @@ export default function TerminalPageLayout({
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
               canViewAudit={canViewAudit}
+              canAccessBusinessAdmin={canAccessBusinessAdmin}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showServiceOperations={workflowMode === 'services'}
@@ -653,8 +658,11 @@ export default function TerminalPageLayout({
               canCloseDay={canCloseDay}
               shiftState={shiftState}
               incomingOrdersState={incomingOrdersState}
+              adminLocationMonitorState={adminLocationMonitorState}
+              canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
               locationsState={locationsState}
               operatingLocationId={operatingLocationId}
+              viewingLocationId={viewingLocationId}
               accessibleCompanies={accessibleCompanies}
               terminalMeta={terminalMeta}
               queueLocationScopeId={queueLocationScopeId}
@@ -662,6 +670,7 @@ export default function TerminalPageLayout({
               settingsTargetViewMode={settingsEntryViewMode}
               onSelectViewMode={handleSelectViewMode}
               onPrefetchViewMode={preloadWorkspaceForViewMode}
+              onOpenBackOffice={onOpenBackOffice}
               onUnlock={() => setDrawerOpen(true)}
               onLock={handleLock}
             />
@@ -878,6 +887,7 @@ export default function TerminalPageLayout({
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
                 canViewAudit={canViewAudit}
+                canAccessBusinessAdmin={canAccessBusinessAdmin}
                 canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
                 showServiceOperations={workflowMode === 'services'}
@@ -888,9 +898,12 @@ export default function TerminalPageLayout({
                 canCloseDay={canCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
+                adminLocationMonitorState={adminLocationMonitorState}
+                canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
                 orderHistoryState={orderHistoryState}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
+                viewingLocationId={viewingLocationId}
                 accessibleCompanies={accessibleCompanies}
                 terminalMeta={terminalMeta}
                 queueLocationScopeId={queueLocationScopeId}
@@ -898,6 +911,7 @@ export default function TerminalPageLayout({
                 settingsTargetViewMode={settingsEntryViewMode}
                 onSelectViewMode={handleSelectViewMode}
                 onPrefetchViewMode={preloadWorkspaceForViewMode}
+                onOpenBackOffice={onOpenBackOffice}
                 onUnlock={() => {
                   setDrawerOpen(true);
                   setMobileNavOpen(false);
@@ -1030,6 +1044,8 @@ export default function TerminalPageLayout({
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
                 setOperatingLocationId={setOperatingLocationId}
+                viewingLocationId={viewingLocationId}
+                setViewingLocationId={setViewingLocationId}
                 queueLocationScopeId={queueLocationScopeId}
                 setQueueLocationScopeId={setQueueLocationScopeId}
                 incomingOrdersState={incomingOrdersState}

@@ -11,6 +11,8 @@ import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
   resolveOrderDownpaymentSplit,
   parseDeliveryCoords
 } from '../utils/incomingQueueOrderFormatting.js';
@@ -144,6 +146,12 @@ export default function QueueOrderTableView({
                   <span className="line-clamp-2 break-words" title={String(order.delivery_address || '').trim() || undefined}>
                     {String(order.delivery_address || '').trim() || 'Address not provided'}
                   </span>
+                  {order.order_method === 'delivery' && (
+                    <div className="mt-1 grid gap-0.5 text-[11px] text-slate-600">
+                      <span>Phone: <strong className="font-semibold text-slate-900">{formatCustomerPhone(order.customer_phone)}</strong></span>
+                      <span>Pin coordinates: <strong className="font-semibold text-slate-900">{formatDeliveryCoordinates(deliveryCoords)}</strong></span>
+                    </div>
+                  )}
                   {deliveryCoords && (
                     <a
                       href={mapLink}

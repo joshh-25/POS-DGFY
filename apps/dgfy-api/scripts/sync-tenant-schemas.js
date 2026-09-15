@@ -614,6 +614,24 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         proof_attached_by: Object.freeze({
             sql: "ALTER TABLE `pos_order_payments` ADD COLUMN `proof_attached_by` INT NULL, ADD CONSTRAINT `fk_pos_order_payments_proof_attached_by` FOREIGN KEY (`proof_attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         })
+    }),
+    // Phase 339: job-order source and output branches are nullable for legacy drafts and are
+    // validated by the service before any stock preflight or FIFO movement.
+    job_orders: Object.freeze({
+        source_location_id: Object.freeze({
+            sql: "ALTER TABLE `job_orders` ADD COLUMN `source_location_id` INT NULL, ADD CONSTRAINT `fk_job_orders_source_location` FOREIGN KEY (`source_location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE CASCADE"
+        }),
+        destination_location_id: Object.freeze({
+            sql: "ALTER TABLE `job_orders` ADD COLUMN `destination_location_id` INT NULL, ADD CONSTRAINT `fk_job_orders_destination_location` FOREIGN KEY (`destination_location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE CASCADE"
+        })
+    }),
+    // Phase 346: tenant-local strict POS device enrollment and one-use proof state.
+    // These columns keep the repair path additive for tenants whose tables were created by
+    // the migration but predate a later contract amendment (request_method).
+    pos_terminal_device_challenges: Object.freeze({
+        request_method: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_challenges` ADD COLUMN `request_method` VARCHAR(12) NOT NULL DEFAULT 'POST' AFTER `request_path`"
+        })
     })
 });
 
@@ -764,6 +782,83 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  UNIQUE KEY `item_id` (`item_id`),\n"
             + "  UNIQUE KEY `storefront_catalog_overrides_item_id` (`item_id`),\n"
             + "  CONSTRAINT `storefront_catalog_overrides_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 339: explicit POS channel applicability per active branch. A missing row means the
+    // tenant-wide PosCatalogOverride policy is inherited; no stock or item identity is copied.
+    pos_location_item_overrides: Object.freeze({
+        sql: "CREATE TABLE `pos_location_item_overrides` (\n"
+            + "  `pos_location_item_override_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `pos_available` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`pos_location_item_override_id`),\n"
+            + "  UNIQUE KEY `uq_pos_location_item_overrides_item_location` (`item_id`,`location_id`),\n"
+            + "  KEY `idx_pos_location_item_overrides_location` (`location_id`),\n"
+            + "  KEY `idx_pos_location_item_overrides_available` (`pos_available`),\n"
+            + "  CONSTRAINT `fk_pos_location_item_overrides_item` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE,\n"
+            + "  CONSTRAINT `fk_pos_location_item_overrides_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE ON UPDATE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 346: strict POS terminal device enrollment, activation, and one-use challenges.
+    // These tables intentionally avoid foreign keys so a tenant schema can be repaired even
+    // when an older tenant is missing an optional parent table; tenant scope is supplied by the
+    // connection selected by tenantHandler/dbStore.
+    pos_terminal_device_enrollments: Object.freeze({
+        sql: "CREATE TABLE `pos_terminal_device_enrollments` ("
+            + " `pos_terminal_device_enrollment_id` int unsigned NOT NULL AUTO_INCREMENT,"
+            + " `device_id` varchar(160) NOT NULL, `public_key` longtext NOT NULL,"
+            + " `key_algorithm` varchar(24) NOT NULL DEFAULT 'ES256', `client_type` varchar(40) NOT NULL,"
+            + " `terminal_id` varchar(100) NOT NULL, `location_id` int unsigned NOT NULL,"
+            + " `status` enum('active','revoked','replaced') NOT NULL DEFAULT 'active',"
+            + " `version` int unsigned NOT NULL DEFAULT 1, `enrolled_by` int unsigned DEFAULT NULL,"
+            + " `enrolled_at` datetime NOT NULL, `last_seen_at` datetime DEFAULT NULL,"
+            + " `revoked_by` int unsigned DEFAULT NULL, `revoked_at` datetime DEFAULT NULL,"
+            + " `revoked_reason` varchar(500) DEFAULT NULL, `replaced_by` int unsigned DEFAULT NULL,"
+            + " `active_terminal_key` varchar(100) DEFAULT NULL, `active_device_key` varchar(160) DEFAULT NULL,"
+            + " `metadata` longtext DEFAULT NULL, `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`pos_terminal_device_enrollment_id`),"
+            + " UNIQUE KEY `uq_pos_terminal_device_enrollments_active_terminal` (`active_terminal_key`),"
+            + " UNIQUE KEY `uq_pos_terminal_device_enrollments_active_device` (`active_device_key`),"
+            + " KEY `idx_pos_terminal_device_enrollments_device_status` (`device_id`,`status`),"
+            + " KEY `idx_pos_terminal_device_enrollments_terminal_status` (`terminal_id`,`status`),"
+            + " KEY `idx_pos_terminal_device_enrollments_location_status` (`location_id`,`status`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    pos_terminal_device_activations: Object.freeze({
+        sql: "CREATE TABLE `pos_terminal_device_activations` ("
+            + " `pos_terminal_device_activation_id` int unsigned NOT NULL AUTO_INCREMENT,"
+            + " `activation_hash` char(64) NOT NULL, `terminal_id` varchar(100) NOT NULL,"
+            + " `location_id` int unsigned NOT NULL, `issued_by` int unsigned NOT NULL,"
+            + " `issued_reason` varchar(500) NOT NULL, `expires_at` datetime NOT NULL,"
+            + " `consumed_at` datetime DEFAULT NULL, `consumed_by_device_id` varchar(160) DEFAULT NULL,"
+            + " `metadata` longtext DEFAULT NULL, `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`pos_terminal_device_activation_id`),"
+            + " UNIQUE KEY `uq_pos_terminal_device_activations_hash` (`activation_hash`),"
+            + " KEY `idx_pos_terminal_device_activations_terminal_expiry` (`terminal_id`,`expires_at`),"
+            + " KEY `idx_pos_terminal_device_activations_consumed_at` (`consumed_at`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    pos_terminal_device_challenges: Object.freeze({
+        sql: "CREATE TABLE `pos_terminal_device_challenges` ("
+            + " `pos_terminal_device_challenge_id` int unsigned NOT NULL AUTO_INCREMENT,"
+            + " `challenge_hash` char(64) NOT NULL, `device_id` varchar(160) NOT NULL,"
+            + " `terminal_id` varchar(100) NOT NULL, `location_id` int unsigned NOT NULL,"
+            + " `purpose` varchar(40) NOT NULL, `request_path` varchar(255) NOT NULL,"
+            + " `request_method` varchar(12) NOT NULL DEFAULT 'POST', `session_id` varchar(128) NOT NULL,"
+            + " `expires_at` datetime NOT NULL, `consumed_at` datetime DEFAULT NULL,"
+            + " `consumed_request_id` varchar(120) DEFAULT NULL,"
+            + " `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`pos_terminal_device_challenge_id`),"
+            + " UNIQUE KEY `uq_pos_terminal_device_challenges_hash` (`challenge_hash`),"
+            + " KEY `idx_pos_terminal_device_challenges_device_expiry` (`device_id`,`expires_at`),"
+            + " KEY `idx_pos_terminal_device_challenges_terminal_expiry` (`terminal_id`,`expires_at`),"
+            + " KEY `idx_pos_terminal_device_challenges_consumed_at` (`consumed_at`)"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Created by migration 20260808190000-create-workflow-mode-change-log.cjs
@@ -2259,6 +2354,67 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD INDEX `idx_pos_transaction_discounts_promo_code` (`promo_code`)"
         })
     }),
+    pos_location_item_overrides: Object.freeze({
+        uq_pos_location_item_overrides_item_location: Object.freeze({
+            sql: "ALTER TABLE `pos_location_item_overrides` ADD UNIQUE INDEX `uq_pos_location_item_overrides_item_location` (`item_id`,`location_id`)"
+        }),
+        idx_pos_location_item_overrides_location: Object.freeze({
+            sql: "ALTER TABLE `pos_location_item_overrides` ADD INDEX `idx_pos_location_item_overrides_location` (`location_id`)"
+        }),
+        idx_pos_location_item_overrides_available: Object.freeze({
+            sql: "ALTER TABLE `pos_location_item_overrides` ADD INDEX `idx_pos_location_item_overrides_available` (`pos_available`)"
+        })
+    }),
+    pos_terminal_device_enrollments: Object.freeze({
+        uq_pos_terminal_device_enrollments_active_terminal: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_enrollments` ADD UNIQUE INDEX `uq_pos_terminal_device_enrollments_active_terminal` (`active_terminal_key`)"
+        }),
+        uq_pos_terminal_device_enrollments_active_device: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_enrollments` ADD UNIQUE INDEX `uq_pos_terminal_device_enrollments_active_device` (`active_device_key`)"
+        }),
+        idx_pos_terminal_device_enrollments_device_status: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_enrollments` ADD INDEX `idx_pos_terminal_device_enrollments_device_status` (`device_id`,`status`)"
+        }),
+        idx_pos_terminal_device_enrollments_terminal_status: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_enrollments` ADD INDEX `idx_pos_terminal_device_enrollments_terminal_status` (`terminal_id`,`status`)"
+        }),
+        idx_pos_terminal_device_enrollments_location_status: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_enrollments` ADD INDEX `idx_pos_terminal_device_enrollments_location_status` (`location_id`,`status`)"
+        })
+    }),
+    pos_terminal_device_activations: Object.freeze({
+        uq_pos_terminal_device_activations_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_activations` ADD UNIQUE INDEX `uq_pos_terminal_device_activations_hash` (`activation_hash`)"
+        }),
+        idx_pos_terminal_device_activations_terminal_expiry: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_activations` ADD INDEX `idx_pos_terminal_device_activations_terminal_expiry` (`terminal_id`,`expires_at`)"
+        }),
+        idx_pos_terminal_device_activations_consumed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_activations` ADD INDEX `idx_pos_terminal_device_activations_consumed_at` (`consumed_at`)"
+        })
+    }),
+    pos_terminal_device_challenges: Object.freeze({
+        uq_pos_terminal_device_challenges_hash: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_challenges` ADD UNIQUE INDEX `uq_pos_terminal_device_challenges_hash` (`challenge_hash`)"
+        }),
+        idx_pos_terminal_device_challenges_device_expiry: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_challenges` ADD INDEX `idx_pos_terminal_device_challenges_device_expiry` (`device_id`,`expires_at`)"
+        }),
+        idx_pos_terminal_device_challenges_terminal_expiry: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_challenges` ADD INDEX `idx_pos_terminal_device_challenges_terminal_expiry` (`terminal_id`,`expires_at`)"
+        }),
+        idx_pos_terminal_device_challenges_consumed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_device_challenges` ADD INDEX `idx_pos_terminal_device_challenges_consumed_at` (`consumed_at`)"
+        })
+    }),
+    job_orders: Object.freeze({
+        idx_job_orders_source_location_id: Object.freeze({
+            sql: "ALTER TABLE `job_orders` ADD INDEX `idx_job_orders_source_location_id` (`source_location_id`)"
+        }),
+        idx_job_orders_destination_location_id: Object.freeze({
+            sql: "ALTER TABLE `job_orders` ADD INDEX `idx_job_orders_destination_location_id` (`destination_location_id`)"
+        })
+    }),
     pos_payment_allocations: Object.freeze({
         idx_pos_payment_allocations_session_reversal_status: Object.freeze({
             sql: "ALTER TABLE `pos_payment_allocations` ADD INDEX `idx_pos_payment_allocations_session_reversal_status` (`session_id`,`reversal_status`)"
@@ -2637,7 +2793,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-14.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-14.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

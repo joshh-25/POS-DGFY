@@ -1635,6 +1635,7 @@ html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
   backdrop-filter: none !important;
 }
 
+<<<<<<< HEAD
 /* POS extended views use a solid dimmed backdrop so the underlying checkout
  * surface stays readable and the overlay does not create a frosted-glass
  * effect that varies between desktop, tablet, and mobile browsers. Dialog
@@ -1644,6 +1645,12 @@ body[data-dgfy-pos-surface] [data-dialog-overlay="true"],
 body[data-dgfy-pos-surface] [role="dialog"] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+/* Locked POS surfaces use a regular CSS filter rather than backdrop-filter.
+ * Keep that filter off in the fixed Chrome 80-84 iMin WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"] {
+  filter: none !important;
 }
 
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,

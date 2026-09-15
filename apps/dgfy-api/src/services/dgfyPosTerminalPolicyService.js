@@ -3,10 +3,12 @@ import dbStore from '../utils/dbStore.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { DomainError, DomainErrorCode } from '../modules/shared/contracts/domainErrors.js';
-import { PERMISSIONS } from '../config/permissions.js';
-import { hasEffectivePermission } from '../utils/userPermissions.js';
+import { assertPosDeviceProof } from '../modules/pos/services/posTerminalDeviceEnrollmentService.js';
 
-const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,39}$/;
+// Keep DGFY SSO terminal validation in lockstep with the tenant POS device
+// enrollment contract: registered ids may contain dots and are bounded at the
+// same 100-character limit used by the POS routes and tenant schema.
+const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9._-]{1,99}$/;
 
 const sanitizeTerminalId = (value) => {
   const normalized = String(value || '').trim().toUpperCase();
@@ -49,9 +51,9 @@ export const validateDgfyPosTerminalPolicy = async ({
   tenantId,
   terminalId,
   tenantUserId = null,
-  userRole = '',
-  permissions = [],
-  isMasterAdmin = false
+  isMasterAdmin = false,
+  deviceProof = null,
+  request = null
 } = {}) => {
   const resolvedTenantId = String(tenantId || '').trim();
   const normalizedTerminalId = sanitizeTerminalId(terminalId);
@@ -97,7 +99,8 @@ export const validateDgfyPosTerminalPolicy = async ({
           label: String(entry?.label || '').trim(),
           location_id: parsePositiveInt(entry?.location_id),
           ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
-          is_active: entry?.is_active !== false
+          is_active: entry?.is_active !== false,
+          device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
         };
       })
       .filter((entry) => entry.terminal_id && entry.is_active);
@@ -107,20 +110,18 @@ export const validateDgfyPosTerminalPolicy = async ({
     const bindingEnforced = parseBooleanSetting(lookup.get('pos_terminal_location_binding_enforced')?.setting_value);
     const registryEntry = registry.find((entry) => entry.terminal_id === normalizedTerminalId) || null;
     const resolvedTenantUserId = parsePositiveInt(tenantUserId);
-    const canSwitchLocation = hasEffectivePermission({
-      role: userRole,
-      permissions,
-      is_master_admin: isMasterAdmin
-    }, PERMISSIONS.POS.actions.SWITCH_LOCATION_POS);
-    const requiresLocationGrant = resolvedTenantUserId && !canSwitchLocation;
+    // Navigation permission is not a branch grant. Preserve the existing
+    // tenant-wide master-admin exception, not a permission-based bypass.
+    const requiresLocationGrant = resolvedTenantUserId && !isMasterAdmin;
 
     const context = {
       terminal_id: normalizedTerminalId,
       mode,
       registry_size: registry.length,
       binding_enforced: bindingEnforced,
-      registry_entry: registryEntry,
-      warning: null
+        registry_entry: registryEntry,
+        device_enforcement: registryEntry?.device_enforcement || 'off',
+        warning: null
     };
 
     if (mode === 'enforce' && registry.length === 0) {
@@ -210,6 +211,26 @@ export const validateDgfyPosTerminalPolicy = async ({
           }
         );
       }
+
+    }
+
+    if (registryEntry?.device_enforcement === 'strict' && deviceProof?.verified !== true) {
+      await assertPosDeviceProof({
+        tenantId: resolvedTenantId,
+        terminalId: normalizedTerminalId,
+        deviceId: deviceProof?.deviceId || request?.headers?.['x-pos-device-id'],
+        challenge: deviceProof?.challenge || request?.headers?.['x-pos-device-challenge'],
+        signature: deviceProof?.signature || request?.headers?.['x-pos-device-signature'],
+        sessionId: deviceProof?.sessionId || request?.headers?.['x-pos-device-session-id'],
+        purpose: 'session',
+        method: deviceProof?.method || request?.method || 'POST',
+        path: deviceProof?.path
+          || request?.originalUrl
+          || `/api/v1/dgfy/account/companies/${encodeURIComponent(resolvedTenantId)}/pos-session`,
+        body: deviceProof?.body || request?.body || {},
+        locationId: registryEntry.location_id,
+        requestId: deviceProof?.requestId || request?.requestId || request?.headers?.['x-request-id'] || null
+      });
     }
 
     return {

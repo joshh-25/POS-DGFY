@@ -932,7 +932,7 @@ describe('store use-cases application result contract', () => {
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     });
 
-    it('storeCartQuote returns DGFY fee fields and total math for normal subtotal', async () => {
+    it('storeCartQuote returns a zero customer fee and total math for normal subtotal', async () => {
         const useCase = buildStoreCartQuoteUseCase({
             revenueSharingEnabled: false,
             storeRepository: {
@@ -985,10 +985,10 @@ describe('store use-cases application result contract', () => {
 
         expect(result.success).toBe(true);
         expect(Number(result.data.subtotal_amount)).toBeCloseTo(100, 4);
-        expect(Number(result.data.service_fee_amount)).toBeCloseTo(1, 4);
+        expect(Number(result.data.service_fee_amount)).toBe(0);
         expect(result.data.service_fee_label).toBe('DGFY convenience fee');
         expect(Number(result.data.delivery_fee)).toBeCloseTo(20, 4);
-        expect(Number(result.data.total_amount)).toBeCloseTo(121, 4);
+        expect(Number(result.data.total_amount)).toBeCloseTo(120, 4);
     });
 
     it('storeCartQuote rejects missing or zero sale price instead of selling at cost', async () => {
@@ -1097,7 +1097,7 @@ describe('store use-cases application result contract', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.storefront_open).toBe(true);
-        expect(result.data.total_amount).toBe(121);
+        expect(result.data.total_amount).toBe(120);
     });
 
     it('storeCartQuote blocks unsupported location order method capabilities', async () => {
@@ -1441,7 +1441,7 @@ describe('store use-cases application result contract', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.discount_amount).toBe(20);
-        expect(result.data.total_amount).toBe(81);
+        expect(result.data.total_amount).toBe(80);
         expect(result.data.promo_feedback).toEqual({
             applied: true,
             promo_code: 'SAVE20',
@@ -1520,7 +1520,7 @@ describe('store use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(result.data.subtotal_amount).toBe(150);
         expect(result.data.discount_amount).toBe(20);
-        expect(result.data.total_amount).toBe(131.5);
+        expect(result.data.total_amount).toBe(130);
     });
 
     it('storeCartQuote rejects a target-item promo when none of the selected items are in the order', async () => {
@@ -1718,10 +1718,10 @@ describe('store use-cases application result contract', () => {
                     discount_amount: 20,
                     discount_label_snapshot: 'Morning Promo',
                     discount_rate_snapshot: 20,
-                    service_fee_amount: 1,
+                    service_fee_amount: 0,
                     service_fee_label_snapshot: 'DGFY convenience fee',
                     delivery_fee: 0,
-                    total_amount: 81,
+                    total_amount: 80,
                     customer_name: 'Buyer',
                     customer_phone: '0917',
                     customer_email: null,
@@ -1761,7 +1761,7 @@ describe('store use-cases application result contract', () => {
         expect(result.data.totals).toEqual(expect.objectContaining({
             subtotal_amount: 100,
             discount_amount: 20,
-            total_amount: 81
+            total_amount: 80
         }));
         expect(result.data.promo_feedback).toEqual({
             applied: true,
@@ -1776,9 +1776,9 @@ describe('store use-cases application result contract', () => {
                 payment_provider: null,
                 subtotal_amount: 100,
                 discount_amount: 20,
-                service_fee_amount: 1,
+                service_fee_amount: 0,
                 delivery_fee: 0,
-                total_amount: 81
+                total_amount: 80
             }),
             discount: expect.objectContaining({
                 promo_code: 'SAVE20',

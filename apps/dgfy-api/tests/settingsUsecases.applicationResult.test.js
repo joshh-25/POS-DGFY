@@ -133,6 +133,27 @@ describe('settings use-cases application result contract', () => {
     expect(result.error.message).toBe('settingsData must be an object');
   });
 
+  it('forwards a version map only with the canonical setting payload', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({
+      message: 'Settings updated successfully',
+      updated: 1
+    });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { storefront_tagline: 'Fresh daily' },
+      expectedUpdatedAt: { storefront_tagline: '2026-09-15T00:00:00.000Z' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(
+      { storefront_tagline: 'Fresh daily' },
+      { expectedUpdatedAt: { storefront_tagline: '2026-09-15T00:00:00.000Z' } }
+    );
+  });
+
   it('updateSettings removes omitted tenant-owned storefront gallery assets after a successful save', async () => {
     const getSettingsByKeys = jest.fn().mockResolvedValue({
       storefront_gallery_images: {

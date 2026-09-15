@@ -744,7 +744,7 @@ return (
                                     aria-label={item.name}
                                     className={`${catalogCardClassName} ${
                                         isOutOfStock || posActionsBlocked || isLoadingServiceOptions
-                                            ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
+                                            ? 'cursor-not-allowed opacity-75'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
                                 >
