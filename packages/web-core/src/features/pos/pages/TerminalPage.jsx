@@ -904,7 +904,15 @@ export default function TerminalPage() {
   }, [zReadingPrintAutoPrint, zReadingPrintOpen, zReadingReport]);
 
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
-  const activeTenantId = String(terminalUser?.company?.id || terminalUser?.tenant_id || '').trim();
+  // A manager can have a verified DGFY tenant session while checkout remains
+  // locked, so terminalUser is intentionally null until terminal login. Keep
+  // the selected tenant as the sync scope in that state as well.
+  const activeTenantId = String(
+    terminalUser?.company?.id
+      || terminalUser?.tenant_id
+      || formData.dgfyTenantId
+      || ''
+  ).trim();
   const offlinePosScope = useMemo(() => ({
     tenantId: activeTenantId,
     terminalId: activeTerminalId,
@@ -6421,7 +6429,7 @@ export default function TerminalPage() {
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
 
   useEffect(() => {
-    if (!terminalUser || typeof window === 'undefined') return undefined;
+    if (!activeTenantId || typeof window === 'undefined') return undefined;
 
     return subscribeToBusinessAdminSettingsUpdates((payload) => {
       const activeBranchId = Number(

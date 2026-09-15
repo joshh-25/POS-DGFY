@@ -125,7 +125,8 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageSource).toContain("params.set('branch_id', String(activeBranchId))");
     expect(terminalPageSource).toContain(": (isMsmeMode || !canAccessBusinessAdmin ? 'settings_profile' : 'terminal_setup')");
     expect(terminalPageSource).toContain("subscribeToBusinessAdminSettingsUpdates");
-    expect(terminalPageSource).toContain("if (!terminalUser || typeof window === 'undefined') return undefined;");
+    expect(terminalPageSource).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
+    expect(terminalPageSource).toContain('|| formData.dgfyTenantId');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (!locked && canViewPos)');
     expect(terminalPageSource).toContain('refreshTenantLocations({');
