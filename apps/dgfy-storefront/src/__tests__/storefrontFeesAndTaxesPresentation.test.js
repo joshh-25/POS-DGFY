@@ -12,15 +12,12 @@ describe('buildFeeAndVatSummaryRows', () => {
     expect(buildFeeAndVatSummaryRows({ totals: { service_fee_amount: 1, vat_amount: 1 } })).toEqual([]);
   });
 
-  it('zero fee (revenue sharing) + nonzero VAT -- the fee row still renders at PHP 0.00, VAT is unaffected', () => {
+  it('zero fee + nonzero VAT omits the customer fee row while preserving VAT disclosure', () => {
     const rows = buildFeeAndVatSummaryRows({
       totals: { service_fee_amount: 0, vat_amount: 11.25 },
       money
     });
-    expect(rows).toEqual([
-      { label: 'Service Fee', value: 'PHP 0.00' },
-      { label: VAT_DISCLOSURE_LABEL, value: 'PHP 11.25' }
-    ]);
+    expect(rows).toEqual([{ label: VAT_DISCLOSURE_LABEL, value: 'PHP 11.25' }]);
   });
 
   it('nonzero (1%) fee + nonzero VAT', () => {
@@ -60,7 +57,6 @@ describe('buildFeeAndVatSummaryRows', () => {
 
   it('missing totals defaults every figure to 0 rather than throwing or rendering NaN', () => {
     expect(buildFeeAndVatSummaryRows({ money })).toEqual([
-      { label: 'Service Fee', value: 'PHP 0.00' },
       { label: VAT_DISCLOSURE_LABEL, value: 'PHP 0.00' }
     ]);
   });

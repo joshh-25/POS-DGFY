@@ -154,7 +154,7 @@ export function FnbProductMobilePurchaseSummary({
                 {[
                   ['Subtotal', formatMoney(subtotalPrice)],
                   ['Add-ons', formatMoney(selectedModifiersTotal)],
-                  ['Service Fee', formatMoney(serviceFee)]
+                  ...(Number(serviceFee || 0) > 0 ? [['Service Fee', formatMoney(serviceFee)]] : [])
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#475569' }}>
                     <span>{label}</span>

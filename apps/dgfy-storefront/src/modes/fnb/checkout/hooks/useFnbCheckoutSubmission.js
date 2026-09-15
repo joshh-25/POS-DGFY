@@ -46,6 +46,7 @@ export function useFnbCheckoutSubmission({
   readStoreAuthToken,
   rememberCustomerDetails,
   requestJson,
+  resetGuestCheckoutOtp,
   requireQuoteForCheckout,
   resolvedCustomerFirstName,
   resolvedCustomerLastName,
@@ -231,6 +232,7 @@ export function useFnbCheckoutSubmission({
       }
 
       setCart([]);
+      resetGuestCheckoutOtp?.();
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
       setCheckoutPromoCode('');
@@ -294,6 +296,7 @@ export function useFnbCheckoutSubmission({
     readStoreAuthToken,
     rememberCustomerDetails,
     requestJson,
+    resetGuestCheckoutOtp,
     requireQuoteForCheckout,
     resolvedCustomerFirstName,
     resolvedCustomerLastName,

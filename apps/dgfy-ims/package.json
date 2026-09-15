@@ -20,6 +20,9 @@
     "security:audit": "npm audit",
     "security:all": "npm audit && npm run test:security"
   },
+  "overrides": {
+    "js-yaml": "^4.3.2"
+  },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
@@ -38,7 +41,7 @@
     "jwt-decode": "^4.0.0",
     "katex": "^0.16.33",
     "lucide-react": "^0.294.0",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.9.0",
     "posthog-js": "^1.407.2",
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
@@ -75,6 +78,6 @@
     "rollup-plugin-visualizer": "^5.14.0",
     "tailwindcss": "^3.3.6",
     "vite": "^6.4.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   }
 }

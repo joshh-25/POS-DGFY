@@ -1,4 +1,4 @@
-import { getCsrfToken } from '../../../../packages/web-core/src/services/browserSession.js';
+import { ensureCsrfToken, getCsrfToken } from '../../../../packages/web-core/src/services/browserSession.js';
 import { tagRequestFailureContext, captureRequestFailure } from '../../../../packages/web-core/src/observability/sentryClient.js';
 import {
   isRetryableTransientFailure,
@@ -121,7 +121,9 @@ const performRequestJson = async (url, {
 } = {}) => {
   const normalizedMethod = String(method || 'GET').toUpperCase();
   const token = String(authToken || '').trim();
-  const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
+  const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod)
+    ? ''
+    : (getCsrfToken() || await ensureCsrfToken().catch(() => ''));
   const requestInit = {
     method: normalizedMethod,
     credentials,

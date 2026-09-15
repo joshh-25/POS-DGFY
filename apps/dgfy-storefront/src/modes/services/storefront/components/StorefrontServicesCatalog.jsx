@@ -41,6 +41,7 @@ import { ServiceBookingStepAccount, ServiceBookingStepFulfillment, ServiceBookin
 import { ServicesCatalogToolbar } from './ServicesCatalogToolbar.jsx';
 import { ServiceCatalogCard } from './ServiceCatalogCard.jsx';
 import { ServicesPaginationBar } from './ServicesPaginationBar.jsx';
+import { sortServicesForCatalog } from '../model/servicesStorefrontViewModel.js';
 
 /**
  * StorefrontServicesCatalog — the full services-mode render branch: service
@@ -217,10 +218,8 @@ export function StorefrontServicesCatalog({
     if (serviceDurationFilter === 'extended') return duration >= 120;
     return true;
   });
-  const sortedServices = [...durationFilteredServices].sort((left, right) => {
-    if (serviceSortOption === 'price_asc') return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
-    if (serviceSortOption === 'price_desc') return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
-    return String(left?.variantName || left?.name || '').localeCompare(String(right?.variantName || right?.name || ''));
+  const sortedServices = sortServicesForCatalog(durationFilteredServices, serviceSortOption, {
+    categoryFirst: !resolvedTab
   });
   const totalServicePages = Math.max(1, Math.ceil(sortedServices.length / Math.max(1, Number(servicePageSize || 8))));
   const resolvedServicePage = Math.min(Math.max(1, Number(servicePage || 1)), totalServicePages);

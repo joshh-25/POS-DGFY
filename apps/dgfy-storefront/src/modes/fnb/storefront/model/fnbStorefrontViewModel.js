@@ -91,6 +91,14 @@ const titleCase = (value) => normalizeText(value)
 
 const normalizeKey = (value) => normalizeText(value).toLowerCase();
 
+const getCategorySortOrder = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const sortOrder = Number(value);
+  return Number.isFinite(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+};
+
 const resolveSectionVisualMeta = (sectionLabel) => {
   const normalizedLabel = normalizeKey(sectionLabel);
   const matchedPreset = SECTION_VISUAL_PRESETS.find((preset) => (
@@ -275,7 +283,7 @@ const resolveSecondarySectionOccurrences = (item = {}, primarySectionIdentity) =
     const secondaryIdentity = resolveSectionIdentity(secondaryCategory?.folder_id, secondarySectionKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
+    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity, sortOrder: getCategorySortOrder(secondaryCategory?.sort_order) });
   });
 
   return occurrences;
@@ -294,7 +302,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
         sectionKey: normalizeKey(sectionLabel).replace(/\s+/g, '_') || `section_${index}`,
         sectionLabel,
         sectionVisualMeta,
-        categorySortOrder: Number(item?.folder_sort_order || 0),
+        categorySortOrder: getCategorySortOrder(item?.folder_sort_order),
         productKind,
         availabilityMeta,
         unitLabel: formatUnitLabel(item?.unit_of_measure),

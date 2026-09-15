@@ -110,6 +110,7 @@ const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAut
 const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
 const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'));
 const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
+const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -348,6 +349,8 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
+                  <Route path="/business-admin/*" element={<BusinessAdminPage />} />
+                  <Route path="/backoffice/*" element={<BusinessAdminPage />} />
                   <Route
                     path="/sales"
                     element={<SkupervisorSalesRedirect />}

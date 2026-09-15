@@ -1134,6 +1134,9 @@ export default function StorefrontApp() {
   } = useCustomerDashboardRuntime({
     EMPTY_ACCOUNT_PANEL,
     selectedStore,
+    selectedLocation,
+    selectedLocationId,
+    isGlobalAccountPage,
     routeSlug,
     routeSubpage,
     currentPathSubpage,
@@ -2240,6 +2243,7 @@ export default function StorefrontApp() {
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp: verifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
+    resetGuestCheckoutOtp,
   } = useGuestCheckoutOtp({
     customerEmail,
     isDgfyCustomerSignedIn,
@@ -2258,8 +2262,13 @@ export default function StorefrontApp() {
     handleApplyGuestDetails();
     // The session identity is ready to review before OTP verification.
     setGuestDetailsEditMode(false);
-    handleRequestGuestCheckoutOtp();
-  }, [handleApplyGuestDetails, handleRequestGuestCheckoutOtp]);
+    // Saved details are hydrated into controlled state asynchronously. Pass the effective email
+    // explicitly so the request cannot read the previous blank value during the same click.
+    const appliedEmail = String(
+      customerEmail || (!isUsingDifferentGuestDetails ? savedCustomerDetails?.email : '') || ''
+    ).trim();
+    return handleRequestGuestCheckoutOtp(appliedEmail);
+  }, [customerEmail, handleApplyGuestDetails, handleRequestGuestCheckoutOtp, isUsingDifferentGuestDetails, savedCustomerDetails, setGuestDetailsEditMode]);
   const serviceAccountStepComplete = accountStepComplete
     && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified);
   const {
@@ -2331,6 +2340,7 @@ export default function StorefrontApp() {
     readStoreAuthToken,
     rememberCustomerDetails,
     requestJson,
+    resetGuestCheckoutOtp,
     requireQuoteForCheckout,
     resolvedCustomerFirstName,
     resolvedCustomerLastName,
@@ -2401,6 +2411,7 @@ export default function StorefrontApp() {
           total_amount: paymentSession.order_total_amount ?? totalsForDisplay?.total_amount ?? 0
         }, trackingPin);
         setCart([]);
+        resetGuestCheckoutOtp?.();
         setQuoteResult(null);
         setQuoteNeedsRefresh(true);
         setCheckoutPromoCode('');
@@ -2446,6 +2457,7 @@ export default function StorefrontApp() {
     readStoreAuthToken,
     requestJson,
     resetQrphPaymentSession,
+    resetGuestCheckoutOtp,
     selectedStore,
     setCart,
     setCheckoutError,
@@ -2708,6 +2720,7 @@ export default function StorefrontApp() {
     rememberCustomerDetails,
     requestJson,
     requestQuote,
+    resetGuestCheckoutOtp,
     requireQuoteForCheckout,
     resolveServicesBookingSubmitContract,
     resolvedCustomerFirstName,
@@ -3233,14 +3246,26 @@ export default function StorefrontApp() {
     totalsForDisplay,
     withAssetOrigin
   });
+  // Delivery pricing is tied to the exact selected pin, not just its reverse-geocoded address.
+  // Keep both coordinates in the quote identity so dragging the pin re-prices even when the
+  // displayed address text stays unchanged.
+  const deliveryPinSignature = isDeliveryOrder
+    ? [customerPin?.latitude, customerPin?.longitude]
+      .map((value) => String(value ?? '').trim())
+      .join(',')
+    : '';
+  const isFnbCheckoutSurface = checkoutTab === 'checkout'
+    && (isOrderSubpage || (isCheckoutOpen && !isFnbOrderSubpage));
   useEffect(() => {
     const normalizedPromoCode = String(checkoutPromoCode || '').trim().toUpperCase();
     const normalizedVoucherCode = String(checkoutVoucherCode || '').trim().toUpperCase();
     const shouldAutoSyncFnbQuote = (
       isFnbMode
       && isStorePage
+      && isFnbCheckoutSurface
       && !hasServiceCart
-      && fnbOrderStep === 4
+      && fnbOrderStep >= 2
+      && fnbOrderStep <= 4
       && quoteNeedsRefresh
       && Boolean(selectedStore)
       && cart.length > 0
@@ -3248,14 +3273,13 @@ export default function StorefrontApp() {
       && accessCapabilities.quote !== false
       && !storefrontClosedByHours
       && !hasStockViolation
-      && fnbCustomerStepComplete
       && fnbFulfillmentStepComplete
     );
 
-    // #746 (second occurrence): the F&B arm above is gated on `fnbOrderStep === 4` and the two
-    // step-complete flags, so it NEVER fires from the cart drawer -- and simple/retail/services had
-    // no auto-quote at all. That is why an applied voucher's discount, once invalidated by any cart
-    // edit, could never come back: nothing re-quoted from the drawer, in any mode.
+    // #746 (second occurrence): the F&B arm is scoped to the checkout surface (drawer or order
+    // route) and fires once fulfillment is complete, including Step 2. The cart drawer and track
+    // view remain excluded, so opening a cart cannot trigger a delivery quote before the shopper
+    // has selected a fulfillment method/address.
     //
     // This arm is mode-agnostic and deliberately requires none of the checkout-step conditions. It
     // fires only when a discount code is actually applied, so a shopper with no code sees exactly
@@ -3319,7 +3343,8 @@ export default function StorefrontApp() {
       normalizedPromoCode,
       normalizedVoucherCode,
       cartSignature,
-      activePinnedDeliveryAddress || ''
+      activePinnedDeliveryAddress || '',
+      deliveryPinSignature
     ].join('::');
     if (fnbAutoQuoteSyncKeyRef.current === syncKey) return undefined;
 
@@ -3361,14 +3386,17 @@ export default function StorefrontApp() {
     checkoutVoucherCode,
     extractStockViolation,
     cartSignature,
-    fnbCustomerStepComplete,
+    deliveryPinSignature,
     fnbFulfillmentStepComplete,
     fnbOrderStep,
     fnbScheduleMode,
     fnbScheduledFor,
     hasServiceCart,
     hasStockViolation,
+    isCheckoutOpen,
     isFnbMode,
+    isFnbCheckoutSurface,
+    isFnbOrderSubpage,
     isStorePage,
     normalizeStorefrontErrorMessage,
     orderMethod,

@@ -75,6 +75,23 @@ describe('cart drawer voucher/promo total', () => {
     expect(arm).toMatch(/hasAppliedDiscountCode/);
   });
 
+  it('quotes F&B delivery during fulfillment and keys the quote to the selected pin', () => {
+    const source = read('StorefrontApp.jsx');
+    const arm = source.slice(
+      source.indexOf('const shouldAutoSyncFnbQuote'),
+      source.indexOf('// #746 (second occurrence)')
+    );
+
+    expect(source).toMatch(/const isFnbCheckoutSurface = checkoutTab === 'checkout'/);
+    expect(arm).toMatch(/isFnbCheckoutSurface/);
+    expect(arm).toMatch(/fnbOrderStep >= 2/);
+    expect(arm).toMatch(/fnbOrderStep <= 4/);
+    expect(arm).toMatch(/fnbFulfillmentStepComplete/);
+    expect(arm).not.toMatch(/fnbCustomerStepComplete/);
+    expect(source).toMatch(/const deliveryPinSignature = isDeliveryOrder/);
+    expect(source).toMatch(/activePinnedDeliveryAddress \|\| '',\s*deliveryPinSignature/);
+  });
+
   it('the shared voucher removal path clears the quote and re-quotes without a code', () => {
     const quoteSource = read('modes/fnb/checkout/hooks/useFnbCheckoutQuote.js');
     const rendererSource = read('modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx');
