@@ -14,7 +14,18 @@ test.describe('Business Admin to POS settings sync', () => {
     test.setTimeout(120_000);
 
     await signIn(page, testCredentials, { companyName: testCompanyName });
-    await page.goto('/?view=terminal_setup#/terminal', { waitUntil: 'domcontentloaded' });
+    let posSettingsRequestCount = 0;
+    page.on('request', (request) => {
+      if (request.url().includes('/mobile-pos/bootstrap/settings')) posSettingsRequestCount += 1;
+    });
+    page.on('response', async (response) => {
+      if (!response.url().includes('/mobile-pos/bootstrap/settings')) return;
+      const payload = await response.json().catch(() => null);
+      console.log(`POS settings response: ${JSON.stringify(payload?.data?.settings?.pos_terminal_registry_mode || null)}`);
+    });
+    const terminalSetupNav = page.getByTestId('pos-nav-terminal-setup');
+    await expect(terminalSetupNav).toBeVisible();
+    await terminalSetupNav.click();
     await expect(page.getByText('Terminal Setup Context', { exact: true })).toBeVisible();
 
     const posRegistryMode = page.locator('select:has(option[value="enforce"])').first();
@@ -39,7 +50,9 @@ test.describe('Business Admin to POS settings sync', () => {
       await adminRegistryMode.selectOption(nextMode);
       await businessAdminPage.getByRole('button', { name: /^Save$/ }).click();
       await expect(businessAdminPage.getByText('Terminal registry saved.', { exact: true })).toBeVisible();
+      await expect(adminRegistryMode).toHaveValue(nextMode);
 
+      console.log(`POS settings requests after save: ${posSettingsRequestCount}`);
       await expect(posRegistryMode).toHaveValue(nextMode, { timeout: 10_000 });
     } finally {
       if (!businessAdminPage.isClosed()) {
