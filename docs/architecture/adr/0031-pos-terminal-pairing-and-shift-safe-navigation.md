@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-08-25
-review_by: 2027-02-24
+last_reviewed: 2026-09-14
+review_by: 2027-03-14
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
@@ -218,3 +218,29 @@ profiles inside the selected tenant, not a separate credential authority.
 - The existing offline queue must not claim a completed close when attendance
   is enabled; the server remains the official source for Time Out and shift
   closure.
+
+### 2026-09-14: Optional Strict POS Device Access (Phase 345)
+
+- Clause 5 (`default`) is clarified: logical terminal selection, accepted
+  membership, permissions, location grants, operator sessions, and shift rules
+  remain sufficient for the default policy. Physical-device pairing remains
+  optional when strict mode is disabled.
+- A tenant may opt into a strict device policy for a registered terminal only
+  after an approved client is enrolled. Strict mode adds a server-verified
+  device proof gate before POS session establishment and protected requests;
+  it does not replace cashier authentication or any existing authorization,
+  operator, shift, CSRF, or audit control.
+- The initial strict client is the signed iMin Android wrapper. Browser and
+  Electron clients remain policy-off until they implement an OS-backed signing
+  provider. The LAN bridge is a hardware transport and is governed separately
+  by ADR 0053 and Phase 349.
+- Strict mode uses the branch/location bound to the registered terminal. GPS,
+  IP, Wi-Fi, and client-reported fingerprints are not authentication proof.
+  Revoke, replace, disable, and recovery operations require authorized admin
+  authentication, a reason, and an audit event.
+- A strict terminal cannot switch its operational location while enforcement is
+  enabled; `SWITCH_LOCATION_POS` does not override the enrolled device's
+  terminal/location binding. Device-policy administration remains available to
+  a privileged administrator as a separate step-up-protected recovery surface.
+- This amendment records the contract only. Runtime enrollment, migrations,
+  challenge verification, and APK changes are deferred to Phases 346-350.

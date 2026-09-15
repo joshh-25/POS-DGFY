@@ -1,5 +1,7 @@
 # Implementation — Image Lifecycle, Metadata & POS Optimization (Phases 1–7)
 
+Latest proposal: [POS Device and Location Access, Phases 345–350](#implementation---pos-device-and-location-access-phases-345-350).
+
 ## Proposed Changes
 
 ### Phase 1: Lifecycle Contract And Tests
@@ -3720,3 +3722,199 @@ The first command is a dry run. Review its candidate, skipped, and failed counts
 - Test POS under Desktop, Tablet, and Mobile viewport dimensions.
 - Confirm zero clipped labels, overlapping controls, or cross-mode terminology leaks.
 
+
+---
+
+# Implementation - POS Device and Location Access (Phases 345-350)
+
+Planning date: 2026-09-14. Status: Phases 345-346 completed; Phase 347 in progress; Phases 348-350 planned.
+Packet: discovery-first / web-fullstack. Owners: backend, POS, Android, QA.
+Current repository phase: 344 (in progress, authenticated visual acceptance pending).
+Next runtime phase for this initiative: 347, explicitly approved in parallel with Phase 344's pending acceptance.
+This plan does not replace unfinished audit/security work.
+Phase status and numbering authority: [implementation ledger](docs/features/IMPLEMENTATION_PHASE_LEDGER.md).
+
+## Objective and critical assessment
+
+Allow a merchant to restrict POS operation to approved devices assigned to a company,
+branch, and terminal, including the iMin runtime and hardware bridges. Preserve separate
+cashier authentication, permissions, operator sessions, shifts, and financial audit.
+
+Confirmed baseline: terminal/location grants already exist in
+`apps/dgfy-api/src/services/dgfyPosTerminalPolicyService.js`; existing pairing cookies
+identify a logical terminal, not unique physical hardware. Android `IminBridge.kt`
+exposes model/manufacturer information, not device-key authentication. LAN bridge
+`auth/bridgeAuth.js` allows requests when its configured API key is empty.
+
+Recommendation: optional merchant-controlled device enforcement, disabled by default.
+Do not automatically make it mandatory for every tenant. Branch assignment does not
+prove physical presence. Phase 345 resolves "area" as branch/location authorization;
+store-network and geographic-radius enforcement remain out of scope until a separate
+approved contract exists. Never silently substitute one for another.
+A LAN printer bridge proves authority to use that bridge, not identity of a browser
+sharing its network. A browser cookie, terminal ID, model, IP, or claimed fingerprint
+alone must not be treated as proof of a particular physical device.
+
+## Authority and boundaries
+
+Follow [START_HERE](docs/START_HERE.md),
+[boundaries](docs/architecture/ARCHITECTURE_BOUNDARIES.md), and
+[governance](docs/architecture/ARCHITECTURE_GOVERNANCE.md)
+(last reviewed 2026-08-25, 2026-03-06, and 2026-05-21 respectively).
+Backend flow stays routes -> controllers -> usecases -> repositories -> models;
+POS owns merchant device administration; hardware adapters own key use and I/O.
+
+Relevant authoritative ADRs, with last-reviewed dates:
+[0031](docs/architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md)
+(2026-08-25),
+[0044](docs/architecture/adr/0044-pos-terminal-device-pairing.md) (2026-08-24),
+[0026](docs/architecture/adr/0026-browser-session-cookie-authority.md),
+[0039](docs/architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md)
+(2026-07-29),
+[0043](docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md) (2026-08-29),
+[0053](docs/architecture/adr/0053-pluggable-pos-hardware-device-drivers.md) (2026-08-11),
+[0073](docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md)
+(2026-08-26), and
+[0076](docs/architecture/adr/0076-standalone-mobile-offline-order-actions.md) (2026-08-28).
+
+ADR impact: cross-boundary. Amend default device-pairing clauses in 0031/0044 and
+related contracts; a binding change needs a superseding ADR and tech-lead approval.
+Preserve ADR 0053: unavailable printers/drawers must not block sales. Device enrollment
+is an access policy independent of printer availability. No new allowlist is planned.
+
+## Phase 345 - Resolve policy and runtime contract (completed)
+
+- Owner: architecture/backend; dependency: Phase 344 scope review. No runtime or migration work.
+- Files: `docs/features/POS_DEVICE_LOCATION_ACCESS_CONTRACT.md`; ADRs 0028, 0031, 0044, and
+  0053; this plan; and the phase ledger.
+- Resolved area as the merchant branch/location (`location_id`) plus terminal binding and cashier
+  grant. GPS, Wi-Fi, IP, and client-reported fingerprints are telemetry only and do not authorize
+  access.
+- Resolved target clients: iMin wrapper is the first strict client; standalone native Android may
+  adopt the same contract; browser and Electron stay policy-off until OS-backed signing exists;
+  the LAN bridge remains a hardware transport with separate command authorization.
+- Frozen strict policy: opt-in per tenant/terminal; one active device per strict terminal;
+  one-use 10-minute activation; one-use 60-second challenges and request proofs; existing
+  24-hour/30-day POS session lifetimes with proof on refresh; 24-hour offline lease; replacement
+  revokes the prior device; strict terminals cannot switch operational branches; admin policy
+  recovery is a separate step-up, reason, and audit-protected surface.
+- Inventory covers DGFY/POS session entry, terminal/operator, shift/money, catalog/orders,
+  payments, delivery, reports/fiscal, hardware, native sync, and direct API calls. Device proof
+  remains additional to cashier identity, permissions, operator sessions, shifts, CSRF, and audit.
+- Acceptance: authoritative contract and ADR amendments record the complete client/test matrix,
+  lifecycle/replay behavior, unsupported-client handling, recovery, offline limits, and bridge
+  separation. `npm run check:architecture`, `npm run check:docs`, and `git diff --check` passed.
+  Runtime tests and migrations are intentionally deferred to Phase 346 onward.
+
+## Phase 346 - Durable enrollment and backend enforcement (completed)
+
+- Owner: backend; dependency: 345.
+- Files: `apps/dgfy-migration-runner/migrations/` (new additive migration);
+  `apps/dgfy-api/src/models/`, `src/utils/tenantModelFactory.js`,
+  `src/services/runtimeSchemaAuditService.js`, tenant bootstrap/schema sync;
+  `src/modules/pos/{controllers,usecases,repositories,services}/`,
+  `src/routes/pos.js`, `src/validators/posValidator.js`, and existing auth/session entry points.
+- Persist tenant-scoped enrollment, public key, terminal/location binding, status,
+  version, enrollment/revocation audit, and expiring one-use activation/challenge state.
+  Store activation-secret hashes only. Use database transactions/unique constraints
+  for concurrent activation, replacement, and nonce consumption across API instances.
+- Add authorized issue/activate/list/revoke/replace APIs and signed challenge verification.
+  Bind proof to tenant, device, terminal, location, session, purpose and expiry.
+  Enforce the recorded policy on POS session establishment/refresh and protected API
+  requests, including direct calls and native sync; no login-only gate or copied-cookie bypass.
+  Define canonical request signing and replay protection in the contract.
+- Keep first enrollment usable before POS authentication: the administrator-issued activation
+  code is the one-use bootstrap credential, while replacement and revocation remain administrator-only.
+- Tests: fresh/existing tenant migration, idempotent rerun, cross-tenant denial, wrong
+  branch/device/key, expired/replayed proof, concurrent activation, copied session,
+  revoked device, policy changes, logout/reset, and policy-off compatibility.
+- Acceptance: all entry points covered; revocation denied on the next online protected
+  request; no secrets in logs; existing shifts/financial records preserved. Implementation
+  evidence is recorded in the phase ledger.
+
+## Phase 347 - iMin device proof
+
+- Owner: Android; dependency: 346.
+- Files: `apps/dgfy-android-bridge/imin-wrapper/app/src/main/java/com/dgfy/iminwrapper/`
+  (`IminBridge.kt`, `WebPosActivity.kt`, `NativePosApiClient.kt`, new key service),
+  backup rules, and applicable native hardware adapter found in 345.
+- Generate a per-install signing key in Android Keystore; private key never enters
+  JavaScript, backup, or API payloads. Restrict signing to approved origins, enrollment,
+  and typed challenges/requests; do not expose an arbitrary signing oracle.
+- Keep cryptographic work off the UI thread. Reinstall/key loss requires reenrollment;
+  signed upgrades preserve enrollment. Report actual key security level; hardware
+  backing/attestation availability must be validated on the target iMin model.
+- Tests: signature interoperability, wrong origin/frame, malformed request, replay,
+  key loss, upgrade, tenant switch, and enrollment recovery on a physical device.
+- Acceptance: copied browser state cannot authenticate another device; compatible
+  printer/drawer behavior; no claim of universal hardware attestation.
+
+## Phase 348 - POS controls and location policy
+
+- Owner: POS/backend; dependency: 346-347.
+- Files: `packages/web-core/src/features/pos/pages/TerminalPage.jsx`,
+  `components/TerminalOperationsWorkspace.jsx`, new focused device settings/login
+  components, POS services, and `apps/dgfy-pos/tests/e2e/`.
+- Add authorized device list, one-use activation code/QR, terminal/branch assignment,
+  enforcement toggle, revoke/replace actions with audit reason, and clear blocked/
+  expired/recovery states. Require fresh privileged authentication for recovery;
+  do not bypass cashier identity or automatically close shifts.
+- Implement the branch/location policy selected in 345 at backend authorization
+  boundaries. Geographic-radius and network enforcement remain out of scope for
+  this initiative unless a later approved contract adds them.
+- Tests: admin/cashier permissions, direct API bypass, adjacent-form isolation,
+  company switching, replacement, area denials, and desktop/mobile rendered flows.
+- Acceptance: authorized device and cashier succeed; wrong device/area fails with
+  actionable feedback; unrelated tenants and back-office access retain their policy.
+
+## Phase 349 - LAN bridge command authorization
+
+- Owner: backend/hardware; dependency: 346, runtime decision in 345.
+- Files: `apps/dgfy-api/device-bridge/{auth/bridgeAuth.js,config/runtime.js,server.js}`,
+  POS device-driver adapters, `src/modules/pos/usecases/posDeviceUseCases.js`,
+  and applicable Electron adapter if required by the client matrix.
+- Require configured credentials for hardware commands; remove empty-key authorization.
+  Retain loopback binding; use authenticated encrypted transport when crossing hosts.
+  Keep service credentials outside browser storage. Bind short-lived command authority
+  to the enrolled bridge, tenant, terminal, action, payload digest, expiry and command ID.
+- Validate authorization before physical I/O; audit intent/outcome and prevent duplicate
+  print/drawer execution. Retain uncertain-result handling without automatic redispatch.
+  Do not treat a shared bridge credential as proof of a particular cashier workstation.
+- Tests: absent/wrong credential, cross-terminal command, replay, expired ticket,
+  tampered payload, unavailable bridge, and print/drawer regression.
+- Acceptance: unauthorized calls produce no hardware side effect; missing printer
+  remains compatible with selling; every executed command has audit evidence.
+
+## Phase 350 - Hardening and controlled rollout
+
+- Owner: QA/release; dependency: 346-349 acceptance.
+- Files: API integration/security suites, POS E2E, Android tests, bridge tests,
+  CI workflows, rollout runbook, and phase ledger.
+- Run migration tests on disposable fresh/upgraded tenants, auth/tenant/shift/checkout/
+  payment/void/handoff/sync regressions, physical iMin and LAN hardware UAT, and
+  proof/replay/concurrency tests. Validate policy-off clients and old APK behavior.
+- Verify bounded latency/query counts and no duplicate login requests. Document any
+  offline revocation window; retain rejected queued transactions for reconciliation.
+  Never promise immediate revocation of disconnected devices.
+- Gates: `npm run check:architecture`, `npm run check:docs`,
+  `npm run check:compliance`, `git diff --check`, relevant app lint/tests/builds,
+  supported Android build/tests, and authenticated desktop/mobile visual evidence.
+- Rollout order: additive schema -> compatible API with policy off -> bridge/APK ->
+  POS UI -> staging pilot -> explicitly authorized production pilot -> per-terminal
+  opt-in. Follow [release policy](docs/ops/RELEASE_CANDIDATE_POLICY.md); no automatic
+  main merge/deploy. Recovery disables policy only through an audited privileged
+  action and retains enrollment/audit records; do not drop schema to recover.
+- Acceptance: complete evidence matrix, no unexplained failures, tested recovery,
+  physical-device evidence, and no skipped requirements marked complete.
+
+## Planning validation and next move
+
+Architecture baseline passed on 2026-09-14 (54 modules/571 files; 95 controllers).
+Phase 345 is complete as a policy/contract implementation, not runtime enforcement or a security
+certification. Phase 344 remains in progress until its authenticated visual acceptance is complete;
+Phase 346 is complete as the durable backend enforcement phase. Phase 347 is approved and in
+progress in parallel with Phase 344; it must still pass its own physical iMin acceptance before
+Phase 348 becomes eligible.
+
+Technical references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore)
+and [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API).

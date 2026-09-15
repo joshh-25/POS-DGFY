@@ -3,8 +3,8 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-08
-last_reviewed: 2026-07-02
-review_by: 2027-01-08
+last_reviewed: 2026-09-14
+review_by: 2027-03-14
 applies_to: architecture_decision
 topic: dgfy_account_company_switching
 ---
@@ -132,3 +132,18 @@ field-level migration rules live in
 
 `status: accepted` is preserved; this is an amendment, not a revision of the
 original decision history.
+
+## Amendment (2026-09-14): Optional Strict POS Device Access (Phase 345)
+
+- The consequence that POS may authorize an operator from any logged-in device
+  remains the default when a tenant's strict device policy is disabled.
+- A tenant may opt into the separate POS device-access contract in
+  `docs/features/POS_DEVICE_LOCATION_ACCESS_CONTRACT.md`. When enabled, an
+  enrolled device proof is an additional POS-session and protected-operation
+  gate. It does not change DGFY membership, staff credentials, company
+  switching, IMS access, Storefront access, or tenant isolation.
+- Branch scope remains the terminal's tenant `location_id` plus the operator's
+  location grant. The policy does not infer company access from a GPS, IP,
+  Wi-Fi, email, phone, or client fingerprint claim.
+- This is a policy amendment only. Runtime enrollment and enforcement are
+  deferred to Phases 346-350.
