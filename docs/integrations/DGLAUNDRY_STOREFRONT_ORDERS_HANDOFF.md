@@ -44,10 +44,13 @@ different account.
 Mount `DGLAUNDRY_PARTNER_BASE_URL`, `DGLAUNDRY_INTEGRATION_SECRET` and
 `DGLAUNDRY_INTEGRATION_KEY_ID` only for local/sandbox HMAC fixtures. Production
 must set `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1`, mount the
-DGLaundry event verification public key and DGFY P-256 signing private key from
-the secret manager, and provide the short-lived DGLaundry partner access token
-through `DGLAUNDRY_PARTNER_ACCESS_TOKEN` (or its secret-file equivalent).
-Never
+DGLaundry Ed25519 event-verification public key, the distinct DGLaundry
+partner-request P-256 public key (`DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE`
+and exact `DGLAUNDRY_PARTNER_REQUEST_KEY_ID`), and DGFY's P-256 signing private
+key from the secret manager, and provide the short-lived DGLaundry partner
+access token through `DGLAUNDRY_PARTNER_ACCESS_TOKEN` (or its secret-file
+equivalent). DGFY verifies DGLaundry requests as raw 64-byte IEEE P1363
+signatures; DER signatures are rejected. Never
 place these values in source, browser storage, or a shared database.
 
 ## Qualification still required
