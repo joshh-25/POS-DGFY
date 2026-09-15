@@ -75,3 +75,18 @@ Required validation for this flow:
   before this shipped has no seeded row and resolves to enabled, so no live storefront's behavior
   changes on deploy.
 - PR: Refs #622
+
+## Amendments (2026-09-12)
+
+- Clause amended: Decision 10 (untagged; `default` tier per ADR 0039).
+- Change: Storefront customer order history is scoped to the active storefront and selected branch
+  by default. If no branch is selected, it shows all branches of that storefront. The main DGFY
+  account context remains explicitly labeled `All stores`. Both global activity history and the
+  tenant-local compatibility endpoint enforce the scope server-side after authenticated account or
+  customer ownership, including pagination/count queries. Legacy activities without a saved
+  `location_id` are not assigned to a branch by inference and therefore remain available only in
+  the broader store/all-stores scope.
+- Reason: Phase 334 closes the product/UX gap where a customer could reasonably interpret account
+  history as belonging only to the active branch while the API returned all branches/stores.
+- Validation: Branch-filtered API/use-case/validator tests, Storefront scope and stale-response
+  tests, Storefront/API lint/build, architecture/docs/ADR/API-contract checks.

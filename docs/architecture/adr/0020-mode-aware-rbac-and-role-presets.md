@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-06
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-14
 review_by: 2026-11-06
 applies_to: architecture_decision
 topic: mode_aware_rbac_and_role_presets
@@ -113,6 +113,29 @@ Two consequences worth stating rather than discovering later:
 This amendment narrows one capability's authorization surface and extends the preset catalog. It
 does not change the mode-native permission contract, the fallback mechanism, or the additive-layer
 property this ADR's Consequences assert.
+
+### 2026-09-14 — View-only cashier defaults (Phase 354 contract)
+
+Approved in Phase 354. This amendment replaces the September 1 default that
+forces `items:edit` on every compatibility cashier. The target default is
+catalog view without create, edit, delete, or import authority. An authorized
+administrator may explicitly grant `items:edit`; the compatibility cashier's
+existing `items:delete` ceiling remains unchanged. Role labels must not grant
+item editing in the client or backend.
+
+This is a documentation-only approval. The September 1 behavior remains in
+runtime until Phase 355 changes permission resolution/defaults and Phase 356
+changes the POS UI. Existing stored permission arrays require an inventory and
+an explicit, auditable reconciliation: an `items:edit` entry alone cannot prove
+whether it was inherited or deliberately granted. Ambiguous grants require
+administrator review before rollout is declared complete; do not silently
+strip them or describe them as verified explicit grants.
+
+Branch authorization and active operator exclusivity follow the
+[Phase 354 contract](../../features/POS_CASHIER_LOCATION_ACCESS_PHASE_354.md).
+Administrative/catalog access remains separately permission-gated. Shared item
+identity and base price retain their tenant-wide meaning under ADR 0029; a
+branch selector does not turn those fields into branch-local data.
 
 ## Validation
 

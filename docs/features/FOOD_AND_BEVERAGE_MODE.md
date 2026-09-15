@@ -43,7 +43,7 @@ F&B-specific side tables own restaurant-only concepts:
 
 ## Charge Boundary
 
-Restaurant service charge is optional and separate from the DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`, which remains the DGFY convenience fee contract. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving DGFY convenience fee VAT behavior unchanged.
+Restaurant service charge is optional and separate from the retired customer-facing DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`: it remains a compatibility field, resolves to `0` for new Storefront orders, and is not used for restaurant service charge. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving the zero Storefront convenience-fee behavior unchanged.
 
 ## Menu Inventory
 

@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-04
-last_reviewed: 2026-08-11
-review_by: 2027-02-04
+last_reviewed: 2026-09-14
+review_by: 2027-03-14
 applies_to: pos_hardware_device_integration
 topic: pluggable_pos_hardware_device_drivers
 supersedes_in_part: docs/architecture/adr/0025-pos-application-shells-and-lan-host-runtime.md
@@ -222,3 +222,16 @@ Two independent constraints, not a style preference:
 The printer itself only understands raw monochrome raster bytes, never an
 image file, so this decoding work cannot be skipped by either side — the only
 question this amendment settles is which runtime does it.
+
+### 2026-09-14: Device Access Is Separate From Hardware Availability (Phase 345)
+
+- The strict POS device-access contract is an authentication and terminal-scope
+  policy upstream of this driver registry. It does not make a printer, drawer,
+  or bridge a required dependency for checkout, shift state, or transaction
+  persistence.
+- `client_managed` and `none` continue to be valid hardware states under strict
+  device enforcement. A missing printer or drawer must still return the governed
+  driver result without blocking an otherwise authorized sale.
+- The LAN bridge remains a transport identity and receives separate command
+  authentication in Phase 349. Its credential must never be treated as proof of
+  the cashier's browser or as a cross-terminal login credential.

@@ -4020,11 +4020,11 @@ Route mapping note:
 
 **Pricing Contract**
 - Response totals now include:
-  - `service_fee_amount`
-  - `service_fee_label` (`DGFY convenience fee`, deterministic even when amount is `0`)
+  - `service_fee_amount` (retained for compatibility; `0` for new Storefront quotes)
+  - `service_fee_label` (`DGFY convenience fee`, retained as a deterministic compatibility label)
 - Quote formula:
-  - `service_fee_amount = round4(subtotal_amount * 0.01)`
-  - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
+  - `service_fee_amount = 0`
+  - `total_amount = subtotal_amount - discount_amount - voucher_discount_amount + delivery_fee`
 
 **Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
 added Phase 150, #866)
@@ -4091,10 +4091,10 @@ Route mapping note:
   call is not reachable from any HTTP client request.
 
 **Persistence Contract**
-- Checkout persists service-fee snapshots from the same fixed policy as quote:
-  - `service_fee_amount`
-  - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
-  - `service_fee_method_snapshot` (order method for traceability)
+- Checkout persists the service-fee compatibility snapshots alongside every new Storefront order:
+  - `service_fee_amount = 0`
+  - `service_fee_label_snapshot` (`DGFY convenience fee`, retained for schema/read compatibility)
+  - `service_fee_method_snapshot = NULL` because no customer fee is charged
   - `service_fee_overridden=false`
 - `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
   `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
@@ -4160,20 +4160,24 @@ Create a PayMongo online payment session for Storefront online checkout. This is
     "payment_method": "qrph",
     "qr_code_image_url": "data:image/png;base64,...",
     "expires_at": "2026-05-19T12:30:00.000Z",
-    "service_fee_amount": 10,
+    "service_fee_amount": 0,
     "service_fee_label": "DGFY convenience fee",
     "fee_policy": {
       "dgfy_fee_basis": "subtotal",
-      "dgfy_fee_charged_to": "customer",
+      "dgfy_fee_charged_to": "tenant",
       "provider_fee_shoulder": "tenant_company"
     },
-    "total_amount": 1010
+    "total_amount": 1000
   }
 }
 ```
 
 **Settlement Contract**
 - The Storefront quote remains authoritative for totals.
+- New Storefront customer totals do not include a convenience-fee add-on. The compatibility
+  `service_fee_amount` remains `0` in quote, checkout, and payment-session responses.
+- When the legacy non-revenue-sharing QR Ph split path is enabled, `platform_fee_centavos` is a
+  separate tenant-funded settlement value and is not added to the customer's `total_amount`.
 - With `TENANT_REVENUE_SHARING_ENABLED=true`, `service_fee_amount=0`, no PayMongo split payload is sent, and DGFY records the tenant platform fee after verified payment using the effective tenant fee policy.
 - The legacy child-merchant `transfer_to` path is disabled compatibility behavior and must not be enabled with tenant revenue sharing.
 - PayMongo/provider processing, payout, bank, dispute, and related fees are captured from provider data or reconciliation and allocated according to the versioned tenant policy.
@@ -6031,7 +6035,7 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
-| `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
+| `GET` | `/dgfy/customer/activities` | Return paginated normalized account history with filters for `type`, `tenant_id`, `store_slug`, `location_id`, `status`, `payment_status`, date range, page, and limit |
 | `GET` | `/dgfy/customer/orders` | List account-linked order activities |
 | `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
 | `GET` | `/dgfy/customer/notifications` | List account-scoped customer notifications with optional unread filtering |
@@ -6059,7 +6063,7 @@ Storefront checkout keeps account-saved, temporary checkout, recommended store o
 
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
-`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Optional `store_slug` scopes history to one storefront and optional positive `location_id` scopes it to one saved branch. These filters are applied together with the authenticated DGFY account ownership before pagination and counts. Response cards include `reference`, `store`, `location_id`, `branch`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`. The Storefront uses the active branch scope by default; the main DGFY account is explicitly labeled `All stores` when no storefront scope is active. Legacy activities without `location_id` are not assigned to a branch by inference.
 
 Dashboard, activities, and account reference tracking reads refresh account-owned order snapshots from the tenant POS transaction before returning data when the activity is already explicitly linked to the signed-in DGFY account. This read-time refresh must not adopt guest orders by email or phone matching.
 

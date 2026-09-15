@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-26
+last_reviewed: 2026-09-14
 review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
@@ -22860,3 +22860,890 @@ content differs from what was implemented and tested under the "303" label.
   features remain governed by the existing module README and ADR 0078 backlog boundaries.
 - Completion date: 2026-09-12.
 - Next eligible phase: 330.
+
+## Phase 330 - Prevent silent fixed-fee fallback when road distance is unavailable (#1874)
+
+- Initiative/release: customer delivery pricing reliability / current release.
+- Objective and scope: make a calculated delivery quote distinguish a genuine calculated result from
+  the configured fixed-fee fallback when road-distance resolution is unavailable; tune or retry the
+  bounded route lookup; expose fallback/source state to the storefront; and preserve existing fixed,
+  free, known-distance, maximum-distance, and payment-finalization behavior.
+- Status: completed.
+- Dependencies: Phase 329 delivery-pricing boundary contract; ADR 0078 Decision 2; the existing road
+  distance adapter and storefront quote contract.
+- Acceptance and validation evidence: pending implementation of issue #1874. The issue records the
+  live Space Bar reproduction, the measured route latency versus the current timeout, and the
+  required API/storefront regression coverage.
+- Contracts/files: issue #1874; `apps/dgfy-api/src/modules/deliveryPricing/repositories/roadDistanceProvider.js`;
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`; and
+  `apps/dgfy-api/src/modules/deliveryPricing/domain/deliveryFeePolicy.js`.
+- Migration: none expected; the issue scope is bounded to route resolution, quote metadata, and
+  storefront handling over the existing schema.
+- Residual/deferred scope: this phase remains independent from the Phase 331 guest checkout and POS
+  delivery-contact initiative below.
+- Next eligible phase: 331.
+
+## Phase 331 - Storefront delivery contact/pin and repeat guest checkout diagnostic
+
+- Initiative/release: storefront delivery handoff and guest checkout reliability / current release.
+- Objective and scope: trace the requested POS delivery-card fields (customer phone and the exact
+  saved pin coordinates) and reproduce the repeat guest checkout path where remembered details reach
+  Review/Payment without a fresh verification request. This phase is diagnostic and regression-proof
+  only; it does not yet change the POS presentation, OTP state machine, API contract, or database.
+- Status: completed.
+- Dependencies: Phase 330 reservation; ADR 0034 manual delivery-job foundation; ADR 0023 front-facing
+  customer account; `docs/features/STOREFRONT_CURRENT_STANDING.md`; and the existing guest OTP proof
+  contract.
+- Acceptance and validation evidence: the POS/API trace confirmed that the transaction snapshot already
+  carries `customer_phone`, `delivery_latitude`, and `delivery_longitude` through the incoming-order
+  repository and use case, while the queue card/table surfaces omit those fields. The storefront trace
+  confirmed (1) `handleApplyGuestDetailsAndRequestOtp` applies React state and immediately calls the
+  OTP request without an email override, so the request can read the previous blank email, and (2)
+  `guestCheckoutIntentId`/`guestCheckoutProof` are component-lifetime state and are not reset after a
+  successful order. The server proof validator binds the proof to both normalized email and
+  idempotency key, so the second-order path can fail late with the existing verification or
+  idempotency error. Focused Storefront tests passed: 2 files, 21 tests, plus 1 expected-failure
+  race witness that reproduces the stale-email sequence (`npx vitest run
+  src/shared/checkout/hooks/useGuestCheckoutOtp.test.js src/__tests__/guestCheckoutOtpUi.test.jsx`).
+- Contracts/files: `apps/dgfy-storefront/src/StorefrontApp.jsx` (saved-details/OTP callback);
+  `apps/dgfy-storefront/src/shared/checkout/hooks/useGuestCheckoutOtp.js` and its test (OTP
+  lifecycle and Phase 331 witness); `apps/dgfy-storefront/src/modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js`;
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js` (OTP and checkout idempotency);
+  `apps/dgfy-api/src/modules/store/utils/storeGuestCheckoutProof.js`; and the existing POS incoming
+  queue card/table/sidebar components that will consume the stored snapshot in the next phase.
+- Migration: none required for the diagnostic phase; the required transaction columns and API fields
+  already exist.
+- Residual/deferred scope: none for the approved Phase 332 scope. The follow-up delivery-pricing
+  reliability work remains tracked independently in Phase 330.
+- Completion date: 2026-09-12.
+- Next eligible phase: 333.
+
+## Phase 332 - Storefront delivery contact/pin and repeat guest checkout fix
+
+- Initiative/release: storefront delivery handoff and guest checkout reliability / current release.
+- Objective and scope: complete the Phase 331 diagnostic by sequencing the effective remembered
+  email into the guest OTP request, rotating guest proof/idempotency state after every successful
+  order, and surfacing the existing order-time customer phone plus exact saved pin coordinates in
+  every POS incoming-queue presentation. Preserve the existing API/schema, permissions, map-link
+  behavior, and delivery fee calculation.
+- Status: completed.
+- Dependencies: Phase 331 diagnostic; ADR 0034 manual delivery-job foundation; ADR 0023 front-facing
+  customer account; the existing guest OTP proof contract; and the POS incoming-order location
+  scope contract.
+- Acceptance and validation evidence: Storefront OTP/contract/UI suites passed 3 files/26 tests;
+  the full Storefront suite passed 218 files/1,177 tests; all POS feature suites passed 204
+  files/1,306 tests; focused shared POS queue/formatting/location suites passed 4 files/83 tests;
+  Storefront and POS lint passed with zero errors (existing warnings only); Storefront and POS
+  production builds passed; docs/ADR lint, architecture guardrails/controller boundaries,
+  compliance/API-contract checks, and `git diff --check` passed. The implementation has no database
+  migration because the API already returns `customer_phone`, `delivery_latitude`, and
+  `delivery_longitude` from the transaction snapshot.
+- Contracts/files: `apps/dgfy-storefront/src/StorefrontApp.jsx`;
+  `apps/dgfy-storefront/src/shared/checkout/hooks/useGuestCheckoutOtp.js` and its tests;
+  `apps/dgfy-storefront/src/shared/hooks/useCheckoutSubmission.js`;
+  `apps/dgfy-storefront/src/modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js`;
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`;
+  `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`;
+  `packages/web-core/src/features/pos/components/QueueOrderTableView.jsx`;
+  `packages/web-core/src/features/pos/components/TerminalSidebarPanel.jsx`;
+  `packages/web-core/src/features/pos/utils/incomingQueueOrderFormatting.js` and its tests; and
+  compliance declaration `docs/compliance/impact-declarations/2026-09-12-pos-delivery-contact-guest-checkout.md`.
+- Migration: none required; the change is state/presentation-only over existing transaction fields
+  and the existing guest proof/idempotency contract.
+- Residual/deferred scope: none for this storefront delivery-contact and repeat guest-checkout
+  initiative. Future delivery changes remain governed by the existing pricing and POS contracts.
+- Completion date: 2026-09-12.
+- Next eligible phase: 333.
+
+## Phase 333 - Retire Storefront customer convenience fee
+
+- Initiative/release: Storefront pricing and checkout policy / current release.
+- Objective and scope: remove the customer-facing DGFY convenience fee from new Storefront quote,
+  checkout, and payment-session totals across F&B, Retail, and Simple modes; preserve delivery
+  pricing, the separate F&B restaurant service charge, historical `service_fee_*` snapshots, and
+  any legacy tenant-funded platform settlement.
+- Status: completed.
+- Dependencies: Phase 332; ADR 0012; the Storefront quote, checkout, and payment-session contracts;
+  the F&B charge boundary.
+- Acceptance and validation evidence: full Storefront suite passed 218 files/1,179 tests; focused
+  API fee, checkout, payment-readiness, payment-settlement, finalization, and delivery suites passed
+  12 suites/196 tests; Storefront and API lint passed with warnings only, both app builds passed,
+  architecture guardrails/controller-boundary checks passed, docs/ADR validation passed, the API
+  contract check passed, and `git diff --check` passed. The aggregate compliance declaration check
+  could not be isolated from unrelated pre-existing dirty POS/terminal changes in the worktree; the
+  Phase 333 payments declaration itself is present and the API contract compliance check passed.
+- Contracts/files: `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`;
+  `apps/dgfy-api/src/modules/commercePayments/usecases/commercePaymentAdminUseCases.js`;
+  `apps/dgfy-api/src/modules/commercePayments/usecases/finalizePaidCommerceSession.js`;
+  Storefront checkout totals, summary, constants, and presentation modules/tests; Storefront quote,
+  checkout, and settlement sections in `docs/api/specification.md`; ADR 0012;
+  `docs/features/FUNDING_AND_DISCOUNT_STACKING.md`; and
+  `docs/compliance/impact-declarations/2026-09-12-storefront-convenience-fee-phase-333.md`.
+- Migration: none required. Existing transaction/payment records remain unchanged; new records keep
+  the compatibility columns with zero customer service fee and a null method snapshot.
+- Residual/deferred scope: positive historical fee payloads remain renderable for compatibility;
+  POS cashier checkout and the F&B restaurant service charge are unchanged. The legacy convenience
+  helper remains only for the separate QR Ph settlement compatibility path.
+- Completion date: 2026-09-12.
+- Next eligible phase: 334.
+
+## Phase 334 - Branch-scoped Storefront customer order history
+
+- Initiative/release: Storefront order-history clarity / current release.
+- Status: completed.
+- Objective and scope: default Storefront customer order history to the selected store and branch;
+  preserve explicitly labeled "All stores" history in the global DGFY account. Without a selected
+  branch, show "All branches of this store". These are customer-history filters, not admin privileges.
+- Dependencies: Phase 333 numbering; ADR 0023 (reviewed 2026-08-27);
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md` (reviewed 2026-03-06) and
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (reviewed 2026-05-21).
+- Implementation:
+  1. Confirm the reported screen is customer history, not the POS queue, and verify one example's
+     account ownership and saved branch. Another customer's order requires separate security
+     diagnosis; the customer's own cross-store history is expected in the global account.
+  2. Validate store/branch filters server-side and combine them with authenticated account/customer
+     ownership in both global and tenant-local history paths, before pagination and counts.
+  3. Verify saved location identity in the global activity index; define any necessary additive
+     metadata/migration before coding. Never infer branches from names or the current selection;
+     records with unknown branches stay available in broader history, outside specific-branch results.
+  4. Show the active store/branch scope; refresh lists and counts on scope changes, reset pagination,
+     and prevent stale requests, caches, or live updates from mixing accounts/stores/branches.
+  5. Amend ADR 0023 with the branch-default contract and update API documentation; keep transport,
+     business rules, and queries in their existing layers. No new architecture exception is expected.
+- Acceptance and validation evidence: API validators/use-cases enforce positive `location_id` and
+  preserve authenticated account/customer ownership; repository predicates run before pagination
+  and counts. Storefront sends scoped global/tenant queries, labels `All stores`, store-wide, and
+  branch history, clears on scope changes, ignores stale responses, and rejects out-of-scope live
+  events. Focused API suites pass (5 suites, 41 tests) and focused Storefront suites pass (5 files,
+  59 tests); full Storefront/API lint and builds plus architecture, docs, ADR, API-contract, and
+  `git diff --check` validation pass with only pre-existing warnings. The aggregate compliance
+  declaration check is blocked only by unrelated pre-existing dirty POS/terminal declarations in
+  the shared worktree; Phase 334's payment-surface declaration is complete. Rendered scope labels
+  are covered by the Storefront OrdersSection test.
+- Contracts/files: `apps/dgfy-storefront/src/customer-dashboard/hooks/useCustomerAccountPanel.js`;
+  customer OrdersSection and history refresh hooks;
+  `apps/dgfy-api/src/modules/dgfy/{usecases/dgfyCustomerUseCases.js,repositories/dgfyCustomerRepository.js}`;
+  `apps/dgfy-api/src/modules/store/{usecases/storeUseCases.js,repositories/storeRepository.js}`;
+  related route/query validators, tests, ADR 0023, and `docs/api/specification.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260912000001-add-location-to-dgfy-customer-activities.cjs`
+  adds nullable `location_id` and a scoped lookup index; no historical ownership reassignment or
+  branch inference.
+- Residual/deferred scope: POS/admin queue behavior and unrelated booking or payment changes excluded.
+- Completion date: 2026-09-12.
+- Next eligible phase: 335.
+
+
+## Phase 335 - Admin branch and shift scope correction
+- Initiative/release: POS location-switch safety / local remediation.
+- Status: completed.
+- Objective and scope: isolate a proposed shift target from operating scope in both shift panels;
+  refresh using the committed target after success; prevent locked/offline submissions and explain
+  that the existing API closes one shift and opens another with zero opening cash.
+- Confirmed findings: target selection previously called `setOperatingLocationId` before submission;
+  the success handler concurrently refreshed the old shift and queue through stale closures;
+  workspace reason validation was absent from button gating. The local order SK-LF861D is at
+  Spacebar (4), while JOHN-01 shift 147 is at Masu Cafe (1); the nine visible orders match branch 1.
+- Dependencies/authority: [START_HERE](../START_HERE.md),
+  [boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [governance](../architecture/ARCHITECTURE_GOVERNANCE.md),
+  [ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md).
+  These are authoritative and were read for this review; no ADR amendment is needed for the UI repair.
+- Implementation: `TerminalSidebarPanel.jsx`, `TerminalOperationsWorkspace.jsx`, `TerminalPage.jsx`
+  and `utils/posOperationalVisibility.js` under `packages/web-core/src/features/pos`; focused
+  frontend tests plus `apps/dgfy-api/tests/posHandlers.transport.test.js` preserve existing work
+  and server authorization.
+- Acceptance: selection/cancel/failure do not change operational scope; reason shorter than eight
+  characters cannot submit; successful switch refreshes the target and new shift before queue reload.
+  Validation: `terminalLocationScope.integration.test.jsx` passed 12/12 tests, including offline
+  submission blocking; `posOperationalVisibility.test.js` passed 5/5, including stale request-scope
+  rejection; `posHandlers.transport.test.js` passed 33/33, including replay metadata; POS production
+  build passed; POS unauthenticated browser smoke passed 1/1; documented local admin authenticated
+  shell smoke passed 1/1 with no runtime crash; app lint, docs/ADR lint, architecture guardrails,
+  compliance API-contract checks, and `git diff --check` passed. No state-changing browser UAT was
+  run because no dedicated E2E branch-switch credentials/fixture are configured; component and
+  transport coverage provides the safe deterministic acceptance for this UI/API slice.
+- Migration: none. No active local shift or order was changed during this review.
+- Completion date: 2026-09-14. Next eligible phase: 336.
+
+## Phase 336 - Separate admin branch viewing from register operation
+
+- Initiative/release: POS location-switch safety / next delivery stage.
+- Status: completed. Dependencies: Phase 335 and ADR 0031.
+- Objective: explicit "Viewing branch" admin scope, distinct from "Register branch / terminal / shift".
+  Use the existing authorized admin location-monitor read for cross-branch viewing without an open
+  shift. Cashier queue and mutations remain constrained to their shift; viewing never moves cash,
+  changes the terminal registry, claims an order, or changes order ownership.
+- Gaps to address: misleading branch labels; no integrated no-shift branch order viewing; selectors
+  offer targets that the terminal-home policy may reject. Show granted active branches and explain
+  unavailable operations. Keep register location visible while viewing a different branch.
+- Acceptance: Main/Spacebar browsing, no shift, cashier permission denial, revoked grants, inactive
+  branches, switching back, refresh/restart and tenant isolation; stale responses must be discarded
+  by tenant/location/shift request identity. Never show old rows under a new branch label.
+- Contracts/files: ADR 0031; `TerminalPage.jsx`, shell labels and Orders panels;
+  API `buildGetAdminLocationMonitorUseCase` and `buildListIncomingOnlineOrdersUseCase` in
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`.
+- Evidence: `buildPosAdminLocationMonitorScopeKey` binds monitor responses to tenant, terminal,
+  shift, and viewing branch; POS component/utility regressions passed 28/28; API monitor authorization
+  regressions passed 12/12; changed-file ESLint completed with 0 errors; POS production build passed;
+  `npm run smoke:pos-terminal-ui` passed on desktop/tablet/mobile with no console or unexpected HTTP
+  errors; `git diff --check` passed. Coverage includes register/viewing separation, no-shift admin
+  read-only Orders, cashier denial, inactive-branch filtering, stale-row suppression, revoked-grant
+  backend denial, and tenant scope identity. No state-changing live branch-switch UAT was run because
+  no dedicated E2E branch-switch credentials/fixture are configured; no active shift or order was
+  changed. Completion date: 2026-09-14. Next eligible phase: 337.
+
+## Phase 337 - Reconcile cash before changing the operating branch
+
+- Initiative/release: POS location-switch safety / operational hardening.
+- Status: completed. Dependencies: Phase 336; implemented against ADR 0031 and the existing fiscal/close contracts.
+- Recommendation: keep each physical register bound to its branch. For actual relocation, finish or
+  park the sale in its original branch, resolve partial payments and pending sync, count/close the old
+  drawer, select an authorized destination terminal, and explicitly enter the destination opening
+  float. A same-branch cashier handover uses the existing operator/handover flow.
+- Resolved backend and UI gap: `buildSwitchTerminalShiftLocationUseCase` now records counted/expected
+  closing cash and variance, creates the target with an explicit opening float and registered terminal,
+  and the UI requires those fields. It no longer reuses an unqualified source terminal or bypasses
+  terminal home-location enforcement. Do not silently bypass terminal home-location enforcement to make
+  a switch succeed.
+- Scope: reuse normal close/open and reconciliation contracts; preserve old transactions, original
+  shift ownership and branch. Persist transition reason, actor, source/destination shift IDs and cash
+  disposition. Handle successful close followed by failed opening as a recoverable closed state.
+- Acceptance: counted cash and variance evidence; pending cart/split/parked/outbox checks; occupied or
+  inactive target rejection; owner/override authorization; duplicate click, timeout after commit,
+  retry with the same idempotency identity, concurrent operator, offline/reconnect and reload tests.
+- Authority: ADR 0031 and architecture governance above; policy changes require the applicable ADR
+  amendment before implementation. External practice reference:
+  [Square cash drawer sessions](https://squareup.com/help/us/en/article/8344-start-and-end-a-cash-drawer-session).
+  This is a recommended DGFY workflow, not a claim that all POS vendors share identical semantics.
+- Validation: focused API and rendered POS tests, all affected shared-consumer builds, architecture,
+  docs/ADR, lint, compliance-contract and POS smoke gates. A state-changing Main-to-Spacebar browser
+  UAT was not run because no dedicated branch-switch credentials/fixture are configured; deterministic
+  use-case/component/transport coverage was used instead, with no active shift or order changed.
+- Evidence: `posOperationReplayParity.usecase.test.js`, `posCashierLifecycle.usecases.test.js`,
+  `posValidator.terminalShiftIdentity.test.js`, and `posHandlers.transport.test.js` passed 67/67;
+  focused shared POS lifecycle/location/queue tests passed 32/32; POS, SKUpervisor, and Storefront production builds
+  passed; POS lint passed with 0 errors; IMS and Storefront lint passed with warnings only; architecture
+  guardrails/controller-boundary checks passed; docs and strict ADR lint passed; POS desktop/tablet/
+  mobile smoke passed with no console or unexpected HTTP errors; `git diff --check` passed. Coverage
+  includes explicit counted source cash, expected/variance persistence, explicit destination float,
+  registered terminal/home-location enforcement, occupied-terminal rejection, unresolved-sale guard,
+  current-checkout and local pending-operation guards,
+  owner/master-admin authorization, stable idempotent replay, rollback, and shift-owner lifecycle
+  preservation with actor audit attribution. `check:compliance:api-contracts` passed; aggregate
+  `npm run check:compliance` remains blocked by unrelated dirty-worktree declaration surface
+  mismatches from Phases 333, 334, and 338. Migration: none; no production data was changed.
+  Completion date: 2026-09-14. Next eligible phase: 339.
+
+
+## Phase 338 - Multi-branch inventory readiness and contract audit
+
+- Initiative/release: Shared catalog and branch inventory / local readiness. Status: completed.
+- Owner: API/inventory implementer with merchant inventory owner. Dependencies: ADR 0009;
+  coordinate scope labels with Phases 335-336; do not renumber or mark those phases complete.
+- Objective: retain one tenant-owned item catalog; establish whether every read and stock write
+  consistently uses the actual operating/fulfillment branch before enabling stricter accounting.
+- Implementation: added the pure, machine-readable operation matrix and evidence evaluator at
+  `apps/dgfy-api/src/modules/inventory/services/multiLocationInventoryReadiness.js`, plus the
+  read-only tenant audit command `npm run audit:multi-location-readiness` (root or `apps/dgfy-api`).
+  The matrix covers POS/storefront reads, POS and online sales, reservations, adjustments, PO
+  receiving, transfers, dispatch, production completion, and void/reversal, and records each
+  endpoint, authorization, location source/destination, ledger effect, and compatibility aggregate effect.
+- Evidence (local audit, 2026-09-14): Masu Cafe has three active branches, but
+  `store_has_no_location=true`. Stock rows are Main 178, Ungka 1 (Hot Tea: 20), and Spacebar 0.
+  `multi_location_inventory_enabled` has no saved row and therefore defaults false. Selected-location
+  POS, IMS, Storefront, recipe/modifier, reservation, PO, dispatch, transfer, and POS/online fulfillment
+  paths all pass `location_id` into the shared location ledger when that operation executes. The audit
+  found no current aggregate drift or unscoped movement rows for Masu, but it blocks rollout on the
+  conflicting no-location setting and the unproven empty Spacebar opening balance. A catalog item being
+  orderable (for example, Coca-Cola `tracking_mode=toggle`) is not evidence of physical branch stock.
+- Confirmed residual code gap for Phase 339: legacy job-order create/finalize preflight reads
+  `items.current_stock` without a source branch; completion itself requires distinct
+  `source_location_id`/`destination_location_id` and performs location-scoped consumption/output.
+  This can allow a job order to pass an early aggregate precheck and fail later at the real source
+  branch; it does not move stock or justify copying Main balances.
+- Acceptance: the executable matrix and evaluator are covered by
+  `apps/dgfy-api/tests/multiLocationInventoryReadiness.test.js` (4/4 passed). The live audit is
+  intentionally read-only, emits stable blocking/warning reason codes, never flips a flag, creates a
+  balance, copies Main quantities, or rewrites history, and exits non-zero for any tenant with missing
+  schema, unscoped movement data, aggregate drift, or conflicting no-location configuration.
+- Inputs/blockers carried forward: merchant-confirmed physical counts, intended branch assortment,
+  supported settings change for `store_has_no_location`, and branch-aware job-order preflight.
+  Empty branch stock is a readiness gap, not proof of data loss; no production data was changed.
+- Authority: [ADR 0009](../architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md),
+  [ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md),
+  [boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [governance](../architecture/ARCHITECTURE_GOVERNANCE.md). All authoritative; ADR 0009 was last
+  reviewed 2026-04-16 (review due 2026-10-16). Existing rollout constraints remain binding for this plan;
+  no policy amendment or architecture exception is introduced by documenting the audit.
+- Files: `apps/dgfy-api/src/services/locationInventoryService.js`, shared repository
+  `itemLocationStockOverlay.js`, POS/store repositories and inventory commands, settings use cases,
+  `apps/dgfy-api/src/modules/inventory/services/multiLocationInventoryReadiness.js`,
+  `apps/dgfy-api/scripts/audit-multi-location-inventory-readiness.js`, its focused test, and
+  `docs/compliance/impact-declarations/2026-09-14-multi-location-inventory-readiness-phase-338.md`.
+- Validation: focused readiness tests passed; backend lint completed with 0 errors (existing unrelated
+  warnings only); `git diff --check` passed; the live read-only audit completed across 16 active tenants
+  and correctly reported Masu Cafe as blocked; the Phase 338 compliance declaration passes when
+  evaluated against this phase's changed files. The aggregate compliance command remains blocked by
+  three pre-existing Phase 333/334 declarations in the shared dirty worktree whose surface lists do
+  not cover unrelated POS/terminal/inventory changes. Completion date: 2026-09-14. Next eligible phase: 339.
+
+## Phase 339 - Shared item fields with explicit branch controls
+
+- Initiative/release: Shared catalog and branch inventory / merchant UI. Status: completed.
+- Owner: POS/API implementer. Dependencies: Phase 338 findings and Phase 336 scope labels.
+- Recommended field ownership (DGFY proposal, not universal vendor behavior):
+
+  | Field | Recommended owner and behavior |
+  | --- | --- |
+  | Item identity, SKU/barcode, name, description, category, base image | Company catalog; reuse one item ID across branches. Label edits as company-wide. Main is one branch, not the owner of other branches' stock. |
+  | Default selling price | Company default; authorized branch price override only where needed. Reuse existing pricing contracts first. Removing an override restores inheritance. |
+  | Assortment and channel availability | Explicit per-branch POS/Storefront applicability; distinguish inherited value from an override and from out-of-stock. |
+  | On-hand, reserved, available stock and reorder settings | Branch scope; no implicit borrowing from Main. Stock availability subtracts relevant reservations under the existing ledger contract. |
+  | Toggle availability and recipe-based availability | Display tracking policy clearly; toggled availability is not a quantity. Recipe ingredients remain subject to branch inventory rules. |
+  | Cost/FIFO and tax | Preserve existing valuation/tax contracts; no arbitrary branch cost/tax overrides as part of this work. |
+
+- Confirmed schema distinction: `PosCatalogOverride` is keyed by item alone (visibility,
+  always-available and image are not branch overrides there). `StorefrontLocationItemOverride`
+  supports branch availability. Do not describe these as equivalent or assume pricing has no other path.
+- Scope: expose company-versus-branch edit scope, branch assignment/inheritance and a preview of affected
+  branches; enforce branch grants server-side. Keep global archive and branch disable separate.
+  Do not duplicate the item to achieve different branch stock or pricing. New branches must receive
+  an explicit assortment policy and stock readiness review without silently publishing every item.
+- Acceptance: global edit propagates only inherited fields; branch override affects only its branch;
+  missing override falls back correctly; denied users cannot edit another branch; zero stock,
+  toggle items, recipes, disabled channels, archived items and inactive branches show correct states.
+  Local main/Spacebar UI, API and offline cache scopes agree after refresh/reconnect.
+- Contracts/files: existing item/override models, pricing services, POS Items/catalog and Storefront
+  catalog resolution; additive migrations only if Phase 338 proves existing contracts insufficient.
+  Amend relevant ADRs before changing their policy; no new inventory system beside the existing ledger.
+- Work completed: exposed company-versus-branch edit scope, branch assignment/inheritance and branch
+  availability in POS Items and Storefront catalog flows; enforced location grants server-side for both
+  channel controls; kept global archive and branch disable separate. POS location overrides are additive
+  and inherit the global policy when no row exists. Job-order create/finalize now carries source and
+  destination branches and preflights the source branch ledger. No item duplication, balance copying or
+  second inventory system was introduced. The existing company price remains the price source because
+  this repository has no location-price contract to extend; no unsupported pricing table was invented.
+- Planned contracts/files: existing item/override models, pricing services, POS Items/catalog and Storefront
+  catalog resolution; additive migrations `20260914000002-create-pos-location-item-overrides.cjs` and
+  `20260914000003-add-job-order-location-scope.cjs`; tenant-schema registry/audit coverage; location-grant
+  checks; branch-aware POS catalog resolution; job-order location-scoped preflight; and the corresponding
+  POS, Storefront, job-order, runtime-audit and sync-registry tests. ADR 0009 remains the governing
+  inventory contract; no policy amendment or architecture exception was introduced.
+- Evidence: the combined branch-control, job-order, tenant-reference and runtime-schema acceptance
+  suites passed (5 suites, 121/121 tests); backend architecture, docs/ADR, API-contract, rollout and
+  tenant-schema coverage gates passed; API lint passed; IMS, POS and Storefront production builds passed.
+  `npm run check:compliance` remains blocked by pre-existing dirty-worktree declarations from earlier
+  phases whose surface lists do not cover unrelated changes, and the full IMS Vitest run retains unrelated
+  pre-existing POS contract failures. No production rollout flag, opening balance, stock transfer or
+  customer data was changed. Completion date: 2026-09-14. Next eligible phase: 340.
+
+## Phase 340 - Stock onboarding and end-to-end branch isolation acceptance
+
+- Initiative/release: Shared catalog and branch inventory / controlled rollout. Status: completed.
+- Owner: inventory implementer + QA + merchant inventory owner. Dependencies: Phases 338-339;
+  Phase 337 for scenarios that move cashier operations, rather than merely browse branches.
+- Work: enter verified opening counts or supported transfers; reuse existing FIFO/location movement
+  commands. A transfer reduces the source and increases the destination according to its established
+  dispatch/receipt states; never create additional company stock by copying a catalog.
+- Acceptance: test-owned Main/Spacebar stock, sell at Spacebar, verify only Spacebar depletion;
+  quantity insufficiency cannot borrow Main stock; validate recipe ingredients, reservations,
+  cancellation, partial fulfillment and original-location reversal. Verify totals/FIFO parity,
+  duplicate replay, concurrent last-unit sales, retry after timeout, permission revocation,
+  offline sync and tenant isolation. Check POS and Storefront both honor selected branch/channel.
+- Rollout gate: backup/restore and rollback evidence, confirmed counts, explicit grants, zero
+  unresolved parity discrepancies and the ADR 0009 pilot/soak requirements before enabling the flag.
+  Missing schema must be reported as degraded readiness; any change to compatibility fallback policy
+  must follow the ADR amendment process. No claim of 100% completeness from schema inspection alone.
+- Validation: Phase 340 test-owned acceptance now runs against the migrated checkout path with a
+  Main/Spacebar fixture: POS catalog reads show each branch's own balance; a Spacebar sale consumes
+  only Spacebar stock; an insufficient Spacebar sale cannot borrow Main stock; two concurrent
+  terminals competing for Spacebar's last unit produce exactly one committed sale; the idempotent
+  replay is a no-op; and revoking the Spacebar grant returns the deterministic authorization denial.
+  The reservation contract proves independent Main/Spacebar holds, cancellation release, completion
+  conversion, and replay; the Storefront contract proves the selected `location_id` is forwarded to
+  the branch catalog query; and the operation matrix asserts location scope for checkout,
+  reservation, and reversal. Evidence: `tests/posCheckout.db.integration.test.js` (14/14,
+  including the Phase 340 DB acceptance), plus `phase340BranchIsolation.contract.test.js`,
+  `multiLocationInventoryReadiness.test.js`, `inventoryReservationService.unit.test.js`,
+  `posOnlineInventoryReservationLifecycle.unit.test.js`, `storeCheckoutInventoryReservation.unit.test.js`,
+  `posOperationReplayParity.usecase.test.js`, `mobilePosFinancialSync.usecases.test.js`,
+  `mobilePosReplayGuard.test.js`, `posCheckoutFnbContracts.usecase.test.js`,
+  `posSplitAllocationReversal.usecase.test.js`, `dispatchOrderUsecases.applicationResult.test.js`,
+  and `posVoidFinancialOutcome.test.js` (90/90 combined) covering branch contracts, readiness,
+  reservations, F&B recipes, cancellation, replay, offline sync, partial fulfillment, and reversals;
+  plus the previously recorded Phase 339 API/frontend contract suites, builds, architecture,
+  tenant-schema, documentation, ADR, rollout, and lint gates. No
+  production mutation was authorized or performed. The live rollout gate remains explicitly blocked
+  until the merchant confirms Main/Spacebar opening counts and grants and operations supplies
+  backup/restore, rollback, zero-drift, and ADR 0009 pilot/soak evidence; the local implementation
+  does not claim those operational facts. A read-only local preflight on 2026-09-14 also found
+  non-rollout-safe fixture/data states: Masu Cafe has three active locations while
+  `store_has_no_location=true`; QA Store 1782538306207 has no active locations, unscoped
+  adjustment/goods-issue movements, and aggregate drift of 2; Laundry has aggregate drift of
+  1000; and Test Tenant A, Test Tenant B, and Betty Store have no active locations. These are
+  data/operations remediation items and were not auto-repaired. Completion date: 2026-09-14.
+  Next eligible phase: 343.
+
+### Verified vendor comparison for Phases 338-340 (researched 2026-09-14)
+
+- [Square location-specific prices](https://squareup.com/help/us/en/article/8242-create-item-price-overrides-for-multiple-locations-in-square-dashboard):
+  one item can have different prices by location without duplicate items; configuration is in
+  Square Dashboard, not its POS app. This supports shared identity plus explicit price exceptions.
+- [Square location semantics](https://developer.squareup.com/docs/locations-api): locations separate
+  inventory, sales, receipt layout and reports and can offer different catalog items. Main is an
+  initial/default location, not evidence that all branches share one inventory pool.
+- [Shopify multi-location inventory](https://help.shopify.com/en/manual/products/inventory/setup/multi-managed-inventory):
+  merchants choose which locations stock a product and quantities held at each location.
+  This supports shared products with location balances; it does not establish Square-like pricing
+  overrides in Shopify, nor prove anything about DGFY's write behavior.
+- Conclusion: keep DGFY's shared company catalog and strengthen branch configuration, availability
+  controls and verified inventory accounting. Vendor behavior informs the recommendation; DGFY's
+  ADRs and tested local contracts govern implementation. Names/images/category inheritance above
+  are an explicit DGFY recommendation, not an assertion that every vendor permits identical overrides.
+
+## Phase 341 - Restore reproducible validation
+
+- Initiative/release: Audit remediation / validation reliability. Status: completed.
+- Objective and scope: make the existing POS/API validation suites portable and reproducible without
+  changing product behavior. Restore local `@sieitzz/tenant-bootstrap` workspace links in the API and
+  migration-runner installs; run source-contract assertions through a CRLF/LF-normalizing reader;
+  align stale contracts with the current Phase 333 zero-service-fee totals, responsive image `-v3-`
+  paths, asynchronous tenant approval (`202`/`in_progress`), and admin-branch-monitor queue access;
+  make the delivery-pricing smoke harness launch the installed Chrome channel or an explicit
+  `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`.
+- Dependencies: Phase 340 audit findings; existing API, migration-runner, POS, and web-core test
+  contracts. No new migration or production data change is required; the already-present pending
+  migrations were applied only to the local development landlord database for validation.
+- Acceptance and validation evidence: shared POS source-contract tests passed 4 files/91 tests;
+  targeted API contracts passed 3 suites/13 tests; all four API DB integration suites passed
+  4 suites/37 tests after the local migration runner restored the tenant-bootstrap dependency;
+  delivery-pricing UI smoke passed desktop/mobile and access-gate checks; both `npm ci --dry-run`
+  manifest checks, Node syntax, API/POS/IMS lint, POS production build, migration up-to-date check,
+  healthy local stack (SKUpervisor/POS/Storefront/API/device bridge/MySQL), and `git diff --check`
+  passed. Remaining audit findings are tracked for later phases and are outside this phase's scope.
+- Links: `packages/web-core/src/features/pos/__tests__/readSourceForContract.js`, the four shared
+  POS contract tests, `apps/dgfy-api/tests/storeCheckoutDeliveryFeeThreeEntryPointConsistency.unit.test.js`,
+  `apps/dgfy-api/tests/imageLifecycleFullValidation.test.js`,
+  `apps/dgfy-api/tests/adminTenantLifecycle.integration.test.js`,
+  `apps/dgfy-api/tests/posCheckout.db.integration.test.js`,
+  `scripts/smoke-pos-delivery-pricing-ui.js`, `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, and `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+- Completion date: 2026-09-14. Next eligible phase: 342.
+
+## Phase 342 - MapLibre security upgrade and ESM compatibility
+
+- Initiative/release: Audit remediation / frontend dependency security. Status: completed.
+- Objective and scope: remediate the critical MapLibre XSS advisory (GHSA-jrc7-96c5-q579) in
+  IMS, POS, and Storefront by upgrading `maplibre-gl` from `^5.24.0` to `^6.9.0`, preserving
+  the Chrome 80 browser floor and all existing map, pin-picker, radius, discovery, and tracking
+  behavior. Adapt production imports to MapLibre 6's named ESM exports while retaining test and
+  compatibility support for the prior default-namespace shape. No migration or production data
+  change is required.
+- Dependencies and authority: Phase 341 validation baseline; [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md)
+  (authoritative, last reviewed 2026-09-08); the existing `chrome80Runtime.js` shim remains the
+  runtime guard for MapLibre's `Object.hasOwn` usage. Release note 2026-09-10-01 tracks advisory
+  #1787 and requires the semver-major upgrade.
+- Implementation: updated the three app manifests and lockfiles to `maplibre-gl@6.9.0`; replaced
+  five production default imports with namespace imports and a Reflect-based default fallback in
+  `packages/web-core/src/components/maps/MapPinPicker.jsx`,
+  `apps/dgfy-storefront/src/features/locations/components/DeliveryPinMap.jsx`,
+  `apps/dgfy-storefront/src/discovery/components/StoresMap.jsx`,
+  `apps/dgfy-storefront/src/tracking/TrackingRouteMap.jsx`, and
+  `apps/dgfy-storefront/src/features/tracking/components/DeliveryTrackingView.jsx`.
+- Acceptance and validation evidence: all three app production builds passed; shared MapLibre and
+  radius tests passed (3 files/34 tests); Storefront map tests passed (5 files/25 tests); discovery
+  integration passed (1 file/38 tests); all three `npm audit --omit=dev --audit-level=high` checks
+  report zero vulnerabilities; all three `npm ci --dry-run` lockfile checks passed; IMS/POS/
+  Storefront lint passed with zero errors (existing warnings only); frontend budget gate passed;
+  `git diff --check` passed. The existing large-chunk and dynamic-import notices remain warnings
+  and are outside this security phase.
+- Completion date: 2026-09-14. Next eligible phase: 343.
+
+## Phase 343 - Restore the standalone POS security gate
+
+- Initiative/release: Audit remediation / security validation. Status: completed.
+- Objective and scope: make `apps/dgfy-pos`'s existing `test:security` and `security:all` scripts
+  executable and meaningful. The command referenced three missing files, so Playwright exited with
+  `No tests found` before exercising any security behavior. Add focused unauthenticated boundary,
+  protected-API, input-handling, and response-header coverage at the declared paths. Resolve the
+  high/moderate dev-tooling advisories discovered when the full security command was run. No
+  application authorization or production data behavior was changed.
+- Dependencies and authority: Phase 342 frontend dependency baseline; ADR 0067's browser/runtime
+  guardrails; existing POS Playwright configuration, terminal login selectors, API auth contract,
+  and Vite security-header configuration. No migration is required.
+- Implementation: added
+  `apps/dgfy-pos/tests/e2e/security/security-auth.spec.js`,
+  `apps/dgfy-pos/tests/e2e/security/security-input.spec.js`, and
+  `apps/dgfy-pos/tests/e2e/security/security-headers.spec.js`; corrected the POS `test:security`
+  script to reference those files. Upgraded Vitest to `^4.1.11` in IMS, POS, and Storefront and
+  added the safe `js-yaml@^4.3.2` workspace override, refreshing all three lockfiles.
+- Acceptance and validation evidence: POS `npm run security:all` passed (full audit: 0
+  vulnerabilities; 7/7 browser security tests); IMS, POS, and Storefront full `npm audit
+  --audit-level=high` passed with 0 vulnerabilities; POS unit tests passed 1 file/4 tests; POS
+  lint passed with 0 errors; POS production build passed; all three `npm ci --dry-run` checks
+  passed; the local POS-DGFY stack was restored and verified healthy on ports 5173, 5174, 5175,
+  5000, 5101 with MySQL 3306; `git diff --check` passed. Existing lint/build warnings remain
+  warnings and are outside this phase.
+- Known residual scope: Storefront's independently declared `test:security` paths remain a
+  separate follow-up because this phase closes the confirmed POS gate failure; ordinary PR CI
+  still lacks complete POS/Storefront lint and security job wiring and is the next eligible phase.
+- Completion date: 2026-09-14. Next eligible phase: 344.
+
+## Phase 344 - Stitch POS Items management-panel design
+
+- Initiative/release: Shared POS catalog presentation / Apex POS Terminal & Catalog. Status: completed.
+- Objective and scope: Apply the Stitch screen `POS Items Catalog - Main Panel Only` to the
+  standalone POS Items management route (`?view=items#/terminal`) in the shared
+  `packages/web-core` trunk. Refine the Items tabs, search/filter toolbar, Add/Import actions,
+  compact inventory table, SKU/barcode identification, category/stock/profit columns,
+  price/cost columns with the configured terminal currency, and Edit/Delete action area while
+  preserving item loading, category membership, branch scope, barcode identity, pagination,
+  offline drafts, realtime refresh, and permission behavior.
+- Dependencies and authority: Phase 343; [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+  [ADR 0018](../architecture/adr/0018-barcode-identity-labels-and-scan-routing.md),
+  [ADR 0055](../architecture/adr/0055-tenant-scoped-pos-catalog-realtime-invalidation.md),
+  [ADR 0080](../architecture/adr/0080-item-multi-category-membership.md), and the shared frontend
+  boundaries. The API change is a read-only catalog-ordering support change; no database schema,
+  inventory ownership, or deployment change is included. Internal cost/margin fields from the
+  Stitch reference are intentionally not added to the cashier surface.
+- Implementation: corrected the target from the checkout item picker to
+  `TerminalOperationsWorkspace.jsx`'s `ItemsCatalogWorkspace`/`ItemsWorkspace` path. Applied the
+  Apex presentation only when `VITE_APP_SURFACE=pos`, including the tab strip, toolbar layout,
+  compact table header/rows, footer status, action placement, and a search card matching the
+  reference layout. Price, cost, profit, suggested-price, and form prefixes use the terminal's
+  configured currency symbol rather than a hardcoded display sign. The existing non-POS card
+  presentation remains unchanged. Category management cards now provide the whole-card drag
+  surface for ordering, retain keyboard activation, disable ordering during search/save, and
+  isolate Edit/Activate/Delete controls from drag activation. The card uses a visible standard
+  cursor in the POS browser while retaining touch dragging. Removed the mistaken checkout
+  presentation changes and made the POS selling folder strip honor the same persisted
+  `sort_order`, including refresh after the category-order invalidation event. Extended the same
+  primary-category order to POS Terminal All Items, paginated POS Items Catalog All pages before
+  slicing, and Storefront All product/service views across F&B, Retail, Simple, and Services modes;
+  unassigned items sort last, while explicit price sorts and category-specific filters retain their
+  existing precedence. Added focused POS Items/category presentation contracts without changing
+  item mutations, inventory data ownership, category membership, barcode routing, or permission
+  gates.
+- Acceptance and validation evidence: focused POS Items tests passed 5 files / 38 tests, including
+  the table structure contract; the POS catalog utility and category suites passed 2 files / 22
+  tests, including saved folder-strip ordering, whole-card drag semantics, and action-button
+  isolation; the category-first regression suites passed: web-core 3 files / 26 tests, Storefront
+  3 files / 31 tests, and API 2 suites / 14 tests. POS, SKUpervisor, and Storefront production
+  builds passed; POS and Storefront lint passed with zero errors (Storefront has existing warnings),
+  and the changed API repository lint passed. API-wide lint remains blocked by the pre-existing,
+  unrelated `src/modules/pos/services/posTerminalDeviceEnrollmentService.js:740` error. Docs, ADR,
+  architecture, and `git diff --check` gates passed. The authenticated local browser verified the
+  exact POS route `http://localhost:5174/?view=items#/terminal` for Masu Cafe: management All
+  categories page 1 and page 2, terminal All Items, saved category-strip ordering, and a temporary
+  category reorder persisted through reload and was restored to the original order. Storefront
+  All ordering was also verified across F&B, Retail, Simple, and Services modes, with price-sort
+  checks in the applicable catalog modes. No production data or deployment state was changed.
+- Links: `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  `packages/web-core/src/features/pos/hooks/usePosCatalogWorkflow.js`,
+  `packages/web-core/src/features/pos/utils/posCatalogWorkflow.js`,
+  `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/tests/posRepository.catalogFolderWidening.test.js`,
+  `apps/dgfy-api/tests/posRepository.catalogPagination.test.js`,
+  `apps/dgfy-storefront/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.js`,
+  `apps/dgfy-storefront/src/modes/services/storefront/model/servicesStorefrontViewModel.js`,
+  `apps/dgfy-storefront/src/modes/services/storefront/components/StorefrontServicesCatalog.jsx`,
+  `packages/web-core/src/features/pos/__tests__/posItemsWorkspacePresentation.contract.test.js`,
+  `packages/web-core/src/features/pos/__tests__/categoryPlacement.behavior.test.jsx`,
+  `packages/web-core/src/features/pos/utils/__tests__/posCatalogWorkflow.test.js`,
+  `packages/web-core/src/features/pos/__tests__/itemsPagination.contract.test.js`, and
+  `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md`.
+- Completion date: 2026-09-14. Next eligible phase: 348, after Phase 347's pending physical iMin
+  validation is closed.
+
+## Phase 345 - Device and location policy contract
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: completed.
+- Objective and scope: Resolve the meaning of "area", supported clients, device-proof boundaries,
+  enforcement/recovery/offline policy, lifecycle values, and the complete protected-operation
+  inventory before runtime work begins.
+- Dependencies: Phase 344 scope was reviewed; this documentation-only contract introduces no
+  runtime dependency.
+- Implementation: created the authoritative [POS Device and Location Access Contract](POS_DEVICE_LOCATION_ACCESS_CONTRACT.md),
+  selecting tenant branch/location (`location_id`) as the area boundary; making strict device
+  enforcement opt-in; limiting the initial strict client to the iMin wrapper; defining one active
+  device per strict terminal; freezing activation, challenge, request-proof, session, and offline
+  lease lifetimes; preventing strict-terminal branch switching; separating cashier identity,
+  device proof, operator sessions, shifts, and hardware availability; and preserving a privileged
+  admin recovery surface. Amended ADRs 0028, 0031, 0044, and 0053 to reconcile the contract with
+  the existing default and hardware-driver rules.
+- Authority: ADRs 0028, 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, plus the mandatory
+  architecture and governance documents linked by the contract and implementation plan.
+- Acceptance and validation evidence: the contract contains the client capability matrix, lifecycle
+  and replay values, recovery/offline rules, POS route-family inventory, data/API boundary, and
+  test matrix; `npm run check:architecture` passed (54 modules/571 files and 95 controllers);
+  `npm run check:docs` passed (30 governed docs and 89 ADRs); `git diff --check` passed. No runtime
+  tests were required because Phase 345 changes policy documentation only.
+- Completion date: 2026-09-14. Next eligible phase: 346.
+
+## Phase 346 - Durable POS device enrollment
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: completed.
+- Objective and scope: Add tenant migrations, enrollment/challenges, revocation and all-entry-point backend enforcement.
+- Dependencies: Phase 345; Phase 344's authenticated visual acceptance is now completed.
+- Contract, affected files and required tests: [implementation plan](../../Implementation.md#phase-346---durable-enrollment-and-backend-enforcement), [compliance declaration](../compliance/impact-declarations/2026-09-14-pos-device-enrollment-phase-346.md), tenant device models/migration/schema repair, POS repositories/services/use cases/controllers, DGFY/POS/mobile/auth route gates, and focused security/transport tests.
+- Authority: ADRs 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, linked with architecture/governance references in the implementation plan.
+- Implementation: added tenant-local enrollment, activation, challenge and audit persistence; one-use hashed activation/challenge handling with transaction locks and atomic consumption; ES256 proof binding to tenant/device/terminal/location/session/purpose/method/path/body; strict policy enforcement across POS session/login, protected POS routes, refresh/logout hints, DGFY SSO, and mobile sync; admin issue/list/revoke/replace APIs; and a pre-auth first-enrollment bootstrap route using the administrator-issued activation code. Browser/Electron/bridge activation is rejected on strict terminals until their approved client phases.
+- Acceptance and validation evidence: 14 focused Jest suites passed (148 tests), including fresh/idempotent tenant migration fanout, tenant mismatch, expiry/replay, wrong key, duplicate terminal, revocation, policy-off compatibility, copied-session proof denial, strict-client rejection, DGFY challenge authorization, bootstrap route/use-case coverage, POS cashier-login route ordering, and mobile POS handler/bootstrap contracts. API lint passed with 0 errors (12 pre-existing warnings); `node --check` passed for all changed backend/migration files; `npm run check:architecture`, `npm run check:docs`, and `git diff --check` passed. The Phase 346 declaration passes the compliance checker against its isolated changed-file set; aggregate `npm run check:compliance` remains blocked by unrelated dirty-worktree declaration surface mismatches in Phases 333/334/338/339 and is outside this phase's files.
+- Completion date: 2026-09-14. Next eligible phase: 347.
+
+## Phase 347 - iMin device proof
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: in_progress.
+  Runtime work was explicitly approved in parallel while Phase 344's visual acceptance was pending;
+  Phase 344 is now completed.
+- Objective and scope: Implement Keystore signing, origin restrictions and enrollment lifecycle for approved Android clients.
+- Dependencies: Phase 346.
+- Contract, affected files and required tests: [implementation plan](../../Implementation.md#phase-347---imin-device-proof), [compliance declaration](../compliance/impact-declarations/2026-09-14-imin-device-proof-phase-347.md).
+- Authority: ADRs 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, linked with architecture/governance references in the implementation plan.
+- Acceptance and validation required: Signature interoperability, key-loss/upgrade/replay tests and physical iMin proof.
+- Evidence: AndroidX WebKit origin-bound proof transport, Android Keystore ES256 identity/signing service, strict canonical-request serializer, activation/challenge API helpers, backup exclusions, and focused origin/protocol tests implemented. `./gradlew.bat test` passed all three prod/staging/dev debug unit-test suites; `./gradlew.bat assembleDevRelease` and `./gradlew.bat assembleStagingRelease` passed including lint-vital and produced release APKs. Physical iMin validation, including key loss, signed upgrade preservation, API replay consumption, tenant switch denial, and authenticated end-to-end enrollment remain pending. Completion date: not completed.
+
+## Phase 348 - POS device controls and area policy
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: planned.
+- Objective and scope: Implement device administration, activation/login states and the area policy selected in Phase 345.
+- Dependencies: Phases 346-347.
+- Contract, affected files and required tests: [implementation plan](../../Implementation.md#phase-348---pos-controls-and-location-policy).
+- Authority: ADRs 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, linked with architecture/governance references in the implementation plan.
+- Acceptance and validation required: Permission, direct-API, area-denial, recovery, company-switch and rendered desktop/mobile tests.
+- Evidence: planning only; implementation tests not run. Completion date: not completed.
+
+## Phase 349 - LAN bridge command authorization
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: planned.
+- Objective and scope: Reject unauthenticated hardware commands; bind command authority and audit to the correct bridge/terminal.
+- Dependencies: Phase 346; Phase 345 runtime matrix.
+- Contract, affected files and required tests: [implementation plan](../../Implementation.md#phase-349---lan-bridge-command-authorization).
+- Authority: ADRs 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, linked with architecture/governance references in the implementation plan.
+- Acceptance and validation required: Unauthorized/replayed/tampered command denial; print/drawer audit and hardware-absence regression tests.
+- Evidence: planning only; implementation tests not run. Completion date: not completed.
+
+## Phase 350 - Device access hardening and rollout
+
+- Initiative/release: POS Device and Location Access / opt-in security release. Status: planned.
+- Objective and scope: Complete security/financial/offline regressions, hardware UAT, migration validation and opt-in rollout runbook.
+- Dependencies: Phases 346-349.
+- Contract, affected files and required tests: [implementation plan](../../Implementation.md#phase-350---hardening-and-controlled-rollout).
+- Authority: ADRs 0031, 0044, 0026, 0039, 0043, 0053, 0073 and 0076, linked with architecture/governance references in the implementation plan.
+- Acceptance and validation required: All phase acceptance gates, relevant builds/lint/tests, architecture/docs/compliance, physical UAT and recovery evidence.
+- Evidence: planning only; implementation tests not run. Completion date: not completed.
+
+## Phase 351 - Business Admin / Back Office functional parity
+
+- Initiative/release: UTAK benchmark parity / POS-native Business Admin. Status: completed.
+- Objective and scope: Deliver the tenant-scoped Business Admin workspace and API read models for
+  the fifteen capability slices documented in [backoffice.md](backoffice.md): dashboard,
+  transactions, sales reporting, fiscal evidence, Product Mix, catalog/menu visibility, inventory,
+  expenses gate, cash drawer, customers, workforce/attendance gate, audit, multi-store monitoring,
+  online orders, and business configuration. Use POS 5174 as the interim back-office surface until
+  the dedicated Back Office product in issue #1354 ships; do not revive the stale pre-split web app.
+- Dependencies: Existing POS transaction/report, catalog/inventory/FIFO, F&B, customer, fiscal,
+  DGFY membership, commerce-payment, and tenant authorization contracts; Phase 344's authenticated
+  visual acceptance remains an independent repository gate.
+- Implementation: Added the `apps/dgfy-api/src/modules/businessAdmin` read/control-plane module,
+  `/api/v1/business-admin` routes, additive tenant migrations `20260914000005` through
+  `20260914000009`, current POS adjustment/payment adapters, and the lazy-loaded POS
+  `BusinessAdminPage` at `/business-admin/*` and `/backoffice/*`. The workspace exposes branch,
+  all-company, order, customer, report/export, FIFO valuation, low-stock, recipe, workforce, shift,
+  fiscal, notification, audit, approval, payment-monitoring, onboarding, Storefront, and F&B views.
+  Expenses, biometric selfie attendance, BIR accreditation, and generic refund/force-close approval
+  execution remain explicit owner/policy gates; no duplicate mutation path was introduced.
+- Authority: [START_HERE](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md),
+  [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), amended [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md),
+  [ADR 0029](../architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md),
+  [ADR 0009](../architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md),
+  [ADR 0019](../architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md),
+  [ADR 0020](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md),
+  [ADR 0023](../architecture/adr/0023-front-facing-dgfy-customer-account.md),
+  [ADR 0040](../architecture/adr/0040-weighted-average-cost-valuation-and-variance-analytics.md),
+  [ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+  [ADR 0052](../architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md), and
+  [ADR 0073](../architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md).
+- Acceptance and validation evidence: migrations applied successfully; Business Admin contract
+  tests passed; API lint passed; POS lint and production build passed; authenticated local smoke
+  returned 200 for bootstrap, overview, reports, valuation, low stock, recipes, customers, orders,
+  shifts, workforce, fiscal, notifications, approvals, audit, and payment monitoring; the
+  unauthenticated route returned 401; desktop (1440px) and mobile (390px) Playwright renders showed
+  complete navigation, working Orders navigation, no console/request errors, and no horizontal
+  page overflow; targeted compliance and API-contract checks passed; documentation and
+  architecture guardrails passed; `git diff --check` passed; and the local six-service stack was
+  healthy. Expenses, selfie attendance, generic approval execution, BIR/CAS accreditation,
+  provider payout settlement, and optional heartbeat remain formally deferred owner/policy gates
+  in [backoffice.md](backoffice.md), not unimplemented duplicate paths.
+- Completion date: 2026-09-15. Current phase: 351 completed. Next eligible phase for this initiative:
+  360, only after the deferred owner/policy gates receive explicit contracts and approval.
+
+## Phase 352 - iMin POS interaction performance baseline
+
+- Initiative/release: iMin POS interaction performance / baseline and latency remediation. Status: in_progress. Approved 2026-09-14.
+- Objective and scope: Establish a repeatable physical-device baseline for ordinary button feedback, modal opening, operations-tab changes, catalog search/navigation, image decode/scroll, and iMin printer/drawer boundaries. This phase is measurement-only; it does not change runtime behavior, APIs, schemas, hardware protocols, or production data.
+- Dependencies: None from Phase 351; this independent baseline was approved in parallel with the completed Phase 351 implementation. Phase 353 depends on Phase 352's physical evidence.
+- Contract and evidence report: [iMin POS performance baseline](POS_IMIN_PERFORMANCE_BASELINE_PHASE_352.md).
+- Authority: [START_HERE](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0043](../architecture/adr/0043-standalone-native-hardware-pos-runtime.md), [ADR 0053](../architecture/adr/0053-pluggable-pos-hardware-device-drivers.md), and [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md).
+- Implementation: Recorded the current iMin performance profile, known timer schedules, image/blur behavior, native bridge boundary, production build metadata, chunk-size baseline, and device measurement matrix. No runtime source was modified for Phase 352.
+- Acceptance and validation evidence: POS production build passed in 34.84 seconds; focused iMin/profile and catalog-performance contracts passed (2 files, 13 tests); `adb devices -l` found no attached physical iMin, so device model/WebView/APK/frame/memory/network/bridge latency evidence remains pending. Phase 352 is not complete.
+- Completion date: not completed. Current phase: 352. Next eligible phase: 352 until the physical-device evidence and repeatable trace acceptance gates are recorded.
+
+## Phase 353 - iMin POS interaction latency remediation
+
+- Initiative/release: iMin POS interaction performance / confirmed UI-cost remediation. Status: in_progress. Approved 2026-09-14.
+- Objective and scope: Remove the confirmed iMin operations-tab swap delay, eliminate POS catalog-card blur that makes disabled items unreadable, and verify that custom modal overlays use the shared no-backdrop-blur profile.
+- Dependencies: Phase 352 source baseline; physical iMin evidence remains pending. Source remediation was explicitly approved in parallel with the open physical-device gate.
+- Contract and affected files: [Phase 352 baseline](POS_IMIN_PERFORMANCE_BASELINE_PHASE_352.md), iMin performance contracts, `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`, `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`, and `packages/web-core/src/index.css`.
+- Authority: [START_HERE](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0043](../architecture/adr/0043-standalone-native-hardware-pos-runtime.md), [ADR 0053](../architecture/adr/0053-pluggable-pos-hardware-device-drivers.md), and [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md).
+- Implementation: Added an iMin-only immediate commit path to both Shift Controls and Settings tab handlers while preserving the browser transition path; removed the POS disabled-card `blur-[0.5px]`; disabled the locked-surface `blur-[2px]` filter under the iMin marker; and added contracts for both handlers, readable cards, locked surfaces, and custom modal overlay coverage.
+- Acceptance and validation evidence: Focused iMin/profile and catalog-performance contracts passed (2 files, 16 tests); terminal, modal, catalog-card, and layout regressions passed (5 files, 111 tests); POS lint passed; POS production build passed in 28.60 seconds; local Playwright POS PWA smoke passed (2 tests, Chrome, one worker); docs/ADR checks, architecture guardrails, and targeted diff checks passed. Authenticated physical iMin trace comparison remains pending, so this phase cannot claim measured device latency improvement yet.
+- Completion date: not completed. Source validation is now recorded; authenticated physical iMin trace comparison remains pending. Phase 353 remains open for physical closure, and the next independent iMin phase is 358.
+
+## Phase 354 - Cashier location access policy reconciliation
+
+- Initiative/release: Cashier location access / single active operator and catalog permissions. Status: completed. Approved 2026-09-14.
+- Objective and scope: Freeze tenant-scoped branch authorization, one active operator, handoff/attendance/shift boundaries, and view-only cashier defaults with explicit edit delegation. Documentation only; no runtime or stored-grant changes.
+- Dependencies: Existing ADRs 0031, 0073, 0020 and 0029; independent of pending physical iMin validation and already-completed Phase 351 runtime acceptance.
+- Contract and implementation: [Phase 354 contract](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md), dated [ADR 0020 amendment](../architecture/adr/0020-mode-aware-rbac-and-role-presets.md), [cashier flow](POS_CASHIER_TERMINAL_FLOW.md), and [device/location contract](POS_DEVICE_LOCATION_ACCESS_CONTRACT.md). Reconciles the current forced cashier edit grant against the approved view-only target; records mixed-feature, stored-permission and offline gaps without claiming them fixed.
+- Authority: [START_HERE](../START_HERE.md), [boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [governance](../architecture/ARCHITECTURE_GOVERNANCE.md), and the ADRs linked in the contract. No new architecture exception.
+- Acceptance and validation required: Consistent actor/scenario matrix, runtime/target separation, ADR amendment, phase dependencies, docs/ADR/architecture and changed-file whitespace gates.
+- Evidence: Policy, actor/scenario matrix, ADR amendment and dependent phase entries reconciled. `npm run check:docs` passed (30 governed docs / 89 ADRs); `npm run check:architecture` passed (55 modules / 615 code files / 98 controllers); scoped `git diff --check` passed. Documentation-only completion does not claim new runtime, live tenant or physical-device acceptance. Completion date: 2026-09-14. Current phase: 354 completed. Next eligible phase for this initiative: 355, planned and awaiting implementation approval.
+
+## Phase 355 - Cashier location backend enforcement
+
+- Initiative/release: Cashier location access / single active operator and catalog permissions. Status: completed.
+- Objective and scope: Repair demonstrated cross-location/operator/mixed-lifecycle gaps using existing constraints; replace forced cashier editing with explicit delegation and reconcile existing stored grants through an auditable plan.
+- Dependencies: Phase 354; runtime implementation approval. Reuse Phase 346 device gates; do not rebuild them.
+- Authority, contract and affected files: [Phase 354 contract](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md), ADRs 0031/0073/0020/0029; existing POS use cases/repositories, terminal policy, user permissions/defaults and permission/location updates listed there.
+- Acceptance and validation required: Direct-API permission and scope tests, all lifecycle flag combinations, real database concurrency and rollback, same-terminal resume, stale authority, stored-grant review and no partial financial/stock effects.
+- Evidence: Backend implementation completed in `posUserOperatingScope.js`, `mobilePosOperatingScope.js`, POS operator/lifecycle composition, fresh mutation authorization, POS SSO grant enforcement, cashier permission resolution and the read-only grant/index audit. Focused regression: 12 suites / 86 tests passed; migrated MySQL concurrency and rollback suite: 19 tests passed across legacy/operator and all lifecycle combinations; scoped ESLint passed. `npm run check:docs` passed (30 governed docs / 89 ADRs); `npm run check:architecture` passed (55 modules / 617 code files / 98 controllers); scoped compliance declaration and API-contract checks passed; local audit found 15 active tenant databases, 11 cashier records, zero ambiguous saved item-edit grants and no missing required operating indexes. Live request-time compliance preflight was not executed for this local-only change and remains a promotion gate. Completion date: 2026-09-15. Next eligible phase for this initiative: 356.
+
+## Phase 356 - Cashier location and permission UI
+
+- Initiative/release: Cashier location access / single active operator and catalog permissions. Status: in_progress. Approved 2026-09-15.
+- Objective and scope: Reuse branch assignments and terminal controls; display actionable operation conflicts and operating/monitoring scope; replace cashier-role item-edit shortcuts with effective permissions.
+- Dependencies: Phase 355; coordinate overlapping Phase 351 admin and Phase 348 device UI work.
+- Authority, contract and affected files: [Phase 354 contract](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md), ADRs 0031/0073/0020/0029; existing POS TerminalPage, workspace and user/permission flows.
+- Acceptance and validation required: Two independent browser contexts, API denial handling, permission refresh/draft preservation, delegated editor/admin states, shared-catalog impact labels, desktop/mobile rendering and affected builds.
+- Implementation: POS now derives catalog editing from explicit `items:edit`; the edit modal refreshes effective permissions after a 403, preserves the draft and disables Save when access is unavailable; shared catalog impact is labeled; server-rejected shift relocation returns safe current/requested register context with refresh guidance and no takeover path.
+- Evidence: Focused Phase 356 regression passed (4 files / 42 tests); full POS web-core regression passed (151 files / 979 tests); POS and IMS production builds passed; authenticated local admin rendering passed for Items/Edit Item on desktop and a 375px mobile viewport with no browser error/warning logs; `npm run check:docs`, `npm run check:architecture`, and `git diff --check` passed. POS and IMS lint commands passed (IMS retains 28 pre-existing warnings). Direct shared-package lint still reports five pre-existing compatibility/legacy findings outside this patch (three `.at` test usages, one existing unescaped entity, and the existing location-reset `set-state-in-effect` warning). Two independent authenticated contexts and direct API-denial evidence remain pending. Completion date: not completed. Next eligible phase after completion: 357.
+
+## Phase 357 - Cashier location hardening and acceptance
+
+- Initiative/release: Cashier location access / single active operator and catalog permissions. Status: in_progress. Approved 2026-09-15.
+- Objective and scope: Prove the contract matrix with persisted-state, concurrent-request, rendered UI, grant reconciliation, recovery and offline/reconnect evidence before controlled rollout.
+- Dependencies: Phases 355-356; relevant Phases 347-350 for strict physical-device acceptance.
+- Authority, contract and affected files/tests: [Phase 354 contract](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md), [Phase 357 acceptance record](POS_CASHIER_LOCATION_ACCESS_PHASE_357.md), ADRs 0031/0073/0020/0029; `apps/dgfy-api/tests/posCashierLocationAccess.phase357.db.integration.test.js`, `apps/dgfy-api/scripts/audit-pos-cashier-location-access-phase357.js`, `apps/dgfy-api/tests/auditPosCashierLocationAccessPhase357.test.js`, and `packages/web-core/src/features/pos/__tests__/phase357OfflineReconnect.contract.test.js`.
+- Acceptance and validation required: Actual tenant index/flag proof, complete matrix, no duplicate money/stock effects, architecture/docs/ADR/scoped compliance, affected builds and honest physical/offline limitations.
+- Implementation: Added disposable migrated-tenant acceptance coverage for exact branch grants, enabled/disabled lifecycle behavior, same-terminal idempotent resume, independent cashiers, concurrent acquisition, revocation/inactive-user fail-closed behavior, persisted actor attribution, financial-count invariants and generated operating indexes. Added a loopback-only, read-only tenant grant/state/index audit with explicit ambiguous-grant reporting and no automatic rewrite. Added reconnect tests proving stale-authority rejection and online-only shift acquisition retain queued evidence.
+- Evidence: New audit unit gate passed (2 tests); disposable real-MySQL Phase 357 matrix passed (3 acceptance cases / 5 tests); offline/reconnect Vitest gate passed (2 tests); focused new backend ESLint passed; the focused Phase 355 permission/API, lifecycle, operator-authority and checkout DB regression set passed (7 suites / 68 tests); shared POS/offline/UI focused coverage passed (7 files / 57 tests); the loopback-only read-only tenant audit passed with required indexes healthy and no actor-orphan findings in scanned active tenants; POS and IMS production builds passed; `npm run smoke:pos-terminal-ui` passed at desktop/tablet/mobile; `npm run audit:backend-tests:check`, `npm run check:docs`, `npm run check:architecture`, scoped compliance, and `git diff --check` passed. The full backend matrix remains non-green because six unrelated existing fast-tier suites fail and the runner then hits its existing overlong template-database-name provisioning error; those failures are not Phase 357 evidence and were not modified. Physical iMin/deployed tenant, independent two-cashier browser, live direct-API and request-time compliance-preflight evidence remain pending; this phase is not production-ready and has no completion date. Next eligible new phase number: 358, subject to ledger recheck.
+
+## Phase 358 - iMin POS search and image efficiency
+
+- Initiative/release: iMin POS interaction performance / catalog search and image efficiency. Status: in_progress. Approved 2026-09-14.
+- Objective and scope: Reduce avoidable iMin catalog-search waiting and make the POS catalog card request the smallest available responsive image variant, while preserving browser behavior, pending upload previews, POS-specific flat overrides, catalog authorization, and financial/cart behavior.
+- Dependencies: Phase 352 source baseline and Phase 353 interaction-remediation source work. This independent iMin performance slice does not depend on the cashier-access implementation phases 355-357. Physical iMin trace evidence remains the validation gate for measured device claims.
+- Contract and affected files: [Phase 352 baseline](POS_IMIN_PERFORMANCE_BASELINE_PHASE_352.md), [iMin performance contracts](../../packages/web-core/src/features/pos/__tests__/iminPerformanceProfile.contract.test.js), [catalog performance contracts](../../packages/web-core/src/features/pos/__tests__/posCatalogPerformance.contract.test.js), [catalog workflow](../../packages/web-core/src/features/pos/hooks/usePosCatalogWorkflow.js), [POS image renderer](../../packages/web-core/src/features/pos/components/PosItemImage.jsx), and their focused behavior tests.
+- Authority: [START_HERE](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0043](../architecture/adr/0043-standalone-native-hardware-pos-runtime.md), [ADR 0053](../architecture/adr/0053-pluggable-pos-hardware-device-drivers.md), and [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md).
+- Implementation: Kept the browser catalog delay at 250 ms; iMin now schedules the initial/cleared catalog read on the next task and coalesces non-empty search reads at 150 ms after the deferred query changes. `PosItemImage` now uses the existing responsive `<picture>` renderer for persisted variant-backed images, including fallback `srcSet` and AVIF/WebP sources; pending previews and flat POS overrides remain single-source.
+- Acceptance and validation evidence: Focused image, catalog workflow, iMin profile, and catalog-performance tests passed in the recorded source run (5 files, 42 tests); current revalidation of the same five files passed 33 tests, shared-trunk ESLint passed with zero errors, POS lint passed, and POS/IMS/Storefront production builds passed in 19.45/37.18/26.49 seconds. The only correction in this revalidation was a test-regex lint fix; runtime behavior remained unchanged. Physical iMin trace comparison, including request-to-first-result and image decode/paint timings, remains pending; `adb devices -l` exposes only a Pixel Tablet emulator, not the target iMin. No chunk split was introduced because the existing large workspace chunk is not itself proof of this phase's interaction latency.
+- Completion date: not completed. Phase 358 remains open for physical iMin acceptance; Phase 359 is the source-validation continuation while that device gate remains pending.
+
+## Phase 359 - iMin async receipt bridge compatibility
+
+- Initiative/release: iMin POS interaction performance / native bridge readiness. Status: in_progress. Approved 2026-09-15.
+- Objective and scope: Ensure receipt printing reaches every supported iMin bridge shape, including async-only bridges that expose `printReceiptAsync` or `printReceiptWithLogoAsync` without the legacy synchronous `printReceipt` method. This is a narrow compatibility correction; it does not change receipt formatting, native command timeouts, drawer semantics, or browser behavior.
+- Dependencies: Phase 358 source validation; Phase 352/353 physical iMin evidence remains an independent acceptance gate. This source-only continuation does not depend on cashier-access phases 355-357.
+- Contract and affected files: [receipt bridge](../../packages/web-core/src/features/pos/utils/iminHardwareBridge.js) and [receipt bridge behavior tests](../../packages/web-core/src/features/pos/utils/__tests__/iminHardwareBridge.orderTicket.test.js).
+- Authority: [START_HERE](../START_HERE.md), [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md), [Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md), [ADR 0043](../architecture/adr/0043-standalone-native-hardware-pos-runtime.md), [ADR 0053](../architecture/adr/0053-pluggable-pos-hardware-device-drivers.md), and [ADR 0067](../architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md).
+- Implementation: Broadened the receipt bridge capability guard to accept the async logo, async text, synchronous logo, and synchronous text methods already supported by the dispatch logic; added a regression that resolves an async-only bridge through the `dgfy:imin-command-result` final-result event.
+- Acceptance and validation required: Focused bridge regression, adjacent POS bridge/hardware tests, POS lint/build, docs/ADR and architecture checks, targeted diff whitespace check, and physical iMin confirmation that an async-only receipt command is accepted and finalized without fallback.
+- Evidence: Focused bridge tests passed (2 files, 17 tests); adjacent POS bridge/hardware and iMin contract tests passed (9 files, 83 tests); POS lint passed; POS production build passed in 53.70 seconds; `npm run check:docs` passed (30 governed docs / 89 ADRs); `npm run check:architecture` passed (55 modules / 617 code files / 98 controllers); and `git diff --check` passed. `adb devices -l` reports no attached physical iMin, so device-level latency and native bridge confirmation cannot yet be recorded. Completion date: not completed. Next eligible phase: 359 until physical bridge evidence is recorded.
+
+## Phase 360 - Settings inventory and ownership
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: completed.
+- Objective and scope: Map every existing field, API, permission, storage location and scope: business, branch, terminal or personal. Identify overlapping device/access work.
+- Dependencies: Existing Phase 351 workspace; reconcile overlapping Phase 348 device UI and Phase 356 permissions UI work.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Every current setting has an explicit destination; no missing controls. Follow the plan's validation and permission/ownership requirements.
+- Evidence: The field-by-field inventory is recorded in [backoffice.md](backoffice.md#phase-360-inventory-baseline-completed-2026-09-15), including generic settings keys, non-`system_settings` APIs, permissions, storage owners, tenant/branch/terminal/personal scope, Phase 348/356 overlaps, and explicit terminal-owned/backend-only exclusions. `node scripts/lint-docs.js` passed; `npm run check:architecture` passed; and `git diff --check -- docs/features/backoffice.md docs/features/IMPLEMENTATION_PHASE_LEDGER.md` passed. No runtime files, setting values, schema, or data migration changed.
+- Completion date: 2026-09-15. Current phase: 360 completed. Next eligible phase: 361, pending separate implementation approval.
+
+## Phase 361 - Extract reusable settings forms
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: completed.
+- Objective and scope: Separate forms and loading/saving logic from the large terminal workspace. Reuse shared components where both surfaces need them.
+- Dependencies: Phase 360.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Existing POS forms still work; no duplicated business logic. Follow the plan's validation and permission/ownership requirements.
+- Implementation: Extracted the reusable settings model to `packages/web-core/src/features/pos/utils/settingsWorkspaceModel.js` and delegated hydration/readback, POS and Storefront payload construction, discount/field validation, terminal-registry rules, Storefront list/object-row mutations, and location payload/lead-time validation from `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`. Existing specialized settings cards remain reusable and canonical; the visual editors remain in POS pending Phase 363.
+- Evidence: `apps/dgfy-pos/tests/unit/settingsWorkspaceModel.contract.test.js` passed (4 tests); shared POS settings contract suites passed (3 files, 15 tests); POS lint passed; POS production build passed (40.30 seconds, existing dynamic-import/chunk-size warnings only); documentation lint, architecture checks, and the changed-file whitespace check passed. No API contract, setting key, storage owner, schema, or data migration changed.
+- Completion date: 2026-09-15. Current phase: 361 completed. Next eligible phase: 362, pending separate implementation approval.
+
+## Phase 362 - Back Office access and navigation
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: completed.
+- Objective and scope: Add settings routes, section permissions, tenant/branch context and unsaved-change protection.
+- Dependencies: Phase 361.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Authorized users can configure the business without opening a cashier shift; unauthorized API requests are rejected. Follow the plan's validation and permission/ownership requirements.
+- Implementation: Added server-projected `settings_sections` capabilities to the Business Admin bootstrap using the existing settings, user, attendance, branch, register, and downpayment permissions. Added nested `/business-admin/settings/:section` and `/backoffice/settings/:section` navigation in the POS Business Admin page, with tenant-wide versus branch scope labels, authenticated branch-context normalization, canonical shift-exempt POS settings handoffs, and internal/`beforeunload` unsaved-change protection. Existing owning API permission gates remain authoritative; no settings keys, storage owners, schemas, or write contracts changed.
+- Evidence: `apps/dgfy-api/tests/businessAdmin.contract.test.js` passed (6 tests, including section capability projection and bootstrap scope); `apps/dgfy-pos/tests/unit/businessAdminSettingsModel.contract.test.js` passed (4 tests); API lint passed; POS lint passed. No data migration was required.
+- Completion date: 2026-09-15. Current phase: 362 completed. Next eligible phase: 363.
+
+## Phase 363 - Migrate configuration editors
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: completed.
+- Objective and scope: Move the configuration forms, including validation, uploads, save feedback and reload/readback, into the nested Business Admin settings routes while preserving POS ownership.
+- Dependencies: Phase 362.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Every migrated form saves successfully and displays the persisted value after refresh. Follow the plan's validation and permission/ownership requirements.
+- Implementation: Embedded the exported `SettingsWorkspace` in `apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx` for Business & receipts, POS configuration, Storefront, dedicated Delivery pricing, branch/location settings, Attendance, Payments, Registers, and Team & access. Added section-specific tab allow-lists, server-projected editor-user permissions, read-only fieldsets/guards, branch location filtering, shared dirty-draft reporting, and a Team access editor that reuses canonical user, cashier, employee, credit, delivery-personnel, discount-authorization, and Day Close APIs. Extended `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx` and its reusable settings cards without changing setting keys or storage owners; terminal queue/sound/device/shift/drawer/checkout controls remain POS-only.
+- Evidence: shared editor/navigation behavior suites passed (6 files, 27 tests); shared POS settings contract suites passed (6 files, 98 tests); `apps/dgfy-api/tests/businessAdmin.contract.test.js` passed (7 tests); `apps/dgfy-pos/tests/unit/businessAdminSettingsModel.contract.test.js` passed (6 tests); POS lint passed; POS production build passed (3,009 modules, existing dynamic-import/chunk-size warnings only); architecture checks passed (55 modules, 617 code files, 98 controllers); documentation/ADR checks passed (30 governed docs, 89 ADRs); scoped changed-file whitespace check passed. No data migration was required. Calculated/free delivery modes remain visibly non-active at checkout because their runtime contract is not yet implemented.
+- Completion date: 2026-09-15. Current phase: 363 completed. Next eligible phase: 364.
+
+## Phase 364 - Switch POS entry points
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: completed.
+- Objective and scope: Replace migrated configuration screens with Back Office links. Retain device and operational controls. Refresh affected POS settings after changes.
+- Dependencies: Phase 363.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Existing links remain usable; active carts/shifts survive navigation; settings reach the correct terminal/branch. Follow the plan's validation and permission/ownership requirements.
+- Implementation: Switched the POS sidebar's administrator Settings entry to the scoped Business Admin settings route while retaining the legacy path for cashiers, onboarding, and direct links. Added a dedicated POS Terminal Setup view for terminal registry and branch-binding policy plus local queue/sound controls. Business Admin saves now publish versioned tenant/branch metadata over local event, storage, and BroadcastChannel delivery; the open POS terminal subscribes and refreshes user, terminal, setup, location, and operational context without changing the current view, cart, shift, or terminal. The canonical Team & access modal now emits the same update after role, permission, invitation, status, branch-grant, bulk, removal, and ownership mutations.
+- Evidence: `apps/dgfy-pos/tests/unit/businessAdminSettingsSync.contract.test.js` and `businessAdminSettingsModel.contract.test.js` passed (2 files, 8 tests); the shared Back Office navigation suite passed (6 files, 83 tests); the full POS suite passed (4 files, 16 tests); POS lint passed; POS production build passed (3,010 modules, existing dynamic-import/chunk-size warnings only); documentation/ADR checks passed (30 governed docs, 89 ADRs); architecture checks passed (55 modules, 617 code files, 98 controllers); and `git diff --check` passed. No data migration was required.
+- Completion date: 2026-09-15. Current phase: 364 completed. Next eligible phase: 365.
+
+## Phase 365 - Hardening and acceptance
+
+- Initiative/release: POS settings migration into Back Office / planned release. Status: in_progress.
+- Objective and scope: Test permissions, company switching, branch isolation, concurrent edits, offline behavior, desktop/mobile layouts and affected builds.
+- Dependencies: Phase 364.
+- Contract, authority and implementation targets: [Back Office settings migration plan](backoffice.md#pos-settings-migration-into-back-office), including Architecture Boundaries, Architecture Governance, ADR 0071 and ADR 0031, and the existing SettingsWorkspace and BusinessAdminPage.
+- Acceptance and validation required: Complete field-by-field migration evidence, successful save/readback tests and documented rollback. Follow the plan's validation and permission/ownership requirements.
+- Evidence: Phase 365 implementation is in progress. Existing `updated_at`/
+  `last_known_updated_at` contracts now protect generic settings, downpayment,
+  and tenant-location writes with stale-write 409 responses; the shared POS
+  settings model sends versions and forces readback after successful writes; and
+  Business Admin refresh signals fail closed for mismatched tenant/branch
+  metadata. API concurrency/validator/use-case tests passed (7 suites, 101
+  tests), API permission/business-admin contracts passed (2 suites, 10 tests),
+  the configured POS suite passed (5 files, 21 tests), and selected shared
+  web-core suites passed (4 files, 23 tests), including the responsive contract.
+  POS, Storefront, and API lint/build checks passed with repository-existing
+  warnings only; docs, architecture, and API compliance-contract checks passed.
+  The changed-file-scoped compliance-impact check also passed for the Phase 365
+  surfaces (8 sensitive files and `2026-09-15-business-admin-parity.md`).
+  No migration was required. Authenticated two-company/two-branch browser and
+  rendered desktop/mobile evidence are also complete: using the documented
+  local admin account and direct tenant-session handoff, the Back Office loaded
+  for both `Tindahan Ko` and `Masu Cafe` with HTTP 200 login/session responses,
+  expected tenant cookies, no page errors or failed page responses, and no
+  cross-company names. Tindahan Ko exposed only branch 1; Masu Cafe exposed
+  branches 1, 4, and 3, and branch 4 selected as `Spacebar` in the UI. Desktop
+  and mobile captures for both companies, plus mobile branch captures, are
+  stored under `.tmp/phase365-browser-evidence/`. The repository-wide
+  compliance impact check is blocked by eight pre-existing unrelated dirty
+  declaration/surface mismatches, so completion remains deferred.
+- Completion date: not completed. Current phase: 365; next eligible phase after completion: 366.
