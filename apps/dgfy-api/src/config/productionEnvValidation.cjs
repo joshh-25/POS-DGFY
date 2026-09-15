@@ -237,6 +237,7 @@ const validatePayPalConfig = (env, errors) => {
 
 const validateDglaundryProviderConfig = (env, errors) => {
   if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
+  if (!hasValue(env, 'REDIS_URL')) errors.push('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
   for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE']) {
     if (!hasValue(env, key)) addMissing(errors, key);
   }

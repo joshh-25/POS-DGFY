@@ -41,6 +41,19 @@ describe('production environment validation', () => {
     expect(result.errors).toEqual([]);
   });
 
+  it('requires Redis when the production DGLaundry partner integration is enabled', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        REDIS_URL: ''
+      }
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
+  });
+
   it('fails closed for missing production auth and database values', () => {
     const result = validateProductionEnv({
       env: {

@@ -1,8 +1,11 @@
 import crypto from 'crypto';
 import fs from 'fs';
+import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { validateDglaundryMachineToken } from '../services/dgfyLaundryOidcProvider.js';
 
-const seenRequestNonces = new Map();
+const REQUEST_NONCE_PREFIX = 'dgfy:dglaundry:partner-request-nonce:v1';
+// This memory cache is only for non-production local tests; production must use shared Redis.
+const localRequestNonces = new Map();
 
 const readSecret = () => {
     if (process.env.DGLAUNDRY_PARTNER_TOKEN_FILE) {
@@ -34,7 +37,39 @@ const parseSignature = (signatureValue, inputValue) => {
     return { signature: signatureMatch[1], components, signatureParams: `${inputMatch[1]};${inputMatch[2]}`, created, expires, keyId: params.keyid, nonce: params.nonce, algorithm: params.alg, tag: params.tag };
 };
 
-export const verifyAsymmetricRequest = ({ req, rawBody }) => {
+const claimRequestNonce = async ({ keyId, nonce, expiresAt, now }) => {
+    const ttlSeconds = expiresAt - now;
+    if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1) return 'DGLAUNDRY_REQUEST_TIMESTAMP_INVALID';
+
+    let redis = null;
+    try {
+        if (isRedisConnected()) redis = getRedisClient();
+    } catch {
+        redis = null;
+    }
+
+    if (redis) {
+        const nonceDigest = crypto.createHash('sha256').update(`${keyId}\0${nonce}`).digest('hex');
+        try {
+            const result = await redis.set(`${REQUEST_NONCE_PREFIX}:${nonceDigest}`, '1', { EX: ttlSeconds, NX: true });
+            if (result === 'OK') return true;
+            if (result === null) return false;
+            return 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE';
+        } catch {
+            return 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE';
+        }
+    }
+
+    if (process.env.NODE_ENV === 'production') return 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE';
+
+    for (const [entry, expires] of localRequestNonces) if (expires <= now) localRequestNonces.delete(entry);
+    const localKey = `${keyId}:${nonce}`;
+    if (localRequestNonces.has(localKey)) return false;
+    localRequestNonces.set(localKey, expiresAt);
+    return true;
+};
+
+export const verifyAsymmetricRequest = async ({ req, rawBody }) => {
     rawBody = String(rawBody || '');
     const publicKey = readConfigured('DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY');
     const expectedKeyId = readConfigured('DGLAUNDRY_PARTNER_REQUEST_KEY_ID');
@@ -54,10 +89,10 @@ export const verifyAsymmetricRequest = ({ req, rawBody }) => {
     const targetUri = `https://${req.headers.host || ''}${req.originalUrl || req.url || ''}`;
     const signatureBase = parsed.components.map((component) => component === '@method' ? `"@method": ${req.method.toUpperCase()}` : component === '@target-uri' ? `"@target-uri": ${targetUri}` : `"${component}": ${headers[component]}`).concat(`"@signature-params": ${parsed.signatureParams}`).join('\n');
     try { if (Buffer.from(parsed.signature, 'base64').length !== 64 || !crypto.verify('sha256', Buffer.from(signatureBase), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(parsed.signature, 'base64'))) return 'DGLAUNDRY_REQUEST_SIGNATURE_INVALID'; } catch { return 'DGLAUNDRY_REQUEST_SIGNATURE_INVALID'; }
-    const nonceKey = `${parsed.keyId}:${parsed.nonce}`;
-    for (const [entry, expiresAt] of seenRequestNonces) if (expiresAt <= now) seenRequestNonces.delete(entry);
-    if (seenRequestNonces.has(nonceKey)) return 'DGLAUNDRY_REQUEST_REPLAY';
-    seenRequestNonces.set(nonceKey, parsed.expires);
+    const nonceClaimed = await claimRequestNonce({ keyId: parsed.keyId, nonce: parsed.nonce, expiresAt: parsed.expires, now });
+    if (nonceClaimed === 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE') return nonceClaimed;
+    if (nonceClaimed === 'DGLAUNDRY_REQUEST_TIMESTAMP_INVALID') return nonceClaimed;
+    if (!nonceClaimed) return 'DGLAUNDRY_REQUEST_REPLAY';
     return `${parsed.keyId}:${parsed.nonce}:${parsed.expires}`;
 };
 
@@ -68,7 +103,8 @@ export const requireDglaundryPartner = async (req, res, next) => {
             const grant = await validateDglaundryMachineToken(bearer.replace(/^Bearer\s+/i, ''));
             if (grant) {
                 if (process.env.NODE_ENV === 'production' || process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1') {
-                    const replayKey = verifyAsymmetricRequest({ req, rawBody: String(req.rawBody || '') });
+                    const replayKey = await verifyAsymmetricRequest({ req, rawBody: String(req.rawBody || '') });
+                    if (replayKey === 'DGLAUNDRY_REQUEST_REPLAY_STORE_UNAVAILABLE') return res.status(503).json({ success: false, message: 'DGLaundry request replay protection is temporarily unavailable.', error_code: replayKey });
                     if (!replayKey || replayKey.startsWith('DGLAUNDRY_')) return res.status(401).json({ success: false, message: 'DGLaundry request signature is invalid.', error_code: replayKey || 'DGLAUNDRY_REQUEST_SIGNATURE_REQUIRED' });
                     req.dglaundryRequestReplayKey = replayKey;
                 }

@@ -23241,8 +23241,10 @@ the local HMAC fixture path and all ordinary DGFY tenant/payment behavior.
 ### Status
 
 `in_progress` — focused implementation and provider tests pass locally; PR
-review, provider key installation, durable replay across instances, hosted
-qualification and deployed QA remain outstanding.
+review, provider key installation, hosted qualification and deployed QA remain
+outstanding. P-256 partner-request nonces now use atomic Redis `SET NX EX` in
+production, fail closed with `503` when Redis is unavailable, and retain only
+a documented process-local fallback for non-production tests.
 
 ### Dependencies
 
@@ -23255,10 +23257,13 @@ registration-intent routes.
 - [x] DGFY emits 64-byte P-256 IEEE P1363 partner request signatures.
 - [x] DGFY middleware verifies covered target/query/body components and rejects
       missing keys, malformed/DER/altered/unknown-key/expired/replayed requests.
+- [x] Production replay protection uses shared Redis atomic claims and rejects
+      production integration configuration without Redis; concurrent duplicate
+      requests admit exactly one verifier result.
 - [x] Existing Ed25519 DGLaundry event tests and focused partner tests pass;
       backend lint has zero errors.
-- [ ] Independent review, terminal-green repository checks, Redis/DB-backed
-      replay evidence, provider JWKS/client registration, and hosted
+- [ ] Independent review, terminal-green repository checks, provider
+      JWKS/client registration, and hosted
       `laundry.surebizcorp.com` qualification remain required.
 
 ### Links
