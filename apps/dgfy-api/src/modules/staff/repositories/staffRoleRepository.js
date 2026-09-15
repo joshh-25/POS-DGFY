@@ -1,4 +1,5 @@
 import dbStore from '../../../utils/dbStore.js';
+import { Op } from 'sequelize';
 
 const options = (query = {}) => ({
   transaction: query.transaction,
@@ -60,6 +61,55 @@ export const staffRoleRepository = {
       order: [['created_at', 'ASC']],
       ...options(query)
     }).then((rows) => rows.map(plain));
+  },
+  async listAssignedDeliveryJobs({ deliveryPersonnelId, locationId } = {}, query = {}) {
+    if (!deliveryPersonnelId || !locationId) return [];
+    const DeliveryJob = dbStore.get('DeliveryJob');
+    const DeliveryRun = dbStore.get('DeliveryRun');
+    const DeliveryRunPersonnel = dbStore.get('DeliveryRunPersonnel');
+    const PosTransaction = dbStore.get('PosTransaction');
+    const base = {
+      provider: 'manual',
+      location_id: locationId,
+      status: { [Op.in]: ['assigned', 'picked_up', 'delivered'] }
+    };
+    const attributes = ['delivery_job_id', 'pos_transaction_id', 'delivery_run_id', 'provider', 'status', 'delivery_personnel_id', 'delivery_personnel_name', 'assigned_at', 'picked_up_at', 'delivered_at', 'tracking_url'];
+    const transactionInclude = {
+      model: PosTransaction,
+      as: 'transaction',
+      required: true,
+      where: { location_id: locationId, fulfillment_status: 'out_for_delivery', order_source: 'online_store', order_method: 'delivery' },
+      attributes: ['pos_transaction_id', 'invoice_number', 'location_id', 'customer_name', 'customer_phone', 'delivery_address', 'delivery_latitude', 'delivery_longitude', 'scheduled_for', 'special_instructions', 'delivery_fee', 'total_amount', 'fulfillment_status', 'order_method', 'order_source']
+    };
+    const runInclude = {
+      model: DeliveryRun,
+      as: 'deliveryRun',
+      required: false,
+      attributes: ['delivery_run_id', 'label', 'status', 'scheduled_date', 'scheduled_date_end']
+    };
+    const direct = await DeliveryJob.findAll({
+      where: { ...base, delivery_personnel_id: deliveryPersonnelId },
+      attributes,
+      include: [transactionInclude, runInclude],
+      order: [['assigned_at', 'ASC']],
+      ...options(query)
+    });
+    const runMembers = await DeliveryJob.findAll({
+      where: { ...base, delivery_personnel_id: { [Op.ne]: deliveryPersonnelId } },
+      attributes,
+      include: [
+        transactionInclude,
+        {
+          ...runInclude,
+          required: true,
+          include: [{ model: DeliveryRunPersonnel, as: 'personnel', required: true, where: { delivery_personnel_id: deliveryPersonnelId }, attributes: [] }],
+          attributes: ['delivery_run_id', 'label', 'status', 'scheduled_date', 'scheduled_date_end']
+        }
+      ],
+      order: [['assigned_at', 'ASC']],
+      ...options(query)
+    });
+    return [...direct, ...runMembers].map(plain);
   },
   listRunsFromPersonnel(personnel, query = {}) {
     if (!personnel) return Promise.resolve([]);

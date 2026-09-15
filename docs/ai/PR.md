@@ -34,7 +34,8 @@ there.
 ### Verified AI/model attribution
 
 When the current runtime has a valid local attribution session, the first content line under
-`## Summary` must be formatter output, for example `Opened by (Codex GPT-5.6 Terra, worker)`.
+`## Summary` must be formatter output, for example `Opened by (Codex, gpt-5.6-terra, worker)` or
+`Review (OpenCode, opencode-go/muse-spark-1.3-contributor, pr-reviewer)`.
 Use `node scripts/ai-attribution.js format <runtime> <session-id> Opened <role>`. The session ID
 isn't something to hunt for — Claude Code and Codex both print it, and the exact command to run,
 as plain-text context at session start (`docs/ai/AI_MODEL_ATTRIBUTION.md`). Do not guess a model,

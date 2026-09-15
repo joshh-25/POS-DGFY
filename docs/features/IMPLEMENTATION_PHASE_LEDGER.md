@@ -23001,3 +23001,223 @@ and Phase 328/#1879's tenant-schema registry parity precedent.
 ### Next eligible phase
 
 332.
+
+---
+
+## Phase 332 - Runtime-aware verified AI attribution and OpenCode context injection (#1885)
+
+### Initiative and release
+
+Developer-experience attribution follow-up for AI-assisted pull requests and review comments.
+
+### Objective and scope
+
+Upgrade the local attribution record to preserve runtime plus canonical provider/model identity,
+make OpenCode's verified `providerID`/`model.id` visible to the model through its plugin context,
+and fail closed when a session observes missing or multiple identities. Update existing runtime
+adapters, tests, PR guidance, and the authoritative attribution documentation. Do not add automatic
+GitHub comment wrappers, retroactive comment edits, or a missing-tag CI check.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review remains outstanding.
+
+### Dependencies
+
+Phase 167/#1024's verified attribution contract, the shared `scripts/ai-attribution.js` utility,
+the current OpenCode V1 plugin surface, and the runtime hook contracts documented in
+`docs/ai/AI_MODEL_ATTRIBUTION.md`.
+
+### Acceptance and validation evidence
+
+- [x] Version-2 records preserve runtime, session, canonical provider/model identity, expiry, and
+      clone-wide storage; missing or ambiguous identities emit no tag.
+- [x] OpenCode captures `providerID`/`model.id` and injects the exact formatter command without
+      blocking a session or taking ownership of GitHub writes.
+- [x] Claude, Codex, Cursor, and Antigravity adapters remain schema-compatible; Antigravity is
+      not marked active without a verified hook registration/payload contract.
+- [x] Focused attribution and OpenCode plugin tests pass, including Muse Spark, missing provider,
+      multiple identities, context injection, and cross-worktree behavior.
+- [x] Documentation, architecture, compliance, agent-surface, syntax, version, and diff checks pass.
+- [ ] PR review and any follow-up validation are complete.
+
+### Implementation links
+
+- `scripts/ai-attribution.js`
+- `scripts/ai-attribution.test.js`
+- `.opencode/plugins/dgfy-ai-attribution.js`
+- `docs/ai/AI_MODEL_ATTRIBUTION.md`
+- `docs/ai/PR.md`
+
+### Next eligible phase
+
+333 after Phase 332 implementation and acceptance evidence are complete.
+
+## Phase 333 - Delivery-run loading verification and dispatcher attestation (#1461)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 225 delivery-run foundation.
+
+### Objective and scope
+
+Add tenant-local per-member loading states (`pending`, `loaded`, `not_loaded`, `exception`) with a
+required exception reason, marking actor/timestamp, a run-level loading confirmation actor/timestamp,
+idempotent audited API mutations, ordinary POS order-surface fields, and POS operator controls.
+Dispatch remains warn-only and reports unverified/exception dispatched members. Provider-owned
+delivery integrations, automated route optimization, and a new permission capability remain out of
+scope.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, the tenant-schema
+migration/repair pattern, and ADR 0034's 2026-09-14 loading-verification amendment.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration fans out loading columns, foreign keys, and index to landlord/active tenants;
+      tenant-schema repair registry remains in lockstep.
+- [ ] Member loading state, required/cleared exception reason, run confirmation actor/timestamp,
+      and same-key replay are covered by focused backend tests.
+- [ ] Dispatch succeeds with unverified members and returns explicit warning IDs; ordinary POS order
+      responses expose the loading fields.
+- [ ] POS UI records per-member state/reason, allows loading confirmation, and visibly warns without
+      blocking dispatch; focused behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      version-bump gates pass; deployed QA remains a later verification step.
+
+### Links
+
+- Issue: #1461 (`Refs`; acceptance criteria must be reconciled before PR because the issue body had
+  no `## Acceptance criteria` section when this phase started).
+- Handoff: `.tmp/plan-1461.md` (planning head `c603878a5989c2b275dbf16bad5add95743ca8ed`).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000001-add-delivery-run-loading-verification.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunLoading.usecase.test.js`,
+      `apps/dgfy-api/tests/addDeliveryRunLoadingVerification.migration.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+334 after Phase 333 acceptance evidence and deployed QA are complete.
+
+## Phase 334 - Courier cash custody, remittance, and variance ledger (#1887)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, implementing the tenant-local
+courier custody and remittance follow-up deferred by ADR 0083.
+
+### Objective and scope
+
+Add three tenant-local append-only tables for one remittance per delivery run,
+order-level allocations, and original/reversal variance entries. Expose atomic
+remittance confirmation plus list/detail reads and supervisor-authorized variance
+resolution through POS API routes. Derive expected cash from delivery-handover
+evidence, preserve provider/prepaid/non-cash exclusions, and never mutate
+payment, drawer, settlement, or fiscal records. No UI or collection endpoint is
+included.
+
+### Status
+
+`in_progress` — implementation and focused local validation are complete; commit,
+PR review, and deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership and lifecycle, Phase 228/#1273 dispatch
+and delivery completion, Phase 333/#1461 tenant-schema fan-out precedent, and
+ADR 0083's binding financial boundary.
+
+### Acceptance and validation evidence
+
+- [x] Tenant migration fans out the remittance, allocation, and variance tables
+      across landlord/active tenant schemas, with dependency-safe rollback and
+      fresh-tenant schema registry parity.
+- [x] Atomic remittance confirmation derives expected cash from
+      `cash_received - change_amount`, records order allocations, rejects
+      duplicate runs, and leaves payment fields unchanged.
+- [x] Shortage and overage reasons, provider/non-cash/non-delivered/non-member
+      boundaries, location isolation, idempotent replay, and supervisor-only
+      append-only variance resolution are covered by focused tests.
+- [x] Transport validators, handlers, route permissions, models, serializers,
+      repository methods, and API operation keys are covered by implementation
+      wiring and focused transport tests.
+- [x] Fresh tenant provisioning uses explicit MySQL-safe names for both
+      remittance-variance indexes; the prior unnamed allocation index generated
+      `ALTER TABLE ... ADD INDEX
+      delivery_run_remittance_variances_delivery_run_remittance_allocation_id`
+      and failed with `ER_TOO_LONG_IDENT` (errno 1059, SQLSTATE 42000).
+- [x] `node --check`, API version-bump, architecture, compliance, documentation,
+      and final diff gates pass on the complete worktree; deployed tenant-schema
+      and endpoint QA remain later verification steps.
+
+### Links
+
+- Issue: #1887 (behavior-changing implementation; PR linkage must use the issue's
+      reconciled acceptance-criteria contract).
+- Handoff: `.tmp/plan-1887.md` (planning head
+      `1dfcb709b7a0840e7bd06c5009808033403ec70b`).
+- ADR: `docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000002-create-delivery-run-remittances.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunRemittance.usecase.test.js`,
+      `apps/dgfy-api/tests/createDeliveryRunRemittances.migration.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRemittance.transport.test.js`.
+- Follow-up fix: #1911 (fresh-tenant remittance-variance index identifier).
+
+### Next eligible phase
+
+335 after Phase 334 acceptance evidence and deployed QA are complete.
+
+## Phase 335 - Assigned delivery staff lifecycle actions (#1549)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, dedicated native assigned-delivery workspace API.
+
+### Objective and scope
+
+Allow `delivery_runs:act` staff to advance currently assigned manual delivery jobs through
+`assigned -> picked_up -> delivered` without a POS shift, with locked-transaction assignment and
+location enforcement, explicit null shift audit attribution, and additive location-scoped
+`delivery_jobs` discovery on `/users/me/assignments`. Preserve the broad open-shift POS path and all
+queue, checkout, payment, drawer, assignment, provider, and schema boundaries.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0034; Phase 225/#1081 delivery-run membership; staff capability/assignment foundation (#1459).
+
+### Acceptance and validation evidence
+
+- [x] Narrow direct-assignee and run-member lifecycle success, run-less support, stable denials,
+      location/tenant isolation, provider/lifecycle guards, idempotent replay, and null-shift audit.
+- [x] Additive `delivery_jobs` assignment projection is capability-, location-, and assignment-scoped
+      without changing `orders` or `delivery_runs` compatibility.
+- [x] Focused API tests, architecture/compliance/docs gates, syntax checks, and diff checks pass.
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1549
+- Handoff: `.tmp/plan-1549.md` (planning head `8d2698ac16e516eec2a867b73bced5c68d5fac97`)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`
+- Feature: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+- Compliance: `docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md`
+- Tests: `apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js`, `apps/dgfy-api/tests/staffAssignments.usecase.test.js`, `apps/dgfy-api/tests/rbacRouteCoverage.contract.test.js`
+
+### Next eligible phase
+
+336 after Phase 335 acceptance evidence and deployed QA are complete.

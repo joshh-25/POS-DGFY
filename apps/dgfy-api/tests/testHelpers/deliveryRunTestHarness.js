@@ -210,7 +210,19 @@ const buildDeliveryRunRepository = (state) => ({
     async removeJobFromRun(deliveryJobId) {
         const job = state.deliveryJobsById.get(Number(deliveryJobId));
         if (!job) return null;
-        job.delivery_run_id = null;
+        Object.assign(job, {
+            delivery_run_id: null,
+            loading_state: 'pending',
+            loading_exception_reason: null,
+            loading_marked_by: null,
+            loading_marked_at: null
+        });
+        return { ...job };
+    },
+    async updateDeliveryJobLoading(deliveryJobId, payload) {
+        const job = state.deliveryJobsById.get(Number(deliveryJobId));
+        if (!job) return null;
+        Object.assign(job, payload);
         return { ...job };
     },
     async clearDeliveryJobAssignment(deliveryJobId) {
@@ -319,6 +331,10 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
         assignedBy = null,
         assignedShiftId = null,
         assignedAt = null,
+        loadingState = 'pending',
+        loadingExceptionReason = null,
+        loadingMarkedBy = null,
+        loadingMarkedAt = null,
         orderMethod = 'delivery',
         orderSource = 'online_store'
     }) => {
@@ -333,7 +349,11 @@ export const createDeliveryRunTestHarness = ({ cashierId = 12, openShiftLocation
             delivery_personnel_name: deliveryPersonnelName,
             assigned_by: assignedBy,
             assigned_shift_id: assignedShiftId,
-            assigned_at: assignedAt
+            assigned_at: assignedAt,
+            loading_state: loadingState,
+            loading_exception_reason: loadingExceptionReason,
+            loading_marked_by: loadingMarkedBy,
+            loading_marked_at: loadingMarkedAt
         };
         const order = {
             pos_transaction_id: orderId,

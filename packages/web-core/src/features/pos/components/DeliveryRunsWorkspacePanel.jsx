@@ -5,12 +5,14 @@ import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   addDeliveryRunMembers,
+  confirmDeliveryRunLoading,
   createDeliveryRun,
   dispatchDeliveryRun,
   fetchDeliveryRun,
   fetchDeliveryRuns,
   removeDeliveryRunMember,
   setDeliveryRunPersonnel,
+  updateDeliveryRunMemberLoading,
   updateDeliveryRun
 } from '../services/deliveryRunService.js';
 import DeliveryRunFormDialog from './DeliveryRunFormDialog.jsx';
@@ -88,6 +90,7 @@ export default function DeliveryRunsWorkspacePanel({
   const [formRun, setFormRun] = React.useState(null);
   const [dispatchConfirmOpen, setDispatchConfirmOpen] = React.useState(false);
   const [dispatchResult, setDispatchResult] = React.useState(null);
+  const [loadingConfirmOpen, setLoadingConfirmOpen] = React.useState(false);
 
   // RF-3 fix (PR #1277 review): a request-generation counter per fetch kind so a slower, older
   // response can never overwrite state committed by a newer one (e.g. two location-scope switches
@@ -358,6 +361,68 @@ export default function DeliveryRunsWorkspacePanel({
     }
   };
 
+  const loadingSubmitRef = React.useRef({ key: null, signature: null });
+
+  const handleMarkLoading = async (posTransactionId, payload) => {
+    const run = runDetailState.run;
+    if (!run) return false;
+    if (!isOnline) {
+      toast.error('Reconnect before recording loading verification.');
+      return false;
+    }
+    const signature = `${run.delivery_run_id}:${posTransactionId}:${payload.loading_state}:${payload.exception_reason || ''}`;
+    if (loadingSubmitRef.current.signature !== signature) {
+      loadingSubmitRef.current = { key: createIdempotencyKey('run-loading'), signature };
+    }
+    const key = `delivery-run-member-loading:${posTransactionId}`;
+    setSavingKey(key);
+    try {
+      await updateDeliveryRunMemberLoading(run.delivery_run_id, posTransactionId, {
+        ...payload,
+        idempotency_key: loadingSubmitRef.current.key
+      });
+      toast.success(`Order #${posTransactionId} loading status saved.`);
+      loadingSubmitRef.current = { key: null, signature: null };
+      await refreshAll();
+      return true;
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to save loading status.'));
+      return false;
+    } finally {
+      setSavingKey('');
+    }
+  };
+
+  const loadingConfirmSubmitRef = React.useRef({ key: null, signature: null });
+
+  const handleConfirmLoading = async () => {
+    const run = runDetailState.run;
+    if (!run) return false;
+    if (!isOnline) {
+      toast.error('Reconnect before confirming loading.');
+      return false;
+    }
+    const signature = `loading-confirm:${run.delivery_run_id}`;
+    if (loadingConfirmSubmitRef.current.signature !== signature) {
+      loadingConfirmSubmitRef.current = { key: createIdempotencyKey('run-loading-confirm'), signature };
+    }
+    setSavingKey('loading-confirm');
+    try {
+      const result = await confirmDeliveryRunLoading(run.delivery_run_id, {
+        idempotency_key: loadingConfirmSubmitRef.current.key
+      });
+      toast.success('Run loading confirmation recorded.');
+      loadingConfirmSubmitRef.current = { key: null, signature: null };
+      await refreshAll();
+      return result || true;
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Failed to confirm run loading.'));
+      return false;
+    } finally {
+      setSavingKey('');
+    }
+  };
+
   // Phase 228 (#1273/#1271). Idempotency key signature matches Phase 226/227's established
   // retention pattern: identical (run, member set) reuses the key on retry; a changed member set
   // (e.g. a member removed between attempts) is treated as a new logical dispatch call and gets a
@@ -438,6 +503,20 @@ export default function DeliveryRunsWorkspacePanel({
     || selectedRunMembers.length === 0
     || DISPATCH_BLOCKED_STATUSES.has(selectedRunStatus)
     || unpackedMembers.length > 0;
+  const loadingSummary = selectedRun?.loading_summary || selectedRunMembers.reduce((summary, member) => {
+    const state = member?.loading_state || 'pending';
+    const key = `${state}_count`;
+    if (Object.prototype.hasOwnProperty.call(summary, key)) summary[key] += 1;
+    else summary.pending_count += 1;
+    summary.total_count += 1;
+    return summary;
+  }, { pending_count: 0, loaded_count: 0, not_loaded_count: 0, exception_count: 0, total_count: 0 });
+  const loadingWarningMembers = selectedRunMembers.filter((member) => ['pending', 'not_loaded', 'exception'].includes(member?.loading_state || 'pending'));
+  const loadingConfirmDisabled = !selectedRun
+    || !canManage
+    || !isOnline
+    || selectedRunMembers.length === 0
+    || DISPATCH_BLOCKED_STATUSES.has(selectedRunStatus);
 
   if (runsState.accessState === 'forbidden') {
     return (
@@ -536,6 +615,15 @@ export default function DeliveryRunsWorkspacePanel({
                   >
                     <Truck className="mr-1 h-3.5 w-3.5" /> {selectedRunIsDispatched ? 'Re-dispatch run' : 'Dispatch run'}
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLoadingConfirmOpen(true)}
+                    disabled={loadingConfirmDisabled || savingKey === 'loading-confirm'}
+                  >
+                    Confirm loading
+                  </Button>
                 </div>
               </div>
 
@@ -547,6 +635,22 @@ export default function DeliveryRunsWorkspacePanel({
               ) : null}
 
               <DeliveryRunSummary summary={selectedRun.summary} />
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                <span className="font-black">Loading verification:</span>{' '}
+                {loadingSummary.loaded_count} loaded · {loadingSummary.not_loaded_count} not loaded ·{' '}
+                {loadingSummary.exception_count} exception(s) · {loadingSummary.pending_count} pending
+                {selectedRun.loading_confirmed_at ? (
+                  <span className="ml-2 text-emerald-700">Confirmed</span>
+                ) : null}
+              </div>
+
+              {loadingWarningMembers.length > 0 ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Dispatch remains available, but {loadingWarningMembers.length} order(s) are not verified as loaded:{' '}
+                  update their member states or confirm loading before dispatch when appropriate.
+                </p>
+              ) : null}
 
               <DeliveryRunDispatchSummary result={dispatchResult} />
 
@@ -574,10 +678,12 @@ export default function DeliveryRunsWorkspacePanel({
                 run={selectedRun}
                 otherRuns={runs}
                 disabled={!canManage || selectedRunLocked}
+                loadingDisabled={!canManage || DISPATCH_BLOCKED_STATUSES.has(selectedRunStatus)}
                 savingKey={savingKey}
                 dispatchResult={dispatchResult}
                 onRemoveMember={handleRemoveMember}
                 onMoveMember={handleMoveMember}
+                onMarkLoading={handleMarkLoading}
               />
             </div>
           ) : null}
@@ -594,6 +700,20 @@ export default function DeliveryRunsWorkspacePanel({
         onConfirm={async () => {
           const succeeded = await handleDispatchRun();
           if (succeeded !== false) setDispatchConfirmOpen(false);
+          return succeeded;
+        }}
+      />
+
+      <ConfirmActionDialog
+        open={loadingConfirmOpen}
+        onOpenChange={setLoadingConfirmOpen}
+        title="Confirm run loading?"
+        description={`${loadingSummary.loaded_count} loaded, ${loadingSummary.not_loaded_count} not loaded, ${loadingSummary.exception_count} exception(s), and ${loadingSummary.pending_count} pending. This attests to the current loading state for all ${loadingSummary.total_count} order(s).`}
+        confirmLabel="Confirm loading"
+        cancelLabel="Cancel"
+        onConfirm={async () => {
+          const succeeded = await handleConfirmLoading();
+          if (succeeded !== false) setLoadingConfirmOpen(false);
           return succeeded;
         }}
       />

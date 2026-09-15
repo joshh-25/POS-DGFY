@@ -82,6 +82,24 @@ cashier shift at the order location. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
+The dedicated native assigned-delivery workspace (Sieitzz/dgfy-mobile #174/#178)
+uses the same status route with `delivery_runs:act`. A currently assigned
+registered delivery person may advance only that manual job through
+`assigned -> picked_up -> delivered` without a cash-drawer shift. The server
+rechecks direct assignment or current run membership and the actor's location
+grant inside the mutation transaction; direct run-less assignments are valid.
+The narrow path leaves `order.shift_id` unchanged and records a null shift in
+the audit event. Broad `pos:transact` operators retain the open-shift path, and
+no checkout, payment, drawer, assignment, full-queue, or provider-owned action
+is included in this exception.
+
+`GET /users/me/assignments?location_id=<id>` additively returns `delivery_jobs`
+for actors with `delivery_runs:view_assigned` or `delivery_runs:act`. Results
+are limited to manual jobs in `out_for_delivery` orders with status `assigned`,
+`picked_up`, or `delivered`, in the requested granted location and covered by
+the same assignment union. The projection contains only public order/customer/
+delivery fields; an absent location never broadens the query.
+
 ## Delivery-completion evidence (#1462)
 
 Delivery evidence is an optional, append-only operational record for a manual
@@ -355,6 +373,24 @@ Retail-mode gated identically to the tab above, and cleared by the same mode-fli
 filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
 (`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
 
+## Loading verification and dispatcher attestation (Phase 333, #1461)
+
+The POS Delivery Runs workspace records loading per member before dispatch. Each tenant-local
+`delivery_jobs` row has one of four states: `pending` (no operator decision yet), `loaded`,
+`not_loaded`, or `exception`. An exception requires a reason, and changing to another state clears
+the previous reason. The actor and timestamp for the latest member mark are retained with the job.
+
+The API exposes `PATCH /pos/delivery-runs/:deliveryRunId/members/:posTransactionId/loading` and
+`POST /pos/delivery-runs/:deliveryRunId/loading-confirmation`, both authorized by `pos:transact`.
+Both mutations use the existing operation-replay/idempotency contract and append an audit event.
+The confirmation records the actor and timestamp at run level and can be repeated with a new key
+when a later attestation is needed.
+
+Loading confirmation is not a dispatch gate. Dispatch continues for loaded and unverified members,
+and returns a warning listing dispatched orders that remain `pending`/`not_loaded` or are marked
+`exception`. The POS UI surfaces those warnings and lets the operator update a member even after
+dispatch, while completed and cancelled runs remain unavailable for loading changes.
+
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
@@ -412,8 +448,20 @@ operational/audit responsibility under
   order payment status, cash-drawer reconciliation, revenue settlement, or
   fiscal receipts — a parallel operational ledger, not an accounting change.
 
-No schema, endpoint, or UI for this ledger is authorized by this contract; that
-is follow-up implementation scope after the ADR lands.
+The Phase 334 API implementation records that ledger without adding a collection
+endpoint or a UI. `POST /pos/delivery-runs/:deliveryRunId/remittances` atomically
+confirms one remittance, its order-level allocations, and any shortage/overage
+rows. The server derives expected cash as `cash_received - change_amount`; each
+requested member must be delivered, manual-provider, and have non-null cash
+evidence. The receiving location defaults to the run location and the action
+uses `pos:transact`, operation replay, and an audit event. `GET` list/detail
+routes expose the tenant-local record under `pos:view`.
+
+`POST /pos/delivery-runs/:deliveryRunId/remittances/:remittanceId/variances/:varianceId/resolution`
+adds an append-only reversal under
+`pos:delivery_run_variance_resolve`; it never updates the original variance.
+Provider-owned jobs, prepaid/non-cash orders, cancelled runs, and payment or
+fiscal records remain outside this ledger.
 
 ## Failure behavior
 

@@ -465,6 +465,20 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // matching every other delivery_jobs repair entry in this block.
         delivery_run_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
+        }),
+        // Phase 333 (#1461): per-run loading verification. `pending` means the member has not
+        // been checked; it must remain distinct from an explicit `not_loaded` result.
+        loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_state` ENUM('pending','loaded','not_loaded','exception') NOT NULL DEFAULT 'pending'"
+        }),
+        loading_exception_reason: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_exception_reason` TEXT NULL"
+        }),
+        loading_marked_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_by` INT NULL, ADD CONSTRAINT `fk_delivery_jobs_loading_marked_by` FOREIGN KEY (`loading_marked_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_marked_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_at` DATETIME NULL"
         })
     }),
     delivery_runs: Object.freeze({
@@ -477,6 +491,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // the value is never used for filtering, sorting, or dispatch behavior.
         transportation_label: Object.freeze({
             sql: "ALTER TABLE `delivery_runs` ADD COLUMN `transportation_label` VARCHAR(120) NULL"
+        }),
+        loading_confirmed_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_by` INT NULL, ADD CONSTRAINT `fk_delivery_runs_loading_confirmed_by` FOREIGN KEY (`loading_confirmed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_confirmed_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_at` DATETIME NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -1261,6 +1281,68 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `fk_delivery_run_personnel_delivery_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 334 (#1887): tenant-local append-only courier cash custody and remittance ledger.
+    // Keep the dependency order: remittance -> allocation -> variance. No per-column repair entry
+    // is needed because these are wholly new tables; the migration and this fresh-provisioning
+    // registry are the two creation surfaces for them.
+    delivery_run_remittances: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittances` (\n"
+            + "  `delivery_run_remittance_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `confirmed_by` int NOT NULL,\n"
+            + "  `confirmed_at` datetime NOT NULL,\n"
+            + "  `total_expected_amount` decimal(14,4) NOT NULL,\n"
+            + "  `total_remitted_amount` decimal(14,4) NOT NULL,\n"
+            + "  `total_variance_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_remittances_run` (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_run_remittances_location_confirmed` (`location_id`,`confirmed_at`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_confirmed_by` FOREIGN KEY (`confirmed_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_run_remittance_allocations: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittance_allocations` (\n"
+            + "  `delivery_run_remittance_allocation_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_remittance_id` int NOT NULL,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `delivery_personnel_id` int DEFAULT NULL,\n"
+            + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
+            + "  `expected_amount` decimal(14,4) NOT NULL,\n"
+            + "  `remitted_amount` decimal(14,4) NOT NULL,\n"
+            + "  `variance_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_allocation_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_remittance_allocations_transaction` (`delivery_run_remittance_id`,`pos_transaction_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_allocations_transaction` (`pos_transaction_id`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_remittance` FOREIGN KEY (`delivery_run_remittance_id`) REFERENCES `delivery_run_remittances` (`delivery_run_remittance_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_transaction` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_personnel` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_run_remittance_variances: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittance_variances` (\n"
+            + "  `delivery_run_remittance_variance_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_remittance_allocation_id` int NOT NULL,\n"
+            + "  `entry_type` enum('original','reversal') NOT NULL,\n"
+            + "  `reversal_of_variance_id` int DEFAULT NULL,\n"
+            + "  `direction` enum('shortage','overage') NOT NULL,\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `reason` text NOT NULL,\n"
+            + "  `recorded_by` int NOT NULL,\n"
+            + "  `recorded_at` datetime NOT NULL,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_variance_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_variances_allocation` (`delivery_run_remittance_allocation_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_variances_reversal` (`reversal_of_variance_id`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_allocation` FOREIGN KEY (`delivery_run_remittance_allocation_id`) REFERENCES `delivery_run_remittance_allocations` (`delivery_run_remittance_allocation_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_reversal` FOREIGN KEY (`reversal_of_variance_id`) REFERENCES `delivery_run_remittance_variances` (`delivery_run_remittance_variance_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     pos_transaction_discount_lines: Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discount_lines` (\n"
@@ -2201,6 +2283,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_delivery_jobs_run_status: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
+        }),
+        idx_delivery_jobs_run_loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_loading_state` (`delivery_run_id`,`loading_state`)"
         })
     }),
     delivery_runs: Object.freeze({
@@ -2543,7 +2628,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-13.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-14.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

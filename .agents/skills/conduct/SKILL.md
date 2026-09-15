@@ -278,13 +278,15 @@ root explicitly (unlike Claude, no need to rely on the invoking shell's own cwd)
 **Antigravity** (verified against `agy --help` in this environment):
 
 ```sh
-agy --print --model <model> --effort <effort> --dangerously-skip-permissions --prompt "<task/spec>"
+node scripts/agy-with-attribution.js --print --model <model> --effort <effort> \
+  --dangerously-skip-permissions --prompt "<task/spec>"
 ```
 
 `-p`/`--print` and `--prompt` run a single non-interactive request; `--model` and `--effort`
-select the model and reasoning level, while `--dangerously-skip-permissions` auto-approves tool
-permission requests. Confirm the installed CLI's help output before relying on these flags because
-the tool can drift.
+select the model and reasoning level. The repository wrapper forces `stream-json`, records the
+actual Antigravity conversation ID from the `init` event, and binds it to the explicit model
+argument; `--dangerously-skip-permissions` auto-approves tool permission requests. Confirm the
+installed CLI's help output before relying on these flags because the tool can drift.
 
 **Handoff, all three**: the coordinator captures stdout/exit code, inspects `git status`/`git diff`
 in the target worktree, verifies the task's acceptance criteria itself, and records the outcome the

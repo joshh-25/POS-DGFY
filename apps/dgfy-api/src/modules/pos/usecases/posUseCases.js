@@ -58,7 +58,7 @@ import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
-import { assertStaffAssignment } from '../../staff/index.js';
+import { assertStaffAssignment, assertStaffLocationAccess } from '../../staff/index.js';
 // #712: direct ESM import of the singleton use case, matching the one existing cross-module
 // precedent (storeUseCases.js imports the same set from '../../vouchers/index.js').
 import {
@@ -198,6 +198,10 @@ export const POS_OPERATION_KEYS = Object.freeze({
     // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
     // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
     DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch',
+    DELIVERY_RUN_MEMBER_LOADING: 'terminal.delivery_run_member_loading',
+    DELIVERY_RUN_LOADING_CONFIRM: 'terminal.delivery_run_loading_confirm',
+    DELIVERY_RUN_REMITTANCE_CONFIRM: 'terminal.delivery_run_remittance_confirm',
+    DELIVERY_RUN_VARIANCE_RESOLVE: 'terminal.delivery_run_variance_resolve',
     DELIVERY_COMPLETION_EVIDENCE: 'terminal.delivery_completion_evidence'
 });
 
@@ -10828,6 +10832,9 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
+        const hasPermissionContext = Array.isArray(user?.permissions) || user?.staffRole != null || user?.role != null;
+        const broadAuthorization = hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+        const narrowAuthorization = !broadAuthorization && hasEffectivePermission(user, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS);
         const requestedStatus = String(payload?.status || '').trim().toLowerCase();
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const requestHash = hashPayload({
@@ -10939,22 +10946,45 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 );
             }
 
-            const activeShift = await assertOpenShiftForPosMutation({
-                posRepository,
-                cashierId,
-                locationId: orderLocationId,
-                transaction,
-                lock: true
-            });
-            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
-                order,
-                activeShift
-            });
-            if (Object.keys(shiftAttributionPayload).length > 0) {
-                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+            let activeShift = null;
+            let shiftAttributionPayload = {};
+            if (narrowAuthorization) {
+                await assertStaffAssignment({
+                    user,
+                    resourceType: 'delivery_job',
+                    resourceId: deliveryJob.delivery_job_id,
+                    transaction
+                });
+                await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
+            } else if (broadAuthorization || !hasPermissionContext) {
+                activeShift = await assertOpenShiftForPosMutation({
+                    posRepository,
+                    cashierId,
+                    locationId: orderLocationId,
                     transaction,
                     lock: true
                 });
+                shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                    order,
+                    activeShift
+                });
+                if (Object.keys(shiftAttributionPayload).length > 0) {
+                    await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                        transaction,
+                        lock: true
+                    });
+                }
+            } else {
+                // The HTTP route admits only broad or assigned-delivery capability; retain a
+                // fail-closed guard for legacy/direct callers that provide a partial permission
+                // context, including the location boundary if this path is ever reached.
+                await assertStaffAssignment({
+                    user,
+                    resourceType: 'delivery_job',
+                    resourceId: deliveryJob.delivery_job_id,
+                    transaction
+                });
+                await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
             }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
             const hasPersonnel = Boolean(
@@ -11047,7 +11077,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                         provider: deliveryJob.provider,
                         previous_status: currentStatus,
                         status: requestedStatus,
-                        shift_id: activeShift.pos_terminal_shift_id,
+                        shift_id: activeShift?.pos_terminal_shift_id || null,
                         location_id: orderLocationId,
                         applied_at: mutationTimestamp.toISOString()
                     },
