@@ -96,4 +96,25 @@ class AppConfigTest {
     fun `localDevOrigin points at the emulator loopback on the WebView preview port`() {
         assertEquals("http://10.0.2.2:5174", AppConfig.localDevOrigin())
     }
+
+    @Test
+    fun `device proof origin rules contain only the flavor live origin`() {
+        assertEquals(setOf(BuildConfig.LIVE_POS_ORIGIN), AppConfig.approvedDeviceProofOriginRules())
+        assertTrue(AppConfig.isApprovedDeviceProofOrigin(BuildConfig.LIVE_POS_ORIGIN))
+        assertTrue(AppConfig.isApprovedDeviceProofOrigin("${BuildConfig.LIVE_POS_ORIGIN}/some/path"))
+    }
+
+    @Test
+    fun `device proof is not enabled for local or custom overrides`() {
+        assertFalse(AppConfig.isApprovedDeviceProofOrigin(AppConfig.localDevOrigin()))
+        assertFalse(AppConfig.isApprovedDeviceProofOrigin("https://evil.example.com"))
+        assertFalse(AppConfig.approvedDeviceProofOriginRules().contains("https://evil.example.com"))
+    }
+
+    @Test
+    fun `device proof requires the approved origin and the main frame`() {
+        assertTrue(DeviceProofOriginPolicy.isPermitted(BuildConfig.LIVE_POS_ORIGIN, isMainFrame = true))
+        assertFalse(DeviceProofOriginPolicy.isPermitted(BuildConfig.LIVE_POS_ORIGIN, isMainFrame = false))
+        assertFalse(DeviceProofOriginPolicy.isPermitted("https://evil.example.com", isMainFrame = true))
+    }
 }
