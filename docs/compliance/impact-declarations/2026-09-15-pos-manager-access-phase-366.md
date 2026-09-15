@@ -33,6 +33,7 @@ server-side company membership, permission, device or shift authorization.
 ## Compliance Preconditions
 
 - The caller must have an authenticated terminal identity and Business Admin permission.
+- A verified DGFY tenant session may establish the synchronization scope before terminal-user hydration completes; the scope must still be tenant-bound.
 - Cashiers and unauthorized direct requests remain denied.
 - Opening Business Admin must not open a shift, change cart state or bypass terminal/device policy.
 - Expired or missing identity must produce actionable sign-in feedback.
@@ -40,5 +41,6 @@ server-side company membership, permission, device or shift authorization.
 ## Verification Evidence
 
 - Focused POS navigation and terminal view-mode contract coverage is staged with this change.
+- Tenant-scoped locked-terminal synchronization regression coverage is included in the focused contract tests.
 - Credential-gated manager-access and settings-synchronization E2E coverage is staged for execution in an authenticated environment.
 - Repository compliance, documentation, architecture and whitespace checks run through the commit hooks.
