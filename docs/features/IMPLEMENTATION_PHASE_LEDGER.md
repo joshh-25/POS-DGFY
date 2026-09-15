@@ -23747,3 +23747,36 @@ content differs from what was implemented and tested under the "303" label.
   compliance impact check is blocked by eight pre-existing unrelated dirty
   declaration/surface mismatches, so completion remains deferred.
 - Completion date: not completed. Current phase: 365; next eligible phase after completion: 366.
+
+## Phase 366 - Manager access and navigation
+
+- Initiative/release: POS and Back Office settings access follow-up / planned release. Status: planned.
+- Objective and scope: Keep Back Office and Terminal setup; enable authenticated, authorized manager entry without starting a cashier shift. Resolve company membership and server permissions, handle missing/expired identity, preserve separate-window confirmation and correct Overview wording.
+- Dependencies: Phase 365 completion, including resolution of its recorded compliance blocker; implementation approval required.
+- Contract and authority: [Settings access follow-up plan](backoffice.md#pos-and-back-office-settings-access-follow-up), Architecture Boundaries, Architecture Governance, ADR 0026, ADR 0031 and ADR 0071 as linked there. Include the planned dated ADR 0031 clarification with implementation.
+- Implementation targets: [TerminalWorkspaceSidebar.jsx](../../packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx), [TerminalPage.jsx](../../packages/web-core/src/features/pos/pages/TerminalPage.jsx), and the existing TerminalPageDialogLayer and browser-session/Business Admin permission flows.
+- Acceptance and validation required: Authorized manager opens the independent Back Office page without opening a shift; cashier and unauthorized direct access remain denied; cart, shift and lock state remain intact. Verify identity-loading, expired-session and new-window feedback paths with focused navigation/authentication tests and browser evidence.
+- Evidence: Planning only; no implementation or acceptance tests executed for this phase. Record exact test paths, commands and results during implementation.
+- Completion date: not completed.
+
+## Phase 367 - Terminal settings ownership
+
+- Initiative/release: POS and Back Office settings access follow-up / planned release. Status: planned.
+- Objective and scope: Keep device/printer controls, terminal selection, queue scope and local sound in POS. Make Back Office the primary editor for registry policy, branch bindings, business/receipt metadata, discounts, payments, team and Storefront configuration; retain needed onboarding and legacy paths.
+- Dependencies: Phase 366 completion; implementation approval required.
+- Contract and authority: [Settings access follow-up plan](backoffice.md#pos-and-back-office-settings-access-follow-up) and its authoritative architecture/session/terminal references. Preserve existing settings keys, backend owners and server-projected view/edit scope; no new architecture exception proposed.
+- Implementation targets: [TerminalOperationsWorkspace.jsx](../../packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx), [BusinessAdminPage.jsx](../../apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx), and [businessAdminSettingsModel.js](../../apps/dgfy-pos/src/features/businessAdmin/businessAdminSettingsModel.js).
+- Acceptance and validation required: Every affected setting has a clear primary destination without duplicated business logic; onboarding remains usable; terminal controls retain permissions, device policy and connectivity handling. Verify changed entry points, save/readback and tenant/branch scope using existing settings/permission suites plus focused regression coverage.
+- Evidence: Planning only; no implementation or acceptance tests executed for this phase. Record exact test paths, commands and results during implementation.
+- Completion date: not completed.
+
+## Phase 368 - Settings access final acceptance
+
+- Initiative/release: POS and Back Office settings access follow-up / planned release. Status: planned.
+- Objective and scope: Verify desktop/mobile navigation, fresh-tab authentication, expired sessions, logout, company switching, denied access, branch refresh, unsaved changes and actual window opening/feedback. Record affected builds, architecture/docs checks and rollback.
+- Dependencies: Phase 367 completion; implementation approval required.
+- Contract and authority: [Settings access follow-up plan](backoffice.md#pos-and-back-office-settings-access-follow-up) and its authoritative architecture/session/terminal references; do not claim separate-device synchronization from same-origin window tests.
+- Implementation and test targets: Phase 366 navigation/session surfaces, Phase 367 canonical settings editors and existing businessAdminSettingsSync coverage. Extend relevant navigation, settings, authentication and API permission tests; record concrete test-file links with evidence.
+- Acceptance and validation required: No blank page, unauthorized access, lost cart/shift or wrong-company/branch refresh; rendered desktop/mobile and permission evidence, affected builds, applicable architecture checks and docs validation all pass. Document rollback and any remaining limitation before completion.
+- Evidence: Planning only; no implementation or acceptance tests executed for this phase.
+- Completion date: not completed. Current phase remains 365; next eligible phase after its completion is 366. Phase 369 is unallocated.

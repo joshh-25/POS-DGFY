@@ -472,3 +472,68 @@ point split, terminal-only POS setup view, and tenant/branch settings refresh
 signal. Phase 365 must verify all affected app builds,
 behavioral/API tests, desktop/mobile rendering, documentation, architecture and
 scoped compliance checks, plus rollback and settings readback.
+
+## POS and Back Office settings access follow-up
+
+Objective: Keep business configuration in Back Office, retain terminal controls
+inside POS, and let authorized managers open Back Office without starting a
+cashier shift. This is a documentation-only plan; phases 366–368 are planned,
+not approved or implemented. Preserve completed phases 360–364.
+
+### Critical assessment and boundaries
+
+- Access before terminal unlock still requires authenticated manager identity,
+  company membership and server authorization. Removing a lock check alone is
+  not sufficient; the earlier locked-screen observation did not establish why
+  authorization had not finished loading.
+- Keep **Back Office** and **Terminal setup** as the two entry points. Do not
+  introduce a duplicate generic manager Settings button. Defer the optional
+  Business settings shortcut until usage justifies it.
+- Separate terminal-local controls from registry and branch-binding policies
+  currently exposed in both surfaces. Reuse the canonical settings editor and
+  existing storage owners; preserve onboarding and required legacy paths.
+- Existing cross-window notifications cover the same browser/origin. Do not
+  claim separate-device synchronization without independent evidence.
+
+### Delivery sequence
+
+| Phase | Scope | Acceptance gate |
+| --- | --- | --- |
+| 365 — Finish existing hardening | Recheck the recorded compliance blocker and any current build/dependency failures. Reuse valid evidence; complete only missing save/readback, permission and branch-isolation checks. Reconcile navigation documentation with observed behavior. | Existing required gates pass and completion evidence is recorded; do not redo completed migration work or mark the phase complete while blocked. |
+| 366 — Manager access and navigation | Make authenticated Back Office entry independent of cashier shift activation. Resolve company membership and server permissions before access; offer sign-in for absent/expired identity. Keep explicit separate-window confirmation and correct reports wording when opening Overview. | Authorized manager opens Back Office without starting a shift; cashiers and unauthorized direct requests remain denied. POS cart, shift and lock state remain unchanged. |
+| 367 — Terminal settings ownership | Keep device/printer controls, terminal selection, queue scope and local sound in POS. Make Back Office the primary editor for registry policy, branch bindings, business/receipt metadata, discounts, payments, team and Storefront configuration. Preserve needed onboarding and legacy entry paths. | Each setting has a clear primary destination, with no duplicate business logic; terminal controls still honor permission, device-policy and connectivity requirements. |
+| 368 — Final acceptance | Verify desktop/mobile navigation, fresh-tab authentication, expired sessions, logout, company switching, denied access, branch refresh and unsaved changes. Verify actual window opening and accurate feedback. Run affected builds and architecture/docs checks; record evidence and rollback. | No blank page, unauthorized access, lost cart/shift or wrong-company/branch refresh. All required checks pass before completion. |
+
+Dependencies are sequential: finish 365, then 366, 367 and 368. Current phase:
+365 (`in_progress`); next eligible phase after completion: 366 (`planned`).
+
+### Implementation targets and validation
+
+- Navigation: shared `TerminalWorkspaceSidebar.jsx`, `TerminalPage.jsx` and
+  `TerminalPageDialogLayer.jsx`; retain the Overview destination
+  `/?view=reports#/backoffice/overview` in an individual browser page.
+- Settings: shared `TerminalOperationsWorkspace.jsx` (`SettingsWorkspace`),
+  POS `BusinessAdminPage.jsx` and `businessAdminSettingsModel.js`; retain
+  server-projected view/edit rights and tenant/branch scope.
+- Refresh: `businessAdminSettingsSync.js`; test same-origin window behavior and
+  tenant/branch filtering without broadcasting credentials.
+- Extend relevant existing navigation, settings, authentication and permission
+  tests. Include rendered desktop/mobile evidence, API denial checks and
+  save/readback for controls whose entry points change. Record exact test paths
+  and commands in the ledger when implementation evidence exists.
+
+Follow [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md)
+(last reviewed 2026-03-06),
+[Architecture Governance](../architecture/ARCHITECTURE_GOVERNANCE.md)
+(2026-05-21),
+[ADR 0026](../architecture/adr/0026-browser-session-cookie-authority.md)
+(2026-07-08),
+[ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md)
+(2026-09-14), and
+[ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md)
+(2026-09-03). Recheck freshness before implementation. Preserve browser-cookie
+session authority, shared-component boundaries and shift/device protections.
+Include a dated ADR 0031 clarification with the manager-entry implementation;
+this plan itself does not amend the ADR. No new storage owner, architecture
+exception or allowlist dependency is proposed. Run applicable architecture
+boundary checks for affected shared POS/authentication changes.
