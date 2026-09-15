@@ -161,7 +161,9 @@ export function OrderDetailsModal({
   const totalRows = [
     { label: 'Subtotal', value: subtotal },
     { label: 'Delivery fee', value: deliveryFee },
-    { label: 'Service fee', value: serviceFee },
+    ...(toFiniteNumber(serviceFee) !== null && Number(serviceFee) > 0
+      ? [{ label: 'Service fee', value: serviceFee }]
+      : []),
     ...(toFiniteNumber(discountAmount) !== null ? [{ label: 'Discount', value: -Math.abs(Number(discountAmount)) }] : [])
   ].filter((row) => toFiniteNumber(row.value) !== null);
   const disclosureIconStyle = {

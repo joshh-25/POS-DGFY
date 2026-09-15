@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isAccountActivityInScope } from '../../tracking/accountActivity.js';
 import { ACTIVE_CUSTOMER_ORDER_STATUSES } from '../model/customerOrderStatus.js';
 
 export function useCustomerDashboardTracking({ accountPanel, setAccountPanel, selectedStore, routeSlug, knownStoreRouteCandidates, dgfySessionAccount, setIsAccountDrawerOpen, getFetchTrackingPayload, getBuildTrackedOrderEntryFromTrackingPayload, getGoStoreTrackPage, mapAccountActivityToTrackedOrderEntry, mergeTrackedOrderEntries, mergeAccountPanelActivity, resolveStorefrontRouteSlug, toSlug, withAssetOrigin, requestJson, normalizeStorefrontErrorMessage, readDgfyAuthToken, onTrackedActivityUpdated }) {
@@ -56,7 +57,12 @@ export function useCustomerDashboardTracking({ accountPanel, setAccountPanel, se
   const mergeLiveAccountActivity = useCallback((activity) => {
     if (!activity || typeof activity !== 'object') return;
     const reference = String(activity.reference || '').trim().toUpperCase();
-    setAccountPanel((previous) => mergeAccountPanelActivity(previous, activity));
+    setAccountPanel((previous) => {
+      const existing = (Array.isArray(previous.orders) ? previous.orders : [])
+        .some((entry) => String(entry?.reference || '').trim().toUpperCase() === reference && reference);
+      if (!existing && !isAccountActivityInScope(activity, previous.orderHistoryScope)) return previous;
+      return mergeAccountPanelActivity(previous, activity);
+    });
     setTrackedCustomerActivity((previous) => String(previous?.reference || '').trim().toUpperCase() === reference && reference ? { ...previous, ...activity } : previous);
     onTrackedActivityUpdated?.(activity);
   }, [mergeAccountPanelActivity, onTrackedActivityUpdated, setAccountPanel]);

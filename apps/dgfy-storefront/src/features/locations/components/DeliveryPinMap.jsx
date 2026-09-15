@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
 // via DeliveryPinMapLazy.jsx's dynamic import(), so the CSS loads only when
@@ -13,6 +13,10 @@ import {
   tileTransformRequest
 } from '../../../app/runtime/storefrontMapRuntime.js';
 import { makeUserLocationElement } from '../../discovery/utils/discoveryMapMarkers.js';
+
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep this map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
 
 export function DeliveryPinMap({
   pin = null,

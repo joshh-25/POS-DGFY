@@ -82,6 +82,7 @@ export function useCheckoutSubmission({
   rememberCustomerDetails,
   requestJson,
   requestQuote,
+  resetGuestCheckoutOtp,
   requireQuoteForCheckout,
   resolveServicesBookingSubmitContract,
   resolvedCustomerFirstName,
@@ -308,6 +309,7 @@ export function useCheckoutSubmission({
         serviceOrderMethod: effectiveServiceOrderMethod
       });
       setCart([]);
+      resetGuestCheckoutOtp?.();
       setSelectedServiceCartLineId('');
       setCheckoutResult(null);
       setTrackingPinInput(localSimulation.tracking_pin);
@@ -478,6 +480,7 @@ export function useCheckoutSubmission({
         try {
           servicesData = await submitServicesBooking();
         } catch (servicesError) {
+          resetGuestCheckoutOtp?.();
           setCart((prev) => prev.filter((line) => line.category === 'service'));
           setCheckoutResult({
             ...productData,
@@ -521,6 +524,7 @@ export function useCheckoutSubmission({
         }
       }
       const data = { ...productData, ...servicesData };
+      resetGuestCheckoutOtp?.();
       setCheckoutResult({
         ...data,
         cart_lines: hasServiceCart && !hasMixedCart

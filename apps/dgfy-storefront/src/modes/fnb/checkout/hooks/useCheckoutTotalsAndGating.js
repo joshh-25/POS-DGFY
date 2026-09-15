@@ -1,12 +1,11 @@
 import { useMemo } from 'react';
 import { canCheckout, getCheckoutBlockReason } from '../../../../shared/model/checkoutRules.js';
-import { DGFY_CONVENIENCE_FEE_LABEL, DGFY_CONVENIENCE_FEE_RATE, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
+import { DGFY_CONVENIENCE_FEE_LABEL, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import {
   buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
-import { round4 } from '../../../../shared/utils/storefrontFormatters.js';
 import { buildServiceCartValidationIssues } from '../../../services/booking/model/serviceBookingValidation.js';
 import { buildFnbCartStatusLabel } from '../model/fnbCartPresentation.js';
 
@@ -55,9 +54,12 @@ export function useCheckoutTotalsAndGating({
   const totalsForDisplay = useMemo(() => {
     const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
     const discountAmount = quoteResult?.discount_amount != null ? Number(quoteResult.discount_amount) : 0;
+    // Phase 333: the Storefront no longer derives a customer-facing DGFY fee
+    // locally when a quote is unavailable. The API remains authoritative and
+    // new Storefront quotes return service_fee_amount=0.
     const serviceFee = quoteResult?.service_fee_amount != null
       ? Number(quoteResult.service_fee_amount)
-      : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
+      : 0;
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
     // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
     // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).

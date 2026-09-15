@@ -1,8 +1,8 @@
 /* @vitest-environment jsdom */
 // #1615: F&B has no existing render-level summary test -- this covers the split fee/VAT rows
 // (replacing the old combined "Fees & Taxes" row) across desktop (both `detailed` and `compact`
-// variants) and mobile, using the issue's own reported numbers (gross subtotal PHP 105, VAT PHP
-// 11.25 already included, zero-fee total PHP 94.50 / 1%-fee total PHP 95.55).
+// variants) and mobile. The zero-fee scenario represents the current Storefront contract; the
+// positive-fee scenarios preserve rendering compatibility for older quote/order responses.
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -77,7 +77,7 @@ const mobileBaseProps = {
 afterEach(cleanup);
 
 describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
-  describe('zero-fee scenario (revenue sharing) -- PHP 94.50 total', () => {
+  describe('zero-fee scenario -- PHP 94.50 total', () => {
     const totals = { ...baseTotals, service_fee_amount: 0, total_amount: 94.5 };
 
     it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
@@ -87,8 +87,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('desktop detailed variant shows the split rows and the disclosure note', () => {
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} variant="detailed" />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getAllByText('PHP 0.00').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
@@ -98,7 +97,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('desktop compact variant (OrderSummaryCard) shows the same split rows and footnote', () => {
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} variant="compact" />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
@@ -108,7 +107,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('mobile summary sheet shows the same split rows and total', () => {
       render(<FnbCheckoutMobileSummaryPanel {...mobileBaseProps} totals={totals} />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();

@@ -32,6 +32,14 @@ export function useGuestCheckoutOtp({
   const isGuestCheckoutOtpCooldownActive = guestCheckoutOtpCooldownSeconds > 0;
   const guestCheckoutOtpVerified = isDgfyCustomerSignedIn || Boolean(guestCheckoutProof?.proof);
 
+  const resetGuestCheckoutOtp = useCallback(() => {
+    setGuestCheckoutIntentId(createGuestCheckoutIntentId());
+    setGuestCheckoutOtpCode('');
+    setGuestCheckoutProof(null);
+    setGuestCheckoutOtpError('');
+    setGuestCheckoutOtpCooldownSeconds(0);
+  }, []);
+
   useEffect(() => {
     if (isDgfyCustomerSignedIn) {
       setGuestCheckoutProof(null);
@@ -169,5 +177,6 @@ export function useGuestCheckoutOtp({
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
     isGuestCheckoutOtpCooldownActive,
+    resetGuestCheckoutOtp,
   };
 }

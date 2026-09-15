@@ -93,6 +93,14 @@ const normalizeCategoryKey = (value) => {
   return normalized || 'services';
 };
 
+const getCategorySortOrder = (value) => {
+  if (value === null || value === undefined || String(value).trim() === '') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const sortOrder = Number(value);
+  return Number.isFinite(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+};
+
 const CATEGORY_ICON_KEYWORD_RULES = Object.freeze([
   { token: 'aircon', keywords: ['aircon', 'air-con', 'ac cleaning', 'ac service', 'cassette', 'split type', 'window type', 'floor mounted'] },
   { token: 'laundry', keywords: ['laundry', 'wash', 'wash & fold', 'wash and fold', 'bedsheet', 'blanket', 'comforter'] },
@@ -354,11 +362,42 @@ const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryIdentity)
     const secondaryIdentity = resolveCategoryIdentity(secondaryCategory?.folder_id, secondaryCategoryKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
+    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity, sortOrder: getCategorySortOrder(secondaryCategory?.sort_order) });
   });
 
   return occurrences;
 };
+
+export const sortServicesForCatalog = (services = [], sortOption, { categoryFirst = true } = {}) => (
+  (Array.isArray(services) ? services : [])
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      if (sortOption === 'price_asc') {
+        return Number(left.item?.default_sale_price || 0)
+          - Number(right.item?.default_sale_price || 0)
+          || left.index - right.index;
+      }
+      if (sortOption === 'price_desc') {
+        return Number(right.item?.default_sale_price || 0)
+          - Number(left.item?.default_sale_price || 0)
+          || left.index - right.index;
+      }
+      if (categoryFirst) {
+        const categoryDifference = getCategorySortOrder(
+          left.item?.categorySortOrder ?? left.item?.folder_sort_order
+        ) - getCategorySortOrder(
+          right.item?.categorySortOrder ?? right.item?.folder_sort_order
+        );
+        if (categoryDifference !== 0) return categoryDifference;
+      }
+      return String(left.item?.variantName || left.item?.name || '').localeCompare(
+        String(right.item?.variantName || right.item?.name || '')
+      )
+        || String(left.item?.item_id || '').localeCompare(String(right.item?.item_id || ''))
+        || left.index - right.index;
+    })
+    .map(({ item }) => item)
+);
 
 export const getServicesStorefrontViewModel = (catalog = []) => {
   const services = (Array.isArray(catalog) ? catalog : [])
@@ -372,7 +411,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
       return {
         ...item,
         categoryKey,
-        categorySortOrder: Number(item?.folder_sort_order || 0),
+        categorySortOrder: getCategorySortOrder(item?.folder_sort_order),
         intakeFields,
         requiredIntakeCount,
         hasAvailability,

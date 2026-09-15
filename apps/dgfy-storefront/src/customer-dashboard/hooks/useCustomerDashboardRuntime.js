@@ -10,7 +10,7 @@ import { useCustomerDashboardSessionActions } from './useCustomerDashboardSessio
 import { useCustomerDashboardTracking } from './useCustomerDashboardTracking.js';
 
 export function useCustomerDashboardRuntime({
-  EMPTY_ACCOUNT_PANEL, selectedStore, routeSlug, routeSubpage, currentPathSubpage,
+  EMPTY_ACCOUNT_PANEL, selectedStore, selectedLocation, selectedLocationId, isGlobalAccountPage, routeSlug, routeSubpage, currentPathSubpage,
   knownStoreRouteCandidates, isDgfyCustomerSignedIn, isGuestTrackingDrawerOpen,
   isAccountDrawerOpen, isStandaloneAccountPage, dgfySessionAccount,
   setDgfySessionAccount, setDgfyAuthTokenState, setIsAccountDrawerOpen,
@@ -32,7 +32,7 @@ export function useCustomerDashboardRuntime({
   const accountPanelRefreshInFlightRef = useRef(false);
   const loadAccountPanelRef = useRef(null);
   const { accountPanel, setAccountPanel, handleLoadAccountPanel } = useCustomerAccountPanel({
-    EMPTY_ACCOUNT_PANEL, selectedStore, knownStoreRouteCandidates,
+    EMPTY_ACCOUNT_PANEL, selectedStore, selectedLocation, selectedLocationId, isGlobalAccountPage, knownStoreRouteCandidates,
     isDgfyCustomerSignedIn, dgfySessionAccount, setDgfySessionAccount,
     setDgfyAuthTokenState, requestJson, normalizeStorefrontErrorMessage,
     deriveAccountActivityCollections, readDgfyAuthToken, readStoreAuthToken,
