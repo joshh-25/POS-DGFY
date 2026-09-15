@@ -64,6 +64,9 @@ module.exports = [
   'tests/e2e-full-cycle.test.js',
   'tests/lookup_v2.test.js',
   'tests/paymentAtomicity.test.js',
+  // Phase 357: disposable migrated-tenant acceptance proves persisted cashier
+  // scope, concurrency, recovery and generated operating indexes against real MySQL.
+  'tests/posCashierLocationAccess.phase357.db.integration.test.js',
   'tests/posCheckout.db.integration.test.js',
   'tests/posSalesReconciliation.db.integration.test.js',
   'tests/purchaseOrder.test.js',
