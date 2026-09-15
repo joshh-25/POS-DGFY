@@ -16,9 +16,9 @@ const terminalOperationsWorkspaceSource = readSource('../components/TerminalOper
 const businessAdminPageSource = readSource('../../../../../../apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
 const posRouteSource = readSource('../../../../../../apps/dgfy-pos/src/main.jsx');
 
-const renderSidebar = ({ terminalUser = { role: 'admin' }, canAccessBusinessAdmin = true, currentViewMode = 'checkout', isCollapsed = false, onOpenBackOffice = vi.fn() } = {}) => render(
+const renderSidebar = ({ terminalUser = { role: 'admin' }, canAccessBusinessAdmin = true, currentViewMode = 'checkout', isCollapsed = false, locked = false, onOpenBackOffice = vi.fn() } = {}) => render(
   <TerminalWorkspaceSidebar
-    locked={false}
+    locked={locked}
     isOnline
     isCollapsed={isCollapsed}
     terminalUser={terminalUser}
@@ -54,6 +54,18 @@ describe('POS Back Office navigation', () => {
     const button = screen.getByTestId('pos-nav-backoffice');
     expect(button).toBeDefined();
     expect(button.getAttribute('aria-label')).toBe('Back Office');
+  });
+
+  it('keeps Back Office available for an authorized manager while checkout is locked', () => {
+    const onOpenBackOffice = vi.fn();
+    renderSidebar({ locked: true, onOpenBackOffice });
+
+    const button = screen.getByTestId('pos-nav-backoffice');
+    expect(button.disabled).toBe(false);
+    expect(button.textContent).toContain('Manager access remains available while checkout is locked');
+
+    fireEvent.click(button);
+    expect(onOpenBackOffice).toHaveBeenCalledTimes(1);
   });
 
   it('does not render Back Office for a cashier even if the caller passes access', () => {
@@ -113,13 +125,19 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageSource).toContain("params.set('branch_id', String(activeBranchId))");
     expect(terminalPageSource).toContain(": (isMsmeMode || !canAccessBusinessAdmin ? 'settings_profile' : 'terminal_setup')");
     expect(terminalPageSource).toContain("subscribeToBusinessAdminSettingsUpdates");
+    expect(terminalPageSource).toContain("if (!terminalUser || typeof window === 'undefined') return undefined;");
+    expect(terminalPageSource).toContain('allowWhileLocked: true');
+    expect(terminalPageSource).toContain('if (!locked && canViewPos)');
     expect(terminalPageSource).toContain('refreshTenantLocations({');
     expect(terminalPageSource).toContain('silent: true');
-    expect(terminalPageSource).toContain("window.open(url.toString(), '_blank', 'noopener,noreferrer')");
+    expect(terminalPageSource).toContain("if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;");
+    expect(terminalPageSource).toContain("const openedWindow = window.open('', '_blank');");
+    expect(terminalPageSource).toContain('openedWindow.opener = null;');
+    expect(terminalPageSource).toContain('openedWindow.location.replace(url.toString());');
     expect(terminalPageSource).toContain('Your browser blocked the Back Office window.');
     expect(terminalPageSource).not.toContain("navigate('/backoffice')");
     expect(terminalPageSource).not.toContain('window.confirm');
-    expect(terminalPageDialogLayerSource).toContain('Back Office will open in a new window at the reports view. Continue?');
+    expect(terminalPageDialogLayerSource).toContain('Back Office will open in a new window at Overview. Continue?');
     expect(terminalPageDialogLayerSource).toContain('Open Back Office');
     expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
     expect(terminalPageLayoutSource.match(/canAccessBusinessAdmin=\{canAccessBusinessAdmin\}/g)).toHaveLength(2);
@@ -134,6 +152,9 @@ describe('POS Back Office navigation', () => {
     expect(terminalOperationsWorkspaceSource).toContain("title: 'Terminal Setup'");
     expect(businessAdminPageSource).toContain("publishBusinessAdminSettingsUpdated");
     expect(businessAdminPageSource).toContain("new URLSearchParams(location.search).get('branch_id')");
+    expect(businessAdminPageSource).toContain("setBootstrapAuthRequired(status === 401 || status === 419)");
+    expect(businessAdminPageSource).toContain('Business Admin sign-in required');
+    expect(businessAdminPageSource).toContain('Open POS sign-in');
     expect(businessAdminPageSource).toContain("onSettingsSaved={notifySettingsSaved}");
     expect(businessAdminPageSource).toContain("buildPosSettingsOwnerPath('terminal_setup')");
     expect(businessAdminPageSource).toContain('Open POS terminal controls');

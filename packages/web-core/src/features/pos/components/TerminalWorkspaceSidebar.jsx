@@ -381,8 +381,8 @@ export default function TerminalWorkspaceSidebar({
               label="Back Office"
               icon={LayoutDashboard}
               onClick={onOpenBackOffice}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Business overview, settings, reports, and branch operations')}
+              disabled={!isOnline}
+              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : 'Business overview, settings, reports, and branch operations')}
               testId="pos-nav-backoffice"
               collapsed={isCollapsed}
             />
