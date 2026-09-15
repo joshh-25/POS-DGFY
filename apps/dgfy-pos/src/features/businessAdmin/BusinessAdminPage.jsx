@@ -1001,6 +1001,7 @@ export default function BusinessAdminPage() {
     const [bootstrap, setBootstrap] = useState(null);
     const [bootstrapLoading, setBootstrapLoading] = useState(true);
     const [bootstrapError, setBootstrapError] = useState('');
+    const [bootstrapAuthRequired, setBootstrapAuthRequired] = useState(false);
     const [sectionData, setSectionData] = useState(null);
     const [sectionLoading, setSectionLoading] = useState(false);
     const [sectionError, setSectionError] = useState('');
@@ -1068,9 +1069,12 @@ export default function BusinessAdminPage() {
     const loadBootstrap = useCallback(async () => {
         setBootstrapLoading(true);
         setBootstrapError('');
+        setBootstrapAuthRequired(false);
         try {
             setBootstrap(await businessAdminApi.bootstrap());
         } catch (error) {
+            const status = Number(error?.response?.status || 0);
+            setBootstrapAuthRequired(status === 401 || status === 419);
             setBootstrapError(getBusinessAdminErrorMessage(error));
         } finally {
             setBootstrapLoading(false);
@@ -1203,7 +1207,7 @@ export default function BusinessAdminPage() {
 
     if (bootstrapLoading) return <Loading />;
     if (bootstrapError || !bootstrap) {
-        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center"><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">Business Admin unavailable</h1><p className="mt-2 text-sm text-slate-600">{bootstrapError || 'Your account does not have Business Admin access.'}</p><Link to="/terminal" className="business-admin-button primary mt-5"><ExternalLink size={14} /> Open POS terminal</Link></section></main>;
+        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center"><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Business Admin sign-in required' : 'Business Admin unavailable'}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? 'Your session is missing or expired. Return to POS to sign in with an authorized manager account.' : (bootstrapError || 'Your account does not have Business Admin access.')}</p><Link to="/terminal" className="business-admin-button primary mt-5"><ExternalLink size={14} /> {bootstrapAuthRequired ? 'Open POS sign-in' : 'Open POS terminal'}</Link></section></main>;
     }
 
     const meta = activeSection === 'settings' && settingsDefinition

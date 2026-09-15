@@ -237,6 +237,19 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
+  it('refreshes shared settings while the authenticated terminal is locked without refreshing operations', () => {
+    expect(terminalPageContent).toContain("if ((!allowWhileLocked && locked) || terminalUser?.is_master_admin !== true)");
+    expect(terminalPageContent).toContain('if (locked && !allowWhileLocked) return;');
+    expect(terminalPageContent).toContain("if (!terminalUser || typeof window === 'undefined') return undefined;");
+    expect(terminalPageContent).toContain(
+      'hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
+    );
+    expect(terminalPageContent).toContain(
+      'refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
+    );
+    expect(terminalPageContent).toContain('if (!locked && canViewPos) {');
+  });
+
   it('waits for session and onboarding hydration before rendering the POS workspace', () => {
     const initialHydrationBlock = terminalPageContent.match(
       /const hydrateUser = useCallback\(async \(\) => \{[\s\S]*?setLocked\(false\);/

@@ -895,8 +895,8 @@ export default function TerminalPageDialogLayer({ model }) {
               <DialogTitle className="text-lg font-black text-slate-950">Open Back Office?</DialogTitle>
               <DialogDescription className="text-sm leading-6 text-slate-600">
                 {backOfficeTargetPath === '/backoffice/overview'
-                  ? 'Back Office will open in a new window at the reports view. Continue?'
-                  : 'Back Office will open in a new window at the settings view. Continue?'}
+                  ? 'Back Office will open in a new window at Overview. Continue?'
+                  : 'Back Office will open in a new window at Business settings. Continue?'}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:gap-2">

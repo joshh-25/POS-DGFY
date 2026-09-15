@@ -1256,9 +1256,10 @@ export default function TerminalPage() {
 
   const hydrateTenantSetupState = useCallback(async ({
     suppressGlobalErrors = false,
-    silent = false
+    silent = false,
+    allowWhileLocked = false
   } = {}) => {
-    if (locked || terminalUser?.is_master_admin !== true) {
+    if ((!allowWhileLocked && locked) || terminalUser?.is_master_admin !== true) {
       return;
     }
 
@@ -1635,9 +1636,10 @@ export default function TerminalPage() {
 
   const refreshTenantLocations = useCallback(async ({
     suppressGlobalErrors = false,
-    silent = false
+    silent = false,
+    allowWhileLocked = false
   } = {}) => {
-    if (locked) return;
+    if (locked && !allowWhileLocked) return;
     if (!silent) {
       setLocationsState((prev) => ({ ...prev, loading: true }));
     }
@@ -6223,7 +6225,7 @@ export default function TerminalPage() {
     if (dirty !== true) setPendingStorefrontContentViewMode('');
   }, []);
   const handleOpenBackOffice = useCallback((target = {}) => {
-    if (locked || !apiReachable || !canAccessBusinessAdmin) return;
+    if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;
     setMobileNavOpen(false);
     const requestedPath = typeof target === 'string' ? target : target?.path;
     const normalizedPath = String(requestedPath || '/backoffice/overview').trim();
@@ -6247,7 +6249,7 @@ export default function TerminalPage() {
     }
     setBackOfficeTargetPath(safePath);
     setBackOfficeConfirmOpen(true);
-  }, [apiReachable, canAccessBusinessAdmin, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, viewingLocationId]);
+  }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
 
   const handleConfirmOpenBackOffice = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -6260,7 +6262,10 @@ export default function TerminalPage() {
       url.search = '';
       url.hash = `#${backOfficeTargetPath}`;
     }
-    const openedWindow = window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    // Open a blank tab synchronously from the confirmation click so popup
+    // blocking is detectable. Detach the opener before navigating so the new
+    // same-origin Back Office page remains an independent browser context.
+    const openedWindow = window.open('', '_blank');
     setBackOfficeConfirmOpen(false);
 
     if (!openedWindow) {
@@ -6268,8 +6273,22 @@ export default function TerminalPage() {
       return;
     }
 
-     toast.success('Back Office opened in a new window.');
-   }, [backOfficeTargetPath]);
+    try {
+      openedWindow.opener = null;
+      openedWindow.location.replace(url.toString());
+    } catch {
+      try {
+        openedWindow.close();
+      } catch {
+        // The browser may deny closing a newly opened context; the error below
+        // still gives the operator an actionable recovery path.
+      }
+      toast.error('Back Office could not open. Allow pop-ups and try again.');
+      return;
+    }
+
+    toast.success('Back Office opened in a new window at Overview.');
+  }, [backOfficeTargetPath]);
 
   const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
@@ -6464,7 +6483,7 @@ export default function TerminalPage() {
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
 
   useEffect(() => {
-    if (locked || !terminalUser || typeof window === 'undefined') return undefined;
+    if (!terminalUser || typeof window === 'undefined') return undefined;
 
     return subscribeToBusinessAdminSettingsUpdates((payload) => {
       const activeBranchId = Number(
@@ -6476,15 +6495,16 @@ export default function TerminalPage() {
       );
       if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
 
-      void Promise.all([
+      const refreshTasks = [
         hydrateUser({ suppressGlobalErrors: true }),
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true, silent: true }),
-        canViewPos
-          ? refreshOperationalContext({ suppressGlobalErrors: true })
-          : Promise.resolve(null)
-      ]).catch(() => {
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
+      ];
+      if (!locked && canViewPos) {
+        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
+      }
+      void Promise.all(refreshTasks).catch(() => {
         // The POS remains usable on its current snapshot when a background refresh fails.
       });
     });
