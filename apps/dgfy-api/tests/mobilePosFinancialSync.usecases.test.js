@@ -54,8 +54,8 @@ describe('mobile POS financial sync contracts', () => {
 
     it('injects the POS repository into the composed mobile checkout sync use case', () => {
         const compositionSource = fs.readFileSync(new URL('../src/modules/pos/index.js', import.meta.url), 'utf8');
-        expect(compositionSource).toContain(
-            'buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository })'
+        expect(compositionSource).toMatch(
+            /buildSyncMobilePosCheckoutsUseCase\(\{[\s\S]*posRepository\s*\}/
         );
     });
 

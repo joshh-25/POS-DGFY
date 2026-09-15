@@ -464,7 +464,9 @@ export const startDgfyPosSession = async (req, res) => {
         account: req.dgfyAccount,
         tenantId: req.params.tenant_id,
         body: req.body,
-        metadata: buildRequestMetadata(req)
+        metadata: buildRequestMetadata(req),
+        deviceProof: req.posDeviceProof || null,
+        request: req
     });
 
     if (result?.success) {

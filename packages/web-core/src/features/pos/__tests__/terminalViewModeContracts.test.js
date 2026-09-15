@@ -1,7 +1,7 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { readSourceForContract } from './readSourceForContract.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,36 +74,36 @@ describe('POS terminal view-mode contracts', () => {
 
   beforeAll(() => {
     terminalPageContent = [terminalPagePath, terminalPageDialogLayerPath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    terminalWorkspaceSidebarContent = fs.readFileSync(terminalWorkspaceSidebarPath, 'utf8');
-    terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
-    terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
+    terminalWorkspaceSidebarContent = readSourceForContract(terminalWorkspaceSidebarPath);
+    terminalSidebarPanelContent = readSourceForContract(terminalSidebarPanelPath);
+    terminalOperationsWorkspaceContent = readSourceForContract(terminalOperationsWorkspacePath);
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    incomingQueueOrderListContent = fs.readFileSync(incomingQueueOrderListPath, 'utf8');
-    posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
-    posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
+    incomingQueueOrderListContent = readSourceForContract(incomingQueueOrderListPath);
+    posTenantSetupModalContent = readSourceForContract(posTenantSetupModalPath);
+    posReportsAnalyticsWorkspaceContent = readSourceForContract(posReportsAnalyticsWorkspacePath);
     posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    posCheckoutTerminalReceiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');
-    posCheckoutWorkflowContent = fs.readFileSync(posCheckoutWorkflowPath, 'utf8');
-    posHistoryVoidWorkflowContent = fs.readFileSync(posHistoryVoidWorkflowPath, 'utf8');
-    posCheckoutTerminalQueueContent = fs.readFileSync(posCheckoutTerminalQueuePath, 'utf8');
-    posCheckoutTerminalUtilsContent = fs.readFileSync(posCheckoutTerminalUtilsPath, 'utf8');
-    posCheckoutErrorMessagesContent = fs.readFileSync(posCheckoutErrorMessagesPath, 'utf8');
-    skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
-    receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
-    posBarcodeScannerContent = fs.readFileSync(posBarcodeScannerPath, 'utf8');
-    posHistoryPanelContent = fs.readFileSync(posHistoryPanelPath, 'utf8');
-    terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
-    terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
-    onlineOrderDetailsModalContent = fs.readFileSync(onlineOrderDetailsModalPath, 'utf8');
-    onlineOrderReceiptModalContent = fs.readFileSync(onlineOrderReceiptModalPath, 'utf8');
-    posServiceContent = fs.readFileSync(posServicePath, 'utf8');
-    posShiftCloseResolutionContent = fs.readFileSync(posShiftCloseResolutionPath, 'utf8');
+    posCheckoutTerminalReceiptDialogsContent = readSourceForContract(posCheckoutTerminalReceiptDialogsPath);
+    posCheckoutWorkflowContent = readSourceForContract(posCheckoutWorkflowPath);
+    posHistoryVoidWorkflowContent = readSourceForContract(posHistoryVoidWorkflowPath);
+    posCheckoutTerminalQueueContent = readSourceForContract(posCheckoutTerminalQueuePath);
+    posCheckoutTerminalUtilsContent = readSourceForContract(posCheckoutTerminalUtilsPath);
+    posCheckoutErrorMessagesContent = readSourceForContract(posCheckoutErrorMessagesPath);
+    skupervisorCheckoutTerminalContent = readSourceForContract(skupervisorCheckoutTerminalPath);
+    receiptPrintViewContent = readSourceForContract(receiptPrintViewPath);
+    posBarcodeScannerContent = readSourceForContract(posBarcodeScannerPath);
+    posHistoryPanelContent = readSourceForContract(posHistoryPanelPath);
+    terminalPageLayoutContent = readSourceForContract(terminalPageLayoutPath);
+    terminalLockDrawerContent = readSourceForContract(terminalLockDrawerPath);
+    onlineOrderDetailsModalContent = readSourceForContract(onlineOrderDetailsModalPath);
+    onlineOrderReceiptModalContent = readSourceForContract(onlineOrderReceiptModalPath);
+    posServiceContent = readSourceForContract(posServicePath);
+    posShiftCloseResolutionContent = readSourceForContract(posShiftCloseResolutionPath);
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -415,7 +415,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and protected sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !hasActiveShift}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || (!hasActiveShift && !isAdminBranchMonitor)}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
     expect(terminalWorkspaceSidebarContent).toContain('Available online only');
   });
@@ -499,7 +499,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode(settingsTargetViewMode)}");
+    expect(terminalWorkspaceSidebarContent).toContain('shouldRouteSettingsToBackOffice');
+    expect(terminalWorkspaceSidebarContent).toContain('{!shouldRouteSettingsToBackOffice && (');
+    expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
+    expect(terminalWorkspaceSidebarContent).not.toContain("onOpenBackOffice({ path: '/backoffice/settings/profile' })");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
     expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');

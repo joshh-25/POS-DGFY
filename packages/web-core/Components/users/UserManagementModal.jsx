@@ -136,7 +136,7 @@ const PERMISSION_TEMPLATES = {
   }
 };
 
-export default function UserManagementModal({ open, onOpenChange }) {
+export default function UserManagementModal({ open, onOpenChange, readOnly = false, onSettingsSaved = () => {} }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -253,6 +253,14 @@ export default function UserManagementModal({ open, onOpenChange }) {
     setOwnershipTransferLoading(false);
   };
 
+  const notifySettingsSaved = () => {
+    try {
+      onSettingsSaved?.({ section: 'team' });
+    } catch {
+      // Cross-window refresh is advisory and must never turn a successful mutation into an error.
+    }
+  };
+
   const openOwnershipTransfer = async (targetUser) => {
     setOwnershipTransferUser(targetUser);
     setOwnershipTransferCode('');
@@ -291,6 +299,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       });
       toast.success(`${ownershipTransferUser.username} is now the company owner.`);
       resetOwnershipTransferState();
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to transfer company ownership.'));
@@ -307,6 +316,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       await userService.removeUserFromCompany(removeConfirmUser.user_id);
       toast.success(`${removeConfirmUser.username} has been removed from the company`);
       setRemoveConfirmUser(null);
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to remove user');
@@ -415,6 +425,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
             });
             toast.success('User role updated successfully');
             resetLocationGrantState();
+            notifySettingsSaved();
             if (selectedUser && selectedUser.user_id === userId) {
               setSelectedUser(prev => ({
                 ...prev,
@@ -456,6 +467,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       }
 
       fetchUsers();
+      notifySettingsSaved();
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to update role'));
     }
@@ -465,6 +477,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
     try {
       await userService.updateUserStatus(userId, !currentStatus);
       toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to update status');
@@ -475,6 +488,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
     try {
       await userService.cancelUserInvitation(user.user_id);
       toast.success('Invitation cancelled');
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to cancel invitation');
@@ -501,6 +515,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       window.dispatchEvent(new CustomEvent('auth:login'));
       toast.success('Permissions updated successfully');
       setShowPermissionMatrix(false);
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       console.error(error);
@@ -574,6 +589,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
         toast.success('Location grants updated successfully');
       }
       resetLocationGrantState();
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(getErrorMessage(error, pendingRoleAssignment ? 'Failed to update role and location scope' : 'Failed to update location grants'));
@@ -655,6 +671,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       toast.success(`Applied "${template.label}" template to ${selectedUserIds.length} users`);
       setSelectedUserIds([]);
       setShowBulkMenu(false);
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to apply template to some users'));
@@ -696,6 +713,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       toast.success(`Applied "${pendingBulkRoleAssignment.label}" to ${selectedUserIds.length} users`);
       setSelectedUserIds([]);
       resetBulkRoleScopeState();
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error(getErrorMessage(error, 'Failed to apply role and location scope to selected users'));
@@ -738,6 +756,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
       setSelectedUserIds([]);
       setShowBulkMenu(false);
       setShowPermissionPicker(false);
+      notifySettingsSaved();
       fetchUsers();
     } catch (error) {
       toast.error('Failed to update permissions for some users');
@@ -798,6 +817,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
         <DialogContent className="w-[calc(100vw-1rem)] max-w-6xl max-h-[90vh] flex flex-col overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
           {/* Sticky Header */}
           <div className="sticky top-0 z-10 bg-white border-b px-4 py-4 sm:px-6">
+            <fieldset disabled={readOnly} className="contents">
             <DialogHeader>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -910,10 +930,12 @@ export default function UserManagementModal({ open, onOpenChange }) {
                 );
               })}
             </div>
+            </fieldset>
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+            <fieldset disabled={readOnly} className="contents">
             {loading ? (
               <div className="text-center py-12">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
@@ -1168,6 +1190,7 @@ export default function UserManagementModal({ open, onOpenChange }) {
                 </div>
               </div>
             )}
+            </fieldset>
           </div>
 
           {/* Footer */}
@@ -1188,7 +1211,10 @@ export default function UserManagementModal({ open, onOpenChange }) {
       <UserInvitationModal
         open={showInviteModal}
         onOpenChange={setShowInviteModal}
-        onSuccess={fetchUsers}
+        onSuccess={() => {
+          notifySettingsSaved();
+          return fetchUsers();
+        }}
         roleCatalog={roleCatalog}
       />
 

@@ -144,7 +144,7 @@ const buildCheckoutFixture = (settingsRows, roadDistanceProvider) => {
             fulfillment_status: 'placed',
             subtotal_amount: 500,
             discount_amount: 0,
-            service_fee_amount: 5,
+            service_fee_amount: 0,
             delivery_fee: 0,
             total_amount: 0,
             customer_name: 'Buyer',
@@ -202,8 +202,8 @@ const buildPaymentSessionFixture = (settingsRows, roadDistanceProvider) => {
 };
 
 describe.each([
-    ['calculated mode (5400m -> ₱97)', calculatedModeSettings, 602, 97],
-    ['free mode', freeModeSettings, 505, 0]
+    ['calculated mode (5400m -> ₱97)', calculatedModeSettings, 597, 97],
+    ['free mode', freeModeSettings, 500, 0]
 ])('three-entry-point delivery-fee consistency -- %s', (_label, settingsFactory, expectedTotal, expectedFee) => {
     test('cart quote, checkout, and payment-session all resolve the IDENTICAL delivery_fee and total_amount', async () => {
         const settingsRows = settingsFactory();

@@ -63,7 +63,7 @@ import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogI
 // updateSettingByKeyUseCase.js exist for the opposite direction and stay dynamic). A direct import
 // of the settings repository here carries the same, already-proven-safe direction.
 import { settingsRepository } from '../settings/repositories/settingsRepository.js';
-import { resolveMovementLocation } from '../../services/locationInventoryService.js';
+import { resolveMovementLocation, assertLocationAccess } from '../../services/locationInventoryService.js';
 import * as cacheService from '../../services/cacheService.js';
 import * as stockCommandService from './commands/stockCommandService.js';
 import { inventoryReservationService } from './services/inventoryReservationService.js';
@@ -116,7 +116,10 @@ export const deleteFolderUseCase = buildDeleteFolderUseCase({ itemRepository });
 export const listItemFoldersUseCase = buildListItemFoldersUseCase({ itemRepository });
 export const replaceItemFoldersUseCase = buildReplaceItemFoldersUseCase({ itemRepository });
 export const listStorefrontCatalogOverridesUseCase = buildListStorefrontCatalogOverridesUseCase({ itemRepository });
-export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({ itemRepository });
+export const updateStorefrontCatalogOverrideUseCase = buildUpdateStorefrontCatalogOverrideUseCase({
+  itemRepository,
+  assertLocationAccess
+});
 export const updateBulkStorefrontCatalogOverridesUseCase = buildUpdateBulkStorefrontCatalogOverridesUseCase({ itemRepository });
 export const uploadStorefrontCatalogImageUseCase = buildUploadStorefrontCatalogImageUseCase({
   itemRepository,

@@ -58,6 +58,10 @@ import {
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
+import {
+  shouldRefreshBusinessAdminSettingsUpdate,
+  subscribeToBusinessAdminSettingsUpdates
+} from '../utils/businessAdminSettingsSync.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import api, { onApiOutcome } from '@/services/api.js';
@@ -133,9 +137,12 @@ import {
   restoreTerminalViewportAfterUnlock
 } from '../utils/terminalViewportRecovery.js';
 import {
+  buildPosAdminLocationMonitorScopeKey,
+  buildPosOperationalScopeKey,
   hasUsableIncomingOrderShift,
   isIncomingOrderShiftUnavailableError,
-  isPosOnlineOrderQueueEnabled
+  isPosOnlineOrderQueueEnabled,
+  isCurrentPosOperationalRequest
 } from '../utils/posOperationalVisibility.js';
 import {
   DEFAULT_POS_TEXT_SIZE,
@@ -376,6 +383,36 @@ const isRetryableTerminalOperationError = (error) => {
   return RETRYABLE_TERMINAL_OPERATION_STATUS_CODES.has(status);
 };
 
+const SHIFT_LOCATION_CONFLICT_CODES = new Set([
+  'POS_OPERATOR_ACTIVE_ELSEWHERE',
+  'POS_TARGET_TERMINAL_OCCUPIED'
+]);
+
+const resolveTerminalShiftLocationConflict = (error, request = {}) => {
+  const response = error?.response;
+  const payload = response?.data && typeof response.data === 'object' ? response.data : {};
+  const detailCandidates = [
+    payload.errors,
+    payload.details,
+    payload.error?.details,
+    payload.error?.errors
+  ];
+  const details = detailCandidates.find((candidate) => (
+    candidate && typeof candidate === 'object' && !Array.isArray(candidate)
+  )) || {};
+  const reasonCode = String(details.reason_code || payload.error_code || '').trim();
+  const status = Number(response?.status || 0);
+  if (status !== 409 && !SHIFT_LOCATION_CONFLICT_CODES.has(reasonCode)) return null;
+
+  return {
+    reasonCode,
+    message: String(payload.message || 'The server rejected this shift location change.').trim(),
+    targetLocationId: Number(details.target_location_id || request.targetLocationId || 0) || null,
+    targetTerminalId: sanitizeTerminalId(details.target_terminal_id || request.terminalId || ''),
+    existingShiftId: Number(details.existing_shift_id || 0) || null
+  };
+};
+
 const SUPPRESS_GLOBAL_ERROR_TOAST = { skipGlobalErrorToast: true };
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
 
@@ -463,6 +500,7 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
+  const [backOfficeConfirmOpen, setBackOfficeConfirmOpen] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [closeShiftBlocker, setCloseShiftBlocker] = useState(null);
   const [closedShiftReport, setClosedShiftReport] = useState(null);
@@ -560,6 +598,7 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
+  const [backOfficeTargetPath, setBackOfficeTargetPath] = useState('/backoffice/overview');
 
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
@@ -635,6 +674,7 @@ export default function TerminalPage() {
     locations: []
   });
   const [operatingLocationId, setOperatingLocationId] = useState(null);
+  const [viewingLocationId, setViewingLocationId] = useState(null);
   const [queueLocationScopeId, setQueueLocationScopeId] = useState(null);
   const [incomingOrdersState, setIncomingOrdersState] = useState({
     loading: false,
@@ -714,6 +754,7 @@ export default function TerminalPage() {
     loading: false,
     orders: [],
     terminalShifts: [],
+    locationId: null,
     errorMessage: ''
   });
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
@@ -742,6 +783,13 @@ export default function TerminalPage() {
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
   const shiftClosedToastIdRef = useRef(null);
   const incomingOrdersShiftBlockedRef = useRef(false);
+  const incomingOrdersRequestSequenceRef = useRef(0);
+  const incomingOrdersScopeRef = useRef('');
+  const operationalContextRequestSequenceRef = useRef(0);
+  const operationalContextScopeRef = useRef('');
+  const adminLocationMonitorRequestSequenceRef = useRef(0);
+  const adminLocationMonitorScopeRef = useRef('');
+  const switchLocationIdempotencyKeyRef = useRef('');
   const [incomingOrderModalOpen, setIncomingOrderModalOpen] = useState(false);
   const [incomingOrderReceiptOpen, setIncomingOrderReceiptOpen] = useState(false);
   const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
@@ -856,7 +904,7 @@ export default function TerminalPage() {
   }, [zReadingPrintAutoPrint, zReadingPrintOpen, zReadingReport]);
 
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
-  const activeTenantId = String(terminalUser?.company?.id || '').trim();
+  const activeTenantId = String(terminalUser?.company?.id || terminalUser?.tenant_id || '').trim();
   const offlinePosScope = useMemo(() => ({
     tenantId: activeTenantId,
     terminalId: activeTerminalId,
@@ -895,6 +943,12 @@ export default function TerminalPage() {
     return permissions.includes(permission);
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
+  const isCashierRole = normalizedTerminalRole === 'cashier';
+  const canAccessBusinessAdmin = !isCashierRole && (
+    isMasterAdminOperator
+    || normalizedTerminalRole === 'admin'
+    || hasPermission('business_admin:access')
+  );
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
   // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
   //
@@ -972,8 +1026,6 @@ export default function TerminalPage() {
     const merged = new Set([...fallbackOptions, current, formTerminal].filter(Boolean));
     return Array.from(merged);
   }, [activeTerminalId, activeTerminalRegistry, formData.terminalId, registryEnforced]);
-  const isCashierRole = normalizedTerminalRole === 'cashier';
-
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
   const canViewAttendance = hasPermission('pos:attendance:view');
@@ -1007,7 +1059,7 @@ export default function TerminalPage() {
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
-  const canEditItems = isCashierRole || hasPermission('items:edit');
+  const canEditItems = hasPermission('items:edit');
   const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
 
@@ -1407,21 +1459,34 @@ export default function TerminalPage() {
     allowWhileLocked = false,
     canViewPosOverride = null
   } = {}) => {
+    const requestSequence = operationalContextRequestSequenceRef.current + 1;
+    operationalContextRequestSequenceRef.current = requestSequence;
+    const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
+    const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
+      ? Number(operatingLocationIdOverride || operatingLocationId)
+      : null;
+    const requestScopeKey = buildPosOperationalScopeKey({
+      terminalId,
+      locationId: scopedOperatingLocationId
+    });
+    operationalContextScopeRef.current = requestScopeKey;
+    const isCurrentRequest = () => isCurrentPosOperationalRequest({
+      requestSequence,
+      currentRequestSequence: operationalContextRequestSequenceRef.current,
+      requestScopeKey,
+      currentScopeKey: operationalContextScopeRef.current
+    });
     const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
     if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       return { shift: null, cashSummary: null, salesSummary: null };
     }
-    const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
     if (!terminalId) {
       setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
       return { shift: null, cashSummary: null, salesSummary: null };
     }
-    const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
-      ? Number(operatingLocationIdOverride || operatingLocationId)
-      : null;
     const preservedTakeoverContext = takeoverShiftContextRef.current;
     const preservedTakeoverLocationId = Number(
       preservedTakeoverContext?.locationId || preservedTakeoverContext?.shift?.location_id || 0
@@ -1460,6 +1525,7 @@ export default function TerminalPage() {
         currentShiftParams,
         suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
+      if (!isCurrentRequest()) return null;
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
       const shiftSalesSummary = currentShiftResult?.sales_summary || null;
@@ -1473,6 +1539,7 @@ export default function TerminalPage() {
           suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
         )
         : null;
+      if (!isCurrentRequest()) return null;
       const activeShift = dashboardResult?.active_shift || shiftPayload;
       const activeShiftSummary = dashboardResult?.active_shift_cash_summary || cashSummary;
       const readinessSummary = dashboardResult?.location_binding_readiness || currentShiftResult?.location_binding_readiness || null;
@@ -1498,11 +1565,13 @@ export default function TerminalPage() {
       }));
       return { shift: activeShift, cashSummary: activeShiftSummary };
     } catch (error) {
+      if (!isCurrentRequest()) return null;
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
       if (!suppressGlobalErrors && error?.response?.status !== 403) {
         toast.error(error?.response?.data?.message || 'Failed to load terminal operational context.');
       }
+      return null;
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
@@ -1575,25 +1644,37 @@ export default function TerminalPage() {
         : null;
       const hasOperatingLocation = operatingLocationId
         && activeLocations.some((location) => Number(location.location_id) === Number(operatingLocationId));
+      const hasViewingLocation = viewingLocationId
+        && activeLocations.some((location) => Number(location.location_id) === Number(viewingLocationId));
 
       if (!hasOperatingLocation) {
         setOperatingLocationId(fallbackLocationId);
+      }
+      if (viewingLocationId && !hasViewingLocation) {
+        setViewingLocationId(fallbackLocationId);
       }
     } catch {
       if (!silent) {
         setLocationsState((prev) => ({ ...prev, loading: false }));
       }
     }
-  }, [locked, operatingLocationId]);
+  }, [locked, operatingLocationId, viewingLocationId]);
 
   useEffect(() => {
     const shiftLocationId = Number(shiftState?.shift?.location_id || 0);
+    const shiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
     const hasActiveShiftLocation = hasUsableIncomingOrderShift({
-      pos_terminal_shift_id: shiftState?.shift?.pos_terminal_shift_id,
+      pos_terminal_shift_id: shiftId,
       location_id: shiftState?.shift?.location_id,
       status: shiftState?.shift?.status,
       closed_at: shiftState?.shift?.closed_at,
       closedAt: shiftState?.shift?.closedAt
+    });
+    incomingOrdersRequestSequenceRef.current += 1;
+    incomingOrdersScopeRef.current = buildPosOperationalScopeKey({
+      terminalId: activeTerminalId,
+      shiftId: hasActiveShiftLocation ? shiftId : 0,
+      locationId: hasActiveShiftLocation ? shiftLocationId : 0
     });
     incomingOrdersShiftBlockedRef.current = !hasActiveShiftLocation;
     setQueueLocationScopeId(hasActiveShiftLocation ? shiftLocationId : null);
@@ -1613,10 +1694,27 @@ export default function TerminalPage() {
     shiftState?.shift?.closed_at,
     shiftState?.shift?.location_id,
     shiftState?.shift?.pos_terminal_shift_id,
-    shiftState?.shift?.status
+    shiftState?.shift?.status,
+    activeTerminalId
   ]);
 
   const refreshIncomingOrders = useCallback(async ({ silent = false } = {}) => {
+    const requestSequence = incomingOrdersRequestSequenceRef.current + 1;
+    incomingOrdersRequestSequenceRef.current = requestSequence;
+    const activeQueueShiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
+    const activeQueueLocationId = Number(shiftState?.shift?.location_id || 0);
+    const requestScopeKey = buildPosOperationalScopeKey({
+      terminalId: activeTerminalId,
+      shiftId: activeQueueShiftId,
+      locationId: activeQueueLocationId
+    });
+    incomingOrdersScopeRef.current = requestScopeKey;
+    const isCurrentRequest = () => isCurrentPosOperationalRequest({
+      requestSequence,
+      currentRequestSequence: incomingOrdersRequestSequenceRef.current,
+      requestScopeKey,
+      currentScopeKey: incomingOrdersScopeRef.current
+    });
     if (!onlineOrderQueueEnabled) {
       setIncomingOrdersState({
         loading: false,
@@ -1661,8 +1759,6 @@ export default function TerminalPage() {
       });
       return;
     }
-    const activeQueueShiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
-    const activeQueueLocationId = Number(shiftState?.shift?.location_id || 0);
     if (
       !Number.isInteger(activeQueueShiftId)
       || activeQueueShiftId <= 0
@@ -1697,6 +1793,7 @@ export default function TerminalPage() {
         skipGlobalErrorToast: silent === true,
         timeout: ONLINE_ORDER_POLL_TIMEOUT_MS
       });
+      if (!isCurrentRequest()) return;
       setIncomingOrdersState({
         loading: false,
         orders: Array.isArray(payload?.orders) ? payload.orders : [],
@@ -1704,6 +1801,7 @@ export default function TerminalPage() {
         errorMessage: ''
       });
     } catch (error) {
+      if (!isCurrentRequest()) return;
       const isForbidden = error?.response?.status === 403;
       const isShiftUnavailable = isIncomingOrderShiftUnavailableError(error);
       const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
@@ -1771,47 +1869,73 @@ export default function TerminalPage() {
   }, [canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
-    const locationId = Number(operatingLocationId || 0);
+    const requestSequence = adminLocationMonitorRequestSequenceRef.current + 1;
+    adminLocationMonitorRequestSequenceRef.current = requestSequence;
+    const locationId = Number(viewingLocationId || operatingLocationId || 0);
+    const shiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
+    const requestScopeKey = buildPosAdminLocationMonitorScopeKey({
+      tenantId: activeTenantId,
+      terminalId: activeTerminalId,
+      shiftId,
+      locationId
+    });
+    adminLocationMonitorScopeRef.current = requestScopeKey;
+    const isCurrentRequest = () => isCurrentPosOperationalRequest({
+      requestSequence,
+      currentRequestSequence: adminLocationMonitorRequestSequenceRef.current,
+      requestScopeKey,
+      currentScopeKey: adminLocationMonitorScopeRef.current
+    });
+
     if (locked || !canSwitchPosLocation || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
+      if (!isCurrentRequest()) return;
       setAdminLocationMonitorState({
         loading: false,
         orders: [],
         terminalShifts: [],
+        locationId: null,
         errorMessage: ''
       });
       return;
     }
 
-    if (!silent) {
-      setAdminLocationMonitorState((previous) => ({
-        ...previous,
-        loading: true,
-        errorMessage: ''
-      }));
-    }
+    // Clear rows at request start. The selected viewing branch can change before the response
+    // arrives; keeping the old array here would render another branch's orders under the new
+    // branch label during that window.
+    setAdminLocationMonitorState({
+      loading: true,
+      orders: [],
+      terminalShifts: [],
+      locationId,
+      errorMessage: ''
+    });
 
     try {
       const payload = await fetchAdminLocationMonitor(
         { location_id: locationId },
         silent ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
       );
+      if (!isCurrentRequest()) return;
       setAdminLocationMonitorState({
         loading: false,
         orders: Array.isArray(payload?.orders) ? payload.orders : [],
         terminalShifts: Array.isArray(payload?.terminal_shifts) ? payload.terminal_shifts : [],
+        locationId,
         errorMessage: ''
       });
     } catch (error) {
+      if (!isCurrentRequest()) return;
       const message = error?.response?.data?.message || 'Failed to load the selected branch monitor.';
       setAdminLocationMonitorState({
         loading: false,
         orders: [],
         terminalShifts: [],
+        locationId,
         errorMessage: message
       });
       if (!silent) toast.error(message);
     }
-  }, [canSwitchPosLocation, isOnline, locked, operatingLocationId]);
+  }, [activeTenantId, activeTerminalId, canSwitchPosLocation, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
 
   useEffect(() => {
     refreshAdminLocationMonitor({ silent: true });
@@ -2336,6 +2460,7 @@ export default function TerminalPage() {
       // be validated against an empty new-tenant registry and re-lock POS.
       setActiveTerminalId('');
       setOperatingLocationId(null);
+      setViewingLocationId(null);
       setFormData((prev) => ({ ...prev, terminalId: '' }));
       setTerminalUnlockForm((prev) => ({ ...prev, terminalId: '' }));
     }
@@ -4648,6 +4773,7 @@ export default function TerminalPage() {
   }, [activeShiftId, activeTerminalId, activeTenantId, operatingLocationId, shiftState?.shift?.location_id, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
 
   const handleLock = async ({ forceLogin = false } = {}) => {
+    switchLocationIdempotencyKeyRef.current = '';
     const hasOpenShift = Boolean(activeShiftId) && !forceLogin;
     const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;
     const selectedTerminalId = sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId();
@@ -4950,13 +5076,30 @@ export default function TerminalPage() {
     }
   };
 
-  const handleSwitchShiftLocation = async ({ targetLocationId, reason }) => {
+  const handleSwitchShiftLocation = async ({
+    targetLocationId,
+    terminalId,
+    closingCashAmount,
+    openingFloatAmount,
+    closingNote,
+    openingNote,
+    reason
+  }) => {
+    if (locked || !isOnline || shiftActionLoading.switchLocation) {
+      toast.error('Unlock the terminal and reconnect before switching shift location.');
+      return;
+    }
     if (!activeShiftId) {
       toast.error('No active shift to switch.');
       return;
     }
     if (!canSwitchPosLocation) {
       toast.error('Your account does not have permission to switch shift location.');
+      return;
+    }
+    const normalizedTargetTerminalId = sanitizeTerminalId(terminalId);
+    if (!normalizedTargetTerminalId) {
+      toast.error('Select an active destination terminal before switching shift location.');
       return;
     }
     const normalizedTargetLocationId = Number.parseInt(targetLocationId, 10);
@@ -4969,22 +5112,112 @@ export default function TerminalPage() {
       toast.error('Switch reason is required (at least 8 characters).');
       return;
     }
+    const rawClosingCashAmount = String(closingCashAmount ?? '').trim();
+    if (rawClosingCashAmount === '') {
+      toast.error('Count the current drawer and enter the closing cash amount.');
+      return;
+    }
+    const normalizedClosingCashAmount = Number(rawClosingCashAmount);
+    if (!Number.isFinite(normalizedClosingCashAmount) || normalizedClosingCashAmount < 0) {
+      toast.error('Closing cash must be a non-negative number.');
+      return;
+    }
+    const rawOpeningFloatAmount = String(openingFloatAmount ?? '').trim();
+    if (rawOpeningFloatAmount === '') {
+      toast.error('Enter the opening float for the destination register.');
+      return;
+    }
+    const normalizedOpeningFloatAmount = Number(rawOpeningFloatAmount);
+    if (!Number.isFinite(normalizedOpeningFloatAmount) || normalizedOpeningFloatAmount < 0) {
+      toast.error('Opening float must be a non-negative number.');
+      return;
+    }
 
+    if (checkoutLifecycleRef.current?.hasBlockingCurrentSale) {
+      toast.error('Finish, park, or clear the current sale before switching shift location.');
+      return;
+    }
+
+    try {
+      const { listTerminalOperationQueueEntries } = await loadTerminalOperationQueueStore();
+      const pendingEntries = await listTerminalOperationQueueEntries({
+        includeResolved: false,
+        limit: 1,
+        scope: offlinePosScope,
+        statuses: [
+          TERMINAL_QUEUE_STATUS.QUEUED,
+          TERMINAL_QUEUE_STATUS.REPLAYING,
+          TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
+        ]
+      });
+      if (pendingEntries.length > 0) {
+        toast.error('Sync or resolve pending terminal operations before switching shift location.');
+        return;
+      }
+    } catch {
+      toast.error('Unable to verify pending terminal operations. Refresh and try again before switching shift location.');
+      return;
+    }
+
+    const idempotencyKey = switchLocationIdempotencyKeyRef.current || createIdempotencyKey('pos-shift-switch');
+    switchLocationIdempotencyKeyRef.current = idempotencyKey;
+
+    // Invalidate all in-flight requests before the transaction starts. A response for the
+    // closing shift must never repaint the queue or clear the newly committed shift later.
+    incomingOrdersRequestSequenceRef.current += 1;
+    operationalContextRequestSequenceRef.current += 1;
+    setIncomingOrdersState((previous) => ({
+      ...previous,
+      loading: onlineOrderQueueEnabled,
+      orders: [],
+      accessState: onlineOrderQueueEnabled ? 'allowed' : 'not_applicable',
+      errorMessage: ''
+    }));
     setShiftActionLoading((prev) => ({ ...prev, switchLocation: true }));
     try {
       await switchTerminalShiftLocation(activeShiftId, {
+        terminal_id: normalizedTargetTerminalId,
         target_location_id: normalizedTargetLocationId,
+        closing_cash_amount: normalizedClosingCashAmount,
+        opening_float_amount: normalizedOpeningFloatAmount,
+        closing_note: String(closingNote || '').trim() || undefined,
+        opening_note: String(openingNote || '').trim() || undefined,
         reason: normalizedReason,
-        idempotency_key: createIdempotencyKey('pos-shift-switch')
+        idempotency_key: idempotencyKey
       });
+      // The switch is durably committed once the API resolves. A later refresh
+      // failure must not cause the next click to replay the relocation attempt.
+      switchLocationIdempotencyKeyRef.current = '';
       setOperatingLocationId(normalizedTargetLocationId);
+      // Refresh against the committed target, not the previous render's scope.
+      // The queue effect reloads only after the new authoritative shift is installed.
+      const refreshedContext = await refreshOperationalContext({
+        operatingLocationIdOverride: normalizedTargetLocationId
+      });
+      if (Number(refreshedContext?.shift?.location_id || 0) !== normalizedTargetLocationId) {
+        toast.error('Shift location changed, but the terminal context could not be refreshed. Use Refresh Shift Data.');
+        return { ok: false };
+      }
       toast.success('Shift location switched successfully.');
-      await Promise.all([
-        refreshOperationalContext(),
-        refreshIncomingOrders({ silent: true })
-      ]);
+      return { ok: true };
     } catch (error) {
+      if (!isRetryableTerminalOperationError(error)) {
+        switchLocationIdempotencyKeyRef.current = '';
+      }
       toast.error(error?.response?.data?.message || 'Failed to switch shift location.');
+      // Restore the still-authoritative old shift queue after a rejected or failed switch.
+      try {
+        await refreshIncomingOrders({ silent: true });
+      } catch {
+        // The original shift remains authoritative even if the recovery refresh is unavailable.
+      }
+      return {
+        ok: false,
+        conflict: resolveTerminalShiftLocationConflict(error, {
+          targetLocationId: normalizedTargetLocationId,
+          terminalId: normalizedTargetTerminalId
+        })
+      };
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, switchLocation: false }));
     }
@@ -5935,6 +6168,55 @@ export default function TerminalPage() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }, []);
 
+  const handleOpenBackOffice = useCallback((target = {}) => {
+    if (locked || !apiReachable || !canAccessBusinessAdmin) return;
+    setMobileNavOpen(false);
+    const requestedPath = typeof target === 'string' ? target : target?.path;
+    const normalizedPath = String(requestedPath || '/backoffice/overview').trim();
+    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
+      ? normalizedPath
+      : '/backoffice/overview';
+    const activeBranchId = Number(
+      shiftState?.shift?.location_id
+      || viewingLocationId
+      || operatingLocationId
+      || queueLocationScopeId
+      || 0
+    );
+    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
+      && Number.isInteger(activeBranchId)
+      && activeBranchId > 0) {
+      const [pathOnly, queryString = ''] = safePath.split('?');
+      const params = new URLSearchParams(queryString);
+      params.set('branch_id', String(activeBranchId));
+      safePath = `${pathOnly}?${params.toString()}`;
+    }
+    setBackOfficeTargetPath(safePath);
+    setBackOfficeConfirmOpen(true);
+  }, [apiReachable, canAccessBusinessAdmin, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, viewingLocationId]);
+
+  const handleConfirmOpenBackOffice = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const url = new URL('/', window.location.origin);
+    if (backOfficeTargetPath === '/backoffice/overview') {
+      url.search = '?view=reports';
+      url.hash = '#/backoffice/overview';
+    } else {
+      url.search = '';
+      url.hash = `#${backOfficeTargetPath}`;
+    }
+    const openedWindow = window.open(url.toString(), '_blank', 'noopener,noreferrer');
+    setBackOfficeConfirmOpen(false);
+
+    if (!openedWindow) {
+      toast.error('Your browser blocked the Back Office window. Allow pop-ups and try again.');
+      return;
+    }
+
+    toast.success('Back Office opened in a new window.');
+  }, [backOfficeTargetPath]);
+
   const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
       setMobileNavOpen(false);
@@ -6118,6 +6400,33 @@ export default function TerminalPage() {
 
     await Promise.all(refreshTasks);
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
+
+  useEffect(() => {
+    if (locked || !terminalUser || typeof window === 'undefined') return undefined;
+
+    return subscribeToBusinessAdminSettingsUpdates((payload) => {
+      const activeBranchId = Number(
+        shiftState?.shift?.location_id
+        || operatingLocationId
+        || viewingLocationId
+        || queueLocationScopeId
+        || 0
+      );
+      if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
+
+      void Promise.all([
+        hydrateUser({ suppressGlobalErrors: true }),
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true, silent: true }),
+        canViewPos
+          ? refreshOperationalContext({ suppressGlobalErrors: true })
+          : Promise.resolve(null)
+      ]).catch(() => {
+        // The POS remains usable on its current snapshot when a background refresh fails.
+      });
+    });
+  }, [activeTenantId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
@@ -6443,7 +6752,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -6463,6 +6772,8 @@ function PosRestorationLoadingScreen() {
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
+              backOfficeConfirmOpen,
+              backOfficeTargetPath,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -6489,6 +6800,7 @@ function PosRestorationLoadingScreen() {
               handleBackToCashierResume,
               handleCashierResumeSubmit,
               handleCashierTakeoverSubmit,
+              handleConfirmOpenBackOffice,
               handleOpenCashierTakeover,
               handleCloseDay,
               handleCollectCash,
@@ -6540,6 +6852,7 @@ function PosRestorationLoadingScreen() {
               setBalanceSettlementReference,
               setBalanceProofFile,
               handleCloseBalancePaymentProofViewer,
+              setBackOfficeConfirmOpen,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -6629,6 +6942,7 @@ function PosRestorationLoadingScreen() {
           canManageVouchers={canManageVouchers}
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
+          canAccessBusinessAdmin={canAccessBusinessAdmin}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
@@ -6661,13 +6975,15 @@ function PosRestorationLoadingScreen() {
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
+          viewingLocationId={viewingLocationId}
           queueLocationScopeId={queueLocationScopeId}
           handleSelectViewMode={handleSelectViewMode}
           settingsEntryViewMode={
             setupFlowActive
               ? resolveTenantSetupViewMode(tenantSetupStep)
-              : 'settings_profile'
+              : (isMsmeMode || !canAccessBusinessAdmin ? 'settings_profile' : 'terminal_setup')
           }
+          onOpenBackOffice={handleOpenBackOffice}
           handleLock={handleLock}
           handleCashierSignIn={handleCashierSignIn}
           checkoutOperatorLocked={checkoutOperatorLocked}
@@ -6705,6 +7021,7 @@ function PosRestorationLoadingScreen() {
           handleViewCashierHistoryShift={handleViewCashierHistoryShift}
           refreshOperationalContext={refreshOperationalContext}
           setOperatingLocationId={setOperatingLocationId}
+          setViewingLocationId={setViewingLocationId}
           setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}

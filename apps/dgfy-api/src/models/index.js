@@ -54,6 +54,7 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import PosLocationItemOverride from './PosLocationItemOverride.js';
 import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
 import PosFiscalEvent from './PosFiscalEvent.js';
 import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
@@ -75,9 +76,16 @@ import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
 import EmployeeBreakSegment from './EmployeeBreakSegment.js';
 import PosTerminalOperatorSession from './PosTerminalOperatorSession.js';
+import PosTerminalDeviceEnrollment from './PosTerminalDeviceEnrollment.js';
+import PosTerminalDeviceActivation from './PosTerminalDeviceActivation.js';
+import PosTerminalDeviceChallenge from './PosTerminalDeviceChallenge.js';
 import PosDrawerHandoffEvent from './PosDrawerHandoffEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
+import BusinessAdminApprovalRequest from './BusinessAdminApprovalRequest.js';
+import BusinessAdminSavedReportView from './BusinessAdminSavedReportView.js';
+import BusinessAdminAlertSnapshot from './BusinessAdminAlertSnapshot.js';
+import BusinessAdminNotificationState from './BusinessAdminNotificationState.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
 import InventoryReservation from './InventoryReservation.js';
@@ -536,6 +544,8 @@ POLineItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 // JobOrder associations
 JobOrder.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
 JobOrder.belongsTo(User, { foreignKey: 'responsible_user', as: 'responsibleUser' });
+JobOrder.belongsTo(TenantLocation, { foreignKey: 'source_location_id', as: 'sourceLocation' });
+JobOrder.belongsTo(TenantLocation, { foreignKey: 'destination_location_id', as: 'destinationLocation' });
 JobOrder.belongsTo(User, { foreignKey: 'completed_by', as: 'completedByUser' });
 JobOrder.hasMany(JOIngredient, { foreignKey: 'jo_id', as: 'ingredients' });
 
@@ -605,6 +615,23 @@ ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredien
 
 // AuditLog associations
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+// Business Admin owns only scoped read/projection records and approval metadata;
+// source transactions, shifts, fiscal snapshots, and inventory ledgers remain
+// owned by their canonical modules.
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'requested_by', as: 'requestedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
+BusinessAdminSavedReportView.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+BusinessAdminAlertSnapshot.hasMany(BusinessAdminNotificationState, {
+  foreignKey: 'business_admin_alert_snapshot_id',
+  as: 'notificationStates'
+});
+BusinessAdminNotificationState.belongsTo(BusinessAdminAlertSnapshot, {
+  foreignKey: 'business_admin_alert_snapshot_id',
+  as: 'alertSnapshot'
+});
+BusinessAdminNotificationState.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
 // ReceiveToken associations
 ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
@@ -762,6 +789,8 @@ Item.hasMany(InventoryReservationLine, { foreignKey: 'item_id', as: 'inventoryRe
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(PosLocationItemOverride, { foreignKey: 'item_id', as: 'posLocationItemOverrides' });
+PosLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontCatalogOverride' });
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
@@ -886,6 +915,7 @@ TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTe
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
 TenantLocation.hasMany(InventoryReservation, { foreignKey: 'location_id', as: 'inventoryReservations' });
 TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
+TenantLocation.hasMany(PosLocationItemOverride, { foreignKey: 'location_id', as: 'posItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
@@ -904,6 +934,7 @@ InventoryReservationLine.belongsTo(InventoryReservation, {
 });
 InventoryReservationLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
   foreignKey: 'user_id',
@@ -1186,6 +1217,7 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosLocationItemOverride,
   PosFiscalTerminalRegistration,
   PosFiscalEvent,
   PosFiscalPrintEvent,
@@ -1208,9 +1240,16 @@ const db = {
   EmployeeAttendanceSession,
   EmployeeBreakSegment,
   PosTerminalOperatorSession,
+  PosTerminalDeviceEnrollment,
+  PosTerminalDeviceActivation,
+  PosTerminalDeviceChallenge,
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
+  BusinessAdminApprovalRequest,
+  BusinessAdminSavedReportView,
+  BusinessAdminAlertSnapshot,
+  BusinessAdminNotificationState,
   TenantLocation,
   ItemLocationStock,
   InventoryReservation,
@@ -1405,6 +1444,7 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosLocationItemOverride,
   PosFiscalTerminalRegistration,
   PosFiscalEvent,
   PosFiscalPrintEvent,
@@ -1427,9 +1467,16 @@ export {
   EmployeeAttendanceSession,
   EmployeeBreakSegment,
   PosTerminalOperatorSession,
+  PosTerminalDeviceEnrollment,
+  PosTerminalDeviceActivation,
+  PosTerminalDeviceChallenge,
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
+  BusinessAdminApprovalRequest,
+  BusinessAdminSavedReportView,
+  BusinessAdminAlertSnapshot,
+  BusinessAdminNotificationState,
   TenantLocation,
   ItemLocationStock,
   InventoryReservation,

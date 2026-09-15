@@ -168,7 +168,7 @@ export const buildUpdateSettingByKeyUseCase = ({
     tenantLocationRepository = null,
     tenantRepository = null
 }) => {
-    return async ({ key, value, actorUser = null }) => {
+    return async ({ key, value, expectedUpdatedAt = null, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -413,10 +413,17 @@ export const buildUpdateSettingByKeyUseCase = ({
                     currentEntries: currentRegistry?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
                 });
                 if (typeof settingsRepository?.updateSettings === 'function') {
-                    await settingsRepository.updateSettings({
+                    const strictBindingSettings = {
                         [POS_TERMINAL_REGISTRY_KEY]: strictBindingRegistryPatch,
                         [key]: normalizedValue
-                    });
+                    };
+                    if (expectedUpdatedAt) {
+                        await settingsRepository.updateSettings(strictBindingSettings, {
+                            expectedUpdatedAt: { [key]: expectedUpdatedAt }
+                        });
+                    } else {
+                        await settingsRepository.updateSettings(strictBindingSettings);
+                    }
                     if (typeof settingsRepository?.getSettingByKey === 'function') {
                         const setting = await settingsRepository.getSettingByKey(key);
                         return ok(sanitizeSingleSettingForRead({ key, setting }));
@@ -456,7 +463,9 @@ export const buildUpdateSettingByKeyUseCase = ({
                 }
             }
 
-            const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            const updatedSetting = expectedUpdatedAt
+                ? await settingsRepository.updateSettingByKey(key, normalizedValue, { expectedUpdatedAt })
+                : await settingsRepository.updateSettingByKey(key, normalizedValue);
             await clearCapabilityCachesIfKeyTouched(key);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,

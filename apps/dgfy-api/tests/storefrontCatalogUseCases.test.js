@@ -131,6 +131,7 @@ describe('storefront catalog use cases', () => {
                     item_id: 80,
                     storefront_visible: true
                 }),
+                assertLocationAccess: jest.fn().mockResolvedValue(true),
                 upsertStorefrontCatalogOverride,
                 upsertStorefrontItemLocationAvailability,
                 listStorefrontItemLocationAvailability
@@ -157,6 +158,33 @@ describe('storefront catalog use cases', () => {
         ]);
     });
 
+    it('rejects storefront branch availability edits when the user lacks a location grant', async () => {
+        const upsertStorefrontItemLocationAvailability = jest.fn();
+        const denied = new Error('You do not have location access to perform edit Storefront branch availability at location 2.');
+        denied.statusCode = 403;
+        const assertLocationAccess = jest.fn().mockRejectedValue(denied);
+        const useCase = buildUpdateStorefrontCatalogOverrideUseCase({
+            assertLocationAccess,
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 82, default_sale_price: 125 }),
+                upsertStorefrontItemLocationAvailability
+            }
+        });
+
+        await expect(useCase({
+            itemId: 82,
+            payload: { location_availability: [{ location_id: 2, storefront_available: false }] },
+            user: { user_id: 17, is_master_admin: false, permissions: ['items:edit'] }
+        })).rejects.toMatchObject({ statusCode: 403 });
+        expect(assertLocationAccess).toHaveBeenCalledWith({
+            userId: 17,
+            locationId: 2,
+            operationLabel: 'edit Storefront branch availability',
+            requireGrant: true
+        });
+        expect(upsertStorefrontItemLocationAvailability).not.toHaveBeenCalled();
+    });
+
     it('commits visibility and branch availability in one transaction when both are patched', async () => {
         const transaction = {
             finished: false,
@@ -181,6 +209,7 @@ describe('storefront catalog use cases', () => {
                     name: 'Visible branch item',
                     default_sale_price: 125
                 }),
+                assertLocationAccess: jest.fn().mockResolvedValue(true),
                 upsertStorefrontCatalogOverride,
                 upsertStorefrontItemLocationAvailability,
                 listStorefrontItemLocationAvailability
@@ -227,6 +256,7 @@ describe('storefront catalog use cases', () => {
                     name: 'Rollback branch item',
                     default_sale_price: 125
                 }),
+                assertLocationAccess: jest.fn().mockResolvedValue(true),
                 upsertStorefrontCatalogOverride: jest.fn().mockResolvedValue({
                     item_id: 82,
                     storefront_visible: true

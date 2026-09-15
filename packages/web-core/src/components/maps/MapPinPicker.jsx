@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,10 @@ import {
   safeResizeMap,
   tileTransformRequest
 } from './mapLibreShared.js';
+
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep the shared map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
 
 const DEFAULT_ZOOM = 13;
 const PIN_ZOOM = 16;

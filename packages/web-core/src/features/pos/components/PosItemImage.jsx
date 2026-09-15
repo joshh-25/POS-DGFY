@@ -3,6 +3,7 @@ import { getPendingPosItemImagePreviews, subscribeToPendingPosItemImagePreviews 
 import { acquirePosImagePreview } from '../services/posImagePreview.js';
 import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
 import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
+import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';
 
 // A bounded, in-memory per-version budget survives card navigation, not logout.
 const failures = new Map();
@@ -17,6 +18,17 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
   const pending = previews[String(item.item_id)];
   const sources = resolvePosCatalogImageSources(item);
   const target = pending?.readyUrl || pending?.url || sources.src;
+  const {
+    fetchpriority: legacyFetchPriority,
+    fetchPriority,
+    ...imageProps
+  } = props;
+  const resolvedFetchPriority = fetchPriority ?? legacyFetchPriority;
+  const imageAttributes = resolvedFetchPriority === undefined
+    ? imageProps
+    : { ...imageProps, fetchpriority: resolvedFetchPriority };
+  const hasPendingPreview = Boolean(pending?.readyUrl || pending?.url);
+  const targetSources = hasPendingPreview ? { src: target } : sources;
   const [loaded, setLoaded] = useState('');
   const loadedScope = useRef('');
   const session = getBrowserSessionSnapshot();
@@ -49,14 +61,15 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
   const unavailable = failed === target || (failures.get(target) || 0) > 3;
   const displayed = (loadedScope.current === scope ? loaded : '') || (pending?.readyUrl ? pending?.url : '') || '';
   return <>
-    {displayed && displayed !== target ? <img {...props} src={displayed} className={className} style={style} width={144} height={144} decoding="async" /> : null}
-    {target && !unavailable ? <img
-      {...props}
+    {displayed && displayed !== target ? <img {...imageAttributes} src={displayed} className={className} style={style} width={144} height={144} decoding="async" /> : null}
+    {target && !unavailable ? <ResponsiveImage
+      {...imageProps}
       key={`${target}:${retry}`}
-      src={target}
+      sources={targetSources}
       width={144}
       height={144}
       decoding="async"
+      fetchPriority={resolvedFetchPriority}
       className={className}
       style={{ ...style, ...(displayed && displayed !== target ? { position: 'absolute', inset: 0, opacity: 0 } : {}) }}
       onLoad={() => {

@@ -421,7 +421,7 @@ export const buildUpdateSettingsUseCase = ({
     tenantLocationRepository = null,
     tenantRepository = null
 }) => {
-    return async ({ settingsData, actorUser = null }) => {
+    return async ({ settingsData, expectedUpdatedAt = null, actorUser = null }) => {
         if (!settingsData || typeof settingsData !== 'object' || Array.isArray(settingsData)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -561,7 +561,13 @@ export const buildUpdateSettingsUseCase = ({
 
             settingsData = await applyStoreProfileShadowWrite({ settingsRepository, settingsData });
 
-            const result = await settingsRepository.updateSettings(settingsData);
+            const hasExpectedUpdatedAt = expectedUpdatedAt
+                && typeof expectedUpdatedAt === 'object'
+                && !Array.isArray(expectedUpdatedAt)
+                && Object.keys(expectedUpdatedAt).length > 0;
+            const result = hasExpectedUpdatedAt
+                ? await settingsRepository.updateSettings(settingsData, { expectedUpdatedAt })
+                : await settingsRepository.updateSettings(settingsData);
             await clearCapabilityCachesIfTouched(settingsData);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,

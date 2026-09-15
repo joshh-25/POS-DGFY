@@ -22,6 +22,8 @@ export const createJobOrderSchema = Joi.object({
     'any.required': 'Quantity to produce is required'
   }),
   responsible_user: Joi.number().integer().positive().allow(null),
+  source_location_id: Joi.number().integer().positive().allow(null),
+  destination_location_id: Joi.number().integer().positive().allow(null),
   notes: Joi.string().allow(null, ''),
   ingredients: Joi.array().items(
     Joi.object({
@@ -48,6 +50,8 @@ export const createJobOrderDraftSchema = Joi.object({
     'number.positive': 'Quantity to produce must be positive'
   }),
   responsible_user: Joi.number().integer().positive().allow(null),
+  source_location_id: Joi.number().integer().positive().allow(null),
+  destination_location_id: Joi.number().integer().positive().allow(null),
   notes: Joi.string().allow(null, ''),
   ingredients: Joi.array().items(
     Joi.object({
@@ -68,6 +72,8 @@ export const updateJobOrderSchema = Joi.object({
   product_id: Joi.number().integer().positive(),
   quantity_to_produce: Joi.number().positive(),
   responsible_user: Joi.number().integer().positive().allow(null),
+  source_location_id: Joi.number().integer().positive().allow(null),
+  destination_location_id: Joi.number().integer().positive().allow(null),
   notes: Joi.string().allow(null, ''),
   status: Joi.string().valid('draft', 'in_progress', 'partial', 'completed', 'cancelled')
 });
@@ -101,6 +107,20 @@ export const completeJobOrderSchema = Joi.object({
 }).messages({
   'any.invalid': '{{#message}}'
 });
+
+export const finalizeJobOrderSchema = Joi.object({
+  source_location_id: Joi.number().integer().positive().allow(null),
+  destination_location_id: Joi.number().integer().positive().allow(null)
+}).custom((value, helpers) => {
+  if (value.source_location_id != null
+    && value.destination_location_id != null
+    && Number(value.source_location_id) === Number(value.destination_location_id)) {
+    return helpers.error('any.invalid', {
+      message: 'source_location_id and destination_location_id must be different'
+    });
+  }
+  return value;
+}).messages({ 'any.invalid': '{{#message}}' });
 
 export const validateCreateJobOrder = (req, res, next) => {
   const { error, value } = createJobOrderSchema.validate(req.body, { abortEarly: false });
@@ -192,3 +212,20 @@ export const validateCompleteJobOrder = (req, res, next) => {
   next();
 };
 
+export const validateFinalizeJobOrder = (req, res, next) => {
+  const { error, value } = finalizeJobOrderSchema.validate(req.body || {}, { abortEarly: false, stripUnknown: true });
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+  req.validatedData = value;
+  next();
+};

@@ -81,7 +81,7 @@ export const buildCreateJobOrderUseCase = ({ jobOrderService }) => {
 };
 
 export const buildFinalizeJobOrderUseCase = ({ jobOrderService }) => {
-  return async ({ jobOrderId, userId }) => {
+  return async ({ jobOrderId, userId, locationData = {} }) => {
     const normalizedJobOrderId = parsePositiveInt(jobOrderId);
     const normalizedUserId = userId === undefined || userId === null ? null : parsePositiveInt(userId);
 
@@ -102,7 +102,7 @@ export const buildFinalizeJobOrderUseCase = ({ jobOrderService }) => {
     }
 
     return withServiceExecution(
-      () => jobOrderService.finalizeJobOrder(normalizedJobOrderId, normalizedUserId),
+      () => jobOrderService.finalizeJobOrder(normalizedJobOrderId, normalizedUserId, locationData),
       'Failed to finalize job order'
     );
   };

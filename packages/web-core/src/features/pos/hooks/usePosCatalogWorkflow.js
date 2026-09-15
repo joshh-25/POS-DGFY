@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { getFolders } from '@/services/itemService.js';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { fetchPosCatalog } from '../services/posService';
 import { preserveCatalogRows } from '../services/posCatalogReadCoordinator.js';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
@@ -30,8 +30,12 @@ import {
     getTotalCatalogPages,
     getVisibleCatalogItems,
     getVisibleCatalogRange,
-    normalizePosFolders
+    normalizePosFolders,
+    sortCatalogByFolderOrder
 } from '../utils/posCatalogWorkflow.js';
+
+const CATALOG_BROWSER_LOAD_DELAY_MS = 250;
+const CATALOG_IMIN_SEARCH_DELAY_MS = 150;
 
 export {
     CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX,
@@ -88,6 +92,7 @@ export const usePosCatalogWorkflow = ({
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
     const [search, setSearch] = useState('');
+    const [isIminRuntime] = useState(() => isIminWrapperRuntime());
     // Keep the controlled search field urgent while the large catalog tree and
     // network query follow at concurrent priority. This is especially visible
     // on the fixed Chrome 80-84 iMin WebView when typing or holding backspace.
@@ -351,11 +356,14 @@ export const usePosCatalogWorkflow = ({
 
     useEffect(() => {
         if (sessionLocked) return undefined;
+        const catalogLoadDelayMs = isIminRuntime
+            ? (String(deferredSearch || '').trim() ? CATALOG_IMIN_SEARCH_DELAY_MS : 0)
+            : CATALOG_BROWSER_LOAD_DELAY_MS;
         const timeout = setTimeout(() => {
             loadCatalog();
-        }, 250);
+        }, catalogLoadDelayMs);
         return () => clearTimeout(timeout);
-    }, [loadCatalog, sessionLocked]);
+    }, [deferredSearch, isIminRuntime, loadCatalog, sessionLocked]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -392,8 +400,13 @@ export const usePosCatalogWorkflow = ({
         [availableCatalog, posFolders]
     );
     const catalogForDisplay = useMemo(
-        () => filterCatalogByFolder(availableCatalog, selectedFolderId),
-        [availableCatalog, selectedFolderId]
+        () => {
+            const filteredCatalog = filterCatalogByFolder(availableCatalog, selectedFolderId);
+            return selectedFolderId
+                ? filteredCatalog
+                : sortCatalogByFolderOrder(filteredCatalog, posFolders);
+        },
+        [availableCatalog, posFolders, selectedFolderId]
     );
     const totalCatalogPages = useMemo(
         () => getTotalCatalogPages(catalogForDisplay.length, catalogPageSize),

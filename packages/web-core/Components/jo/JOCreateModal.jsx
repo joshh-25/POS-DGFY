@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,14 @@ import { formatNumber } from '../../src/lib/numberUtils.js';
 import { toast } from 'sonner';
 import { convertQuantity, areCompatible, normalizeUom } from '../../src/utils/uomConverter';
 import { toUomAbbreviation } from '../../src/utils/uomDisplay';
+import { useLocations } from '@/hooks/useLocations.js';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 /**
  * Calculate suggested production quantity to bring stock to healthy level
@@ -56,6 +64,25 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
   // Selection state for editing (Single Mode)
   const [singleSelectedProduct] = useState(() => (isEditing ? jobOrder.product_id : ''));
   const [singleQuantity, setSingleQuantity] = useState(() => (isEditing ? jobOrder.quantity_to_produce : 1));
+  const [sourceLocationId, setSourceLocationId] = useState(() => (
+    isEditing && jobOrder?.source_location_id ? String(jobOrder.source_location_id) : ''
+  ));
+  const [destinationLocationId, setDestinationLocationId] = useState(() => (
+    isEditing && jobOrder?.destination_location_id ? String(jobOrder.destination_location_id) : ''
+  ));
+  const { locations } = useLocations();
+  const activeLocations = useMemo(
+    () => (Array.isArray(locations) ? locations.filter((location) => location?.is_active !== false) : []),
+    [locations]
+  );
+
+  useEffect(() => {
+    if (sourceLocationId || activeLocations.length === 0) return;
+    setSourceLocationId(String(activeLocations[0].location_id));
+    if (activeLocations.length > 1 && !destinationLocationId) {
+      setDestinationLocationId(String(activeLocations[1].location_id));
+    }
+  }, [activeLocations, destinationLocationId, sourceLocationId]);
 
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -234,6 +261,14 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
   const hasInsufficientStock = allIngredientRequirements.some(ing => ing.isInsufficient);
 
   const handleSubmit = (isDraft = false) => {
+    if (!isDraft && sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId) {
+      toast.error('Choose different source and destination branches for production.');
+      return;
+    }
+    const locationPayload = {
+      ...(sourceLocationId ? { source_location_id: Number(sourceLocationId) } : {}),
+      ...(destinationLocationId ? { destination_location_id: Number(destinationLocationId) } : {})
+    };
     if (isEditing) {
       // Single Update Mode
       if (!singleSelectedProduct) return;
@@ -260,6 +295,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
         product_id: singleSelectedProduct,
         quantity_to_produce: singleQuantity,
         ingredients,
+        ...locationPayload,
         status: isDraft ? 'draft' : (jobOrder.status || 'in_progress')
       };
 
@@ -311,6 +347,7 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
           product_id: pid,
           quantity_to_produce: qty,
           ingredients,
+          ...locationPayload,
           status: isDraft ? 'draft' : 'in_progress'
         };
       });
@@ -360,6 +397,37 @@ export default function JOCreateModal({ open, onClose, onSubmit, onSaveDraft, pr
               </Button>
             </div>
           )}
+
+          <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Ingredient source branch</Label>
+              <Select value={sourceLocationId} onValueChange={setSourceLocationId}>
+                <SelectTrigger><SelectValue placeholder="Select source branch" /></SelectTrigger>
+                <SelectContent>
+                  {activeLocations.map((location) => (
+                    <SelectItem key={location.location_id} value={String(location.location_id)}>
+                      {location.name || `Location ${location.location_id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Stock preflight and FIFO consumption use this branch.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Finished goods destination branch</Label>
+              <Select value={destinationLocationId} onValueChange={setDestinationLocationId}>
+                <SelectTrigger><SelectValue placeholder="Select destination branch" /></SelectTrigger>
+                <SelectContent>
+                  {activeLocations.map((location) => (
+                    <SelectItem key={location.location_id} value={String(location.location_id)}>
+                      {location.name || `Location ${location.location_id}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Output is received only into this branch.</p>
+            </div>
+          </div>
 
           {/* Search Input */}
           {!isEditing && (

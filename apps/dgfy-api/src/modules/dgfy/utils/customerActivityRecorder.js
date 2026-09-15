@@ -36,6 +36,7 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
         reference,
         store_slug: tenant?.company_token || null,
         store_name: tenant?.name || null,
+        location_id: order.location_id || null,
         status: order.fulfillment_status || order.status || null,
         status_label: order.status_label || null,
         payment_status: order.payment_status || order.payment_type || null,
@@ -44,6 +45,8 @@ export const recordDgfyOrderActivity = async ({ tenantId, order, storeCustomer =
         customer_phone: order.customer_phone || storeCustomer?.phone || null,
         display_snapshot: {
             order_id: order.pos_transaction_id || null,
+            location_id: order.location_id || null,
+            ...(order.location?.name ? { branch_name: order.location.name } : {}),
             order_method: order.order_method || null,
             receipt_number: order.invoice_number || order.receipt_number || null,
             delivery_address: order.delivery_address || null,

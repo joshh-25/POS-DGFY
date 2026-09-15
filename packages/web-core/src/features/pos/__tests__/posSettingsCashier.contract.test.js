@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+const settingsModelSource = fs.readFileSync(path.resolve(__dirname, '../utils/settingsWorkspaceModel.js'), 'utf8');
 const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
 const sidebarSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx'), 'utf8');
 const tenantSetupModalSource = fs.readFileSync(path.resolve(__dirname, '../components/PosTenantSetupModal.jsx'), 'utf8');
@@ -66,7 +67,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('checked={locationForm.supports_pickup === true}');
     expect(workspaceSource).toContain('disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}');
     expect(workspaceSource).toContain('disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}');
-    expect(workspaceSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
+    expect(settingsModelSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
     expect(tenantSetupModalSource).toContain('Label>Supports Delivery</Label>');
     expect(tenantSetupModalSource).toContain('Label>Supports Pickup</Label>');
     expect(tenantSetupModalSource).toContain('checked={locationDraft.supports_delivery === true}');
@@ -122,8 +123,9 @@ describe('regular POS Setup cashier management contract', () => {
     expect(sidebarSource).toContain('Daily totals, popular items, and transactions');
   });
 
-  it('allows cashier item editing while always hiding item deletion', () => {
-    expect(terminalPageSource).toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
+  it('requires explicit item-edit permission while always hiding cashier item deletion', () => {
+    expect(terminalPageSource).toContain("const canEditItems = hasPermission('items:edit');");
+    expect(terminalPageSource).not.toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
     expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
     expect(workspaceSource).toContain('{canDeleteItems && (');
   });

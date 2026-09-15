@@ -130,11 +130,11 @@ export const useFinalizeJobOrder = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const finalizeJobOrder = useCallback(async (joId) => {
+  const finalizeJobOrder = useCallback(async (joId, locationPayload = {}) => {
     setLoading(true);
     setError(null);
     try {
-      const jobOrder = await jobOrderService.finalizeJobOrder(joId);
+      const jobOrder = await jobOrderService.finalizeJobOrder(joId, locationPayload);
       return jobOrder;
     } catch (err) {
       setError(getJobOrderErrorMessage(err, 'Failed to finalize job order'));

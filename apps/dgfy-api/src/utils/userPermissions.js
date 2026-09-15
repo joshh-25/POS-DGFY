@@ -31,7 +31,7 @@ export const resolveEffectivePermissions = (user) => {
     const cashierPermissions = explicitPermissions.length > 0
       ? explicitPermissions
       : (DEFAULT_ROLE_PERMISSIONS.cashier || []);
-    return Array.from(new Set([...cashierPermissions, 'items:edit']))
+    return Array.from(new Set(cashierPermissions))
       .filter((permission) => permission !== 'items:delete');
   }
 

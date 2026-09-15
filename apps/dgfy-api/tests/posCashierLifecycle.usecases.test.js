@@ -27,7 +27,7 @@ const staleUser = {
     permissions: ['pos:view', 'pos:transact']
 };
 
-const buildFixture = ({ featureEnabled = true } = {}) => {
+const buildFixture = ({ featureEnabled = true, assertUserOperatingScope } = {}) => {
     let attendance = null;
     let activeBreak = null;
     let operator = null;
@@ -92,6 +92,7 @@ const buildFixture = ({ featureEnabled = true } = {}) => {
     };
 
     const useCases = createPosCashierLifecycleUseCases({
+        assertUserOperatingScope,
         repository,
         resolveFeature: async ({ locationId }) => ({ enabled: featureEnabled, location_id: locationId }),
         authorityService,
@@ -128,6 +129,14 @@ const buildFixture = ({ featureEnabled = true } = {}) => {
 };
 
 describe('POS automatic cashier shift lifecycle', () => {
+    test.each([true, false])('scope conflict prevents lifecycle writes when enabled=%s', async (featureEnabled) => {
+        const guard = jest.fn(async () => { throw new Error('operating conflict'); });
+        const fixture = buildFixture({ featureEnabled, assertUserOperatingScope: guard });
+        await expect(fixture.useCases.onShiftOpened({ shift, user, transaction: {} })).rejects.toThrow('operating conflict');
+        expect(fixture.getAttendance()).toBeNull();
+        expect(fixture.getOperator()).toBeNull();
+        expect(fixture.audits).toHaveLength(0);
+    });
     test('opening a shift creates attendance and operator authority in the supplied transaction', async () => {
         const fixture = buildFixture();
         const transaction = { finished: false };
@@ -149,6 +158,40 @@ describe('POS automatic cashier shift lifecycle', () => {
             'pos_attendance_started_with_shift',
             'pos_cashier_shift_operator_started'
         ]);
+    });
+
+    test('opens lifecycle state for the shift owner while preserving the override actor in audit records', async () => {
+        const fixture = buildFixture();
+        const actor = {
+            ...user,
+            user_id: 99,
+            username: 'master-admin',
+            role: 'admin',
+            is_master_admin: true
+        };
+
+        const result = await fixture.useCases.onShiftOpened({
+            shift,
+            user: actor,
+            lifecycleUser: user,
+            payload: { idempotency_key: 'shift-switch-55' },
+            requestId: 'request-switch-55',
+            tenantId: 'tenant-1',
+            transaction: { finished: false }
+        });
+
+        expect(result.attendance.user_id).toBe(1);
+        expect(result.operator_session.user_id).toBe(1);
+        expect(fixture.audits).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                event_type: 'pos_attendance_started_with_shift',
+                user_id: 99
+            }),
+            expect.objectContaining({
+                event_type: 'pos_cashier_shift_operator_started',
+                user_id: 99
+            })
+        ]));
     });
 
     test('takeover automatically starts regular attendance for an incoming cashier', async () => {

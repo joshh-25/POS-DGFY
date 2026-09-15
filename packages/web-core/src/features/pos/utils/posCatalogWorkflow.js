@@ -15,6 +15,15 @@ export const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 export const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 export const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
 
+const getPosFolderSortOrder = (folder) => {
+    const rawSortOrder = folder?.sort_order;
+    if (rawSortOrder === null || rawSortOrder === undefined || String(rawSortOrder).trim() === '') {
+        return Number.MAX_SAFE_INTEGER;
+    }
+    const sortOrder = Number(rawSortOrder);
+    return Number.isFinite(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+};
+
 export const normalizePosFolders = (rows) => (Array.isArray(rows) ? rows : [])
     .filter((folder) => folder?.show_in_pos_filter !== false)
     .map((folder) => ({
@@ -22,7 +31,47 @@ export const normalizePosFolders = (rows) => (Array.isArray(rows) ? rows : [])
         folder_id: Number(folder?.folder_id)
     }))
     .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0)
-    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    .sort((a, b) => (
+        getPosFolderSortOrder(a) - getPosFolderSortOrder(b)
+        || String(a.name || '').localeCompare(String(b.name || ''))
+        || a.folder_id - b.folder_id
+    ));
+
+export const sortCatalogByFolderOrder = (catalog, folders) => {
+    const safeCatalog = Array.isArray(catalog) ? catalog : [];
+    const folderById = new Map(
+        (Array.isArray(folders) ? folders : [])
+            .map((folder) => ({ ...folder, folder_id: Number(folder?.folder_id) }))
+            .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0)
+            .map((folder) => [folder.folder_id, folder])
+    );
+
+    const getItemFolderSortOrder = (item) => {
+        const folderId = Number(item?.folder_id);
+        if (!Number.isInteger(folderId) || folderId <= 0) return Number.MAX_SAFE_INTEGER;
+        const folder = folderById.get(folderId);
+        const rawSortOrder = folder?.sort_order ?? item?.folder?.sort_order ?? item?.folder_sort_order;
+        return getPosFolderSortOrder({ sort_order: rawSortOrder });
+    };
+
+    return safeCatalog
+        .map((item, index) => ({ item, index }))
+        .sort((left, right) => {
+            const folderOrderDifference = getItemFolderSortOrder(left.item) - getItemFolderSortOrder(right.item);
+            if (folderOrderDifference !== 0) return folderOrderDifference;
+
+            const nameDifference = String(left.item?.name || '').localeCompare(String(right.item?.name || ''));
+            if (nameDifference !== 0) return nameDifference;
+
+            const leftId = Number(left.item?.item_id);
+            const rightId = Number(right.item?.item_id);
+            if (Number.isInteger(leftId) && Number.isInteger(rightId) && leftId !== rightId) {
+                return leftId - rightId;
+            }
+            return left.index - right.index;
+        })
+        .map(({ item }) => item);
+};
 
 export const filterAvailableCatalog = (catalog) => (
     (Array.isArray(catalog) ? catalog : []).filter(isSellAvailableCatalogItem)

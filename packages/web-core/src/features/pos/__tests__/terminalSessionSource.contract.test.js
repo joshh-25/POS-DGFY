@@ -1,17 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSourceForContract } from './readSourceForContract.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const terminalPagePath = resolve(__dirname, '../pages/TerminalPage.jsx');
-const terminalPageSource = readFileSync(terminalPagePath, 'utf8');
-const terminalCompanyAccessSource = readFileSync(
-  resolve(__dirname, '../utils/posTerminalCompanyAccess.js'),
-  'utf8'
+const terminalPageSource = readSourceForContract(terminalPagePath);
+const terminalCompanyAccessSource = readSourceForContract(
+  resolve(__dirname, '../utils/posTerminalCompanyAccess.js')
 );
 const standalonePosMainPath = resolve(__dirname, '../../../../../../apps/dgfy-pos/src/main.jsx');
-const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
+const standalonePosMainSource = readSourceForContract(standalonePosMainPath);
 
 describe('TerminalPage session contract', () => {
   it('uses browserSession for protected POS auth state instead of persisted privileged tokens', () => {

@@ -840,6 +840,12 @@ html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
   backdrop-filter: none !important;
 }
 
+/* Locked POS surfaces use a regular CSS filter rather than backdrop-filter.
+ * Keep that filter off in the fixed Chrome 80-84 iMin WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"] {
+  filter: none !important;
+}
+
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
 html.dgfy-imin-performance .animate-pos-card-scale-up,
 html.dgfy-imin-performance .animate-pos-illustration-float,

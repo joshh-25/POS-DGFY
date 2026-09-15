@@ -13,6 +13,26 @@ const catalogWorkflowSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js'),
   'utf8'
 );
+const terminalOperationsSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx'),
+  'utf8'
+);
+const checkoutViewSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
+  'utf8'
+);
+const terminalLayoutSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx'),
+  'utf8'
+);
+const serviceCreateModalSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/PosServiceCatalogCreateModal.jsx'),
+  'utf8'
+);
+const serviceEditModalSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/components/PosServiceCatalogEditModal.jsx'),
+  'utf8'
+);
 
 describe('iMin POS performance profile contract', () => {
   it('installs one runtime profile before the POS application mounts', () => {
@@ -50,5 +70,41 @@ describe('iMin POS performance profile contract', () => {
     expect(catalogWorkflowSource).toContain('const deferredSearch = useDeferredValue(search);');
     expect(catalogWorkflowSource).toContain('buildCatalogRequestKey(deferredSearch, selectedLocationId)');
     expect(catalogWorkflowSource).toContain('buildCatalogRequestParams(deferredSearch, selectedLocationId)');
+    expect(catalogWorkflowSource).toContain('const CATALOG_IMIN_SEARCH_DELAY_MS = 150;');
+    expect(catalogWorkflowSource).toContain('const catalogLoadDelayMs = isIminRuntime');
+    expect(catalogWorkflowSource).toContain('String(deferredSearch || \'\').trim() ? CATALOG_IMIN_SEARCH_DELAY_MS : 0');
+    expect(catalogWorkflowSource).toContain('CATALOG_BROWSER_LOAD_DELAY_MS');
+  });
+
+  it('commits both operations panes immediately on iMin while retaining browser transitions', () => {
+    const tabChangeBodies = [...terminalOperationsSource.matchAll(
+      /const handleTabChange = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[activeTab, clearAnimationTimers, isIminRuntime\]\);/g
+    )].map((match) => match[1]);
+
+    expect(tabChangeBodies).toHaveLength(2);
+    tabChangeBodies.forEach((body) => {
+      expect(body).toContain('if (isIminRuntime)');
+      expect(body).toContain('setRenderedTab(nextTab);');
+      const iminBranchStart = body.indexOf('if (isIminRuntime)');
+      const browserBranchStart = body.indexOf('const movingForward');
+      expect(iminBranchStart).toBeGreaterThan(-1);
+      expect(browserBranchStart).toBeGreaterThan(iminBranchStart);
+      expect(body.slice(iminBranchStart, browserBranchStart)).not.toContain('window.setTimeout');
+    });
+    expect(terminalOperationsSource).toContain('isIminWrapperRuntime, posToast as toast');
+  });
+
+  it('keeps POS item cards readable when disabled and removes locked-surface filter cost on iMin', () => {
+    expect(checkoutViewSource).toContain("'cursor-not-allowed opacity-75'");
+    expect(checkoutViewSource).not.toContain('blur-[0.5px]');
+    expect(terminalLayoutSource).toContain('blur-[2px]');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="blur-[2px]"]');
+    expect(sharedStyles).toContain('filter: none !important;');
+  });
+
+  it('covers custom POS modal overlays through the shared iMin backdrop rule', () => {
+    expect(serviceCreateModalSource).toContain('backdrop-blur-sm');
+    expect(serviceEditModalSource).toContain('backdrop-blur-sm');
+    expect(sharedStyles).toContain('html.dgfy-imin-performance [class~="backdrop-blur-sm"]');
   });
 });

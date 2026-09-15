@@ -71,8 +71,15 @@ export const getSettingByKey = async (key) => {
 /**
  * Update multiple settings at once
  */
-export const updateSettings = async (settingsData) => {
-  const response = await api.put('/settings', settingsData);
+export const updateSettings = async (settingsData, { expectedUpdatedAt = null } = {}) => {
+  const hasExpectedVersions = expectedUpdatedAt
+    && typeof expectedUpdatedAt === 'object'
+    && !Array.isArray(expectedUpdatedAt)
+    && Object.keys(expectedUpdatedAt).length > 0;
+  const requestPayload = hasExpectedVersions
+    ? { ...settingsData, expected_updated_at: expectedUpdatedAt }
+    : settingsData;
+  const response = await api.put('/settings', requestPayload);
   invalidateSettingsCache();
   return response.data.data;
 };
@@ -80,8 +87,11 @@ export const updateSettings = async (settingsData) => {
 /**
  * Update a single setting by key
  */
-export const updateSettingByKey = async (key, value) => {
-  const response = await api.put(`/settings/${key}`, { value });
+export const updateSettingByKey = async (key, value, { expectedUpdatedAt = null } = {}) => {
+  const requestPayload = expectedUpdatedAt
+    ? { value, expected_updated_at: expectedUpdatedAt }
+    : { value };
+  const response = await api.put(`/settings/${key}`, requestPayload);
   invalidateSettingsCache();
   return response.data.data;
 };

@@ -39,6 +39,8 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceProofError,
     balanceProofViewerUrl,
     balanceProofViewerLoading,
+    backOfficeConfirmOpen,
+    backOfficeTargetPath,
     setBalanceProofFile,
     handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
@@ -67,6 +69,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleBackToCashierResume,
     handleCashierResumeSubmit,
     handleCashierTakeoverSubmit,
+    handleConfirmOpenBackOffice,
     handleOpenCashierTakeover,
     handleCloseDay,
     handleCollectCash,
@@ -116,6 +119,7 @@ export default function TerminalPageDialogLayer({ model }) {
     setBalanceSettlementMethod,
     setBalanceSettlementOrder,
     setBalanceSettlementReference,
+    setBackOfficeConfirmOpen,
     setCashCollectionOrder,
     setCashReceivedInput,
     setCashierResumeForm,
@@ -883,6 +887,30 @@ export default function TerminalPageDialogLayer({ model }) {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={backOfficeConfirmOpen} onOpenChange={setBackOfficeConfirmOpen}>
+          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-black text-slate-950">Open Back Office?</DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                {backOfficeTargetPath === '/backoffice/overview'
+                  ? 'Back Office will open in a new window at the reports view. Continue?'
+                  : 'Back Office will open in a new window at the settings view. Continue?'}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button type="button" variant="outline" onClick={() => setBackOfficeConfirmOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmOpenBackOffice}
+                className="bg-[#1A4E8D] font-bold text-white hover:bg-[#143F73]"
+              >
+                Open Back Office
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
         <Dialog open={closeShiftConfirmOpen} onOpenChange={setCloseShiftConfirmOpen}>

@@ -82,9 +82,9 @@ const buildFakeCheckoutStoreRepository = ({ createdOrderId = 9101, extraSettings
             fulfillment_status: 'placed',
             subtotal_amount: 500,
             discount_amount: 0,
-            service_fee_amount: 5,
+            service_fee_amount: 0,
             delivery_fee: 50,
-            total_amount: 555,
+            total_amount: 550,
             customer_name: 'Buyer',
             customer_phone: '0917',
             customer_email: null,
@@ -214,10 +214,10 @@ describe('buildStoreCheckoutUseCase — Phase 236 (#1328) road-distance capture'
         });
 
         expect(result.success).toBe(true);
-        // store_delivery_fee = 50, subtotal 500, service fee 5 (1%) => 555 total, regardless of
-        // distance/source above.
+        // store_delivery_fee = 50, subtotal 500, retired customer-facing service fee = 0 => 550
+        // total, regardless of distance/source above.
         expect(result.data.totals.delivery_fee).toBe(50);
-        expect(result.data.totals.total_amount).toBe(555);
+        expect(result.data.totals.total_amount).toBe(550);
     });
 
     // #1377 review, RF-4: the test.each above proves legacy absent-config defaulting is
@@ -241,10 +241,10 @@ describe('buildStoreCheckoutUseCase — Phase 236 (#1328) road-distance capture'
         });
 
         expect(result.success).toBe(true);
-        // Same pre-PR flat-fee result as the absent-config case above: store_delivery_fee = 50,
-        // subtotal 500, service fee 5 (1%) => 555 total, regardless of distance/source.
+        // Same flat-fee result as the absent-config case above: store_delivery_fee = 50, subtotal
+        // 500, retired customer-facing service fee = 0 => 550 total, regardless of distance/source.
         expect(result.data.totals.delivery_fee).toBe(50);
-        expect(result.data.totals.total_amount).toBe(555);
+        expect(result.data.totals.total_amount).toBe(550);
         const persistedAttrs = storeRepository.createOnlineTransactionWithLines.mock.calls[0][0].header;
         expect(persistedAttrs.delivery_fee_mode).toBe('fixed');
         expect(persistedAttrs.delivery_fee_base).toBe(50);

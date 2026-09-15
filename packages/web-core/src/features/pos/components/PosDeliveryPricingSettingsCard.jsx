@@ -13,6 +13,10 @@ import {
   normalizeDeliveryFeeMode,
   serializeDeliveryFeeCalcForSave
 } from '@/src/features/settings/deliveryFeeConfig.js';
+import {
+  buildSettingsVersionMap,
+  getSettingsWriteFailureMessage
+} from '../utils/settingsWorkspaceModel.js';
 
 // Phase 233b (#1341, epic #1321). POS-side counterpart to apps/dgfy-ims/Pages/Settings.jsx's
 // "Storefront Visibility & Ordering" delivery-fee fields -- reads/writes the SAME settings keys
@@ -52,20 +56,25 @@ const createDefaultForm = () => ({
   storeDeliveryFeeCalc: { ...DEFAULT_DELIVERY_FEE_CALC }
 });
 
+const noop = () => {};
+
 const settingsToForm = (settings) => ({
   storeDeliveryFee: settings?.store_delivery_fee?.value == null ? '' : String(settings.store_delivery_fee.value),
   storeDeliveryFeeMode: normalizeDeliveryFeeMode(settings?.store_delivery_fee_mode?.value),
   storeDeliveryFeeCalc: normalizeDeliveryFeeCalcSettings(settings?.store_delivery_fee_calc?.value)
 });
 
-export default function PosDeliveryPricingSettingsCard({ terminalUser = null, locked = false, sectionId }) {
+export default function PosDeliveryPricingSettingsCard({ terminalUser = null, locked = false, sectionId, onDirtyChange = noop, onSaved = noop }) {
   const isMasterAdmin = terminalUser?.is_master_admin === true;
-  const canManage = isMasterAdmin || resolveUserPermissionList(terminalUser).includes('settings:edit');
+  const permissionList = resolveUserPermissionList(terminalUser);
+  const canView = isMasterAdmin || permissionList.includes('settings:view') || permissionList.includes('settings:edit');
+  const canManage = isMasterAdmin || permissionList.includes('settings:edit');
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [form, setForm] = useState(createDefaultForm());
+  const [settingsVersionMap, setSettingsVersionMap] = useState({});
 
   const loadData = useCallback(async ({ force = false } = {}) => {
     setLoading(true);
@@ -73,26 +82,31 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
     try {
       const settings = await getAllSettings({ force });
       setForm(settingsToForm(settings));
+      setSettingsVersionMap(buildSettingsVersionMap(settings));
+      onDirtyChange(false);
     } catch (err) {
       setError(err?.response?.data?.message || 'Failed to load delivery pricing settings.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onDirtyChange]);
 
   useEffect(() => {
-    if (locked || !canManage) return;
+    if (!canView) return;
     loadData();
-    // Stable initial load, mirrors DownpaymentSettingsPanel's own effect -- loadData is not a
-    // dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locked, canManage]);
+  }, [canView, loadData]);
 
-  const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
-  const updateCalcField = (field, value) => setForm((prev) => ({
-    ...prev,
-    storeDeliveryFeeCalc: { ...(prev.storeDeliveryFeeCalc || DEFAULT_DELIVERY_FEE_CALC), [field]: value }
-  }));
+  const updateField = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+    onDirtyChange(true);
+  };
+  const updateCalcField = (field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      storeDeliveryFeeCalc: { ...(prev.storeDeliveryFeeCalc || DEFAULT_DELIVERY_FEE_CALC), [field]: value }
+    }));
+    onDirtyChange(true);
+  };
 
   const isCalculated = form.storeDeliveryFeeMode === 'calculated';
   const calcForSave = serializeDeliveryFeeCalcForSave(form.storeDeliveryFeeCalc);
@@ -110,12 +124,19 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
         store_delivery_fee_mode: form.storeDeliveryFeeMode,
         ...(calcForSave ? { store_delivery_fee_calc: calcForSave } : {})
       };
-      await updateSettings(payload);
+      if (Object.keys(settingsVersionMap).length > 0) {
+        await updateSettings(payload, { expectedUpdatedAt: settingsVersionMap });
+      } else {
+        await updateSettings(payload);
+      }
       const refreshed = await getAllSettings({ force: true });
       setForm(settingsToForm(refreshed));
+      setSettingsVersionMap(buildSettingsVersionMap(refreshed));
+      onDirtyChange(false);
+      await onSaved?.();
       toast.success('Delivery pricing settings saved.');
     } catch (err) {
-      const message = err?.response?.data?.message || 'Failed to save delivery pricing settings.';
+      const message = getSettingsWriteFailureMessage(err, 'Failed to save delivery pricing settings.');
       setError(message);
       toast.error(message);
     } finally {
@@ -123,7 +144,7 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
     }
   };
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <div id={sectionId} className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
         You don&apos;t have access to view delivery pricing settings.
@@ -164,9 +185,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
           <Label htmlFor="delivery-fee-mode">Delivery Fee Mode</Label>
           <Select
             value={form.storeDeliveryFeeMode}
-            onValueChange={(value) => updateField('storeDeliveryFeeMode', value)}
+            onValueChange={(value) => { if (canManage) updateField('storeDeliveryFeeMode', value); }}
           >
-            <SelectTrigger id="delivery-fee-mode" className="w-full" disabled={locked || saving}>
+            <SelectTrigger id="delivery-fee-mode" className="w-full" disabled={locked || saving || !canManage}>
               <SelectValue placeholder="Select mode" />
             </SelectTrigger>
             <SelectContent>
@@ -188,9 +209,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
             type="number"
             min="0"
             step="0.0001"
-            disabled={locked || saving}
+            disabled={locked || saving || !canManage}
             value={form.storeDeliveryFee}
-            onChange={(e) => updateField('storeDeliveryFee', e.target.value)}
+            onChange={(e) => { if (canManage) updateField('storeDeliveryFee', e.target.value); }}
             placeholder="0.00"
           />
           <p className="text-xs text-slate-500">
@@ -215,9 +236,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                   type="number"
                   min="0"
                   step="0.0001"
-                  disabled={locked || saving}
+                  disabled={locked || saving || !canManage}
                   value={form.storeDeliveryFeeCalc?.min_fee ?? ''}
-                  onChange={(e) => updateCalcField('min_fee', e.target.value)}
+                  onChange={(e) => { if (canManage) updateCalcField('min_fee', e.target.value); }}
                   placeholder="50"
                 />
               </div>
@@ -228,9 +249,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                   type="number"
                   min="0"
                   step="0.0001"
-                  disabled={locked || saving}
+                  disabled={locked || saving || !canManage}
                   value={form.storeDeliveryFeeCalc?.included_km ?? ''}
-                  onChange={(e) => updateCalcField('included_km', e.target.value)}
+                  onChange={(e) => { if (canManage) updateCalcField('included_km', e.target.value); }}
                   placeholder="3"
                 />
               </div>
@@ -241,9 +262,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                   type="number"
                   min="0"
                   step="0.0001"
-                  disabled={locked || saving}
+                  disabled={locked || saving || !canManage}
                   value={form.storeDeliveryFeeCalc?.per_km_rate ?? ''}
-                  onChange={(e) => updateCalcField('per_km_rate', e.target.value)}
+                  onChange={(e) => { if (canManage) updateCalcField('per_km_rate', e.target.value); }}
                   placeholder="10"
                 />
               </div>
@@ -254,9 +275,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                   type="number"
                   min={String(MIN_DELIVERY_INCREMENT_KM)}
                   step={String(MIN_DELIVERY_INCREMENT_KM)}
-                  disabled={locked || saving}
+                  disabled={locked || saving || !canManage}
                   value={form.storeDeliveryFeeCalc?.increment_km ?? ''}
-                  onChange={(e) => updateCalcField('increment_km', e.target.value)}
+                  onChange={(e) => { if (canManage) updateCalcField('increment_km', e.target.value); }}
                   placeholder="0.5"
                 />
               </div>
@@ -267,9 +288,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
                   type="number"
                   min="0.0001"
                   step="0.0001"
-                  disabled={locked || saving}
+                  disabled={locked || saving || !canManage}
                   value={form.storeDeliveryFeeCalc?.max_distance_km ?? ''}
-                  onChange={(e) => updateCalcField('max_distance_km', e.target.value)}
+                  onChange={(e) => { if (canManage) updateCalcField('max_distance_km', e.target.value); }}
                   placeholder="15"
                 />
               </div>
@@ -288,13 +309,15 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-start gap-2 text-[11px] font-semibold text-slate-500">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
-          <span>Every change records the administrator, request, prior value, and result -- same as an IMS-originated change.</span>
+          <span>{canManage
+            ? 'Every change records the administrator, request, prior value, and result -- same as an IMS-originated change.'
+            : 'You can view delivery pricing, but only an account with settings:edit can change it.'}</span>
         </div>
         <div className="flex gap-2">
           <Button type="button" variant="outline" onClick={() => loadData({ force: true })} disabled={loading || saving}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-          <Button type="button" disabled={locked || saving} onClick={handleSave}>
+          <Button type="button" disabled={locked || !canManage || saving} onClick={handleSave}>
             <Save className="mr-2 h-4 w-4" /> {saving ? 'Saving...' : 'Save'}
           </Button>
         </div>

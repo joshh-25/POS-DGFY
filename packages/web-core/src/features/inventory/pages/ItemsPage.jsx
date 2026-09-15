@@ -427,7 +427,10 @@ export default function Items() {
       pos_always_available: override?.pos_always_available === true,
       pos_image_url: resolveAssetUrl(override?.pos_image_url) || null,
       pos_image_variants: override?.pos_image_variants || null,
-      pos_readiness: override?.pos_readiness || null
+      pos_readiness: override?.pos_readiness || null,
+      pos_location_availability: Array.isArray(override?.pos_location_availability)
+        ? override.pos_location_availability
+        : []
     };
   }, [getDefaultPosVisibility, posCatalogOverrides]);
 
@@ -513,6 +516,52 @@ export default function Items() {
       toast.success(`Always Available ${nextValue ? 'enabled' : 'disabled'} for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to update Always Available');
+    }
+  };
+
+  const handleTogglePosLocationAvailability = async (item, locationId, nextAvailable) => {
+    const itemId = item?.item_id || item?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!itemId || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+
+    const currentConfig = resolvePosConfig(item);
+    const currentRows = Array.isArray(currentConfig.pos_location_availability)
+      ? currentConfig.pos_location_availability
+      : [];
+    const current = currentRows.find((row) => Number(row?.location_id) === normalizedLocationId);
+    if (nextAvailable === true && current?.source === 'inherited') return;
+    try {
+      const updated = await updatePosCatalogOverride(itemId, {
+        location_availability: [{
+          location_id: normalizedLocationId,
+          pos_available: Boolean(nextAvailable)
+        }]
+      });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS branch availability updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update POS branch availability');
+    }
+  };
+
+  const handleResetPosLocationAvailability = async (item, locationId) => {
+    const itemId = item?.item_id || item?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!itemId || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+    try {
+      const updated = await updatePosCatalogOverride(itemId, {
+        location_availability: [{ location_id: normalizedLocationId, pos_available: null }]
+      });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS branch policy reset to inherited for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to reset POS branch policy');
     }
   };
 
@@ -3085,6 +3134,8 @@ export default function Items() {
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
+          onTogglePosLocationAvailability={handleTogglePosLocationAvailability}
+          onResetPosLocationAvailability={handleResetPosLocationAvailability}
           storefrontConfig={editingItem ? resolveStorefrontConfig(editingItem) : null}
           showStorefrontCatalogControls={canConfigureStorefrontCatalog}
           onTogglePosVisibility={handleTogglePosVisibility}

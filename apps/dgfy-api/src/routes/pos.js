@@ -3,9 +3,10 @@ import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import * as deliveryPersonnelController from '../modules/deliveryPersonnel/controllers/deliveryPersonnelHandlers.js';
-import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
+import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability, requireTenantAdminRole } from '../middleware/auth.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
+import { requirePosDeviceProof, requirePosDeviceSessionProof } from '../middleware/posDeviceProof.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload, posPaymentProofUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
@@ -89,6 +90,14 @@ import {
     validateFiscalTerminalRegistration,
     validateVerifyTerminal,
     validatePosCashierLogin,
+    validatePosTerminalDeviceActivationIssue,
+    validatePosTerminalDeviceBootstrapActivate,
+    validatePosTerminalDeviceChallenge,
+    validatePosTerminalDeviceProof,
+    validatePosTerminalDeviceEnrollmentParam,
+    validatePosTerminalDeviceListQuery,
+    validatePosTerminalDeviceReplace,
+    validatePosTerminalDeviceRevoke,
     validateSetupCashier,
     validatePosDiscountApproval,
     validateEmployeeCreditAccountParam,
@@ -118,22 +127,64 @@ import {
 } from '../validators/posValidator.js';
 import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
 import * as posBulkImageImportController from '../modules/pos/controllers/posBulkImageImportHandlers.js';
+import * as posTerminalDeviceController from '../modules/pos/controllers/posTerminalDeviceHandlers.js';
 
 const router = express.Router();
-const employeeCreditCheckoutPermission = checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT);
 const requireEmployeeCreditCheckoutPermission = (req, res, next) => {
     if (req.validatedData?.payment_type !== 'employee_credit') return next();
-    return employeeCreditCheckoutPermission(req, res, next);
+    // The browser account is not necessarily the active cashier (a manager may
+    // have opened the register while a relief cashier operates it). Record the
+    // conditional requirement for requireActiveOperatorForMutation, which
+    // rechecks it against the server-resolved operator.
+    req.requiredPermissions = [...new Set([
+        ...(req.requiredPermissions || []),
+        PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT
+    ])];
+    return next();
 };
 
 // Cashiers have no tenant access token before their first POS login. Tenant
 // context, premium/capability checks, rate limiting, and payload validation
 // still run before credentials are verified by the POS login use case.
 router.post(
+    '/auth/device-challenge',
+    requirePremium,
+    requireTenantCapability('tenant_pos_enabled', 'POS'),
+    posLimiter,
+    validatePosTerminalDeviceChallenge,
+    (req, res, next) => {
+        if (String(req.validatedData?.purpose || '').toLowerCase() !== 'session') {
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Only session challenges are available before POS login.',
+                error_code: 'POS_DEVICE_SESSION_CHALLENGE_REQUIRED',
+                timestamp: new Date().toISOString()
+            });
+        }
+        return posTerminalDeviceController.issueChallenge(req, res, next);
+    }
+);
+
+// First enrollment is the strict-terminal bootstrap boundary: an administrator
+// supplies a short-lived activation code, so no POS access token (and therefore
+// no already-enrolled device proof) is required yet. The code remains tenant,
+// terminal, location, expiry, and one-use bound inside the service.
+router.post(
+    '/terminal/devices/activate',
+    requirePremium,
+    requireTenantCapability('tenant_pos_enabled', 'POS'),
+    posLimiter,
+    validatePosTerminalDeviceBootstrapActivate,
+    posTerminalDeviceController.activateDeviceBootstrap
+);
+
+router.post(
     '/auth/cashier-login',
     requirePremium,
     requireTenantCapability('tenant_pos_enabled', 'POS'),
     posLimiter,
+    requirePosDeviceSessionProof,
     validatePosCashierLogin,
     posController.loginCashier
 );
@@ -147,6 +198,21 @@ router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 // subtract modules has a working off-switch for the POS surface.
 router.use(requireWorkflowCapability('pos', 'POS'));
 router.use(posLimiter);
+// Strict device enforcement is opt-in per terminal. The middleware resolves the
+// terminal/location from the tenant registry and requires a one-use signed proof
+// for every protected POS request; enrollment/bootstrap and recovery routes are
+// explicitly skipped inside the middleware.
+router.use(requirePosDeviceProof);
+
+router.post('/terminal/devices/activation-codes', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceActivationIssue, posTerminalDeviceController.issueActivationCode);
+// Activation consumes an admin-issued one-use code, but the approved client may
+// complete it as the authenticated POS operator. Recovery/list/replacement
+// remain administrator-only below.
+router.get('/terminal/devices', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceListQuery, posTerminalDeviceController.listDevices);
+router.post('/terminal/devices/:enrollmentId/revoke', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceEnrollmentParam, validatePosTerminalDeviceRevoke, posTerminalDeviceController.revokeDevice);
+router.post('/terminal/devices/:enrollmentId/replace', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceEnrollmentParam, validatePosTerminalDeviceReplace, posTerminalDeviceController.replaceDevice);
+router.post('/terminal/devices/challenge', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTerminalDeviceChallenge, posTerminalDeviceController.issueChallenge);
+router.post('/terminal/devices/proof', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTerminalDeviceProof, posTerminalDeviceController.verifyProof);
 
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
 router.get('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getPairedTerminal);

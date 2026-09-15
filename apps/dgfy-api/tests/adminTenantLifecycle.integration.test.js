@@ -48,6 +48,7 @@ jest.unstable_mockModule('../src/services/tenantProvisioningService.js', () => (
 
 jest.unstable_mockModule('../src/services/emailService.js', () => ({
     isEmailConfigured: jest.fn().mockReturnValue(false),
+    verifyConnection: jest.fn().mockResolvedValue({ success: true, provider: 'smtp' }),
     sendEmail: jest.fn(),
     sendAffiliateInviteEmail: jest.fn(),
     sendCompanyApprovedEmail: jest.fn(),
@@ -370,8 +371,8 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             .set('Authorization', `Bearer ${adminApiToken}`)
             .send({});
 
-        expect(response.status).toBe(200);
-        expect(response.body.message).toBe('Tenant approved and provisioned successfully');
+        expect(response.status).toBe(202);
+        expect(response.body.message).toBe('Tenant approval accepted; provisioning is running in the background');
         expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: tenant.id,
             name: tenant.name,
@@ -380,7 +381,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             adminEmail: tenant.admin_email,
             adminPasswordHash: tenant.admin_password_hash
         }));
-        expect(response.body.data.email_sent).toBe(false);
+        expect(response.body.data.provisioning_status).toBe('in_progress');
     });
 
     it('rejects pending tenant and persists rejection metadata', async () => {

@@ -19,6 +19,7 @@ import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontB
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const TERMINAL_DEVICE_ENFORCEMENT_MODES = new Set(['off', 'strict']);
 const ORDER_METHOD_DEFAULT_LABELS = {
     dine_in: 'Dine In Fee',
     takeout: 'Takeout Fee',
@@ -35,6 +36,81 @@ const createStorefrontHandleConflictError = (handle) => {
     error.statusCode = 409;
     error.details = { reason_code: 'STOREFRONT_HANDLE_NOT_UNIQUE', handle };
     return error;
+};
+
+const normalizeUpdatedAt = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const normalizeExpectedUpdatedAtMap = (expectedUpdatedAt) => {
+    if (!expectedUpdatedAt || typeof expectedUpdatedAt !== 'object' || Array.isArray(expectedUpdatedAt)) {
+        return {};
+    }
+    return Object.fromEntries(
+        Object.entries(expectedUpdatedAt)
+            .map(([key, value]) => [String(key), value])
+            .filter(([, value]) => Boolean(value))
+    );
+};
+
+const createSettingsVersionConflictError = ({ key, expectedUpdatedAt, currentUpdatedAt = null }) => {
+    const error = new Error(`Setting '${key}' changed in another session. Refresh the values and try again.`);
+    error.statusCode = 409;
+    error.details = {
+        reason_code: 'SETTINGS_VERSION_CONFLICT',
+        setting_key: key,
+        expected_updated_at: expectedUpdatedAt,
+        current_updated_at: currentUpdatedAt
+    };
+    return error;
+};
+
+const assertExpectedSettingVersions = async (SystemSetting, settingKeys, expectedUpdatedAt) => {
+    const expected = normalizeExpectedUpdatedAtMap(expectedUpdatedAt);
+    const keysToCheck = Object.keys(expected).filter((key) => settingKeys.includes(key));
+    if (keysToCheck.length === 0) return expected;
+
+    const rows = await SystemSetting.findAll({
+        where: { setting_key: { [Op.in]: keysToCheck } }
+    });
+    const rowsByKey = new Map(rows.map((row) => [row.setting_key, row]));
+    for (const key of keysToCheck) {
+        const row = rowsByKey.get(key);
+        const currentUpdatedAt = row?.updated_at ?? null;
+        if (!row || normalizeUpdatedAt(expected[key]) !== normalizeUpdatedAt(currentUpdatedAt)) {
+            throw createSettingsVersionConflictError({
+                key,
+                expectedUpdatedAt: expected[key],
+                currentUpdatedAt
+            });
+        }
+    }
+    return expected;
+};
+
+const updateSettingWithExpectedVersion = async (SystemSetting, setting, normalizedUpdate, expectedUpdatedAt) => {
+    const [affectedRows] = await SystemSetting.update(normalizedUpdate, {
+        where: {
+            setting_id: setting.setting_id,
+            updated_at: setting.updated_at
+        }
+    });
+    if (affectedRows !== 1) {
+        const current = await SystemSetting.findOne({
+            where: { setting_key: setting.setting_key }
+        });
+        throw createSettingsVersionConflictError({
+            key: setting.setting_key,
+            expectedUpdatedAt,
+            currentUpdatedAt: current?.updated_at ?? null
+        });
+    }
+    const refreshed = await SystemSetting.findOne({
+        where: { setting_key: setting.setting_key }
+    });
+    return refreshed || setting;
 };
 
 const isMissingTableError = (error, tableName) => {
@@ -271,7 +347,10 @@ const normalizeTerminalRegistry = (rawValue) => {
             cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
             is_active: isActive,
             is_default: isActive && parseBooleanLike(entry?.is_default),
-            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
+            terminal_password_hash: String(entry?.terminal_password_hash || '').trim(),
+            device_enforcement: TERMINAL_DEVICE_ENFORCEMENT_MODES.has(String(entry?.device_enforcement || '').trim().toLowerCase())
+                ? String(entry.device_enforcement).trim().toLowerCase()
+                : 'off'
         });
     }
 
@@ -305,7 +384,10 @@ const toPublicTerminalRegistry = (entries = []) => (
         cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
         is_active: entry?.is_active !== false,
         is_default: entry?.is_default === true,
-        has_password: Boolean(String(entry?.terminal_password_hash || '').trim())
+        has_password: Boolean(String(entry?.terminal_password_hash || '').trim()),
+        device_enforcement: TERMINAL_DEVICE_ENFORCEMENT_MODES.has(String(entry?.device_enforcement || '').trim().toLowerCase())
+            ? String(entry.device_enforcement).trim().toLowerCase()
+            : 'off'
     }))
 );
 
@@ -599,10 +681,16 @@ export const settingsRepository = {
         });
         return result;
     },
-    async updateSettings(settingsData) {
+    async updateSettings(settingsData, { expectedUpdatedAt = null } = {}) {
         const SystemSetting = dbStore.get('SystemSetting');
         const updatePromises = [];
         const errors = [];
+
+        const expectedVersions = await assertExpectedSettingVersions(
+            SystemSetting,
+            Object.keys(settingsData),
+            expectedUpdatedAt
+        );
 
         const thresholdKeys = ['enable_auto_reorder', 'min_stock_threshold_percent', 'purchase_allowance_percent'];
         const thresholdSettingsChanged = Object.keys(settingsData).some((key) => thresholdKeys.includes(key));
@@ -624,11 +712,19 @@ export const settingsRepository = {
                     });
                 } else {
                     const normalizedUpdate = normalizeSettingForWrite(setting, normalizedValue);
-                    updatePromises.push(
-                        setting.update(normalizedUpdate)
-                    );
+                    if (expectedVersions[key]) {
+                        await updateSettingWithExpectedVersion(
+                            SystemSetting,
+                            setting,
+                            normalizedUpdate,
+                            expectedVersions[key]
+                        );
+                    } else {
+                        updatePromises.push(setting.update(normalizedUpdate));
+                    }
                 }
             } catch (error) {
+                if (error?.statusCode === 409) throw error;
                 errors.push(`Failed to update '${key}': ${error.message}`);
             }
         }
@@ -650,7 +746,7 @@ export const settingsRepository = {
             thresholdResult
         };
     },
-    async updateSettingByKey(key, value) {
+    async updateSettingByKey(key, value, { expectedUpdatedAt = null } = {}) {
         const SystemSetting = dbStore.get('SystemSetting');
         const normalizedValue = normalizeValueForSettingKey(key, value);
         let setting = await SystemSetting.findOne({
@@ -658,6 +754,13 @@ export const settingsRepository = {
         });
 
         if (!setting) {
+            if (normalizeUpdatedAt(expectedUpdatedAt)) {
+                throw createSettingsVersionConflictError({
+                    key,
+                    expectedUpdatedAt,
+                    currentUpdatedAt: null
+                });
+            }
             const data_type = inferDataType(normalizedValue);
             setting = await SystemSetting.create({
                 setting_key: key,
@@ -667,7 +770,24 @@ export const settingsRepository = {
             });
         } else {
             const normalizedUpdate = normalizeSettingForWrite(setting, normalizedValue);
-            await setting.update(normalizedUpdate);
+            const expectedVersion = normalizeUpdatedAt(expectedUpdatedAt);
+            if (expectedVersion) {
+                if (expectedVersion !== normalizeUpdatedAt(setting.updated_at)) {
+                    throw createSettingsVersionConflictError({
+                        key,
+                        expectedUpdatedAt,
+                        currentUpdatedAt: setting.updated_at
+                    });
+                }
+                setting = await updateSettingWithExpectedVersion(
+                    SystemSetting,
+                    setting,
+                    normalizedUpdate,
+                    expectedUpdatedAt
+                );
+            } else {
+                await setting.update(normalizedUpdate);
+            }
         }
 
         return {

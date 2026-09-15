@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Banknote, BarChart3, ChevronLeft, ChevronRight, LogIn, LogOut, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,11 @@ import {
   getNextStatusActions,
   isCompletionPaymentPending
 } from './orderFulfillmentUi.js';
+import {
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
+  parseDeliveryCoords
+} from '../utils/incomingQueueOrderFormatting.js';
 
 const WORKSPACE_VIEW_CONFIG = {
   incoming_queue: {
@@ -54,26 +59,6 @@ const parseIsoDateTime = (value) => {
   if (!Number.isFinite(date.getTime())) return '-';
   return date.toLocaleString();
 };
-const parseDeliveryCoords = (order = {}) => {
-  if (
-    order?.delivery_latitude === null
-    || order?.delivery_latitude === undefined
-    || order?.delivery_latitude === ''
-    || order?.delivery_longitude === null
-    || order?.delivery_longitude === undefined
-    || order?.delivery_longitude === ''
-  ) {
-    return null;
-  }
-  const lat = Number(order?.delivery_latitude);
-  const lng = Number(order?.delivery_longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return {
-    latitude: lat,
-    longitude: lng
-  };
-};
-
 const DELIVERY_JOB_STATUS_LABELS = {
   pending_dispatch: 'Pending Dispatch',
   assigned: 'Assigned',
@@ -91,6 +76,7 @@ export default function TerminalSidebarPanel({
   isMsmeMode = false,
   terminalUser,
   locked,
+  isOnline = true,
   terminalMeta,
   shiftState,
   todayDashboard,
@@ -135,6 +121,11 @@ export default function TerminalSidebarPanel({
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hiddenSectionsInMsme = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
+  const [switchTargetLocationId, setSwitchTargetLocationId] = useState(null);
+  useEffect(() => {
+    setSwitchTargetLocationId(null);
+    setSwitchReason('');
+  }, [shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.location_id]);
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
   const activeShift = shiftState?.shift || null;
@@ -367,17 +358,20 @@ export default function TerminalSidebarPanel({
                 <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3">
                   <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Change Active Shift Location</p>
                   <p className="text-[11px] text-slate-500">
-                    Reassign the active shift to another location with a reason.
+                    This closes the current shift and opens a new shift with zero opening cash. It does not change the branch you are viewing until confirmed.
                   </p>
                   <Label className="text-xs">New Shift Location</Label>
                   <select
                     className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
-                    value={operatingLocationId || ''}
+                    aria-label="New Shift Location"
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
+                    value={switchTargetLocationId || ''}
                     onChange={(event) => {
                       const nextValue = event.target.value ? Number(event.target.value) : null;
-                      setOperatingLocationId(nextValue);
+                      setSwitchTargetLocationId(nextValue);
                     }}
                   >
+                    <option value="">Select a target location</option>
                     {locations.map((location) => (
                       <option key={`sidebar-switch-location-${location.location_id}`} value={location.location_id}>
                         {location.name}
@@ -388,20 +382,21 @@ export default function TerminalSidebarPanel({
                     value={switchReason}
                     onChange={(event) => setSwitchReason(event.target.value)}
                     placeholder="Reason for shift location change"
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     className="w-full"
                     disabled={
-                      shiftActionLoading.switchLocation
-                      || !operatingLocationId
-                      || Number(operatingLocationId) === Number(shiftState?.shift?.location_id)
+                      locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation
+                      || !switchTargetLocationId
+                      || Number(switchTargetLocationId) === Number(shiftState?.shift?.location_id)
                       || String(switchReason || '').trim().length < 8
                     }
                     onClick={() => {
                       handleSwitchShiftLocation({
-                        targetLocationId: operatingLocationId,
+                        targetLocationId: switchTargetLocationId,
                         reason: switchReason
                       });
                     }}
@@ -633,11 +628,18 @@ export default function TerminalSidebarPanel({
                         Address: <span className="font-semibold text-slate-900">{order.delivery_address}</span>
                       </p>
                     )}
-                    {deliveryCoords && (
+                    {order.order_method === 'delivery' && (
                       <>
                         <p className="text-[11px] text-slate-600">
-                          Coords: {deliveryCoords.latitude.toFixed(6)}, {deliveryCoords.longitude.toFixed(6)}
+                          Phone: <span className="font-semibold text-slate-900">{formatCustomerPhone(order.customer_phone)}</span>
                         </p>
+                        <p className="text-[11px] text-slate-600">
+                          Pin coordinates: <span className="font-semibold text-slate-900">{formatDeliveryCoordinates(deliveryCoords)}</span>
+                        </p>
+                      </>
+                    )}
+                    {deliveryCoords && (
+                      <>
                         <a
                           href={mapLink}
                           target="_blank"

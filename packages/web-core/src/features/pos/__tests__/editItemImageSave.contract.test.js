@@ -20,7 +20,11 @@ describe('POS edit-item image save flow', () => {
     expect(workspace).not.toContain('handleUploadStorefrontImage');
     expect(saveHandler).toContain('const editItemId = activeEditItem.item_id;');
     expect(saveHandler).toContain("let editSaveStage = 'item_details';");
-    expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
+    expect(saveHandler).toContain('const resolvedError = resolveEditItemSaveError(updateError, editSaveStage);');
+    expect(saveHandler).toContain('if (resolvedError.status === 403)');
+    expect(saveHandler).toContain('await refreshTerminalUser({ suppressGlobalErrors: true });');
+    expect(workspace).toContain('data-testid="pos-edit-item-permission-denied"');
+    expect(workspace).toContain('disabled={savingItem || persistingEditAssets || !canSaveActiveItem}');
     expect(uploadHandler).toContain('setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
     expect(saveHandler).toContain('const imageUploadResult = await queueEditImageFiles({');

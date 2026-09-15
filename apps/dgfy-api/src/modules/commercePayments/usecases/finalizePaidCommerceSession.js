@@ -235,7 +235,12 @@ export const finalizePaidCommerceSession = async ({
 
     const order = result.data?.order || {};
     const feePolicy = parseJsonObject(plainSession.fee_policy);
-    const usesPayMongoSplit = feePolicy.collection_model !== 'dgfy_collects_then_settles_tenant';
+    // New Storefront sessions explicitly record whether PayMongo split was used because
+    // the customer-facing convenience fee is retired while legacy settlement metadata remains.
+    // Historical sessions do not have this field, so retain the previous collection-model fallback.
+    const usesPayMongoSplit = Object.prototype.hasOwnProperty.call(feePolicy, 'split_payment_used')
+        ? feePolicy.split_payment_used === true
+        : feePolicy.collection_model !== 'dgfy_collects_then_settles_tenant';
     const nextStatus = usesPayMongoSplit && hasPayMongoSplitFailure(resource)
       ? 'split_failed_manual_settlement_required'
       : 'finalized';

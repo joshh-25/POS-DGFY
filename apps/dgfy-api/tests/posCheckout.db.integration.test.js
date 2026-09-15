@@ -12,6 +12,9 @@ import { buildCheckoutPosUseCase } from '../src/modules/pos/usecases/posUseCases
 import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
 import { inventoryStockCommandService } from '../src/modules/inventory/index.js';
 import { reconcileFifoLedgerOpeningBalance } from '../src/services/stockMovementService.js';
+import { createPosCashierAttendanceRepository } from '../src/modules/pos/repositories/posCashierAttendanceRepository.js';
+import { createAssertPosUserOperatingScope } from '../src/modules/pos/usecases/posUserOperatingScope.js';
+import { resolvePosCashierAttendanceFeature } from '../src/modules/pos/services/posCashierAttendanceFeature.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -273,6 +276,70 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         await adminSequelize.close();
     }, 60000);
 
+    it.each([
+        ['legacy', 'legacy'], ['operator', 'operator'],
+        ['legacy', 'operator'], ['operator', 'legacy']
+    ])('Phase 355 serializes %s/%s acquisition across branches in MySQL', async (firstMode, secondMode) => {
+        const cashier = await createCashier({ role: 'cashier' });
+        const other = await createCashier();
+        await models.PosTerminalShift.update({ status: 'closed' }, { where: { cashier_id: cashier.user_id } });
+        await models.PosTerminalShift.update({ status: 'closed' }, { where: { cashier_id: other.user_id } });
+        await models.UserLocationGrant.create({ user_id: cashier.user_id, location_id: other.posTestLocationId, created_by: cashier.user_id });
+        const guard = createAssertPosUserOperatingScope({ repository: createPosCashierAttendanceRepository(models) });
+        const financialCounts = () => Promise.all([models.PosTransaction.count(), models.PosPaymentAllocation.count(), models.StockMovement.count(), models.PosDrawerHandoffEvent.count()]);
+        const before = await financialCounts();
+        const scopes = [cashier, other].map((row) => ({ userId: cashier.user_id, terminalId: row.posTestTerminalId, locationId: row.posTestLocationId }));
+        const modes = [firstMode, secondMode];
+        await setSetting('pos_cashier_attendance_lifecycle_v1', JSON.stringify({ enabled: true, location_ids: scopes.filter((_scope, i) => modes[i] === 'operator').map((scope) => scope.locationId) }), 'json');
+        for (let i = 0; i < scopes.length; i += 1) {
+            const feature = await runInTenantContext(() => resolvePosCashierAttendanceFeature({ locationId: scopes[i].locationId }));
+            expect(feature.enabled).toBe(modes[i] === 'operator');
+        }
+        const registerShifts = [];
+        for (let i = 0; i < modes.length; i += 1) {
+            if (modes[i] !== 'operator') continue;
+            const owner = await createCashier();
+            await models.PosTerminalShift.update({ terminal_id: scopes[i].terminalId, location_id: scopes[i].locationId }, { where: { cashier_id: owner.user_id } });
+            registerShifts[i] = await models.PosTerminalShift.findOne({ where: { cashier_id: owner.user_id, status: 'open' } });
+        }
+        const acquire = (mode, scope, i) => tenantSequelize.transaction(async (transaction) => {
+            await guard({ ...scope, transaction });
+            if (mode === 'legacy') {
+                await models.PosTerminalShift.create({ business_date: new Date().toISOString().slice(0, 10), terminal_id: scope.terminalId, location_id: scope.locationId, cashier_id: cashier.user_id, opening_float_amount: 0, status: 'open' }, { transaction });
+            } else {
+                const attendance = await models.EmployeeAttendanceSession.create({ user_id: cashier.user_id, location_id: scope.locationId, duty_type: 'relief', started_at: new Date(), status: 'open' }, { transaction });
+                await models.PosTerminalOperatorSession.create({ user_id: cashier.user_id, location_id: scope.locationId, terminal_id: scope.terminalId, pos_terminal_shift_id: registerShifts[i].pos_terminal_shift_id, employee_attendance_session_id: attendance.employee_attendance_session_id, started_at: new Date(), status: 'active' }, { transaction });
+            }
+            return i;
+        });
+        const results = await Promise.allSettled(modes.map((mode, i) => acquire(mode, scopes[i], i)));
+        expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+        const rejected = results.find((result) => result.status === 'rejected');
+        expect(rejected.reason).toMatchObject({ statusCode: 409, details: { reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE' } });
+        const ownedShifts = await models.PosTerminalShift.count({ where: { cashier_id: cashier.user_id, status: 'open' } });
+        const activeOperators = await models.PosTerminalOperatorSession.count({ where: { user_id: cashier.user_id, status: 'active' } });
+        expect(ownedShifts + activeOperators).toBe(1);
+        const winner = results.find((result) => result.status === 'fulfilled').value;
+        await tenantSequelize.transaction((transaction) => guard({ ...scopes[winner], transaction }));
+        expect(await financialCounts()).toEqual(before);
+        const indexes = await tenantSequelize.getQueryInterface().showIndex('pos_terminal_operator_sessions');
+        expect(indexes.some((index) => index.unique && index.fields.some((field) => field.attribute === 'active_operator_user_id'))).toBe(true);
+        const shiftIndexes = await tenantSequelize.getQueryInterface().showIndex('pos_terminal_shifts');
+        expect(shiftIndexes.some((index) => index.unique && index.name === 'uq_pos_terminal_shifts_active_operator')).toBe(true);
+    });
+
+    it('Phase 355 allows different employees at distinct registers and rejects a revoked branch grant', async () => {
+        const cashiers = await Promise.all([createCashier(), createCashier()]);
+        const guard = createAssertPosUserOperatingScope({ repository: createPosCashierAttendanceRepository(models) });
+        const scopeFor = (cashier) => ({ userId: cashier.user_id, terminalId: cashier.posTestTerminalId, locationId: cashier.posTestLocationId });
+        const results = await Promise.allSettled(cashiers.map((cashier) => tenantSequelize.transaction((transaction) => guard({ ...scopeFor(cashier), transaction }))));
+        expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+        const cashier = cashiers[0];
+        await models.UserLocationGrant.destroy({ where: { user_id: cashier.user_id, location_id: cashier.posTestLocationId } });
+        await expect(tenantSequelize.transaction((transaction) => guard({ ...scopeFor(cashier), transaction }))).rejects.toMatchObject({ statusCode: 403 });
+        expect(await models.PosTerminalShift.count({ where: { cashier_id: cashier.user_id, status: 'open' } })).toBe(1);
+    });
+
     it('runs against migrated POS schema and persists checkout stock movements', async () => {
         const [posMigrationRows] = await tenantSequelize.query(
             "SELECT name FROM SequelizeMeta WHERE name IN ('20260325000002-create-pos-transactions.cjs','20260325000003-add-pos-reference-type-and-settings.cjs')"
@@ -478,6 +545,14 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     it('persists multiple statutory beneficiaries and their line allocations', async () => {
         const cashier = await createCashier();
+        const approver = await models.User.create({
+            username: `multi_beneficiary_approver_${crypto.randomUUID().slice(0, 8)}`,
+            email: `multi_beneficiary_approver_${crypto.randomUUID().slice(0, 8)}@pos.test`,
+            password_hash: 'test-hash',
+            pos_approval_pin_hash: await bcrypt.hash('2468', 4),
+            role: 'manager',
+            is_active: true
+        });
         const product = await createFinishedGood({ current_stock: 10, senior_pwd_discount_eligible: true });
         const checkoutResult = await checkoutAsCashier(cashier, {
             idempotency_key: `idem-multi-beneficiary-${crypto.randomUUID()}`,
@@ -488,7 +563,9 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 beneficiaries: [
                     { category: 'senior', name: 'Senior One', id_number: 'SC-INTEGRATION-1', eligible_items: [{ item_id: product.item_id, eligible_quantity: 1 }] },
                     { category: 'senior', name: 'Senior Two', id_number: 'SC-INTEGRATION-2', eligible_items: [{ item_id: product.item_id, eligible_quantity: 1 }] }
-                ]
+                ],
+                approver_user_id: approver.user_id,
+                manager_pin: '2468'
             },
             lines: [{ item_id: product.item_id, quantity: 2, sale_price: null }]
         });
@@ -920,5 +997,266 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         // Fee is non-VAT, so VAT buckets remain item-only.
         expect(Number(persistedTx.vatable_sales)).toBeCloseTo(100, 4);
         expect(Number(persistedTx.vat_amount)).toBeCloseTo(12, 4);
+    });
+
+    it('enforces Phase 340 Main/Spacebar stock isolation, replay safety, and grant revocation', async () => {
+        const cashier = await createCashier();
+        const spacebar = await models.TenantLocation.findByPk(cashier.posTestLocationId);
+        await spacebar.update({ name: 'Spacebar Branch' });
+        const main = await models.TenantLocation.create({
+            name: 'Main Branch',
+            address_line: 'Main Street, Iloilo City',
+            latitude: 10.7202,
+            longitude: 122.5621,
+            is_open: true,
+            is_active: true,
+            is_primary_storefront: true,
+            allow_out_of_stock_sales: false,
+            supports_delivery: true,
+            supports_pickup: true,
+            supports_dine_in: true
+        });
+        await models.UserLocationGrant.create({
+            user_id: cashier.user_id,
+            location_id: main.location_id,
+            created_by: cashier.user_id
+        });
+
+        const item = await createFinishedGood({
+            name: 'Phase 340 Branch Item',
+            current_stock: 7,
+            default_sale_price: 100
+        });
+        await models.ItemLocationStock.destroy({ where: { item_id: item.item_id } });
+        await models.ItemLocationStock.bulkCreate([
+            {
+                item_id: item.item_id,
+                location_id: main.location_id,
+                quantity_on_hand: 5,
+                updated_by: cashier.user_id
+            },
+            {
+                item_id: item.item_id,
+                location_id: spacebar.location_id,
+                quantity_on_hand: 2,
+                updated_by: cashier.user_id
+            }
+        ]);
+
+        const previousFlag = await models.SystemSetting.findOne({
+            where: { setting_key: 'multi_location_inventory_enabled' }
+        });
+        await setSetting('multi_location_inventory_enabled', 'true', 'boolean');
+
+        const checkoutPayload = {
+            idempotency_key: `phase-340-spacebar-${crypto.randomUUID()}`,
+            terminal_id: cashier.posTestTerminalId,
+            location_id: spacebar.location_id,
+            payment_type: 'cash',
+            order_method: 'dine_in',
+            lines: [{ item_id: item.item_id, quantity: 2, sale_price: null }]
+        };
+
+        try {
+            const spacebarCatalog = await runInTenantContext(() => listPosCatalogUseCase({
+                query: { search: item.sku_code, location_id: spacebar.location_id, limit: 20 },
+                user: cashier
+            }));
+            const mainCatalog = await runInTenantContext(() => listPosCatalogUseCase({
+                query: { search: item.sku_code, location_id: main.location_id, limit: 20 },
+                user: cashier
+            }));
+            expect(spacebarCatalog.success).toBe(true);
+            expect(mainCatalog.success).toBe(true);
+            expect(Number(spacebarCatalog.data.find((row) => Number(row.item_id) === Number(item.item_id)).current_stock)).toBe(2);
+            expect(Number(mainCatalog.data.find((row) => Number(row.item_id) === Number(item.item_id)).current_stock)).toBe(5);
+
+            const firstCheckout = await runInTenantContext(() => checkoutPosUseCase({
+                userId: cashier.user_id,
+                user: cashier,
+                payload: checkoutPayload
+            }));
+            expect(firstCheckout.success).toBe(true);
+            expect(firstCheckout.data.idempotent_replay).toBe(false);
+
+            const stockAfterSale = await models.ItemLocationStock.findAll({
+                where: { item_id: item.item_id },
+                order: [['location_id', 'ASC']]
+            });
+            expect(Object.fromEntries(stockAfterSale.map((row) => [
+                Number(row.location_id),
+                Number(row.quantity_on_hand)
+            ]))).toEqual({
+                [Number(main.location_id)]: 5,
+                [Number(spacebar.location_id)]: 0
+            });
+            expect(Number((await models.Item.findByPk(item.item_id)).current_stock)).toBe(5);
+
+            const movementRows = await models.StockMovement.findAll({
+                where: { item_id: item.item_id, reference_type: 'POS' }
+            });
+            expect(movementRows).toHaveLength(1);
+            expect(Number(movementRows[0].location_id)).toBe(Number(spacebar.location_id));
+
+            const replay = await runInTenantContext(() => checkoutPosUseCase({
+                userId: cashier.user_id,
+                user: cashier,
+                payload: checkoutPayload
+            }));
+            expect(replay.success).toBe(true);
+            expect(replay.data.idempotent_replay).toBe(true);
+            expect(await models.StockMovement.count({
+                where: { item_id: item.item_id, reference_type: 'POS' }
+            })).toBe(1);
+
+            const insufficient = await runInTenantContext(() => checkoutPosUseCase({
+                userId: cashier.user_id,
+                user: cashier,
+                payload: {
+                    ...checkoutPayload,
+                    idempotency_key: `phase-340-spacebar-shortfall-${crypto.randomUUID()}`,
+                    lines: [{ item_id: item.item_id, quantity: 1, sale_price: null }]
+                }
+            }));
+            expect(insufficient.success).toBe(false);
+            expect(insufficient.error.message).toContain('Insufficient stock');
+            expect(await models.StockMovement.count({
+                where: { item_id: item.item_id, reference_type: 'POS' }
+            })).toBe(1);
+            expect(Number((await models.ItemLocationStock.findOne({
+                where: { item_id: item.item_id, location_id: main.location_id }
+            })).quantity_on_hand)).toBe(5);
+
+            // Two terminals in the same branch compete for the final unit. The stock row lock
+            // must let exactly one checkout commit; the other must fail after observing zero,
+            // without touching Main or creating a second POS movement.
+            const raceSuffix = crypto.randomUUID().slice(0, 8);
+            const raceCashier = await models.User.create({
+                username: `race_cashier_${raceSuffix}`,
+                email: `race_cashier_${raceSuffix}@pos.test`,
+                password_hash: 'test-hash',
+                role: 'staff',
+                is_active: true
+            });
+            const raceTerminalId = `POS-RACE-${raceSuffix}`.toUpperCase();
+            await models.UserLocationGrant.create({
+                user_id: raceCashier.user_id,
+                location_id: spacebar.location_id,
+                created_by: raceCashier.user_id
+            });
+            await models.PosTerminalShift.create({
+                business_date: new Date().toISOString().slice(0, 10),
+                terminal_id: raceTerminalId,
+                location_id: spacebar.location_id,
+                cashier_id: raceCashier.user_id,
+                opening_float_amount: 0,
+                status: 'open'
+            });
+            await setSetting('pos_terminal_registry', JSON.stringify([
+                {
+                    terminal_id: cashier.posTestTerminalId,
+                    label: cashier.posTestTerminalId,
+                    is_active: true,
+                    is_default: true,
+                    location_id: spacebar.location_id
+                },
+                {
+                    terminal_id: raceTerminalId,
+                    label: raceTerminalId,
+                    is_active: true,
+                    is_default: false,
+                    location_id: spacebar.location_id
+                }
+            ]), 'json');
+
+            const raceItem = await createFinishedGood({
+                name: 'Phase 340 Concurrent Last Unit',
+                current_stock: 4,
+                default_sale_price: 100
+            });
+            await models.ItemLocationStock.destroy({ where: { item_id: raceItem.item_id } });
+            await models.ItemLocationStock.bulkCreate([
+                {
+                    item_id: raceItem.item_id,
+                    location_id: main.location_id,
+                    quantity_on_hand: 3,
+                    updated_by: cashier.user_id
+                },
+                {
+                    item_id: raceItem.item_id,
+                    location_id: spacebar.location_id,
+                    quantity_on_hand: 1,
+                    updated_by: cashier.user_id
+                }
+            ]);
+
+            const runRaceCheckout = ({ user, terminalId, idempotencyKey }) => runInTenantContext(
+                () => checkoutPosUseCase({
+                    userId: user.user_id,
+                    user,
+                    payload: {
+                        idempotency_key: idempotencyKey,
+                        terminal_id: terminalId,
+                        location_id: spacebar.location_id,
+                        payment_type: 'cash',
+                        order_method: 'dine_in',
+                        lines: [{ item_id: raceItem.item_id, quantity: 1, sale_price: null }]
+                    }
+                })
+            );
+            const [raceFirst, raceSecond] = await Promise.all([
+                runRaceCheckout({
+                    user: cashier,
+                    terminalId: cashier.posTestTerminalId,
+                    idempotencyKey: `phase-340-race-a-${crypto.randomUUID()}`
+                }),
+                runRaceCheckout({
+                    user: raceCashier,
+                    terminalId: raceTerminalId,
+                    idempotencyKey: `phase-340-race-b-${crypto.randomUUID()}`
+                })
+            ]);
+            const raceResults = [raceFirst, raceSecond];
+            expect(raceResults.filter((result) => result.success)).toHaveLength(1);
+            expect(raceResults.filter((result) => !result.success)).toHaveLength(1);
+            const raceFailure = raceResults.find((result) => !result.success);
+            expect(raceFailure.error.message).toContain('Insufficient stock');
+            expect(Number((await models.ItemLocationStock.findOne({
+                where: { item_id: raceItem.item_id, location_id: spacebar.location_id }
+            })).quantity_on_hand)).toBe(0);
+            expect(Number((await models.ItemLocationStock.findOne({
+                where: { item_id: raceItem.item_id, location_id: main.location_id }
+            })).quantity_on_hand)).toBe(3);
+            expect(await models.StockMovement.count({
+                where: { item_id: raceItem.item_id, reference_type: 'POS' }
+            })).toBe(1);
+
+            await models.UserLocationGrant.destroy({
+                where: { user_id: cashier.user_id, location_id: spacebar.location_id }
+            });
+            const revoked = await runInTenantContext(() => checkoutPosUseCase({
+                userId: cashier.user_id,
+                user: cashier,
+                payload: {
+                    ...checkoutPayload,
+                    idempotency_key: `phase-340-spacebar-revoked-${crypto.randomUUID()}`,
+                    lines: [{ item_id: item.item_id, quantity: 1, sale_price: null }]
+                }
+            }));
+            expect(revoked.success).toBe(false);
+            expect(revoked.error.code).toBe('AUTHORIZATION_FAILED');
+            expect(revoked.error.details?.reason_code).toBe('POS_LOCATION_ACCESS_DENIED');
+        } finally {
+            if (previousFlag) {
+                await previousFlag.update({
+                    setting_value: previousFlag.setting_value,
+                    data_type: previousFlag.data_type
+                });
+            } else {
+                await models.SystemSetting.destroy({
+                    where: { setting_key: 'multi_location_inventory_enabled' }
+                });
+            }
+        }
     });
 });

@@ -1,11 +1,11 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { readSourceForContract } from './readSourceForContract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
-const workspace = fs.readFileSync(workspacePath, 'utf8');
+const workspace = readSourceForContract(workspacePath);
 
 describe('POS batch menu import entry point', () => {
     it('reads the batch flag independently of the single-file PDF import flag', () => {

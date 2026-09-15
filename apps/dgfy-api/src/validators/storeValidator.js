@@ -122,6 +122,7 @@ const storeClaimOrderSchema = Joi.object({
 const storeOrderHistoryQuerySchema = Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(20),
+    location_id: Joi.number().integer().positive().optional(),
     fulfillment_status: Joi.string().valid(...FULFILLMENT_STATUSES).optional(),
     date_from: Joi.date().iso().optional(),
     date_to: Joi.date().iso().min(Joi.ref('date_from')).optional()

@@ -107,6 +107,11 @@ const publicActivity = (activity = {}) => {
         store_slug: activity.store_slug,
         store_name: activity.store_name,
         store: { slug: activity.store_slug || null, name: activity.store_name || null },
+        location_id: activity.location_id ?? display.location_id ?? null,
+        branch: {
+            location_id: activity.location_id ?? display.location_id ?? null,
+            name: display.branch_name || display.location_name || null
+        },
         status: activity.status,
         status_label: activity.status_label,
         payment_status: activity.payment_status,
@@ -434,6 +439,8 @@ const buildDgfyOrderDetailSnapshot = ({ activity, order = {}, lines = [], supple
     setDisplayValue(display, 'payment_status', order.payment_status, supplemental.payment_status, existingDisplay.payment_status);
     setDisplayValue(display, 'delivery_address', order.delivery_address, existingDisplay.delivery_address);
     setDisplayValue(display, 'scheduled_for', order.scheduled_for, existingDisplay.scheduled_for);
+    setDisplayValue(display, 'location_id', order.location_id, existingDisplay.location_id);
+    setDisplayValue(display, 'branch_name', order.location?.name, existingDisplay.branch_name, existingDisplay.location_name);
     setDisplayValue(display, 'special_instructions', order.special_instructions, existingDisplay.special_instructions);
     setDisplayValue(display, 'subtotal_amount', order.subtotal_amount, existingDisplay.subtotal_amount);
     setDisplayValue(display, 'discount_amount', order.discount_amount, existingDisplay.discount_amount);
@@ -960,6 +967,7 @@ export const buildListDgfyCustomerActivitiesUseCase = ({
             type: type || query.type || null,
             tenantId: query.tenant_id || query.tenantId,
             storeSlug: query.store_slug || query.storeSlug,
+            locationId: query.location_id ?? query.locationId,
             status: query.status,
             paymentStatus: query.payment_status || query.paymentStatus,
             dateFrom: query.date_from || query.dateFrom,

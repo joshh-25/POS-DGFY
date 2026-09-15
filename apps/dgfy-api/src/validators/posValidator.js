@@ -468,6 +468,71 @@ const posCashierLoginSchema = Joi.object({
     })
 });
 
+const POS_DEVICE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{1,159}$/;
+const POS_DEVICE_KEY_PATTERN = /^(?:-----BEGIN PUBLIC KEY-----[\s\S]+-----END PUBLIC KEY-----|[A-Za-z0-9+/_=-]{80,22000})$/;
+const posTerminalDeviceActivationIssueSchema = Joi.object({
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    reason: Joi.string().trim().min(3).max(500).required()
+});
+const posTerminalDeviceActivateSchema = Joi.object({
+    activation_code: Joi.string().trim().min(20).max(512).required(),
+    device_id: Joi.string().trim().pattern(POS_DEVICE_ID_PATTERN).required(),
+    public_key: Joi.string().trim().min(80).max(22000).pattern(POS_DEVICE_KEY_PATTERN).required(),
+    key_algorithm: Joi.string().trim().uppercase().valid('ES256').default('ES256'),
+    client_type: Joi.string().trim().lowercase().valid('browser', 'electron', 'android', 'bridge', 'mobile').required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    reason: Joi.string().trim().min(3).max(500).required()
+});
+// First enrollment happens before a POS identity exists. The activation code
+// already carries the administrator's issuance reason, so the device bootstrap
+// payload does not need to invent a second audit reason. Authenticated
+// replacement/activation keeps the stricter reason requirement above.
+const posTerminalDeviceBootstrapActivateSchema = posTerminalDeviceActivateSchema.keys({
+    reason: Joi.string().trim().min(3).max(500).allow('', null).optional()
+});
+const posTerminalDeviceChallengeSchema = Joi.object({
+    device_id: Joi.string().trim().pattern(POS_DEVICE_ID_PATTERN).required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    purpose: Joi.string().trim().lowercase().valid('session', 'request').default('request'),
+    request_path: Joi.string().trim().min(1).max(255).required(),
+    request_method: Joi.string().trim().uppercase().pattern(/^[A-Z]{3,12}$/).default('POST'),
+    session_id: Joi.string().trim().min(1).max(128).allow('', null).optional()
+});
+const posTerminalDeviceProofSchema = Joi.object({
+    device_id: Joi.string().trim().pattern(POS_DEVICE_ID_PATTERN).required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    challenge: Joi.string().trim().min(20).max(512).required(),
+    signature: Joi.string().trim().min(40).max(4096).required(),
+    session_id: Joi.string().trim().min(1).max(128).required(),
+    purpose: Joi.string().trim().lowercase().valid('session', 'request').required(),
+    request_path: Joi.string().trim().min(1).max(255).required(),
+    request_method: Joi.string().trim().uppercase().pattern(/^[A-Z]{3,12}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    request_body: Joi.any().optional()
+});
+const posTerminalDeviceEnrollmentParamSchema = Joi.object({
+    enrollmentId: Joi.number().integer().positive().required()
+});
+const posTerminalDeviceListQuerySchema = Joi.object({
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).optional(),
+    include_inactive: Joi.boolean().default(true)
+});
+const posTerminalDeviceReplaceSchema = Joi.object({
+    activation_code: Joi.string().trim().min(20).max(512).required(),
+    device_id: Joi.string().trim().pattern(POS_DEVICE_ID_PATTERN).required(),
+    public_key: Joi.string().trim().min(80).max(22000).pattern(POS_DEVICE_KEY_PATTERN).required(),
+    key_algorithm: Joi.string().trim().uppercase().valid('ES256').default('ES256'),
+    client_type: Joi.string().trim().lowercase().valid('browser', 'electron', 'android', 'bridge', 'mobile').required(),
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    reason: Joi.string().trim().min(3).max(500).required()
+});
+const posTerminalDeviceRevokeSchema = Joi.object({
+    reason: Joi.string().trim().min(3).max(500).required()
+});
+
 const setupCashierSchema = Joi.object({
     username: Joi.string().trim().min(2).max(50).required().messages({
         'any.required': 'Cashier username is required',
@@ -506,6 +571,10 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+const businessAdminApprovalSchema = Joi.object({
+    note: Joi.string().trim().max(1000).allow('', null).default('')
+});
+
 // Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
 // GET has no body at all.
 const balancePaymentProofParamsSchema = Joi.object({
@@ -521,8 +590,12 @@ const updatePosCatalogOverrideSchema = Joi.object({
   pos_visible: Joi.boolean().optional(),
   pos_always_available: Joi.boolean().optional(),
   pos_best_seller_mode: Joi.string().trim().lowercase().valid('auto', 'force', 'never').optional(),
-  location_id: Joi.number().integer().positive().optional()
-}).or('pos_visible', 'pos_always_available', 'pos_best_seller_mode');
+  location_id: Joi.number().integer().positive().optional(),
+  location_availability: Joi.array().items(Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    pos_available: Joi.boolean().allow(null).required()
+  })).min(1).optional()
+}).or('pos_visible', 'pos_always_available', 'pos_best_seller_mode', 'location_availability');
 
 const zReadingDateParamSchema = Joi.object({
     date: Joi.date().iso().required()
@@ -719,10 +792,14 @@ const cashierResumeSchema = Joi.object({
 
 const switchTerminalShiftLocationSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
-    terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).allow(null, '').optional().messages({
+    terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required().messages({
         'string.pattern.base': 'terminal_id may only contain letters, numbers, dot, underscore, or hyphen'
     }),
     target_location_id: Joi.number().integer().positive().required(),
+    closing_cash_amount: Joi.number().min(0).precision(4).required(),
+    opening_float_amount: Joi.number().min(0).precision(4).required(),
+    closing_note: Joi.string().trim().max(255).allow(null, '').optional(),
+    opening_note: Joi.string().trim().max(255).allow(null, '').optional(),
     reason: Joi.string().trim().min(8).max(255).required()
 });
 
@@ -1342,9 +1419,19 @@ export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCa
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');
 export const validatePosCashierLogin = validateSchema(posCashierLoginSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceActivationIssue = validateSchema(posTerminalDeviceActivationIssueSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceActivate = validateSchema(posTerminalDeviceActivateSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceBootstrapActivate = validateSchema(posTerminalDeviceBootstrapActivateSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceChallenge = validateSchema(posTerminalDeviceChallengeSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceProof = validateSchema(posTerminalDeviceProofSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceEnrollmentParam = validateSchema(posTerminalDeviceEnrollmentParamSchema, 'params', 'validatedParams');
+export const validatePosTerminalDeviceListQuery = validateSchema(posTerminalDeviceListQuerySchema, 'query', 'validatedQuery');
+export const validatePosTerminalDeviceReplace = validateSchema(posTerminalDeviceReplaceSchema, 'body', 'validatedData');
+export const validatePosTerminalDeviceRevoke = validateSchema(posTerminalDeviceRevokeSchema, 'body', 'validatedData');
 export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
+export const validateDecideBusinessAdminApproval = validateSchema(businessAdminApprovalSchema, 'body', 'validatedData');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');

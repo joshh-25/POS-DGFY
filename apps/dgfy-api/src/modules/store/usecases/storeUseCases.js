@@ -1807,7 +1807,6 @@ const resolveCheckoutContext = async ({
     storeCustomer = null,
     options = {},
     validateRecipeAvailability = true,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // #746: a cart-quote preview isn't placing an order -- it's answering "what would my total (and
     // voucher/promo discount) be right now." Neither the discount math (resolveStorefrontPromoApplication
     // / voucher resolution below, cart-content-only) nor deliveryFee (resolveStoreDeliveryFee, a flat
@@ -2680,9 +2679,10 @@ const resolveCheckoutContext = async ({
     // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
     // four money-adjacent call sites untouched (Phase 237 plan §4.1).
     const deliveryFee = delivery.finalFee;
-    const serviceFeeAmount = revenueSharingEnabled
-        ? 0
-        : computeDgfyConvenienceFee(prepared.subtotalAmount);
+    // Phase 333: Storefront checkout no longer adds the DGFY convenience fee to the
+    // customer's payable total. Keep the service-fee fields in the response and
+    // transaction header for schema compatibility and historical read contracts.
+    const serviceFeeAmount = 0;
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
     const totalAmount = round4(
         prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
@@ -3679,7 +3679,6 @@ export const buildDeleteStoreCustomerAddressUseCase = ({ storeRepository }) => {
 
 export const buildStoreCartQuoteUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -3701,7 +3700,6 @@ export const buildStoreCartQuoteUseCase = ({
                 storeRepository,
                 payload,
                 storeCustomer,
-                revenueSharingEnabled,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
@@ -3884,7 +3882,6 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
 
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -3950,7 +3947,6 @@ export const buildStoreCheckoutUseCase = ({
                 options: { transaction, lock: true },
                 validateRecipeAvailability: !existing,
                 tenantId: normalizedTenantId,
-                revenueSharingEnabled,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
                 pinnedDeliveryBreakdown
@@ -4997,9 +4993,13 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const totalAmountCentavos = isDownpaymentCapture
                 ? toCentavos(resolved.downpayment.downpayment_amount)
                 : orderTotalCentavos;
+            // The customer-facing service fee was removed in Phase 333. For the
+            // legacy QR Ph split path, keep DGFY's settlement amount separate from
+            // the captured customer total so removing the checkout row does not
+            // silently remove the configured platform settlement.
             const platformFeeCentavos = tenantRevenueSharingEnabled
                 ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
-                : toCentavos(resolved.serviceFeeAmount);
+                : toCentavos(computeDgfyConvenienceFee(resolved.prepared.subtotalAmount));
             if (
                 totalAmountCentavos <= 0
                 || platformFeeCentavos < 0
@@ -5050,9 +5050,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     settlement_cycle_days: Number(revenuePolicy.settlement_cycle_days)
                 }
                 : {
+                    collection_model: splitPayload ? 'paymongo_split' : 'tenant_direct_payment',
+                    split_payment_used: Boolean(splitPayload),
                     dgfy_fee_basis: 'subtotal',
                     dgfy_fee_rate: '0.01',
-                    dgfy_fee_charged_to: 'customer',
+                    dgfy_fee_charged_to: 'tenant',
                     provider_fee_shoulder: 'tenant_company',
                     provider_fee_customer_passthrough: false,
                     refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',

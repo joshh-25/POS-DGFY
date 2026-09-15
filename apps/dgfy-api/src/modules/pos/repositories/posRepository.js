@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { Op } from 'sequelize';
+import { Op, literal } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertPosRepositoryContract } from '../contracts/posRepository.contract.js';
@@ -203,7 +203,8 @@ const normalizeTerminalRegistry = (rawValue) => {
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: locationId
+            location_id: locationId,
+            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
         });
     });
     return normalized;
@@ -306,6 +307,13 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
 };
 
+const isMissingPosLocationItemOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('pos_location_item_overrides');
+};
+
 const isMissingStorefrontCatalogOverrideTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -404,7 +412,7 @@ const buildItemFolderInclude = () => {
         ? [{
             model: ItemFolder,
             as: 'folder',
-            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter'],
+            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter', 'sort_order'],
             required: false,
             include: FnbModifierGroup && FnbFolderModifierGroup ? [{
                 model: FnbModifierGroup,
@@ -429,6 +437,13 @@ const buildItemFolderInclude = () => {
         }]
         : [];
 };
+
+const PRIMARY_FOLDER_SORT_ORDER_SQL = '(SELECT `folder_order`.`sort_order` FROM `item_folders` AS `folder_order` WHERE `folder_order`.`folder_id` = `Item`.`folder_id` LIMIT 1)';
+
+const buildPrimaryFolderOrder = () => [
+    [literal(`CASE WHEN ${PRIMARY_FOLDER_SORT_ORDER_SQL} IS NULL THEN 1 ELSE 0 END`), 'ASC'],
+    [literal(`COALESCE(${PRIMARY_FOLDER_SORT_ORDER_SQL}, 2147483647)`), 'ASC']
+];
 
 const buildFnbCatalogIncludes = () => {
     const FnbModifierGroup = safeGetModel('FnbModifierGroup');
@@ -510,6 +525,63 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
         if (isMissingPosCatalogOverrideTableError(error)) {
             return new Map();
         }
+        throw error;
+    }
+};
+
+const loadPosLocationAvailabilityMap = async (itemIds = [], options = {}) => {
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => toPositiveInt(itemId))
+        .filter(Boolean))];
+    const PosLocationItemOverride = safeGetModel('PosLocationItemOverride');
+    const TenantLocation = safeGetModel('TenantLocation');
+    if (normalizedItemIds.length === 0 || typeof TenantLocation?.findAll !== 'function') {
+        return new Map();
+    }
+
+    const locations = (await TenantLocation.findAll({
+        where: { is_active: true },
+        attributes: ['location_id', 'name', 'is_open', 'is_active', 'is_primary_storefront'],
+        order: [['is_primary_storefront', 'DESC'], ['name', 'ASC'], ['location_id', 'ASC']],
+        transaction: options.transaction
+    })).map(toPlain);
+    const byItemId = new Map(normalizedItemIds.map((itemId) => [
+        itemId,
+        locations.map((location) => ({
+            location_id: Number(location.location_id),
+            name: location.name,
+            is_open: location.is_open !== false,
+            is_active: location.is_active !== false,
+            is_primary_storefront: location.is_primary_storefront === true,
+            pos_available: true,
+            source: 'inherited'
+        }))
+    ]));
+
+    if (typeof PosLocationItemOverride?.findAll !== 'function' || locations.length === 0) {
+        return byItemId;
+    }
+
+    try {
+        const rows = await PosLocationItemOverride.findAll({
+            where: {
+                item_id: { [Op.in]: normalizedItemIds },
+                location_id: { [Op.in]: locations.map((location) => Number(location.location_id)) }
+            },
+            attributes: ['item_id', 'location_id', 'pos_available'],
+            transaction: options.transaction
+        });
+        rows.map(toPlain).forEach((row) => {
+            const itemRows = byItemId.get(Number(row.item_id));
+            const entry = itemRows?.find((location) => Number(location.location_id) === Number(row.location_id));
+            if (entry) {
+                entry.pos_available = row.pos_available !== false;
+                entry.source = 'override';
+            }
+        });
+        return byItemId;
+    } catch (error) {
+        if (isMissingPosLocationItemOverrideTableError(error)) return byItemId;
         throw error;
     }
 };
@@ -745,6 +817,10 @@ const applyCatalogOverrides = async (items, options = {}) => {
     });
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
+    const posLocationAvailabilityMap = await loadPosLocationAvailabilityMap(itemIds, {
+        ...options,
+        locationId: options.locationId
+    });
     const autoBestSellerItemIds = await loadBestSellerItemIds(itemIds, options);
     const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
     const primaryBarcodeMap = options.includePrimaryBarcode === true
@@ -754,6 +830,11 @@ const applyCatalogOverrides = async (items, options = {}) => {
     return normalizedItems
         .map((item) => {
             const override = overrideMap.get(item.item_id);
+            const locationAvailability = posLocationAvailabilityMap.get(Number(item.item_id)) || [];
+            const locationId = toPositiveInt(options.locationId);
+            const locationEntry = locationId
+                ? locationAvailability.find((entry) => Number(entry.location_id) === locationId)
+                : null;
             const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
             const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
@@ -764,6 +845,8 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 ...item,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_location_available: locationEntry ? locationEntry.pos_available !== false : true,
+                pos_location_availability: locationAvailability,
                 pos_best_seller_mode: bestSellerMode,
                 is_best_seller: bestSellerMode === 'force'
                     || (bestSellerMode === 'auto' && autoBestSellerItemIds.has(Number(item.item_id))),
@@ -780,7 +863,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                     : {})
             };
         })
-        .filter((item) => item.pos_visible !== false);
+        .filter((item) => item.pos_visible !== false && item.pos_location_available !== false);
 };
 
 // ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
@@ -4710,7 +4793,7 @@ export const posRepository = {
         };
     },
 
-    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null, offset = 0, with_scan_info = false } = {}) {
+    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null, offset = 0, with_scan_info = false, order_by_category = false } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
             {},
@@ -4780,15 +4863,25 @@ export const posRepository = {
             }
         }
 
+        const itemFolderInclude = buildItemFolderInclude();
         const queryOptions = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
-                ...buildItemFolderInclude(),
+                ...itemFolderInclude,
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ],
-            order: [['name', 'ASC'], ['item_id', 'ASC']],
+            // The category order is used only by the paginated management "All" read. The
+            // unpaged terminal read still receives the legacy name order and applies the same
+            // ordering client-side after its category metadata is loaded.
+            order: order_by_category && itemFolderInclude.length > 0
+                ? [
+                    ...buildPrimaryFolderOrder(),
+                    ['name', 'ASC'],
+                    ['item_id', 'ASC']
+                ]
+                : [['name', 'ASC'], ['item_id', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500),
             offset: Math.max(Number.parseInt(offset, 10) || 0, 0)
         };
@@ -4796,7 +4889,7 @@ export const posRepository = {
         try {
             const rawItems = await Item.findAll(queryOptions);
             const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(rawItems, { includePrimaryBarcode: true })
+                await applyCatalogOverrides(rawItems, { includePrimaryBarcode: true, locationId: location_id })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -4817,7 +4910,7 @@ export const posRepository = {
                     attributes: BASE_POS_ITEM_ATTRIBUTES
                 });
             const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(withLegacyVatFallback(rawItems), { includePrimaryBarcode: true })
+                await applyCatalogOverrides(withLegacyVatFallback(rawItems), { includePrimaryBarcode: true, locationId: location_id })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -4848,7 +4941,8 @@ export const posRepository = {
                 limit: batchSize,
                 offset,
                 location_id,
-                with_scan_info: true
+                with_scan_info: true,
+                order_by_category: normalizedCategory === 'all'
             });
             for (const item of batch.data) {
                 const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
@@ -4932,11 +5026,13 @@ export const posRepository = {
         });
 
         const overrideMap = await loadCatalogOverridesMap(items.map((item) => item.item_id));
+        const posLocationAvailabilityMap = await loadPosLocationAvailabilityMap(items.map((item) => item.item_id));
         const storefrontImageMap = await loadStorefrontCatalogImageMap(items.map((item) => item.item_id));
         const workflowMode = await getCurrentWorkflowMode();
         return items.map((item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
+            const posLocationAvailability = posLocationAvailabilityMap.get(Number(payload.item_id)) || [];
             const storefrontImage = storefrontImageMap.get(payload.item_id);
             const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
             const readiness = buildPosReadiness({ item: payload, override });
@@ -4949,6 +5045,7 @@ export const posRepository = {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_always_available: override?.pos_always_available === true,
+                pos_location_availability: posLocationAvailability,
                 pos_image_path: posDisplayImage.path,
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
@@ -5049,6 +5146,64 @@ export const posRepository = {
             }
             throw error;
         }
+    },
+
+    async listPosItemLocationAvailability(itemIds = [], options = {}) {
+        return loadPosLocationAvailabilityMap(itemIds, options);
+    },
+
+    async upsertPosItemLocationAvailability(itemId, entries = [], options = {}) {
+        const PosLocationItemOverride = dbStore.get('PosLocationItemOverride');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const normalizedItemId = toPositiveInt(itemId);
+        const normalizedEntries = (Array.isArray(entries) ? entries : [])
+            .map((entry) => ({
+                location_id: toPositiveInt(entry?.location_id),
+                pos_available: entry?.pos_available === null ? null : entry?.pos_available === true
+            }))
+            .filter((entry) => entry.location_id);
+        if (!normalizedItemId || normalizedEntries.length === 0) return [];
+        if (!PosLocationItemOverride?.findOne) {
+            throw new Error('POS location item override model is unavailable');
+        }
+
+        const validLocations = TenantLocation?.findAll
+            ? await TenantLocation.findAll({
+                where: {
+                    location_id: { [Op.in]: normalizedEntries.map((entry) => entry.location_id) },
+                    is_active: true
+                },
+                attributes: ['location_id'],
+                transaction: options.transaction
+            })
+            : [];
+        const validLocationIds = new Set(validLocations.map((row) => Number(toPlain(row).location_id)));
+        const invalid = normalizedEntries.filter((entry) => !validLocationIds.has(entry.location_id));
+        if (invalid.length > 0) {
+            const error = new Error('location_availability contains inactive or unknown location_id values');
+            error.statusCode = 422;
+            error.details = invalid.map((entry) => ({ location_id: entry.location_id }));
+            throw error;
+        }
+
+        const results = [];
+        for (const entry of normalizedEntries) {
+            const where = { item_id: normalizedItemId, location_id: entry.location_id };
+            if (entry.pos_available === null) {
+                await PosLocationItemOverride.destroy({ where, transaction: options.transaction });
+                results.push({ ...where, pos_available: null, source: 'inherited' });
+                continue;
+            }
+            const existing = await PosLocationItemOverride.findOne({ where, transaction: options.transaction });
+            const payload = { ...where, pos_available: entry.pos_available };
+            if (existing) {
+                await existing.update(payload, { transaction: options.transaction });
+                results.push(toPlain(existing));
+            } else {
+                results.push(toPlain(await PosLocationItemOverride.create(payload, { transaction: options.transaction })));
+            }
+        }
+        return results;
     },
 
     async upsertCatalogOverride(itemId, payload = {}, options = {}) {
