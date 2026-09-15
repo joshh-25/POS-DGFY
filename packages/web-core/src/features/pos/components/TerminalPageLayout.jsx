@@ -394,7 +394,10 @@ export default function TerminalPageLayout({
     && !operatorGuard.valid;
   const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
-  const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
+  const lockedSidebarSurfaceClassName = locked
+    ? (canAccessBusinessAdmin ? 'select-none opacity-80' : 'pointer-events-none select-none opacity-80 blur-[2px]')
+    : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
+  const lockedHeaderSurfaceClassName = locked && !canAccessBusinessAdmin ? 'pointer-events-none select-none opacity-80' : '';
   const workspacePaneClassName = isCheckoutWorkspaceMode
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
@@ -629,7 +632,7 @@ export default function TerminalPageLayout({
     <div className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
-        <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
+        <div className={`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`}>
           <Suspense fallback={<div className={persistentSidebarFallbackClassName}>Loading POS navigation...</div>}>
             <TerminalWorkspaceSidebar
               className={persistentSidebarBodyClassName}
@@ -682,15 +685,15 @@ export default function TerminalPageLayout({
             <button
               type="button"
               onClick={() => {
-                if (locked) return;
+                if (locked && !canAccessBusinessAdmin) return;
                 if (!isFloatingSidebarLayout) {
                   setSidebarCollapsed((collapsed) => !collapsed);
                   return;
                 }
                 setMobileNavOpen(true);
               }}
-              disabled={locked}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
+              disabled={locked && !canAccessBusinessAdmin}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked && !canAccessBusinessAdmin ? 'cursor-not-allowed opacity-45' : 'hover:bg-slate-100'}`}
               aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
               aria-pressed={!isFloatingSidebarLayout ? effectiveSidebarCollapsed : undefined}
             >
@@ -793,7 +796,7 @@ export default function TerminalPageLayout({
       <div
         ref={workspacePaneRef}
         data-testid="pos-workspace-scroll-container"
-        className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}
+        className={workspacePaneClassName}
       >
       {modeChangeNotice && (
         <div className="mx-4 mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
@@ -912,7 +915,7 @@ export default function TerminalPageLayout({
         </div>
       )}
 
-      <div className={workspaceContentClassName}>
+      <div className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}>
         <div
           id={TERMINAL_SECTION_IDS.checkoutWorkspace}
           className={workspaceSectionClassName}

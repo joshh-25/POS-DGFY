@@ -242,6 +242,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('if (locked && !allowWhileLocked) return;');
     expect(terminalPageContent).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
     expect(terminalPageContent).toContain('|| formData.dgfyTenantId');
+    expect(terminalPageContent).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
     expect(terminalPageContent).toContain(
       'hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
     );
@@ -344,11 +345,13 @@ describe('POS terminal view-mode contracts', () => {
 
   it('blurs all non-login POS shell surfaces while locked', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
-    expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
-    expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';");
+    expect(terminalPageLayoutContent).toContain('const lockedSidebarSurfaceClassName = locked');
+    expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`');
+    expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked && !canAccessBusinessAdmin ? 'pointer-events-none select-none opacity-80' : '';");
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
-    expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}');
+    expect(terminalPageLayoutContent).toContain('className={workspacePaneClassName}');
+    expect(terminalPageLayoutContent).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
     expect(terminalPageLayoutContent).toContain('data-testid="pos-terminal-lock-backdrop"');
     expect(terminalPageLayoutContent).toContain('bg-slate-950/70 backdrop-blur-none');
   });

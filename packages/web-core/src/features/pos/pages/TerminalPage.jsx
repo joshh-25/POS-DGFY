@@ -6241,7 +6241,8 @@ export default function TerminalPage() {
       return;
     }
 
-    toast.success('Back Office opened in a new window at Overview.');
+    const destinationLabel = backOfficeTargetPath === '/backoffice/overview' ? 'Overview' : 'Business settings';
+    toast.success(`Back Office opened in a new window at ${destinationLabel}.`);
   }, [backOfficeTargetPath]);
 
   const handleSelectViewMode = useCallback(async (nextMode) => {
@@ -6432,11 +6433,15 @@ export default function TerminalPage() {
     if (!activeTenantId || typeof window === 'undefined') return undefined;
 
     return subscribeToBusinessAdminSettingsUpdates((payload) => {
+      const selectedTerminalBranchId = Number(
+        terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id || 0
+      );
       const activeBranchId = Number(
         shiftState?.shift?.location_id
         || operatingLocationId
         || viewingLocationId
         || queueLocationScopeId
+        || selectedTerminalBranchId
         || 0
       );
       if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
@@ -6454,7 +6459,7 @@ export default function TerminalPage() {
         // The POS remains usable on its current snapshot when a background refresh fails.
       });
     });
-  }, [activeTenantId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
+  }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;

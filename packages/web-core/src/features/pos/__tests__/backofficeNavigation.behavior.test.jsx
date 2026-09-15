@@ -127,6 +127,7 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageSource).toContain("subscribeToBusinessAdminSettingsUpdates");
     expect(terminalPageSource).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
     expect(terminalPageSource).toContain('|| formData.dgfyTenantId');
+    expect(terminalPageSource).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (!locked && canViewPos)');
     expect(terminalPageSource).toContain('refreshTenantLocations({');
@@ -141,6 +142,9 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageDialogLayerSource).toContain('Back Office will open in a new window at Overview. Continue?');
     expect(terminalPageDialogLayerSource).toContain('Open Back Office');
     expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(terminalPageLayoutSource).toContain('const lockedSidebarSurfaceClassName = locked');
+    expect(terminalPageLayoutSource).toContain('disabled={locked && !canAccessBusinessAdmin}');
+    expect(terminalPageLayoutSource).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
     expect(terminalPageLayoutSource.match(/canAccessBusinessAdmin=\{canAccessBusinessAdmin\}/g)).toHaveLength(2);
     expect(terminalPageLayoutSource.match(/onOpenBackOffice=\{onOpenBackOffice\}/g)).toHaveLength(2);
     expect(terminalOperationsWorkspaceSource).toContain("allowedTabIds={['pos_setup']}");
