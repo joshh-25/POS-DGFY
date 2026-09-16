@@ -2,7 +2,7 @@ import { storeRepository } from './repositories/storeRepository.js';
 import { commercePaymentRepository } from '../commercePayments/repositories/commercePaymentRepository.js';
 import { tenantRevenueRepository } from '../tenantRevenue/repositories/tenantRevenueRepository.js';
 import { downpaymentSettingsRepository } from '../downpayment/repositories/downpaymentSettingsRepository.js';
-import { inventoryReservationService } from '../inventory/index.js';
+import { inventoryReservationService, inventoryStockCommandService } from '../inventory/index.js';
 // #1390: cancelStoreOrderUseCase's own half of the voucher-reversal wiring -- see
 // buildCancelStoreOrderUseCase's own comment on why this is injected here rather than statically
 // imported inside storeUseCases.js the way the checkout-side voucherRepository import is.
@@ -134,6 +134,10 @@ const commerceOrderLifecycleUseCaseLazy = async (input) => {
 export const cancelStoreOrderUseCase = buildCancelStoreOrderUseCase({
     storeRepository,
     inventoryReservationService,
+    // #1931: Inventory-owned reversal of a Retail order's accept-time goods-issue on
+    // post-acceptance customer cancel -- same proven-safe inventory/index.js direction as
+    // inventoryReservationService above.
+    inventoryCommandService: inventoryStockCommandService,
     commerceOrderLifecycleUseCase: commerceOrderLifecycleUseCaseLazy,
     voucherRepository,
     reverseVoucherRedemptionUseCase

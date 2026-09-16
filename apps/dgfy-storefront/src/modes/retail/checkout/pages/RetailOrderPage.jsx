@@ -36,7 +36,9 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
  * instantiated once in StorefrontApp.jsx and threaded down via useRetailOrderPageProps.js).
  * Order method, schedule, and the map pin/address-selection state are therefore *shared* global
  * state (not local to this page) since the address hooks operate on that shared state — the
- * same state F&B/MSME already read and write. Schedule mode/time and special instructions
+ * same state F&B/MSME already read and write. Schedule mode/time is likewise shared
+ * global state (#1931: scheduleMode/scheduledFor props threaded from StorefrontApp.jsx's
+ * fnbScheduleMode/fnbScheduledFor via useRetailOrderPageProps.js). Special instructions
  * remain local placeholder state, not wired to the backend yet. The cart/product list is real:
  * it's the same frontend cart state the rest of the app already uses. Order totals
  * (subtotal/total) are computed for real from the cart via the shared buildCartTotals model;
@@ -86,6 +88,8 @@ export function RetailOrderPage({
   money,
   onBackToCatalog,
   onCheckout,
+  onScheduleModeChange = () => {},
+  onScheduledForChange = () => {},
   onCustomerAddressChange = () => {},
   onImageError,
   onSelectAddress,
@@ -95,6 +99,8 @@ export function RetailOrderPage({
   orderMethod = 'delivery',
   orderMethodOptions = null,
   orderTimingPolicy = resolveOrderTimingPolicy(),
+  scheduleMode = 'asap',
+  scheduledFor = '',
   paymentElection = 'full',
   paymentType = 'cash',
   qrphPaymentSession = null,
@@ -128,8 +134,6 @@ export function RetailOrderPage({
   withAssetOrigin
 }) {
   const [step, setStep] = useState(1);
-  const [scheduleMode, setScheduleMode] = useState('asap');
-  const [scheduledFor, setScheduledFor] = useState('');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
@@ -302,11 +306,8 @@ export function RetailOrderPage({
                 setCustomerPin(nextPin);
               }}
               onPinMyLocation={handlePinMyLocation}
-              onScheduleModeChange={(nextMode) => {
-                setScheduleMode(nextMode);
-                if (nextMode === 'asap') setScheduledFor('');
-              }}
-              onScheduledForChange={setScheduledFor}
+              onScheduleModeChange={onScheduleModeChange}
+              onScheduledForChange={onScheduledForChange}
               onSelectAddress={onSelectAddress}
               onSpecialInstructionsChange={setSpecialInstructions}
               onStartMapPin={handleStartMapPin}
