@@ -1,5 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import { PERMISSIONS } from '../src/config/permissions.js';
 
 const mockTenant = { findByPk: jest.fn() };
 const mockGetConnection = jest.fn();
@@ -92,5 +93,35 @@ describe('DGFY POS terminal cashier assignment policy', () => {
       reason_code: 'ALLOWED',
       registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
     }));
+  });
+
+  it('preserves master-admin access when the terminal has explicit cashier assignments', async () => {
+    await expect(validateDgfyPosTerminalPolicy({
+      tenantId: 'tenant-1',
+      terminalId: 'COUNTER-01',
+      tenantUserId: null,
+      userRole: 'admin',
+      permissions: [],
+      isMasterAdmin: true
+    })).resolves.toEqual(expect.objectContaining({
+      reason_code: 'ALLOWED',
+      registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
+    }));
+    expect(userLocationGrant.count).not.toHaveBeenCalled();
+  });
+
+  it('preserves switch-location permission access when the terminal has explicit cashier assignments', async () => {
+    await expect(validateDgfyPosTerminalPolicy({
+      tenantId: 'tenant-1',
+      terminalId: 'COUNTER-01',
+      tenantUserId: 22,
+      userRole: 'cashier',
+      permissions: [PERMISSIONS.POS.actions.SWITCH_LOCATION_POS],
+      isMasterAdmin: false
+    })).resolves.toEqual(expect.objectContaining({
+      reason_code: 'ALLOWED',
+      registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
+    }));
+    expect(userLocationGrant.count).not.toHaveBeenCalled();
   });
 });

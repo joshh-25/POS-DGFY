@@ -190,27 +190,26 @@ export const validateDgfyPosTerminalPolicy = async ({
           { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_LOCATION_NOT_GRANTED' } } }
         );
       }
-    }
-
-    const assignedCashierIds = registryEntry?.cashier_user_ids;
-    if (
-      Array.isArray(assignedCashierIds)
-      && assignedCashierIds.length > 0
-      && (!resolvedTenantUserId || !assignedCashierIds.includes(resolvedTenantUserId))
-    ) {
-      throw new DomainError(
-        DomainErrorCode.AUTHORIZATION_FAILED,
-        'This cashier is not assigned to the selected terminal.',
-        {
-          statusCode: 403,
-          details: {
-            terminal_identity_policy: {
-              ...context,
-              reason_code: 'CASHIER_TERMINAL_NOT_ASSIGNED'
+      const assignedCashierIds = registryEntry?.cashier_user_ids;
+      if (
+        Array.isArray(assignedCashierIds)
+        && assignedCashierIds.length > 0
+        && !assignedCashierIds.includes(resolvedTenantUserId)
+      ) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'This cashier is not assigned to the selected terminal.',
+          {
+            statusCode: 403,
+            details: {
+              terminal_identity_policy: {
+                ...context,
+                reason_code: 'CASHIER_TERMINAL_NOT_ASSIGNED'
+              }
             }
           }
-        }
-      );
+        );
+      }
     }
 
     return {
