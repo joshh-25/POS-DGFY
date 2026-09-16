@@ -1021,15 +1021,24 @@ export const getMovementStats = async (params = {}) => {
  * Void (Reverse) a stock movement
  * Creates a counter-movement to reverse the effect of the original movement
  * For multi-batch consumption, restores ALL affected batches via BatchTransaction records
+ *
+ * #1931: accepts an optional caller-owned `transaction` (mirroring createStockMovement and
+ * every command in stockCommandService.js). When provided, all reads/writes join it and
+ * commit/rollback stay with the caller -- this is what lets Retail's post-acceptance
+ * cancel/reject reverse the accept-time goods-issue atomically with the status update.
+ * When omitted, behavior is unchanged (opens, commits, and rolls back its own transaction).
  */
-export const voidMovement = async (movementId, userId, reason) => {
+export const voidMovement = async (movementId, userId, reason, transaction = null) => {
   const StockMovement = dbStore.get('StockMovement');
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
   const BatchTransaction = dbStore.get('BatchTransaction');
   const ItemLocationStock = dbStore.get('ItemLocationStock');
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-  const transaction = await sequelize.transaction();
+  const ownsTransaction = transaction == null;
+  if (ownsTransaction) {
+    transaction = await sequelize.transaction();
+  }
 
   try {
     const originalMovement = await StockMovement.findByPk(movementId, {
@@ -1262,7 +1271,9 @@ export const voidMovement = async (movementId, userId, reason) => {
       notes: `${originalMovement.notes || ''} [Voided by user ${userId} on ${new Date().toISOString()}]`
     }, { transaction });
 
-    await transaction.commit();
+    if (ownsTransaction) {
+      await transaction.commit();
+    }
 
     invalidateItemCostMetricsCache({
       itemIds: [item_id],
@@ -1276,9 +1287,54 @@ export const voidMovement = async (movementId, userId, reason) => {
     return voidMovementRecord;
 
   } catch (error) {
-    await transaction.rollback();
+    if (ownsTransaction && !transaction.finished) {
+      await transaction.rollback();
+    }
     throw error;
   }
+};
+
+/**
+ * Reverse every goods-issue movement recorded for one online order (#1931).
+ *
+ * Enumerates this order's own movements via the deterministic `ONLINE:<orderId>:` reference
+ * prefix `buildOnlineInventoryEffects` generates (same prefix the accept/completion issue path
+ * writes), then reverses each one through `voidMovement` -- preserving item, quantity,
+ * location, and FIFO-batch linkage, including voidMovement's own "batch already consumed
+ * downstream" guard. Runs inside the caller's transaction when one is provided (the
+ * cancel/reject status update rolls back with it on any failure -- fail closed, no partial
+ * reversal of a multi-line order); otherwise each void owns its own transaction as before.
+ *
+ * Zero matching movements is a no-op success (an all-stock-exempt order issues nothing at
+ * acceptance, so there is nothing to reverse) -- not an error. Already-voided rows are
+ * skipped defensively; the caller's `inventory_reversed_at` evidence guard is what guarantees
+ * once-only reversal, this skip only keeps a retry from failing on the first already-reversed
+ * line instead of failing closed on it.
+ */
+export const voidOnlineOrderGoodsIssue = async ({ orderId, userId, reason, transaction = null } = {}) => {
+  const normalizedOrderId = parsePositiveInt(orderId);
+  if (!normalizedOrderId) {
+    const error = new Error('orderId must be a positive integer');
+    error.statusCode = 422;
+    throw error;
+  }
+  const StockMovement = dbStore.get('StockMovement');
+  const referencePrefix = `ONLINE:${normalizedOrderId}:`;
+  const movements = await StockMovement.findAll({
+    where: {
+      reference_type: 'POS',
+      movement_type: 'goods_issue',
+      reference_id: { [Op.like]: `${referencePrefix}%` }
+    },
+    order: [['movement_id', 'ASC']],
+    transaction: transaction || undefined
+  });
+  const reversed = [];
+  for (const movement of movements) {
+    if (movement.reference_type === 'VOID' || String(movement.notes || '').includes('Voided by')) continue;
+    reversed.push(await voidMovement(movement.movement_id, userId, reason, transaction));
+  }
+  return reversed;
 };
 
 /**
