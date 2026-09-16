@@ -52,6 +52,7 @@ import {
     buildLineStockPolicySubject
 } from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
+import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
@@ -1111,6 +1112,14 @@ const sanitizeTerminalId = (value) => {
     return TERMINAL_ID_PATTERN.test(normalized) ? normalized : '';
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 const parseTerminalRegistryFromSettings = (settings = {}) => {
     let rawRegistry = settings?.pos_terminal_registry?.value;
     if (typeof rawRegistry === 'string') {
@@ -1128,11 +1137,13 @@ const parseTerminalRegistryFromSettings = (settings = {}) => {
         const terminalId = sanitizeTerminalId(entry?.terminal_id);
         if (!terminalId || seen.has(terminalId)) continue;
         if (entry?.is_active === false) continue;
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: parsePositiveInt(entry?.location_id)
+            location_id: parsePositiveInt(entry?.location_id),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     }
     return normalized;
@@ -1153,11 +1164,15 @@ const resolveTerminalIdentityPolicySettings = async ({ posRepository, settings =
             : 'warn';
         const activeRegistry = Array.isArray(resolved?.active_registry)
             ? resolved.active_registry
-                .map((entry) => ({
-                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                    label: String(entry?.label || '').trim(),
-                    location_id: parsePositiveInt(entry?.location_id)
-                }))
+                .map((entry) => {
+                    const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                    return {
+                        terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                        label: String(entry?.label || '').trim(),
+                        location_id: parsePositiveInt(entry?.location_id),
+                        ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                    };
+                })
                 .filter((entry) => entry.terminal_id)
             : [];
 
@@ -1184,11 +1199,15 @@ const evaluateTerminalIdentityPolicy = ({ terminalId, policy = {}, operation }) 
         : 'warn';
     const activeRegistry = Array.isArray(policy?.active_registry)
         ? policy.active_registry
-            .map((entry) => ({
-                terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                label: String(entry?.label || '').trim(),
-                location_id: parsePositiveInt(entry?.location_id)
-            }))
+            .map((entry) => {
+                const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                return {
+                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                    label: String(entry?.label || '').trim(),
+                    location_id: parsePositiveInt(entry?.location_id),
+                    ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                };
+            })
             .filter((entry) => entry.terminal_id)
         : [];
     const registryByTerminalId = new Map(activeRegistry.map((entry) => [entry.terminal_id, entry]));
@@ -2147,6 +2166,76 @@ const executeInventoryStockCommand = async ({
         );
     }
     return commandFn(movementData, userId, transaction);
+};
+
+// #1931: the stock-issue sequence formerly inline in buildUpdateOnlineOrderStatusUseCase's
+// completion branch, extracted verbatim so Retail's accept-time branch reuses it instead of
+// duplicating the loop body. Real-time stock sufficiency is enforced by createStockMovement's
+// own on-hand check -- a shortfall throws and rolls back the whole transaction (order status
+// included) via the caller's catch block. convertOnlineOrderInventory's expired/missing
+// outcomes stay informational (log, don't block): the reservation row is bookkeeping, never
+// the stock-safety authority, since expiry materializes lazily.
+const issueOnlineOrderStockForFulfillment = async ({
+    order,
+    posRepository,
+    stockCommands,
+    actingUserId,
+    transaction,
+    inventoryReservationService = null
+}) => {
+    if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
+        const stockMovements = await buildOnlineOrderStockMovements({
+            order,
+            posRepository,
+            options: {
+                transaction,
+                lock: true
+            }
+        });
+        for (const movement of stockMovements) {
+            await executeInventoryStockCommand({
+                inventoryCommandService: stockCommands,
+                command: 'issueStockForOnlineFulfillment',
+                movementData: movement,
+                userId: actingUserId,
+                transaction
+            });
+        }
+    }
+    if (inventoryReservationService?.convertOnlineOrderInventory) {
+        await inventoryReservationService.convertOnlineOrderInventory({
+            sourceId: order?.pos_transaction_id,
+            transaction
+        });
+    }
+};
+
+// #1931: one-time reversal of a Retail order's accept-time goods-issue for the
+// post-acceptance staff-reject path. Deliberately NOT routed through
+// executeInventoryStockCommand: its createStockMovement fallback would be wrong here (a
+// missing reversal command must fail closed, never degrade into an unrelated movement).
+const reverseOnlineOrderGoodsIssueForOrder = async ({
+    orderId,
+    stockCommands,
+    actingUserId,
+    transaction,
+    reason
+}) => {
+    const reverseFn = stockCommands?.reverseOnlineOrderGoodsIssue;
+    if (typeof reverseFn !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Inventory reversal command is unavailable for this order',
+            {
+                statusCode: 409,
+                details: {
+                    reason_code: 'INVENTORY_REVERSAL_UNAVAILABLE',
+                    order_id: orderId
+                }
+            }
+        );
+    }
+    return reverseFn({ order_id: orderId, reason }, actingUserId, transaction);
 };
 
 const validatePosInventoryIssues = async ({
@@ -11147,7 +11236,11 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     inventoryCommandService,
     commerceOrderLifecycleUseCase = null,
     activityRecorder = recordDgfyOrderActivity,
-    inventoryReservationService = null
+    inventoryReservationService = null,
+    // #1931: tenant workflow-mode gate for Retail's accept-time goods-issue. Injected (same
+    // pattern as storeUseCases.js) so unit tests pin the mode explicitly instead of hitting
+    // SystemSetting; pos/index.js wires the real resolver.
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
@@ -11344,32 +11437,45 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
             const mutationTimestamp = new Date();
 
-            if (currentStatus !== 'completed' && targetStatus === 'completed') {
-                if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
-                    const stockMovements = await buildOnlineOrderStockMovements({
-                        order: existing,
-                        posRepository,
-                        options: {
-                            transaction,
-                            lock: true
-                        }
-                    });
-                    for (const movement of stockMovements) {
-                        await executeInventoryStockCommand({
-                            inventoryCommandService: stockCommands,
-                            command: 'issueStockForOnlineFulfillment',
-                            movementData: movement,
-                            userId: actingUserId,
-                            transaction
-                        });
-                    }
-                }
-                if (inventoryReservationService?.convertOnlineOrderInventory) {
-                    await inventoryReservationService.convertOnlineOrderInventory({
-                        sourceId: normalizedTransactionId,
-                        transaction
-                    });
-                }
+            // #1931: Retail deducts stock at acceptance (placed -> confirmed), exactly once, even
+            // when the order is scheduled for later. Every other mode keeps the completion-time
+            // policy (ADR 0029 amendment, 2026-09-16). The `!existing.inventory_issued_at`
+            // evidence check is defense-in-depth alongside the edge guard below: `placed` has no
+            // incoming edges and the row lock above serializes concurrent accepts, so the branch
+            // can only commit once per order regardless of retries or idempotency keys.
+            const isAcceptTransition = currentStatus === 'placed' && targetStatus === 'confirmed';
+            let tenantWorkflowMode = null;
+            if (isAcceptTransition && !existing.inventory_issued_at) {
+                tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
+            }
+            let inventoryIssuedAt = null;
+            if (isAcceptTransition && tenantWorkflowMode === 'retail' && !existing.inventory_issued_at) {
+                await issueOnlineOrderStockForFulfillment({
+                    order: existing,
+                    posRepository,
+                    stockCommands,
+                    actingUserId,
+                    transaction,
+                    inventoryReservationService
+                });
+                inventoryIssuedAt = mutationTimestamp;
+            }
+
+            // Completion still deducts when no prior deduction exists (legacy Retail orders
+            // accepted before this change shipped, and every non-Retail order) and skips when
+            // the accept-time issue already ran -- persisted evidence, not a status assumption.
+            const inventoryAlreadyIssued = Boolean(existing.inventory_issued_at) || Boolean(inventoryIssuedAt);
+            let inventoryReversedAt = null;
+            if (currentStatus !== 'completed' && targetStatus === 'completed' && !inventoryAlreadyIssued) {
+                await issueOnlineOrderStockForFulfillment({
+                    order: existing,
+                    posRepository,
+                    stockCommands,
+                    actingUserId,
+                    transaction,
+                    inventoryReservationService
+                });
+                inventoryIssuedAt = mutationTimestamp;
             } else if (
                 currentStatus !== targetStatus
                 && ['cancelled', 'rejected'].includes(targetStatus)
@@ -11380,6 +11486,28 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     transaction,
                     reason: targetStatus
                 });
+                // #1931: a post-acceptance staff reject reverses the accept-time goods-issue,
+                // once. A pre-acceptance placed -> rejected never issued anything, so a plain
+                // reservation release remains correct there. The evidence check short-circuits
+                // before the mode lookup, so non-Retail and never-issued orders never pay for it.
+                if (targetStatus === 'rejected'
+                    && existing.inventory_issued_at
+                    && !existing.inventory_reversed_at
+                ) {
+                    if (tenantWorkflowMode == null) {
+                        tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
+                    }
+                    if (tenantWorkflowMode === 'retail') {
+                        await reverseOnlineOrderGoodsIssueForOrder({
+                            orderId: normalizedTransactionId,
+                            stockCommands,
+                            actingUserId,
+                            transaction,
+                            reason: `Reversal of accept-time goods-issue for online order ${normalizedTransactionId} (staff reject after acceptance)`
+                        });
+                        inventoryReversedAt = mutationTimestamp;
+                    }
+                }
             }
 
             const updatePayload = {
@@ -11407,6 +11535,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
                 updatePayload.rejected_by = actingUserId;
                 updatePayload.rejected_at = mutationTimestamp;
+            }
+
+            // #1931: persisted one-time evidence for the accept-time issue and its reversal.
+            // Additive columns -- existing consumers pass them through via toPublicPosTransaction.
+            if (inventoryIssuedAt) {
+                updatePayload.inventory_issued_at = inventoryIssuedAt;
+            }
+            if (inventoryReversedAt) {
+                updatePayload.inventory_reversed_at = inventoryReversedAt;
             }
 
             // Phase 211 (#1180). Retail-only in the UI, additive in the state machine.

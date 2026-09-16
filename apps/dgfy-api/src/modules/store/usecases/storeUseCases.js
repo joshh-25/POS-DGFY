@@ -5592,7 +5592,17 @@ export const buildCancelStoreOrderUseCase = ({
     // all, and a hard static import would make every one of those tests exercise the real
     // repository against a live tenant connection. store/index.js wires the real ones.
     voucherRepository = null,
-    reverseVoucherRedemptionUseCase = null
+    reverseVoucherRedemptionUseCase = null,
+    // #1931: Inventory-owned reversal of a Retail order's accept-time goods-issue on
+    // post-acceptance customer cancel. Injected, optional, defaulting to null so every
+    // existing test that builds this use case without it keeps its behavior verbatim
+    // (same reasoning as commerceOrderLifecycleUseCase/voucherRepository above);
+    // store/index.js wires the real command service.
+    inventoryCommandService = null,
+    // #1931: tenant workflow-mode gate (Retail-only reversal). Same injection reasoning;
+    // defaults to the real resolver so production needs no extra wiring beyond the
+    // command service above.
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
@@ -5681,6 +5691,39 @@ export const buildCancelStoreOrderUseCase = ({
                 });
             }
 
+            // #1931: a post-acceptance customer cancel reverses the accept-time goods-issue,
+            // once, for Retail orders that actually recorded one. A pre-acceptance `placed`
+            // cancel never issued anything, so the plain reservation release above remains
+            // correct there -- and the evidence check short-circuits before the mode lookup,
+            // so non-Retail and never-issued orders never pay for it. Rides the existing
+            // ['placed','confirmed'] eligibility window (no widening) and fails closed: any
+            // reversal failure throws and rolls back the release and the status flip with it.
+            let inventoryReversedAt = null;
+            if (existing.inventory_issued_at && !existing.inventory_reversed_at) {
+                const tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
+                if (tenantWorkflowMode === 'retail') {
+                    const reverseFn = inventoryCommandService?.reverseOnlineOrderGoodsIssue;
+                    if (typeof reverseFn !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Inventory reversal command is unavailable for this order',
+                            {
+                                statusCode: 409,
+                                details: {
+                                    reason_code: 'INVENTORY_REVERSAL_UNAVAILABLE',
+                                    order_id: existing.pos_transaction_id
+                                }
+                            }
+                        );
+                    }
+                    await reverseFn({
+                        order_id: existing.pos_transaction_id,
+                        reason: `Reversal of accept-time goods-issue for online order ${existing.pos_transaction_id} (customer cancel after acceptance)`
+                    }, null, transaction);
+                    inventoryReversedAt = new Date();
+                }
+            }
+
             // #1390: IN-TRANSACTION and BEFORE commit (ADR 0066 Validation #3) -- a failure here
             // throws and is caught below, rolling back the inventory release and the
             // fulfillment_status flip along with it. Fail-CLOSED, deliberately the opposite of the
@@ -5697,7 +5740,8 @@ export const buildCancelStoreOrderUseCase = ({
             });
 
             await storeRepository.updateOrderByTrackingPin(normalizedTrackingPin, {
-                fulfillment_status: 'cancelled'
+                fulfillment_status: 'cancelled',
+                ...(inventoryReversedAt ? { inventory_reversed_at: inventoryReversedAt } : {})
             }, { transaction });
 
             const updated = await storeRepository.getOrderByTrackingPin(normalizedTrackingPin, { transaction });

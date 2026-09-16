@@ -24,6 +24,16 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:manage')");
   });
 
+  it('supports explicit per-terminal cashier assignments with legacy location fallback', () => {
+    expect(workspaceSource).toContain('normalizeTerminalCashierIds');
+    expect(workspaceSource).toContain('getAssignedCashierIdsForTerminal');
+    expect(workspaceSource).toContain('getCashiersForTerminal');
+    expect(workspaceSource).toContain('toggleTerminalCashierAssignment');
+    expect(workspaceSource).toContain('cashier_user_ids');
+    expect(workspaceSource).toContain('data-testid={`terminal-cashier-assignments-${index}`}');
+    expect(workspaceSource).toContain('Select which eligible cashiers can use this terminal.');
+  });
+
   it('keeps cashier POS void authorization inside POS Settings and preserves other permissions', () => {
     expect(workspaceSource).toContain('Cashier Void and Cash Authorization');
     expect(workspaceSource).toContain('data-testid="pos-cashier-void-authorization"');
