@@ -3,6 +3,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { StorefrontBusinessInformationPanel } from './StorefrontBusinessInformationPanel.jsx';
+import { getDeliveryPlatformLinks } from '../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 
 vi.mock('../../../discovery/components/StoresMapLazy.jsx', () => ({
   StoresMap: () => <div data-testid="mock-store-map" />
@@ -103,4 +104,24 @@ it('uses the same business-information contract on mobile and keeps configured i
   expect(openAction).toHaveBeenCalledWith('tel:+639000000000');
   fireEvent.click(screen.getByRole('button', { name: 'See all' }));
   expect(screen.getByText('Configured reason three')).toBeTruthy();
+});
+
+it('shows each delivery partner logo before its brand-colored name', () => {
+  const deliveryPlatformLinks = getDeliveryPlatformLinks([
+    { partner: 'grab', label: 'Grab', url: 'https://grab.test/store' },
+    { partner: 'foodpanda', label: 'foodpanda', url: 'https://foodpanda.test/store' },
+    { partner: 'lalamove', label: 'Lalamove', url: 'https://lalamove.test/store' }
+  ]);
+
+  render(<StorefrontBusinessInformationPanel {...baseProps} deliveryPlatformLinks={deliveryPlatformLinks} />);
+
+  for (const [label, color] of [
+    ['Grab', 'rgb(40, 146, 69)'],
+    ['foodpanda', 'rgb(255, 43, 133)'],
+    ['Lalamove', 'rgb(241, 104, 36)']
+  ]) {
+    const name = screen.getByText(label, { exact: true });
+    expect(name.previousElementSibling?.tagName).toBe('IMG');
+    expect(name.style.color).toBe(color);
+  }
 });
