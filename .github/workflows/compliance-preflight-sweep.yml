@@ -556,20 +556,39 @@ jobs:
           echo "overall_fail=$overall_fail" >> "$GITHUB_OUTPUT"
 
       - name: Upload results artifact
+        id: upload_results
         if: steps.discover.outputs.count != '0'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: compliance-preflight-sweep-results
           path: /tmp/results.json
           retention-days: 30
 
-      # Only reached when every declaration in this run passed (overall_fail=0) -- a real
+      # #1937: supplementary evidence only -- a quota/storage failure here must stay visible
+      # but must not skip reconciliation below. `continue-on-error: true` above keeps the job
+      # (and the default success gate) alive; this step records the gap explicitly via a
+      # warning annotation plus the step summary. It never touches overall_fail.
+      - name: Warn on results artifact upload failure
+        if: always() && steps.discover.outputs.count != '0' && steps.upload_results.outcome == 'failure'
+        run: |
+          echo "::warning::Supplementary results artifact upload failed (artifact storage/quota unavailable) -- compliance control flow continued; per-declaration evidence is in the reconciliation branch and the step summary, not the artifact."
+          {
+            echo "### :warning: Results artifact unavailable";
+            echo "";
+            echo "The supplementary \`compliance-preflight-sweep-results\` artifact failed to upload (artifact storage/quota unavailable). The compliance control flow continued -- this warning records the evidence gap and does not change the preflight result.";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only reached when every declaration in this run passed -- a real
       # breach/review_required result is a policy finding, not something this workflow reconciles
       # away; reconcile-preflight-declarations.js itself refuses to write a passing ref for a
-      # failing verdict as a second, independent guard against exactly that.
+      # failing verdict as a second, independent guard against exactly that. `always()` (#1937)
+      # so a continued supplementary-artifact failure above cannot skip this evaluation -- the
+      # positive sweep-result check on the step below is what still gates it, never the job's
+      # success state alone.
       - name: Reconcile declaration front matter
         id: reconcile
-        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        if: always() && steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
         run: node scripts/reconcile-preflight-declarations.js /tmp/results.json
 
       # #1163 itself is the reason this step exists: the runner's missing `node` on PATH silently
@@ -623,9 +642,13 @@ jobs:
       # by "Report sweep outcome" below) and the `handoff_status` output -- nothing downstream keys
       # off this step's own `steps.handoff.outcome` (both `merged` and `handoff_required` exit 0
       # from THIS step; only the state file distinguishes them).
+      #
+      # `always()` (#1937, same as "Reconcile declaration front matter" above): a continued
+      # supplementary-artifact failure must not skip this evaluation -- the positive
+      # overall_fail == '0' check below is the real gate, never the job's success state alone.
       - name: Push reconciliation branch and open PR or hand off
         id: handoff
-        if: steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
+        if: always() && steps.discover.outputs.count != '0' && steps.sweep.outputs.overall_fail == '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -892,13 +915,29 @@ jobs:
           fi
 
       - name: Upload handoff artifact
+        id: upload_handoff
         if: always() && steps.discover.outputs.count != '0'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: compliance-preflight-sweep-handoff
           path: /tmp/compliance-preflight-sweep-handoff.json
           if-no-files-found: warn
           retention-days: 30
+
+      # #1937: mirrors "Warn on results artifact upload failure" above -- the handoff artifact
+      # is supplementary evidence, so a quota/storage failure here stays visible (warning +
+      # step summary) without failing the run or gating "Publish handoff issue" below, which
+      # already runs at always() and reads the on-disk handoff file directly, not the artifact.
+      - name: Warn on handoff artifact upload failure
+        if: always() && steps.discover.outputs.count != '0' && steps.upload_handoff.outcome == 'failure'
+        run: |
+          echo "::warning::Supplementary handoff artifact upload failed (artifact storage/quota unavailable) -- compliance control flow continued; the handoff evidence is in the step summary and the published handoff issue, not the artifact."
+          {
+            echo "### :warning: Handoff artifact unavailable";
+            echo "";
+            echo "The supplementary \`compliance-preflight-sweep-handoff\` artifact failed to upload (artifact storage/quota unavailable). The compliance control flow continued -- this warning records the evidence gap and does not change the preflight result.";
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Files or updates a labelled GitHub issue so the handoff (or a real preflight failure)
       # doesn't just wait silently to be noticed -- Pat's addition to the #1374 design, assessed
