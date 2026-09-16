@@ -1228,10 +1228,46 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(true);
     expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
       pos_terminal_registry: expect.arrayContaining([
-        expect.objectContaining({ terminal_id: 'COUNTER-01', location_id: 11 }),
+        expect.objectContaining({ terminal_id: 'COUNTER-01', location_id: 11, cashier_user_ids: [] }),
         expect.objectContaining({ terminal_id: 'COUNTER-02', location_id: null })
       ])
     }));
+  });
+
+  it('updateSettings rejects terminal cashier IDs that are not server-verified for the terminal location', async () => {
+    const updateSettings = jest.fn();
+    const getInvalidTerminalCashierAssignments = jest.fn().mockResolvedValue([{
+      terminal_id: 'COUNTER-01',
+      location_id: 7,
+      cashier_user_ids: [22]
+    }]);
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getInvalidTerminalCashierAssignments
+      }
+    });
+
+    const settingsData = {
+      pos_terminal_registry: [{
+        terminal_id: 'COUNTER-01',
+        location_id: 7,
+        cashier_user_ids: [21, 22],
+        is_active: true,
+        is_default: true
+      }]
+    };
+    const result = await useCase({ settingsData });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'CASHIER_TERMINAL_ASSIGNMENT_INVALID',
+      invalid_assignments: [{ terminal_id: 'COUNTER-01', location_id: 7, cashier_user_ids: [22] }]
+    }));
+    expect(getInvalidTerminalCashierAssignments).toHaveBeenCalledWith(settingsData.pos_terminal_registry);
+    expect(updateSettings).not.toHaveBeenCalled();
   });
 
   it('updateSettings rejects strict-enable auto-assignment when no primary location exists', async () => {
@@ -1298,6 +1334,36 @@ describe('settings use-cases application result contract', () => {
         expect.objectContaining({ terminal_id: 'COUNTER-01', location_id: 5 })
       ])
     }));
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey rejects terminal cashier IDs that are not server-verified for the terminal location', async () => {
+    const updateSettingByKey = jest.fn();
+    const getInvalidTerminalCashierAssignments = jest.fn().mockResolvedValue([{
+      terminal_id: 'COUNTER-01',
+      location_id: 7,
+      cashier_user_ids: [22]
+    }]);
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getInvalidTerminalCashierAssignments
+      }
+    });
+
+    const value = [{
+      terminal_id: 'COUNTER-01',
+      location_id: 7,
+      cashier_user_ids: [22],
+      is_active: true,
+      is_default: true
+    }];
+    const result = await useCase({ key: 'pos_terminal_registry', value });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.statusCode).toBe(422);
+    expect(getInvalidTerminalCashierAssignments).toHaveBeenCalledWith(value);
     expect(updateSettingByKey).not.toHaveBeenCalled();
   });
 

@@ -34,6 +34,27 @@ export const normalizeTerminalRegistryEntries = (rawValue) => {
     });
 };
 
+export const assertTerminalCashierAssignments = async ({ settingsRepository, entries }) => {
+    if (!Array.isArray(entries) || typeof settingsRepository?.getInvalidTerminalCashierAssignments !== 'function') {
+        return;
+    }
+
+    const invalidAssignments = await settingsRepository.getInvalidTerminalCashierAssignments(entries);
+    if (!Array.isArray(invalidAssignments) || invalidAssignments.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Terminal cashier assignments must reference active cashier users with a grant for the terminal location.',
+        {
+            statusCode: 422,
+            details: {
+                reason_code: 'CASHIER_TERMINAL_ASSIGNMENT_INVALID',
+                invalid_assignments: invalidAssignments
+            }
+        }
+    );
+};
+
 export const buildStrictBindingTransitionPatch = async ({
     settingsRepository,
     incomingRegistryEntries
@@ -100,7 +121,8 @@ export const buildStrictBindingTransitionPatch = async ({
             }
             return {
                 ...entry,
-                location_id: primaryLocationId
+                location_id: primaryLocationId,
+                cashier_user_ids: []
             };
         })
     };

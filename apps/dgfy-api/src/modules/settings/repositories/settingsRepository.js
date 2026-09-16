@@ -613,6 +613,75 @@ export const settingsRepository = {
         });
         return result;
     },
+    async getInvalidTerminalCashierAssignments(entries = [], options = {}) {
+        const assignments = [];
+        const requestedUserIds = new Set();
+        const requestedLocationIds = new Set();
+
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+            const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+            if (!cashierUserIds || cashierUserIds.length === 0) return;
+
+            const locationId = parsePositiveInt(entry?.location_id);
+            assignments.push({
+                terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+                location_id: locationId,
+                cashier_user_ids: cashierUserIds
+            });
+            cashierUserIds.forEach((userId) => requestedUserIds.add(userId));
+            if (locationId) requestedLocationIds.add(locationId);
+        });
+
+        if (assignments.length === 0) return [];
+
+        const User = dbStore.get('User');
+        const UserLocationGrant = dbStore.get('UserLocationGrant');
+        if (!User || !UserLocationGrant) {
+            throw new Error('Terminal cashier assignment validation models are unavailable in this tenant context');
+        }
+
+        const activeCashiers = requestedUserIds.size > 0 && requestedLocationIds.size > 0
+            ? await User.findAll({
+                where: buildVisibleWhere({
+                    user_id: { [Op.in]: Array.from(requestedUserIds) },
+                    role: 'cashier',
+                    is_active: true
+                }),
+                attributes: ['user_id'],
+                transaction: options.transaction
+            })
+            : [];
+        const activeCashierIds = new Set(activeCashiers.map((cashier) => Number(cashier.user_id)));
+        const grants = activeCashierIds.size > 0 && requestedLocationIds.size > 0
+            ? await UserLocationGrant.findAll({
+                where: {
+                    user_id: { [Op.in]: Array.from(activeCashierIds) },
+                    location_id: { [Op.in]: Array.from(requestedLocationIds) }
+                },
+                attributes: ['user_id', 'location_id'],
+                transaction: options.transaction
+            })
+            : [];
+        const grantedCashierIdsByLocation = grants.reduce((lookup, grant) => {
+            const locationId = Number(grant.location_id);
+            const userId = Number(grant.user_id);
+            if (!lookup.has(locationId)) lookup.set(locationId, new Set());
+            lookup.get(locationId).add(userId);
+            return lookup;
+        }, new Map());
+
+        return assignments
+            .map((assignment) => {
+                const grantedCashierIds = grantedCashierIdsByLocation.get(assignment.location_id) || new Set();
+                return {
+                    ...assignment,
+                    cashier_user_ids: assignment.cashier_user_ids.filter((userId) => (
+                        !activeCashierIds.has(userId) || !grantedCashierIds.has(userId)
+                    ))
+                };
+            })
+            .filter((assignment) => assignment.cashier_user_ids.length > 0);
+    },
     async updateSettings(settingsData) {
         const SystemSetting = dbStore.get('SystemSetting');
         const updatePromises = [];
