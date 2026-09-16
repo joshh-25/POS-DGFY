@@ -26,6 +26,14 @@ export const createSuggestedTerminalId = (entries = [], prefix = 'COUNTER') => {
   return `${normalizedPrefix}-${Date.now()}`;
 };
 
+export const normalizeTerminalCashierIds = (rawIds) => (
+  Array.isArray(rawIds)
+    ? Array.from(new Set(rawIds
+      .map((userId) => Number.parseInt(userId, 10))
+      .filter((userId) => Number.isInteger(userId) && userId > 0)))
+    : []
+);
+
 export const normalizeTerminalRegistry = (rawRegistry) => {
   let parsed = rawRegistry;
   if (typeof parsed === 'string') {
@@ -46,11 +54,15 @@ export const normalizeTerminalRegistry = (rawRegistry) => {
     seen.add(terminalId);
 
     const isActive = entry?.is_active !== false;
+    const cashierUserIds = Array.isArray(entry?.cashier_user_ids)
+      ? normalizeTerminalCashierIds(entry.cashier_user_ids)
+      : null;
     normalized.push({
       terminal_id: terminalId,
       label: String(entry?.label || '').trim(),
       location_id: Number.isInteger(Number(entry?.location_id)) ? Number(entry?.location_id) : null,
       cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
+      ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
       is_active: isActive,
       is_default: isActive && entry?.is_default === true,
       pairing_version: String(entry?.pairing_version || '').trim(),

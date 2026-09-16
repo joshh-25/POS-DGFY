@@ -10,16 +10,28 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 export const normalizeTerminalRegistryEntries = (rawValue) => {
     if (!Array.isArray(rawValue)) return [];
-    return rawValue.map((entry) => ({
-        terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
-        label: String(entry?.label || '').trim(),
-        location_id: parsePositiveInt(entry?.location_id),
-        is_active: entry?.is_active !== false,
-        is_default: entry?.is_default === true,
-        terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
-    }));
+    return rawValue.map((entry) => {
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+        return {
+            terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+            label: String(entry?.label || '').trim(),
+            location_id: parsePositiveInt(entry?.location_id),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
+            is_active: entry?.is_active !== false,
+            is_default: entry?.is_default === true,
+            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
+        };
+    });
 };
 
 export const buildStrictBindingTransitionPatch = async ({

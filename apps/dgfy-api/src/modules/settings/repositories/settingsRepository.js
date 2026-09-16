@@ -58,6 +58,14 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 const parseJsonLoosely = (raw) => {
     if (raw == null) return null;
     if (typeof raw === 'object') return raw;
@@ -264,11 +272,13 @@ const normalizeTerminalRegistry = (rawValue) => {
         seenTerminalIds.add(terminalId);
 
         const isActive = parseBooleanLike(entry?.is_active !== false);
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: parsePositiveInt(entry?.location_id),
             cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
             is_active: isActive,
             is_default: isActive && parseBooleanLike(entry?.is_default),
             terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
@@ -298,15 +308,19 @@ const normalizeTerminalRegistry = (rawValue) => {
 };
 
 const toPublicTerminalRegistry = (entries = []) => (
-    (Array.isArray(entries) ? entries : []).map((entry) => ({
-        terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
-        label: String(entry?.label || '').trim(),
-        location_id: parsePositiveInt(entry?.location_id),
-        cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
-        is_active: entry?.is_active !== false,
-        is_default: entry?.is_default === true,
-        has_password: Boolean(String(entry?.terminal_password_hash || '').trim())
-    }))
+    (Array.isArray(entries) ? entries : []).map((entry) => {
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+        return {
+            terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+            label: String(entry?.label || '').trim(),
+            location_id: parsePositiveInt(entry?.location_id),
+            cashier_email: String(entry?.cashier_email || '').trim().toLowerCase(),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
+            is_active: entry?.is_active !== false,
+            is_default: entry?.is_default === true,
+            has_password: Boolean(String(entry?.terminal_password_hash || '').trim())
+        };
+    })
 );
 
 const normalizeValueForSettingKey = (settingKey, value) => {

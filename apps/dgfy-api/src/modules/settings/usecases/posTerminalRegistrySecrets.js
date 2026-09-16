@@ -9,17 +9,28 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 const sanitizeTerminalId = (value) => String(value || '').trim().toUpperCase();
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
 
-const normalizeRegistryEntry = (entry = {}) => ({
-    terminal_id: sanitizeTerminalId(entry.terminal_id),
-    label: String(entry.label || '').trim(),
-    location_id: parsePositiveInt(entry.location_id),
-    cashier_email: String(entry.cashier_email || '').trim().toLowerCase(),
-    is_active: entry.is_active !== false,
-    is_default: entry.is_default === true,
-    pairing_version: String(entry.pairing_version || '').trim(),
-    terminal_password_hash: String(entry.terminal_password_hash || '').trim()
-});
+const normalizeRegistryEntry = (entry = {}) => {
+    const cashierUserIds = normalizeTerminalCashierIds(entry.cashier_user_ids);
+    return {
+        terminal_id: sanitizeTerminalId(entry.terminal_id),
+        label: String(entry.label || '').trim(),
+        location_id: parsePositiveInt(entry.location_id),
+        cashier_email: String(entry.cashier_email || '').trim().toLowerCase(),
+        ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
+        is_active: entry.is_active !== false,
+        is_default: entry.is_default === true,
+        pairing_version: String(entry.pairing_version || '').trim(),
+        terminal_password_hash: String(entry.terminal_password_hash || '').trim()
+    };
+};
 
 export const hashTerminalRegistrySecrets = async ({ incomingEntries = [], currentEntries = [] } = {}) => {
     const currentById = new Map(
@@ -57,6 +68,7 @@ export const sanitizeTerminalRegistryForRead = (entries = []) => (
             label: normalized.label,
             location_id: normalized.location_id,
             cashier_email: normalized.cashier_email,
+            ...(normalized.cashier_user_ids ? { cashier_user_ids: normalized.cashier_user_ids } : {}),
             is_active: normalized.is_active,
             is_default: normalized.is_default,
             pairing_version: normalized.pairing_version,
