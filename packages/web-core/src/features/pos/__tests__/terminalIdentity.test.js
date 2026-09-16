@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   createSuggestedTerminalId,
   DEFAULT_TERMINAL_ID,
+  normalizeTerminalCashierIds,
+  normalizeTerminalRegistry,
   resolveLoginTerminalId,
   resolvePreferredTerminalId,
   sanitizeTerminalId
@@ -69,5 +71,19 @@ describe('POS terminal identity helpers', () => {
       { terminal_id: 'counter 01' },
       { terminal_id: 'COUNTER-02' }
     ])).toBe('COUNTER-03');
+  });
+
+  it('normalizes terminal cashier assignment IDs without duplicates or invalid values', () => {
+    expect(normalizeTerminalCashierIds([12, '12', 7, 0, -3, 'invalid'])).toEqual([12, 7]);
+  });
+
+  it('preserves explicit empty cashier assignments while keeping legacy entries compatible', () => {
+    const normalized = normalizeTerminalRegistry([
+      { terminal_id: 'COUNTER-01', cashier_user_ids: ['12', '12', 0] },
+      { terminal_id: 'COUNTER-02' }
+    ]);
+
+    expect(normalized[0]).toHaveProperty('cashier_user_ids', [12]);
+    expect(normalized[1]).not.toHaveProperty('cashier_user_ids');
   });
 });

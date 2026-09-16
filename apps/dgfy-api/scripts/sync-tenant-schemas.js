@@ -317,6 +317,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         delivery_fee_waiver_label_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_label_snapshot` VARCHAR(255) NULL"
+        }),
+        // #1931: two nullable, additive evidence columns for Retail's accept-time goods-issue
+        // (issued once at acceptance, reversed at most once on post-acceptance cancel/reject).
+        // Kept in lockstep with migration 20260916000001-add-retail-acceptance-inventory-evidence.cjs.
+        inventory_issued_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `inventory_issued_at` DATETIME NULL"
+        }),
+        inventory_reversed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `inventory_reversed_at` DATETIME NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({

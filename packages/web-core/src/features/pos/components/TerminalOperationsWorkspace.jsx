@@ -145,7 +145,7 @@ import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile,
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
-import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
+import { createSuggestedTerminalId, normalizeTerminalCashierIds, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
@@ -6103,6 +6103,54 @@ function SettingsWorkspace({
       && cashier.location_ids.some((entry) => toPositiveInt(entry) === normalizedLocationId)
     ));
   }, [activeCashierUsers]);
+  const getAssignedCashierIdsForTerminal = useCallback((terminal) => {
+    if (Array.isArray(terminal?.cashier_user_ids)) {
+      return normalizeTerminalCashierIds(terminal.cashier_user_ids);
+    }
+
+    // Existing registries predate per-terminal assignments. Preserve their
+    // current location-wide access until the owner makes an explicit change.
+    return getCashiersForLocation(terminal?.location_id)
+      .map((cashier) => Number(cashier?.user_id))
+      .filter((userId) => Number.isInteger(userId) && userId > 0);
+  }, [getCashiersForLocation]);
+  const getCashiersForTerminal = useCallback((terminal) => {
+    const assignedIds = new Set(getAssignedCashierIdsForTerminal(terminal));
+    return getCashiersForLocation(terminal?.location_id)
+      .filter((cashier) => assignedIds.has(Number(cashier?.user_id)));
+  }, [getAssignedCashierIdsForTerminal, getCashiersForLocation]);
+  const toggleTerminalCashierAssignment = useCallback((terminalIndex, cashierId, checked) => {
+    setPosForm((current) => {
+      const entries = Array.isArray(current.terminalRegistry)
+        ? current.terminalRegistry.map((entry) => ({
+          terminal_id: sanitizeTerminalId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          location_id: toPositiveInt(entry?.location_id),
+          ...(Array.isArray(entry?.cashier_user_ids)
+            ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+            : {}),
+          is_active: entry?.is_active !== false,
+          is_default: entry?.is_default === true,
+          pairing_version: String(entry?.pairing_version || '').trim(),
+          rotate_pairing: entry?.rotate_pairing === true
+        }))
+        : [];
+      const terminal = entries[terminalIndex];
+      const normalizedCashierId = toPositiveInt(cashierId);
+      if (!terminal || !normalizedCashierId) return current;
+
+      const eligibleCashierIds = getCashiersForLocation(terminal.location_id)
+        .map((cashier) => toPositiveInt(cashier?.user_id))
+        .filter(Boolean);
+      if (!eligibleCashierIds.includes(normalizedCashierId)) return current;
+
+      const assignedIds = new Set(getAssignedCashierIdsForTerminal(terminal));
+      if (checked) assignedIds.add(normalizedCashierId);
+      else assignedIds.delete(normalizedCashierId);
+      terminal.cashier_user_ids = normalizeTerminalCashierIds(Array.from(assignedIds));
+      return { ...current, terminalRegistry: entries };
+    });
+  }, [getAssignedCashierIdsForTerminal, getCashiersForLocation]);
   const openValidationModal = useCallback(({ title, description = '', errors = [] }) => {
     setValidationModalState({
       open: true,
@@ -6668,6 +6716,9 @@ function SettingsWorkspace({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
+          ...(Array.isArray(entry?.cashier_user_ids)
+            ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+            : {}),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || '').trim(),
@@ -6680,15 +6731,20 @@ function SettingsWorkspace({
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
+        cashier_user_ids: [],
         pairing_version: '',
         rotate_pairing: false
       };
+      const previousLocationId = toPositiveInt(existing.location_id);
       entries[index] = {
         ...existing,
         [key]: key === 'terminal_id'
           ? sanitizeTerminalId(value)
           : (key === 'location_id' ? toPositiveInt(value) : value)
       };
+      if (key === 'location_id' && previousLocationId !== toPositiveInt(entries[index].location_id)) {
+        entries[index].cashier_user_ids = [];
+      }
 
       if (key === 'is_active' && value === false && entries[index].is_default === true) {
         entries[index].is_default = false;
@@ -6718,6 +6774,9 @@ function SettingsWorkspace({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
+          ...(Array.isArray(entry?.cashier_user_ids)
+            ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+            : {}),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || '').trim(),
@@ -6730,6 +6789,7 @@ function SettingsWorkspace({
         location_id: null,
         is_active: true,
         is_default: entries.length === 0,
+        cashier_user_ids: [],
         pairing_version: '',
         rotate_pairing: false
       });
@@ -6744,6 +6804,9 @@ function SettingsWorkspace({
           terminal_id: sanitizeTerminalId(entry?.terminal_id),
           label: String(entry?.label || '').trim(),
           location_id: toPositiveInt(entry?.location_id),
+          ...(Array.isArray(entry?.cashier_user_ids)
+            ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+            : {}),
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || '').trim(),
@@ -6786,6 +6849,9 @@ function SettingsWorkspace({
         terminal_id: sanitizeTerminalId(entry?.terminal_id),
         label: String(entry?.label || '').trim(),
         location_id: toPositiveInt(entry?.location_id),
+        ...(Array.isArray(entry?.cashier_user_ids)
+          ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+          : {}),
         is_active: entry?.is_active !== false,
         is_default: entry?.is_default === true,
         pairing_version: String(entry?.pairing_version || '').trim(),
@@ -6817,6 +6883,9 @@ function SettingsWorkspace({
       location_id: entry.location_id,
       is_active: entry.is_active !== false,
       is_default: entry.is_default === true,
+      ...(Array.isArray(entry.cashier_user_ids)
+        ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+        : {}),
       pairing_version: entry.pairing_version,
       rotate_pairing: entry.rotate_pairing === true
     }));
@@ -8432,17 +8501,20 @@ function SettingsWorkspace({
                     </div>
                   </div>
                   {canManageCashiers ? (
-                    <div className="mt-4 border-t border-slate-200 pt-4">
+                    <div
+                      className="mt-4 border-t border-slate-200 pt-4"
+                      data-testid={`terminal-cashier-assignments-${index}`}
+                    >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[13px] font-black text-[#0F172A]">Cashiers</p>
+                            <p className="text-[13px] font-black text-[#0F172A]">Cashier assignments</p>
                             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
-                              {cashiersLoading ? 'Loading...' : `${getCashiersForLocation(terminal.location_id).length} assigned`}
+                              {cashiersLoading ? 'Loading...' : `${getCashiersForTerminal(terminal).length} assigned`}
                             </span>
                           </div>
                           <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
-                            Cashiers are invited through DGFY and receive explicit access to one or more business locations.
+                            Cashiers are invited through DGFY and receive access to one or more business locations. Select which eligible cashiers can use this terminal.
                           </p>
                         </div>
                         <Button
@@ -8458,19 +8530,40 @@ function SettingsWorkspace({
                       </div>
 
                       {getCashiersForLocation(terminal.location_id).length > 0 ? (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {getCashiersForLocation(terminal.location_id).map((cashier) => (
-                            <div key={cashier.user_id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                              <p className="truncate text-[12px] font-black text-emerald-900">{cashier.username || cashier.email}</p>
-                              <p className="mt-0.5 truncate text-[10px] font-semibold text-emerald-700">{cashier.email}</p>
-                            </div>
-                          ))}
+                        <div
+                          className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                          role="group"
+                          aria-label={`Cashier assignments for ${terminal.terminal_id || `terminal ${index + 1}`}`}
+                        >
+                          {getCashiersForLocation(terminal.location_id).map((cashier) => {
+                            const cashierId = toPositiveInt(cashier?.user_id);
+                            const assigned = getAssignedCashierIdsForTerminal(terminal).includes(cashierId);
+                            const cashierLabel = cashier.username || cashier.email || `Cashier ${cashierId || ''}`;
+                            return (
+                              <label
+                                key={`terminal-cashier-${index}-${cashier.user_id}`}
+                                className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors ${assigned ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 shrink-0 accent-[#1A4E8D]"
+                                  checked={assigned}
+                                  onChange={(event) => toggleTerminalCashierAssignment(index, cashierId, event.target.checked)}
+                                  disabled={locked || loading || cashiersLoading}
+                                />
+                                <span className="min-w-0">
+                                  <span className={`block truncate text-[12px] font-black ${assigned ? 'text-emerald-900' : 'text-[#0F172A]'}`}>{cashierLabel}</span>
+                                  <span className={`mt-0.5 block truncate text-[10px] font-semibold ${assigned ? 'text-emerald-700' : 'text-[#64748B]'}`}>{cashier.email || 'No account email'}</span>
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                       ) : (
                         <p className="mt-3 text-[11px] font-semibold text-slate-500">
                           {toPositiveInt(terminal.location_id)
-                            ? 'No cashier is assigned to this terminal store yet.'
-                            : 'Assign a store to this terminal before adding a cashier.'}
+                            ? 'No active cashier has access to this store yet.'
+                            : 'Assign a store to this terminal before adding cashiers.'}
                         </p>
                       )}
 

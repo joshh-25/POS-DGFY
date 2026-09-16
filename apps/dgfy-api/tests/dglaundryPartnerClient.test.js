@@ -32,6 +32,9 @@ describe('DGLaundry partner request profile', () => {
       `"date": ${headers.date}`,
       `"@signature-params": ${signatureParams}`
     ].join('\n');
-    expect(crypto.verify('sha256', Buffer.from(signatureBase), publicKey, Buffer.from(headers.signature.slice(6, -1), 'base64'))).toBe(true);
+    const wireSignature = Buffer.from(headers.signature.slice(6, -1), 'base64');
+    expect(wireSignature).toHaveLength(64);
+    expect(crypto.verify('sha256', Buffer.from(signatureBase), { key: publicKey, dsaEncoding: 'ieee-p1363' }, wireSignature)).toBe(true);
+    expect(crypto.verify('sha256', Buffer.from(signatureBase), publicKey, wireSignature)).toBe(false);
   });
 });
