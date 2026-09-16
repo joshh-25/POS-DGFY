@@ -11,9 +11,9 @@ policy_version: 2026.09.16
 verification_evidence: node --check API source files,npm test terminal registry suites 9/9,npm test POS terminal regression 132/132,npm run build:pos,npm run lint POS,npm run lint API,git diff --check
 rollback_note: Revert the implementation and declaration commits; existing terminal entries without cashier_user_ids retain legacy location-based access.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED
-preflight_run_at: 2026-09-16T18:34:31.0834856+08:00
-preflight_request_ref: NOT-EXECUTED-POS-TERMINAL-CASHIER-REGISTRY-20260916
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-16T13:11:18.589Z
+preflight_request_ref: PREFLIGHT-35099945464-2026-09-16-POS-TERMINAL-CASHIER-REGISTRY
 ---
 
 # Per-terminal cashier assignment state (#1932)

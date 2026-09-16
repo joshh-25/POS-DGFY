@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/posOnlineInventoryReservationLifecycl
 rollback_note: The two pos_transactions columns (inventory_issued_at, inventory_reversed_at) are nullable and additive -- down() is pure at the schema level for those, the only data loss on rollback is the evidence timestamps themselves. Do NOT roll back while post-deploy Retail orders exist in confirmed-or-later with these columns set: a rolled-back order reads as never-issued and re-issues at completion (double deduction). No ENUM widening in this change, so down() is symmetric unlike Phase 211.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-16T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-1931-RETAIL-ACCEPTANCE-INVENTORY-TIMING
+preflight_run_at: 2026-09-16T13:11:18.591Z
+preflight_request_ref: PREFLIGHT-35099945464-2026-09-16-RETAIL-ACCEPTANCE-INVENTORY-TIMING
 ---
 
 # Retail orders: deduct stock at acceptance and reverse once on post-acceptance cancel/reject (#1931)
