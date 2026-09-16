@@ -10,9 +10,11 @@ import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrd
 // guest/DGFY-account identity + guest email OTP infrastructure (useGuestCustomerIdentity.js,
 // useGuestCheckoutOtp.js), and the shared saved-address/map-pin infrastructure
 // (useSignedInCheckoutAddresses.js, useDeliveryPinResolution.js) — all instantiated once in
-// StorefrontApp.jsx and already consumed by F&B/MSME. Schedule mode/time and special
-// instructions remain intentionally local state owned by RetailOrderPage itself, since neither
-// is wired to the backend yet. Retail-only — the other default-like workflow modes keep using
+// StorefrontApp.jsx and already consumed by F&B/MSME. Schedule mode/time is likewise shared
+// global state now (#1931: fnbScheduleMode/fnbScheduledFor, threaded through as
+// scheduleMode/scheduledFor + onScheduleModeChange/onScheduledForChange, mirroring Simple);
+// only special instructions remain local placeholder state owned by RetailOrderPage itself.
+// Retail-only — the other default-like workflow modes keep using
 // useDefaultOrderPageProps.js unmodified.
 //
 // #1093: also resolves `orderMethodOptions`, narrowing RETAIL_ORDER_METHOD_OPTIONS (the mode's
@@ -87,6 +89,15 @@ export function useRetailOrderPageProps({
   handleCheckout,
   checkoutLoading,
   checkoutError,
+  // #1931: Retail's schedule selection is shared global state (fnbScheduleMode/
+  // fnbScheduledFor, instantiated once in StorefrontApp.jsx), not local to
+  // RetailOrderPage -- mirrors useSimpleCheckoutRouteProps.js's exact param
+  // names and defaults so the shared checkout payload (buildFnbCheckoutPayload.js)
+  // receives the customer's actual schedule choice instead of silent ASAP.
+  fnbScheduleMode = 'asap',
+  fnbScheduledFor = '',
+  setFnbScheduleMode,
+  setFnbScheduledFor,
   // Phase 142 (#823): Retail's payment step was a local, disconnected cash-only placeholder --
   // wired to the same shared online-payment-session state F&B/MSME already coordinate on
   // through StorefrontApp.jsx (useFnbCheckoutRouteState.js), same rename convention already used
@@ -175,6 +186,16 @@ export function useRetailOrderPageProps({
     checkoutError,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
+    scheduleMode: fnbScheduleMode,
+    scheduledFor: fnbScheduledFor,
+    onScheduleModeChange: (nextMode) => {
+      setFnbScheduleMode?.(nextMode);
+      if (nextMode === 'asap') setFnbScheduledFor?.('');
+    },
+    onScheduledForChange: (nextScheduledFor) => {
+      setFnbScheduledFor?.(nextScheduledFor);
+      setFnbScheduleMode?.('schedule');
+    },
     paymentType: fnbPaymentType,
     onPaymentTypeChange: handlePaymentTypeChange,
     paymentElection,
