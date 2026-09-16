@@ -1112,6 +1112,14 @@ const sanitizeTerminalId = (value) => {
     return TERMINAL_ID_PATTERN.test(normalized) ? normalized : '';
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 const parseTerminalRegistryFromSettings = (settings = {}) => {
     let rawRegistry = settings?.pos_terminal_registry?.value;
     if (typeof rawRegistry === 'string') {
@@ -1129,11 +1137,13 @@ const parseTerminalRegistryFromSettings = (settings = {}) => {
         const terminalId = sanitizeTerminalId(entry?.terminal_id);
         if (!terminalId || seen.has(terminalId)) continue;
         if (entry?.is_active === false) continue;
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: parsePositiveInt(entry?.location_id)
+            location_id: parsePositiveInt(entry?.location_id),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     }
     return normalized;
@@ -1154,11 +1164,15 @@ const resolveTerminalIdentityPolicySettings = async ({ posRepository, settings =
             : 'warn';
         const activeRegistry = Array.isArray(resolved?.active_registry)
             ? resolved.active_registry
-                .map((entry) => ({
-                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                    label: String(entry?.label || '').trim(),
-                    location_id: parsePositiveInt(entry?.location_id)
-                }))
+                .map((entry) => {
+                    const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                    return {
+                        terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                        label: String(entry?.label || '').trim(),
+                        location_id: parsePositiveInt(entry?.location_id),
+                        ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                    };
+                })
                 .filter((entry) => entry.terminal_id)
             : [];
 
@@ -1185,11 +1199,15 @@ const evaluateTerminalIdentityPolicy = ({ terminalId, policy = {}, operation }) 
         : 'warn';
     const activeRegistry = Array.isArray(policy?.active_registry)
         ? policy.active_registry
-            .map((entry) => ({
-                terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                label: String(entry?.label || '').trim(),
-                location_id: parsePositiveInt(entry?.location_id)
-            }))
+            .map((entry) => {
+                const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                return {
+                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                    label: String(entry?.label || '').trim(),
+                    location_id: parsePositiveInt(entry?.location_id),
+                    ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                };
+            })
             .filter((entry) => entry.terminal_id)
         : [];
     const registryByTerminalId = new Map(activeRegistry.map((entry) => [entry.terminal_id, entry]));

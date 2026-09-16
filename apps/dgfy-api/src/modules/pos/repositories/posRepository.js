@@ -199,11 +199,17 @@ const normalizeTerminalRegistry = (rawValue) => {
             return;
         }
         const locationId = toPositiveInt(entry?.location_id);
+        const cashierUserIds = Array.isArray(entry?.cashier_user_ids)
+            ? Array.from(new Set(entry.cashier_user_ids
+                .map((userId) => Number.parseInt(userId, 10))
+                .filter((userId) => Number.isInteger(userId) && userId > 0)))
+            : null;
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: locationId
+            location_id: locationId,
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     });
     return normalized;

@@ -10,16 +10,49 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 export const normalizeTerminalRegistryEntries = (rawValue) => {
     if (!Array.isArray(rawValue)) return [];
-    return rawValue.map((entry) => ({
-        terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
-        label: String(entry?.label || '').trim(),
-        location_id: parsePositiveInt(entry?.location_id),
-        is_active: entry?.is_active !== false,
-        is_default: entry?.is_default === true,
-        terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
-    }));
+    return rawValue.map((entry) => {
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+        return {
+            terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+            label: String(entry?.label || '').trim(),
+            location_id: parsePositiveInt(entry?.location_id),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
+            is_active: entry?.is_active !== false,
+            is_default: entry?.is_default === true,
+            terminal_password_hash: String(entry?.terminal_password_hash || '').trim()
+        };
+    });
+};
+
+export const assertTerminalCashierAssignments = async ({ settingsRepository, entries }) => {
+    if (!Array.isArray(entries) || typeof settingsRepository?.getInvalidTerminalCashierAssignments !== 'function') {
+        return;
+    }
+
+    const invalidAssignments = await settingsRepository.getInvalidTerminalCashierAssignments(entries);
+    if (!Array.isArray(invalidAssignments) || invalidAssignments.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Terminal cashier assignments must reference active cashier users with a grant for the terminal location.',
+        {
+            statusCode: 422,
+            details: {
+                reason_code: 'CASHIER_TERMINAL_ASSIGNMENT_INVALID',
+                invalid_assignments: invalidAssignments
+            }
+        }
+    );
 };
 
 export const buildStrictBindingTransitionPatch = async ({
@@ -88,7 +121,8 @@ export const buildStrictBindingTransitionPatch = async ({
             }
             return {
                 ...entry,
-                location_id: primaryLocationId
+                location_id: primaryLocationId,
+                cashier_user_ids: []
             };
         })
     };
