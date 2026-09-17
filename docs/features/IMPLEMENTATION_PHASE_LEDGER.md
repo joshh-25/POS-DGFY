@@ -23457,3 +23457,84 @@ ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
 ### Next eligible phase
 
 340 after Phase 339's PR is filed, reviewed, merged, and deployed QA is complete.
+
+## Phase 340 - Conduct interactive Orca worktree fallback for OpenCode and Antigravity (#1964)
+
+### Initiative and release
+
+Conduct (Orca orchestration preset, #331), current release.
+
+### Objective and scope
+
+Add an explicit interactive external-agent strategy (`orca-interactive`, Tier 2B) for CLIs whose
+custom command and model can be expressed outside `worker-start` launch preferences, so Conduct
+prefers a visible, Orca-managed interactive terminal for OpenCode and Antigravity instead of the
+headless fallback. Scope: `scripts/conduct-model-slot.js` (interactive-adapter registry plus
+`orca-pty` > `orca-interactive` > `in-session` > `direct-cli` classification),
+`scripts/conduct-model-slot.test.js` (positive OpenCode/Antigravity cases, alias normalization,
+priority cases, unavailable/missing-context failures, Claude/Codex/Cursor and headless-fallback
+preservation), `.agents/skills/conduct/SKILL.md` (sections 1.2, 1.4, 1.5, 1.7, 1.8, 1.9), and
+`.agents/skills/conduct/references/model-slot-parsing-examples.md`. No application runtime,
+API, database, frontend, deployment, ADR, or compliance-declaration change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; live Orca evidence runs,
+PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+Live Orca orchestration guide (`orca skills get orchestration` plus `references/coordinator-loop.md`
+and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue #1964's manual
+2026-09-17 OpenCode/Antigravity experiment.
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:conduct-model-slot` passes (54/54: OpenCode/Antigravity interactive cases,
+      priority cases, fail-closed cases, Claude/Codex/Cursor and headless-fallback preservation).
+- [x] `npm run test:conduct-cleanup-policy` passes unchanged (11/11: active, dirty, unpushed,
+      unrelated, and failed interactive worktrees remain retained).
+- [x] `npm run lint:docs` (30 governed docs) and `npm run check:architecture` pass; no ADR required.
+- [x] Live OpenCode Conduct run: Orca-managed target worktree `phase-340-opencode-probe`
+      (`pat/phase-340-opencode-probe`, linked issue 1964) plus visible terminal
+      `term_0032f0bb-e9ee-449a-ada1-d93fde277f81` running
+      `opencode --model opencode-go/muse-spark-1.3-contributor`; `tui-idle` satisfied first try;
+      `dispatch --inject` recorded `ctx_0c186ef12b1a`/`task_a3ae55309e5d` (unsupervised lane);
+      explicit send+Enter accepted; reply `PROBE-OK-OPENCODE` observed with attribution
+      `Build · Muse Spark 1.3 Contributor · 9.7s`; worktree clean (`git status --porcelain` empty).
+- [x] Live Antigravity Conduct run: worktree `phase-340-agy-probe`
+      (`pat/phase-340-agy-probe`, linked issue 1964) plus visible terminal
+      `term_3264afd1-19aa-49c5-8de0-2c3570124f25` running
+      `agy --model gemini-3.8-flash --effort medium`; trust prompt confirmed explicitly
+      (`Yes, I trust this folder`; TUI advanced to `Gemini 3.8 Flash (Medium)` main screen);
+      `dispatch --inject` refused with `agent_prompt_blocked` while Orca's trust gate was latched
+      (fail-closed, recorded); explicit send+Enter accepted; reply `PROBE-OK-AGY` observed;
+      worktree clean. Both probe sessions/worktrees retained, not released or removed.
+- [x] Preview/draft mode displays but does not inject and cannot produce completion evidence:
+      the `node scripts/conduct-model-slot.js ...` pre-dispatch runs printed the exact
+      `interactiveCommand` strings without creating any worktree, terminal, task, or dispatch.
+- [x] Readiness, trust, and injection failures are explicit and fail safely: `tui-idle`
+      unsatisfied with `blockedReason: agent-trust-workspace` (3 consecutive waits, then
+      no-Enter liveness probe); second `dispatch --inject` and `worker-start --terminal` refused
+      while the first inject dispatch stayed active (`agent_readiness`); permitted fallback
+      reported as headless nowhere (no fallback was invoked — both runs completed
+      interactively). Trust *refusal* ("No, exit") intentionally not exercised.
+- [x] One feedback iteration per CLI demonstrates retained worktree/role ownership:
+      `SECOND-PROBE-OK-OPENCODE` and `SECOND-PROBE-OK-AGY` observed on the same retained
+      terminals/worktrees via the low-level send path (structured re-dispatch blocked by the
+      active-dispatch guard — documented in SKILL.md Tier 2B live-behavior notes).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1964 (child of #331).
+- Handoff: `.tmp/plan-1964.md` (planning head `eaacd6db9ce809712a1f14edbc0cc1f8eb6246f9`).
+- Implementation: `scripts/conduct-model-slot.js`, `scripts/conduct-model-slot.test.js`,
+  `.agents/skills/conduct/SKILL.md`,
+  `.agents/skills/conduct/references/model-slot-parsing-examples.md`.
+- Prior Conduct work: #1811, #1258, #1259, #1826.
+- Completion date: not yet merged — set at merge time.
+
+### Next eligible phase
+
+341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).
