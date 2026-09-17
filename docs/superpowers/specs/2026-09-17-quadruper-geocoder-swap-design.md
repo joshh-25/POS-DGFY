@@ -196,6 +196,13 @@ Iloilo City and it directly serves the rider-reference goal. Confirmed 2026-09-1
 
 The label must never be a bare `Near ...` string — an existing ADR 0013 prohibition, preserved.
 
+**Forward search is the exception to this rule.** In reverse geocoding the nearest feature's
+`name` may be an unrelated POI, so it is never used. In forward search `name` IS the match the
+user typed (`q=Poblacion` returns `name="Poblacion"`, `city="Pavia"`, with no `locality` or
+`district`), so it is prepended to the composed label when it is not already a segment —
+producing `Poblacion, Pavia, Iloilo, Philippines` rather than `Pavia, Iloilo, Philippines`.
+Implemented as `prependName` in `mappers/photonFeatureMapper.js`.
+
 ### 5.2 Landmarks
 
 Always on when landmarks are available (confirmed 2026-09-17). Sourced from the **same single

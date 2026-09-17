@@ -23279,3 +23279,31 @@ registration-intent routes.
 ### Next eligible phase
 
 337 after Phase 336 acceptance evidence and deployed QA are complete.
+
+## Phase 337 - Quadruper geocoding provider with bundled-dataset fallback
+
+- **Issue:** not yet filed — must be created via /pm and linked before the PR is opened (gh CLI unavailable in the implementation session).
+- **Initiative / release:** Geo search and address resolution
+- **Objective:** Replace the 37-entry bundled PH-local geocoder with the DGFY-operated Quadruper
+  service (Photon over OpenStreetMap, ~850k PH places), retaining the bundled dataset as an
+  automatic fallback and adding nearby-landmark output to reverse geocoding.
+- **Scope:** `apps/dgfy-api/src/modules/geoSearch` (new `providers/`, `mappers/`, `landmarks/`,
+  `shared/` units), `src/config/geocodeConfig.js`, `src/validators/geoSearchValidator.js`,
+  `packages/web-core/src/components/maps/MapPinPicker.jsx`.
+- **Status:** completed (implementation and local validation only — PR has not yet been opened;
+  review, merge, and deployed QA remain outstanding)
+- **Dependencies:** ADR 0013 (amended 2026-09-17); declaration
+  `2026-09-17-quadruper-geocoder-swap`.
+- **Acceptance and validation evidence:** `tests/geoLandmarkClassifier.test.js`,
+  `tests/geoPhotonFeatureMapper.test.js`, `tests/geoQuadruperProvider.test.js`,
+  `tests/geoLocalProvider.test.js`, `tests/geoCircuitBreaker.test.js`,
+  `tests/geoFallbackPolicy.test.js`, `tests/geoAddressSearchValidator.test.js`,
+  `MapPinPicker.maplibre.test.jsx`; `npm run check:compliance`,
+  `npm run check:architecture`, `npm run lint:docs`; three frontend builds.
+- **Completion date:** not yet merged — set at merge time.
+- **Links:** `docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md`,
+  `docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md`.
+
+### Next eligible phase
+
+338 after Phase 337's PR is filed, reviewed, merged, and deployed QA is complete.
