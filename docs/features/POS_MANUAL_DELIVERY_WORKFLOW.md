@@ -393,6 +393,43 @@ and returns a warning listing dispatched orders that remain `pending`/`not_loade
 `exception`. The POS UI surfaces those warnings and lets the operator update a member even after
 dispatch, while completed and cancelled runs remain unavailable for loading changes.
 
+### Dispatch response warning contract (Phase 338, #1927)
+
+A successful `POST /pos/delivery-runs/:deliveryRunId/dispatch` response carries an additive
+`data.warnings` array naming every run member left in a non-terminal loading state at dispatch
+time -- one entry per unresolved member, derived from the dispatch-time member snapshot (not
+just the members transitioned by that call):
+
+```json
+{
+  "data": {
+    "warnings": [
+      { "pos_transaction_id": 501, "loading_state": "pending" },
+      { "pos_transaction_id": 502, "loading_state": "not_loaded" },
+      {
+        "pos_transaction_id": 503,
+        "loading_state": "exception",
+        "exception_reason": "Damaged package"
+      }
+    ]
+  }
+}
+```
+
+`loading_state` is the member's exact dispatch-time state (`pending`, `not_loaded`, or
+`exception`; `pending` and `not_loaded` stay distinct). `exception_reason` is present only on
+`exception` entries and is `null` when no reason was recorded. `warnings` is `[]` when every
+member is `loaded`. The array is warn-only: it never blocks dispatch and never reclassifies the
+`dispatched`/`skipped`/`failed` buckets. It is persisted with the idempotency replay payload,
+so a same-key retry returns the identical array.
+
+Compatibility: the pre-337 `data.loading_warning` object
+(`unloaded_pos_transaction_ids`/`exception_pos_transaction_ids`, derived only from members
+dispatched by that call) is preserved unchanged. The POS shared summary
+(`DeliveryRunDispatchSummary`) renders `warnings` when present and falls back to
+`loading_warning` for older responses. The mobile dispatch-confirmation flow
+(`Sieitzz/dgfy-mobile#177`) must consume `data.warnings`, not `loading_warning`.
+
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
