@@ -12,8 +12,8 @@ verification_evidence: npm run check:compliance,npx eslint ../../packages/web-co
 rollback_note: Revert the POS Settings frontend and this declaration; existing backend settings and terminal contracts remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T05:47:26.509Z
-preflight_request_ref: NOT-EXECUTED-PR-1950-POS-SETTINGS-FOUNDATION
+preflight_run_at: 2026-09-17T06:26:13.267Z
+preflight_request_ref: PREFLIGHT-35189543674-2026-09-17-POS-SETTINGS-FOUNDATION
 ---
 
 # POS Settings Frontend Foundation (PR #1950)

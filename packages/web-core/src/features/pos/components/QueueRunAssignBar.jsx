@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button';
 import { getEligibleRunTargets, getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
 
 // Phase 227 (#1273). Sticky selection toolbar for the Active Queue's bulk "add to run" flow.
-// Always rendered when retail-gated + the Active Queue tab is showing (even at 0 selected --
-// it's the discoverability surface for the whole feature, not just a contextual action bar).
+// Always rendered when delivery-run-gated (#1924: retail or fnb) + the Active Queue tab is showing
+// (even at 0 selected -- it's the discoverability surface for the whole feature, not just a
+// contextual action bar).
 // Selection *state* lives in the parent (IncomingQueueWorkspace, so it survives a tab switch);
 // this component owns only the target-run picker's own local state.
 //

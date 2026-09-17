@@ -2168,6 +2168,30 @@ const executeInventoryStockCommand = async ({
     return commandFn(movementData, userId, transaction);
 };
 
+// #1952: best-effort post-commit POS catalog invalidation. The event is a refresh
+// prompt only — the location-filtered catalog read stays authoritative (ADR 0055) —
+// so a publisher failure is logged and must never fail the committed sale or void.
+const publishPosStockChange = async ({ publishCatalogChange, tenantId, reason, itemIds }) => {
+    if (typeof publishCatalogChange !== 'function') return;
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return;
+    const uniqueItemIds = [...new Set(
+        (Array.isArray(itemIds) ? itemIds : [itemIds])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0)
+    )];
+    if (uniqueItemIds.length === 0) return;
+    try {
+        await publishCatalogChange({ tenantId: normalizedTenantId, reason, itemIds: uniqueItemIds });
+    } catch (error) {
+        logger.warn('[PosUseCases] POS catalog invalidation failed; committed stock effect stands', {
+            tenant_id: normalizedTenantId,
+            reason,
+            error: error?.message || 'unknown'
+        });
+    }
+};
+
 // #1931: the stock-issue sequence formerly inline in buildUpdateOnlineOrderStatusUseCase's
 // completion branch, extracted verbatim so Retail's accept-time branch reuses it instead of
 // duplicating the loop body. Real-time stock sufficiency is enforced by createStockMovement's
@@ -3006,7 +3030,11 @@ export const buildCheckoutPosUseCase = ({
     calculateServiceQuoteUseCase = null,
     completeClaimedPosParkedSaleUseCase = null,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
-    resolveLocationScope = resolvePosOperationalLocationScope
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    // #1952: existing tenant-scoped pos.catalog.changed publisher, wired from the
+    // module composition root. Null-safe: callers (and older tests) that omit it
+    // simply skip the best-effort invalidation.
+    publishCatalogChange = null
 }) => {
     // Phase 9: no `|| stockMovementService` fallback here anymore - a
     // mis-wired container (inventoryCommandService missing) must fail loudly
@@ -4637,6 +4665,11 @@ export const buildCheckoutPosUseCase = ({
                 }, { transaction, lock: true });
             }
 
+            // #1952: item IDs with a real Inventory stock effect, published as a
+            // post-commit catalog invalidation so other open terminals converge.
+            // Exempt lines (stock_effect_type='stock_exempt') never reach the
+            // command below and are therefore never collected here.
+            const stockChangedItemIds = new Set();
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
                 // Recipe consumption always fires when the line has one, regardless
@@ -4661,6 +4694,8 @@ export const buildCheckoutPosUseCase = ({
                             userId: normalizedUserId,
                             transaction
                         });
+                        const recipeItemId = parsePositiveInt(movement.ingredient_item_id);
+                        if (recipeItemId) stockChangedItemIds.add(recipeItemId);
                     }
                 } else if (line.stock_effect_type !== 'stock_exempt') {
                     await executeInventoryStockCommand({
@@ -4678,6 +4713,8 @@ export const buildCheckoutPosUseCase = ({
                         userId: normalizedUserId,
                         transaction
                     });
+                    const directItemId = parsePositiveInt(line.item_id);
+                    if (directItemId) stockChangedItemIds.add(directItemId);
                 }
 
                 for (const modifier of line.fnb_modifiers_snapshot || []) {
@@ -4698,6 +4735,7 @@ export const buildCheckoutPosUseCase = ({
                         userId: normalizedUserId,
                         transaction
                     });
+                    stockChangedItemIds.add(linkedItemId);
                 }
             }
 
@@ -4719,7 +4757,30 @@ export const buildCheckoutPosUseCase = ({
                 transactionId: posTransactionId,
                 idempotentReplay: false
             });
-            if (ownsTransaction) await transaction.commit();
+            // #1952: publish the stock-change invalidation only after the stock
+            // effects are durable. Internally-owned transactions publish right
+            // after the local commit; caller-owned transactions defer via
+            // afterCommit so terminals are never notified about rolled-back stock.
+            // Idempotent replays return earlier and never reach this path.
+            const stockChangeInvalidation = () => publishPosStockChange({
+                publishCatalogChange,
+                tenantId,
+                reason: 'pos_sale_stock_changed',
+                itemIds: [...stockChangedItemIds]
+            });
+            if (ownsTransaction) {
+                await transaction.commit();
+                await stockChangeInvalidation();
+            } else if (transaction && typeof transaction.afterCommit === 'function') {
+                transaction.afterCommit(() => {
+                    stockChangeInvalidation().catch(() => {});
+                });
+            } else {
+                logger.warn('[PosUseCases] Skipped POS catalog invalidation: caller-owned transaction without afterCommit', {
+                    tenant_id: tenantId,
+                    pos_transaction_id: posTransactionId
+                });
+            }
 
             // Best-effort, post-commit: the enrollment was already validated pre-commit above, so
             // this only writes bookkeeping (attribution + earned commission) and must never fail
@@ -4880,7 +4941,7 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService }) => {
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService, publishCatalogChange = null }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
@@ -5055,6 +5116,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
                 : [];
             const stockReversals = [];
+            // #1952: IDs actually reversed, for the post-commit invalidation below.
+            const voidStockChangedItemIds = new Set();
             for (const movement of stockMovements || []) {
                 const quantity = Math.abs(Number(movement.quantity || 0));
                 if (quantity <= 0) continue;
@@ -5073,6 +5136,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     userId: actorUserId,
                     transaction
                 });
+                const reversedItemId = parsePositiveInt(movement.item_id);
+                if (reversedItemId) voidStockChangedItemIds.add(reversedItemId);
                 stockReversals.push({
                     original_movement_id: movement.movement_id || null,
                     reversal_movement_id: reversal?.movement_id || null
@@ -5190,6 +5255,16 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }, { transaction });
 
             await transaction.commit();
+
+            // #1952: void owns its transaction, so post-commit publication is
+            // safe here. Idempotent replays return earlier with no reversal and
+            // never reach this path. Best-effort: never fails the committed void.
+            await publishPosStockChange({
+                publishCatalogChange,
+                tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                reason: 'pos_void_stock_changed',
+                itemIds: [...voidStockChangedItemIds]
+            });
 
             // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
             // sale - must never fail the void that already succeeded.

@@ -24,9 +24,10 @@ import { getDeliveryRunDispatchReasonMessage } from '../utils/deliveryRunDispatc
 
 // Phase 226 (#1273). Self-contained master/detail panel over Phase 225's delivery-run API,
 // modeled on DeliveryPersonnelManagementPanel.jsx / EmployeeCreditManagementPanel.jsx: panel-local
-// state, own fetches, toast on error. Retail gating is the CALLER's job (TerminalOperationsPanels
-// only renders this when normalizeWorkflowMode(workflowMode) === 'retail') -- this component does
-// not re-check the mode itself.
+// state, own fetches, toast on error. Delivery-run-mode gating is the CALLER's job
+// (TerminalOperationsPanels only renders this when the workflow mode is delivery-run-capable --
+// retail or fnb, #1924) -- this component does not re-check the mode itself, except for the
+// retail-only packed dispatch preflight below (isRetailMode prop).
 
 const RUN_STATUS_LABELS = Object.freeze({
   draft: 'Draft',
@@ -53,8 +54,9 @@ const formatRunScheduleLabel = (run) => {
 // re-dispatch is the retry path for stragglers.
 const DISPATCH_BLOCKED_STATUSES = new Set(['completed', 'cancelled']);
 // #1272 (2026-08-31), retail-only backstop: pre-flight client-side check only, the 409 is the real
-// gate. This panel is only ever rendered in retail mode (see the module comment above), so no
-// workflow-mode check is needed here.
+// gate. F&B dispatch skips the packing precondition entirely (ADR 0034, 2026-09-01 amendment), so
+// this preflight -- and its "Every order must be packed" notice -- applies only when
+// isRetailMode is true. Defaults to true so direct renders keep the historical retail behavior.
 const PRE_PACKED_FULFILLMENT_STATUSES = new Set(['placed', 'confirmed', 'preparing']);
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
@@ -70,6 +72,7 @@ export default function DeliveryRunsWorkspacePanel({
   isOnline = true,
   hasActiveShift = false,
   queueLocationScopeId = null,
+  isRetailMode = true,
   deliveryPersonnelState = { loading: false, personnel: [], accessState: 'not_required' },
   ensureDeliveryPersonnelLoaded = () => {},
   onRunCountChange = () => {}
@@ -488,12 +491,14 @@ export default function DeliveryRunsWorkspacePanel({
 
   // Phase 228 (#1273/#1271). Dispatch pre-flight: a backstop, client-side mirror of the server's
   // own 409 preconditions -- the 409 stays the real gate, this only saves an operator a round trip.
+  // #1924: retail-only. F&B orders may never become `packed` and dispatch without the packing
+  // check, so for F&B there are no unpacked members, no notice, and no preflight block.
   const selectedRunMembers = Array.isArray(selectedRun?.members) ? selectedRun.members : [];
   const selectedRunStatus = String(selectedRun?.status || '').trim();
   const selectedRunIsDispatched = selectedRunStatus === 'dispatched';
-  const unpackedMembers = selectedRunMembers.filter((member) => (
+  const unpackedMembers = isRetailMode ? selectedRunMembers.filter((member) => (
     PRE_PACKED_FULFILLMENT_STATUSES.has(String(member?.order?.fulfillment_status || '').trim())
-  ));
+  )) : [];
   const dispatchDisabled = !selectedRun
     || !canTransactPos
     || locked

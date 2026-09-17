@@ -2206,8 +2206,7 @@ describe('POS checkout F&B contracts', () => {
         expect(posRepository.upsertFiscalTerminalRegistration).not.toHaveBeenCalled();
     });
 
-    it('verifies fiscal event ledger sequence and hash continuity', async () => {
-        const eventOnePayload = { invoice_number: 'INV-1' };
+    it('verifies fiscal event ledger sequence and hash continuity', async () => {        const eventOnePayload = { invoice_number: 'INV-1' };
         const eventOneHash = '3a0b431e485464a7b77bc7a33a5bc5ecf9e8a0b7f28b5542ee2fdfd8a796a4b8';
         const posRepository = {
             listFiscalEvents: jest.fn().mockResolvedValue([
@@ -2249,5 +2248,537 @@ describe('POS checkout F&B contracts', () => {
             'FISCAL_EVENT_PREVIOUS_HASH_MISMATCH',
             'FISCAL_EVENT_HASH_MISMATCH'
         ]));
+    });
+
+    describe('#1952 POS stock-change catalog invalidation', () => {
+        const buildDirectSaleRepository = () => {
+            let createdTransaction = null;
+            const posRepository = {
+                getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                    item_id: 11,
+                    name: 'Aftercare Kit',
+                    category: 'product',
+                    unit_of_measure: 'kit',
+                    current_stock: 13,
+                    cost_per_unit: 100,
+                    default_sale_price: 180,
+                    vat_type: 'vatable'
+                }]),
+                listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+                findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+                getTerminalShiftById: jest.fn(),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-1952-DIRECT'),
+                getFnbTableById: jest.fn(),
+                createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                    createdTransaction = { pos_transaction_id: 1952, ...header, lines };
+                    return 1952;
+                }),
+                createFnbServiceChargeSnapshot: jest.fn(),
+                settleFnbCheck: jest.fn(),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+                getTransactionById: jest.fn(async () => createdTransaction)
+            };
+            const payload = {
+                idempotency_key: 'pos-1952-direct-sale',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 11, quantity: 1 }]
+            };
+            return { posRepository, payload };
+        };
+
+        it('publishes pos_sale_stock_changed with the finished item after a direct sale commits', async () => {
+            const { posRepository, payload } = buildDirectSaleRepository();
+            const inventoryCommandService = {
+                createStockMovement: jest.fn().mockResolvedValue({ movement_id: 7101 })
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload
+            }));
+
+            expect(result.success).toBe(true);
+            expect(inventoryCommandService.createStockMovement).toHaveBeenCalledWith(
+                expect.objectContaining({ item_id: 11, quantity: 1 }),
+                12,
+                expect.any(Object)
+            );
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).toHaveBeenCalledWith({
+                tenantId: 'tenant-fnb-checkout-contract',
+                reason: 'pos_sale_stock_changed',
+                itemIds: [11]
+            });
+        });
+
+        it('publishes recipe ingredient and modifier IDs (not the finished item) for an F&B sale', async () => {
+            let createdTransaction = null;
+            const posRepository = {
+                getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                    item_id: 1,
+                    name: 'Burger',
+                    category: 'product',
+                    unit_of_measure: 'pc',
+                    current_stock: 0,
+                    cost_per_unit: 50,
+                    default_sale_price: 100,
+                    vat_type: 'vatable',
+                    fnbModifierGroups: [{
+                        modifier_group_id: 7,
+                        name: 'Cheese',
+                        display_name: 'Cheese',
+                        min_select: 1,
+                        max_select: 1,
+                        required: true,
+                        FnbItemModifierGroup: { is_required_override: null },
+                        options: [{
+                            modifier_option_id: 9,
+                            name: 'Cheddar',
+                            price_delta: 20,
+                            sku_item_id: 6,
+                            is_active: true,
+                            allergen_notes: ['milk']
+                        }]
+                    }]
+                }]),
+                listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+                    product_id: 1,
+                    ingredient_id: 5,
+                    quantity_required: 200,
+                    unit_of_measure: 'g',
+                    ingredient: {
+                        item_id: 5,
+                        name: 'Ground beef',
+                        current_stock: 10,
+                        unit_of_measure: 'kg',
+                        category: 'raw_material'
+                    }
+                }]),
+                findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+                getTerminalShiftById: jest.fn(),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-1952-RECIPE'),
+                getFnbTableById: jest.fn(),
+                createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                    createdTransaction = { pos_transaction_id: 1953, ...header, lines };
+                    return 1953;
+                }),
+                createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+                createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 91 } }),
+                settleFnbCheck: jest.fn(),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+                getTransactionById: jest.fn(async () => createdTransaction)
+            };
+            const inventoryCommandService = {
+                createStockMovement: jest.fn().mockResolvedValue({ movement_id: 7102 })
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: {
+                    idempotency_key: 'pos-1952-recipe-sale',
+                    terminal_id: 'TERM-01',
+                    location_id: 3,
+                    document_context: 'non_fiscal',
+                    payment_type: 'cash',
+                    order_method: 'dine_in',
+                    fnb_guest_count: 2,
+                    lines: [{
+                        item_id: 1,
+                        quantity: 2,
+                        course: 'main',
+                        line_modifiers: [{ modifier_group_id: 7, modifier_option_id: 9 }]
+                    }]
+                }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).toHaveBeenCalledWith({
+                tenantId: 'tenant-fnb-checkout-contract',
+                reason: 'pos_sale_stock_changed',
+                itemIds: [5, 6]
+            });
+        });
+
+        it('publishes nothing when every line is stock-exempt', async () => {
+            let createdTransaction = null;
+            const posRepository = {
+                getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                    item_id: 1,
+                    name: 'Always Available Meal',
+                    category: 'product',
+                    unit_of_measure: 'serving',
+                    current_stock: 0,
+                    cost_per_unit: 40,
+                    default_sale_price: 100,
+                    vat_type: 'vatable',
+                    pos_always_available: true
+                }]),
+                listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+                findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+                getTerminalShiftById: jest.fn(),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-1952-EXEMPT'),
+                getFnbTableById: jest.fn(),
+                createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                    createdTransaction = { pos_transaction_id: 1954, ...header, lines };
+                    return 1954;
+                }),
+                createFnbServiceChargeSnapshot: jest.fn(),
+                settleFnbCheck: jest.fn(),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+                getTransactionById: jest.fn(async () => createdTransaction)
+            };
+            const inventoryCommandService = {
+                createStockMovement: jest.fn()
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: {
+                    idempotency_key: 'pos-1952-exempt-sale',
+                    terminal_id: 'TERM-01',
+                    location_id: 3,
+                    document_context: 'non_fiscal',
+                    payment_type: 'cash',
+                    order_method: 'pickup',
+                    lines: [{ item_id: 1, quantity: 2 }]
+                }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+            expect(publishCatalogChange).not.toHaveBeenCalled();
+        });
+
+        it('does not fail a committed sale when the publisher rejects', async () => {
+            const { posRepository, payload } = buildDirectSaleRepository();
+            const inventoryCommandService = {
+                createStockMovement: jest.fn().mockResolvedValue({ movement_id: 7103 })
+            };
+            const publishCatalogChange = jest.fn().mockRejectedValue(new Error('redis down'));
+            const useCase = buildCheckoutContractUseCase({
+                posRepository,
+                inventoryCommandService,
+                publishCatalogChange
+            });
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: { ...payload, idempotency_key: 'pos-1952-publisher-failure' }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(result.data.idempotent_replay).toBe(false);
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('defers publication with afterCommit for caller-owned checkout transactions', async () => {
+            const { posRepository, payload } = buildDirectSaleRepository();
+            const inventoryCommandService = {
+                createStockMovement: jest.fn().mockResolvedValue({ movement_id: 7104 })
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+            const callerTransaction = {
+                LOCK: { UPDATE: 'UPDATE' },
+                finished: false,
+                commit: jest.fn(),
+                rollback: jest.fn(),
+                afterCommit: jest.fn()
+            };
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: { ...payload, idempotency_key: 'pos-1952-caller-owned' },
+                transaction: callerTransaction
+            }));
+
+            expect(result.success).toBe(true);
+            expect(callerTransaction.commit).not.toHaveBeenCalled();
+            expect(callerTransaction.afterCommit).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).not.toHaveBeenCalled();
+
+            await callerTransaction.afterCommit.mock.calls[0][0]();
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).toHaveBeenCalledWith({
+                tenantId: 'tenant-fnb-checkout-contract',
+                reason: 'pos_sale_stock_changed',
+                itemIds: [11]
+            });
+        });
+
+        it('publishes nothing on idempotent checkout replay', async () => {
+            const existingTransaction = {
+                pos_transaction_id: 188,
+                invoice_number: 'INV-LEGACY-NON-FISCAL',
+                document_type: 'non_fiscal_slip',
+                document_context: 'non_fiscal',
+                idempotency_key: 'pos-1952-replay',
+                request_hash: hashPayload({
+                    terminal_id: 'TERM-01',
+                    location_id: 3,
+                    operator_session_id: null,
+                    order_method: 'pickup',
+                    payment_type: 'cash',
+                    service_fee_amount: null,
+                    fnb_check_id: null,
+                    fnb_table_id: null,
+                    fnb_table_label_snapshot: null,
+                    fnb_guest_count: null,
+                    fnb_server_id: null,
+                    restaurant_service_charge: {
+                        enabled: false,
+                        amount: null,
+                        label: 'Restaurant service charge',
+                        rate: 0,
+                        taxable: false,
+                        source: 'settings'
+                    },
+                    discount_profile_name: null,
+                    discount_rate: null,
+                    discount_amount: 0,
+                    customer_name: null,
+                    customer_email: null,
+                    customer_phone: null,
+                    buyer_name: null,
+                    buyer_tin: null,
+                    buyer_business_style: null,
+                    buyer_address: null,
+                    special_instructions: null,
+                    discount_beneficiary: null,
+                    governed_discount: null,
+                    lines: [{
+                        sequence: 0,
+                        line_ref: null,
+                        item_id: 1,
+                        quantity: 1,
+                        sale_price: null,
+                        price_override_reason: null,
+                        course: null,
+                        line_modifiers: [],
+                        special_instructions: null,
+                        kitchen_station_id: null,
+                        scan_metadata: null
+                    }]
+                }),
+                status: 'completed',
+                lines: []
+            };
+            const posRepository = {
+                getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(existingTransaction)
+            };
+            const inventoryCommandService = {
+                createStockMovement: jest.fn()
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                userId: 12,
+                user: { user_id: 12, permissions: [] },
+                payload: {
+                    idempotency_key: 'pos-1952-replay',
+                    terminal_id: 'term-01',
+                    location_id: 3,
+                    document_context: 'non_fiscal',
+                    payment_type: 'cash',
+                    order_method: 'pickup',
+                    lines: [{ item_id: 1, quantity: 1 }]
+                }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(result.data.idempotent_replay).toBe(true);
+            expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+            expect(publishCatalogChange).not.toHaveBeenCalled();
+        });
+
+        it('publishes pos_void_stock_changed with reversed IDs after a void commits', async () => {
+            const transactionRow = {
+                pos_transaction_id: 1977,
+                invoice_number: 'INV-1952-VOID',
+                document_type: 'non_fiscal_slip',
+                status: 'completed',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                cashier_id: 12,
+                shift_id: 901,
+                total_amount: 180,
+                payment_type: 'cash',
+                payment_status: 'paid'
+            };
+            const posRepository = {
+                getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+                getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901 })),
+                listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                    movement_id: 9601,
+                    item_id: 11,
+                    quantity: -1,
+                    location_id: 3
+                }]),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createPosTransactionAdjustment: jest.fn(async (adjustment) => ({ ...adjustment })),
+                updateTransactionLifecycle: jest.fn(async (id, lifecycle) => ({ ...transactionRow, ...lifecycle }))
+            };
+            const inventoryCommandService = {
+                returnStockForVoidedSale: jest.fn().mockResolvedValue({ movement_id: 9602 })
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                posTransactionId: 1977,
+                payload: {
+                    reason: 'Customer changed mind',
+                    shift_id: 901,
+                    terminal_id: 'TERM-01'
+                },
+                user: { user_id: 12 }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(inventoryCommandService.returnStockForVoidedSale).toHaveBeenCalledWith(
+                expect.objectContaining({ item_id: 11, quantity: 1 }),
+                12,
+                expect.any(Object)
+            );
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).toHaveBeenCalledWith({
+                tenantId: 'tenant-fnb-checkout-contract',
+                reason: 'pos_void_stock_changed',
+                itemIds: [11]
+            });
+        });
+
+        it('reverses and publishes exactly once across an idempotent void replay', async () => {
+            const transactionRow = {
+                pos_transaction_id: 1978,
+                invoice_number: 'INV-1952-VOID-REPLAY',
+                document_type: 'non_fiscal_slip',
+                status: 'completed',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                cashier_id: 12,
+                shift_id: 901,
+                total_amount: 180,
+                payment_type: 'cash',
+                payment_status: 'paid'
+            };
+            let persistedAdjustment = null;
+            const posRepository = {
+                getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+                getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901 })),
+                listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                    movement_id: 9701,
+                    item_id: 11,
+                    quantity: -1,
+                    location_id: 3
+                }]),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                findPosTransactionAdjustmentByIdempotencyKey: jest.fn(async () => persistedAdjustment),
+                createPosTransactionAdjustment: jest.fn(async (adjustment) => {
+                    persistedAdjustment = { ...adjustment };
+                    return persistedAdjustment;
+                }),
+                updateTransactionLifecycle: jest.fn(async (id, lifecycle) => ({ ...transactionRow, ...lifecycle }))
+            };
+            const inventoryCommandService = {
+                returnStockForVoidedSale: jest.fn().mockResolvedValue({ movement_id: 9702 })
+            };
+            const publishCatalogChange = jest.fn().mockResolvedValue(true);
+            const useCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+            const voidInput = () => ({
+                posTransactionId: 1978,
+                payload: {
+                    reason: 'Duplicate void tap',
+                    shift_id: 901,
+                    terminal_id: 'TERM-01'
+                },
+                user: { user_id: 12 }
+            });
+
+            const first = await runInTenantContext(() => useCase(voidInput()));
+            const second = await runInTenantContext(() => useCase(voidInput()));
+
+            expect(first.success).toBe(true);
+            expect(second.success).toBe(true);
+            expect(second.data.idempotent_replay).toBe(true);
+            expect(inventoryCommandService.returnStockForVoidedSale).toHaveBeenCalledTimes(1);
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not fail a committed void when the publisher rejects', async () => {
+            const transactionRow = {
+                pos_transaction_id: 1979,
+                invoice_number: 'INV-1952-VOID-FAILURE',
+                document_type: 'non_fiscal_slip',
+                status: 'completed',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                cashier_id: 12,
+                shift_id: 901,
+                total_amount: 180,
+                payment_type: 'cash',
+                payment_status: 'paid'
+            };
+            const posRepository = {
+                getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+                getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901 })),
+                listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                    movement_id: 9801,
+                    item_id: 11,
+                    quantity: -1,
+                    location_id: 3
+                }]),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                createPosTransactionAdjustment: jest.fn(async (adjustment) => ({ ...adjustment })),
+                updateTransactionLifecycle: jest.fn(async (id, lifecycle) => ({ ...transactionRow, ...lifecycle }))
+            };
+            const inventoryCommandService = {
+                returnStockForVoidedSale: jest.fn().mockResolvedValue({ movement_id: 9802 })
+            };
+            const publishCatalogChange = jest.fn().mockRejectedValue(new Error('redis down'));
+            const useCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService, publishCatalogChange });
+
+            const result = await runInTenantContext(() => useCase({
+                posTransactionId: 1979,
+                payload: {
+                    reason: 'Publisher outage during void',
+                    shift_id: 901,
+                    terminal_id: 'TERM-01'
+                },
+                user: { user_id: 12 }
+            }));
+
+            expect(result.success).toBe(true);
+            expect(publishCatalogChange).toHaveBeenCalledTimes(1);
+        });
     });
 });

@@ -303,13 +303,15 @@ Phase 225 wired the API; Phase 226 puts a management surface over it inside the 
 ### Where it lives, and who sees it
 
 A third "Delivery Runs" tab sits alongside Active Queue / Order History in the terminal's incoming-
-orders workspace, **retail mode only** -- gated on
-`normalizeWorkflowMode(workflowMode) === 'retail'`, the same check `orderFulfillmentUi.js` already
-uses for the `packed` handoff step. This is a UI-visibility gate only: the run API itself stays
-mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see above), so an F&B
-tenant is not locked out at the data layer, only from this particular tab. If the workflow mode
-flips off retail while the tab is open, the view falls back to Active Queue automatically rather
-than continuing to render a tab that no longer applies.
+orders workspace, **in retail and F&B modes** -- gated on the workflow mode being delivery-run-
+capable (`retail` or `fnb`, #1924), the same family of check `orderFulfillmentUi.js` already uses
+for the `packed` handoff step, minus the F&B exclusion. This is a UI-visibility gate only: the run
+API itself stays mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see
+above), and the packed dispatch precondition below stays retail-only, so an F&B tenant dispatches
+without ever needing `packed`. Services and every other workflow mode stay excluded from this tab.
+If the workflow mode flips to an unsupported mode while the tab is open, the view falls back to
+Active Queue automatically rather than continuing to render a tab that no longer applies; a
+retail <-> F&B flip keeps the run surface open.
 
 ### What the tab does, and does not, do
 
@@ -369,7 +371,7 @@ list, not the full one -- an order selected before the filter was applied is nei
 nor auto-dropped while hidden; a hint names how many selections are currently hidden, and clearing
 the filter restores them.
 
-Retail-mode gated identically to the tab above, and cleared by the same mode-flip reset effect. The
+Delivery-run-mode gated identically to the tab above (#1924: retail and F&B), and cleared by the same mode-flip reset effect. The
 filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
 (`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
 
