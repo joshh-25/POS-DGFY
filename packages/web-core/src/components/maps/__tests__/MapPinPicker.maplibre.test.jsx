@@ -246,6 +246,34 @@ describe('MapPinPicker MapLibre behavior', () => {
     }));
   });
 
+  it('biases address search to the current map position', async () => {
+    // Deliberately NOT DEFAULT_CENTER (10.7202, 122.5621) -- using those would pass even if
+    // the component ignored the props and fell through to the default camera position.
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('/address-search?')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ data: { results: [] } })
+        });
+      }
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ data: {} }) });
+    });
+
+    render(<MapPinPicker latitude={11.1069} longitude={122.6413} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search business address' }), 'Poblacion');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+
+    await waitFor(() => {
+      const call = globalThis.fetch.mock.calls.find(([url]) => String(url).includes('/address-search?'));
+      expect(call).toBeDefined();
+      const params = new URL(String(call[0]), 'http://localhost').searchParams;
+      expect(params.get('query')).toBe('Poblacion');
+      expect(params.get('lat')).toBe('11.1069');
+      expect(params.get('lon')).toBe('122.6413');
+    });
+  });
+
   it('initializes MapLibre with the Storefront basemap over Iloilo City', async () => {
     render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
 

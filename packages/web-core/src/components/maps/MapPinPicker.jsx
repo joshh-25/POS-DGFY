@@ -254,7 +254,17 @@ export default function MapPinPicker({
     setIsSearchingAddress(true);
     setAddressSearchError('');
     try {
+      // Bias to whatever the map is currently looking at. Without this a nationwide index
+      // ranks a Metro Manila "Poblacion" above the one the merchant is standing in.
+      const centre = mapRef.current?.getCenter?.();
+      const biasLat = parseMapCoordinate(latitude) ?? (centre ? centre.lat : null);
+      const biasLng = parseMapCoordinate(longitude) ?? (centre ? centre.lng : null);
+
       const params = new URLSearchParams({ query, limit: '8' });
+      if (biasLat != null && biasLng != null) {
+        params.set('lat', String(biasLat));
+        params.set('lon', String(biasLng));
+      }
       const response = await fetch(`/api/v1/geo/address-search?${params.toString()}`, {
         headers: { Accept: 'application/json' },
         credentials: 'include'
