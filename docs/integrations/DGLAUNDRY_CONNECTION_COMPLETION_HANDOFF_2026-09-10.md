@@ -117,6 +117,62 @@ No owner may claim the connection is live while JWKS is 503, PR #20 checks are
 admission-failing, the QA fixture/configuration is absent, or hosted scenario
 evidence is missing. Public admission and payments remain disabled.
 
+## Non-negotiable post-merge release gate
+
+Merging the documentation handoff does not complete deployment. This gate is
+mandatory for the DGLaundry connection and is a release **no-go** until every
+item below has a named owner and terminal evidence in issue #519. A generic
+acknowledgment, a successful documentation PR, or a green deploy-health probe
+does not satisfy this gate.
+
+### Blocking conditions
+
+The release owner must keep DGLaundry disconnected and must not enable staff
+access, the customer storefront, or online payments if any condition below is
+true:
+
+- `GET https://api.dgfy.ph/oidc/jwks` is not HTTP 200 with a valid active key
+  set, or key rotation/revocation evidence is missing.
+- The exact browser callback, issuer, audience, PAR, PKCE S256, state/nonce,
+  logout, switching, revocation, or `private_key_jwt` machine-client checks
+  have not passed.
+- The real proxy-path P-256/Ed25519 signature, replay, idempotency, ordering,
+  retry, dead-letter, company, location, or branch-isolation tests have not
+  passed.
+- A reviewed QA fixture does not cover every proposed branch, or catalog,
+  availability, quote, order, fulfillment, receipt, and sandbox payment/refund
+  evidence is incomplete.
+- DGLaundry PR #20 has queued, zero-step, admission-failed, skipped-required,
+  or non-terminal checks. The CI billing restriction must be resolved or an
+  approved isolated runner must execute the required jobs.
+- The hosted qualification stack lacks isolated data/secrets/queues, TLS and
+  callback routing, backup/restore proof, alert delivery, kill-switch proof, or
+  an executable rollback command.
+- The six-suite acceptance run has not executed all 41 scenario IDs against
+  `https://laundry.surebizcorp.com` with exact application SHAs, configuration
+  revision, contract hashes, and the frozen approved-branch-list hash.
+
+### Required owner reply
+
+The DGFY developer, identity owner, CI administrator, DevOps/hosting owner,
+joint QA owner, and release owner must each reply in issue #519 using this
+format, even when blocked:
+
+`task | owner | DGFY SHA | DGLaundry SHA | environment | evidence | pass/fail/blocked | next action`
+
+Blocked replies must identify the dependency and the owner who can clear it;
+they must not be recorded as complete. Any failed scenario creates a linked
+fix PR or operations task and requires a rerun of the affected suite.
+
+### Activation rule
+
+Only after all blocking conditions are cleared may the release owner freeze the
+individually validated approved-branch allowlist, run the restricted sandbox
+qualification and recovery checks, obtain separate authorization for one
+capped live payment/refund/receipt test, and enable all approved branches in a
+single release-controlled revision. Until then, the connection remains
+`connection: disabled` and no production or live-payment claim is permitted.
+
 ## Target values and contract identifiers (ratification required)
 
 | Surface | Required value | Authority/status |
