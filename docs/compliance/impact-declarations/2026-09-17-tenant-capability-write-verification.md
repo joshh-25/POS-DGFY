@@ -11,8 +11,8 @@ verification_evidence: packages/web-core/src/pages/__tests__/TenantManager.capab
 rollback_note: Frontend-only behavior change plus additive tests. Revert apps/dgfy-ims/Pages/admin/TenantManager.jsx to restore unconditional success toasts; no migration, API, or persisted-state rollback is involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-1923-TENANT-CAPABILITY-WRITE-VERIFICATION
+preflight_run_at: 2026-09-17T11:39:12.212Z
+preflight_request_ref: PREFLIGHT-35216437101-2026-09-17-TENANT-CAPABILITY-WRITE-VERIFICATION
 ---
 
 # Tenant capability write verification in the Admin Portal (#1923)
