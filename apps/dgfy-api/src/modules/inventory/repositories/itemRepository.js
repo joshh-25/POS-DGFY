@@ -1058,7 +1058,27 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction, options = 
         );
     }
 
-    if (wizardData.ingredients && wizardData.ingredients.length > 0) {
+    // #1952: an explicitly supplied ingredients array is authoritative. An explicit
+    // empty array clears stale composition rows (the wizard sends [] when the recipe
+    // is removed); an omitted field preserves existing rows.
+    if (hasOwn(wizardData, 'ingredients') && Array.isArray(wizardData.ingredients)) {
+        if (wizardData.ingredients.length === 0) {
+            promises.push(
+                ProductComposition.destroy({
+                    where: { product_id: itemId, composition_type: 'ingredient' },
+                    transaction
+                })
+            );
+
+            const Item = dbStore.get('Item');
+            promises.push(
+                Item.update({
+                    nesting_level: 0,
+                    max_child_depth: 0
+                }, { where: buildVisibleWhere({ item_id: itemId }), transaction })
+            );
+            promises.push(inventoryRepositoryDependencies.invalidateDependencyGraphCache());
+        } else {
         const ingredientIds = wizardData.ingredients
             .filter((ingredient) => ingredient.item_id)
             .map((ingredient) => parseInt(ingredient.item_id, 10));
@@ -1112,9 +1132,11 @@ const saveRelatedWizardData = async (itemId, wizardData, transaction, options = 
             );
             promises.push(inventoryRepositoryDependencies.invalidateDependencyGraphCache());
         }
+        }
     }
 
-    if (wizardData.packaging_items && wizardData.packaging_items.length > 0) {
+    // #1952: same authoritativeness rule for packaging — explicit [] clears rows.
+    if (hasOwn(wizardData, 'packaging_items') && Array.isArray(wizardData.packaging_items)) {
         promises.push(
             ProductComposition.destroy({
                 where: { product_id: itemId, composition_type: 'packaging' },
@@ -1918,8 +1940,6 @@ export const itemRepository = {
                     labor_cost,
                     overhead_cost,
                     additional_packaging_cost,
-                    ingredients,
-                    packaging_items,
                     nutritional_info,
                     allergens,
                     may_contain_allergens,
@@ -1929,6 +1949,11 @@ export const itemRepository = {
                     quality_control,
                     regulatory_compliance
                 };
+                // #1952: preserve omission — only pass composition arrays when the
+                // caller explicitly supplied them, so an omitted field never clears
+                // persisted rows while an explicit [] does.
+                if (hasOwn(itemData, 'ingredients')) wizardData.ingredients = ingredients;
+                if (hasOwn(itemData, 'packaging_items')) wizardData.packaging_items = packaging_items;
 
                 await saveRelatedWizardData(item.item_id, wizardData, transaction, {
                     clearManufacturingProperties
@@ -2198,8 +2223,6 @@ export const itemRepository = {
                     labor_cost,
                     overhead_cost,
                     additional_packaging_cost,
-                    ingredients,
-                    packaging_items,
                     nutritional_info,
                     allergens,
                     may_contain_allergens,
@@ -2209,6 +2232,11 @@ export const itemRepository = {
                     quality_control,
                     regulatory_compliance
                 };
+                // #1952: preserve omission — only pass composition arrays when the
+                // caller explicitly supplied them, so an omitted field never clears
+                // persisted rows while an explicit [] does.
+                if (hasOwn(itemData, 'ingredients')) wizardData.ingredients = ingredients;
+                if (hasOwn(itemData, 'packaging_items')) wizardData.packaging_items = packaging_items;
 
                 await saveRelatedWizardData(itemId, wizardData, transaction, {
                     clearManufacturingProperties

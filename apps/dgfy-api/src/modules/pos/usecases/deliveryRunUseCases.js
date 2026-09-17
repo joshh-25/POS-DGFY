@@ -1765,6 +1765,35 @@ export const buildDispatchDeliveryRunUseCase = ({
                     .map((job) => job.pos_transaction_id)
             };
 
+            // Phase 338 (#1927): additive per-member warning collection. The legacy
+            // `loading_warning` above only covers members dispatched by this exact call and
+            // collapses `pending`/`not_loaded` into one bucket, so neither the POS UI nor the
+            // mobile dispatcher (dgfy-mobile#177) can render which outstanding members need
+            // attention without re-fetching the run. `warnings` names every run member whose
+            // dispatch-time loading state is still non-terminal (`pending`, `not_loaded`, or
+            // `exception`) -- deliberately the whole dispatch-time member snapshot, not just
+            // this call's newly transitioned members, per #1927's "every member left in a
+            // non-terminal loading state" wording. This is a superset of ADR 0034's
+            // warn-only clause (dispatched orders in those categories are always included),
+            // so no ADR change is needed. Warn-only: building this array never blocks or
+            // reclassifies `dispatched`/`skipped`/`failed`, and it is persisted as part of
+            // the replay payload below so same-key replays return the identical array.
+            const warnings = memberJobs
+                .map((job) => {
+                    const loadingState = String(job.loading_state || 'pending').trim().toLowerCase() || 'pending';
+                    const entry = {
+                        pos_transaction_id: job.pos_transaction_id,
+                        loading_state: loadingState
+                    };
+                    if (loadingState === 'exception') {
+                        entry.exception_reason = job.loading_exception_reason ?? null;
+                    }
+                    return { entry, unresolved: loadingState !== 'loaded' };
+                })
+                .filter(({ unresolved }) => unresolved)
+                .map(({ entry }) => entry)
+                .sort((left, right) => left.pos_transaction_id - right.pos_transaction_id);
+
             await posRepository.createAuditLog({
                 user_id: cashierId,
                 entity_type: 'delivery_run',
@@ -1778,6 +1807,7 @@ export const buildDispatchDeliveryRunUseCase = ({
                     failed_pos_transaction_ids: failed.map((entry) => entry.pos_transaction_id),
                     loading_warning_unloaded_count: loadingWarning.unloaded_pos_transaction_ids.length,
                     loading_warning_exception_count: loadingWarning.exception_pos_transaction_ids.length,
+                    warnings_count: warnings.length,
                     previous_status: previousRunStatus,
                     current_status: currentRunStatus
                 },
@@ -1808,6 +1838,7 @@ export const buildDispatchDeliveryRunUseCase = ({
                 skipped,
                 failed,
                 loading_warning: loadingWarning,
+                warnings,
                 run_status: {
                     previous: previousRunStatus,
                     current: currentRunStatus,

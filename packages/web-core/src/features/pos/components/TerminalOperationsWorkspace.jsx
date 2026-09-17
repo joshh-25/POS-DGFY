@@ -78,6 +78,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getDeliveryPartnerLogo } from '../../../utils/deliveryPartnerAssets.js';
 import { Switch } from '@/components/ui/switch';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
@@ -9079,12 +9080,26 @@ function SettingsWorkspace({
             </div>
             {(Array.isArray(storefrontForm.storefrontDeliveryPartners) ? storefrontForm.storefrontDeliveryPartners : []).map((row, index) => (
               <div key={`sf-delivery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[160px_1fr_1fr_auto]">
-                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" value={row.partner || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'partner', event.target.value)}>
-                  <option value="grab">grab</option>
-                  <option value="foodpanda">foodpanda</option>
-                  <option value="lalamove">lalamove</option>
-                  <option value="custom">custom</option>
-                </select>
+                <div className="relative min-w-0">
+                  {getDeliveryPartnerLogo(row.partner) ? (
+                    <img
+                      src={getDeliveryPartnerLogo(row.partner)}
+                      alt=""
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 z-10 h-5 w-5 -translate-y-1/2 rounded object-contain"
+                    />
+                  ) : (
+                    <span aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded bg-slate-100 text-xs font-semibold uppercase text-slate-500">
+                      {String(row.partner || '?').charAt(0)}
+                    </span>
+                  )}
+                  <select aria-label={`Delivery partner ${index + 1}`} className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-3 text-sm" value={row.partner || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'partner', event.target.value)}>
+                    <option value="grab">grab</option>
+                    <option value="foodpanda">foodpanda</option>
+                    <option value="lalamove">lalamove</option>
+                    <option value="custom">custom</option>
+                  </select>
+                </div>
                 <Input value={row.label || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'label', event.target.value)} placeholder="Display label" />
                 <Input value={row.url || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'url', event.target.value)} placeholder="https://partner.example.com" />
                 <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontDeliveryPartners', index, { partner: 'grab', label: '', url: '' })}><Trash2 className="h-4 w-4" /></Button>

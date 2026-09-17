@@ -1,15 +1,14 @@
 import React from 'react';
 import { Clock3, Mail, MapPin, Phone } from 'lucide-react';
 
+import {
+  getDeliveryPartnerBrandColor,
+  getDeliveryPartnerLogo
+} from '../../../../../../packages/web-core/src/utils/deliveryPartnerAssets.js';
 import { sanitizeExternalLink } from '../../../shared/utils/externalLinks.js';
 
 const STOREFRONT_FOOTER_SOCIAL_LABELS = ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'];
 const STOREFRONT_FOOTER_CONTACT_LABELS = ['Call', 'Email'];
-const DELIVERY_PARTNER_LOGOS = Object.freeze({
-  grab: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSboB_YmMRIM3d5SN4mxXvUZmG5j0kbI1N2hg&s',
-  foodpanda: 'https://cdn.worldvectorlogo.com/logos/foodpanda-logo.svg',
-  lalamove: 'https://images.seeklogo.com/logo-png/44/1/lalamove-logo-png_seeklogo-447373.png'
-});
 
 export function formatFollowersLabel(count) {
   const normalized = Math.max(0, Number(count || 0));
@@ -78,7 +77,8 @@ export function getDeliveryPlatformLinks(deliveryPartners = []) {
         partner,
         label: String(entry?.label || (partner === 'foodpanda' ? 'foodpanda' : partner.charAt(0).toUpperCase() + partner.slice(1))).trim(),
         href,
-        logoUrl: DELIVERY_PARTNER_LOGOS[partner] || ''
+        logoUrl: getDeliveryPartnerLogo(partner),
+        brandColor: getDeliveryPartnerBrandColor(partner)
       };
     })
     .filter(Boolean);

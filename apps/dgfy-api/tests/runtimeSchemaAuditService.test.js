@@ -81,7 +81,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260824000001-create-pos-cashier-attendance-operator-sessions.cjs' },
         { name: '20260824000002-add-pos-attendance-idempotency.cjs' },
         { name: '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs' },
-        { name: '20260825000001-add-pos-operator-protected-operation-lease.cjs' }
+        { name: '20260825000001-add-pos-operator-protected-operation-lease.cjs' },
+        { name: '20260904000001-create-pos-discount-beneficiaries.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -131,7 +132,8 @@ const buildHealthySequelizeMock = () => ({
                     folder_id: {},
                     name: {},
                     show_in_pos_filter: {},
-                    is_active: {}
+                    is_active: {},
+                    sort_order: {}
                 },
                 // #1124/#1469: added alongside src/services/runtimeSchemaAuditService.js's
                 // Phase 257 (#1318) required-columns entry -- this fixture fell out of sync with

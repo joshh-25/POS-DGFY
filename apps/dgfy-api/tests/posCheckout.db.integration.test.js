@@ -478,11 +478,24 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     it('persists multiple statutory beneficiaries and their line allocations', async () => {
         const cashier = await createCashier();
+        const approver = await models.User.create({
+            username: `senior_multi_approver_${crypto.randomUUID().slice(0, 8)}`,
+            email: `senior_multi_approver_${crypto.randomUUID().slice(0, 8)}@pos.test`,
+            password_hash: 'test-hash',
+            pos_approval_pin_hash: await bcrypt.hash('2468', 4),
+            role: 'manager',
+            is_active: true
+        });
         const product = await createFinishedGood({ current_stock: 10, senior_pwd_discount_eligible: true });
         const checkoutResult = await checkoutAsCashier(cashier, {
             idempotency_key: `idem-multi-beneficiary-${crypto.randomUUID()}`,
             payment_type: 'cash',
             order_method: 'dine_in',
+            discount_approval: {
+                approver_user_id: approver.user_id,
+                manager_pin: '2468',
+                discount_type: 'senior'
+            },
             governed_discount: {
                 type: 'senior',
                 beneficiaries: [

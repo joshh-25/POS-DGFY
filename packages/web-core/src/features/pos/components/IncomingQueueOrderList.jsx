@@ -49,7 +49,7 @@ import {
 // checkbox selection can never disagree about which cards are actionable.
 export default function IncomingQueueOrderList({
   orders = [],
-  isRetailMode = false,
+  isDeliveryRunMode = false,
   selectedOrderIds = new Set(),
   onToggleSelection = () => {},
   incomingOrderActionState = {},
@@ -117,7 +117,7 @@ export default function IncomingQueueOrderList({
         <OrderCard
           key={`incoming-workspace-${order.pos_transaction_id}`}
           order={order}
-          isRetailMode={isRetailMode}
+          isDeliveryRunMode={isDeliveryRunMode}
           selected={selectedOrderIds.has(Number(order.pos_transaction_id))}
           onToggleSelection={onToggleSelection}
           actionLoading={incomingOrderActionState?.[order.pos_transaction_id] || ''}
@@ -148,7 +148,7 @@ export default function IncomingQueueOrderList({
 
 function OrderCard({
   order,
-  isRetailMode,
+  isDeliveryRunMode,
   selected,
   onToggleSelection,
   actionLoading,
@@ -427,7 +427,7 @@ function OrderCard({
                 <GripVertical className="h-4 w-4" />
               </span>
             ) : null}
-            {isRetailMode ? (
+            {isDeliveryRunMode ? (
               <QueueOrderSelectCheckbox
                 orderId={orderId}
                 checked={selected}

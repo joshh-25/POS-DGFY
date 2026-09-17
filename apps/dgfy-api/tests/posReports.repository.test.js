@@ -12,7 +12,8 @@ const mockHandoffFindAll = jest.fn();
 const mockSequelize = {
     fn: jest.fn((...args) => ({ fn: args })),
     col: jest.fn((name) => ({ col: name })),
-    where: jest.fn((left, right) => ({ where: [left, right] }))
+    where: jest.fn((left, right) => ({ where: [left, right] })),
+    literal: jest.fn((value) => ({ literal: value }))
 };
 
 const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll, sequelize: mockSequelize };
@@ -763,7 +764,7 @@ describe('posRepository reports analytics', () => {
         expect(where[Op.and]).toEqual(expect.arrayContaining([
             expect.objectContaining({ [Op.or]: expect.arrayContaining([
                 { payment_type: 'cash' },
-                expect.objectContaining({ where: expect.any(Array) })
+                expect.objectContaining({ literal: expect.stringContaining('JSON_SEARCH') })
             ]) })
         ]));
         expect(where[Op.or]).toEqual(expect.arrayContaining([

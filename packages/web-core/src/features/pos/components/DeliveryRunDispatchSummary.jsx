@@ -14,24 +14,46 @@ export default function DeliveryRunDispatchSummary({ result = null }) {
   const dispatched = Array.isArray(result.dispatched) ? result.dispatched : [];
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   const failed = Array.isArray(result.failed) ? result.failed : [];
+  // Phase 338 (#1927): prefer the canonical per-member `warnings` array; fall back to the
+  // legacy `loading_warning` buckets for responses predating it. The legacy buckets collapse
+  // `pending`/`not_loaded` and carry no exception reasons, so the adapter labels them with the
+  // same "not loaded/pending" wording the pre-338 panel used.
+  const canonicalWarnings = Array.isArray(result.warnings) ? result.warnings : null;
   const loadingWarning = result.loading_warning || {};
   const unloaded = Array.isArray(loadingWarning.unloaded_pos_transaction_ids)
     ? loadingWarning.unloaded_pos_transaction_ids : [];
   const exceptions = Array.isArray(loadingWarning.exception_pos_transaction_ids)
     ? loadingWarning.exception_pos_transaction_ids : [];
+  const warningEntries = canonicalWarnings
+    ? canonicalWarnings.map((entry) => ({
+      posTransactionId: entry.pos_transaction_id,
+      loadingState: String(entry.loading_state || 'pending').trim().toLowerCase() || 'pending',
+      exceptionReason: entry.exception_reason ?? null
+    }))
+    : [
+      ...unloaded.map((id) => ({ posTransactionId: id, loadingState: 'not loaded/pending', exceptionReason: null })),
+      ...exceptions.map((id) => ({ posTransactionId: id, loadingState: 'exception', exceptionReason: null }))
+    ];
 
-  if (dispatched.length === 0 && skipped.length === 0 && failed.length === 0 && unloaded.length === 0 && exceptions.length === 0) return null;
+  if (dispatched.length === 0 && skipped.length === 0 && failed.length === 0 && warningEntries.length === 0) return null;
+
+  const warningIds = warningEntries.map((entry) => `#${entry.posTransactionId}`).join(', ');
 
   return (
     <div className="mt-3 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <p className="text-xs font-black uppercase tracking-wide text-slate-600">Last dispatch result</p>
 
-      {unloaded.length > 0 || exceptions.length > 0 ? (
+      {warningEntries.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Loading verification warning: {unloaded.length > 0 ? `${unloaded.length} not loaded/pending` : ''}
-          {unloaded.length > 0 && exceptions.length > 0 ? '; ' : ''}
-          {exceptions.length > 0 ? `${exceptions.length} exception(s)` : ''} — dispatch was not blocked.
-          <div className="mt-1">{[...unloaded, ...exceptions].map((id) => `#${id}`).join(', ')}</div>
+          Loading verification warning: {warningEntries.length} outstanding — dispatch was not blocked.
+          <div className="mt-1">{warningIds}</div>
+          <ul className="mt-1 space-y-1">
+            {warningEntries.map((entry) => (
+              <li key={entry.posTransactionId} className="text-xs text-amber-800">
+                Order #{entry.posTransactionId} — {formatLoadingWarningState(entry)}
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
@@ -72,6 +94,18 @@ export default function DeliveryRunDispatchSummary({ result = null }) {
       ) : null}
     </div>
   );
+}
+
+function formatLoadingWarningState(entry) {
+  if (entry.loadingState === 'exception') {
+    return entry.exceptionReason
+      ? `loading exception: ${entry.exceptionReason}`
+      : 'loading exception';
+  }
+  if (entry.loadingState === 'not_loaded') return 'not loaded';
+  // Legacy `loading_warning` adapter label (pending/not_loaded were one bucket there).
+  if (entry.loadingState === 'not loaded/pending') return 'not loaded/pending';
+  return `loading ${entry.loadingState}`;
 }
 
 function ResultGroup({ icon, label, entries, tone }) {
