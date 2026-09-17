@@ -3295,4 +3295,142 @@ describe('inventory itemRepository', () => {
       await expect(itemRepository.getItems({ page: '1', limit: '20' })).rejects.toThrow('connection reset');
     });
   });
+
+  describe('#1952 — explicit composition arrays are authoritative on update', () => {
+    const buildUpdateHarness = ({ itemDataOverrides = {}, productComposition = null, itemUpdate = null } = {}) => {
+      const itemRecord = {
+        item_id: 715,
+        sku_code: 'FIN-715',
+        current_stock: 13,
+        fifo_enabled: false,
+        status: 'active',
+        category: 'product',
+        wizard_metadata: null,
+        update: jest.fn().mockResolvedValue(true)
+      };
+      const Item = {
+        findOne: jest.fn().mockResolvedValue(itemRecord),
+        findAll: jest.fn().mockResolvedValue([]),
+        update: itemUpdate || jest.fn().mockResolvedValue([1])
+      };
+      const ProductComposition = productComposition || {
+        destroy: jest.fn().mockResolvedValue(1),
+        bulkCreate: jest.fn().mockResolvedValue([])
+      };
+      const transaction = {
+        LOCK: { UPDATE: 'UPDATE' },
+        commit: jest.fn().mockResolvedValue(true),
+        rollback: jest.fn().mockResolvedValue(true),
+        finished: null
+      };
+      const sequelize = {
+        transaction: jest.fn().mockResolvedValue(transaction)
+      };
+
+      inventoryRepositoryDependencies.invalidateDependencyGraphCache = jest.fn().mockResolvedValue();
+      jest.spyOn(itemRepository, 'getItemById').mockResolvedValue({ item_id: 715, name: 'Finished Pie' });
+      jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-composition-1952' });
+      jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+        if (name === 'Item') return Item;
+        if (name === 'sequelize') return sequelize;
+        if (name === 'ProductComposition') return ProductComposition;
+        return {};
+      });
+
+      return { itemRecord, Item, ProductComposition, transaction };
+    };
+
+    it('explicit empty ingredients and packaging arrays clear persisted rows, reset nesting, and invalidate the cache', async () => {
+      const { Item, ProductComposition, transaction } = buildUpdateHarness();
+
+      await itemRepository.updateItem(715, {
+        name: 'Finished Pie',
+        ingredients: [],
+        packaging_items: []
+      }, 7);
+
+      expect(ProductComposition.destroy).toHaveBeenCalledTimes(2);
+      expect(ProductComposition.destroy).toHaveBeenCalledWith({
+        where: { product_id: 715, composition_type: 'ingredient' },
+        transaction
+      });
+      expect(ProductComposition.destroy).toHaveBeenCalledWith({
+        where: { product_id: 715, composition_type: 'packaging' },
+        transaction
+      });
+      expect(Item.update).toHaveBeenCalledWith(
+        { nesting_level: 0, max_child_depth: 0 },
+        expect.objectContaining({ transaction })
+      );
+      expect(inventoryRepositoryDependencies.invalidateDependencyGraphCache).toHaveBeenCalled();
+      expect(transaction.commit).toHaveBeenCalled();
+      expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('omitted composition fields preserve existing rows, nesting, and cache', async () => {
+      const { Item, ProductComposition, transaction } = buildUpdateHarness();
+
+      await itemRepository.updateItem(715, { name: 'Finished Pie' }, 7);
+
+      expect(ProductComposition.destroy).not.toHaveBeenCalled();
+      expect(ProductComposition.bulkCreate).not.toHaveBeenCalled();
+      expect(Item.update).not.toHaveBeenCalled();
+      expect(inventoryRepositoryDependencies.invalidateDependencyGraphCache).not.toHaveBeenCalled();
+      expect(transaction.commit).toHaveBeenCalled();
+      expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('non-empty ingredients still replace rows with validation, nesting, and cache invalidation', async () => {
+      inventoryRepositoryDependencies.validateComposition = jest.fn().mockResolvedValue({
+        valid: true,
+        nestingLevel: 2,
+        errors: []
+      });
+      const { Item, ProductComposition, transaction } = buildUpdateHarness();
+      Item.findAll.mockResolvedValue([{ item_id: 5, category: 'raw_material' }]);
+
+      await itemRepository.updateItem(715, {
+        name: 'Finished Pie',
+        ingredients: [{ item_id: 5, quantity: 2, unit_of_measure: 'kg' }]
+      }, 7);
+
+      expect(inventoryRepositoryDependencies.validateComposition).toHaveBeenCalledWith(715, [5]);
+      expect(ProductComposition.destroy).toHaveBeenCalledWith({
+        where: { product_id: 715, composition_type: 'ingredient' },
+        transaction
+      });
+      expect(ProductComposition.bulkCreate).toHaveBeenCalledWith(
+        [expect.objectContaining({
+          product_id: 715,
+          ingredient_id: 5,
+          composition_type: 'ingredient',
+          quantity_required: 2
+        })],
+        { transaction }
+      );
+      expect(Item.update).toHaveBeenCalledWith(
+        { nesting_level: 2, max_child_depth: 1 },
+        expect.objectContaining({ transaction })
+      );
+      expect(inventoryRepositoryDependencies.invalidateDependencyGraphCache).toHaveBeenCalled();
+      expect(transaction.commit).toHaveBeenCalled();
+    });
+
+    it('invalid non-empty composition still fails closed with a rollback', async () => {
+      inventoryRepositoryDependencies.validateComposition = jest.fn().mockResolvedValue({
+        valid: false,
+        errors: [{ message: 'composition cycle detected' }]
+      });
+      const { ProductComposition, transaction } = buildUpdateHarness();
+
+      await expect(itemRepository.updateItem(715, {
+        name: 'Finished Pie',
+        ingredients: [{ item_id: 5, quantity: 2 }]
+      }, 7)).rejects.toMatchObject({ statusCode: 400 });
+
+      expect(ProductComposition.destroy).not.toHaveBeenCalled();
+      expect(transaction.commit).not.toHaveBeenCalled();
+      expect(transaction.rollback).toHaveBeenCalled();
+    });
+  });
 });
