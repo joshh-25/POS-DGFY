@@ -72,7 +72,7 @@ This is a pre-dispatch gate, not a per-worker-start error handler — nothing in
 or the campaign template (section 1.7) should ever reference a slot that failed this check; the
 whole run stops first.
 
-### The 3-tier execution model
+### The 4-tier execution model
 
 Once a slot's `cli` passes the availability gate above, classify **how** it actually dispatches —
 `scripts/conduct-model-slot.js`'s `resolveDispatchStrategy`, never re-derived informally:
@@ -85,22 +85,39 @@ Once a slot's `cli` passes the availability gate above, classify **how** it actu
    whether the resolved `cli` also happens to match the coordinator's own runtime.** A coordinator
    already running the resolved `cli` is not, by itself, a reason to skip external dispatch: see the
    #1826 correction below.
-2. **Tier 1 — in-session.** Only reached when Orca has **no** launch-preference support at all for
-   the resolved `cli` (today: `antigravity`) *and* the resolved `cli` matches the *conducting*
-   session's own runtime (section 1.3's mapping, reused here as `coordinatorCli`). Execute the role
-   inside the current coordinator session instead of spawning an external terminal — inline in the
-   turn, or via a native subagent (e.g. a Claude Code subagent, or the equivalent mechanism for the
-   coordinator's own runtime) scoped to the target worktree. No `worker-start` call happens at all
-   for this slot.
-3. **Tier 3 — direct-CLI headless fallback.** Orca has no launch-preference support for the resolved
-   `cli`, and the coordinator isn't already running it either (so Tier 1 isn't available). The
-   coordinator runs the agent's own CLI directly, non-interactively, inside the target worktree —
-   see the recipes and handoff mechanics in section 1.5's "Tier 3: Direct-CLI dispatch" subsection.
+2. **Tier 2B — interactive custom-command dispatch (checked second; `orca-interactive`).**
+   Orca's `worker-start` has no launch-preference support for the resolved `cli`, but the repo's
+   interactive-adapter registry (`INTERACTIVE_ADAPTERS` in `scripts/conduct-model-slot.js` —
+   currently `opencode` and `antigravity`/`agy`, each with a verified model/effort argv builder)
+   can launch that CLI's own TUI in a visible Orca terminal with the exact selected model. Create
+   the Conduct-owned worktree per section 1.8's topology, launch the adapter's exact command in it,
+   wait for TUI readiness, handle trust/startup prompts, and inject the task through the supported
+   supervised/low-level path — see the "Tier 2B: Interactive custom-command dispatch" subsection
+   in section 1.5. Like Tier 2, this wins over coordinator matching: an `opencode` coordinator
+   resolving an `opencode` slot (or `antigravity` resolving `antigravity`) still dispatches
+   externally, because in-session execution would not honor the per-slot model and would lose the
+   visible external session. Missing `worker-start` launch-preference flags must never be read as
+   "this CLI cannot run interactively through Orca" — that conflation was the #1964 defect.
+3. **Tier 1 — in-session.** Only reached when Orca has **no** launch-preference support **and** no
+   enabled interactive adapter at all for the resolved `cli`, *and* the resolved `cli` matches the
+   *conducting* session's own runtime (section 1.3's mapping, reused here as `coordinatorCli`).
+   Execute the role inside the current coordinator session instead of spawning an external
+   terminal — inline in the turn, or via a native subagent (e.g. a Claude Code subagent, or the
+   equivalent mechanism for the coordinator's own runtime) scoped to the target worktree. No
+   `worker-start` call happens at all for this slot.
+4. **Tier 3 — direct-CLI headless fallback.** Orca has no launch-preference support and no enabled
+   interactive adapter for the resolved `cli`, and the coordinator isn't already running it either
+   (so Tier 1 isn't available). The coordinator runs the agent's own CLI directly,
+   non-interactively, inside the target worktree — see the recipes and handoff mechanics in
+   section 1.5's "Tier 3: Direct-CLI dispatch" subsection. This fallback is intentional where
+   interactive launch is unavailable or explicitly requested — never a silent substitute for a
+   visible session the invocation asked for.
 
-This is a strict priority order (Tier 2, then Tier 1, then Tier 3), not three independent
-conditions to weigh — Tier 2's launch-preference check is evaluated **before** any coordinator-match
-check, precisely so a launch-preference-capable `cli` never falls through to Tier 1 just because the
-coordinator happens to already be that CLI.
+This is a strict priority order (Tier 2, then Tier 2B, then Tier 1, then Tier 3), not four
+independent conditions to weigh — Tier 2's launch-preference check is evaluated **before** any
+coordinator-match check, precisely so a launch-preference-capable `cli` never falls through to
+Tier 1 just because the coordinator happens to already be that CLI, and Tier 2B's interactive
+check is evaluated before coordinator matching for the same reason.
 
 **Corrected 2026-09-11 (#1826).** The original design (#1811) checked coordinator match first and
 treated it as sufficient justification for Tier 1 on its own — "spawning an external PTY terminal is
@@ -109,10 +126,22 @@ a Claude (or Codex) coordinator's native in-session subagent dispatch does not r
 per-slot `--model` override — it runs at whatever model the *coordinating* session itself happens to
 be running, silently discarding the configured slot model. Orca's external `worker-start` does honor
 `--model`/`--effort` correctly. So the only CLI where Tier 1's "coordinator is redundant with an
-external terminal" argument still holds is one Orca cannot dispatch externally at all — today, only
-`antigravity`. The only reason to ever choose in-session execution is a CLI unsupported by Orca's
-launch-preference dispatch; for every supported CLI, external Orca dispatch is preferred even when
-the coordinator is already running that exact CLI.
+external terminal" argument still holds is one Orca cannot dispatch externally at all — i.e. a CLI
+with neither launch-preference support nor an enabled interactive adapter. The only reason to ever
+choose in-session execution is the absence of any external path; for every externally-dispatchable
+CLI, external Orca dispatch is preferred even when the coordinator is already running that exact CLI.
+
+**Corrected 2026-09-17 (#1964).** The #1826 fix still conflated two separate capabilities: whether
+Orca `worker-start` supports passing model/effort flags directly, and whether Orca can create a
+worktree and terminal for the CLI at all. A live experiment showed Orca creating dedicated worktrees
+and launching both `opencode --model <provider/model>` and `agy --model <model>` as visible
+interactive terminals with the requested model, waiting for readiness, and accepting the task prompt
+— so OpenCode and Antigravity were wrongly confined to Tier 3 headless (`opencode run`,
+`agy --print`) or Tier 1 in-session whenever the coordinator matched. Tier 2B separates those
+capabilities: launch-preference support, interactive custom-command launch, coordinator in-session
+execution, and direct headless fallback are now four distinct rungs. Tier 2B carries the same model-
+fidelity rationale as #1826 — an unsent composer draft is not execution, and a headless/internal run
+is not the visible external session the invocation asked for.
 
 ## 1.3 Legacy CLI inference
 
@@ -142,12 +171,15 @@ Every slot, every run, before any `worker-start` call — produced by
 | Slot | CLI | Model | Effort | Strategy | Source |
 |---|---|---|---|---|---|
 | WORKER_PLANNER | claude | claude-sonnet-5 | high | orca-pty | env (canonical) |
-| WORKER_BUILDER | antigravity | <model> | medium | direct-cli | invocation override (canonical) |
-| REVIEWER | antigravity | <model> | high | in-session | env (canonical) — Orca has no launch-preference support for antigravity, and the coordinator is already running it |
+| WORKER_BUILDER | opencode | opencode-go/muse-spark-1.3-contributor | — | orca-interactive (`opencode --model opencode-go/muse-spark-1.3-contributor`) | invocation override (canonical) |
+| REVIEWER | antigravity | <model> | high | orca-interactive (`agy --model <model> --effort high`) | env (canonical) — Orca has no launch-preference support for antigravity, but the registered interactive adapter launches it visibly with the exact model |
 
 Note: a slot resolving to `claude`/`codex`/`cursor` is **never** `in-session`, even when the
-coordinator happens to already be running that same CLI (#1826) — it always shows `orca-pty`. Only
-a CLI Orca cannot dispatch externally at all (today, `antigravity`) can resolve to `in-session`.
+coordinator happens to already be running that same CLI (#1826) — it always shows `orca-pty`. A
+slot resolving to `opencode`/`antigravity` is **never** `in-session` either, whenever its
+interactive adapter is enabled (#1964) — it shows `orca-interactive` even when the coordinator
+matches. Only a CLI with neither launch-preference support nor an enabled interactive adapter can
+resolve to `in-session` (coordinator match) or `direct-cli` (headless fallback).
 
 `Source` always names one of: `env` / `invocation override` / `fallback (slot unset)`, each
 tagged `(canonical)` or `(legacy — CLI inferred from <basis>)`. A legacy row is never silently
@@ -214,9 +246,10 @@ expected shape when a Codex session asks Claude to review a PR authored by the c
 that's a genuine Tier 2 dispatch (Reviewer `cli` differs from the coordinator's), unaffected by
 #1826; the "no separate Builder worktree" behavior here is about avoiding a redundant Builder, not
 about which tier the Reviewer itself runs under. The Reviewer only resolves to Tier 1 in-session
-when its `cli` matches the coordinator's own runtime *and* Orca has no launch-preference support for
-it (today: an `antigravity` coordinator reviewing its own worktree's PR) — for `claude`/`codex`/
-`cursor`, a same-CLI Reviewer still dispatches externally via Tier 2, per the correction above.
+when its `cli` matches the coordinator's own runtime *and* Orca has neither launch-preference
+support nor an enabled interactive adapter for it — for `claude`/`codex`/`cursor`, a same-CLI
+Reviewer still dispatches externally via Tier 2, per the correction above, and for
+`opencode`/`antigravity` a same-CLI Reviewer still dispatches externally via Tier 2B (#1964).
 
 The conducting session must be on the PR's branch/worktree, or must have an explicitly selected
 PR worktree, before it edits feedback. On `BLOCK` or actionable feedback, the conducting session
@@ -242,6 +275,91 @@ Tier 1:
 
 In every case: no `worker-start` call happens for that slot, and section 1.9's tracking has nothing
 to release/close for it (see the update there).
+
+### Tier 2B: Interactive custom-command dispatch
+
+When a slot resolves to `orca-interactive`, the coordinator launches the CLI's own TUI in a
+visible Orca terminal inside the Conduct-owned worktree, then injects the task through Orca's
+supported supervised/low-level path. Verified recipes (re-verify each against the CLI's own
+`--help` at run time before relying on it — these can drift; never invent flags):
+
+**OpenCode** (verified via `opencode --help` in this environment):
+
+```sh
+opencode --model <provider/model>
+```
+
+`-m`/`--model` selects the exact model for the interactive TUI. The TUI exposes no `--effort`
+flag — a configured effort is recorded in the report, never forwarded as a fabricated flag.
+
+**Antigravity** (verified via `agy --help` in this environment):
+
+```sh
+agy --model <model> --effort <effort>
+```
+
+`--model` and `--effort` (`low|medium|high`) select the session model and reasoning level. Bare
+`agy` is the interactive TUI; `--print`/`--prompt` is the non-interactive mode and must NOT be
+used for interactive launch. Omit `--effort` when the slot sets none, so the worker inherits the
+CLI default.
+
+**Lifecycle, every Tier 2B dispatch** (the low-level topology route from the freshly loaded
+orchestration guide — `references/low-level-topology.md` — never from memory):
+
+```sh
+orca worktree create --name <task-name> --no-parent --issue <n> --setup skip --json
+orca terminal create --worktree id:<repoId>::<newWorktreePath> --title <task-name> --command '<adapter command>' --json
+orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+orca orchestration dispatch --task <task_id> --to <handle> --inject --json
+```
+
+- The worktree follows section 1.8's topology (one shared child worktree for a single target, or
+  one child worktree per phase for a wave campaign) — never a sibling for the same target, never
+  an inferred existing checkout.
+- Send only when the wait result reports `satisfied: true`. A timed-out wait still prints a normal
+  result — read `wait.satisfied`, not the fact that something printed. On `satisfied: false`,
+  re-run the wait once with a larger `--timeout-ms`; if still unsatisfied, report the dispatch as
+  not started and do not inject. A prompt injected into a TUI that is still starting is lost.
+- Handle workspace-trust/startup prompts explicitly before injection: Antigravity's first launch
+  in a fresh worktree shows the normal workspace-trust confirmation — confirm it, re-wait for
+  readiness, then inject, so the trust prompt never consumes or alters the task. Prove the prompt
+  was actually sent and accepted; a draft sitting unsent in the composer is preview, not execution.
+- `dispatch --inject` creates the authoritative Task/Dispatch context for the operator-created
+  process but deliberately keeps it unsupervised (`worker-show`/`worker-list` report the lane as
+  `unsupervised`). When lifecycle ownership of the existing agent terminal is required — always for
+  Builder feedback loops — use `worker-start --task <next_task_id> --terminal <handle>` instead,
+  which transfers cleanup ownership to the new Dispatch. Raw `terminal send` is never a substitute
+  for structured feedback handoff in later review loops.
+
+**Preview vs execution boundary.** Preview may display the exact adapter command and the exact
+prompt text, but must not inject either or report completion. Execution has an explicit dispatch
+step (`dispatch --inject` or `worker-start --terminal`) and captured outcome evidence: the exact
+worktree, terminal handle, command/model/effort, readiness/trust result, injected-vs-preview
+status, completion outcome, attribution, and cleanup/retention result — recorded per section 1.9
+the same way a dispatched worker's handoff evidence is recorded.
+
+**Fail closed.** When the interactive adapter is unavailable (no registered adapter, or the run
+narrowed `interactiveClis` to exclude it), command flags drifted from the verified recipe,
+readiness/trust cannot be established, or injection fails: report the failure with the exact
+cause, and use the documented headless fallback only where the invocation explicitly permits
+fallback. Never silently substitute a different CLI/model, never relabel a headless run as
+interactive execution, and never claim worker completion from an unsent draft.
+
+**Live-behavior notes (2026-09-17 Phase 340 probes, #1964).** Observed against this repo's Orca
+build; re-verify if Orca's behavior changes:
+
+- `dispatch --inject` to an operator-created TUI records authoritative Task/Dispatch context
+  (`unsupervised` lane) but does not itself start the agent's turn — the explicit send (+Enter)
+  is the turn-start. Prove injection from the send receipt *and* the observed reply, never from
+  the inject receipt alone.
+- Orca refuses `dispatch --inject` with `agent_prompt_blocked` while its own trust gate is
+  latched, and refuses a second inject (or `worker-start --terminal`) to the same terminal while
+  the first inject dispatch is still active. Follow-ups on a retained terminal therefore reuse the
+  low-level send path until the prior dispatch settles; record completion from observed terminal
+  evidence and keep the terminal/worktree retained rather than force-releasing to make room.
+- Orca's `tui-idle` trust signal can stay latched on scrollback text after the operator already
+  cleared the trust prompt and the composer is visibly live. Verify liveness with a no-Enter text
+  probe (nothing submitted, no side effects) before deciding between "not ready" and "stale gate".
 
 ### Tier 3: Direct-CLI dispatch
 
@@ -334,9 +452,10 @@ Conduct the following for this worktree's task/epic into sub-worktrees:
 ```
 
 The campaign template's `Worker Planner using <cli>:<model>[:<effort>]` lines describe the
-resolved slot, not the dispatch mechanism. A Tier 3 slot is still named the same way in the
-template so the reader sees which model/CLI is doing the work, but section 1.8's execution step for
-that slot is the Tier 3 recipe in section 1.5, not a `worker-start` call.
+resolved slot, not the dispatch mechanism. A Tier 2B or Tier 3 slot is still named the same way
+in the template so the reader sees which model/CLI is doing the work, but section 1.8's execution
+step for that slot is the Tier 2B lifecycle in section 1.5 (never a `worker-start --agent` call
+for Tier 2B) or the Tier 3 recipe (never a `worker-start` call at all for Tier 3).
 
 ## 1.8 Run it
 
@@ -351,8 +470,10 @@ sourced from the pre-dispatch report table (section 1.4) — not re-derived at t
 
 Before issuing any dispatch for a slot, read that slot's resolved `strategy` from the pre-dispatch
 report (section 1.4) and branch: `in-session` → execute per section 1.5's "In-session ownership"
-subsection; `orca-pty` → proceed exactly as this section already describes; `direct-cli` → execute
-per section 1.5's "Tier 3" subsection instead of calling `worker-start` at all.
+subsection; `orca-pty` → proceed exactly as this section already describes; `orca-interactive` →
+execute per section 1.5's "Tier 2B: Interactive custom-command dispatch" subsection instead of
+calling `worker-start --agent` at all; `direct-cli` → execute per section 1.5's "Tier 3" subsection
+instead of calling `worker-start` at all.
 
 ### The terminal-reuse decision rule — check this before every `worker-start` in a feedback loop
 
@@ -432,13 +553,20 @@ worktrees remain available for the operator to close manually after the run.
 role, record `task_id`, `dispatch_id`, `worktree` selector, whether *this run* created that
 worktree (only true for a `worker-start --worktree new-child` call this run issued — never true
 for `current`/`active` or a pre-existing selector), and the role kind (planner / builder /
-reviewer — needed because "handoff evidence" differs per role, below).
+reviewer — needed because "handoff evidence" differs per role, below). A Tier 2B
+(`orca-interactive`) dispatch records the same tuple plus the terminal handle, the exact adapter
+command/model/effort, and the readiness/trust/injection results: `dispatch --inject` yields a real
+`task_id`/`dispatch_id` pair (authoritative context, `unsupervised` lane), and a follow-up
+`worker-start --terminal <handle>` transfers lifecycle ownership to the new Dispatch — either way
+there is explicit task ownership to track, unlike Tier 1/3.
 
 A Tier 1 (in-session) or Tier 3 (direct-CLI) slot never gets a `task_id`/`dispatch_id`/`worker-start`
 terminal — there is nothing for `worker-release`/`worktree rm` to touch for that slot. Record its
 handoff evidence (plan body, pushed branch + PR, review comment, or Tier 3's captured stdout/diff)
 the same way, but skip it entirely in the cleanup pass rather than forcing it through Orca lifecycle
-calls.
+calls. A Tier 2B slot is NOT skipped: its worktree/terminal go through the same close/release
+decisions as a Tier 2 dispatch, via `scripts/conduct-cleanup-policy.js` — active, dirty, unpushed,
+unrelated, or failed interactive worktrees remain retained, never force-deleted.
 
 **When to close a session** — after both:
 

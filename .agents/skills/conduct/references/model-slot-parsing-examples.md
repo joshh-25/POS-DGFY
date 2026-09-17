@@ -12,7 +12,13 @@ node scripts/conduct-model-slot.js "$WORKER_PLANNER" \
 `--known-clis` is always the CLI-id roster read fresh from `orca skills get orchestration`'s
 group-address list this run (excluding non-agent addresses like `@all`/`@idle`/`@worktree:<id>`) —
 never hardcoded. `--default-cli` is the conducting session's own runtime, mapped to a dispatch
-agent id (section 1.3 of `SKILL.md`).
+agent id (section 1.3 of `SKILL.md`). Strategy context follows the same discipline:
+`--coordinator-cli` reuses the section 1.3 runtime mapping, `--launch-pref-clis` is the
+`worker-start --model`/`--effort` support list read fresh from the loaded orchestration guide
+(`claude,codex,cursor` today), and `--interactive-clis` optionally narrows the repo-side
+interactive-adapter registry (`opencode,antigravity` today) — omit the flag to use the built-in
+registry as-is, or pass an explicit subset to narrow it after flag drift (e.g.
+`--interactive-clis antigravity`).
 
 Planning policy examples from Conduct's invocation contract:
 
@@ -46,26 +52,42 @@ Planning policy examples from Conduct's invocation contract:
 the row shape in `SKILL.md` section 1.4 — canonical rows carry no legacy callout; legacy rows
 always carry the mandatory `(**legacy** — ... — verify)` suffix; a failed parse renders as an
 `**ERROR**` row rather than being silently dropped from the table. Rows include a `Strategy` cell
-(`in-session`, `orca-pty`, or `direct-cli`) once `resolveDispatchStrategy` has run; an uncomputed
-strategy uses `—` rather than the literal string `undefined`.
+(`orca-pty`, `orca-interactive`, `in-session`, or `direct-cli`) once `resolveDispatchStrategy` has
+run; an uncomputed strategy uses `—` rather than the literal string `undefined`. An
+`orca-interactive` row names the exact adapter command so the reader sees which TUI launches with
+which model before anything is dispatched.
 
 ## Dispatch strategy
 
-`resolveDispatchStrategy({ cli }, { coordinatorCli, launchPreferenceClis })` classifies a resolved
-slot in strict priority order — corrected 2026-09-11 (#1826), launch-preference support is checked
-**before** coordinator match, not after:
+`resolveDispatchStrategy({ cli, model, effort }, { coordinatorCli, launchPreferenceClis,
+interactiveClis })` classifies a resolved slot in strict priority order — corrected 2026-09-11
+(#1826, launch-preference support checked before coordinator match) and extended 2026-09-17
+(#1964, interactive custom-command launch checked before coordinator match):
 
-1. `orca-pty` when Orca supports `--model`/`--effort` launch preferences for the CLI — even if `cli`
-   also happens to match the coordinator's own runtime. A coordinator already running the resolved
-   `cli` is never on its own a reason to skip external dispatch for a CLI Orca can launch with the
-   requested model (`claude`/`codex`/`cursor` today): in-session native-subagent dispatch does not
-   reliably honor a per-slot `--model` override.
-2. `in-session` only when `cli` matches the coordinator's own runtime **and** Orca has no
-   launch-preference support for it at all (`antigravity` today) — the one case where Tier 1's
-   "avoid a redundant external terminal" argument still holds, since there is no Tier 2 alternative.
-3. `direct-cli` when the CLI has no Orca launch-preference support and the coordinator isn't already
-   running it either — the fallback for `antigravity` from a `claude`/`codex` coordinator, for
-   example.
+1. `orca-pty` (Tier 2) when Orca supports `--model`/`--effort` launch preferences for the CLI —
+   even if `cli` also happens to match the coordinator's own runtime. A coordinator already
+   running the resolved `cli` is never on its own a reason to skip external dispatch for a CLI
+   Orca can launch with the requested model (`claude`/`codex`/`cursor` today): in-session
+   native-subagent dispatch does not reliably honor a per-slot `--model` override.
+2. `orca-interactive` (Tier 2B) when Orca has no launch-preference support for the CLI but an
+   enabled interactive adapter is registered for it (`opencode` →
+   `opencode --model <provider/model>`, `antigravity`/`agy` → `agy --model <model>
+   [--effort <effort>]`) — even if `cli` matches the coordinator's own runtime. An unsent
+   composer draft is not execution, and a headless/internal run is not the visible external
+   session the invocation asked for (#1964). The result carries the exact `command`; a CLI with no
+   `--effort` flag (`opencode`) records the configured effort without forwarding it.
+3. `in-session` (Tier 1) only when `cli` matches the coordinator's own runtime **and** Orca has
+   neither launch-preference support nor an enabled interactive adapter for it at all — the one
+   case where Tier 1's "avoid a redundant external terminal" argument still holds, since there is
+   no external alternative.
+4. `direct-cli` (Tier 3) when the CLI has no Orca launch-preference support and no enabled
+   interactive adapter, and the coordinator isn't already running it either — the intentional
+   headless fallback, never a silent substitute for a requested visible session.
 
-If the CLI or launch-preference context is missing, the function returns an undefined strategy and
-an explicit reason rather than guessing.
+`interactiveClis` defaults to the built-in adapter registry when omitted; pass an explicit list
+(or `[]`) to narrow it — e.g. after a CLI's flags drift, or to prove Tier 1/3 preservation for an
+adapter-backed CLI. A CLI enabled for interactive launch that has no registered adapter (or whose
+command cannot be constructed, e.g. a missing model) fails closed with an undefined strategy and
+an explicit reason rather than falling through to a different CLI/model. If the CLI or
+launch-preference context is missing, the function likewise returns an undefined strategy and an
+explicit reason rather than guessing.
