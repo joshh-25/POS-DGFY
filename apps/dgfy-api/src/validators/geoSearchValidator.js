@@ -18,10 +18,14 @@ const reverseGeocodeQuerySchema = Joi.object({
     lon: Joi.number().min(-180).max(180).required()
 });
 
+// `.and('lat','lon')` makes the bias pair all-or-nothing: biasing on one axis is meaningless
+// and would silently produce misranked results.
 const addressSearchQuerySchema = Joi.object({
     query: Joi.string().trim().min(2).max(120).required(),
-    limit: Joi.number().integer().min(1).max(20).default(8)
-});
+    limit: Joi.number().integer().min(1).max(20).default(8),
+    lat: Joi.number().min(-90).max(90).optional(),
+    lon: Joi.number().min(-180).max(180).optional()
+}).and('lat', 'lon');
 
 const inventoryPushSchema = Joi.object({
     // location_id is optional; NULL means "all locations for this tenant"

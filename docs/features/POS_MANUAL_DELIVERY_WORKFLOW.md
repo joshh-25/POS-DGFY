@@ -303,13 +303,15 @@ Phase 225 wired the API; Phase 226 puts a management surface over it inside the 
 ### Where it lives, and who sees it
 
 A third "Delivery Runs" tab sits alongside Active Queue / Order History in the terminal's incoming-
-orders workspace, **retail mode only** -- gated on
-`normalizeWorkflowMode(workflowMode) === 'retail'`, the same check `orderFulfillmentUi.js` already
-uses for the `packed` handoff step. This is a UI-visibility gate only: the run API itself stays
-mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see above), so an F&B
-tenant is not locked out at the data layer, only from this particular tab. If the workflow mode
-flips off retail while the tab is open, the view falls back to Active Queue automatically rather
-than continuing to render a tab that no longer applies.
+orders workspace, **in retail and F&B modes** -- gated on the workflow mode being delivery-run-
+capable (`retail` or `fnb`, #1924), the same family of check `orderFulfillmentUi.js` already uses
+for the `packed` handoff step, minus the F&B exclusion. This is a UI-visibility gate only: the run
+API itself stays mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see
+above), and the packed dispatch precondition below stays retail-only, so an F&B tenant dispatches
+without ever needing `packed`. Services and every other workflow mode stay excluded from this tab.
+If the workflow mode flips to an unsupported mode while the tab is open, the view falls back to
+Active Queue automatically rather than continuing to render a tab that no longer applies; a
+retail <-> F&B flip keeps the run surface open.
 
 ### What the tab does, and does not, do
 
@@ -369,7 +371,7 @@ list, not the full one -- an order selected before the filter was applied is nei
 nor auto-dropped while hidden; a hint names how many selections are currently hidden, and clearing
 the filter restores them.
 
-Retail-mode gated identically to the tab above, and cleared by the same mode-flip reset effect. The
+Delivery-run-mode gated identically to the tab above (#1924: retail and F&B), and cleared by the same mode-flip reset effect. The
 filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
 (`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
 
@@ -390,6 +392,43 @@ Loading confirmation is not a dispatch gate. Dispatch continues for loaded and u
 and returns a warning listing dispatched orders that remain `pending`/`not_loaded` or are marked
 `exception`. The POS UI surfaces those warnings and lets the operator update a member even after
 dispatch, while completed and cancelled runs remain unavailable for loading changes.
+
+### Dispatch response warning contract (Phase 338, #1927)
+
+A successful `POST /pos/delivery-runs/:deliveryRunId/dispatch` response carries an additive
+`data.warnings` array naming every run member left in a non-terminal loading state at dispatch
+time -- one entry per unresolved member, derived from the dispatch-time member snapshot (not
+just the members transitioned by that call):
+
+```json
+{
+  "data": {
+    "warnings": [
+      { "pos_transaction_id": 501, "loading_state": "pending" },
+      { "pos_transaction_id": 502, "loading_state": "not_loaded" },
+      {
+        "pos_transaction_id": 503,
+        "loading_state": "exception",
+        "exception_reason": "Damaged package"
+      }
+    ]
+  }
+}
+```
+
+`loading_state` is the member's exact dispatch-time state (`pending`, `not_loaded`, or
+`exception`; `pending` and `not_loaded` stay distinct). `exception_reason` is present only on
+`exception` entries and is `null` when no reason was recorded. `warnings` is `[]` when every
+member is `loaded`. The array is warn-only: it never blocks dispatch and never reclassifies the
+`dispatched`/`skipped`/`failed` buckets. It is persisted with the idempotency replay payload,
+so a same-key retry returns the identical array.
+
+Compatibility: the pre-337 `data.loading_warning` object
+(`unloaded_pos_transaction_ids`/`exception_pos_transaction_ids`, derived only from members
+dispatched by that call) is preserved unchanged. The POS shared summary
+(`DeliveryRunDispatchSummary`) renders `warnings` when present and falls back to
+`loading_warning` for older responses. The mobile dispatch-confirmation flow
+(`Sieitzz/dgfy-mobile#177`) must consume `data.warnings`, not `loading_warning`.
 
 ## Permissions and ownership
 

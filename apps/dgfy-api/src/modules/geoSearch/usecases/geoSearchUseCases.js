@@ -1,10 +1,16 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { quadruperGeocodeProvider } from '../providers/quadruperGeocodeProvider.js';
+import { localGeocodeProvider } from '../providers/localGeocodeProvider.js';
+import { geocodeCircuitBreaker } from '../providers/geocodeCircuitBreaker.js';
+import { geocodeConfig } from '../../../config/geocodeConfig.js';
 import {
-    PH_LOCAL_ADDRESS_DATASET,
-    PH_LOCAL_ADDRESS_PROVIDER,
-    PH_LOCAL_ADDRESS_PROVENANCE
-} from '../data/phLocalAddressDataset.js';
+    buildForwardCacheKey,
+    buildReverseCacheKey,
+    readCache,
+    resolveImportDate,
+    writeCache
+} from '../providers/geocodeCache.js';
 
 export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     return async ({ query, latitude, longitude, radius, stockFilter, page, limit }) => {
@@ -29,113 +35,112 @@ export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     };
 };
 
-const toRadians = (value) => value * Math.PI / 180;
+const validationFailure = (message) => fail(new DomainError(
+    DomainErrorCode.VALIDATION_FAILED,
+    message,
+    { statusCode: 422 }
+));
 
-const distanceKm = (first, second) => {
-    const earthRadiusKm = 6371;
-    const dLat = toRadians(second.latitude - first.latitude);
-    const dLon = toRadians(second.longitude - first.longitude);
-    const lat1 = toRadians(first.latitude);
-    const lat2 = toRadians(second.latitude);
-    const a = Math.sin(dLat / 2) ** 2
-        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-    return 2 * earthRadiusKm * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+/**
+ * When the kill switch is off we swap in a no-op remote provider rather than short-circuiting
+ * inside callRemote. Gating the call path instead would make `geocodeConfig.enabled` override
+ * an explicitly injected provider -- and since it defaults to false under NODE_ENV=test, every
+ * injected fake would be silently unreachable. Production behaviour is identical either way:
+ * disabled -> null -> fall through to the local provider.
+ */
+const disabledRemoteProvider = {
+    reverseGeocode: async () => null,
+    searchAddresses: async () => null
 };
 
-const coordinateFallback = ({ latitude, longitude }) => ({
-    address_line: `Pinned location (${latitude.toFixed(6)}, ${longitude.toFixed(6)})`,
-    provider: PH_LOCAL_ADDRESS_PROVIDER,
-    precision: 'coordinate_only',
-    provenance: {
-        psgc_release: PH_LOCAL_ADDRESS_PROVENANCE.psgcRelease,
-        generated_at: PH_LOCAL_ADDRESS_PROVENANCE.generatedAt
-    }
-});
+// INVARIANT: never inject `quadruperGeocodeProvider` directly into a builder. Always let
+// the default resolve through defaultRemoteProvider(), or GEOCODE_QUADRUPER_ENABLED=false
+// will not apply to that caller and the documented revert path stops being complete.
+// Tests inject fakes, which is why the kill switch lives here and not inside callRemote.
+const defaultRemoteProvider = () => (
+    geocodeConfig.enabled ? quadruperGeocodeProvider : disabledRemoteProvider
+);
 
-const precisionRank = {
-    barangay: 0,
-    city: 1,
-    province: 2,
-    coordinate_only: 3
-};
+/**
+ * Calls the remote provider through the breaker. Returns null on any failure so the caller
+ * falls through to the local provider. Never throws.
+ */
+const callRemote = async (circuitBreaker, invoke) => {
+    if (circuitBreaker.isOpen()) return null;
 
-const resolveLocalAddress = ({ latitude, longitude }) => {
-    const position = { latitude, longitude };
-    const candidates = PH_LOCAL_ADDRESS_DATASET
-        .map((place) => ({ ...place, distance_km: distanceKm(position, place) }))
-        .filter((place) => place.distance_km <= place.maxDistanceKm)
-        .sort((a, b) => {
-            const precisionDelta = (precisionRank[a.precision] ?? 99) - (precisionRank[b.precision] ?? 99);
-            if (precisionDelta !== 0) return precisionDelta;
-            return a.distance_km - b.distance_km;
-        });
-    const nearest = candidates[0];
-
-    if (!nearest) {
-        return coordinateFallback({ latitude, longitude });
-    }
-
-    return {
-        address_line: nearest.label,
-        provider: PH_LOCAL_ADDRESS_PROVIDER,
-        precision: nearest.precision,
-        distance_meters: Math.round(nearest.distance_km * 1000),
-        psgc_code: nearest.psgcCode,
-        parent_psgc_code: nearest.parentPsgcCode,
-        provenance: {
-            psgc_release: PH_LOCAL_ADDRESS_PROVENANCE.psgcRelease,
-            generated_at: PH_LOCAL_ADDRESS_PROVENANCE.generatedAt
+    try {
+        const value = await invoke();
+        // `undefined` is the provider's transport-failure sentinel. `null` is a genuine miss
+        // (HTTP 200, no match) and must NOT trip the breaker, or a run of unmatched searches
+        // would degrade every user to the bundled dataset for 60 seconds.
+        if (value === undefined) {
+            circuitBreaker.recordFailure();
+            return null;
         }
-    };
+        circuitBreaker.recordSuccess();
+        return value;
+    } catch (error) {
+        circuitBreaker.recordFailure();
+        return null;
+    }
 };
 
-export const buildAddressSearchUseCase = () => {
-    return async ({ query, limit = 8 }) => {
-        const normalizedQuery = String(query || '').trim().toLowerCase();
-        if (normalizedQuery.length < 2) {
-            return fail(new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                'Enter at least 2 characters to search for an address.',
-                { statusCode: 422 }
-            ));
-        }
-
-        const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
-        const matches = PH_LOCAL_ADDRESS_DATASET
-            .filter((place) => {
-                const searchableLabel = String(place.label || '').toLowerCase();
-                return tokens.every((token) => searchableLabel.includes(token));
-            })
-            .slice(0, Math.max(1, Math.min(Number(limit) || 8, 20)))
-            .map((place) => ({
-                address_line: place.label,
-                latitude: place.latitude,
-                longitude: place.longitude,
-                precision: place.precision,
-                provider: PH_LOCAL_ADDRESS_PROVIDER,
-                psgc_code: place.psgcCode,
-                parent_psgc_code: place.parentPsgcCode
-            }));
-
-        return ok({ results: matches });
-    };
-};
-
-export const buildReverseGeocodeUseCase = () => {
+export const buildReverseGeocodeUseCase = ({
+    remoteProvider = defaultRemoteProvider(),
+    localProvider = localGeocodeProvider,
+    circuitBreaker = geocodeCircuitBreaker
+} = {}) => {
     return async ({ latitude, longitude }) => {
         const lat = Number(latitude);
         const lon = Number(longitude);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-            return fail(new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                'Latitude and longitude are required.',
-                { statusCode: 422 }
-            ));
+            return validationFailure('Latitude and longitude are required.');
         }
-        return ok({
-            ...resolveLocalAddress({ latitude: lat, longitude: lon }),
-            latitude: lat,
-            longitude: lon
-        });
+
+        const importDate = geocodeConfig.enabled ? await resolveImportDate() : 'local';
+        const cacheKey = buildReverseCacheKey(importDate, lat, lon);
+
+        const cached = await readCache(cacheKey);
+        if (cached) return ok({ ...cached, latitude: lat, longitude: lon });
+
+        const remote = await callRemote(circuitBreaker, () => remoteProvider.reverseGeocode({ latitude: lat, longitude: lon }));
+        if (remote) {
+            // Only successful remote answers are cached, so an outage cannot pin a degraded
+            // result for the full TTL.
+            await writeCache(cacheKey, remote);
+            return ok({ ...remote, latitude: lat, longitude: lon });
+        }
+
+        const local = await localProvider.reverseGeocode({ latitude: lat, longitude: lon });
+        return ok({ ...local, latitude: lat, longitude: lon });
+    };
+};
+
+export const buildAddressSearchUseCase = ({
+    remoteProvider = defaultRemoteProvider(),
+    localProvider = localGeocodeProvider,
+    circuitBreaker = geocodeCircuitBreaker
+} = {}) => {
+    return async ({ query, limit = 8, biasLatitude, biasLongitude }) => {
+        const normalizedQuery = String(query || '').trim();
+        if (normalizedQuery.length < 2) {
+            return validationFailure('Enter at least 2 characters to search for an address.');
+        }
+
+        const importDate = geocodeConfig.enabled ? await resolveImportDate() : 'local';
+        const cacheKey = buildForwardCacheKey(importDate, normalizedQuery, limit, biasLatitude, biasLongitude);
+
+        const cached = await readCache(cacheKey);
+        if (cached) return ok(cached);
+
+        const remote = await callRemote(circuitBreaker, () => remoteProvider.searchAddresses({
+            query: normalizedQuery, limit, biasLatitude, biasLongitude
+        }));
+        if (remote) {
+            await writeCache(cacheKey, remote);
+            return ok(remote);
+        }
+
+        return ok(await localProvider.searchAddresses({ query: normalizedQuery, limit }));
     };
 };

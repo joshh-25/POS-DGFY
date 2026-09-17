@@ -12,6 +12,10 @@ const mockRemoveDeliveryRunMemberUseCase = jest.fn();
 const mockDispatchDeliveryRunUseCase = jest.fn();
 const mockUpdateDeliveryRunMemberLoadingUseCase = jest.fn();
 const mockConfirmDeliveryRunLoadingUseCase = jest.fn();
+const mockCreateDeliveryRunRemittanceUseCase = jest.fn();
+const mockListDeliveryRunRemittancesUseCase = jest.fn();
+const mockGetDeliveryRunRemittanceUseCase = jest.fn();
+const mockResolveDeliveryRunRemittanceVarianceUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     createDeliveryRunUseCase: mockCreateDeliveryRunUseCase,
@@ -23,7 +27,11 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     removeDeliveryRunMemberUseCase: mockRemoveDeliveryRunMemberUseCase,
     dispatchDeliveryRunUseCase: mockDispatchDeliveryRunUseCase,
     updateDeliveryRunMemberLoadingUseCase: mockUpdateDeliveryRunMemberLoadingUseCase,
-    confirmDeliveryRunLoadingUseCase: mockConfirmDeliveryRunLoadingUseCase
+    confirmDeliveryRunLoadingUseCase: mockConfirmDeliveryRunLoadingUseCase,
+    createDeliveryRunRemittanceUseCase: mockCreateDeliveryRunRemittanceUseCase,
+    listDeliveryRunRemittancesUseCase: mockListDeliveryRunRemittancesUseCase,
+    getDeliveryRunRemittanceUseCase: mockGetDeliveryRunRemittanceUseCase,
+    resolveDeliveryRunRemittanceVarianceUseCase: mockResolveDeliveryRunRemittanceVarianceUseCase
 }));
 
 let createDeliveryRun;
@@ -206,6 +214,13 @@ describe('deliveryRunHandlers transport contracts', () => {
                 dispatched: [{ pos_transaction_id: 501 }],
                 skipped: [],
                 failed: [],
+                // Phase 338 (#1927): the canonical warnings ride under `data` next to the
+                // legacy `loading_warning` compat surface; the controller passes both through.
+                loading_warning: {
+                    unloaded_pos_transaction_ids: [501],
+                    exception_pos_transaction_ids: []
+                },
+                warnings: [{ pos_transaction_id: 501, loading_state: 'pending' }],
                 run_status: { previous: 'draft', current: 'dispatched', advanced: true }
             }
         });
@@ -227,6 +242,7 @@ describe('deliveryRunHandlers transport contracts', () => {
             success: true,
             data: expect.objectContaining({
                 dispatched: [{ pos_transaction_id: 501 }],
+                warnings: [{ pos_transaction_id: 501, loading_state: 'pending' }],
                 run_status: { previous: 'draft', current: 'dispatched', advanced: true }
             })
         }));
