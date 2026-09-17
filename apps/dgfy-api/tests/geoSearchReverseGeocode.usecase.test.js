@@ -1,9 +1,20 @@
 import { buildReverseGeocodeUseCase } from '../src/modules/geoSearch/usecases/geoSearchUseCases.js';
 import { PH_LOCAL_ADDRESS_PROVENANCE } from '../src/modules/geoSearch/data/phLocalAddressDataset.js';
+import { localGeocodeProvider } from '../src/modules/geoSearch/providers/localGeocodeProvider.js';
+import { createCircuitBreaker } from '../src/modules/geoSearch/providers/geocodeCircuitBreaker.js';
+
+// These cases assert the bundled-dataset contract (PSGC codes, provenance), which is now the
+// FALLBACK path. Pin the providers explicitly so the suite never depends on the
+// GEOCODE_QUADRUPER_ENABLED default to stay off.
+const buildLocalOnlyReverseGeocode = () => buildReverseGeocodeUseCase({
+    remoteProvider: { reverseGeocode: async () => null },
+    localProvider: localGeocodeProvider,
+    circuitBreaker: createCircuitBreaker()
+});
 
 describe('reverse geocode use case', () => {
     it('formats an Iloilo City local address label for map pin autofill', async () => {
-        const reverseGeocode = buildReverseGeocodeUseCase();
+        const reverseGeocode = buildLocalOnlyReverseGeocode();
 
         const result = await reverseGeocode({ latitude: 10.7202, longitude: 122.5621 });
 
@@ -24,7 +35,7 @@ describe('reverse geocode use case', () => {
     });
 
     it('prefers a covered PSGC barangay label over a broader city label', async () => {
-        const reverseGeocode = buildReverseGeocodeUseCase();
+        const reverseGeocode = buildLocalOnlyReverseGeocode();
 
         const result = await reverseGeocode({ latitude: 10.7294, longitude: 122.5962 });
 
@@ -41,7 +52,7 @@ describe('reverse geocode use case', () => {
     });
 
     it('falls back to province precision when no covered barangay or city exists', async () => {
-        const reverseGeocode = buildReverseGeocodeUseCase();
+        const reverseGeocode = buildLocalOnlyReverseGeocode();
 
         const result = await reverseGeocode({ latitude: 10.92, longitude: 122.55 });
 
@@ -56,7 +67,7 @@ describe('reverse geocode use case', () => {
     });
 
     it('returns coordinate-only fallback outside known local coverage without vague nearest-city text', async () => {
-        const reverseGeocode = buildReverseGeocodeUseCase();
+        const reverseGeocode = buildLocalOnlyReverseGeocode();
 
         const result = await reverseGeocode({ latitude: 11.5, longitude: 123.0 });
 
@@ -87,7 +98,7 @@ describe('reverse geocode use case', () => {
     });
 
     it('rejects invalid coordinates before address autofill', async () => {
-        const reverseGeocode = buildReverseGeocodeUseCase();
+        const reverseGeocode = buildLocalOnlyReverseGeocode();
 
         const result = await reverseGeocode({ latitude: 'bad', longitude: 122.5621 });
 

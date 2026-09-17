@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-04-25
-last_reviewed: 2026-04-25
+last_reviewed: 2026-09-17
 review_by: 2026-10-25
 applies_to: architecture_decision
 topic: tenant_first_login_onboarding_and_storefront_readiness_contract
@@ -173,3 +173,34 @@ ADR 0022 supersedes the May 18 auto-activation decision for public company regis
 3. The starter row uses the same customer-facing onboarding presets already defined here: Food Manufacturing `finished_product`, MSME `product`, Services `service` or `physical_add_on`, and Food & Beverage `menu_item`.
 4. Existing onboarding row-level validation, generated-SKU duplicate/idempotency behavior, optional stock, optional cost, optional images, saved primary `location_id`, and completion readiness remain authoritative for POS onboarding.
 5. POS onboarding may use POS catalog readback as a local readiness hint, but backend onboarding completion remains governed by the tenant onboarding checklist and starter-item contract.
+
+## Amendments
+
+### 2026-09-17: Quadruper geocoding provider (Phase 339)
+
+The 2026-06-21 addendum's clause 4 required IMS address autofill to resolve from *bundled*
+PH-local data with `provider="dgfy-ph-local"`. That bundled dataset covers 37 entries across
+a handful of Western Visayas municipalities (Iloilo City and its districts, Oton, Pavia, Leganes,
+Guimbal, Tigbauan, San Miguel, Guimaras), plus a single Manila entry and two province-level
+centroids; every pin outside that narrow set resolved to `precision="coordinate_only"`. Clause 4 is amended as follows.
+
+1. `/api/v1/geo/reverse-geocode` resolves against the DGFY-operated Quadruper geocoding service
+   (Photon over OpenStreetMap, Philippines index) and returns `provider="dgfy-quadruper"`.
+2. The bundled PH-local dataset is retained as an automatic fallback. When Quadruper is
+   unavailable or returns no match, the endpoint returns the bundled label with
+   `provider="dgfy-ph-local"` and its existing PSGC provenance, exactly as before this amendment.
+3. `precision` is **extended, not replaced**: `house` and `street` join the existing `barangay`,
+   `city`, `province`, and `coordinate_only`. No previously documented value is removed.
+4. `psgc_code` and `parent_psgc_code` remain available only on the bundled-fallback path.
+   OpenStreetMap carries no PSGC identifiers, so a Quadruper-served response omits them. They were
+   already documented as conditional on a bundled local match.
+5. Reverse-geocode responses additionally carry `landmarks[]`, nearby named points of interest
+   ordered by distance and capped at five, as a delivery-navigation aid. The array is always
+   present and is empty on the bundled-fallback path.
+6. `/api/v1/geo/address-search` accepts optional paired `lat`/`lon` bias coordinates.
+
+**Unchanged by this amendment**, and still binding: the endpoint must not return vague `Near ...`
+labels; an address suggestion may fill an empty address field but must not overwrite
+merchant-edited address text unless the merchant explicitly applies it; and reverse-geocode
+failure must never prevent saving valid coordinates. Geocoding remains server-side only — the
+service sends no CORS headers, so a browser-side call is impossible by construction.

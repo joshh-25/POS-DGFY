@@ -23410,3 +23410,50 @@ and ADR 0034's warn-only dispatch clause.
 ### Next eligible phase
 
 339 after Phase 338 acceptance evidence and deployed QA are complete.
+
+## Phase 339 - Quadruper geocoding provider with bundled-dataset fallback
+
+### Initiative and release
+
+Geo search and address resolution, current release.
+
+### Objective and scope
+
+Replace the 37-entry bundled PH-local geocoder with the DGFY-operated Quadruper service (Photon
+over OpenStreetMap, ~850k PH places), retaining the bundled dataset as an automatic fallback and
+adding nearby-landmark output to reverse geocoding. Scope: `apps/dgfy-api/src/modules/geoSearch`
+(new `providers/`, `mappers/`, `landmarks/`, `shared/` units), `src/config/geocodeConfig.js`,
+`src/validators/geoSearchValidator.js`, `packages/web-core/src/components/maps/MapPinPicker.jsx`.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA
+remain outstanding.
+
+### Dependencies
+
+ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
+
+### Acceptance and validation evidence
+
+- [x] `tests/geoLandmarkClassifier.test.js`, `tests/geoPhotonFeatureMapper.test.js`,
+      `tests/geoQuadruperProvider.test.js`, `tests/geoLocalProvider.test.js`,
+      `tests/geoCircuitBreaker.test.js`, `tests/geoFallbackPolicy.test.js`,
+      `tests/geoAddressSearchValidator.test.js` pass (75/75, 8/8 suites).
+- [x] `MapPinPicker.maplibre.test.jsx` passes (25/25).
+- [x] `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs` pass; three
+      frontend builds (`build:skupervisor`, `build:pos`, `build:store`) succeed.
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1963 (`Refs`; deployed QA remains outstanding); PR #1962 carries this work.
+- ADR: `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md`
+- Design/plan: `docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md`,
+  `docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md`.
+- Completion date: not yet merged — set at merge time.
+
+### Next eligible phase
+
+340 after Phase 339's PR is filed, reviewed, merged, and deployed QA is complete.
