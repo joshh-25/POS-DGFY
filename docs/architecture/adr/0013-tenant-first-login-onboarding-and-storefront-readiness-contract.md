@@ -176,7 +176,7 @@ ADR 0022 supersedes the May 18 auto-activation decision for public company regis
 
 ## Amendments
 
-### 2026-09-17: Quadruper geocoding provider (Phase 337)
+### 2026-09-17: Quadruper geocoding provider (Phase 339)
 
 The 2026-06-21 addendum's clause 4 required IMS address autofill to resolve from *bundled*
 PH-local data with `provider="dgfy-ph-local"`. That bundled dataset covers 37 entries across

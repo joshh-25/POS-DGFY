@@ -117,6 +117,116 @@ No owner may claim the connection is live while JWKS is 503, PR #20 checks are
 admission-failing, the QA fixture/configuration is absent, or hosted scenario
 evidence is missing. Public admission and payments remain disabled.
 
+## Non-negotiable post-merge release gate
+
+Merging the documentation handoff does not complete deployment. This gate is
+mandatory for the DGLaundry connection and is a release **no-go** until every
+item below has a named owner and terminal evidence in issue #519. A generic
+acknowledgment, a successful documentation PR, or a green deploy-health probe
+does not satisfy this gate.
+
+### Blocking conditions
+
+The release owner must keep DGLaundry disconnected and must not enable staff
+access, the customer storefront, or online payments if any condition below is
+true:
+
+- `GET https://api.dgfy.ph/oidc/jwks` is not HTTP 200 with a valid active key
+  set, or key rotation/revocation evidence is missing.
+- The exact browser callback, issuer, audience, PAR, PKCE S256, state/nonce,
+  logout, switching, revocation, or `private_key_jwt` machine-client checks
+  have not passed.
+- The real proxy-path P-256/Ed25519 signature, replay, idempotency, ordering,
+  retry, dead-letter, company, location, or branch-isolation tests have not
+  passed.
+- A reviewed QA fixture does not cover every proposed branch, or catalog,
+  availability, quote, order, fulfillment, receipt, and sandbox payment/refund
+  evidence is incomplete.
+- DGLaundry PR #20 has queued, zero-step, admission-failed, skipped-required,
+  or non-terminal checks. The CI billing restriction must be resolved or an
+  approved isolated runner must execute the required jobs.
+- The hosted qualification stack lacks isolated data/secrets/queues, TLS and
+  callback routing, backup/restore proof, alert delivery, kill-switch proof, or
+  an executable rollback command.
+- The six-suite acceptance run has not executed all 41 scenario IDs against
+  `https://laundry.surebizcorp.com` with exact application SHAs, configuration
+  revision, contract hashes, and the frozen approved-branch-list hash.
+
+### Required owner reply
+
+The DGFY developer, identity owner, CI administrator, DevOps/hosting owner,
+joint QA owner, and release owner must each reply in issue #519 using this
+format, even when blocked:
+
+`task | owner | DGFY SHA | DGLaundry SHA | environment | evidence | pass/fail/blocked | next action`
+
+Blocked replies must identify the dependency and the owner who can clear it;
+they must not be recorded as complete. Any failed scenario creates a linked
+fix PR or operations task and requires a rerun of the affected suite.
+
+### Mandatory live-staging user acceptance
+
+Automated checks are not sufficient. After the provider and consumer changes
+are merged into their respective development branches and the required CI jobs
+have executed successfully, the release owner must run a real human user-
+acceptance session in the live staging/qualification environment **before** any
+stable production promotion.
+
+The staging run must follow DGFY's governed promotion path:
+
+`feature -> develop -> to-staging/<label> -> staging -> release/<label> -> main`
+
+The staging deployment must use exact recorded DGFY and DGLaundry SHAs, a
+configuration revision, non-production secrets and synthetic accounts. If the
+literal `https://laundry.surebizcorp.com` hostname is used for the staging
+window, DevOps must first prove that its database, storage, Redis/session state,
+queues, secrets, service identities, and traffic are isolated from stable
+production. Otherwise, record the dedicated staging hostname in issue #519.
+Never point staging tests at production data or production payment credentials.
+
+The named QA owner must perform and record these user-visible checks:
+
+1. **Staff sign-in:** open the staff URL, complete DGFY account selection and
+   OIDC login, verify the exact callback, see only explicitly mapped companies
+   and locations, switch accounts/companies, log out, and confirm revoked or
+   wrong-branch access is denied.
+2. **Customer storefront:** open the approved DGFY tenant-store handle as a
+   customer without staff membership; browse branch-specific catalog,
+   availability, pricing, service options, and quote expiry; submit a valid
+   booking; then verify status, history, notifications, tracking, and receipt
+   visibility without exposing another branch's data.
+3. **Sandbox commerce:** exercise fixed-price, per-kilo, and mixed bookings
+   with PayMongo sandbox only. Confirm reservation/charge rules, expiry,
+   cancellation, refund, receipt confirmation, duplicate webhook handling, and
+   reconciliation. Per-kilo children remain reservation-only until local weight
+   measurement; no live charge is permitted in staging.
+4. **Recovery and negative paths:** test an expired quote, altered/replayed
+   signed request, duplicate event, provider or DGLaundry outage, retry,
+   redrive, browser refresh, and rollback/kill-switch procedure. Verify that no
+   duplicate order, inventory effect, or payment/refund is created.
+5. **Responsive journey:** repeat the primary staff and customer paths on a
+   desktop and a mobile viewport, recording screenshots or equivalent sanitized
+   evidence and request/trace IDs.
+
+The QA owner must attach the date/time, tester, staging URLs, both SHAs,
+configuration revision, contract hashes, branch-list hash, scenario IDs,
+sanitized screenshots/logs, sandbox transaction and refund references, and
+pass/fail results to issue #519. The independent reviewer and release owner
+must sign off the staging record. A staging run is a **release prerequisite**,
+not production evidence; any failed check keeps production admission and live
+payments disabled and creates a linked fix/rerun.
+
+### Activation rule
+
+Only after the live-staging user-acceptance record is independently signed off
+may the release owner freeze the individually validated approved-branch
+allowlist, cut the production release branch, and deploy stable production in
+disabled mode. Production still requires exact SHA/configuration verification,
+health and rollback checks, separate authorization for one capped live
+payment/refund/receipt test, and then a single release-controlled activation of
+all approved branches. Until then, the connection remains `connection:
+disabled` and no production or live-payment claim is permitted.
+
 ## Target values and contract identifiers (ratification required)
 
 | Surface | Required value | Authority/status |

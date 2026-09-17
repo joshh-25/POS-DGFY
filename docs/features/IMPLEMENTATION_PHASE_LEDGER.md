@@ -23280,7 +23280,138 @@ registration-intent routes.
 
 337 after Phase 336 acceptance evidence and deployed QA are complete.
 
-## Phase 337 - Quadruper geocoding provider with bundled-dataset fallback
+## Phase 337 - Delivery Runs workspace for F&B tenants in POS (#1924)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 226 delivery-run management
+UI. Frontend presentation change only, inside the existing shared POS boundary.
+
+### Objective and scope
+
+Make the existing POS Delivery Runs workspace reachable for `retail` and `fnb` tenants behind one
+shared `isDeliveryRunMode` predicate (`retail` or `fnb`; services and every other workflow mode
+stay excluded): Delivery Runs and viewport-qualified Queue + Run tabs, run-option loading, bulk
+assign bar, queue run filter, run labels, and selection controls. The retail-only packed-order
+dispatch preflight stays retail-only -- F&B dispatches without the packing check, per ADR 0034's
+2026-09-01 amendment. No API, database schema, permission, route, or backend-type change; retail
+behavior is unchanged.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review, rendered POS
+proof, and live staging QA (F&B run create/configure, add eligible COD order, loading, dispatch,
+delivery-status advance, cash collection, remittance) remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership (keyed on `delivery_jobs`, never `fulfillment_status`),
+Phase 226/#1273 run management UI, Phase 227-231/#1289-#1290 bulk assign/filter/split view,
+Phase 333/#1461 loading verification, Phase 334/#1887 remittance ledger, ADR 0034 (retail-only
+packing precondition, F&B dispatch skips it), and `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+as the authoritative UI contract.
+
+### Acceptance and validation evidence
+
+- [x] F&B Orders sub-nav shows `Delivery Runs` and, at `>=768px`, `Queue + Run`; services shows
+      neither and issues no run fetch.
+- [x] F&B run options load; retail <-> F&B flips keep the run surface; flips into an unsupported
+      mode fall back to Active Queue and clear run-only selection/filter state.
+- [x] F&B dispatch of a run with an unpacked member is enabled with no packed notice; the same
+      run in retail stays blocked with the notice.
+- [x] Focused suites pass: `deliveryRunsWorkspace`, `deliveryRunSplitViewDnd`,
+      `deliveryRunBulkAssign`, `deliveryRunQueueFilter`, `deliveryRunLoading`, `deliveryRunDispatch`
+      (82 tests), plus adjacent `incomingQueueRunMemberFulfillmentGate`, `terminalViewModeContracts`,
+      `terminalBalanceSettlement`, `terminalDownpaymentVisibility`, `incomingQueueViewMode`,
+      `webViewStringCompat`, `orderFulfillmentUi` (113 tests).
+- [x] `npm run build:pos` and `npm run build:skupervisor` pass; `build:store` not required (the
+      changed shared import graph does not reach the storefront -- only the untouched
+      `skupervisorHandoff.js` util is shared). `npm run check:architecture` passes.
+- [ ] Rendered POS proof (retail + F&B at desktop/tablet widths, F&B below 768px, opening
+      Delivery Runs, one primary run interaction) and live staging F&B end-to-end QA.
+
+### Links
+
+- Issue: #1924
+- Contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (retail + F&B UI scope)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (2026-08-31 membership and
+  2026-09-01 dispatch amendments; unchanged by this phase)
+- Implementation: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`
+  (`isDeliveryRunMode`),
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`
+  (`isRetailMode` preflight prop),
+  `packages/web-core/src/features/pos/hooks/useDeliveryRunOptions.js`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `packages/web-core/src/features/pos/components/QueueOrderTableView.jsx`,
+  `packages/web-core/src/features/pos/components/QueueRunAssignBar.jsx`
+- Tests: `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `deliveryRunBulkAssign.behavior.test.jsx`,
+  `deliveryRunQueueFilter.behavior.test.jsx`, `deliveryRunDispatch.behavior.test.jsx`
+### Next eligible phase
+
+338 after Phase 337 acceptance evidence and deployed QA are complete.
+
+## Phase 338 - Delivery-run dispatch canonical warnings (#1927)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 333/#1461 loading-verification
+contract.
+
+### Objective and scope
+
+Add an additive `data.warnings` array to the successful
+`POST /pos/delivery-runs/:deliveryRunId/dispatch` response naming every run member left in a
+non-terminal loading state (`pending`, `not_loaded`, `exception`) at dispatch time, with the
+exact per-member state and the recorded exception reason. Dispatch stays best-effort and
+warn-only; the legacy `loading_warning` compat surface is preserved. The POS shared summary
+prefers `warnings` with a legacy fallback; mobile adoption is tracked separately under
+`dgfy-mobile#177`. No route, permission, migration, error code, or ADR change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, Phase 333/#1461
+loading verification and dispatcher attestation, Phase 337/#1924 F&B delivery-run workspace,
+and ADR 0034's warn-only dispatch clause.
+
+### Acceptance and validation evidence
+
+- [ ] Mixed `pending`/`not_loaded`/`exception`/`loaded` dispatch returns one warning per
+      unresolved member with the exact state and exception reason; `pending` and `not_loaded`
+      stay distinct.
+- [ ] All-loaded dispatch returns `warnings: []` with no false positive; warnings never block
+      partial success or reclassify `dispatched`/`skipped`/`failed`.
+- [ ] Same-key idempotency replay returns the identical warnings payload; the transport
+      response stays `success: true` with the warning data under `data`.
+- [ ] The POS summary renders canonical warnings and still handles the legacy field; focused
+      backend and behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      whitespace gates pass; deployed QA (mixed-state and all-loaded runs) remains a later
+      verification step.
+
+### Links
+
+- Issue: #1927 (follow-up to #1461's warn-only acceptance criteria).
+- Handoff: `.tmp/plan-1927.md` (planning head `6c9e5bcdd6bb57f2e4560238e4a42360a79228ff`).
+- Mobile consumer: `Sieitzz/dgfy-mobile#177`.
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (warn-only clause, no
+  amendment needed -- `warnings` is a superset identifying the same dispatched orders).
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (dispatch warning contract).
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md`.
+- Tests: `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+339 after Phase 338 acceptance evidence and deployed QA are complete.
+
+## Phase 339 - Quadruper geocoding provider with bundled-dataset fallback
 
 ### Initiative and release
 
@@ -23296,8 +23427,8 @@ adding nearby-landmark output to reverse geocoding. Scope: `apps/dgfy-api/src/mo
 
 ### Status
 
-`in_progress` — implementation and local validation are complete; PR has not yet been opened, and
-review, merge, and deployed QA remain outstanding.
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA
+remain outstanding.
 
 ### Dependencies
 
@@ -23312,13 +23443,11 @@ ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
 - [x] `MapPinPicker.maplibre.test.jsx` passes (25/25).
 - [x] `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs` pass; three
       frontend builds (`build:skupervisor`, `build:pos`, `build:store`) succeed.
-- [ ] Issue not yet filed — must be created via `/pm` and linked before the PR is opened (`gh` CLI
-      unavailable in the implementation session).
 - [ ] PR review, merge, and deployed QA remain outstanding.
 
 ### Links
 
-- Issue: not yet filed — must be created via `/pm` and linked before the PR is opened.
+- Issue: not yet recorded in the implementation artifact; PR #1962 carries this work.
 - ADR: `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
 - Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md`
 - Design/plan: `docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md`,
@@ -23327,4 +23456,4 @@ ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
 
 ### Next eligible phase
 
-338 after Phase 337's PR is filed, reviewed, merged, and deployed QA is complete.
+340 after Phase 339's PR is filed, reviewed, merged, and deployed QA is complete.

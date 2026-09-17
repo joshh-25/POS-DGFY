@@ -413,7 +413,7 @@ Three, all mandatory, all in the implementation PR.
    so a browser-side call is impossible by construction — and the browser-side prohibition in that
    declaration is preserved intact.
 
-3. **Phase 337 entry** in `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`, with objective, scope,
+3. **Phase 339 entry** in `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`, with objective, scope,
    status, dependencies, acceptance evidence, and links to the ADR amendment and declaration.
 
 **Docs to update in the same PR**
@@ -467,5 +467,5 @@ Three, all mandatory, all in the implementation PR.
 - [ ] `GEOCODE_QUADRUPER_ENABLED=false` restores today's behavior exactly.
 - [ ] No Photon-shaped object escapes `providers/` or `mappers/`.
 - [ ] `npm run check:compliance`, `npm run check:architecture`, and `npm run lint:docs` pass.
-- [ ] ADR 0013 amendment, `minor` compliance declaration, and Phase 337 ledger entry are all present
+- [ ] ADR 0013 amendment, `minor` compliance declaration, and Phase 339 ledger entry are all present
       in the PR.

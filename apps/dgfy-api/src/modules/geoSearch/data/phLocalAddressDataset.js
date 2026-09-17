@@ -10,7 +10,7 @@ export const PH_LOCAL_ADDRESS_PROVENANCE = Object.freeze({
     "sourceNotes": [
         "PSA PSGC API documents official region, province, city, municipality, and barangay hierarchy and versioned access.",
         "The public PSA PSGC pages list current 10-digit codes and release dates but the API requires a token for direct automated pulls.",
-        "This dataset is the FALLBACK path as of Phase 337; primary resolution is the DGFY-operated Quadruper service. Geocoding remains server-side only — no browser-side geocoding call is made.",
+        "This dataset is the FALLBACK path as of Phase 339; primary resolution is the DGFY-operated Quadruper service. Geocoding remains server-side only — no browser-side geocoding call is made.",
         "Centroids are curated local map centroids for administrative label selection, not street or building-level geocoding."
     ],
     "sources": [

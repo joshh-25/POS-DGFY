@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Phase 337.** The authoritative ledger `docs/features/IMPLEMENTATION_PHASE_LEDGER.md` ends at Phase 336. Do not renumber.
+- **Phase 339.** The authoritative ledger now contains Phases 337 and 338 from merged work; this geocoder initiative takes the next eligible phase. Do not renumber existing phases.
 - **Never name a new directory under `modules/geoSearch/` `services/`.** `scripts/check-architecture-guardrails.js:155-159` fails any `usecases/*.js` whose source matches `/from\s+['"][^'"]*\/services(?:\/[^'"]*)?['"]/`. The new directories are `providers/`, `mappers/`, `landmarks/`, `shared/`.
 - **Models may only be imported inside `repositories/`** (`check-architecture-guardrails.js:171`). None of the new files import a model.
 - **All tests live in `apps/dgfy-api/tests/`.** Jest config sets `roots: ['<rootDir>/tests']`; colocated tests are not discovered.
@@ -2147,7 +2147,7 @@ Set `status: amended` in the frontmatter, then append at the end of the file:
 ```markdown
 ## Amendments
 
-### 2026-09-17: Quadruper geocoding provider (Phase 337)
+### 2026-09-17: Quadruper geocoding provider (Phase 339)
 
 The 2026-06-21 addendum's clause 4 required IMS address autofill to resolve from *bundled*
 PH-local data with `provider="dgfy-ph-local"`. That bundled dataset covers 37 entries across
@@ -2246,7 +2246,7 @@ Expected: PASS. If it reports a missing or malformed declaration, fix the frontm
 Append to `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`, continuing the sequence (the file currently ends at Phase 336):
 
 ```markdown
-## Phase 337 - Quadruper geocoding provider with bundled-dataset fallback (#<ISSUE>)
+## Phase 339 - Quadruper geocoding provider with bundled-dataset fallback (#<ISSUE>)
 
 - **Initiative / release:** Geo search and address resolution
 - **Objective:** Replace the 37-entry bundled PH-local geocoder with the DGFY-operated Quadruper
@@ -2300,7 +2300,7 @@ In `apps/dgfy-api/src/modules/geoSearch/data/phLocalAddressDataset.js`, replace 
 `"Runtime reverse geocoding is bundled and first-party; no browser-side or live third-party reverse-geocode call is used."` with:
 
 ```
-"This dataset is the FALLBACK path as of Phase 337; primary resolution is the DGFY-operated Quadruper service. Geocoding remains server-side only — no browser-side geocoding call is made.",
+"This dataset is the FALLBACK path as of Phase 339; primary resolution is the DGFY-operated Quadruper service. Geocoding remains server-side only — no browser-side geocoding call is made.",
 ```
 
 - [ ] **Step 7: Record the forward-search clarification in the spec**
@@ -2352,10 +2352,10 @@ git add docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-
 git commit -m "docs(geocoder): amend ADR 0013 and declare the Quadruper swap impact"
 
 git add docs/features/IMPLEMENTATION_PHASE_LEDGER.md docs/api/specification.md apps/dgfy-api/src/modules/geoSearch/README.md apps/dgfy-api/src/modules/geoSearch/data/phLocalAddressDataset.js docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md
-git commit -m "docs(geocoder): record Phase 337 and the updated geocode contract"
+git commit -m "docs(geocoder): record Phase 339 and the updated geocode contract"
 
 git add apps/dgfy-api/package.json apps/dgfy-ims/package.json apps/dgfy-pos/package.json apps/dgfy-storefront/package.json
-git commit -m "chore(release): bump app minor versions for Phase 337"
+git commit -m "chore(release): bump app versions for Phase 339"
 ```
 
 (Only stage the frontend `package.json` files the version-bump script actually flagged.)

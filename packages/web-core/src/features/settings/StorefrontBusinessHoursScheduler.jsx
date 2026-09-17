@@ -55,6 +55,53 @@ const buildScheduleSets = (hours) => {
 
 const buildClosedDays = (hours) => ALL_DAY_KEYS.filter((dayKey) => hours.weekly?.[dayKey]?.enabled !== true);
 
+const FULL_DAY_LABELS = Object.freeze({
+  sun: 'Sunday',
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday'
+});
+
+const formatScheduleDayLabel = (dayKeys) => {
+  const normalizedKeys = Array.from(new Set(Array.isArray(dayKeys) ? dayKeys : []))
+    .filter((dayKey) => ALL_DAY_KEYS.includes(dayKey))
+    .sort((left, right) => ALL_DAY_KEYS.indexOf(left) - ALL_DAY_KEYS.indexOf(right));
+
+  if (normalizedKeys.length === ALL_DAY_KEYS.length) return 'All days';
+  if (normalizedKeys.length === 0) return 'No days selected';
+
+  const indexes = normalizedKeys.map((dayKey) => ALL_DAY_KEYS.indexOf(dayKey));
+  const isContiguous = indexes.every((index, position) => position === 0 || index === indexes[position - 1] + 1);
+  if (isContiguous && normalizedKeys.length > 1) {
+    return `${FULL_DAY_LABELS[normalizedKeys[0]]} - ${FULL_DAY_LABELS[normalizedKeys[normalizedKeys.length - 1]]}`;
+  }
+
+  return normalizedKeys.map((dayKey) => FULL_DAY_LABELS[dayKey]).join(', ');
+};
+
+const replaceScheduleSet = (hours, existingSet, nextDayKeys, open, close) => {
+  const weekly = { ...(hours?.weekly || {}) };
+  (existingSet?.dayKeys || []).forEach((dayKey) => {
+    weekly[dayKey] = {
+      ...(weekly[dayKey] || {}),
+      enabled: false
+    };
+  });
+  (nextDayKeys || []).forEach((dayKey) => {
+    weekly[dayKey] = {
+      ...(weekly[dayKey] || {}),
+      enabled: true,
+      open,
+      close,
+      intervals: [{ open, close }]
+    };
+  });
+  return { ...hours, weekly };
+};
+
 function TimeField({
   label,
   value,
@@ -188,7 +235,14 @@ export default function StorefrontBusinessHoursScheduler({
   value,
   onChange,
   disabled = false,
-  className = ''
+  className = '',
+  showHeader = true,
+  hideScheduleSummaryHeader = false,
+  initialComposerOpen = false,
+  draftNotice = '',
+  onComposerClose,
+  onScheduleCommit,
+  headerContent = null
 }) {
   const hours = useMemo(() => normalizeStorefrontBusinessHours(value), [value]);
   const scheduleSets = useMemo(() => buildScheduleSets(hours), [hours]);
@@ -198,6 +252,9 @@ export default function StorefrontBusinessHoursScheduler({
   const [selectedDays, setSelectedDays] = useState(['mon', 'wed', 'fri']);
   const [dragState, setDragState] = useState(null);
   const [showAllDaysConfirm, setShowAllDaysConfirm] = useState(false);
+  const inlinePreview = showHeader === false;
+  const [composerOpen, setComposerOpen] = useState(() => inlinePreview && initialComposerOpen);
+  const [editingSetKey, setEditingSetKey] = useState(null);
   const previousNonAlwaysOpenRef = useRef(null);
   const alwaysOpen = isStorefrontBusinessHoursAlwaysOpen(hours);
   const allDaysSelected = selectedDays.length === STOREFRONT_BUSINESS_DAY_OPTIONS.length;
@@ -212,21 +269,39 @@ export default function StorefrontBusinessHoursScheduler({
     if (typeof onChange === 'function') onChange(nextHours);
   };
 
+  const commitSchedule = (nextHours) => {
+    if (typeof onScheduleCommit === 'function') {
+      void onScheduleCommit(nextHours);
+      return;
+    }
+    emit(nextHours);
+  };
+
+  const closeComposer = () => {
+    setComposerOpen(false);
+    setEditingSetKey(null);
+    onComposerClose?.();
+  };
+
   const commitSelectedDays = (dayKeys = selectedDays) => {
-    emit(applyStorefrontBusinessHoursRange(hours, {
+    const nextHours = editingSetKey
+      ? replaceScheduleSet(hours, scheduleSets.find((set) => set.key === editingSetKey), dayKeys, openTime, closeTime)
+      : applyStorefrontBusinessHoursRange(hours, {
       open: openTime,
       close: closeTime,
       dayKeys
-    }));
+    });
+    commitSchedule(nextHours);
+    if (inlinePreview) closeComposer();
   };
 
   const handleAlwaysOpenChange = (checked) => {
     if (checked) {
       if (!alwaysOpen) previousNonAlwaysOpenRef.current = hours;
-      emit(setStorefrontBusinessHoursOpenAllDay(hours, true));
+      commitSchedule(setStorefrontBusinessHoursOpenAllDay(hours, true));
       return;
     }
-    emit(previousNonAlwaysOpenRef.current || createDefaultStorefrontBusinessHours());
+    commitSchedule(previousNonAlwaysOpenRef.current || createDefaultStorefrontBusinessHours());
   };
 
   const setDaySelected = (dayKey, checked) => {
@@ -242,8 +317,16 @@ export default function StorefrontBusinessHoursScheduler({
     commitSelectedDays();
   };
 
+  const handleEditScheduleSet = (set) => {
+    setOpenTime(set.open);
+    setCloseTime(set.close);
+    setSelectedDays(set.dayKeys);
+    setEditingSetKey(set.key);
+    setComposerOpen(true);
+  };
+
   const handleRemoveSet = (dayKeys) => {
-    emit({
+    commitSchedule({
       ...hours,
       weekly: {
         ...hours.weekly,
@@ -259,7 +342,7 @@ export default function StorefrontBusinessHoursScheduler({
   };
 
   const handleClosedDayToggle = (dayKey, enabled) => {
-    emit({
+    commitSchedule({
       ...hours,
       weekly: {
         ...hours.weekly,
@@ -274,27 +357,48 @@ export default function StorefrontBusinessHoursScheduler({
   return (
     <div className={`min-w-0 max-w-full space-y-5 ${className}`}>
       <div className="bg-white">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h3 className="text-[24px] font-semibold tracking-tight text-slate-950">Business Hours</h3>
-            <p className="mt-1.5 text-[15px] text-slate-500">Create reusable store hour schedules and preview how they apply across the week.</p>
-            <p className="mt-2 text-[13px] font-medium text-slate-500">Preview: {formatStorefrontBusinessHoursDisplay(hours)}</p>
+        {showHeader ? (
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              {headerContent || (
+                <>
+                  <h3 className="text-[24px] font-semibold tracking-tight text-slate-950">Business Hours</h3>
+                  <p className="mt-1.5 text-[15px] text-slate-500">Create reusable store hour schedules and preview how they apply across the week.</p>
+                  <p className="mt-2 text-[13px] font-medium text-slate-500">Preview: {formatStorefrontBusinessHoursDisplay(hours)}</p>
+                </>
+              )}
+              {draftNotice ? <p className="mt-2 text-[13px] font-medium text-slate-500">{draftNotice}</p> : null}
+            </div>
+
+            <label className="inline-flex min-h-11 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm">
+              <input
+                type="checkbox"
+                className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                checked={alwaysOpen}
+                disabled={disabled}
+                onChange={(event) => handleAlwaysOpenChange(event.target.checked)}
+              />
+              Open 24/7
+            </label>
           </div>
+        ) : null}
 
-          <label className="inline-flex min-h-11 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm">
-            <input
-              type="checkbox"
-              className="h-5 w-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-              checked={alwaysOpen}
-              disabled={disabled}
-              onChange={(event) => handleAlwaysOpenChange(event.target.checked)}
-            />
-            Open 24/7
-          </label>
-        </div>
-
-        <section className="mt-6 min-w-0 max-w-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6">
-          <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">Create Time Set</h4>
+        {inlinePreview && !composerOpen ? null : (
+        <form
+          className="mt-6 min-w-0 max-w-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleAddTimeSet();
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">{inlinePreview ? (editingSetKey ? 'Edit Schedule Set' : 'Add New Schedule Set') : 'Create Time Set'}</h4>
+            {inlinePreview ? (
+              <button type="button" className="rounded-lg px-3 py-2 text-[12px] font-bold text-slate-600 hover:bg-slate-100" onClick={closeComposer}>
+                Cancel
+              </button>
+            ) : null}
+          </div>
 
           <div className="mt-5 grid min-w-0 max-w-full gap-5 [&>*]:min-w-0 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_1px_minmax(0,1fr)_auto] xl:items-end">
             <TimeField
@@ -351,21 +455,35 @@ export default function StorefrontBusinessHoursScheduler({
             </div>
 
             <button
-              type="button"
+              type={inlinePreview ? 'submit' : 'button'}
               className="inline-flex min-h-11 min-w-[180px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_16px_34px_rgba(37,99,235,0.32)] transition hover:from-blue-700 hover:to-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={disabled || selectedDays.length === 0}
-              onClick={handleAddTimeSet}
+              onClick={inlinePreview ? undefined : handleAddTimeSet}
             >
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M10 4v12M4 10h12" strokeLinecap="round" />
               </svg>
-              Add Time Set
+              {inlinePreview ? (editingSetKey ? 'Save Changes' : 'Add Schedule Set') : 'Add Time Set'}
             </button>
           </div>
-        </section>
+        </form>
+        )}
 
         <section className="mt-5 rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6">
-          <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">Schedule Sets</h4>
+          {!hideScheduleSummaryHeader || inlinePreview ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">{inlinePreview ? 'Current Schedule' : 'Schedule Sets'}</h4>
+                {inlinePreview ? <p className="mt-1 text-[13px] text-slate-500">This is how your business hours will appear on your storefront.</p> : null}
+              </div>
+              {inlinePreview ? (
+                <button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60" disabled={disabled} onClick={() => { setEditingSetKey(null); setComposerOpen(true); }}>
+                  <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M10 4v12M4 10h12" strokeLinecap="round" /></svg>
+                  Add Schedule Set
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-6 overflow-hidden rounded-[22px] border border-slate-200">
             {/* Column header only applies to the desktop/tablet table layout below. */}
@@ -385,24 +503,35 @@ export default function StorefrontBusinessHoursScheduler({
                           selected days move to a 2-column grid below (.time-set-days). */}
                       <div className="time-set-item flex flex-col gap-3 px-6 py-5 sm:hidden">
                         <div className="time-set-header flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 text-lg font-medium text-slate-800">
+                          <div className="flex min-w-0 items-center gap-3 text-lg font-medium text-slate-800">
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-500">
                               <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                                 <circle cx="12" cy="12" r="8" />
                                 <path d="M12 8v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
                               </svg>
                             </span>
-                            <span>{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                            <span className="min-w-0">
+                              {inlinePreview ? <span className="block truncate text-[13px] font-extrabold text-slate-900">{formatScheduleDayLabel(set.dayKeys)}</span> : null}
+                              <span className="block text-[14px]">{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                            </span>
                           </div>
 
-                          <button
-                            type="button"
-                            className="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-                            disabled={disabled}
-                            onClick={() => handleRemoveSet(set.dayKeys)}
-                          >
-                            Remove
-                          </button>
+                          <div className="flex shrink-0 items-center gap-2">
+                            {inlinePreview ? (
+                              <button type="button" className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60" disabled={disabled} aria-label={`Edit ${formatScheduleDayLabel(set.dayKeys)} schedule`} onClick={() => handleEditScheduleSet(set)}>
+                                Edit
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
+                              disabled={disabled}
+                              aria-label={inlinePreview ? `Remove ${formatScheduleDayLabel(set.dayKeys)} schedule` : undefined}
+                              onClick={() => handleRemoveSet(set.dayKeys)}
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
 
                         <div className="time-set-days grid grid-cols-2 gap-2">
@@ -419,14 +548,17 @@ export default function StorefrontBusinessHoursScheduler({
 
                       {/* Desktop/tablet: original 3-column table row, unchanged. */}
                       <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_92px] items-center gap-4 px-6 py-5 sm:grid">
-                        <div className="flex items-center gap-3 text-lg font-medium text-slate-800">
+                        <div className="flex min-w-0 items-center gap-3 text-lg font-medium text-slate-800">
                           <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500">
                             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
                               <circle cx="12" cy="12" r="8" />
                               <path d="M12 8v4l2.5 2.5" strokeLinecap="round" strokeLinejoin="round" />
                             </svg>
                           </span>
-                          <span>{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                          <span className="min-w-0">
+                            {inlinePreview ? <span className="block truncate text-[13px] font-extrabold text-slate-900">{set.dayKeys.map((dayKey) => STOREFRONT_BUSINESS_DAY_OPTIONS.find((entry) => entry.key === dayKey)?.label || dayKey).join(', ')}</span> : null}
+                            <span className="block text-[14px]">{formatTimeLabel(set.open)} - {formatTimeLabel(set.close)}</span>
+                          </span>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
@@ -440,11 +572,17 @@ export default function StorefrontBusinessHoursScheduler({
                           )}
                         </div>
 
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-2">
+                          {inlinePreview ? (
+                            <button type="button" className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50 disabled:opacity-60" disabled={disabled} aria-label="Edit schedule" onClick={() => handleEditScheduleSet(set)}>
+                              Edit
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
                             disabled={disabled}
+                            aria-label={inlinePreview ? `Remove ${formatScheduleDayLabel(set.dayKeys)} schedule` : undefined}
                             onClick={() => handleRemoveSet(set.dayKeys)}
                           >
                             Remove

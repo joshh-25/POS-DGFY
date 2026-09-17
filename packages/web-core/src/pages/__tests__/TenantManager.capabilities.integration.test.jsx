@@ -48,57 +48,61 @@ vi.mock('@/services/adminService', () => mocks.adminServiceMock);
 vi.mock('sonner', () => ({ toast: mocks.toastMock }));
 
 describe('TenantManager capability controls', () => {
+  const kusinaTenant = {
+    id: 'tenant-kusina',
+    name: 'Kusina & Cafe',
+    admin_email: 'kusina@example.test',
+    company_token: 'token-kusina',
+    status: 'active',
+    plan: 'premium',
+    compliance_mode_state: 'non_compliant_active',
+    compliance_mode_choice_required: false,
+    can_force_non_compliant: false,
+    force_non_compliant_block_reason: 'Tenant is already in non_compliant_active mode.',
+    created_at: '2026-06-05T05:24:00.000Z',
+    capabilities: {
+      ims_enabled: true,
+      pos_enabled: false,
+      storefront_visible: true,
+      customer_access_mode: 'transaction',
+      requested_customer_access_mode: 'transaction',
+      effective_customer_access_mode: 'catalog',
+      max_customer_access_mode: 'catalog',
+      platform_max_customer_access_mode: 'transaction',
+      registration_stage_max_customer_access_mode: 'catalog',
+      registration_stage: 'informal',
+      customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
+      access_capabilities: {
+        cart: false,
+        quote: false,
+        checkout: false,
+        booking: false
+      }
+    }
+  };
+  const kateTenant = {
+    id: 'tenant-kate',
+    name: 'Kate Store',
+    admin_email: 'kate@example.test',
+    company_token: 'token-kate',
+    status: 'active',
+    plan: 'premium',
+    capabilities: {
+      ims_enabled: true,
+      pos_enabled: true,
+      storefront_visible: false,
+      customer_access_mode: 'ghost'
+    }
+  };
+  const withCapabilities = (tenant, capabilities) => ({
+    ...tenant,
+    capabilities: { ...tenant.capabilities, ...capabilities }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.adminServiceMock.getTenants.mockResolvedValue({
-      data: [
-        {
-          id: 'tenant-kusina',
-          name: 'Kusina & Cafe',
-          admin_email: 'kusina@example.test',
-          company_token: 'token-kusina',
-          status: 'active',
-          plan: 'premium',
-          compliance_mode_state: 'non_compliant_active',
-          compliance_mode_choice_required: false,
-          can_force_non_compliant: false,
-          force_non_compliant_block_reason: 'Tenant is already in non_compliant_active mode.',
-          created_at: '2026-06-05T05:24:00.000Z',
-          capabilities: {
-            ims_enabled: true,
-            pos_enabled: false,
-            storefront_visible: true,
-            customer_access_mode: 'transaction',
-            requested_customer_access_mode: 'transaction',
-            effective_customer_access_mode: 'catalog',
-            max_customer_access_mode: 'catalog',
-            platform_max_customer_access_mode: 'transaction',
-            registration_stage_max_customer_access_mode: 'catalog',
-            registration_stage: 'informal',
-            customer_access_limitation_reason: 'Registration stage informal allows up to catalog mode.',
-            access_capabilities: {
-              cart: false,
-              quote: false,
-              checkout: false,
-              booking: false
-            }
-          }
-        },
-        {
-          id: 'tenant-kate',
-          name: 'Kate Store',
-          admin_email: 'kate@example.test',
-          company_token: 'token-kate',
-          status: 'active',
-          plan: 'premium',
-          capabilities: {
-            ims_enabled: true,
-            pos_enabled: true,
-            storefront_visible: false,
-            customer_access_mode: 'ghost'
-          }
-        }
-      ]
+      data: [kusinaTenant, kateTenant]
     });
     mocks.adminServiceMock.updateTenantCapabilities.mockResolvedValue({ success: true });
     mocks.adminServiceMock.listTenantCapabilityAuditLogs.mockResolvedValue({
@@ -158,6 +162,11 @@ describe('TenantManager capability controls', () => {
     await screen.findByText('Confirm capability change');
     expect(screen.getByText('Tenant impact preview')).toBeTruthy();
     expect(screen.getByText(/POS access will be restored for this company/)).toBeTruthy();
+    // Issue #1923: success is only claimed when the fresh list read reflects
+    // the write, so model the durable post-write read before applying.
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [withCapabilities(kusinaTenant, { pos_enabled: true }), kateTenant]
+    });
     await user.type(screen.getByLabelText('Reason'), 'Tenant requested POS restoration');
     await user.click(screen.getByRole('button', { name: /Apply change/i }));
 
@@ -241,6 +250,11 @@ describe('TenantManager capability controls', () => {
 
     await screen.findByText('Confirm capability change');
     expect(screen.getByText(/Checkout can become available when company requested mode and platform max are also Online ordering mode/i)).toBeTruthy();
+    // Issue #1923: the fresh list read must still show `registered` after the
+    // write - the pre-fix UI toasted success without ever checking the read.
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [withCapabilities(kusinaTenant, { registration_stage: 'registered' }), kateTenant]
+    });
     await user.type(screen.getByLabelText('Reason'), 'Approved registration evidence for online ordering');
     await user.click(screen.getByRole('button', { name: /Apply change/i }));
 
@@ -252,6 +266,9 @@ describe('TenantManager capability controls', () => {
           reason: 'Approved registration evidence for online ordering'
         }
       );
+    });
+    await waitFor(() => {
+      expect(mocks.toastMock.success).toHaveBeenCalledWith('Tenant capabilities updated');
     });
   });
 
@@ -267,6 +284,90 @@ describe('TenantManager capability controls', () => {
     expect(screen.getByRole('button', { name: /Map listing only/i }).disabled).toBe(true);
     expect(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }).disabled).toBe(false);
   });
+
+  it('opens the Storefront / Maps confirmation and sends the exact PATCH payload', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Kate Store' });
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kate');
+
+    // Issue #1923 symptom 1: this button was reported as completely inert
+    // (no modal, no request). It must open the audited confirmation flow.
+    await user.click(screen.getByRole('button', { name: /Storefront \/ Maps Off/i }));
+    await screen.findByText('Confirm capability change');
+    expect(screen.getByText(/Storefront \/ Maps visibility will be restored after the audit reason is saved/i)).toBeTruthy();
+    // Issue #1923: model the durable post-write read so success is claimed
+    // only after the fresh read reflects the write.
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [kusinaTenant, withCapabilities(kateTenant, { storefront_visible: true })]
+    });
+    await user.type(screen.getByLabelText('Reason'), 'Merchant requested public storefront launch');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+        'tenant-kate',
+        { storefront_visible: true, reason: 'Merchant requested public storefront launch' }
+      );
+    });
+    await waitFor(() => {
+      expect(mocks.toastMock.success).toHaveBeenCalledWith('Tenant capabilities updated');
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('Confirm capability change')).toBeNull();
+    });
+  }, 15000);
+
+  it('refuses to toast success when the fresh read does not reflect the write', async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Kusina & Cafe' });
+    await user.type(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities'), 'kusina');
+
+    await user.click(screen.getByRole('button', { name: /POS Off/i }));
+    await screen.findByText('Confirm capability change');
+    // Deliberately leave the list mock on the stale pre-write read: the
+    // server accepted the PATCH but the reload still shows the old value.
+    await user.type(screen.getByLabelText('Reason'), 'Tenant requested POS restoration');
+    await user.click(screen.getByRole('button', { name: /Apply change/i }));
+
+    await waitFor(() => {
+      expect(mocks.adminServiceMock.updateTenantCapabilities).toHaveBeenCalledWith(
+        'tenant-kusina',
+        { pos_enabled: true, reason: 'Tenant requested POS restoration' }
+      );
+    });
+    await waitFor(() => {
+      expect(mocks.toastMock.error).toHaveBeenCalledWith(
+        expect.stringMatching(/does not reflect it.*pos_enabled/)
+      );
+    });
+    expect(mocks.toastMock.success).not.toHaveBeenCalledWith('Tenant capabilities updated');
+    // The confirmation stays open so the operator can check the audit log
+    // instead of believing a success that never landed.
+    expect(screen.getByText('Confirm capability change')).toBeTruthy();
+  }, 15000);
+
+  it('keeps capability controls inert-but-explained when hydration failed', async () => {
+    const user = userEvent.setup();
+    // Simulate a failed tenant-local capability hydration: the list read
+    // marks the tenant unavailable, which disables every capability control.
+    mocks.adminServiceMock.getTenants.mockResolvedValue({
+      data: [{ ...kateTenant, capabilities: { unavailable: true } }]
+    });
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
+
+    await screen.findByRole('heading', { name: 'Kate Store' });
+    expect(screen.getByText('Settings unavailable')).toBeTruthy();
+    const mapsButton = screen.getByRole('button', { name: /Storefront \/ Maps Off/i });
+    expect(mapsButton.disabled).toBe(true);
+    await user.click(mapsButton);
+
+    expect(screen.queryByText('Confirm capability change')).toBeNull();
+    expect(mocks.adminServiceMock.updateTenantCapabilities).not.toHaveBeenCalled();
+  }, 15000);
 
   it('loads and renders recent capability audit logs', async () => {
     const user = userEvent.setup();

@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
 
-// Phase 226 (#1273). Covers the Delivery Runs tab wired into IncomingQueueWorkspace: retail-only
-// visibility, the mode-flip fallback (WORKFLOW_MODE_CHANGED_EVENT can flip workflowMode while the
-// tab is open), create, the roster-save XOR + single-accountable invariant, members rendering, and
-// the DELETE-then-ADD ordering "move to another run" is forced into (plan §6, §7).
+// Phase 226 (#1273), widened #1924. Covers the Delivery Runs tab wired into IncomingQueueWorkspace:
+// retail + F&B visibility (services and other modes stay excluded), the mode-flip fallback
+// (WORKFLOW_MODE_CHANGED_EVENT can flip workflowMode while the tab is open), create, the
+// roster-save XOR + single-accountable invariant, members rendering, and the DELETE-then-ADD
+// ordering "move to another run" is forced into (plan §6, §7).
 
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -87,21 +88,43 @@ beforeEach(() => {
 });
 
 describe('Delivery Runs tab visibility', () => {
-  it('renders the tab for workflowMode="retail" and hides it for a non-retail mode', () => {
+  it('renders the tab for workflowMode="retail" and workflowMode="fnb"', () => {
     const { unmount } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     expect(screen.getByRole('tab', { name: /Delivery Runs/i })).toBeTruthy();
     unmount();
 
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
-    expect(screen.queryByRole('tab', { name: /Delivery Runs/i })).toBeNull();
+    expect(screen.getByRole('tab', { name: /Delivery Runs/i })).toBeTruthy();
   });
 
-  it('falls back to the Active Queue when workflowMode flips off retail while the runs tab is open', async () => {
+  it('hides the tab and never fetches run options for an unsupported workflow mode', () => {
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
+    expect(screen.queryByRole('tab', { name: /Delivery Runs/i })).toBeNull();
+    expect(fetchDeliveryRuns).not.toHaveBeenCalled();
+  });
+
+  it('loads run options for fnb just like retail', async () => {
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalled());
+  });
+
+  it('keeps the runs tab open when workflowMode flips between the supported retail/fnb modes', async () => {
     const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     await openDeliveryRunsTab();
     expect(await screen.findByRole('button', { name: /New run/i })).toBeTruthy();
 
     rerender(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+
+    expect(await screen.findByRole('button', { name: /New run/i })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Delivery Runs/i })).toBeTruthy();
+  });
+
+  it('falls back to the Active Queue when workflowMode flips to an unsupported mode while the runs tab is open', async () => {
+    const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
+    await openDeliveryRunsTab();
+    expect(await screen.findByRole('button', { name: /New run/i })).toBeTruthy();
+
+    rerender(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
 
     await waitFor(() => expect(screen.queryByRole('button', { name: /New run/i })).toBeNull());
     expect(screen.queryByRole('tab', { name: /Delivery Runs/i })).toBeNull();

@@ -180,6 +180,46 @@ describe('Unpacked-members pre-flight notice (backstop)', () => {
   });
 });
 
+describe('Packed pre-flight is retail-only (#1924)', () => {
+  const openRunDetailAs = async (run, workflowMode) => {
+    fetchDeliveryRuns.mockResolvedValue({ items: [run], pagination: { total: 1, page: 1, limit: 100 } });
+    fetchDeliveryRun.mockResolvedValue(run);
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode })} />);
+    await openDeliveryRunsTab();
+    fireEvent.click(await screen.findByText(run.label));
+    await screen.findByRole('button', { name: /Dispatch run|Re-dispatch run/i });
+  };
+
+  it('fnb: an unpacked member neither blocks dispatch nor shows the packed notice', async () => {
+    const run = buildRun({
+      members: [
+        buildMember({ pos_transaction_id: 9001, fulfillment_status: 'packed' }),
+        buildMember({ pos_transaction_id: 9002, delivery_job_id: 2, fulfillment_status: 'preparing' })
+      ]
+    });
+    await openRunDetailAs(run, 'fnb');
+
+    // F&B orders may never become `packed` and dispatch without the packing check (ADR 0034).
+    expect(screen.getByRole('button', { name: /^Dispatch run$/i }).disabled).toBe(false);
+    expect(screen.queryByText(/Not yet packed/i)).toBeNull();
+    expect(screen.queryByText(/Every order must be packed/i)).toBeNull();
+    expect(dispatchDeliveryRun).not.toHaveBeenCalled();
+  });
+
+  it('retail: the same unpacked member still blocks dispatch with the packed notice', async () => {
+    const run = buildRun({
+      members: [
+        buildMember({ pos_transaction_id: 9001, fulfillment_status: 'packed' }),
+        buildMember({ pos_transaction_id: 9002, delivery_job_id: 2, fulfillment_status: 'preparing' })
+      ]
+    });
+    await openRunDetailAs(run, 'retail');
+
+    expect(screen.getByRole('button', { name: /^Dispatch run$/i }).disabled).toBe(true);
+    expect(screen.getByText(/Not yet packed/i)).toBeTruthy();
+  });
+});
+
 describe('Confirm-then-submit', () => {
   it('does not call dispatchDeliveryRun until the confirm dialog is accepted', async () => {
     const run = buildRun();

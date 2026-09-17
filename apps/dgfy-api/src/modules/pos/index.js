@@ -166,6 +166,7 @@ import { createPosCashierAttendanceUseCases } from './usecases/posCashierAttenda
 import { createPosCashierLifecycleUseCases } from './usecases/posCashierLifecycleUseCases.js';
 import { createPosCashierAttendanceConfigUseCases } from './usecases/posCashierAttendanceConfigUseCases.js';
 import { resolveMovementLocation, assertLocationAccess } from '../../services/locationInventoryService.js';
+import { publishCatalogChange } from '../shared/services/catalogChangeEventBus.js';
 import { resolvePosCashierAttendanceFeature, requirePosCashierAttendanceFeature } from './services/posCashierAttendanceFeature.js';
 import { assertPosAttendanceLifecyclePermission } from './services/posAttendancePermissionPolicy.js';
 import posOperatorAuthorityService from './services/posOperatorAuthorityService.js';
@@ -211,7 +212,8 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
     calculateServiceQuoteUseCase: posCalculateServiceQuoteUseCase,
-    completeClaimedPosParkedSaleUseCase
+    completeClaimedPosParkedSaleUseCase,
+    publishCatalogChange
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
@@ -256,7 +258,8 @@ export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase(
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
-    employeeCreditService
+    employeeCreditService,
+    publishCatalogChange
 });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
