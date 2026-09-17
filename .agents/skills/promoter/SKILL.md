@@ -148,9 +148,12 @@ against `origin/develop`. Only cut `to-staging/<candidate_id>` once that procedu
 checks clear.
 
 **Candidate manifest, written locally at cut time (ADR 0081 Decision 8, #1588).** The manifest
-`scripts/check-promotion-candidate.js` validates is also this candidate's own tracked source
-identity — `source_develop_sha` (no repairs yet) or `current_staging_sha` (once repairs land) — the
-frozen SHA the promotion parity gate (below) compares against, distinct from whatever
+`scripts/check-promotion-candidate.js` validates keeps two distinct identities: the candidate's
+tracked source identity — `source_develop_sha` (no repairs yet) or `current_staging_sha` (once
+repairs land) — is the frozen SHA the promotion parity gate (below) compares against; the optional
+`staging_head_sha` is the actual Git SHA at `origin/staging` after the staging merge and is the
+source for the release branch. GitHub may fast-forward a `--merge` promotion PR, so these values
+must not be assumed equal. Both are distinct from whatever
 `org.opencontainers.image.revision`/`github.sha` each environment's own merge commit happens to
 carry. Written once, right after the candidate branch is cut and pushed, to
 `.tmp/release-candidates/<candidate_id>.json` (never committed — a local artifact, same convention

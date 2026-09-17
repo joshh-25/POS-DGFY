@@ -48,6 +48,7 @@ function fixture() {
     status: 'qualified',
     source_develop_sha: SHA,
     current_staging_sha: SHA,
+    staging_head_sha: SHA,
     revisions: [{ kind: 'initial', sha: SHA, parent_sha: null, branch: 'to-staging/2026-09-04-01', pr: 2001 }],
     release_revision: { revision: 1, source_staging_sha: SHA, branch: 'release/2026-09-04-01-r1', pr: 2002 },
   });
