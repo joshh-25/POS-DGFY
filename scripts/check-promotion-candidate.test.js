@@ -47,6 +47,13 @@ test('accepts a candidate that is still in staging before a release cut', () => 
   assert.equal(validatePromotionCandidate(manifest).release_revision, null);
 });
 
+test('accepts a staging-soak candidate with no staging head recorded yet', () => {
+  const manifest = candidate({ staging_head_sha: null });
+  manifest.status = 'staging_soak';
+  manifest.release_revision = null;
+  assert.equal(validatePromotionCandidate(manifest).staging_head_sha, null);
+});
+
 test('rejects an early lifecycle status after a release cut', () => {
   assert.throws(() => validatePromotionCandidate(candidate({ status: 'created' })), /must be qualified, repairing, promoted, verified, or blocked/);
 });

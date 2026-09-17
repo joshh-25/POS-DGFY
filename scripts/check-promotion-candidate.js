@@ -81,7 +81,7 @@ function validatePromotionCandidate(manifest) {
   assert(typeof manifest.candidate_id === 'string' && CANDIDATE_ID_PATTERN.test(manifest.candidate_id), 'candidate_id must use YYYY-MM-DD-NN', 'INVALID_CANDIDATE_ID');
   assert(STATUS_VALUES.has(manifest.status), `Unsupported candidate status: ${manifest.status || '<missing>'}`, 'INVALID_STATUS');
   assertSha(manifest.source_develop_sha, 'source_develop_sha');
-  if (manifest.staging_head_sha !== undefined) assertSha(manifest.staging_head_sha, 'staging_head_sha');
+  if (manifest.staging_head_sha != null) assertSha(manifest.staging_head_sha, 'staging_head_sha');
   assert(Array.isArray(manifest.revisions) && manifest.revisions.length > 0, 'Candidate must contain at least one revision', 'MISSING_REVISIONS');
 
   const { candidate_id: candidateId, revisions } = manifest;
