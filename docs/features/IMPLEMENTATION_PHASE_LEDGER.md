@@ -23447,7 +23447,7 @@ ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
 
 ### Links
 
-- Issue: not yet recorded in the implementation artifact; PR #1962 carries this work.
+- Issue: #1963 (`Refs`; deployed QA remains outstanding); PR #1962 carries this work.
 - ADR: `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
 - Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md`
 - Design/plan: `docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md`,
