@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: DELIVERY_RUN_UNPACKED_MEMBERS,DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_JOB_ALREADY_IN_RUN,DELIVERY_ASSIGNMENT_NOT_RUN_OWNED,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_MEMBER_NOT_FOUND,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_PERSONNEL_NOT_AVAILABLE,POS_LOCATION_ACCESS_DENIED
 policy_version: 2026.09.17
-verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims consumes the same shared TerminalOperationsPanels tree via packages/web-core),focused Vitest suites run from apps/dgfy-ims -- 82/82 passing across deliveryRunsWorkspace, deliveryRunSplitViewDnd, deliveryRunBulkAssign, deliveryRunQueueFilter, deliveryRunLoading, deliveryRunDispatch -- plus 113/113 across 7 adjacent suites (incomingQueueRunMemberFulfillmentGate, terminalViewModeContracts, terminalBalanceSettlement, terminalDownpaymentVisibility, incomingQueueViewMode, webViewStringCompat, orderFulfillmentUi),npm run check:architecture -- OK (55 modules, 588 files; controller boundaries OK),npm run lint:docs -- OK (30 governed docs, 90 ADRs),production-build preview smoke -- vite preview serves HTTP 200 app shell,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added
+verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims consumes the same shared TerminalOperationsPanels tree via packages/web-core),focused Vitest suites run from apps/dgfy-ims -- 82/82 passing across deliveryRunsWorkspace, deliveryRunSplitViewDnd, deliveryRunBulkAssign, deliveryRunQueueFilter, deliveryRunLoading, deliveryRunDispatch -- plus 113/113 across 7 adjacent suites (incomingQueueRunMemberFulfillmentGate, terminalViewModeContracts, terminalBalanceSettlement, terminalDownpaymentVisibility, incomingQueueViewMode, webViewStringCompat, orderFulfillmentUi),npm run check:architecture -- OK (55 modules, 588 files; controller boundaries OK),npm run lint:docs -- OK (30 governed docs, 90 ADRs),production-build preview smoke -- vite preview serves HTTP 200 app shell,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added,RF-1/RF-2 review follow-up -- dgfy-pos + dgfy-ims 1.18.0 -> 1.19.0 minor bumps per propose-version-level, QueueOrderTableView conditional indentation fix, 151/151 focused + adjacent tests re-run green
 rollback_note: No schema, API, permission, or route change in this phase -- the run API consumed here is Phase 225's (PR #1276) and the remittance/loading APIs are Phases 333-334's, all unchanged. This phase is frontend-only (packages/web-core/src/features/pos/ plus two governed docs), so rollback is a plain code revert with no migration or API-contract change to reason about. Reverting restores the retail-only tab gate; F&B tenants lose the tab again but no data-layer access changes either way, since the API was and remains mode-agnostic.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -148,3 +148,28 @@ See the `verification_evidence` frontmatter key for the full list. Summary:
 pr-reviewer/AGENTS.md rule confirmed at #884: this is expected, not a review finding, on a PR
 targeting `develop`. The continuous `compliance-preflight-sweep.yml` (#1163/#1248) reconciles this
 after merge.
+
+## Amendments
+
+### 2026-09-17: RF-1/RF-2 review follow-up -- app minor bumps, table conditional indentation
+
+PR #1956 review (pr-reviewer, should-fix RF-1, nit RF-2):
+
+- **RF-1.** `propose-version-level.js --base origin/develop` proposes `minor` for `dgfy-pos` and
+  `dgfy-ims` (via `packages/web-core`), but the actual bump was `none` (1.18.0 -> 1.18.0).
+  Fixed by bumping both apps to 1.19.0 with lockfiles re-synced (`npm install`, lockfile diffs
+  contain only the version fields). `dgfy-storefront` is n/a -- the changed graph does not reach
+  it. No promotion-leg deferral needed.
+- **RF-2.** `QueueOrderTableView.jsx`'s `{isDeliveryRunMode && (` openers sat at inconsistent
+  indentation (16 spaces in `<thead>`, 12 in `<tbody>` -- pre-existing, preserved by the rename).
+  Fixed to 12/16 spaces respectively, matching the surrounding `<th>`/`<td>` siblings. No
+  behavior change.
+
+No new file, no schema change, no new route, no classification/surface change -- both fixes are
+contained to the files this declaration already lists plus the two app manifests. Every
+Compliance Precondition and Residual Risk above is unchanged.
+
+Verification for this amendment: focused + adjacent Vitest suites re-run (151/151 passing,
+including the table-view suites), `node scripts/propose-version-level.js --base origin/develop`
+now shows the minor bumps applied, `git diff --check` clean, `npm run check:compliance` re-run
+against this amendment.
