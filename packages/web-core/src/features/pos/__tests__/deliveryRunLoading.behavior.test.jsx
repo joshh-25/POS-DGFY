@@ -143,4 +143,46 @@ describe('loading confirmation and dispatch warning', () => {
     expect(screen.getByText(/dispatch was not blocked/i)).toBeTruthy();
     expect(screen.getByText(/#9001, #9002/)).toBeTruthy();
   });
+
+  // Phase 337 (#1927): the canonical `warnings` array renders per-member states and reasons.
+  it('prefers canonical warnings with exact per-member states and exception reasons', () => {
+    render(<DeliveryRunDispatchSummary result={{
+      dispatched: [{ pos_transaction_id: 9001 }, { pos_transaction_id: 9002 }, { pos_transaction_id: 9003 }],
+      skipped: [],
+      failed: [],
+      loading_warning: {
+        unloaded_pos_transaction_ids: [9001, 9002],
+        exception_pos_transaction_ids: [9003]
+      },
+      warnings: [
+        { pos_transaction_id: 9001, loading_state: 'pending' },
+        { pos_transaction_id: 9002, loading_state: 'not_loaded' },
+        { pos_transaction_id: 9003, loading_state: 'exception', exception_reason: 'Damaged package' }
+      ]
+    }} />);
+
+    expect(screen.getByText(/Loading verification warning/i)).toBeTruthy();
+    expect(screen.getByText(/3 outstanding/)).toBeTruthy();
+    expect(screen.getByText(/dispatch was not blocked/i)).toBeTruthy();
+    // Exact per-member states stay distinct -- pending is not collapsed into not loaded.
+    expect(screen.getByText(/Order #9001 — loading pending/)).toBeTruthy();
+    expect(screen.getByText(/Order #9002 — not loaded/)).toBeTruthy();
+    expect(screen.getByText(/Order #9003 — loading exception: Damaged package/)).toBeTruthy();
+  });
+
+  it('shows no warning banner when canonical warnings are empty', () => {
+    render(<DeliveryRunDispatchSummary result={{
+      dispatched: [{ pos_transaction_id: 9001 }],
+      skipped: [],
+      failed: [],
+      loading_warning: {
+        unloaded_pos_transaction_ids: [],
+        exception_pos_transaction_ids: []
+      },
+      warnings: []
+    }} />);
+
+    expect(screen.queryByText(/Loading verification warning/i)).toBeNull();
+    expect(screen.getByText(/Dispatched \(1\)/)).toBeTruthy();
+  });
 });
