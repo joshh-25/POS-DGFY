@@ -53,6 +53,10 @@ const disabledRemoteProvider = {
     searchAddresses: async () => null
 };
 
+// INVARIANT: never inject `quadruperGeocodeProvider` directly into a builder. Always let
+// the default resolve through defaultRemoteProvider(), or GEOCODE_QUADRUPER_ENABLED=false
+// will not apply to that caller and the documented revert path stops being complete.
+// Tests inject fakes, which is why the kill switch lives here and not inside callRemote.
 const defaultRemoteProvider = () => (
     geocodeConfig.enabled ? quadruperGeocodeProvider : disabledRemoteProvider
 );
