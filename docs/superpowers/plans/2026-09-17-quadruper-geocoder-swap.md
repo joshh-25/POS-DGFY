@@ -988,13 +988,22 @@ git commit -m "feat(geocoder): add Quadruper HTTP provider with strict param all
 
 ---
 
-### Task 4: Local fallback provider
+### Task 4: Local fallback provider (atomic move)
 
-Move the bundled-dataset logic out of the use case and behind the same interface as Task 3, so the use case can treat both identically. Behavior is preserved exactly — this is a move plus a `landmarks: []` and `components` addition, not a rewrite.
+Move the bundled-dataset logic out of the use case and behind the same interface as Task 3.
+
+**This is one atomic move: the new provider is created and the original helpers are deleted from
+the use case in the same commit.** Creating the provider in one task and deleting the original in a
+later one would put verbatim duplicated logic on the branch — ruled against 2026-09-17. A move is
+one commit.
+
+Behavior is preserved exactly, plus the `landmarks: []` and `components` additions.
 
 **Files:**
 - Create: `apps/dgfy-api/src/modules/geoSearch/providers/localGeocodeProvider.js`
+- Modify: `apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js` — delete the extracted helpers, delegate to the provider
 - Test: `apps/dgfy-api/tests/geoLocalProvider.test.js`
+- Regression (must keep passing, **unmodified**): `apps/dgfy-api/tests/geoSearchReverseGeocode.usecase.test.js`
 
 **Interfaces:**
 - Consumes: `distanceKm` (Task 1), `PH_LOCAL_ADDRESS_DATASET` / `PH_LOCAL_ADDRESS_PROVIDER` / `PH_LOCAL_ADDRESS_PROVENANCE` (existing).
@@ -1155,17 +1164,88 @@ export const localGeocodeProvider = {
 };
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Delete the extracted logic from the use case and delegate**
 
-Run: `npm --prefix apps/dgfy-api test -- tests/geoLocalProvider.test.js`
-Expected: PASS — 6 tests
+In `apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js`, **delete** `toRadians`,
+`distanceKm`, `coordinateFallback`, `precisionRank`, and `resolveLocalAddress` (lines 32-86 of the
+original), delete the `PH_LOCAL_ADDRESS_*` import block, and replace both geocode builders. Leave
+`buildGeoSearchUseCase` (nearest-store discovery) exactly as it is — it is a different concern.
 
-- [ ] **Step 5: Commit**
+The file becomes:
+
+```javascript
+import { ok, fail } from '../../shared/contracts/applicationResult.js';
+import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { localGeocodeProvider } from '../providers/localGeocodeProvider.js';
+
+export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
+    return async ({ query, latitude, longitude, radius, stockFilter, page, limit }) => {
+        try {
+            const result = await geoSearchRepository.searchNearbyStores({
+                query, latitude, longitude, radius, stockFilter, page, limit
+            });
+            return ok(result);
+        } catch (error) {
+            return fail(new DomainError(
+                DomainErrorCode.INTERNAL_ERROR,
+                error?.message || 'Geo search failed',
+                { statusCode: 500 }
+            ));
+        }
+    };
+};
+
+const validationFailure = (message) => fail(new DomainError(
+    DomainErrorCode.VALIDATION_FAILED,
+    message,
+    { statusCode: 422 }
+));
+
+export const buildReverseGeocodeUseCase = () => {
+    return async ({ latitude, longitude }) => {
+        const lat = Number(latitude);
+        const lon = Number(longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+            return validationFailure('Latitude and longitude are required.');
+        }
+
+        const local = await localGeocodeProvider.reverseGeocode({ latitude: lat, longitude: lon });
+        return ok({ ...local, latitude: lat, longitude: lon });
+    };
+};
+
+export const buildAddressSearchUseCase = () => {
+    return async ({ query, limit = 8 }) => {
+        const normalizedQuery = String(query || '').trim();
+        if (normalizedQuery.length < 2) {
+            return validationFailure('Enter at least 2 characters to search for an address.');
+        }
+
+        return ok(await localGeocodeProvider.searchAddresses({ query: normalizedQuery, limit }));
+    };
+};
+```
+
+Task 6 adds the remote provider, breaker, and cache on top of this. Do not anticipate that here.
+
+- [ ] **Step 5: Run the new test AND the existing regression suite**
+
+Both matter: the second proves the move changed no behaviour. Do not edit the existing test file.
+
+Run: `npm --prefix apps/dgfy-api test -- tests/geoLocalProvider.test.js tests/geoSearchReverseGeocode.usecase.test.js`
+Expected: PASS — 6 new tests plus every pre-existing reverse-geocode case, unmodified
+
+- [ ] **Step 6: Run the architecture guardrails**
+
+Run: `npm --prefix apps/dgfy-api run check:architecture-guardrails`
+Expected: PASS — confirms `usecases/geoSearchUseCases.js` imports no `/services` path
+
+- [ ] **Step 7: Commit**
 
 ```bash
-rg "DO NOT COMMIT" apps/dgfy-api/src/modules/geoSearch/providers/localGeocodeProvider.js apps/dgfy-api/tests/geoLocalProvider.test.js
-git add apps/dgfy-api/src/modules/geoSearch/providers/localGeocodeProvider.js apps/dgfy-api/tests/geoLocalProvider.test.js
-git commit -m "feat(geocoder): extract bundled dataset behind the local provider interface"
+rg "DO NOT COMMIT" apps/dgfy-api/src/modules/geoSearch/providers/localGeocodeProvider.js apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js apps/dgfy-api/tests/geoLocalProvider.test.js
+git add apps/dgfy-api/src/modules/geoSearch/providers/localGeocodeProvider.js apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js apps/dgfy-api/tests/geoLocalProvider.test.js
+git commit -m "refactor(geocoder): move bundled dataset behind the local provider interface"
 ```
 
 ---
@@ -1411,8 +1491,8 @@ git commit -m "feat(geocoder): add circuit breaker and import-date-keyed geocode
 The use case loses all data-lookup and distance code (now in Tasks 1 and 4) and keeps only the policy: Quadruper → local → `coordinate_only`.
 
 **Files:**
-- Modify: `apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js` (replace lines 30-135; `buildGeoSearchUseCase` at lines 9-29 stays untouched)
-- Modify: `apps/dgfy-api/src/modules/geoSearch/index.js`
+- Modify: `apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js` — Task 4 already reduced this to local-only delegation; add the remote provider, breaker, and cache on top. `buildGeoSearchUseCase` stays untouched.
+- Verify only (no edit expected): `apps/dgfy-api/src/modules/geoSearch/index.js`
 - Modify: `apps/dgfy-api/tests/geoSearchReverseGeocode.usecase.test.js`
 - Test: `apps/dgfy-api/tests/geoFallbackPolicy.test.js`
 
@@ -1597,9 +1677,10 @@ describe('address search fallback policy', () => {
 Run: `npm --prefix apps/dgfy-api test -- tests/geoFallbackPolicy.test.js`
 Expected: FAIL — the builders currently take no options, so injected fakes are ignored and `provider` is `dgfy-ph-local` in the first test.
 
-- [ ] **Step 3: Rewrite the use case file**
+- [ ] **Step 3: Add the remote path to the use case file**
 
-Replace the whole of `apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js` with:
+Task 4 left this file delegating straight to `localGeocodeProvider`. Add the remote provider, the
+circuit breaker, the cache, and the injectable options. Replace the whole file with:
 
 ```javascript
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
@@ -1724,9 +1805,10 @@ export const buildAddressSearchUseCase = ({
 };
 ```
 
-- [ ] **Step 4: Update the DI entry point**
+- [ ] **Step 4: Confirm the DI entry point needs no change**
 
-Replace `apps/dgfy-api/src/modules/geoSearch/index.js` with:
+Both builders now default every new option, so `index.js` calling them with no arguments still
+wires the real providers. **Make no edit.** Read the file and confirm it already reads exactly:
 
 ```javascript
 import { geoSearchRepository } from './repositories/geoSearchRepository.js';
@@ -1739,7 +1821,7 @@ export const addressSearchUseCase = buildAddressSearchUseCase();
 export { geoSearchRepository };
 ```
 
-(Unchanged in content — both builders default their new options, so this file needs no edit. Verify it still reads exactly as above and move on.)
+If it differs, something earlier went wrong — stop and report rather than editing this file.
 
 - [ ] **Step 5: Run the new test to verify it passes**
 
@@ -1786,7 +1868,7 @@ Expected: PASS — confirms no `usecases/*.js` file imports a `/services` path a
 
 ```bash
 rg "DO NOT COMMIT" apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js apps/dgfy-api/tests/geoFallbackPolicy.test.js apps/dgfy-api/tests/geoSearchReverseGeocode.usecase.test.js
-git add apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js apps/dgfy-api/src/modules/geoSearch/index.js apps/dgfy-api/tests/geoFallbackPolicy.test.js apps/dgfy-api/tests/geoSearchReverseGeocode.usecase.test.js
+git add apps/dgfy-api/src/modules/geoSearch/usecases/geoSearchUseCases.js apps/dgfy-api/tests/geoFallbackPolicy.test.js apps/dgfy-api/tests/geoSearchReverseGeocode.usecase.test.js
 git commit -m "refactor(geocoder): rewire use cases onto the remote-then-local fallback policy"
 ```
 
@@ -1912,7 +1994,7 @@ git commit -m "feat(geocoder): accept paired lat/lon bias on address search"
 Without this the API accepts bias that nothing supplies, and a nationwide index ranks worse than the 37-entry dataset did.
 
 **Files:**
-- Modify: `packages/web-core/src/components/maps/MapPinPicker.jsx:246-258`
+- Modify: `packages/web-core/src/components/maps/MapPinPicker.jsx` — the `searchAddress` function
 - Modify: `packages/web-core/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx`
 
 **Interfaces:**
@@ -1924,30 +2006,48 @@ Without this the API accepts bias that nothing supplies, and a nationwide index 
 Append this case inside the existing top-level `describe` block of `packages/web-core/src/components/maps/__tests__/MapPinPicker.maplibre.test.jsx` (place it next to the existing `/address-search?` assertion around line 239):
 
 ```javascript
-  it('biases address search to the current map centre', async () => {
-    render(<MapPinPicker latitude={10.7202} longitude={122.5621} onChange={() => {}} defaultAdjustMode />);
+  it('biases address search to the current map position', async () => {
+    // Deliberately NOT DEFAULT_CENTER (10.7202, 122.5621) -- using those would pass even if
+    // the component ignored the props and fell through to the default camera position.
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('/address-search?')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ data: { results: [] } })
+        });
+      }
+      return Promise.resolve({ ok: true, json: vi.fn().mockResolvedValue({ data: {} }) });
+    });
 
-    const input = await screen.findByPlaceholderText(/Search barangay, city, municipality, or address/i);
-    fireEvent.change(input, { target: { value: 'Poblacion' } });
-    fireEvent.click(screen.getByRole('button', { name: /^Search$/i }));
+    render(<MapPinPicker latitude={11.1069} longitude={122.6413} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search business address' }), 'Poblacion');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => {
-      const call = global.fetch.mock.calls.find(([url]) => String(url).includes('/address-search?'));
+      const call = globalThis.fetch.mock.calls.find(([url]) => String(url).includes('/address-search?'));
       expect(call).toBeDefined();
       const params = new URL(String(call[0]), 'http://localhost').searchParams;
       expect(params.get('query')).toBe('Poblacion');
-      expect(params.get('lat')).toBe('10.7202');
-      expect(params.get('lon')).toBe('122.5621');
+      expect(params.get('lat')).toBe('11.1069');
+      expect(params.get('lon')).toBe('122.6413');
     });
   });
 ```
 
+This suite is **Vitest**, not Jest: `globalThis.fetch = vi.fn()`, and the search box is reached by
+`getByRole('searchbox', { name: 'Search business address' })`. Match the surrounding file; do not
+introduce Jest globals.
+
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npm --prefix apps/dgfy-ims test -- MapPinPicker.maplibre`
-Expected: FAIL — `expected null to be "10.7202"`; the request currently sends only `query` and `limit`.
+Expected: FAIL — `expected null to be "11.1069"`; the request currently sends only `query` and `limit`.
 
-(If `packages/web-core` tests run under a different app in this checkout, use whichever of `apps/dgfy-ims`, `apps/dgfy-pos`, or `apps/dgfy-storefront` resolves the existing `MapPinPicker.maplibre.test.jsx`; the file is shared.)
+`apps/dgfy-ims` is the correct app and the only one: its `vite.config.js` is alone in adding
+`'../../packages/web-core/**/*.{test,spec}.?(c|m)[jt]s?(x)'` to `test.include`. The POS and
+Storefront configs both carry a comment saying web-core's tests run from `apps/dgfy-ims`, not
+there. Do not try another app.
 
 - [ ] **Step 3: Send the bias**
 
