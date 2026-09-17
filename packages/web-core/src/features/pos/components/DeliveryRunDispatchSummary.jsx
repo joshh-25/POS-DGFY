@@ -14,10 +14,10 @@ export default function DeliveryRunDispatchSummary({ result = null }) {
   const dispatched = Array.isArray(result.dispatched) ? result.dispatched : [];
   const skipped = Array.isArray(result.skipped) ? result.skipped : [];
   const failed = Array.isArray(result.failed) ? result.failed : [];
-  // Phase 337 (#1927): prefer the canonical per-member `warnings` array; fall back to the
+  // Phase 338 (#1927): prefer the canonical per-member `warnings` array; fall back to the
   // legacy `loading_warning` buckets for responses predating it. The legacy buckets collapse
   // `pending`/`not_loaded` and carry no exception reasons, so the adapter labels them with the
-  // same "not loaded/pending" wording the pre-337 panel used.
+  // same "not loaded/pending" wording the pre-338 panel used.
   const canonicalWarnings = Array.isArray(result.warnings) ? result.warnings : null;
   const loadingWarning = result.loading_warning || {};
   const unloaded = Array.isArray(loadingWarning.unloaded_pos_transaction_ids)

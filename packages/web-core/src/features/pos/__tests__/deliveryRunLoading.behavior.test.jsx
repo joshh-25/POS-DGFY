@@ -144,7 +144,7 @@ describe('loading confirmation and dispatch warning', () => {
     expect(screen.getByText(/#9001, #9002/)).toBeTruthy();
   });
 
-  // Phase 337 (#1927): the canonical `warnings` array renders per-member states and reasons.
+  // Phase 338 (#1927): the canonical `warnings` array renders per-member states and reasons.
   it('prefers canonical warnings with exact per-member states and exception reasons', () => {
     render(<DeliveryRunDispatchSummary result={{
       dispatched: [{ pos_transaction_id: 9001 }, { pos_transaction_id: 9002 }, { pos_transaction_id: 9003 }],

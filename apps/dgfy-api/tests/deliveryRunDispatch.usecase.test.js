@@ -136,7 +136,7 @@ describe('buildDispatchDeliveryRunUseCase -- run-level preconditions', () => {
             unloaded_pos_transaction_ids: [501],
             exception_pos_transaction_ids: [502]
         });
-        // Phase 337 (#1927): the additive canonical warnings mirror the same members with
+        // Phase 338 (#1927): the additive canonical warnings mirror the same members with
         // their exact per-member loading states.
         expect(result.data.warnings).toEqual([
             { pos_transaction_id: 501, loading_state: 'not_loaded' },

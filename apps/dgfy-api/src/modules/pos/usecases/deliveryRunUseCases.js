@@ -1765,7 +1765,7 @@ export const buildDispatchDeliveryRunUseCase = ({
                     .map((job) => job.pos_transaction_id)
             };
 
-            // Phase 337 (#1927): additive per-member warning collection. The legacy
+            // Phase 338 (#1927): additive per-member warning collection. The legacy
             // `loading_warning` above only covers members dispatched by this exact call and
             // collapses `pending`/`not_loaded` into one bucket, so neither the POS UI nor the
             // mobile dispatcher (dgfy-mobile#177) can render which outstanding members need

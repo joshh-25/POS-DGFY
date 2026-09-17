@@ -214,7 +214,7 @@ describe('deliveryRunHandlers transport contracts', () => {
                 dispatched: [{ pos_transaction_id: 501 }],
                 skipped: [],
                 failed: [],
-                // Phase 337 (#1927): the canonical warnings ride under `data` next to the
+                // Phase 338 (#1927): the canonical warnings ride under `data` next to the
                 // legacy `loading_warning` compat surface; the controller passes both through.
                 loading_warning: {
                     unloaded_pos_transaction_ids: [501],

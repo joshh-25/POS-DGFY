@@ -23280,7 +23280,78 @@ registration-intent routes.
 
 337 after Phase 336 acceptance evidence and deployed QA are complete.
 
-## Phase 337 - Delivery-run dispatch canonical warnings (#1927)
+## Phase 337 - Delivery Runs workspace for F&B tenants in POS (#1924)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 226 delivery-run management
+UI. Frontend presentation change only, inside the existing shared POS boundary.
+
+### Objective and scope
+
+Make the existing POS Delivery Runs workspace reachable for `retail` and `fnb` tenants behind one
+shared `isDeliveryRunMode` predicate (`retail` or `fnb`; services and every other workflow mode
+stay excluded): Delivery Runs and viewport-qualified Queue + Run tabs, run-option loading, bulk
+assign bar, queue run filter, run labels, and selection controls. The retail-only packed-order
+dispatch preflight stays retail-only -- F&B dispatches without the packing check, per ADR 0034's
+2026-09-01 amendment. No API, database schema, permission, route, or backend-type change; retail
+behavior is unchanged.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review, rendered POS
+proof, and live staging QA (F&B run create/configure, add eligible COD order, loading, dispatch,
+delivery-status advance, cash collection, remittance) remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership (keyed on `delivery_jobs`, never `fulfillment_status`),
+Phase 226/#1273 run management UI, Phase 227-231/#1289-#1290 bulk assign/filter/split view,
+Phase 333/#1461 loading verification, Phase 334/#1887 remittance ledger, ADR 0034 (retail-only
+packing precondition, F&B dispatch skips it), and `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+as the authoritative UI contract.
+
+### Acceptance and validation evidence
+
+- [x] F&B Orders sub-nav shows `Delivery Runs` and, at `>=768px`, `Queue + Run`; services shows
+      neither and issues no run fetch.
+- [x] F&B run options load; retail <-> F&B flips keep the run surface; flips into an unsupported
+      mode fall back to Active Queue and clear run-only selection/filter state.
+- [x] F&B dispatch of a run with an unpacked member is enabled with no packed notice; the same
+      run in retail stays blocked with the notice.
+- [x] Focused suites pass: `deliveryRunsWorkspace`, `deliveryRunSplitViewDnd`,
+      `deliveryRunBulkAssign`, `deliveryRunQueueFilter`, `deliveryRunLoading`, `deliveryRunDispatch`
+      (82 tests), plus adjacent `incomingQueueRunMemberFulfillmentGate`, `terminalViewModeContracts`,
+      `terminalBalanceSettlement`, `terminalDownpaymentVisibility`, `incomingQueueViewMode`,
+      `webViewStringCompat`, `orderFulfillmentUi` (113 tests).
+- [x] `npm run build:pos` and `npm run build:skupervisor` pass; `build:store` not required (the
+      changed shared import graph does not reach the storefront -- only the untouched
+      `skupervisorHandoff.js` util is shared). `npm run check:architecture` passes.
+- [ ] Rendered POS proof (retail + F&B at desktop/tablet widths, F&B below 768px, opening
+      Delivery Runs, one primary run interaction) and live staging F&B end-to-end QA.
+
+### Links
+
+- Issue: #1924
+- Contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (retail + F&B UI scope)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (2026-08-31 membership and
+  2026-09-01 dispatch amendments; unchanged by this phase)
+- Implementation: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`
+  (`isDeliveryRunMode`),
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`
+  (`isRetailMode` preflight prop),
+  `packages/web-core/src/features/pos/hooks/useDeliveryRunOptions.js`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `packages/web-core/src/features/pos/components/QueueOrderTableView.jsx`,
+  `packages/web-core/src/features/pos/components/QueueRunAssignBar.jsx`
+- Tests: `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `deliveryRunBulkAssign.behavior.test.jsx`,
+  `deliveryRunQueueFilter.behavior.test.jsx`, `deliveryRunDispatch.behavior.test.jsx`
+### Next eligible phase
+
+338 after Phase 337 acceptance evidence and deployed QA are complete.
+
+## Phase 338 - Delivery-run dispatch canonical warnings (#1927)
 
 ### Initiative and release
 
@@ -23305,7 +23376,8 @@ deployed QA remain outstanding.
 ### Dependencies
 
 Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, Phase 333/#1461
-loading verification and dispatcher attestation, and ADR 0034's warn-only dispatch clause.
+loading verification and dispatcher attestation, Phase 337/#1924 F&B delivery-run workspace,
+and ADR 0034's warn-only dispatch clause.
 
 ### Acceptance and validation evidence
 
@@ -23337,4 +23409,4 @@ loading verification and dispatcher attestation, and ADR 0034's warn-only dispat
 
 ### Next eligible phase
 
-338 after Phase 337 acceptance evidence and deployed QA are complete.
+339 after Phase 338 acceptance evidence and deployed QA are complete.
