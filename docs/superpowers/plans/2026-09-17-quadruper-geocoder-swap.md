@@ -103,12 +103,17 @@ describe('geoDistance', () => {
 });
 
 describe('landmarkClassifier', () => {
-    it('accepts named amenity, shop, tourism, office and healthcare features', () => {
+    // Every key in LANDMARK_OSM_KEYS must appear here. A dropped key would otherwise
+    // go uncaught, and a test name must never claim coverage it does not have.
+    it('accepts named features from all allowlist categories', () => {
         expect(isLandmarkFeature({ name: "Peri Todd's Burger", osm_key: 'amenity', osm_value: 'restaurant', type: 'house' })).toBe(true);
         expect(isLandmarkFeature({ name: 'SM Hypermarket', osm_key: 'shop', osm_value: 'supermarket', type: 'house' })).toBe(true);
         expect(isLandmarkFeature({ name: 'Sony Dormitory', osm_key: 'tourism', osm_value: 'hostel', type: 'house' })).toBe(true);
         expect(isLandmarkFeature({ name: 'LBC', osm_key: 'office', osm_value: 'courier', type: 'house' })).toBe(true);
-        expect(isLandmarkFeature({ name: 'Watsons', osm_key: 'amenity', osm_value: 'pharmacy', type: 'house' })).toBe(true);
+        expect(isLandmarkFeature({ name: 'City Health Center', osm_key: 'healthcare', osm_value: 'clinic', type: 'house' })).toBe(true);
+        expect(isLandmarkFeature({ name: 'Freedom Park', osm_key: 'leisure', osm_value: 'park', type: 'house' })).toBe(true);
+        expect(isLandmarkFeature({ name: 'ABC Elementary School', osm_key: 'education', osm_value: 'school', type: 'house' })).toBe(true);
+        expect(isLandmarkFeature({ name: 'Unit 4B', osm_key: 'building', osm_value: 'apartments', type: 'house' })).toBe(true);
     });
 
     it('accepts a named bus stop, which riders use as a reference point', () => {
