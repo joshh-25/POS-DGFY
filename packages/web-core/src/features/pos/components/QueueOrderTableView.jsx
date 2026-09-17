@@ -30,7 +30,7 @@ import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 
 export default function QueueOrderTableView({
   orders = [],
-  isRetailMode = false,
+  isDeliveryRunMode = false,
   selectedOrderIds = new Set(),
   toggleOrderSelection = () => {},
   bulkAssignSubmitting = false,
@@ -55,7 +55,7 @@ export default function QueueOrderTableView({
       <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
         <thead className="bg-slate-50">
           <tr>
-            {isRetailMode && (
+            {isDeliveryRunMode && (
               <th scope="col" className="px-3 py-2 font-bold text-slate-600">Select</th>
             )}
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Customer</th>
@@ -104,7 +104,7 @@ export default function QueueOrderTableView({
 
             return (
               <tr key={`incoming-queue-table-row-${order.pos_transaction_id}`} className="align-top">
-                {isRetailMode && (
+                {isDeliveryRunMode && (
                   <td className="whitespace-nowrap px-3 py-3">
                     <QueueOrderSelectCheckbox
                       orderId={orderId}
