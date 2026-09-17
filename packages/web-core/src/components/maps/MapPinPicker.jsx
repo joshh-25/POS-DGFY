@@ -254,8 +254,10 @@ export default function MapPinPicker({
     setIsSearchingAddress(true);
     setAddressSearchError('');
     try {
-      // Bias to whatever the map is currently looking at. Without this a nationwide index
-      // ranks a Metro Manila "Poblacion" above the one the merchant is standing in.
+      // Bias search to the merchant's selected pin when there is one, falling back to the map's
+      // current camera centre when there is not (e.g. onboarding, before any pin exists).
+      // Without a bias at all, a nationwide index ranks a Metro Manila "Poblacion" above the
+      // one the merchant is standing in.
       const centre = mapRef.current?.getCenter?.();
       const biasLat = parseMapCoordinate(latitude) ?? (centre ? centre.lat : null);
       const biasLng = parseMapCoordinate(longitude) ?? (centre ? centre.lng : null);
