@@ -43,6 +43,34 @@ describe('createCircuitBreaker', () => {
 
         expect(breaker.isOpen()).toBe(false);
     });
+
+    it('stays open until the exact open window boundary elapses', () => {
+        const clock = { value: 0 };
+        const breaker = breakerAt(clock);
+
+        for (let index = 0; index < 5; index += 1) breaker.recordFailure();
+        expect(breaker.isOpen()).toBe(true);
+
+        clock.value = 59999;
+        expect(breaker.isOpen()).toBe(true);
+
+        clock.value = 60000;
+        expect(breaker.isOpen()).toBe(false);
+    });
+
+    it('reset() closes the breaker and clears the failure count', () => {
+        const clock = { value: 0 };
+        const breaker = breakerAt(clock);
+
+        for (let index = 0; index < 5; index += 1) breaker.recordFailure();
+        expect(breaker.isOpen()).toBe(true);
+
+        breaker.reset();
+        expect(breaker.isOpen()).toBe(false);
+
+        for (let index = 0; index < 4; index += 1) breaker.recordFailure();
+        expect(breaker.isOpen()).toBe(false);
+    });
 });
 
 describe('cache keys', () => {

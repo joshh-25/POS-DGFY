@@ -20,8 +20,13 @@ export const resolveImportDate = async () => {
         return cachedImportDate;
     }
 
-    const status = await quadruperGeocodeProvider.getStatus();
-    cachedImportDate = String(status?.import_date || UNKNOWN_IMPORT_DATE);
+    try {
+        const status = await quadruperGeocodeProvider.getStatus();
+        cachedImportDate = String(status?.import_date || UNKNOWN_IMPORT_DATE);
+    } catch (error) {
+        logger.warn('[Geocode] Failed to resolve import date', { err: error?.message });
+        cachedImportDate = cachedImportDate || UNKNOWN_IMPORT_DATE;
+    }
     cachedImportDateAt = Date.now();
     return cachedImportDate;
 };
