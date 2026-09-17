@@ -2331,7 +2331,17 @@ npm run lint:docs
 npm --prefix apps/dgfy-api test -- tests/geoLandmarkClassifier.test.js tests/geoPhotonFeatureMapper.test.js tests/geoQuadruperProvider.test.js tests/geoLocalProvider.test.js tests/geoCircuitBreaker.test.js tests/geoFallbackPolicy.test.js tests/geoAddressSearchValidator.test.js tests/geoSearchReverseGeocode.usecase.test.js
 ```
 
-Expected: all green. `lint:docs` validates only docs registered in `docs/_meta/document-registry.json`; ADR 0013 **is** registered, so a malformed amendment fails here.
+Expected: all green.
+
+**Do not rely on `lint:docs` to validate the ADR 0013 amendment.** `scripts/lint-docs.js` iterates
+only `registry.governed_docs`, and ADR 0013 is **not** in `docs/_meta/document-registry.json` — so
+the docs-lint half silently skips it entirely. The `check:adr` half does run against every ADR file,
+but only validates frontmatter shape (status enum, date formats, `superseded_by` targets); it would
+not catch a factually wrong or rule-dropping Amendments body. A green gate here is not evidence the
+amendment is correct. Verify it by reading.
+
+Worth a follow-up: ADR 0013 should be added to `governed_docs` so future amendments get real
+coverage. Out of scope for this phase.
 
 - [ ] **Step 10: Commit, batched by domain per `docs/ai/PR.md`**
 
