@@ -11,8 +11,8 @@ verification_evidence: npm --prefix apps/dgfy-api test -- --runTestsByPath tests
 rollback_note: Pure behavior revert with no migration and no schema change -- revert the three source files, the two test files, the version bump, and this declaration; no data repair needed because already-corrupted composition rows are only cleared on a subsequent explicit edit/finalize, never by this change itself.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T09:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PR-1952-POS-STOCK-INVALIDATION
+preflight_run_at: 2026-09-17T09:47:04.611Z
+preflight_request_ref: PREFLIGHT-35206497913-2026-09-17-POS-STOCK-INVALIDATION-COMPOSITION-CLEAR
 ---
 
 # POS finished-product stock: authoritative composition clear + post-commit catalog invalidation (#1952)

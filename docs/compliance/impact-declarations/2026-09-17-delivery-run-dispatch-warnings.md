@@ -11,8 +11,8 @@ verification_evidence: apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js,a
 rollback_note: Revert the dispatch warnings wiring, POS summary rendering, docs, and this declaration; the legacy loading_warning surface and all dispatch behavior remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T08:00:00+00:00
-preflight_request_ref: NOT-EXECUTED-ISSUE-1927-DELIVERY-RUN-DISPATCH-WARNINGS
+preflight_run_at: 2026-09-17T09:47:04.609Z
+preflight_request_ref: PREFLIGHT-35206497913-2026-09-17-DELIVERY-RUN-DISPATCH-WARNINGS
 ---
 
 # Delivery-run dispatch canonical warnings (#1927)
