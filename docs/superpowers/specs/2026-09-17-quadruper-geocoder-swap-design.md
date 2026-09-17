@@ -40,8 +40,14 @@ Forward search is a case-insensitive token-substring match over the dataset's `l
 Reverse geocode picks the nearest dataset centroid within that entry's `maxDistanceKm`, ranked by
 `precision` then distance, falling back to `Pinned location (lat, lon)`.
 
-**Coverage today is 37 entries spanning only Iloilo City, Oton, and Pavia.** Every coordinate
-outside those three municipalities resolves to `precision="coordinate_only"`.
+**Coverage today is 37 entries, almost entirely Western Visayas:** Iloilo City and its districts
+(Jaro, Molo, Mandurriao, La Paz, Lapuz, Arevalo, City Proper), Oton, Pavia, Leganes, Guimbal,
+Tigbauan, San Miguel, and Guimaras (Buenavista, Jordan) — plus one outlier entry for Manila
+(`maxDistanceKm` 20) and two province-level centroids, Iloilo (55 km) and Guimaras (40 km).
+Every coordinate outside that narrow set resolves to `precision="coordinate_only"`.
+
+The lone Manila entry is a trap for test authoring: it is the obvious "somewhere far away"
+coordinate, and it is covered. Use Cebu City (10.3157, 123.8854) for genuinely-uncovered cases.
 
 ### 2.2 Explicitly out of scope
 

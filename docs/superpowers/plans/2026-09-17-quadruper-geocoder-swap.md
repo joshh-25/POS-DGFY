@@ -1042,11 +1042,15 @@ describe('localGeocodeProvider.reverseGeocode', () => {
         expect(result.landmarks).toEqual([]);
     });
 
+    // Cebu City. NOT Manila (14.5995, 120.9842) -- the bundled dataset has an exact
+    // entry at those coordinates with maxDistanceKm 20, so it resolves to `city`, not
+    // `coordinate_only`. Cebu City is ~155 km from the Iloilo province centroid
+    // (55 km radius) and ~140 km from Guimaras (40 km radius), so it is genuinely uncovered.
     it('falls back to a coordinate-only label well outside covered municipalities', async () => {
-        const result = await localGeocodeProvider.reverseGeocode({ latitude: 14.5995, longitude: 120.9842 });
+        const result = await localGeocodeProvider.reverseGeocode({ latitude: 10.3157, longitude: 123.8854 });
 
         expect(result.precision).toBe('coordinate_only');
-        expect(result.address_line).toBe('Pinned location (14.599500, 120.984200)');
+        expect(result.address_line).toBe('Pinned location (10.315700, 123.885400)');
         expect(result.landmarks).toEqual([]);
     });
 });
@@ -2119,8 +2123,9 @@ Set `status: amended` in the frontmatter, then append at the end of the file:
 
 The 2026-06-21 addendum's clause 4 required IMS address autofill to resolve from *bundled*
 PH-local data with `provider="dgfy-ph-local"`. That bundled dataset covers 37 entries across
-Iloilo City, Oton, and Pavia only; every pin outside those three municipalities resolved to
-`precision="coordinate_only"`. Clause 4 is amended as follows.
+a handful of Western Visayas municipalities (Iloilo City and its districts, Oton, Pavia, Leganes,
+Guimbal, Tigbauan, San Miguel, Guimaras), plus a single Manila entry and two province-level
+centroids; every pin outside that narrow set resolved to `precision="coordinate_only"`. Clause 4 is amended as follows.
 
 1. `/api/v1/geo/reverse-geocode` resolves against the DGFY-operated Quadruper geocoding service
    (Photon over OpenStreetMap, Philippines index) and returns `provider="dgfy-quadruper"`.
@@ -2333,7 +2338,7 @@ Body must contain `## Summary` and `## Testing Evidence` per `docs/ai/PR.md`, an
 
 Automated tests never touch the live service. Confirm these by hand once, against a running API:
 
-- [ ] `GET /api/v1/geo/reverse-geocode?lat=14.5995&lon=120.9842` (Manila — outside all bundled coverage) returns a real composed address, not `precision="coordinate_only"`.
+- [ ] `GET /api/v1/geo/reverse-geocode?lat=10.3157&lon=123.8854` (Cebu City — genuinely outside all bundled coverage) returns a real composed address, not `precision="coordinate_only"`. Do NOT use Manila (14.5995, 120.9842) for this check: the bundled dataset has an exact entry there, so it would pass even with the service disabled.
 - [ ] `GET /api/v1/geo/reverse-geocode?lat=10.7202&lon=122.5621` returns `Bakhaw, Jaro, Iloilo City, Western Visayas, Philippines` and a non-empty `landmarks[]` — and never `Peri Todd's Burger` as `address_line`.
 - [ ] `GET /api/v1/geo/address-search?query=Poblacion&lat=10.72&lon=122.56` ranks Iloilo-region results above Metro Manila ones.
 - [ ] With `GEOCODE_QUADRUPER_BASE_URL` pointed at an unreachable host, both endpoints still return `200` within roughly three seconds, with `provider="dgfy-ph-local"` or `precision="coordinate_only"`.
