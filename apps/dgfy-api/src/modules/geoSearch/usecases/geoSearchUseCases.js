@@ -6,7 +6,13 @@ export const buildGeoSearchUseCase = ({ geoSearchRepository }) => {
     return async ({ query, latitude, longitude, radius, stockFilter, page, limit }) => {
         try {
             const result = await geoSearchRepository.searchNearbyStores({
-                query, latitude, longitude, radius, stockFilter, page, limit
+                query,
+                latitude,
+                longitude,
+                radius,
+                stockFilter,
+                page,
+                limit
             });
             return ok(result);
         } catch (error) {
