@@ -1,4 +1,4 @@
-import { verifyDglaundryEventSignature } from '../src/modules/dgfyLaundryOrders/services/dglaundryEventSignature.js';
+import { signDgfyEvent, verifyDglaundryEventSignature } from '../src/modules/dgfyLaundryOrders/services/dglaundryEventSignature.js';
 import crypto from 'node:crypto';
 import { jest } from '@jest/globals';
 
@@ -13,6 +13,19 @@ afterEach(() => {
 });
 
 describe('DGLaundry event signature verification', () => {
+  it('builds provider-origin events with the Ed25519 event profile', () => {
+    process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID = 'dgfy-event-test';
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
+    process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY = privateKey.export({ type: 'pkcs8', format: 'pem' });
+    process.env.NODE_ENV = 'staging';
+    process.env.DGLAUNDRY_SIGNATURE_PROFILE = 'http-message-signatures-v1';
+    process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY = publicKey.export({ type: 'spki', format: 'pem' });
+    const body = { specversion: '1.0', id: 'event-provider-1', type: 'dgfy.laundry_order.submitted.v1', data: { companyId: 'company-1' } };
+    const headers = signDgfyEvent({ authority: 'laundry.surebizcorp.com', path: '/api/v1/integrations/dgfy/events', body });
+    expect(Buffer.from(headers.signature.match(/^sig1=:([^:]+):$/)[1], 'base64')).toHaveLength(64);
+    expect(verifyDglaundryEventSignature({ headers, method: 'POST', authority: 'laundry.surebizcorp.com', path: '/api/v1/integrations/dgfy/events', rawBody: JSON.stringify(body) })).toEqual({ ok: true, keyId: 'dgfy-event-test' });
+  });
+
   it('fails closed with a stable error when the asymmetric public key is absent outside production', () => {
     process.env.NODE_ENV = 'staging';
     process.env.DGLAUNDRY_SIGNATURE_PROFILE = 'http-message-signatures-v1';

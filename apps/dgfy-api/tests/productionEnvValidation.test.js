@@ -54,6 +54,20 @@ describe('production environment validation', () => {
     expect(result.errors).toContain('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
   });
 
+  it('requires an explicit environment and matching issuer for the DGLaundry connection', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        REDIS_URL: 'redis://127.0.0.1:6379',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+        DGFY_OIDC_ISSUER: 'https://api.dgfy.ph/oidc'
+      }
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain('DGFY_OIDC_ISSUER must be https://api.stage.dgfy.ph/oidc for staging');
+  });
+
   it('fails closed for missing production auth and database values', () => {
     const result = validateProductionEnv({
       env: {
