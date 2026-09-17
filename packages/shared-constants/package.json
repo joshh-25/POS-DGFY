@@ -52,6 +52,10 @@
     "./staffCapabilities": {
       "import": "./src/staffCapabilities.js",
       "default": "./src/staffCapabilities.js"
+    },
+    "./coverPhotoTransform": {
+      "import": "./src/coverPhotoTransform.js",
+      "default": "./src/coverPhotoTransform.js"
     }
   },
   "files": [
