@@ -1742,11 +1742,27 @@ const validationFailure = (message) => fail(new DomainError(
 ));
 
 /**
+ * When the kill switch is off we swap in a no-op remote provider rather than short-circuiting
+ * inside callRemote. Gating the call path instead would make `geocodeConfig.enabled` override
+ * an explicitly injected provider -- and since it defaults to false under NODE_ENV=test, every
+ * injected fake would be silently unreachable. Production behaviour is identical either way:
+ * disabled -> null -> fall through to the local provider.
+ */
+const disabledRemoteProvider = {
+    reverseGeocode: async () => null,
+    searchAddresses: async () => null
+};
+
+const defaultRemoteProvider = () => (
+    geocodeConfig.enabled ? quadruperGeocodeProvider : disabledRemoteProvider
+);
+
+/**
  * Calls the remote provider through the breaker. Returns null on any failure so the caller
  * falls through to the local provider. Never throws.
  */
 const callRemote = async (circuitBreaker, invoke) => {
-    if (!geocodeConfig.enabled || circuitBreaker.isOpen()) return null;
+    if (circuitBreaker.isOpen()) return null;
 
     try {
         const value = await invoke();
@@ -1766,7 +1782,7 @@ const callRemote = async (circuitBreaker, invoke) => {
 };
 
 export const buildReverseGeocodeUseCase = ({
-    remoteProvider = quadruperGeocodeProvider,
+    remoteProvider = defaultRemoteProvider(),
     localProvider = localGeocodeProvider,
     circuitBreaker = geocodeCircuitBreaker
 } = {}) => {
@@ -1797,7 +1813,7 @@ export const buildReverseGeocodeUseCase = ({
 };
 
 export const buildAddressSearchUseCase = ({
-    remoteProvider = quadruperGeocodeProvider,
+    remoteProvider = defaultRemoteProvider(),
     localProvider = localGeocodeProvider,
     circuitBreaker = geocodeCircuitBreaker
 } = {}) => {
