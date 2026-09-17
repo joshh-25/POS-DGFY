@@ -81,6 +81,7 @@ function validatePromotionCandidate(manifest) {
   assert(typeof manifest.candidate_id === 'string' && CANDIDATE_ID_PATTERN.test(manifest.candidate_id), 'candidate_id must use YYYY-MM-DD-NN', 'INVALID_CANDIDATE_ID');
   assert(STATUS_VALUES.has(manifest.status), `Unsupported candidate status: ${manifest.status || '<missing>'}`, 'INVALID_STATUS');
   assertSha(manifest.source_develop_sha, 'source_develop_sha');
+  if (manifest.staging_head_sha !== undefined) assertSha(manifest.staging_head_sha, 'staging_head_sha');
   assert(Array.isArray(manifest.revisions) && manifest.revisions.length > 0, 'Candidate must contain at least one revision', 'MISSING_REVISIONS');
 
   const { candidate_id: candidateId, revisions } = manifest;
@@ -120,6 +121,7 @@ function validatePromotionCandidate(manifest) {
       status: manifest.status,
       source_develop_sha: manifest.source_develop_sha,
       current_staging_sha: manifest.current_staging_sha,
+      staging_head_sha: manifest.staging_head_sha || null,
       repair_count: repairRevision,
       release_revision: null,
     };
@@ -129,7 +131,8 @@ function validatePromotionCandidate(manifest) {
   const release = manifest.release_revision;
   assert(Number.isInteger(release.revision) && release.revision === repairRevision + 1, 'release_revision must immediately follow the latest staging revision', 'INVALID_RELEASE_REVISION');
   assertSha(release.source_staging_sha, 'release source_staging_sha');
-  assert(release.source_staging_sha === manifest.current_staging_sha, 'Release branch must be cut from the current staging SHA', 'RELEASE_SOURCE_MISMATCH');
+  assert(manifest.staging_head_sha, 'A released candidate must record the actual staging head used for the release cut', 'MISSING_STAGING_HEAD_SHA');
+  assert(release.source_staging_sha === manifest.staging_head_sha, 'Release branch must be cut from the recorded staging head', 'RELEASE_SOURCE_MISMATCH');
   assertReleaseBranch(release.branch, candidateId, release.revision);
   assert(Number.isInteger(release.pr) && release.pr > 0, 'Release revision must identify its PR', 'MISSING_RELEASE_PR');
 
@@ -138,6 +141,7 @@ function validatePromotionCandidate(manifest) {
     status: manifest.status,
     source_develop_sha: manifest.source_develop_sha,
     current_staging_sha: manifest.current_staging_sha,
+    staging_head_sha: manifest.staging_head_sha,
     repair_count: repairRevision,
     release_revision: release.revision,
   };

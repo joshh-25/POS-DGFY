@@ -295,6 +295,7 @@ test('runParityCheck: validates the manifest and reports one entry per app, all 
     status: 'qualified',
     source_develop_sha: headSha,
     current_staging_sha: headSha,
+    staging_head_sha: headSha,
     revisions: [
       { kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-09-04-01' },
     ],
@@ -330,6 +331,7 @@ test('runParityCheck: an unlabeled PROD image cannot pass, even with a real stag
     status: 'qualified',
     source_develop_sha: headSha,
     current_staging_sha: headSha,
+    staging_head_sha: headSha,
     revisions: [
       { kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-09-04-01' },
     ],
@@ -383,6 +385,7 @@ test('runParityCheck: an app untouched by a repair is compared against ITS OWN p
     status: 'qualified',
     source_develop_sha: initialSha,
     current_staging_sha: headSha,
+    staging_head_sha: headSha,
     revisions: [
       { kind: 'initial', sha: initialSha, parent_sha: null, branch: 'to-staging/2026-09-05-01' },
       // Only dgfy-ims was touched by this repair -- dgfy-api was not.

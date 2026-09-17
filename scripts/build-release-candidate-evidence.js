@@ -143,6 +143,7 @@ function buildCandidateEvidence(options) {
       status: candidate.status,
       source_develop_sha: candidate.source_develop_sha,
       current_staging_sha: candidate.current_staging_sha,
+      staging_head_sha: candidate.staging_head_sha,
       repair_count: candidate.repair_count,
       release_revision: candidate.release_revision,
       manifest_sha256: hashFile(options.projectRoot, options.candidateManifest),
