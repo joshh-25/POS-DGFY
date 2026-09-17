@@ -23279,3 +23279,62 @@ registration-intent routes.
 ### Next eligible phase
 
 337 after Phase 336 acceptance evidence and deployed QA are complete.
+
+## Phase 337 - Delivery-run dispatch canonical warnings (#1927)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 333/#1461 loading-verification
+contract.
+
+### Objective and scope
+
+Add an additive `data.warnings` array to the successful
+`POST /pos/delivery-runs/:deliveryRunId/dispatch` response naming every run member left in a
+non-terminal loading state (`pending`, `not_loaded`, `exception`) at dispatch time, with the
+exact per-member state and the recorded exception reason. Dispatch stays best-effort and
+warn-only; the legacy `loading_warning` compat surface is preserved. The POS shared summary
+prefers `warnings` with a legacy fallback; mobile adoption is tracked separately under
+`dgfy-mobile#177`. No route, permission, migration, error code, or ADR change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, Phase 333/#1461
+loading verification and dispatcher attestation, and ADR 0034's warn-only dispatch clause.
+
+### Acceptance and validation evidence
+
+- [ ] Mixed `pending`/`not_loaded`/`exception`/`loaded` dispatch returns one warning per
+      unresolved member with the exact state and exception reason; `pending` and `not_loaded`
+      stay distinct.
+- [ ] All-loaded dispatch returns `warnings: []` with no false positive; warnings never block
+      partial success or reclassify `dispatched`/`skipped`/`failed`.
+- [ ] Same-key idempotency replay returns the identical warnings payload; the transport
+      response stays `success: true` with the warning data under `data`.
+- [ ] The POS summary renders canonical warnings and still handles the legacy field; focused
+      backend and behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      whitespace gates pass; deployed QA (mixed-state and all-loaded runs) remains a later
+      verification step.
+
+### Links
+
+- Issue: #1927 (follow-up to #1461's warn-only acceptance criteria).
+- Handoff: `.tmp/plan-1927.md` (planning head `6c9e5bcdd6bb57f2e4560238e4a42360a79228ff`).
+- Mobile consumer: `Sieitzz/dgfy-mobile#177`.
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (warn-only clause, no
+  amendment needed -- `warnings` is a superset identifying the same dispatched orders).
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (dispatch warning contract).
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md`.
+- Tests: `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+338 after Phase 337 acceptance evidence and deployed QA are complete.
