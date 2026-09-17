@@ -12,6 +12,10 @@ const mockRemoveDeliveryRunMemberUseCase = jest.fn();
 const mockDispatchDeliveryRunUseCase = jest.fn();
 const mockUpdateDeliveryRunMemberLoadingUseCase = jest.fn();
 const mockConfirmDeliveryRunLoadingUseCase = jest.fn();
+const mockCreateDeliveryRunRemittanceUseCase = jest.fn();
+const mockListDeliveryRunRemittancesUseCase = jest.fn();
+const mockGetDeliveryRunRemittanceUseCase = jest.fn();
+const mockResolveDeliveryRunRemittanceVarianceUseCase = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     createDeliveryRunUseCase: mockCreateDeliveryRunUseCase,
@@ -23,7 +27,11 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     removeDeliveryRunMemberUseCase: mockRemoveDeliveryRunMemberUseCase,
     dispatchDeliveryRunUseCase: mockDispatchDeliveryRunUseCase,
     updateDeliveryRunMemberLoadingUseCase: mockUpdateDeliveryRunMemberLoadingUseCase,
-    confirmDeliveryRunLoadingUseCase: mockConfirmDeliveryRunLoadingUseCase
+    confirmDeliveryRunLoadingUseCase: mockConfirmDeliveryRunLoadingUseCase,
+    createDeliveryRunRemittanceUseCase: mockCreateDeliveryRunRemittanceUseCase,
+    listDeliveryRunRemittancesUseCase: mockListDeliveryRunRemittancesUseCase,
+    getDeliveryRunRemittanceUseCase: mockGetDeliveryRunRemittanceUseCase,
+    resolveDeliveryRunRemittanceVarianceUseCase: mockResolveDeliveryRunRemittanceVarianceUseCase
 }));
 
 let createDeliveryRun;

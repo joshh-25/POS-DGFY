@@ -70,7 +70,7 @@ describe('Phase 7: Full Image Lifecycle Validation Gate', () => {
         expect(converted.processing_status).toBe('optimized');
         expect(converted.optimization_version).toBe(2);
         expect(converted.image_fingerprint).toBeDefined();
-        expect(converted.path).toContain('-v2-');
+        expect(converted.path).toContain('-v3-');
 
         // Verify semantic variant URLs resolve correctly
         const catalogCardUrl = resolveSemanticImageUrl({ variant_metadata: converted.variant_metadata }, IMAGE_SEMANTIC_VARIANTS.CATALOG_CARD);

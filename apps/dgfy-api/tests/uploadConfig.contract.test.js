@@ -56,11 +56,11 @@ describe('uploadConfig catalog image transport contracts', () => {
 
         expect(posCatalogImageUpload.limits).toMatchObject({
             fileSize: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
-            files: 1
+            files: 3
         });
         expect(storefrontCatalogImageUpload.limits).toMatchObject({
             fileSize: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
-            files: 1
+            files: 3
         });
         expect(storefrontCatalogGalleryImageUpload.limits).toMatchObject({
             fileSize: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES,
