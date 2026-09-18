@@ -85,3 +85,9 @@ POS backend contracts and fail-closed validation remain authoritative.
 Rollback consists of reverting the POS frontend commits and this declaration together. Do not revert
 or include the unrelated `apps/dgfy-api/src/services/csvExportService.js` working-tree change as part
 of this branch's POS rollback.
+
+## Commit Scope Note
+
+The first implementation commit adds the shared pagination control and its focused unit test. The
+remaining POS frontend commits carry this declaration forward while separating checkout/catalog work
+from history/terminal responsive work for review and rollback clarity.
