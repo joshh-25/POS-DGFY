@@ -25,6 +25,7 @@ describe('POS Always Available contract', () => {
     ].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
     const catalogWorkflow = fs.readFileSync(path.resolve(__dirname, '../hooks/usePosCatalogWorkflow.js'), 'utf8');
     const workspace = fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8');
+    const settings = fs.readFileSync(path.resolve(__dirname, '../settings/PosDiscountAutomationSection.jsx'), 'utf8');
     expect(checkout).toContain('item?.is_best_seller === true');
     expect(checkout).toContain('isBestSeller={isBestSeller}');
     expect(checkout).toContain('flex min-w-0 items-start gap-1.5');
@@ -33,7 +34,7 @@ describe('POS Always Available contract', () => {
     expect(checkout).toContain('isBestSeller={false}');
     expect(checkout).not.toContain('pos_best_seller_item_ids');
     expect(workspace).toContain('pos_best_seller_mode');
-    expect(workspace).toContain('pos-best-seller-auto-tagging');
+    expect(settings).toContain('pos-best-seller-auto-tagging');
     expect(workspace).toContain('pos-items-edit-best-seller-mode');
     expect(workspace).toContain('pos_best_seller_mode: editForm.pos_best_seller_mode');
     expect(workspace).toContain('notifyPosCatalogUpdated()');
