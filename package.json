@@ -113,6 +113,7 @@
     "smoke:pos-delivery-pricing": "node scripts/smoke-pos-delivery-pricing-ui.js",
     "qa:fnb-readiness": "node scripts/run-fnb-readiness-gate.js",
     "check:architecture": "cd apps/dgfy-api && npm run check:architecture-guardrails && npm run check:controller-boundaries",
+    "test:dglaundry-connection-setup": "node --test scripts/dglaundry-connection-setup.test.mjs",
     "check:architecture:dgfy-api": "cd apps/dgfy-api && npm run check:architecture-guardrails && npm run check:controller-boundaries",
     "check:compliance": "node scripts/check-compliance-impact.js && node scripts/check-compliance-api-contracts.js",
     "check:tenant-schema-coverage": "cd apps/dgfy-api && npm run check:tenant-schema-coverage",
