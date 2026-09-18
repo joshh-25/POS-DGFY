@@ -4,15 +4,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-const workspaceSource = fs.readFileSync(
-  path.resolve(currentDirectory, '../components/TerminalOperationsWorkspace.jsx'),
+const settingsSource = fs.readFileSync(
+  path.resolve(currentDirectory, '../settings/StorefrontDeliveryPartnersSettings.jsx'),
   'utf8'
 );
 
 describe('POS delivery partner settings logos', () => {
   it('uses the shared logo resolver without changing the existing row contract', () => {
-    expect(workspaceSource).toContain("from '../../../utils/deliveryPartnerAssets.js'");
-    expect(workspaceSource).toContain('getDeliveryPartnerLogo(row.partner)');
-    expect(workspaceSource).toContain('sf-delivery-${index}');
+    expect(settingsSource).toContain("from '../../../utils/deliveryPartnerAssets.js'");
+    expect(settingsSource).toContain('getDeliveryPartnerLogo(partner)');
+    expect(settingsSource).toContain('role="listitem"');
   });
 });
