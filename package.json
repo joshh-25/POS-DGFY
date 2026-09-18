@@ -57,6 +57,8 @@
     "preflight:runner": "node scripts/ci-runner-preflight.js",
     "test:runner-preflight": "node --test scripts/ci-runner-preflight.test.js",
     "test:runner-availability": "node --test scripts/lib/runner-availability.test.js",
+    "test:chain-state": "node --test scripts/chain-state.test.js",
+    "test:chain-target": "node --test scripts/chain-target.test.js",
     "test:compat-seams": "node --test scripts/check-compat-seams.test.js",
     "test:conduct-model-slot": "node --test scripts/conduct-model-slot.test.js",
     "test:conduct-cleanup-policy": "node --test scripts/conduct-cleanup-policy.test.js",
