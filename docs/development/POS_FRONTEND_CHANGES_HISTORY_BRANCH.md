@@ -1,10 +1,10 @@
 # POS Frontend Changes — History Branch
 
-Status: complete and committed locally
+Status: complete, committed, and pushed; ready for pull request
 Branch: `codex/pos-frontend-changes-history`
-Comparison base: `origin/codex/pos-frontend-changes-sell` (`a233da285`)
-Audit date: 2026-09-18
-Push status: not pushed
+Comparison base: `origin/develop` (`ea06c1a56`)
+Audit date: 2026-09-19
+Push status: pushed at `edfa8f8232f0f09534b9249d46542c276225a3f7`
 
 ## Executive Summary
 
@@ -14,29 +14,30 @@ atomic POS-focused commits. It covers responsive behavior for desktop, tablet po
 landscape, and mobile layouts; stable dialog and sheet presentation; transaction-history controls;
 shared pagination; terminal controls; and the no-hardware cash-drawer fallback.
 
-Before adding this documentation, the implementation/compliance delta from the comparison base was
-72 files, with 5,896 insertions and 1,080 deletions. This document is the additional final handoff
-file in the push inventory.
-The only working-tree change intentionally left outside this branch is
-`apps/dgfy-api/src/services/csvExportService.js`; it is unrelated backend work and was never staged,
-committed, or included in the push inventory.
+The implementation/compliance delta from the current PR comparison base is 105 files, with 6,234
+insertions and 1,141 deletions. This document is included in the pushed branch and records the final
+handoff inventory.
+The unrelated backend file `apps/dgfy-api/src/services/csvExportService.js` is intentionally outside
+this branch's scope and is not present in the pushed branch diff.
 
 ## Commit Inventory
 
-The branch currently contains these commits after the comparison base:
+The branch currently contains these nine commits after the comparison base:
 
 | Commit | Subject | Scope |
 | --- | --- | --- |
-| `e45cfebff` | `fix(pos): preserve no-hardware drawer fallback` | Keeps the POS action available when drawer hardware is unavailable and aligns the related behavior tests. |
-| `16e30a22a` | `docs(pos): update terminal compliance evidence` | Updates the existing POS terminal compliance evidence. |
 | `b9f9a15c0` | `docs(pos): declare frontend history responsive changes` | Adds the compliance impact declaration required by the repository hook. |
 | `6719e949e` | `feat(pos): add shared pagination control` | Adds the reusable pagination primitive and focused tests. |
 | `dc10eaef3` | `feat(pos): refine checkout and catalog workflows` | Refines checkout/catalog behavior, responsive presentation, app integration, and contracts. |
 | `160fb973d` | `fix(pos): stabilize history and terminal responsive layouts` | Completes history, terminal, operational-panel, and responsive layout changes. |
 | `1963b6c99` | `chore(pos): bump frontend app versions` | Bumps app manifests/lockfiles to satisfy the blocking shared-web-core version gate. |
-| `HEAD` | `docs(pos): document history branch changes` | Records the complete scope, push inventory, exclusions, rollback boundary, and audit evidence for this branch. |
+| `a125ae286` | `docs(pos): document history branch changes` | Records the complete scope, push inventory, exclusions, rollback boundary, and audit evidence for this branch. |
+| `72a5858a3` | `chore(sync): synchronize POS branch with develop` | Synchronizes the branch with the current develop baseline before the final POS push. |
+| `5e390ff4b` | `fix(pos): stabilize availability badge in tablet portrait` | Keeps the tablet-portrait availability state readable without changing other viewports. |
+| `edfa8f823` | `fix(pos): refine tablet portrait catalog badges` | Enlarges tablet-portrait catalog cards/images and keeps availability badges on one line. |
 
-No commit was created for the excluded API file, and no remote push was performed.
+No commit was created for the excluded API file. The complete POS change set and this documentation
+are present on the remote branch at `edfa8f823`.
 
 ## Functional Changes
 
@@ -258,23 +259,23 @@ The following files are included in the branch delta and are the files to push w
 
 ## Excluded Files
 
-The following file remains modified in the working tree but is intentionally excluded from this POS
-branch and must not be pushed with it:
+The following file was intentionally excluded from this POS branch and must not be added to its PR:
 
 - `apps/dgfy-api/src/services/csvExportService.js` — unrelated backend CSV export import change.
 
-It was not staged or included in any commit. Before pushing, verify that `git status --short` shows
-only this intentional excluded file, or temporarily set it aside without reverting the user's work.
+It was not staged or included in any commit. The current branch worktree is clean, and the file is not
+part of `origin/develop...codex/pos-frontend-changes-history`.
 
 ## Rollback and Handoff
 
 To roll back the POS branch as a unit, revert the POS commits in reverse order, including the
 compliance declaration and this documentation as appropriate. Do not revert the unrelated API change.
 
-Before pushing, confirm:
+Before opening or updating the PR, confirm:
 
 1. The current branch is `codex/pos-frontend-changes-history`.
-2. The eight commits listed above are present locally.
-3. The excluded API file is not staged.
+2. The nine commits listed above are present locally and remotely.
+3. The excluded API file is not in the branch diff.
 4. The local audit commands in this document still pass if any additional edits are made.
-5. No push is performed until the user explicitly requests it.
+5. The PR targets `develop` and uses `Refs #1798` for the related POS tablet verification issue;
+   the issue remains open because deployed QA evidence is outside this implementation PR.
