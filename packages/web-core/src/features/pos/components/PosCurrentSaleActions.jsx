@@ -32,11 +32,21 @@ export function PosCurrentSaleActions({
   const parkHandler = onParkAndNewSale || onParkSale;
   const isParkLoading = parkLoading || parkSaleLoading;
   const resolvedParkLabel = activeParkedSale ? 'Update Parked Sale' : (parkSaleLabel || 'Park');
-  const compactParkedLayout = hasParkedSaleControls && !tabletLayout;
+  // Keep the parked-sale arrangement inherited from the PC layout at every
+  // POS breakpoint: Checkout/Print share the first row, then Park/Cash
+  // Drawer/Split share the second row. The six-track grid prevents the final
+  // action from dropping into an uneven third row on narrow screens.
+  const compactParkedLayout = hasParkedSaleControls;
   const gridClassName = compactParkedLayout ? 'grid-cols-6' : 'grid-cols-2 sm:grid-cols-2';
-  const checkoutActionClassName = compactParkedLayout ? 'order-2 col-span-3' : '';
-  const printActionClassName = compactParkedLayout ? 'order-1 col-span-3' : '';
-  const bottomActionClassName = compactParkedLayout ? 'order-3 col-span-2' : '';
+  const checkoutActionClassName = compactParkedLayout
+    ? 'order-2 col-span-3'
+    : '';
+  const printActionClassName = compactParkedLayout
+    ? 'order-1 col-span-3'
+    : '';
+  const bottomActionClassName = compactParkedLayout
+    ? 'order-3 col-span-2'
+    : '';
 
   return (
     <div
@@ -52,7 +62,7 @@ export function PosCurrentSaleActions({
         className={`${checkoutActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl bg-[#0B449C] p-1.5 text-center text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <ShoppingCart size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
+        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">
           {checkoutLoading ? 'Processing...' : 'Checkout'}
         </span>
       </Button>
@@ -65,7 +75,7 @@ export function PosCurrentSaleActions({
         className={`${printActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60`}
       >
         <Printer size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Print Order</span>
+        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">Print Order</span>
       </Button>
       {hasParkedSaleControls && (
         <Button
@@ -78,7 +88,7 @@ export function PosCurrentSaleActions({
           className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl border border-amber-300 bg-amber-50 p-1.5 text-center text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60`}
         >
           <BookmarkPlus size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-          <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] sm:text-[11px] xl:text-xs">
+          <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] sm:text-[11px] lg:text-xs xl:text-xs">
             {isParkLoading ? 'Parking...' : resolvedParkLabel}
           </span>
         </Button>
@@ -93,7 +103,7 @@ export function PosCurrentSaleActions({
         className={`${bottomActionClassName} flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center`}
       >
         <Banknote size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{drawerOpening ? 'Opening...' : 'Open Cash Drawer'}</span>
+        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">{drawerOpening ? 'Opening...' : 'Cash Drawer'}</span>
       </Button>
       <Button
         type="button"
@@ -104,7 +114,7 @@ export function PosCurrentSaleActions({
         disabled={splitPaymentDisabled}
       >
         <CreditCard size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
-        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
+        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] lg:text-xs xl:text-xs">
           {splitPaymentLoading ? 'Processing...' : 'Split Payment'}
         </span>
       </Button>

@@ -7,15 +7,16 @@ export async function signIn(page, credentials, options = {}) {
   await page.getByRole('textbox', { name: 'Password' }).fill(credentials.password);
 
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  const companySelect = page.getByLabel('Company');
+  const companySelect = page.getByRole('button', { name: 'Company' });
   await expect(companySelect).toBeVisible();
   const requestedCompany = options.companyName?.trim() || process.env.E2E_TEST_COMPANY_NAME?.trim();
+  await companySelect.click();
   if (requestedCompany) {
-    await companySelect.selectOption({ label: requestedCompany });
+    await page.getByRole('option', { name: requestedCompany, exact: true }).click();
   } else {
-    await companySelect.selectOption({ index: 1 });
+    await page.getByRole('option').nth(1).click();
   }
-  await expect(companySelect).toHaveValue(/.+/);
+  await expect(companySelect).toHaveAttribute('data-company-value', /.+/);
   const tenantSessionResponse = page.waitForResponse(
     (response) => /\/api\/v1\/dgfy\/auth\/tenant-session$/.test(new URL(response.url()).pathname),
     { timeout: 20_000 }

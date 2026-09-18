@@ -459,6 +459,7 @@ export default function POSCheckoutTerminal({
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
+    const [historyPageSize, setHistoryPageSize] = useState(20);
     const [historyPagination, setHistoryPagination] = useState(null);
     const [historySearch, setHistorySearch] = useState('');
     const [historyStatus, setHistoryStatus] = useState('all');
@@ -847,7 +848,7 @@ export default function POSCheckoutTerminal({
         }
     }, [sessionLocked]);
 
-    const loadHistory = useCallback(async (page = 1) => {
+    const loadHistory = useCallback(async (page = 1, requestedPageSize = historyPageSize) => {
         if (sessionLocked || !canViewHistory) {
             setHistoryRows([]);
             setHistoryPagination(null);
@@ -857,7 +858,7 @@ export default function POSCheckoutTerminal({
         try {
             const result = await fetchPosTransactions({
                 page,
-                limit: 20,
+                limit: requestedPageSize,
                 search: historySearch || undefined,
                 status: historyStatus === 'all' ? undefined : historyStatus,
                 payment_type: historyPaymentType === 'all' ? undefined : historyPaymentType,
@@ -886,6 +887,7 @@ export default function POSCheckoutTerminal({
         historyPaymentType,
         historySearch,
         historyStatus,
+        historyPageSize,
         sessionLocked
     ]);
 
@@ -1833,6 +1835,8 @@ export default function POSCheckoutTerminal({
                         printHistoryReceipt={printHistoryReceipt}
                         loadHistory={loadHistory}
                         historyPage={historyPage}
+                        historyPageSize={historyPageSize}
+                        setHistoryPageSize={setHistoryPageSize}
                         historyPagination={historyPagination}
                     />
                 </Suspense>

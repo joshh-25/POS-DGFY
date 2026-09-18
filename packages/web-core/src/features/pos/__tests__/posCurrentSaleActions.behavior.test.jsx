@@ -42,10 +42,25 @@ describe('PosCurrentSaleActions', () => {
     expect(parkButton).toBeDefined();
     expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
-    expect(screen.getByText('Open Cash Drawer')).toBeDefined();
+    expect(screen.getByText('Cash Drawer')).toBeDefined();
+    const drawerButton = screen.getByTestId('pos-open-cash-drawer-button');
+    expect(drawerButton.className).not.toContain('h-auto');
+    expect(drawerButton.querySelector('span').className).toContain('line-clamp-2');
     expect(screen.queryByText('Apply Discount')).toBeNull();
     fireEvent.click(parkButton);
     expect(actions.onParkSale).toHaveBeenCalledOnce();
+  });
+
+  it('keeps parked-sale actions in the inherited two-plus-three row layout', () => {
+    renderActions('fnb');
+
+    const actionsGrid = screen.getByTestId('pos-current-sale-actions');
+    expect(actionsGrid.className).toContain('grid-cols-6');
+    expect(screen.getByText('Checkout').closest('button').className).toContain('order-2 col-span-3');
+    expect(screen.getByText('Print Order').closest('button').className).toContain('order-1 col-span-3');
+    expect(screen.getByTestId('pos-park-sale-button').className).toContain('col-span-2');
+    expect(screen.getByTestId('pos-open-cash-drawer-button').className).toContain('col-span-2');
+    expect(screen.getByTestId('pos-current-sale-split-payment').className).toContain('col-span-2');
   });
 
   it('keeps the parked action for Counter mode after F&B dining capabilities are removed', () => {
@@ -64,7 +79,7 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.queryByText('Park & New Sale')).toBeNull();
     expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
-    expect(screen.getByText('Open Cash Drawer')).toBeDefined();
+    expect(screen.getByText('Cash Drawer')).toBeDefined();
     expect(screen.queryByText('Apply Discount')).toBeNull();
   });
 
@@ -73,7 +88,7 @@ describe('PosCurrentSaleActions', () => {
 
     fireEvent.click(screen.getByText('Checkout'));
     fireEvent.click(screen.getByText('Print Order'));
-    fireEvent.click(screen.getByText('Open Cash Drawer'));
+    fireEvent.click(screen.getByText('Cash Drawer'));
 
     expect(actions.onCheckout).toHaveBeenCalledOnce();
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();

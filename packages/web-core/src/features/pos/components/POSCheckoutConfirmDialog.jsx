@@ -1,4 +1,4 @@
-import React, { Suspense, useState } from 'react';
+import React, { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
     Pencil,
     Printer,
@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import {
     formatSplitPaymentMethod,
     getCartLineSubtotal,
@@ -50,7 +49,7 @@ const CHECKOUT_DISCOUNT_TYPE_OPTIONS = [
 ];
 const CHECKOUT_SECONDARY_HOVER = 'hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';
 const CHECKOUT_ICON_HOVER = 'hover:bg-[#EFF7FF] hover:text-[#1A4E8D]';
-
+const DISCOUNT_WORKSPACE_TRANSITION_MS = 360;
 const normalizePaymentAmount = (value) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed) || parsed < 0) return 0;
@@ -71,6 +70,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         cartSubtotal,
         cartTotal,
         checkoutConfirmModalOpen,
+        checkoutOpenedFromCurrentSale,
         checkoutDiscountLabel,
         checkoutLoading,
         clearAppliedDiscount,
@@ -101,6 +101,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         isMsmeMode,
         isOrderPrinterAvailable,
         isTabletViewport,
+        isTabletPortraitViewport,
+        isMobileViewport,
+        isMobileLandscapeViewport,
         kitchenNotes,
         openDiscountModal,
         orderMethod,
@@ -141,11 +144,108 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         tableNumber
     } = viewModel;
 
+    // The terminal viewport classifier is normally the source of truth, but
+    // the POS can also run inside a device preview where the CSS viewport has
+    // already changed before the workflow state catches up. Use the actual
+    // viewport as a fallback for this dialog only so portrait scrolling cannot
+    // be left locked by a stale classifier. Landscape and desktop do not match.
+    const viewportWidth = typeof window === 'undefined' ? 0 : Number(window.innerWidth);
+    const viewportHeight = typeof window === 'undefined' ? 0 : Number(window.innerHeight);
+    const isCssPortraitViewport = viewportWidth > 0 && viewportHeight >= viewportWidth;
+    const isCssMobilePortraitViewport = isCssPortraitViewport && viewportWidth < 768;
+    const isCssTabletPortraitViewport = isCssPortraitViewport && viewportWidth >= 768 && viewportWidth < 1024;
+    const isMobilePortraitViewport = (isMobileViewport || isCssMobilePortraitViewport) && !isMobileLandscapeViewport;
+    const isTabletPortraitCheckoutViewport = isTabletPortraitViewport || isCssTabletPortraitViewport;
+    const isPortraitResponsiveCheckoutViewport = isMobilePortraitViewport || isTabletPortraitCheckoutViewport;
+
     const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);
     const [orderSummaryOpen, setOrderSummaryOpen] = useState(false);
-    const [isIminRuntime] = useState(() => isIminWrapperRuntime());
+    const [discountWorkspaceMounted, setDiscountWorkspaceMounted] = useState(false);
+    const [discountWorkspaceOpen, setDiscountWorkspaceOpen] = useState(false);
+    const [checkoutSheetMotionOpen, setCheckoutSheetMotionOpen] = useState(false);
+    const checkoutSheetRef = useRef(null);
+
+    useEffect(() => {
+        if (!checkoutConfirmModalOpen) {
+            setCheckoutSheetMotionOpen(false);
+            return undefined;
+        }
+
+        // Mount the dialog in its hidden bottom-sheet state for one paint,
+        // then reveal it so the current-sale handoff has a real slide-up.
+        setCheckoutSheetMotionOpen(false);
+        const openFrameId = window.requestAnimationFrame(() => {
+            setCheckoutSheetMotionOpen(true);
+        });
+
+        return () => window.cancelAnimationFrame(openFrameId);
+    }, [checkoutConfirmModalOpen]);
+
+    useEffect(() => {
+        if (!discountModalOpen) return undefined;
+
+        setDiscountWorkspaceMounted(true);
+
+        // Mount collapsed for one paint, then reveal it. The workspace is the
+        // only element changing size, and the sheet remains natural-height, so
+        // this creates the reference's smooth slide without a fixed-height
+        // shrink/reflow before the expansion.
+        setDiscountWorkspaceOpen(false);
+        const openFrameId = window.requestAnimationFrame(() => {
+            setDiscountWorkspaceOpen(true);
+        });
+        return () => window.cancelAnimationFrame(openFrameId);
+    }, [discountModalOpen, isPortraitResponsiveCheckoutViewport]);
+
+    useEffect(() => {
+        if (discountModalOpen || !discountWorkspaceMounted) return undefined;
+
+        // Keep the workspace mounted while its collapsed state transitions so
+        // dismissal remains smooth on both phone and tablet portrait sheets.
+        setDiscountWorkspaceOpen(false);
+
+        const closeTimeoutId = window.setTimeout(() => {
+            setDiscountWorkspaceMounted(false);
+        }, DISCOUNT_WORKSPACE_TRANSITION_MS);
+
+        return () => window.clearTimeout(closeTimeoutId);
+    }, [discountModalOpen, discountWorkspaceMounted, isPortraitResponsiveCheckoutViewport]);
+
+    useLayoutEffect(() => {
+        if (!checkoutConfirmModalOpen || !isMobilePortraitViewport || discountModalOpen) return;
+
+        const scrollRegion = checkoutSheetRef.current?.querySelector('[data-testid="pos-checkout-scroll-container"]');
+        if (scrollRegion) scrollRegion.scrollTop = 0;
+    }, [checkoutConfirmModalOpen, discountModalOpen, isMobilePortraitViewport]);
 
     if (!checkoutConfirmModalOpen) return null;
+
+    const checkoutDiscountWorkspaceExpanded = discountWorkspaceOpen || (!discountModalOpen && discountWorkspaceMounted);
+    const checkoutDiscountWorkspaceOpen = discountWorkspaceOpen;
+    // The workspace owns the expand/collapse motion. The sheet remains a
+    // natural-height bottom sheet, so its top edge follows the workspace's
+    // max-height transition without a second fixed-height reflow.
+    const checkoutDiscountWorkspaceScrollEnabled = isPortraitResponsiveCheckoutViewport
+        ? checkoutDiscountWorkspaceExpanded
+        : true;
+    const checkoutPortraitSheetStyle = isPortraitResponsiveCheckoutViewport
+        ? {
+            display: 'flex',
+            minHeight: 0,
+            flexDirection: 'column',
+            overflow: 'hidden'
+        }
+        : undefined;
+    const checkoutPortraitBodyStyle = isPortraitResponsiveCheckoutViewport
+        ? {
+            flex: checkoutDiscountWorkspaceScrollEnabled ? '1 1 auto' : '0 0 auto',
+            minHeight: 0,
+            overflowY: checkoutDiscountWorkspaceScrollEnabled ? 'auto' : 'hidden',
+            overscrollBehaviorY: 'contain',
+            WebkitOverflowScrolling: 'touch',
+            touchAction: checkoutDiscountWorkspaceScrollEnabled ? 'pan-y' : 'auto'
+        }
+        : undefined;
 
     const employeeCreditDiscountPreference = resolveEmployeeDiscountCreditPreference(appliedDiscount, safeCart);
 
@@ -217,7 +317,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         <Dialog
             open={checkoutConfirmModalOpen}
             mobileSheet
-            overlayClassName={isIminRuntime ? 'backdrop-blur-none' : undefined}
+            overlayClassName={`pos-checkout-mobile-overlay ${checkoutSheetMotionOpen ? 'pos-checkout-mobile-overlay-visible' : ''} ${checkoutOpenedFromCurrentSale ? 'pos-checkout-mobile-overlay-handoff' : ''} bg-slate-950/70 backdrop-blur-none`}
             onOpenChange={(nextOpen) => {
                 if (nextOpen) {
                     setCheckoutConfirmModalOpen(true);
@@ -226,8 +326,8 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                 void handleCancelCheckout();
             }}
         >
-            <DialogContent className={`pos-checkout-confirm-dialog pos-mobile-bottom-sheet pos-checkout-mobile-sheet ${discountModalOpen ? 'pos-checkout-mobile-sheet-expanded' : ''} flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 max-sm:w-full max-sm:max-w-none max-sm:rounded-t-2xl max-sm:rounded-b-none max-sm:border-x max-sm:border-t max-sm:border-b-0 max-sm:shadow-2xl sm:w-[calc(100vw-2rem)]`}>
-                <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3">
+            <DialogContent ref={checkoutSheetRef} style={checkoutPortraitSheetStyle} className={`pos-checkout-confirm-dialog pos-mobile-bottom-sheet pos-checkout-mobile-sheet ${checkoutSheetMotionOpen ? 'pos-checkout-mobile-sheet-visible' : ''} ${isMobilePortraitViewport ? 'pos-checkout-mobile-portrait-sheet' : ''} ${isTabletPortraitCheckoutViewport ? 'pos-checkout-tablet-portrait-sheet' : ''} ${checkoutOpenedFromCurrentSale ? 'pos-checkout-mobile-sheet-handoff' : ''} ${checkoutDiscountWorkspaceExpanded ? 'pos-checkout-mobile-sheet-expanded' : ''} flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 max-md:w-full max-md:max-w-none max-md:rounded-t-2xl max-md:rounded-b-none max-md:border-x max-md:border-t max-md:border-b-0 max-md:shadow-2xl`}>
+                <DialogHeader className="pos-checkout-mobile-header shrink-0 border-b border-slate-200 px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
@@ -300,7 +400,12 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     </div>
                 </section>
 
-                <div className={`pos-modal-scroll-content grid min-h-0 min-w-0 max-w-full flex-1 content-start gap-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 pt-2 lg:grid-cols-2 ${discountModalOpen ? 'pos-checkout-mobile-scroll-expanded' : 'pos-checkout-mobile-scroll-locked'}`}>
+                <div
+                    className={`pos-modal-scroll-content pos-checkout-scroll-region grid min-h-0 min-w-0 max-w-full flex-1 content-start gap-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 pt-2 lg:grid-cols-2 ${checkoutDiscountWorkspaceScrollEnabled ? 'pos-checkout-mobile-scroll-expanded' : 'pos-checkout-mobile-scroll-locked'}`}
+                    style={checkoutPortraitBodyStyle}
+                    data-pos-checkout-scroll-state={checkoutDiscountWorkspaceScrollEnabled ? 'expanded' : 'locked'}
+                    data-testid="pos-checkout-scroll-container"
+                >
 
                     <div className="min-w-0 max-w-full space-y-0 lg:col-span-2" data-testid="pos-checkout-order-settings">
                         <Suspense fallback={<div className="h-10 animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
@@ -334,7 +439,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                             {!hasSplitPaymentSummary && (
                                 <fieldset className="w-full min-w-0 max-w-full space-y-1 py-[5px]" aria-label="Payment Type">
                                     <legend className="text-[11px] font-bold text-slate-600">Payment Type</legend>
-                                    <div className={isTabletViewport ? 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain p-1 touch-pan-x' : 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x'}>
+                                    <div className={`${isTabletViewport ? 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain p-1 touch-pan-x' : 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x'} pos-checkout-payment-method-scroll`}>
                                         <div className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5" data-testid="pos-checkout-payment-method-buttons">
                                             {PAYMENT_METHOD_OPTIONS.map((option) => {
                                                 const active = paymentType === option.value;
@@ -389,10 +494,10 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                             <label htmlFor="pos-customer-payment-amount" className="block text-[11px] font-bold text-slate-600">
                                 {customerPaymentFieldLabel}
                             </label>
-                            <div className={isCashPayment ? 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x' : 'w-full min-w-0 max-w-full'}>
+                            <div className={`${isCashPayment ? 'w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x' : 'w-full min-w-0 max-w-full'} pos-checkout-payment-suggestion-scroll`}>
                                 <div
                                     className={isCashPayment
-                                        ? 'grid min-w-[680px] grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(80px,1fr))] gap-2'
+                                        ? 'grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5'
                                         : 'grid'}
                                     data-testid={isCashPayment ? 'pos-cash-payment-suggestions' : undefined}
                                 >
@@ -433,10 +538,10 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                         </div>
                     )}
 
-                    <fieldset className="w-full min-w-0 max-w-full space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount">
+                    <fieldset className="pos-checkout-discount-types w-full min-w-0 max-w-full space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount">
                         <legend className="text-[11px] font-bold text-slate-600">Apply Discount</legend>
-                        <div className="w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
-                            <div className="grid min-w-[720px] grid-cols-6 gap-2" data-testid="pos-checkout-discount-type-buttons">
+                        <div className="pos-checkout-discount-type-scroll w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
+                            <div className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5" data-testid="pos-checkout-discount-type-buttons">
                                 {CHECKOUT_DISCOUNT_TYPE_OPTIONS.map((option) => {
                                     const active = selectedDiscountType === option.value;
                                     return (
@@ -446,7 +551,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                             aria-pressed={active}
                                             onClick={() => handleCheckoutDiscountTypeClick(option.value)}
                                             disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
-                                            className={`h-9 rounded-lg border px-2 text-[11px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
+                                            className={`h-9 whitespace-nowrap rounded-lg border px-2 text-[11px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
                                                 active
                                                     ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm'
                                                     : 'border-[#1A4E8D] bg-white text-[#1A4E8D] hover:bg-[#EFF7FF]'
@@ -491,8 +596,11 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                         )}
                     </fieldset>
 
-                    {discountModalOpen && (
-                        <div className="lg:col-span-2">
+                    {(discountModalOpen || discountWorkspaceMounted) && (
+                        <div
+                            className={`pos-checkout-discount-workspace ${checkoutDiscountWorkspaceOpen ? 'pos-checkout-discount-workspace-open' : ''} lg:col-span-2`}
+                            aria-hidden={!discountModalOpen}
+                        >
                             <Suspense fallback={<div className="h-44 animate-pulse rounded-xl bg-slate-100" aria-hidden="true" />}>
                                 <POSDiscountWorkspace viewModel={viewModel} onCancel={closeDiscountModal} embedded />
                             </Suspense>
@@ -551,7 +659,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
                 </div>
 
-                <DialogFooter className="shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
+                <DialogFooter className="pos-checkout-mobile-footer shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
                     <Button
                         type="button"
                         variant="outline"
@@ -594,11 +702,11 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
             overlayClassName="bg-slate-950/70 backdrop-blur-none"
         >
             <DialogContent
-                className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl sm:w-[calc(100vw-4rem)]"
+                className="pos-checkout-order-summary-modal flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl sm:w-[calc(100vw-4rem)]"
                 data-testid="pos-checkout-order-summary-modal"
                 aria-labelledby="pos-checkout-order-summary-title"
             >
-                <DialogHeader className="relative shrink-0 border-b border-slate-200 px-4 py-3 pr-14 text-left">
+                <DialogHeader className="pos-checkout-mobile-header relative shrink-0 border-b border-slate-200 px-4 py-3 pr-14 text-left">
                     <DialogTitle id="pos-checkout-order-summary-title" className="text-base font-black text-[#0F172A]">
                         Order Summary
                     </DialogTitle>
@@ -606,7 +714,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     <button
                         type="button"
                         onClick={() => setOrderSummaryOpen(false)}
-                        className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border-4 border-white bg-[#1A4E8D] text-white shadow-md transition hover:bg-[#143F73] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
+                        className="pos-checkout-order-summary-close absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full border-4 border-white bg-[#1A4E8D] text-white shadow-md transition hover:bg-[#143F73] focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2"
                         aria-label="Close Order Summary"
                         data-testid="pos-checkout-close-order-summary"
                     >
@@ -614,7 +722,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     </button>
                 </DialogHeader>
 
-                <div className="max-h-[16rem] flex-none overflow-y-auto overscroll-contain bg-white p-4" data-testid="pos-checkout-order-summary-panel">
+                <div className="pos-checkout-order-summary-panel max-h-[16rem] flex-none overflow-y-auto overscroll-contain bg-white p-4" data-testid="pos-checkout-order-summary-panel">
                     <div className="space-y-2">
                         {safeCart.map((line, index) => (
                             <article
@@ -637,7 +745,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     </div>
                 </div>
 
-                <div className="shrink-0 bg-white p-4 pt-2">
+                <div className="pos-checkout-order-summary-totals shrink-0 bg-white p-4 pt-2">
                     <dl className="space-y-1 rounded-xl border border-slate-200 px-4 py-3 text-[11px]">
                         <div className="flex items-center justify-between gap-4"><dt>Item Cost</dt><dd>₱{money(cartSubtotal)}</dd></div>
                         {Number(restaurantServiceChargeAmount || 0) > 0 && (

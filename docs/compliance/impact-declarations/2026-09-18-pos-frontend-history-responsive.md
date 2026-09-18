@@ -91,3 +91,7 @@ of this branch's POS rollback.
 The first implementation commit adds the shared pagination control and its focused unit test. The
 remaining POS frontend commits carry this declaration forward while separating checkout/catalog work
 from history/terminal responsive work for review and rollback clarity.
+
+The second implementation commit covers checkout and catalog workflow presentation, including the
+POS app integration points that consume the shared web-core surface and the associated contract and
+behavior tests.

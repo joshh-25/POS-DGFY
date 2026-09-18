@@ -3,6 +3,7 @@ import { isSellAvailableCatalogItem } from './posCatalogAvailability.js';
 import { resolvePosCatalogImageSources } from './posCheckoutTerminalUtils.js';
 
 export const CATALOG_GRID_GAP_PX = 8;
+export const MIN_CATALOG_PAGE_SIZE = 4;
 export const CATALOG_PAGE_SIZE_OPTIONS = [4, 6, 8, 12];
 export const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
 export const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
@@ -10,9 +11,17 @@ export const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
 // 100% desktop geometry so the catalog retains its four-column layout.
 export const CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX = CATALOG_DESKTOP_CARD_HEIGHT_PX;
 export const CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX = CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
+export const CATALOG_DGFY_TABLET_DEFAULT_COLUMNS = 4;
+export const CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS = 2;
 export const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 export const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 export const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
+export const CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX = 128;
+export const CATALOG_DGFY_TABLET_PORTRAIT_CARD_MIN_WIDTH_PX = CATALOG_TABLET_CARD_MIN_WIDTH_PX;
+// Landscape tablets inherit the desktop catalog proportions while staying
+// slightly smaller so the two-pane POS shell keeps comfortable gutters.
+export const CATALOG_TABLET_LANDSCAPE_CARD_HEIGHT_PX = 160;
+export const CATALOG_TABLET_LANDSCAPE_CARD_MIN_WIDTH_PX = 168;
 
 export const normalizePosFolders = (rows) => (Array.isArray(rows) ? rows : [])
     .filter((folder) => folder?.show_in_pos_filter !== false)
@@ -56,7 +65,10 @@ export const filterCatalogByFolder = (catalog, selectedFolderId) => {
     return safeCatalog.filter((item) => itemMatchesFolder(item, folderId));
 };
 
-export const getCatalogPageSize = (gridPageSize) => Math.max(1, Number(gridPageSize || 0) * 2);
+// Auto mode follows the number of cards that fit in the measured catalog grid,
+// but never drops below the mobile minimum of four items per page.
+// Manual page-size selections are handled separately by the workflow hook.
+export const getCatalogPageSize = (gridPageSize) => Math.max(MIN_CATALOG_PAGE_SIZE, Number(gridPageSize || 0));
 
 export const getTotalCatalogPages = (catalogLength, catalogPageSize) => (
     Math.max(1, Math.ceil(Number(catalogLength || 0) / Math.max(1, Number(catalogPageSize || 0))))
@@ -114,26 +126,47 @@ export const getCatalogGridMeasurement = ({
     width,
     height,
     isMobileViewport,
+    isMobileLandscapeViewport = false,
     isTabletViewport,
+    isTabletPortraitViewport = false,
+    isTabletLandscapeViewport,
     isDgfyPosSurface,
     textSizeScale
 }) => {
     const safeTextSizeScale = Number.isFinite(Number(textSizeScale)) ? Number(textSizeScale) : 1;
-    const baseMinimumCardWidth = isDgfyPosSurface && !isTabletViewport
-        ? CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX
+    const isMobileCatalogLayout = Boolean(isMobileViewport);
+    const isDgfyTabletViewport = isDgfyPosSurface && isTabletViewport;
+    const isDgfyTabletPortraitViewport = isDgfyTabletViewport
+        && (isTabletPortraitViewport === true || isTabletLandscapeViewport !== true);
+    const forcedTabletColumns = isDgfyTabletPortraitViewport
+        ? CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS
+        : CATALOG_DGFY_TABLET_DEFAULT_COLUMNS;
+    const baseMinimumCardWidth = isDgfyTabletPortraitViewport
+        ? CATALOG_DGFY_TABLET_PORTRAIT_CARD_MIN_WIDTH_PX
+        : isDgfyPosSurface
+            ? CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX
         : isTabletViewport
             ? CATALOG_TABLET_CARD_MIN_WIDTH_PX
             : CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
-    const minimumCardWidth = isMobileViewport
+    const scaledMinimumCardWidth = Math.round(baseMinimumCardWidth * safeTextSizeScale);
+    const safeWidth = Math.max(1, Number(width) || 1);
+    const fittedTabletCardWidth = Math.floor(
+        (safeWidth - ((forcedTabletColumns - 1) * CATALOG_GRID_GAP_PX))
+        / forcedTabletColumns
+    );
+    const isPortraitMobileViewport = isMobileCatalogLayout && !isMobileLandscapeViewport;
+    const minimumCardWidth = isPortraitMobileViewport
         ? width
-        : Math.round(baseMinimumCardWidth * safeTextSizeScale);
-    const baseCardHeight = isMobileViewport
+        : isDgfyTabletViewport
+            ? Math.max(1, Math.min(scaledMinimumCardWidth, fittedTabletCardWidth))
+            : scaledMinimumCardWidth;
+    const baseCardHeight = isMobileCatalogLayout
         ? CATALOG_MOBILE_CARD_HEIGHT_PX
-        : isDgfyPosSurface && isTabletViewport
-            ? CATALOG_TABLET_CARD_HEIGHT_PX
+        : isDgfyTabletPortraitViewport
+            ? CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX
             : isDgfyPosSurface
                 ? CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX
-            : CATALOG_DESKTOP_CARD_HEIGHT_PX;
+                : CATALOG_DESKTOP_CARD_HEIGHT_PX;
     const cardHeight = Math.round(baseCardHeight * safeTextSizeScale);
     const capacity = calculateCatalogGridCapacity({
         width,
@@ -142,5 +175,16 @@ export const getCatalogGridMeasurement = ({
         cardHeight,
         gap: CATALOG_GRID_GAP_PX
     });
-    return { ...capacity, minimumCardWidth, cardHeight, textSizeScale: safeTextSizeScale };
+    return {
+        ...capacity,
+        ...(isDgfyTabletViewport
+            ? {
+                columns: forcedTabletColumns,
+                pageSize: forcedTabletColumns * capacity.rows
+            }
+            : {}),
+        minimumCardWidth,
+        cardHeight,
+        textSizeScale: safeTextSizeScale
+    };
 };
