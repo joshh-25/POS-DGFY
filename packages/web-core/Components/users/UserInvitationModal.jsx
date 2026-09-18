@@ -49,7 +49,8 @@ export default function UserInvitationModal({
     fixedRole = '',
     title = 'Invite DGFY Account',
     submitLabel = 'Send DGFY Invitation',
-    locationOptions = null
+    locationOptions = null,
+    overlayClassName
 }) {
     const [accountQuery, setAccountQuery] = useState('');
     const [accountResults, setAccountResults] = useState([]);
@@ -220,16 +221,16 @@ export default function UserInvitationModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[520px]">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <UserPlus className="w-5 h-5 text-teal-600" />
+        <Dialog open={open} onOpenChange={onOpenChange} overlayClassName={overlayClassName}>
+            <DialogContent className="w-[calc(100vw-1.5rem)] max-w-[520px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
+                <DialogHeader className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
+                    <DialogTitle className="flex items-center gap-2 text-[16px] font-extrabold text-[#0F172A]">
+                        <UserPlus className="w-5 h-5 text-[#1A4E8D]" />
                         {title}
                     </DialogTitle>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+                <form onSubmit={handleSubmit} className="grid gap-4 px-5 py-5 sm:px-6">
                     {fixedRole ? (
                         <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
                             This invitation creates a cashier authorization profile after acceptance. The DGFY account password remains the only operator credential.
@@ -237,14 +238,14 @@ export default function UserInvitationModal({
                     ) : null}
 
                     <div className="grid gap-2">
-                        <Label htmlFor="dgfy-account-search">Search registered DGFY account</Label>
+                        <Label htmlFor="dgfy-account-search" className="text-[12px] font-bold text-[#334155]">Search registered DGFY account</Label>
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <Input
                                 id="dgfy-account-search"
                                 type="search"
                                 placeholder="Search by email or phone"
-                                className="pl-9"
+                                className="pl-9 text-[16px] sm:text-[14px]"
                                 value={accountQuery}
                                 onChange={(e) => {
                                     const nextValue = e.target.value;
@@ -266,12 +267,12 @@ export default function UserInvitationModal({
                             <p className="text-xs text-rose-600">{accountSearchError}</p>
                         )}
                         {selectedDgfyAccount ? (
-                            <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm">
-                                <div className="flex items-center gap-2 font-semibold text-teal-900">
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-[13px] sm:text-[14px]">
+                                <div className="flex items-center gap-2 font-semibold text-[#1A4E8D]">
                                     <CheckCircle2 className="h-4 w-4" />
                                     {selectedDgfyAccount.display_name || selectedDgfyAccount.email}
                                 </div>
-                                <p className="mt-1 text-xs text-teal-800">
+                                <p className="mt-1 text-[11px] text-[#536B8C]">
                                     {selectedDgfyAccount.email} {selectedDgfyAccount.masked_phone ? `| ${selectedDgfyAccount.masked_phone}` : ''}
                                 </p>
                             </div>
@@ -283,7 +284,7 @@ export default function UserInvitationModal({
                                         <button
                                             key={account.dgfy_account_id}
                                             type="button"
-                                            className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left text-sm last:border-b-0 ${disabled ? 'cursor-not-allowed bg-slate-50 text-slate-400' : 'hover:bg-teal-50'}`}
+                                            className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left text-[13px] last:border-b-0 ${disabled ? 'cursor-not-allowed bg-slate-50 text-slate-400' : 'hover:bg-blue-50'}`}
                                             disabled={disabled}
                                             onClick={() => setSelectedDgfyAccount(account)}
                                         >
@@ -308,9 +309,9 @@ export default function UserInvitationModal({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="role">Role</Label>
+                        <Label htmlFor="role" className="text-[12px] font-bold text-[#334155]">Role</Label>
                         <Select value={role} onValueChange={setRole}>
-                            <SelectTrigger>
+                            <SelectTrigger id="role" className="text-[16px] sm:text-[14px]">
                                 <SelectValue placeholder="Select a role" />
                             </SelectTrigger>
                             <SelectContent>
@@ -328,12 +329,12 @@ export default function UserInvitationModal({
 
                     {activeLocations.length > 0 && (
                         <div className="grid gap-2">
-                            <Label>Location Scope</Label>
+                            <Label className="text-[12px] font-bold text-[#334155]">Location Scope</Label>
                             <div className="max-h-32 space-y-2 overflow-y-auto rounded-md border border-slate-200 p-2">
                                 {activeLocations.map((location) => {
                                     const locationId = Number(location.location_id);
                                     return (
-                                        <label key={locationId} className="flex items-center justify-between gap-2 text-sm">
+                                        <label key={locationId} className="flex min-h-9 items-center justify-between gap-2 text-[13px]">
                                             <span className="truncate">{location.name}</span>
                                             <input
                                                 type="checkbox"
@@ -348,11 +349,11 @@ export default function UserInvitationModal({
                         </div>
                     )}
 
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                    <DialogFooter className="flex-row items-center gap-2 border-t border-slate-100 px-0 pb-0 pt-4 sm:justify-end">
+                        <Button type="button" variant="outline" className="min-h-9 min-w-0 flex-1 text-[13px] font-bold sm:flex-none sm:text-[14px]" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>
-                        <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading || accountSearchLoading}>
+                        <Button type="submit" className="min-h-9 min-w-0 flex-1 bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] sm:flex-none sm:text-[14px]" disabled={loading || accountSearchLoading}>
                             {loading ? 'Sending...' : submitLabel}
                         </Button>
                     </DialogFooter>

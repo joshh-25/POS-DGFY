@@ -105,6 +105,11 @@ export const shouldFallbackToCurrentCompanyTokenAfterLookupError = (error) => {
   return status >= 500 || status === 408 || status === 504;
 };
 
+export const isRetryableCompanyLookupError = (error) => {
+  const status = getStatus(error);
+  return !status || status === 408 || status >= 500;
+};
+
 export const isCompanyTokenResolutionError = (error) => {
   const status = getStatus(error);
   const message = getResponseMessage(error).toLowerCase();

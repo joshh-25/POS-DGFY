@@ -73,10 +73,12 @@ import {
 } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '../../settings/workflowMode.js';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog.jsx';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
   createTerminalLoginError,
+  isRetryableCompanyLookupError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
@@ -178,6 +180,12 @@ const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
 const ONLINE_ORDER_POLL_TIMEOUT_MS = 20000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
+const COMPANY_LOOKUP_INITIAL_DELAY_MS = 350;
+const COMPANY_LOOKUP_RETRY_DELAY_MS = 1000;
+// Local API startup performs schema and tenant readiness checks before it can
+// accept requests. Keep the lookup pending through that cold-start window,
+// while capping retries so a real outage still becomes visible to the cashier.
+const COMPANY_LOOKUP_MAX_RETRIES = 8;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
 
@@ -560,6 +568,8 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
+  const [pendingStorefrontContentViewMode, setPendingStorefrontContentViewMode] = useState('');
+  const storefrontContentGuardRef = useRef({ dirty: false, discard: null });
 
   const [dgfyPosState, setDgfyPosState] = useState({
     authenticated: false,
@@ -2991,7 +3001,11 @@ export default function TerminalPage() {
     }
 
     let cancelled = false;
-    const timer = setTimeout(async () => {
+    let retryTimer = null;
+    let retryCount = 0;
+
+    const lookupCompany = async () => {
+      if (cancelled) return;
       setEmailCompanyLookup({
         status: 'loading',
         email: normalizedEmail,
@@ -3032,6 +3046,14 @@ export default function TerminalPage() {
           });
           return;
         }
+        if (isRetryableCompanyLookupError(error) && retryCount < COMPANY_LOOKUP_MAX_RETRIES) {
+          retryCount += 1;
+          retryTimer = setTimeout(
+            lookupCompany,
+            Math.min(COMPANY_LOOKUP_RETRY_DELAY_MS * (2 ** (retryCount - 1)), 10000)
+          );
+          return;
+        }
         setEmailCompanyLookup({
           status: 'error',
           email: normalizedEmail,
@@ -3039,11 +3061,14 @@ export default function TerminalPage() {
           message: 'Company lookup is temporarily unavailable.'
         });
       }
-    }, 350);
+    };
+
+    const timer = setTimeout(lookupCompany, COMPANY_LOOKUP_INITIAL_DELAY_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [formData.email]);
 
@@ -5514,14 +5539,6 @@ export default function TerminalPage() {
         toast.success('Online order status updated.');
       }
       await refreshIncomingOrders({ silent: true });
-      // #1931: Retail acceptance now records Inventory's goods-issue immediately, so the
-      // visible counts must agree with persisted stock without a manual reload. Reuse the
-      // same post-sale refresh a completed POS sale runs (handleCheckoutCompleted) rather
-      // than inventing a second refresh mechanism -- there is no dedicated catalog
-      // invalidation after a sale to reuse; operational context is what a sale refreshes.
-      if (nextStatus === 'confirmed' && workflowMode === 'retail') {
-        await refreshOperationalContext({ suppressGlobalErrors: true }).catch(() => {});
-      }
       return true;
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
@@ -5943,6 +5960,14 @@ export default function TerminalPage() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }, []);
 
+  const handleStorefrontContentStateChange = useCallback(({ dirty = false, discard = null } = {}) => {
+    storefrontContentGuardRef.current = {
+      dirty: dirty === true,
+      discard: typeof discard === 'function' ? discard : null
+    };
+    if (dirty !== true) setPendingStorefrontContentViewMode('');
+  }, []);
+
   const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
       setMobileNavOpen(false);
@@ -6002,6 +6027,14 @@ export default function TerminalPage() {
       if (shiftClosedToastId) {
         shiftClosedToastIdRef.current = shiftClosedToastId;
       }
+      setMobileNavOpen(false);
+      return;
+    }
+    if (
+      nextMode !== posViewMode
+      && storefrontContentGuardRef.current.dirty
+    ) {
+      setPendingStorefrontContentViewMode(nextMode);
       setMobileNavOpen(false);
       return;
     }
@@ -6749,6 +6782,7 @@ function PosRestorationLoadingScreen() {
           handleCheckoutCompleted={handleCheckoutCompleted}
           onPosSetupSaved={handlePosSetupSaved}
           onStorefrontSetupSaved={handleStorefrontSetupSaved}
+          onStorefrontContentStateChange={handleStorefrontContentStateChange}
           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
           posTextSize={posTextSize}
           onPosTextSizeChange={handlePosTextSizeChange}
@@ -6777,6 +6811,25 @@ function PosRestorationLoadingScreen() {
           handleIdentityChange={handleDgfyPosIdentityChange}
           handleUseDifferentAccount={handleUseDifferentDgfyAccount}
           handleLegacyLogin={handleLogin}
+        />
+        <ConfirmActionDialog
+          open={Boolean(pendingStorefrontContentViewMode)}
+          onOpenChange={(open) => { if (!open) setPendingStorefrontContentViewMode(''); }}
+          title="Unsaved Store Content changes"
+          description="Save your Store Content changes before leaving, or continue without saving."
+          confirmLabel="Leave without saving"
+          cancelLabel="Stay"
+          variant="destructive"
+          overlayClassName="bg-black/30 backdrop-blur-none"
+          onConfirm={() => {
+            const nextMode = pendingStorefrontContentViewMode;
+            const discarded = storefrontContentGuardRef.current.discard?.();
+            if (discarded === false) return false;
+            setPendingStorefrontContentViewMode('');
+            storefrontContentGuardRef.current = { dirty: false, discard: null };
+            commitViewModeSelection(nextMode);
+            return true;
+          }}
         />
       </>
     </Suspense>
