@@ -47,8 +47,8 @@ describe('POS edit-item image save flow', () => {
   it('renders selected previews until Save Item queues the worker job', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     expect(workspace).toContain('files={selectedEditImageFiles}');
-    expect(workspace).toContain('Selection is local-only. The worker starts after Save Item');
-    expect(workspace).toContain('Save Item uploads it silently and replaces the preview when ready.');
+    expect(workspace).toContain('The preview appears immediately. The optimized image is saved automatically and then replaces the preview.');
+    expect(workspace).toContain('queueDeferredEditImageFiles');
   });
 
   it('supports image drops in Edit Item without allowing browser navigation', () => {
