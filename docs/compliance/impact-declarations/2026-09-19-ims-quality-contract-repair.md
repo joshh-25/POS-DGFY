@@ -47,3 +47,5 @@ data.
 - `git diff --check` passes.
 - Full Vitest execution is deferred to CI because this worktree does not contain the required Vite,
   Vitest, and React Vite-plugin dependencies.
+- The develop backport preserves the same test-only contract alignment and does not change runtime
+  application behavior, backend authorization, persistence, or tenant data.
