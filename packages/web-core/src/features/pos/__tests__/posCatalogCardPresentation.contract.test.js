@@ -17,9 +17,10 @@ describe('standalone POS catalog card presentation', () => {
         expect(source).toContain('line-clamp-2 text-[18px] font-black leading-tight');
         expect(source).toContain('font-black text-[#1A4E8D] whitespace-nowrap text-[15px]');
         expect(source).toContain("'max-sm:w-[128px]'");
-        expect(source).toContain("isTabletPortraitMobileLayout ? 112 : 128");
-        expect(source).toContain("width: `${isTabletPortraitMobileLayout ? 112 : 128}px`");
-        expect(source).toContain("w-[112px]");
+        expect(source).toContain("isTabletPortraitMobileLayout ? 144 : 128");
+        expect(source).toContain("width: `${isTabletPortraitMobileLayout ? 144 : 128}px`");
+        expect(source).toContain("w-[144px]");
+        expect(source).toContain('tabletPortrait={isTabletPortraitMobileLayout}');
         expect(source).toContain('!isMobileLandscapeViewport');
         expect(source).toContain('<PosItemImage');
         expect(source).toContain('className="product-image h-full w-full object-cover object-center"');
@@ -39,12 +40,10 @@ describe('standalone POS catalog card presentation', () => {
         expect(source).toContain(": 'Not set'");
     });
 
-    it('keeps tablet portrait status badges in the card text column', () => {
+    it('renders compact status badges over standalone catalog images', () => {
         const source = read('packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx');
 
-        expect(source).toContain('{IS_DGFY_POS_SURFACE && !isTabletPortraitMobileLayout && (');
-        expect(source).toContain('{isTabletPortraitMobileLayout && (');
-        expect(source).toContain('isAlwaysAvailable={isAlwaysAvailable}');
+        expect(source).toContain('                                                        overlay');
         expect(source).toContain('{!IS_DGFY_POS_SURFACE && (');
     });
 

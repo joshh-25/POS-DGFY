@@ -36,8 +36,8 @@ POS backend contracts and fail-closed validation remain authoritative.
 
 1. POS checkout dialogs, receipt actions, responsive checkout layouts, and stable mobile sheet
    transitions.
-2. POS catalog layout, image loading, category presentation, responsive tablet sizing, catalog
-   pagination, and tablet-portrait availability badge placement.
+2. POS catalog layout, image loading, category presentation, responsive tablet sizing, and catalog
+   pagination.
 3. POS transaction history filters, calendar dialogs, overlays, pagination, mobile bottom spacing,
    tablet landscape action columns, and responsive history presentation.
 4. POS terminal top-bar controls, text-size selection, terminal lock/company selection, notification
@@ -57,8 +57,7 @@ POS backend contracts and fail-closed validation remain authoritative.
 3. History action controls must remain available and aligned with their table column without changing
    transaction authorization or void semantics.
 4. Catalog and pagination changes must not change item visibility, price, stock, or tenant-scope
-   policies. Tablet-portrait availability and service status must remain visible in the card
-   content without covering the product image or changing sellability.
+   policies.
 5. Dialog overlays and transitions must not bypass dismiss/confirm behavior or expose payment or
    customer data in browser storage.
 6. Terminal lock, cashier, company, notification, and operating-location controls remain governed by
@@ -80,8 +79,6 @@ POS backend contracts and fail-closed validation remain authoritative.
    commits are created.
 8. A full IMS test run is not the branch gate because IMS is outside the requested POS push scope; its
    remaining inventory contract failure is documented separately as an out-of-scope baseline issue.
-9. The tablet-portrait catalog badge regression contract and POS production build passed after the
-   follow-up placement fix.
 
 ## Rollback Boundary
 
@@ -102,7 +99,3 @@ behavior tests.
 The third implementation commit covers transaction history and terminal responsive behavior,
 including tablet landscape action-column alignment, mobile pagination spacing, filter/calendar dialog
 presentation, terminal controls, operational panels, and the shared POS stylesheet.
-
-The follow-up implementation commit keeps the tablet-portrait “Always available” and related catalog
-status badges in the card content column instead of overlaying the narrower product image. Desktop,
-tablet landscape, and phone badge placement remain unchanged.

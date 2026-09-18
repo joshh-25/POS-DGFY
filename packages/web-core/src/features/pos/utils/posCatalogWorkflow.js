@@ -16,7 +16,7 @@ export const CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS = 2;
 export const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 export const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 export const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
-export const CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX = 128;
+export const CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX = 144;
 export const CATALOG_DGFY_TABLET_PORTRAIT_CARD_MIN_WIDTH_PX = CATALOG_TABLET_CARD_MIN_WIDTH_PX;
 // Landscape tablets inherit the desktop catalog proportions while staying
 // slightly smaller so the two-pane POS shell keeps comfortable gutters.

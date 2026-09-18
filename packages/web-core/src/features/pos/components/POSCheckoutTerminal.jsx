@@ -487,7 +487,7 @@ export default function POSCheckoutTerminal({
                 ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
                 : 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-2 md:p-1.5';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletPortraitMobileLayout
-        ? 'flex h-full w-[112px] shrink-0 items-center justify-center self-start overflow-hidden rounded-md'
+        ? 'flex h-full w-[144px] shrink-0 items-center justify-center self-start overflow-hidden rounded-md'
         : IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : IS_DGFY_POS_SURFACE

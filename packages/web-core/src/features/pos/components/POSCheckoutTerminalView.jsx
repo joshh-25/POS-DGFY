@@ -58,15 +58,15 @@ const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransac
 const POSDiscountWorkspace = lazyWithChunkRetry(() => import('./POSDiscountWorkspace.jsx'));
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false }) => {
+const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false, tabletPortrait = false }) => {
     if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
     const sharedClassName = overlay ? 'border-slate-950/20 bg-[#0F274D] text-white' : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
     const bestSellerClassName = overlay ? 'border-orange-600/20 bg-[#F97316] text-white' : 'border-amber-200 bg-amber-50 text-amber-700';
     return (
         <div data-pos-catalog-badges="true" className="flex min-w-0 flex-col items-start gap-1">
-            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${sharedClassName}`}>Service</span>}
-            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${sharedClassName}`}>Always available</span>}
-            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${bestSellerClassName}`}>Best seller</span>}
+            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${sharedClassName}`}>Service</span>}
+            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${sharedClassName}`}>Always available</span>}
+            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${bestSellerClassName}`}>Best seller</span>}
         </div>
     );
 };
@@ -702,7 +702,7 @@ return (
                             const { src: posImageSrc } = imageSources;
                             const hasImage = Boolean(posImageSrc);
                             const catalogCardMediaClassName = isTabletPortraitMobileLayout
-                                ? `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} h-full min-h-0 w-[112px] min-w-0 flex-none shrink-0 self-stretch`
+                                ? `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} h-full min-h-0 w-[144px] min-w-0 flex-none shrink-0 self-stretch`
                                 : `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'}`;
                             const catalogCardImageFrameClassName = isTabletPortraitMobileLayout
                                 ? `${catalogCardImageWrapClassName} relative box-border h-full w-full flex-none`
@@ -751,13 +751,13 @@ return (
                                 <div
                                     className={catalogCardMediaClassName}
                                     style={IS_DGFY_POS_SURFACE && (isTabletPortraitMobileLayout || (isMobileViewport && !isTabletViewport && !isMobileLandscapeViewport))
-                                        ? { flex: `0 0 ${isTabletPortraitMobileLayout ? 112 : 128}px`, width: `${isTabletPortraitMobileLayout ? 112 : 128}px` }
+                                        ? { flex: `0 0 ${isTabletPortraitMobileLayout ? 144 : 128}px`, width: `${isTabletPortraitMobileLayout ? 144 : 128}px` }
                                         : undefined}
                                 >
                                     <div
                                         className={catalogCardImageFrameClassName}
                                         style={IS_DGFY_POS_SURFACE && (isTabletPortraitMobileLayout || (isMobileViewport && !isTabletViewport && !isMobileLandscapeViewport))
-                                            ? { width: `${isTabletPortraitMobileLayout ? 112 : 128}px`, maxWidth: 'none', aspectRatio: 'auto' }
+                                        ? { width: `${isTabletPortraitMobileLayout ? 144 : 128}px`, maxWidth: 'none', aspectRatio: 'auto' }
                                             : undefined}
                                         aria-hidden="true"
                                     >
@@ -793,7 +793,7 @@ return (
                                                 Out of stock
                                             </span>
                                         )}
-                                        {IS_DGFY_POS_SURFACE && !isTabletPortraitMobileLayout && (
+                                        {IS_DGFY_POS_SURFACE && (
                                             <>
                                                 <div className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)]">
                                                     <CatalogItemBadges
@@ -801,6 +801,7 @@ return (
                                                         isAlwaysAvailable={isAlwaysAvailable}
                                                         isBestSeller={isBestSeller}
                                                         overlay
+                                                        tabletPortrait={isTabletPortraitMobileLayout}
                                                     />
                                                 </div>
                                                 {!hasImage && (
@@ -930,13 +931,6 @@ return (
                                             <p className="min-w-0 max-w-full truncate text-left font-black text-[#0F172A]">
                                                 {item.name}
                                             </p>
-                                        )}
-                                        {isTabletPortraitMobileLayout && (
-                                            <CatalogItemBadges
-                                                isServiceItem={isServiceItem}
-                                                isAlwaysAvailable={isAlwaysAvailable}
-                                                isBestSeller={isBestSeller}
-                                            />
                                         )}
                                         <span className={`font-black tracking-[0.01em] ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
                                             {isOutOfStock
