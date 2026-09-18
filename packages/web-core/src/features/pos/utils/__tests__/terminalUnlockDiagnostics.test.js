@@ -3,6 +3,7 @@ import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
   createTerminalLoginError,
+  isRetryableCompanyLookupError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
@@ -38,6 +39,14 @@ describe('terminal unlock diagnostics', () => {
     expect(shouldFallbackToCurrentCompanyTokenAfterLookupError(apiError({ status: 503 }))).toBe(true);
     expect(shouldFallbackToCurrentCompanyTokenAfterLookupError(apiError({ status: 404 }))).toBe(false);
     expect(shouldFallbackToCurrentCompanyTokenAfterLookupError(apiError({ status: 429 }))).toBe(false);
+  });
+
+  it('retries company lookup during backend cold starts but stops on deterministic client errors', () => {
+    expect(isRetryableCompanyLookupError(apiError())).toBe(true);
+    expect(isRetryableCompanyLookupError(apiError({ status: 503 }))).toBe(true);
+    expect(isRetryableCompanyLookupError(apiError({ status: 429 }))).toBe(false);
+    expect(isRetryableCompanyLookupError(apiError({ status: 404 }))).toBe(false);
+    expect(isRetryableCompanyLookupError(apiError({ status: 400 }))).toBe(false);
   });
 
   it('detects tenant token resolution failures from login responses', () => {
