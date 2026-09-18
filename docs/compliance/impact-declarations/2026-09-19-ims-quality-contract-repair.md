@@ -12,8 +12,8 @@ verification_evidence: node --check (focused JavaScript contract tests),git diff
 rollback_note: Revert the test-only contract alignment and this declaration; no runtime application or tenant data changes are involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-19T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-1982-2026-09-19
+preflight_run_at: 2026-09-18T17:41:42.590Z
+preflight_request_ref: PREFLIGHT-35375287730-2026-09-19-IMS-QUALITY-CONTRACT-REPAIR
 ---
 
 # IMS quality contract repair
