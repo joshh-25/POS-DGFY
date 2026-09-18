@@ -121,12 +121,24 @@ query {
 | In progress | `47fc9ee4` |
 | For Review | `04f577f5` |
 | For QA | `153244dc` |
+| For Prod | `9f202543` |
 | Failed | `e809e854` |
 | Done | `98236657` |
 | Cancelled | `6c87ab1f` |
 
 Status field ID: `PVTSSF_lADODOdIe84BfZ_pzhZtHYs`. Size field ID: `PVTSSF_lADODOdIe84BfZ_pzhZtHmE`
 (options XS/S/M/L/XL). Iteration field ID: `PVTIF_lADODOdIe84BfZ_pzhZtHmM`.
+
+`For Prod` was added to project #10 on 2026-09-12. Its description is `QA-verified and awaiting
+production deployment`, and its color is `BLUE`. **Do not treat `updateProjectV2Field` as a routine
+or inherently safe option-add operation.** On 2026-09-12, a full-payload mutation cleared existing
+project-item Status values even after the original option IDs were restored. Before any future
+schema mutation, export every project item and its current Status; include the `id` for every
+existing option in the full `singleSelectOptions` payload; then reconcile and read back every item
+afterward. Omitting option IDs causes GitHub to recreate existing options with new IDs, while even
+an ID-preserving update can require item-value restoration. A human must review the backup and
+reconciliation plan before changing the field schema. Preserve the eight IDs above exactly; only a
+newly-added option may receive a new ID.
 
 ### Adding an issue to the project, and setting a field
 

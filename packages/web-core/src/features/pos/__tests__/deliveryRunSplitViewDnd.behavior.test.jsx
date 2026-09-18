@@ -1,9 +1,9 @@
 /** @vitest-environment jsdom */
 
-// Phase 229 (#1289), extended Phase 257 (#1491). Covers the split ("Queue + Run") view: the
-// retail + >=768px viewport gate (lowered from 1024px by #1491, sourced from
-// POS_TABLET_MIN_WIDTH_PX -- see TerminalOperationsPanels.jsx's SPLIT_VIEW_MIN_WIDTH_PX comment
-// for the full history), the mode-flip reset, drag-to-assign wiring (mocked dnd-kit per the
+// Phase 229 (#1289), extended Phase 257 (#1491), widened #1924. Covers the split ("Queue + Run")
+// view: the delivery-run-mode (retail/fnb, never services) + >=768px viewport gate (lowered from
+// 1024px by #1491, sourced from POS_TABLET_MIN_WIDTH_PX -- see TerminalOperationsPanels.jsx's
+// SPLIT_VIEW_MIN_WIDTH_PX comment for the full history), the mode-flip reset, drag-to-assign wiring (mocked dnd-kit per the
 // plan's own risk table -- "the component test asserts wiring through mocked handlers rather than
 // simulating a real drag"), idempotency-key retention/regeneration on the drag path, drag
 // disablement, that the checkbox + QueueRunAssignBar path still works unchanged inside the split
@@ -56,7 +56,9 @@ vi.mock('../services/deliveryRunService.js', () => ({
   setDeliveryRunPersonnel: vi.fn(),
   addDeliveryRunMembers: vi.fn(),
   removeDeliveryRunMember: vi.fn(),
-  dispatchDeliveryRun: vi.fn()
+  dispatchDeliveryRun: vi.fn(),
+  updateDeliveryRunMemberLoading: vi.fn(),
+  confirmDeliveryRunLoading: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
@@ -161,13 +163,20 @@ beforeEach(() => {
 });
 
 describe('Split tab visibility gate', () => {
-  it('shows the split tab only in retail mode and only at >=768px', async () => {
+  it('shows the split tab in retail and fnb modes at >=768px', async () => {
     installMatchMedia(true);
     const { unmount } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     expect(await screen.findByRole('tab', { name: /Queue \+ Run/i })).toBeTruthy();
     unmount();
 
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+    expect(await screen.findByRole('tab', { name: /Queue \+ Run/i })).toBeTruthy();
+  });
+
+  it('hides the split tab for an unsupported mode even at >=768px', async () => {
+    installMatchMedia(true);
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
+    expect(await screen.findByRole('tab', { name: /Active Queue/i })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: /Queue \+ Run/i })).toBeNull();
   });
 
@@ -207,7 +216,7 @@ describe('Split tab visibility gate', () => {
 });
 
 describe('Mode-flip reset', () => {
-  it('resets out of the split view when the workflow mode flips out of retail', async () => {
+  it('keeps the split view open when the workflow mode flips between retail and fnb', async () => {
     installMatchMedia(true);
     const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
 
@@ -215,6 +224,18 @@ describe('Mode-flip reset', () => {
     expect(await screen.findByLabelText('Split view target delivery run')).toBeTruthy();
 
     rerender(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+    expect(await screen.findByLabelText('Split view target delivery run')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /Queue \+ Run/i })).toBeTruthy();
+  });
+
+  it('resets out of the split view when the workflow mode flips to an unsupported mode', async () => {
+    installMatchMedia(true);
+    const { rerender } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+
+    fireEvent.click(await screen.findByRole('tab', { name: /Queue \+ Run/i }));
+    expect(await screen.findByLabelText('Split view target delivery run')).toBeTruthy();
+
+    rerender(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
     expect(screen.queryByLabelText('Split view target delivery run')).toBeNull();
     expect(screen.queryByRole('tab', { name: /Queue \+ Run/i })).toBeNull();
   });

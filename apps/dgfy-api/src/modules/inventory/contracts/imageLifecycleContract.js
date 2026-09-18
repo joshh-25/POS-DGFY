@@ -12,6 +12,7 @@ export const IMAGE_LIFECYCLE_STATES = Object.freeze({
 });
 
 export const IMAGE_SEMANTIC_VARIANTS = Object.freeze({
+    POS_THUMBNAIL: 'pos_thumbnail',
     THUMBNAIL: 'thumbnail',
     CATALOG_CARD: 'catalog_card',
     CHECKOUT: 'checkout',
@@ -21,6 +22,7 @@ export const IMAGE_SEMANTIC_VARIANTS = Object.freeze({
 export const OPTIMIZATION_VERSION_V2 = 2;
 
 export const SEMANTIC_VARIANT_MAP = Object.freeze({
+    pos_thumbnail: { formatKey: 'pos_thumbnail', legacyField: 'pos_thumbnail_url', targetWidth: 144 },
     thumbnail: { formatKey: 'thumbnail', legacyField: 'thumbnail_url', targetWidth: 400 },
     catalog_card: { formatKey: 'medium', legacyField: 'medium_url', targetWidth: 1024 },
     checkout: { formatKey: 'thumbnail', legacyField: 'thumbnail_url', targetWidth: 400 },

@@ -8,6 +8,8 @@ describe('servicesStorefrontViewModel', () => {
         item_id: 1,
         name: 'Laundry Service - Wash & Fold',
         category: 'service',
+        folder_id: 201,
+        folder_name: 'Laundry',
         service_detail: {
           service_category: 'laundry',
           duration_minutes: 90,
@@ -25,6 +27,8 @@ describe('servicesStorefrontViewModel', () => {
         item_id: 2,
         name: 'Aircon Cleaning - Split Type',
         category: 'service',
+        folder_id: 202,
+        folder_name: 'Aircon Cleaning',
         service_detail: {
           service_category: 'aircon_cleaning',
           duration_minutes: 150,

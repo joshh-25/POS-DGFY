@@ -6,9 +6,13 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const workspacePath = path.resolve(
   webCoreRoot,
-  'src/features/pos/components/TerminalOperationsWorkspace.jsx'
+  'src/features/pos/settings/PosSettingsWorkspace.jsx'
 );
-const workspaceContent = fs.readFileSync(workspacePath, 'utf8');
+const workspaceContent = [
+  fs.readFileSync(workspacePath, 'utf8'),
+  fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/settings/PosStorefrontSettingsPane.jsx'), 'utf8'),
+  fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/settings/storefrontSettingsConstants.js'), 'utf8')
+].join('\n');
 
 describe('POS Customer Access Mode card selector contract', () => {
   it('renders the four existing modes as interactive cards', () => {

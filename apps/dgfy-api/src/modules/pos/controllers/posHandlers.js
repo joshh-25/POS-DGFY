@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { recordPosCashierLifecycleSignal } from '../../../services/metricsService.js';
+import { isPosBulkImageImportEnabled } from '../../../config/posBulkImageImportFeature.js';
+import { posBulkImageImportJobRepository } from '../repositories/posBulkImageImportJobRepository.js';
 import { parseClientImageManifest } from '../../shared/utils/imageUploadValidation.js';
 import {
     verifyPosTerminalUseCase,
@@ -58,6 +60,13 @@ import {
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
+    attachOrderPackingEvidenceUseCase,
+    getOrderPackingEvidenceListUseCase,
+    getOrderPackingEvidenceImageUseCase,
+    attachDeliveryCompletionEvidenceUseCase,
+    getDeliveryCompletionEvidenceUseCase,
+    getDeliveryCompletionEvidenceImageUseCase,
+    getDeliveryCompletionEvidenceSignatureUseCase,
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
@@ -2227,6 +2236,181 @@ export const getOrderBalancePaymentProof = async (req, res, next) => {
     }
 };
 
+// Phase 330 (#1460): packing evidence is a separate append-only attachment flow, available after
+// the order's packed transition and independent of terminal pairing/active-operator state.
+export const uploadOrderPackingEvidence = async (req, res, next) => {
+    try {
+        const result = await attachOrderPackingEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            files: req.files,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Packing evidence attached to this order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const attachDeliveryCompletionEvidence = async (req, res, next) => {
+    try {
+        const result = await attachDeliveryCompletionEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            files: req.files || {},
+            payload: req.validatedData || req.body || {},
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery completion evidence attached.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getOrderPackingEvidenceList = async (req, res, next) => {
+    try {
+        const result = await getOrderPackingEvidenceListUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeliveryCompletionEvidence = async (req, res, next) => {
+    try {
+        const result = await getDeliveryCompletionEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery completion evidence retrieved.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getOrderPackingEvidenceImage = async (req, res, next) => {
+    try {
+        const result = await getOrderPackingEvidenceImageUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            imageId: req.validatedParams?.image_id || req.params.image_id,
+            user: req.user
+        });
+        if (!result.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        const { mime_type: mimeType, size_bytes: sizeBytes, stream } = result.data;
+        res.set({
+            'Content-Type': mimeType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'private, no-store',
+            ...(Number.isFinite(sizeBytes) ? { 'Content-Length': String(sizeBytes) } : {})
+        });
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Packing evidence could not be read.' });
+            } else {
+                res.destroy();
+            }
+        });
+        return stream.pipe(res);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const streamDeliveryCompletionEvidence = async (req, res, next, useCase, missingMessage) => {
+    try {
+        const result = await useCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            imageId: req.validatedParams?.image_id || req.params.image_id
+        });
+        if (!result.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        const { mime_type: mimeType, size_bytes: sizeBytes, stream } = result.data;
+        res.set({
+            'Content-Type': mimeType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'private, no-store',
+            ...(Number.isFinite(sizeBytes) ? { 'Content-Length': String(sizeBytes) } : {})
+        });
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: missingMessage });
+            } else {
+                res.destroy();
+            }
+        });
+        return stream.pipe(res);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeliveryCompletionEvidenceImage = (req, res, next) => streamDeliveryCompletionEvidence(
+    req,
+    res,
+    next,
+    getDeliveryCompletionEvidenceImageUseCase,
+    'Delivery evidence image could not be read.'
+);
+
+export const getDeliveryCompletionEvidenceSignature = (req, res, next) => streamDeliveryCompletionEvidence(
+    req,
+    res,
+    next,
+    getDeliveryCompletionEvidenceSignatureUseCase,
+    'Delivery recipient signature could not be read.'
+);
 export const assignDeliveryPersonnel = async (req, res, next) => {
     try {
         const result = await assignDeliveryPersonnelUseCase({
@@ -2721,12 +2905,24 @@ export const updateBulkCatalogOverrides = async (req, res, next) => {
 };
 
 export const uploadCatalogImage = async (req, res, next) => {
+    let itemLeaseToken = null;
+    let itemId = null;
+    let tenantId = null;
     try {
-        const itemId = req.validatedParams?.item_id || req.params.item_id;
-        // Phase 301 (#265): this route now parses via .fields(), so the file lands in
-        // req.files.image[0] rather than req.file (see routes/pos.js). clientImageManifest is a
-        // best-effort hint -- a malformed/absent one resolves to null and the use case falls back
-        // to today's behavior entirely.
+        itemId = req.validatedParams?.item_id || req.params.item_id;
+        tenantId = req.user?.tenant_id;
+        if (isPosBulkImageImportEnabled()) {
+            itemLeaseToken = await posBulkImageImportJobRepository.acquireItemLease({ tenantId, itemId });
+            if (!itemLeaseToken) {
+                const busy = new Error('This item image is currently being updated. Please retry shortly.');
+                busy.statusCode = 409;
+                busy.code = 'POS_IMAGE_UPDATE_BUSY';
+                throw busy;
+            }
+            // Single-image edits participate in the same version fence as bulk
+            // imports, so an older queued file can never overwrite this choice.
+            await posBulkImageImportJobRepository.advanceItemVersion({ tenantId, itemId });
+        }
         const result = await uploadPosCatalogImageUseCase({
             itemId,
             files: req.files,
@@ -2749,6 +2945,12 @@ export const uploadCatalogImage = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    } finally {
+        if (itemLeaseToken) {
+            await posBulkImageImportJobRepository.releaseItemLease({
+                tenantId, itemId, token: itemLeaseToken
+            }).catch(() => {});
+        }
     }
 };
 
@@ -2778,8 +2980,22 @@ export const uploadBulkCatalogImages = async (req, res, next) => {
 };
 
 export const deleteCatalogImage = async (req, res, next) => {
+    let itemLeaseToken = null;
+    let itemId = null;
+    let tenantId = null;
     try {
-        const itemId = req.validatedParams?.item_id || req.params.item_id;
+        itemId = req.validatedParams?.item_id || req.params.item_id;
+        tenantId = req.user?.tenant_id;
+        if (isPosBulkImageImportEnabled()) {
+            itemLeaseToken = await posBulkImageImportJobRepository.acquireItemLease({ tenantId, itemId });
+            if (!itemLeaseToken) {
+                const busy = new Error('This item image is currently being updated. Please retry shortly.');
+                busy.statusCode = 409;
+                busy.code = 'POS_IMAGE_UPDATE_BUSY';
+                throw busy;
+            }
+            await posBulkImageImportJobRepository.advanceItemVersion({ tenantId, itemId });
+        }
         const result = await deletePosCatalogImageUseCase({
             itemId,
             user: req.user
@@ -2800,6 +3016,12 @@ export const deleteCatalogImage = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    } finally {
+        if (itemLeaseToken) {
+            await posBulkImageImportJobRepository.releaseItemLease({
+                tenantId, itemId, token: itemLeaseToken
+            }).catch(() => {});
+        }
     }
 };
 

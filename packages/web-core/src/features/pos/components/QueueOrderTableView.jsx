@@ -15,6 +15,7 @@ import {
   parseDeliveryCoords
 } from '../utils/incomingQueueOrderFormatting.js';
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
+import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 
 // Phase 230 (#1288). The Active Queue's table view mode. Receives the same
 // sortedIncomingOrders array and the same handler props IncomingQueueWorkspace already threads to
@@ -29,7 +30,7 @@ import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActio
 
 export default function QueueOrderTableView({
   orders = [],
-  isRetailMode = false,
+  isDeliveryRunMode = false,
   selectedOrderIds = new Set(),
   toggleOrderSelection = () => {},
   bulkAssignSubmitting = false,
@@ -54,7 +55,7 @@ export default function QueueOrderTableView({
       <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
         <thead className="bg-slate-50">
           <tr>
-            {isRetailMode && (
+            {isDeliveryRunMode && (
               <th scope="col" className="px-3 py-2 font-bold text-slate-600">Select</th>
             )}
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Customer</th>
@@ -103,7 +104,7 @@ export default function QueueOrderTableView({
 
             return (
               <tr key={`incoming-queue-table-row-${order.pos_transaction_id}`} className="align-top">
-                {isRetailMode && (
+                {isDeliveryRunMode && (
                   <td className="whitespace-nowrap px-3 py-3">
                     <QueueOrderSelectCheckbox
                       orderId={orderId}
@@ -163,6 +164,13 @@ export default function QueueOrderTableView({
                       className: `w-full ${button.props.className || ''}`
                     }))}
                   </div>
+                  <PackingEvidenceControl
+                    order={order}
+                    canTransactPos={canTransactPos}
+                    canViewPos={canViewPos}
+                    locked={locked}
+                    isOnline={isOnline}
+                  />
                   {!canTransactPos && (
                     <p className="mt-2 text-[11px] text-slate-500">Needs POS transact permission.</p>
                   )}

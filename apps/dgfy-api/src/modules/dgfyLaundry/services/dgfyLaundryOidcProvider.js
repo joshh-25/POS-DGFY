@@ -6,7 +6,9 @@ import { dgfyAccountRepository } from '../../dgfy/repositories/dgfyAccountReposi
 
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const CLIENT_ID = process.env.DGFY_DGLAUNDRY_CLIENT_ID || 'dglaundry-web';
-const REDIRECT_URI = process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.dgfy.ph/api/v1/session/dgfy/callback';
+const REDIRECT_URI = process.env.DGFY_DGLAUNDRY_REDIRECT_URI || 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback';
+const MACHINE_CLIENT_ID = String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_ID || 'dglaundry-machine').trim();
+const MACHINE_ASSERTION_AUDIENCE = String(process.env.DGFY_DGLAUNDRY_MACHINE_ASSERTION_AUDIENCE || `${ISSUER}/token`).trim();
 const TTL_SECONDS = 120;
 const memoryTransactions = new Map();
 
@@ -17,6 +19,7 @@ const readFile = (path) => {
 const configuredSecret = () => readFile(process.env.DGLAUNDRY_PARTNER_TOKEN_FILE) || String(process.env.DGLAUNDRY_PARTNER_TOKEN || '').trim();
 const privateKey = () => readFile(process.env.DGFY_OIDC_PRIVATE_KEY_FILE);
 const publicKey = () => readFile(process.env.DGFY_OIDC_PUBLIC_KEY_FILE);
+const machineClientPublicKey = () => readFile(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE) || String(process.env.DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY || '').trim();
 const keyId = () => String(process.env.DGFY_OIDC_KEY_ID || 'dglaundry-oidc-1').trim();
 
 const useRedis = () => isRedisConnected() && getRedisClient();
@@ -59,6 +62,19 @@ const consume = async (key) => {
     return entry.value;
 };
 
+const claimOnce = async (key, value, ttlSeconds = TTL_SECONDS) => {
+    const redis = useRedis();
+    if (redis) {
+        const result = await redis.set(key, JSON.stringify(value), { EX: ttlSeconds, NX: true });
+        return result === 'OK';
+    }
+    if (process.env.NODE_ENV === 'production') return false;
+    const entry = memoryTransactions.get(key);
+    if (entry && entry.expiresAt > Date.now()) return false;
+    memoryTransactions.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    return true;
+};
+
 export const authenticateDglaundryAccessToken = async (req, res, next) => {
     try {
         const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
@@ -72,6 +88,25 @@ export const authenticateDglaundryAccessToken = async (req, res, next) => {
     } catch (error) { return next(error); }
 };
 
+export const validateDglaundryMachineToken = async (token) => {
+    const normalized = String(token || '').trim();
+    if (!normalized) return null;
+    const grant = await load(`dglaundry:oidc:access:${normalized}`);
+    if (!grant || grant.client_id !== MACHINE_CLIENT_ID || grant.expires_at <= Date.now()) return null;
+    return grant;
+};
+
+export const authenticateDglaundryMachineToken = async (req, res, next) => {
+    try {
+        const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+        const grant = await validateDglaundryMachineToken(token);
+        if (!grant) return res.status(401).json({ success: false, message: 'DGLaundry machine access token is invalid or expired.' });
+        req.partnerIdentity = MACHINE_CLIENT_ID;
+        req.partnerScope = grant.scope || 'dglaundry';
+        return next();
+    } catch (error) { return next(error); }
+};
+
 const safeEqual = (left, right) => {
     const a = Buffer.from(String(left || ''));
     const b = Buffer.from(String(right || ''));
@@ -81,6 +116,44 @@ const safeEqual = (left, right) => {
 const requireClient = ({ clientId, clientSecret }) => {
     if (clientId !== CLIENT_ID || !configuredSecret() || !safeEqual(clientSecret, configuredSecret())) {
         const error = new Error('OIDC client authentication failed.');
+        error.statusCode = 401;
+        throw error;
+    }
+};
+
+const requireMachineClient = async (input) => {
+    if (input.client_id !== MACHINE_CLIENT_ID || input.client_assertion_type !== 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer' || !input.client_assertion) {
+        const error = new Error('Machine client authentication failed.');
+        error.statusCode = 401;
+        throw error;
+    }
+    const key = machineClientPublicKey();
+    if (!key) {
+        const error = new Error('Machine client keys are not configured.');
+        error.statusCode = 503;
+        throw error;
+    }
+    let claims;
+    try {
+        claims = jwt.verify(input.client_assertion, key, {
+            algorithms: ['RS256'],
+            audience: MACHINE_ASSERTION_AUDIENCE,
+            issuer: MACHINE_CLIENT_ID,
+            subject: MACHINE_CLIENT_ID,
+            clockTolerance: 5
+        });
+    } catch {
+        const error = new Error('Machine client assertion is invalid or expired.');
+        error.statusCode = 401;
+        throw error;
+    }
+    if (!claims || typeof claims !== 'object' || !claims.jti || !Number.isInteger(claims.exp) || claims.exp - Math.floor(Date.now() / 1000) > 300) {
+        const error = new Error('Machine client assertion claims are invalid.');
+        error.statusCode = 401;
+        throw error;
+    }
+    if (!(await claimOnce(`dglaundry:oidc:assertion:${claims.jti}`, { client_id: MACHINE_CLIENT_ID }, 300))) {
+        const error = new Error('Machine client assertion was replayed.');
         error.statusCode = 401;
         throw error;
     }
@@ -106,12 +179,12 @@ export const oidcDiscovery = (_req, res) => res.json({
     revocation_endpoint: `${ISSUER}/revoke`,
     jwks_uri: `${ISSUER}/jwks`,
     response_types_supported: ['code'],
-    grant_types_supported: ['authorization_code'],
+    grant_types_supported: ['authorization_code', 'client_credentials'],
     code_challenge_methods_supported: ['S256'],
     subject_types_supported: ['public'],
     id_token_signing_alg_values_supported: ['RS256'],
     scopes_supported: ['openid', 'profile', 'email', 'dglaundry.company_context'],
-    token_endpoint_auth_methods_supported: ['client_secret_basic']
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'private_key_jwt']
 });
 
 export const oidcJwks = (_req, res) => {
@@ -182,8 +255,23 @@ export const buildOidcAuthorizeHandler = ({ chooseCompany }) => async (req, res,
 
 export const oidcToken = async (req, res, next) => {
     try {
-        const { clientId: basicClientId, clientSecret } = parseBasic(req);
         const input = formOrJson(req);
+        if (input.grant_type === 'client_credentials') {
+            await requireMachineClient(input);
+            const token = crypto.randomBytes(32).toString('base64url');
+            const now = Date.now();
+            await store(`dglaundry:oidc:access:${token}`, {
+                account_id: null,
+                issuer: ISSUER,
+                subject: MACHINE_CLIENT_ID,
+                client_id: MACHINE_CLIENT_ID,
+                scope: input.scope || 'dglaundry',
+                access_token: token,
+                expires_at: now + 300_000
+            }, 300);
+            return res.json({ access_token: token, token_type: 'Bearer', expires_in: 300, scope: input.scope || 'dglaundry' });
+        }
+        const { clientId: basicClientId, clientSecret } = parseBasic(req);
         requireClient({ clientId: basicClientId || input.client_id, clientSecret: clientSecret || input.client_secret });
         if (input.grant_type !== 'authorization_code' || !input.code || !input.code_verifier) return res.status(400).json({ error: 'invalid_grant' });
         const grant = await consume(`dglaundry:oidc:code:${input.code}`);

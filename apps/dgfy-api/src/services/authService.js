@@ -257,6 +257,7 @@ export const loginUser = async (email, password, options = {}) => {
 
   const User = dbStore.get('User');
   const user = await User.findOne({
+    include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }],
     where: allowUsername && !identifier.includes('@')
       ? { username: identifier }
       : { email: normalizedEmail }
@@ -395,7 +396,9 @@ export const refreshUserToken = async (refreshToken) => {
 
     // 3. Find user
     const User = dbStore.get('User');
-    const user = await User.findByPk(decoded.user_id);
+    const user = await User.findByPk(decoded.user_id, {
+      include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }]
+    });
 
     if (!user || !user.is_active || user.deleted_at) {
       const error = new Error('User not found or inactive');

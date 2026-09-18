@@ -1,4 +1,4 @@
-import { createStockMovement } from '../../../services/stockMovementService.js';
+import { createStockMovement, validateStockIssueAvailability as validateStockIssue, voidOnlineOrderGoodsIssue } from '../../../services/stockMovementService.js';
 import { assertStockCommandServiceContract, StockCommandServiceNamedCommands } from '../contracts/stockCommandService.contract.js';
 
 const withMovementDefaults = (movementData = {}, defaults = {}) => ({
@@ -17,6 +17,10 @@ export const issueStockForPosSale = (movementData, userId, transaction = null) =
     userId,
     transaction
   )
+);
+
+export const validateStockIssueAvailability = (movementData, userId, transaction = null) => (
+  validateStockIssue(movementData, userId, transaction)
 );
 
 export const issueStockForOnlineFulfillment = (movementData, userId, transaction = null) => (
@@ -50,6 +54,21 @@ export const returnStockForVoidedSale = (movementData, userId, transaction = nul
     userId,
     transaction
   )
+);
+
+// #1931: one-time reversal of a Retail online order's accept-time goods-issue, for the
+// post-acceptance cancel/reject paths. Unlike every command above this does not create one
+// movement -- it voids each of the order's own `ONLINE:<orderId>:` goods-issue movements via
+// voidMovement (FIFO-aware, with its downstream-consumption guard), inside the caller's
+// transaction when one is provided so a multi-line reversal is atomic with the status update.
+// `movementData` carries `{ order_id, reason }`; zero matching movements is a no-op success.
+export const reverseOnlineOrderGoodsIssue = (movementData = {}, userId, transaction = null) => (
+  voidOnlineOrderGoodsIssue({
+    orderId: movementData?.order_id,
+    userId,
+    reason: movementData?.reason || `Reversal of online order goods-issue for order ${movementData?.order_id}`,
+    transaction
+  })
 );
 
 export const receivePurchasedStock = (movementData, userId, transaction = null) => (
@@ -122,9 +141,11 @@ export { createStockMovement };
 
 const stockCommandService = {
   issueStockForPosSale,
+  validateStockIssueAvailability,
   issueStockForOnlineFulfillment,
   issueStockForDispatch,
   returnStockForVoidedSale,
+  reverseOnlineOrderGoodsIssue,
   receivePurchasedStock,
   transferStock,
   adjustStock,

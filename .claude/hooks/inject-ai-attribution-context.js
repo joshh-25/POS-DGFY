@@ -10,7 +10,8 @@
 // valid record exists, matching the rest of this mechanism's "never block a session" rule.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readRecord } = require(path.resolve(__dirname, '../../scripts/ai-attribution.js'));
+const attribution = require(path.resolve(__dirname, '../../scripts/ai-attribution.js'));
+const { identityLabel, readRecord, runtimeLabel } = attribution;
 
 let payload;
 try { payload = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch { payload = {}; }
@@ -21,12 +22,15 @@ const cwd = payload.cwd || process.cwd();
 let record;
 try { record = readRecord({ runtime: 'claude-code', sessionId }, cwd); } catch { record = null; }
 if (!record) process.exit(0);
+const identity = identityLabel(record);
+const runtime = runtimeLabel(record.runtime);
+if (!identity || !runtime) process.exit(0);
 
 process.stdout.write(JSON.stringify({
   hookSpecificOutput: {
     hookEventName: 'SubagentStart',
     additionalContext:
-      `AI attribution is active for this session (runtime=claude-code, model=${record.model}). ` +
+      `AI attribution is active for this session (runtime=${runtime}, identity=${identity}). ` +
       `To tag a PR body or comment this subagent writes, run: node scripts/ai-attribution.js ` +
       `format claude-code ${sessionId} <Opened|Review|Addressed> <role>`,
   },

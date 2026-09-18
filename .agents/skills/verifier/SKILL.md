@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Verify a merged dgfy-platform change against a deployed environment and flip the issue's board Status to Done or Failed — the Verifier/QA role from issue #331/#536. Use when asked to run QA verification, check a For QA issue, or decide whether a merged PR's deployed change is healthy. Not for pre-merge local test gates (that's #372) or Sentry error triage (that's observer). First live run is report-only — propose the verdict, withhold the board write.
+description: Verify a merged dgfy-platform change against a deployed environment and flip the issue's board Status to For Prod or Failed — the Verifier/QA role from issue #331/#536. Use when asked to run QA verification, check a For QA issue, or decide whether a merged PR's deployed change is healthy. Not for pre-merge local test gates (that's #372) or Sentry error triage (that's observer). First live run is report-only — propose the verdict, withhold the board write.
 ---
 
 # Verifier/QA
@@ -15,7 +15,8 @@ duplicate shim — see `pr-reviewer`'s own note on this; it's the `context: fork
 gives `/verifier` a typed slash command.
 
 This is the "Tester/Verifier" role from #331/#536 — the missing consumer of the `For QA` lane.
-`pr-reviewer` already produces it (sets `For QA` on merge for any PR that used `Refs #N` — see
+`pr-reviewer` already produces it (sets `For QA` on merge for a `Refs #N` PR whose issue passes the
+acceptance-criteria gate — see
 `docs/process/ISSUE-TAXONOMY.md`'s "Issue linkage"), but nothing before this role ever moved a
 card back out of it.
 
@@ -96,18 +97,15 @@ no-op.
 |---|---|
 | Query `For QA` items, dispatch `verify-deployment.yml` (read-only), poll its result | **The first live run against a real deployed environment** — report-only, see below |
 | Read a merged PR's diff, comment findings on the issue | — |
-| Set `Done`/`Failed` **once calibrated past first-live-use** | **Overriding the `STAGING` default** to a different environment without the issue/PR naming one explicitly — state the assumption instead of silently picking |
+| Set `For Prod`/`Failed` **once calibrated past first-live-use** | **Overriding the `STAGING` default** to a different environment without the issue/PR naming one explicitly — state the assumption instead of silently picking |
 
 ## Board transitions
 
-- **`Done`** (verified, infra-health PASS + functional check clears) — **two writes, not one**:
-  1. `gh project item-edit --project-id <project node ID> --id <item ID> --field-id
-     PVTSSF_lADODOdIe84BfZ_pzhZtHYs --single-select-option-id 98236657`
-  2. `gh issue close <N>` — **required**, not automatic. A `For QA` issue is still *open* when this
-     role acts; none of project #10's native workflows fire from a Status field write alone, only
-     from the issue actually closing (`docs/process/ISSUE-TAXONOMY.md`'s "Board status semantics"
-     spells this out explicitly). Skipping this leaves the card reading `Done` while the issue
-     stays open indefinitely.
+- **`For Prod`** (verified, infra-health PASS + functional check clears) — Status write only, issue
+  **stays open** for the production deployment:
+  `gh project item-edit --project-id <project node ID> --id <item ID> --field-id
+  PVTSSF_lADODOdIe84BfZ_pzhZtHYs --single-select-option-id 9f202543`. Re-read the item and confirm
+  `For Prod`; do not close the issue here.
 - **`Failed`** (rejected) — Status write only, issue **stays open**, per the taxonomy's
   `Failed → In progress` transition (never back to `Backlog`):
   `gh project item-edit --project-id <project node ID> --id <item ID> --field-id
@@ -116,7 +114,8 @@ no-op.
   finding) — a bare status flip with no explanation isn't enough, same standard the taxonomy holds
   `Cancelled` to.
 - **This role never sets any other Status** — `Backlog`/`Todo`/`In progress`/`For Review`/`For QA`
-  belong to `pm`/`implement`/`pr-reviewer` respectively; full ownership table in
+  belong to `pm`/`implement`/`pr-reviewer` respectively; `Done` belongs to `promoter` after
+  production confirmation; full ownership table in
   `docs/process/ISSUE-TAXONOMY.md`.
 - Field/option IDs above are current as of `.agents/skills/pm/references/board-operations.md`;
   re-verify there rather than trusting a stale copy if a write reports an unknown ID.
@@ -126,7 +125,7 @@ no-op.
 Per the pattern already used for `implement`, `pr-reviewer`, and `observer` (#437/#441/#368) —
 and #536's own explicit ask: the first real run against a live deployed environment is
 **report-only regardless of verdict** — run the full procedure, produce the verdict and evidence,
-but withhold both the `Done`/`Failed` Status write and the `gh issue close`. Propose only, let a
+but withhold both the `For Prod`/`Failed` Status write and any close. Propose only, let a
 human confirm the verdict is one they'd have reached themselves before this role is trusted to
 flip board state unattended.
 

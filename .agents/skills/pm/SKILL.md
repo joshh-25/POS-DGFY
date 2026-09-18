@@ -15,6 +15,10 @@ filing: managing existing tickets — fields, parenting, status — is equally i
 Reviewer, Promoter, or Observer finding work outside its own current scope hands off here rather
 than improvising a `gh issue create`; see `AGENTS.md`'s "Role handoffs and composite instructions".
 
+This role is distinct from `/planner`. `/pm` is allowed to file and maintain GitHub issues and
+board state; `/planner` only turns an existing open issue or epic into a local implementation
+handoff and must not perform those mutations.
+
 **Operating procedure is `docs/process/ISSUE-TAXONOMY.md`, by reference, not restated here.** That
 doc is the authoritative decision record for what an epic is, the three orthogonal axes (epic /
 iteration / milestone), the one-parent-only rule, and depth limits. Read it before any nontrivial
@@ -101,7 +105,7 @@ open* — raise it against #369 rather than debugging it silently or claiming it
 
 ## Board status semantics
 
-The 8 `Status` options on project #10 and what moves a card between them — filling the open
+The 9 `Status` options on project #10 and what moves a card between them — filling the open
 checkbox `docs/process/ISSUE-TAXONOMY.md` left for this. Full table and rationale live there under
 "Board status semantics"; this skill drives that table, it doesn't duplicate it.
 
@@ -122,16 +126,37 @@ either hard to notice or hard to undo:
 If a task doesn't trip any of these, proceed without pausing — filing, labeling, and routine field
 updates are the default case.
 
+## Acceptance-criteria ownership
+
+Added 2026-09-14 (#1908), generalizing the existing filing-time judgment call in "Filing procedure"
+below into an explicit, exclusive, lifelong ownership statement. `pm` is the **sole** role that
+decides whether an issue receives an `## Acceptance criteria` section — at filing time, and for the
+rest of the issue's life afterward (e.g., adding it later in response to a downstream role's
+escalation). Planner, Worker, Reviewer, Verifier, and every other role treat that decision as input,
+never as something they invent, append, or demand pre-merge to satisfy their own workflow. A
+downstream role that hits a genuine scope or verification ambiguity hands it to `pm` per `AGENTS.md`'s
+"Role handoffs and composite instructions," rather than converting the ambiguity into a blanket
+criteria requirement or a checkpoint of its own.
+
+Missing acceptance criteria never blocks planning, implementation, commits, PR creation, review, or
+merge — see `docs/process/ISSUE-TAXONOMY.md`'s "Issue linkage" section. The one place it has teeth is
+the Reviewer's post-merge `For QA` write, which stays gated exactly as before; `pm` unblocks that by
+adding the section, not by any downstream role working around the gap itself.
+
 ## Filing procedure
 
 1. Search first (above).
 2. Draft the issue per `docs/process/ISSUE-TAXONOMY.md`'s filing steps: pick a parent or
    deliberately go standalone (roughly a quarter of open issues have none, and that's fine), apply
-   an `area:*` label and an issue type, and — if it's itself an epic — write the
-   `## Definition of done` section, then post the candidate slate comment and add the body's
-   pointer line to it (`Candidate decomposition: see the latest ## Candidate slate comment.`) —
-   refreshed/retained, never duplicated, on a later revisit. File children only for the wave being
-   scheduled now — see "Deferred decomposition" above.
+   an `area:*` label and an issue type, and — if it is a feature, bug, or epic that is intended to
+   reach `For QA` — write a real `## Acceptance criteria` section containing at least one Markdown
+   checklist item. This is required for every QA-able ticket, not only epics; an epic also keeps its
+   `## Definition of done`, and that heading alone does not satisfy the QA gate. A genuinely
+   non-independent sub-task may omit the section only when its parent owns the standalone QA pass
+   and the sub-task will use `Closes #N`. For an epic, then post the candidate slate comment and add
+   the body's pointer line to it (`Candidate decomposition: see the latest ## Candidate slate
+   comment.`) — refreshed/retained, never duplicated, on a later revisit. File children only for the
+   wave being scheduled now — see "Deferred decomposition" above.
 3. File via `gh issue create`.
 4. Parent it (`addSubIssue`) if applicable — see `references/board-operations.md`.
 5. Set repo-level fields (`Priority` at minimum) via the issue-field mutation, not the project

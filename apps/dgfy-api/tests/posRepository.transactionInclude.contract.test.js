@@ -28,6 +28,10 @@ describe('posRepository buildTransactionInclude contract', () => {
         expect(deliveryJobInclude).toBeTruthy();
         expect(Array.isArray(deliveryJobInclude.attributes)).toBe(true);
         expect(deliveryJobInclude.attributes).toContain('delivery_run_id');
+        expect(deliveryJobInclude.attributes).toContain('loading_state');
+        expect(deliveryJobInclude.attributes).toContain('loading_exception_reason');
+        expect(deliveryJobInclude.attributes).toContain('loading_marked_by');
+        expect(deliveryJobInclude.attributes).toContain('loading_marked_at');
 
         const jobIdIndex = deliveryJobInclude.attributes.indexOf('delivery_job_id');
         const runIdIndex = deliveryJobInclude.attributes.indexOf('delivery_run_id');

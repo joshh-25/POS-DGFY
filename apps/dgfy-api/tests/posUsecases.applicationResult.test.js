@@ -765,7 +765,7 @@ describe('pos use-cases application result contract', () => {
 
         const result = await useCase({
             itemId: 202,
-            payload: { pos_visible: true },
+            payload: { pos_visible: true, location_id: 7 },
             user: { is_master_admin: false, permissions: ['items:edit'] }
         });
 
@@ -775,6 +775,10 @@ describe('pos use-cases application result contract', () => {
         expect(result.error.details).toMatchObject({
             reason_code: 'POS_READINESS_INCOMPLETE',
             missing_requirements: expect.any(Array)
+        });
+        expect(getCatalogReadinessByItemId).toHaveBeenCalledWith(202, {
+            forcedPosVisible: true,
+            locationId: 7
         });
         expect(upsertCatalogOverride).not.toHaveBeenCalled();
     });
@@ -1714,7 +1718,8 @@ describe('pos use-cases application result contract', () => {
             receipt_printed_at: null,
             receipt_print_failure_reason: null,
             balance_payment_id: null,
-            has_payment_proof: false
+            has_payment_proof: false,
+            packing_evidence_count: 0
         }]);
     });
 
@@ -1949,7 +1954,8 @@ describe('pos use-cases application result contract', () => {
         });
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             55,
-            { fulfillment_status: 'completed', shift_id: 10, cashier_id: 7 },
+            // #1931: a completion-time issue stamps its own evidence (no prior accept-time issue).
+            { fulfillment_status: 'completed', shift_id: 10, cashier_id: 7, inventory_issued_at: expect.any(Date) },
             expect.objectContaining({ transaction, lock: true })
         );
     });
@@ -2116,7 +2122,11 @@ describe('pos use-cases application result contract', () => {
         expect(result.data.order.fulfillment_status).toBe(targetStatus);
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             57,
-            { fulfillment_status: targetStatus, shift_id: 13, cashier_id: 9 },
+            // #1931: only the completion-time issue stamps its own evidence (no prior
+            // accept-time issue); the out_for_delivery hop records no inventory effect.
+            targetStatus === 'completed'
+                ? { fulfillment_status: targetStatus, shift_id: 13, cashier_id: 9, inventory_issued_at: expect.any(Date) }
+                : { fulfillment_status: targetStatus, shift_id: 13, cashier_id: 9 },
             expect.objectContaining({ transaction, lock: true })
         );
         expect(transaction.commit).toHaveBeenCalledTimes(1);
@@ -2207,7 +2217,12 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(updatedOrder),
             updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
         };
-        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository });
+        // #1931: placed -> confirmed resolves the tenant workflow mode; pin non-Retail so this
+        // stays the legacy accept path (no inventory_issued_at in the payload below).
+        const useCase = buildUpdateOnlineOrderStatusUseCase({
+            posRepository,
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'fnb', enabledCapabilities: [] })
+        });
 
         const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
             posTransactionId: 58,

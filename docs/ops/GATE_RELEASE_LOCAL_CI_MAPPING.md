@@ -259,7 +259,15 @@ mechanism being built (still advisory), and its 2026-09-05 dated Amendments entr
 itself (the current status below); both kept in sync with this section, not a duplicate to maintain
 independently.
 
-**Current status: BLOCKING, flipped 2026-09-05 (#1592, epic #1548, Phase 283).** Per
+**Current status: base-aware, revised 2026-09-10 (#1774, epic #1548) after #1592's 2026-09-05
+global flip.** Blocking on every promotion leg (a `staging`/`main`-base PR — `to-staging/*`,
+`fix/staging/*`, `release/*`, or a plain hotfix branch), advisory on a `develop`-base PR —
+`scripts/lib/version-bump-gate-toggle.js`'s `resolveBlocking(base, head)` is the single source of
+truth both consuming surfaces derive from; see `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching
+2026-09-10 dated entry for the full rationale (`develop -> staging`'s own minor-floor bump already
+supersedes an individual `develop` PR's bump, so blocking `develop` enforced a requirement that
+became irrelevant at promotion time). `BLOCKING` itself remains a global kill switch — flipping it
+`false` still forces every base advisory in one edit. Per
 [ADR 0081](../architecture/adr/0081-per-app-container-semantic-versioning.md) Decision 9, the check
 flips to blocking only once real evidence exists — either 10 merged `develop`-base PRs since PR
 #1562's merge commit with `check:app-versions` recorded pass/warn (not a crash), or one full
@@ -288,13 +296,16 @@ hand-edited surfaces are kept in sync by a validator script instead). This toggl
 source that both consumers read directly at runtime, since a step's `continue-on-error:` CAN take a
 `${{ }}` expression against a prior step's output:
 
-- `scripts/lib/version-bump-gate-toggle.js` exports one constant, `BLOCKING` (currently `true`,
-  flipped 2026-09-05 — see the "Armed" paragraph below).
-- `.github/workflows/shared-changed-paths.yml`'s "Load check:app-versions gate toggle" step reads it
-  via `node -e` and exposes it as a step output; the "Enforce per-app version bump on source
-  changes" step's own `continue-on-error:` reads that output.
-- `scripts/pr-checks.js` requires the same module directly for the same check's `blocking` argument
-  to `addCheck()`.
+- `scripts/lib/version-bump-gate-toggle.js` exports `BLOCKING` (the global kill switch, currently
+  `true`, flipped 2026-09-05 — see the "Armed" paragraph below) and, since #1774 (2026-09-10),
+  `resolveBlocking(base, head)` — blocking only when `base` is `staging` or `main`, advisory on
+  `develop`.
+- `.github/workflows/shared-changed-paths.yml`'s "Load check:app-versions gate toggle" step reads
+  `resolveBlocking()` via `node -e`, threading `github.base_ref`/`github.head_ref` through, and
+  exposes the result as a step output; the "Enforce per-app version bump on source changes" step's
+  own `continue-on-error:` reads that output.
+- `scripts/pr-checks.js` requires the same module directly and calls `resolveBlocking(options.base,
+  options.headRefName)` for the same check's `blocking` argument to `addCheck()`.
 
 **Armed** (#1592, 2026-09-05, a later, separate, human-confirmed PR — not part of #1569's own
 scope): confirmed `node scripts/check-version-bump-flip-readiness.js` reported the threshold met,

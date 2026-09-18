@@ -356,6 +356,19 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
+    const cartQuantityByItemId = React.useMemo(() => {
+        const quantities = new Map();
+        (Array.isArray(safeCart) ? safeCart : []).forEach((line) => {
+            const itemId = Number(line?.item_id);
+            if (!Number.isFinite(itemId)) return;
+            const currentQuantity = quantities.get(itemId) || 0;
+            quantities.set(itemId, currentQuantity + (Number(line.quantity) || 0));
+        });
+        return quantities;
+    }, [safeCart]);
+    const drawerDialogButtonClassName = IS_DGFY_POS_SURFACE && isTabletViewport
+        ? 'min-h-11 w-full min-w-0 whitespace-nowrap px-3 sm:w-auto sm:flex-1'
+        : '';
     const handleCloseDiscountModal = () => {
         closeDiscountModal();
     };
@@ -694,9 +707,7 @@ return (
                             const catalogCardImageFrameClassName = isTabletPortraitMobileLayout
                                 ? `${catalogCardImageWrapClassName} relative box-border h-full w-full flex-none`
                                 : `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
-                            const cartQuantityForItem = safeCart
-                                .filter((line) => line.item_id === item.item_id)
-                                .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
+                            const cartQuantityForItem = cartQuantityByItemId.get(Number(item.item_id)) || 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);

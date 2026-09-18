@@ -71,6 +71,14 @@ const buildCatalogRow = (overrides = {}) => ({
     category: 'product',
     product_type: 'finished_goods',
     product_folder: overrides.product_folder || 'Rocket Fuel',
+    folder_id: Object.prototype.hasOwnProperty.call(overrides, 'folder_id') ? overrides.folder_id : 1,
+    folder: overrides.folder === null ? null : {
+        folder_id: Object.prototype.hasOwnProperty.call(overrides, 'folder_id') ? overrides.folder_id : 1,
+        name: overrides.product_folder || 'Rocket Fuel',
+        sort_order: 0,
+        is_active: true,
+        deleted_at: null
+    },
     unit_of_measure: 'pc',
     current_stock: overrides.current_stock ?? 7,
     default_sale_price: 25,

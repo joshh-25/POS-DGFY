@@ -105,6 +105,10 @@ export const invalidateUserAuthCache = ({ companyToken, tenantId, userId } = {})
   _userCache.clear();
 };
 
+// Staff-role assignment changes use the tenant/user pair directly and must evict the same
+// effective-permission cache entry used by authenticate().
+export const invalidateUserCache = (tenantId, userId) => invalidateUserAuthCache({ tenantId, userId });
+
 export const authenticate = async (req, res, next) => {
   try {
     // Get token from header
@@ -235,7 +239,9 @@ export const authenticate = async (req, res, next) => {
       user = cached.user;
     } else {
       const User = dbStore.get('User');
-      user = await User.findByPk(decoded.user_id);
+      user = await User.findByPk(decoded.user_id, {
+        include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }]
+      });
       if (user) {
         _userCache.set(cacheKey, { user, expiresAt: Date.now() + USER_CACHE_TTL_MS });
       }
@@ -255,6 +261,8 @@ export const authenticate = async (req, res, next) => {
         success: false,
         data: null,
         message: 'User account is inactive',
+        error_code: 'ACCOUNT_DEACTIVATED',
+        errors: { reason_code: 'ACCOUNT_DEACTIVATED' },
         timestamp: new Date().toISOString()
       });
     }
@@ -264,6 +272,8 @@ export const authenticate = async (req, res, next) => {
         success: false,
         data: null,
         message: 'User account has been removed from this company',
+        error_code: 'ACCOUNT_DEACTIVATED',
+        errors: { reason_code: 'ACCOUNT_DEACTIVATED' },
         timestamp: new Date().toISOString()
       });
     }
@@ -335,6 +345,8 @@ export const authenticate = async (req, res, next) => {
       phone_number: user.phone_number || null,
       role: user.role,
       role_preset_key: user.role_preset_key || null,
+      staff_role_id: user.staff_role_id || null,
+      staffRole: user.staffRole || null,
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
       tenant_id: contextTenantId

@@ -1176,15 +1176,7 @@ export const usePosCheckoutWorkflow = ({
             setCart([]);
             itemDiscountApprovalRef?.current?.clear?.();
             setActiveParkedSale(null);
-            setSelectedDiscountProfile('');
-            setManualDiscountRateInput('');
-            setManualDiscountAmountInput('');
-            setAppliedDiscount(null);
-            if (discountApprovalRef) discountApprovalRef.current = null;
-            setAffiliateCodeInput('');
-            setCustomerPaymentAmountInput('');
-            setCustomerPaymentAmountAutoFilled(false);
-            setCheckoutConfirmModalOpen(false);
+            resetCheckoutModalState();
             setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
             const receiptContract = inferReceiptContract(transaction, result?.receipt_contract);
@@ -1206,7 +1198,7 @@ export const usePosCheckoutWorkflow = ({
         } finally {
             setCheckoutLoading(false);
         }
-    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, runCheckoutHardware, schedulePostCheckoutTask, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
+    }, [activeShiftId, clearSplitPaymentState, discountApprovalRef, historyPage, itemDiscountApprovalRef, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, resetCheckoutModalState, runCheckoutHardware, schedulePostCheckoutTask, selectedLocationId, setActiveParkedSale, setAffiliateCodeInput, setAppliedDiscount, setCart, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setLastReceipt, setLastReceiptContract, setManualDiscountAmountInput, setManualDiscountRateInput, setReceiptPreviewModalOpen, setReceiptPreviewSource, setSelectedDiscountProfile, setCheckoutLoading, splitPaymentSession]);
 
     const splitPaymentCheckoutContext = useMemo(() => ({
         orderMethod,
@@ -1479,16 +1471,8 @@ export const usePosCheckoutWorkflow = ({
             setCart([]);
             itemDiscountApprovalRef?.current?.clear?.();
             setActiveParkedSale(null);
-            setSelectedDiscountProfile('');
-            setManualDiscountRateInput('');
-            setManualDiscountAmountInput('');
-            setAppliedDiscount(null);
-            if (discountApprovalRef) discountApprovalRef.current = null;
-            setAffiliateCodeInput('');
-            resetEmployeeCredit();
-            setCustomerPaymentAmountInput('');
-            setCustomerPaymentAmountAutoFilled(false);
-            setCheckoutConfirmModalOpen(false);
+            clearSplitPaymentState();
+            resetCheckoutModalState();
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
                 scope: offlineSnapshotScope,
@@ -1556,15 +1540,8 @@ export const usePosCheckoutWorkflow = ({
         setCart([]);
         itemDiscountApprovalRef?.current?.clear?.();
         setActiveParkedSale(null);
-        setSelectedDiscountProfile('');
-        setManualDiscountRateInput('');
-        setManualDiscountAmountInput('');
-        setAppliedDiscount(null);
-        if (discountApprovalRef) discountApprovalRef.current = null;
-        setAffiliateCodeInput('');
-        setCustomerPaymentAmountInput('');
-        setCustomerPaymentAmountAutoFilled(false);
-        setCheckoutConfirmModalOpen(false);
+        clearSplitPaymentState();
+        resetCheckoutModalState();
         setReceiptPreviewSource('order_preview');
         setReceiptPreviewModalOpen(true);
         if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(completedTransaction);
@@ -1611,6 +1588,7 @@ export const usePosCheckoutWorkflow = ({
         catalog,
         checkoutBlockedReason,
         checkoutWorkflowValidationMessage,
+        clearSplitPaymentState,
         customerPaymentAmount,
         customerPaymentChange,
         customerPaymentFieldLabel,
@@ -1644,6 +1622,7 @@ export const usePosCheckoutWorkflow = ({
         restaurantServiceChargeAmount,
         runCheckoutHardware,
         resetEmployeeCredit,
+        resetCheckoutModalState,
         safeCart,
         saveCatalogSnapshot,
         selectedDiscount,

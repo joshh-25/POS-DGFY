@@ -30,6 +30,7 @@ import {
   validateUpdateStorefrontCatalogOverride,
   validateCreateFolder,
   validateUpdateFolder,
+  validateReorderFolders,
   validateDeleteFolder,
   validateReplaceItemSuppliers,
   validateReplaceItemFolderMemberships
@@ -198,6 +199,7 @@ router.post('/:item_id/barcodes/:barcode_id/primary', checkPermission(PERMISSION
 // Folder management - must be before :item_id
 router.get('/folders', itemController.getFolders);
 router.post('/folders', requireTenantAdmin, validateCreateFolder, itemController.createFolder);
+router.put('/folders/order', requireTenantAdmin, validateReorderFolders, itemController.reorderFolders);
 router.patch('/folders/:folder_id', requireTenantAdmin, validateFolderIdParam, validateUpdateFolder, itemController.updateFolder);
 router.delete('/folders/:folder_id', requireTenantAdmin, validateFolderIdParam, validateDeleteFolder, itemController.deleteFolder);
 

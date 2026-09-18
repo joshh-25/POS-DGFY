@@ -1,0 +1,30 @@
+{
+  "manifestVersion": "1.0.0",
+  "contractVersion": "external-runtime-v0.1",
+  "laundryModeVersion": "laundry-mode-v1",
+  "staffOrigin": "https://laundry.surebizcorp.com",
+  "callback": "https://laundry.surebizcorp.com/api/v1/session/dgfy/callback",
+  "environments": {
+    "staging": {
+      "issuer": "https://api.stage.dgfy.ph/oidc",
+      "partnerApiOrigin": "https://api.stage.dgfy.ph",
+      "storefrontOrigin": "https://dgfy.ph",
+      "paymentMode": "sandbox"
+    },
+    "production": {
+      "issuer": "https://api.dgfy.ph/oidc",
+      "partnerApiOrigin": "https://api.dgfy.ph",
+      "storefrontOrigin": "https://dgfy.ph",
+      "paymentMode": "live-authorized-separately"
+    }
+  },
+  "keyRoles": {
+    "oidcSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-oidc-signing.pem", "publicFile": "keys/dgfy-oidc-signing.pub.pem", "algorithm": "RS256" },
+    "dgfyEventSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-event-signing.pem", "publicFile": "keys/dgfy-event-signing.pub.pem", "algorithm": "Ed25519" },
+    "dglaundryMachineAssertion": { "owner": "dglaundry", "publicFile": "keys/dglaundry-machine-assertion.pub.pem", "algorithm": "RS256" },
+    "dglaundryRequestSigning": { "owner": "dglaundry", "publicFile": "keys/dglaundry-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" },
+    "dglaundryEventSigning": { "owner": "dglaundry", "publicFile": "keys/dglaundry-event-signing.pub.pem", "algorithm": "Ed25519" },
+    "dgfyRequestSigning": { "owner": "dgfy", "privateFile": "keys/dgfy-request-signing.pem", "publicFile": "keys/dgfy-request-signing.pub.pem", "algorithm": "P-256 ieee-p1363" }
+  },
+  "secretPolicy": "Private keys and client secrets remain on their owning host and are never written to this manifest."
+}

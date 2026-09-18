@@ -271,6 +271,9 @@ export default function OnboardingSetupModal({
   const [publicStorefrontVisible, setPublicStorefrontVisible] = useState(false);
   const [storeHasNoLocation, setStoreHasNoLocation] = useState(false);
   const [primaryLocationId, setPrimaryLocationId] = useState(null);
+  const hasSavedPrimaryLocationPin = Boolean(primaryLocationId)
+    && String(locationForm.latitude ?? '').trim() !== ''
+    && String(locationForm.longitude ?? '').trim() !== '';
   const [itemRows, setItemRows] = useState(() => [buildEmptyItemRow(normalizedWorkflowMode)]);
   const [hospitalityRoomTypeForm, setHospitalityRoomTypeForm] = useState({
     code: 'STD',
@@ -919,6 +922,8 @@ export default function OnboardingSetupModal({
                         longitude={locationForm.longitude}
                         deliveryRadiusKm={locationForm.delivery_radius_km}
                         onChange={handleLocationPinChange}
+                        defaultAdjustMode={!hasSavedPrimaryLocationPin}
+                        locationEditorMode
                       />
                     </Suspense>
                   </div>

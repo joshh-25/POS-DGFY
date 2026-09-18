@@ -22,9 +22,11 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
                 default_sale_price: 500,
                 folder_id: 1,
                 folder_name: 'Primary',
+                folder_id: 4,
+                folder_sort_order: 7,
                 secondary_categories: [
-                    { folder_id: 5, folder_name: 'Seasonal' },
-                    { folder_id: 6, folder_name: 'Clearance' }
+                    { folder_id: 5, folder_name: 'Seasonal', sort_order: 2 },
+                    { folder_id: 6, folder_name: 'Clearance', sort_order: 3 }
                 ]
             }])
         };
@@ -40,10 +42,12 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
         expect(result.success).toBe(true);
         expect(result.data.items).toHaveLength(1);
         expect(result.data.items[0].secondary_categories).toEqual([
-            { folder_id: 5, folder_name: 'Seasonal' },
-            { folder_id: 6, folder_name: 'Clearance' }
+            { folder_id: 5, folder_name: 'Seasonal', sort_order: 2 },
+            { folder_id: 6, folder_name: 'Clearance', sort_order: 3 }
         ]);
         expect(result.data.items[0].folder_name).toBe('Primary');
+        expect(result.data.items[0].folder_id).toBe(4);
+        expect(result.data.items[0].folder_sort_order).toBe(7);
     });
 
     test('defaults to an empty array for a repository row with no secondary_categories field (pre-Phase-285 shape, e.g. a fallback path this phase did not touch)', async () => {
@@ -89,5 +93,54 @@ describe('buildListStoreCatalogUseCase -- Phase 285 (#1318, C1) secondary_catego
 
         expect(result.success).toBe(true);
         expect(result.data.items[0].secondary_categories).toEqual([]);
+    });
+
+    test('does not publish legacy category text when the item has no live primary folder', async () => {
+        const storeRepository = {
+            listStoreCatalog: jest.fn().mockResolvedValue([{
+                item_id: 43,
+                name: 'Unassigned Legacy Item',
+                current_stock: 1,
+                default_sale_price: 50,
+                folder_id: null,
+                folder_name: 'Masu Cafe',
+                product_folder: 'Masu Cafe'
+            }])
+        };
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository,
+            resolveWorkflowCapabilitySettings: resolveWorkflowCapabilitySettingsFixture
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'cat-store' }, () => (
+            useCase({ query: { limit: 20 } })
+        ));
+
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
+    });
+
+    test('redacts a stored stale primary ID from the public category projection', async () => {
+        const storeRepository = {
+            listStoreCatalog: jest.fn().mockResolvedValue([{
+                item_id: 44,
+                name: 'Retired Category Item',
+                current_stock: 1,
+                default_sale_price: 50,
+                folder_id: 22,
+                folder_name: null,
+                folder_sort_order: null
+            }])
+        };
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository,
+            resolveWorkflowCapabilitySettings: resolveWorkflowCapabilitySettingsFixture
+        });
+
+        const result = await dbStore.run({ tenantId: TENANT_ID, tenantToken: 'cat-store' }, () => (
+            useCase({ query: { limit: 20 } })
+        ));
+
+        expect(result.data.items[0]).toMatchObject({ folder_id: null, folder_name: null, folder_sort_order: null });
     });
 });

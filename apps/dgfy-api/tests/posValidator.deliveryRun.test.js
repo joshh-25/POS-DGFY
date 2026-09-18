@@ -7,6 +7,8 @@ import {
     validateDeliveryRunPersonnelSet,
     validateDeliveryRunMembersAdd,
     validateDeliveryRunDispatch,
+    validateDeliveryRunMemberLoadingUpdate,
+    validateDeliveryRunLoadingConfirm,
     validateDeliveryRunListQuery
 } from '../src/validators/posValidator.js';
 
@@ -33,6 +35,14 @@ describe('Delivery run validators (Phase 225)', () => {
         expect(req.validatedData).toMatchObject({ label: 'Morning Run' });
     });
 
+    it('accepts an optional transportation label on create', () => {
+        const req = { body: { label: 'Morning Run', transportation_label: 'Truck 1' } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ transportation_label: 'Truck 1' });
+    });
+
     it('rejects a create payload without a label', () => {
         const req = { body: { notes: 'no label here' } };
         const { res, next } = runValidator(validateDeliveryRunCreate, req);
@@ -45,6 +55,23 @@ describe('Delivery run validators (Phase 225)', () => {
         const { res, next } = runValidator(validateDeliveryRunUpdate, req);
         expect(next).toHaveBeenCalledTimes(1);
         expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it('accepts setting and clearing the optional transportation label on update', () => {
+        for (const transportation_label of ['Van', null, '']) {
+            const req = { body: { transportation_label } };
+            const { res, next } = runValidator(validateDeliveryRunUpdate, req);
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.status).not.toHaveBeenCalled();
+            expect(req.validatedData).toMatchObject({ transportation_label });
+        }
+    });
+
+    it('rejects a transportation label longer than 120 characters', () => {
+        const req = { body: { label: 'Long Label', transportation_label: 'x'.repeat(121) } };
+        const { res, next } = runValidator(validateDeliveryRunCreate, req);
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
     });
 
     it('rejects an update payload trying to set a dispatch-owned status', () => {
@@ -211,6 +238,40 @@ describe('Delivery run validators (Phase 225)', () => {
         const { res, next } = runValidator(validateDeliveryRunDispatch, req);
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts loading states and an exception reason', () => {
+        const req = {
+            body: {
+                idempotency_key: 'loading-validator-1',
+                loading_state: 'exception',
+                exception_reason: 'Damaged carton'
+            }
+        };
+        const { res, next } = runValidator(validateDeliveryRunMemberLoadingUpdate, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(req.validatedData).toMatchObject({ loading_state: 'exception', exception_reason: 'Damaged carton' });
+    });
+
+    it('requires an exception reason only for the exception loading state', () => {
+        const missingReason = runValidator(validateDeliveryRunMemberLoadingUpdate, {
+            body: { idempotency_key: 'loading-validator-2', loading_state: 'exception' }
+        });
+        expect(missingReason.next).not.toHaveBeenCalled();
+        expect(missingReason.res.status).toHaveBeenCalledWith(422);
+
+        const loaded = runValidator(validateDeliveryRunMemberLoadingUpdate, {
+            body: { idempotency_key: 'loading-validator-3', loading_state: 'loaded' }
+        });
+        expect(loaded.next).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts a loading confirmation payload with an idempotency key', () => {
+        const req = { body: { idempotency_key: 'loading-confirm-validator-1' } };
+        const { res, next } = runValidator(validateDeliveryRunLoadingConfirm, req);
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.status).not.toHaveBeenCalled();
     });
 
     it('accepts an empty list query and normalizes limit/page', () => {

@@ -12,6 +12,9 @@ const makeTempFile = async (bytes = Buffer.alloc(0)) => {
 };
 
 describe('imageUploadValidation util', () => {
+  // Release libvips cached file handles before Windows fixture cleanup.
+  beforeAll(() => sharp.cache(false));
+  afterAll(() => sharp.cache(true));
   it('accepts PNG when mime and signature match', async () => {
     const pngHeader = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00]);
     const filePath = await makeTempFile(pngHeader);

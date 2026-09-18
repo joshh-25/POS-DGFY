@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import SelectedItemImageCarousel from '../SelectedItemImageCarousel.jsx';
+import { getPendingGalleryEntryKey, getSavedGalleryEntryKey } from '../../../src/features/pos/utils/posEditImageDraft.js';
 
 afterEach(cleanup);
 
@@ -76,5 +77,51 @@ describe('SelectedItemImageCarousel combined POS gallery', () => {
 
     await user.click(screen.getByRole('button', { name: 'Remove item image 1' }));
     expect(onRemoveSaved).toHaveBeenCalledWith(0);
+  });
+
+  it('keeps a parent-owned pending Primary when another file is added', async () => {
+    const user = userEvent.setup();
+    const first = new File(['first'], 'first.png', { type: 'image/png', lastModified: 1 });
+    const second = new File(['second'], 'second.png', { type: 'image/png', lastModified: 2 });
+    const third = new File(['third'], 'third.png', { type: 'image/png', lastModified: 3 });
+    const onSetPendingPrimary = vi.fn();
+    const { rerender } = render(
+      <SelectedItemImageCarousel
+        files={[first, second]}
+        itemName="Blue Drink"
+        showPrimaryToggle
+        primaryEntryKey={getPendingGalleryEntryKey(second)}
+        onSetPendingPrimary={onSetPendingPrimary}
+        onPrimaryChange={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('switch', { name: 'Make item image 1 primary' }).getAttribute('aria-checked')).toBe('true');
+    rerender(
+      <SelectedItemImageCarousel
+        files={[first, second, third]}
+        itemName="Blue Drink"
+        showPrimaryToggle
+        primaryEntryKey={getPendingGalleryEntryKey(second)}
+        onSetPendingPrimary={onSetPendingPrimary}
+      />
+    );
+    expect(screen.getByRole('switch', { name: 'Make item image 1 primary' }).getAttribute('aria-checked')).toBe('true');
+
+    await user.click(screen.getByRole('button', { name: 'Next selected item image' }));
+    expect(screen.getByRole('switch', { name: 'Make item image 2 primary' }).getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('falls back to the first remaining saved entry when the saved Primary is removed', () => {
+    const onRemoveSaved = vi.fn();
+    render(
+      <SelectedItemImageCarousel
+        savedGallery={[{ url: '/uploads/items/primary.webp' }, { url: '/uploads/items/alternate.webp' }]}
+        showPrimaryToggle
+        primaryEntryKey={getSavedGalleryEntryKey({ url: '/uploads/items/primary.webp' }, 0)}
+        onRemoveSaved={onRemoveSaved}
+      />
+    );
+    expect(screen.getByRole('switch', { name: 'Make item image 1 primary' }).getAttribute('aria-checked')).toBe('true');
   });
 });

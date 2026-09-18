@@ -1,6 +1,6 @@
 {
   "name": "sku-inventory-manager-backend",
-  "version": "1.11.0",
+  "version": "1.23.0",
   "description": "Backend API for SKU Inventory Manager",
   "type": "module",
   "main": "src/server.js",
@@ -89,6 +89,7 @@
     "@napi-rs/canvas": "^0.1.80",
     "@sentry/node": "^10.63.0",
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
+    "@sieitzz/tenant-bootstrap": "file:../../packages/tenant-bootstrap",
     "archiver": "^8.0.0",
     "axios": "^1.19.0",
     "bcryptjs": "^2.4.3",
@@ -117,7 +118,8 @@
     "sequelize": "^6.37.8",
     "sharp": "^0.35.3",
     "uuid": "^11.1.1",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "yauzl": "^3.2.0"
   },
   "overrides": {
     "@babel/plugin-transform-modules-systemjs": "7.29.7",

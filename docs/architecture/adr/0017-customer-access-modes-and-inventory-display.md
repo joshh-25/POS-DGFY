@@ -211,6 +211,52 @@ unavailable. Service-worker caching continues to bypass `/api/` and
 `/uploads/`; image binaries are not placed in the browser, WebView, or Redis
 cache as a substitute for the persisted catalog asset.
 
+## Amendments (2026-09-05) - POS thumbnail delivery and safe preview handoff
+
+For Phase 322, new `pos-catalog` assets use a 144x144 WebP delivery image
+(aspect-preserving center crop) as their primary public URL. This supersedes the
+large-primary and three-size defaults only for that asset surface. Storefront
+catalog and settings retain their existing primary URLs, responsive variants,
+gallery order, and visibility contracts. A POS-only 144x144 derivative may be
+added alongside an existing optimized Storefront catalog asset without changing
+its manifest or persisted Storefront association. POS read projections advertise
+that derivative only when it exists; legacy assets retain their persisted fallback.
+
+POS Items and Sell share an attempt-scoped local preview. A queued acknowledgement
+binds to that attempt before unrelated item-setup stages run. Retrying partial
+setup does not resubmit an image upload that was already accepted. After a normal
+authorized catalog refresh, an active upload may read its existing status endpoint
+to match the job's persisted image URL to the catalog version. This is event/read
+driven reconciliation, not a per-item polling timer; catalog data remains authoritative.
+The renderer retains its usable image until the replacement actually loads.
+
+Preview decoding is serialized and bounded, leases protect active blob consumers,
+and logout/tenant changes invalidate pending attempts. Image versions have at most
+three automatic retries after the initial request, followed by explicit manual
+retry. These changes do not relax the durable Redis production requirement above;
+multi-process recovery and bulk transport remain Phase 323 prerequisites.
+
+## Amendments (2026-09-05) - Recoverable POS bulk image packages
+
+The legacy synchronous `POST /api/v1/pos/catalog-overrides/images/bulk` batches are
+not the 500-image delivery contract. The Phase 323 POS-only workflow accepts one
+ZIP and one CSV manifest through resumable, hash-verified chunks. Archive bytes and
+extracted images live on the persistent uploads volume; Redis contains only
+tenant-scoped lifecycle metadata, leases, attempts, and per-file results. A job is
+accepted only after all chunks and mappings validate and every per-image task is
+durably enqueued. Redis unavailability fails create/finalize/retry closed outside
+explicit local-development testing.
+
+The concrete limits and endpoints are frozen in the POS Image Upload Implementation
+Plan. Archive inspection is lazy and bounded, and rejects traversal, links,
+encryption, nested archives, duplicate mappings, expansion abuse, and unsupported
+image signatures before catalog mutations. Processing has a global concurrency of
+two, bounded attempts, recoverable leases, tenant authorization, and item-version
+fencing. Retry queues failed files only; completed results are idempotent. Bulk POS
+jobs write only POS catalog image fields/assets and cannot change Storefront image,
+gallery, variant, ordering, or visibility state. Scaling from the current single
+API host requires worker-accessible shared durable file/object storage first.
+
 ## Amendments (2026-09-06)
 
 AVIF encoding is deprecated and disabled by default in the image upload pipeline as of Phase 296

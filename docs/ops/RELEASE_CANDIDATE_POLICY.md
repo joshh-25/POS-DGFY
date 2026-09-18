@@ -1558,3 +1558,113 @@ continuous sweep on `develop`, then present on both branches) — see
 `docs/compliance/request-time-preflight-protocol.md`'s matching entry for the verified detail.
 
 PR: (this PR). Closes #1700.
+
+### 2026-09-10: `check:app-versions` blocking made base-aware — advisory on `develop`, blocking on every promotion leg (#1774, epic #1548)
+
+The 2026-09-05 entry above (#1592, Phase 283) flipped `check:app-versions`' `BLOCKING` toggle `true`
+**globally** — every base (`develop`, `staging`, `main`) failed CI on an insufficient app version
+bump. PR #1773 hit exactly this: three apps unbumped on a `develop`-base PR, blocked from merging.
+
+**What changed:** `scripts/lib/version-bump-gate-toggle.js` now exports `resolveBlocking(base,
+head)` in place of the flat `BLOCKING` constant as the value both consuming surfaces
+(`scripts/pr-checks.js`'s `runChecks()`, and `.github/workflows/shared-changed-paths.yml`'s "Load
+check:app-versions gate toggle" step) actually pass through — blocking only when `base` is
+`staging` or `main` (a promotion leg or a hotfix), advisory on `develop`. `BLOCKING` itself stays
+exported as a global kill switch — flipping it `false` still forces every base advisory in one
+edit.
+
+**Why:** Pat's call, quoted in #1774 — `develop` PRs should not be blocked on this. `develop ->
+staging`'s own minor-floor bump requirement (ADR 0081 Decision 6) supersedes whatever an individual
+`develop` PR did or didn't bump, so blocking it there enforces a requirement that becomes irrelevant
+at promotion time while needlessly blocking contributors. Decision 6's own mode table already
+treats `develop` as the least-restrictive tier ("non-blocking by design") — Decision 9's blocking
+flag never carried that same base split forward when it was introduced; #1592's global flip is the
+bug this entry reverts, base-aware rather than wholesale.
+
+**A real correctness hazard was found and avoided, not assumed away.** The obvious shortcut —
+derive blocking from `check-app-version-bump.js`'s own `resolveMode(base, head) !==
+'any-increase'` — is wrong: a `release/*` head into `main` resolves to mode `'any-increase'`, the
+*same* value `develop` gets, so that proxy would read `false` (advisory) for exactly the
+release-to-`main` leg #1774 requires to stay blocking. `resolveBlocking()` does not derive from
+`resolveMode()` at all — every real blocking case (`to-staging/* -> staging`, `fix/staging/* ->
+staging`, `release/* -> main`, a plain hotfix branch into `main`) reduces to "base is `staging` or
+`main`," which needs no head-pattern classification. This also avoids requiring
+`check-app-version-bump.js` (and its transitive `madge` dependency) from the toggle module, keeping
+`shared-changed-paths.yml`'s toggle-load step dependency-free as designed (see that workflow's own
+"Install root dependencies" step, which now still runs only after the toggle step).
+
+**Both consuming surfaces re-verified, not assumed symmetric:**
+
+- `scripts/pr-checks.js` — `scripts/pr-checks.test.js` now asserts the call site derives its
+  `blocking` argument from `resolveBlocking(options.base, options.headRefName)`: a `develop`-base
+  fixture with a failing bump check produces `'warn'`, a `staging`-base fixture (`to-staging/*`
+  head) with the same failing check produces `'fail'`.
+- `.github/workflows/shared-changed-paths.yml` — the "Load check:app-versions gate toggle" step now
+  threads `github.base_ref`/`github.head_ref` through to `resolveBlocking()` instead of reading a
+  flat boolean.
+- `scripts/lib/version-bump-gate-toggle.test.js` (new) unit-covers `resolveBlocking()` directly:
+  `develop` (any head) advisory; `staging`/`main` blocking for every real head shape; an
+  unrecognized base defaults to advisory.
+- **Not yet done as of this PR, tracked as a required follow-up:** a live throwaway PR per base
+  pattern (`develop`; `to-staging/* -> staging`; `fix/staging/* -> staging`; `release/* -> main`; a
+  plain hotfix branch `-> main`), each with a deliberately unbumped app change, observing both
+  `shared-changed-paths.yml`'s check run and `scripts/pr-checks.js`'s local output, closed without
+  merging. This requires opening/closing multiple throwaway PRs against live CI, out of scope for
+  this PR to do unattended — the reviewer or promoter should run this before the next promotion
+  leg exercises the blocking path for real.
+
+**What did not change:** ADR 0081 Decision 6's mode table (`resolveMode()`'s bump-*level*
+requirements are untouched); `check-app-version-bump.js`'s check logic;
+`scripts/check-version-bump-flip-readiness.js` (a separate, one-time-use mechanism from #1569's
+original rollout).
+
+This is a `[default]`-tier procedure amendment under ADR 0039, matching ADR 0081 Decision 9's own
+`[default]` tag — no `[binding]` clause of this policy or of ADR 0081 is changed by this entry. See
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s "`check:app-versions` flip-readiness" entry and ADR
+0081's own 2026-09-10 Amendment, kept in sync with this one.
+
+PR: (this PR). Closes #1774. Refs #1592, #1548.
+
+### 2026-09-10: Post-promotion `develop` version-baseline sync (#1807, epic #1548)
+
+An app several promotions never touch stays on `develop` at whatever version it had the last time
+it *was* touched, even after a repair or hotfix later advances it further on `staging`/`main`. The
+pre-cut floor step (2026-09-04 entry above) and the per-fix backport obligation (#1611) are both
+best-effort, per-touch mechanisms, not a periodic reconciliation — a missed or partial backport can
+leave `develop`'s source-tree version genuinely behind production, even though nothing about
+production safety depends on it (the floor step still forces the correct, larger leapfrogged bump
+the moment `develop` next actually touches that app).
+
+**Resolution: a new promoter step, run once per ordinary promotion after `main` has deployed and
+the parity gate/GitHub Release step completes.** `node scripts/sync-app-version-baselines.js
+--develop-ref origin/develop --main-ref origin/main` (new script, deliberately separate from
+`check-app-version-bump.js --floor` — see that script's own header and ADR 0081's matching
+2026-09-10 Amendment for why a second script rather than a mode added to the first) reports every
+app where `main`'s version is a real increase over `develop`'s. If any are reported, the promoter
+opens one ordinary `develop`-base PR (`chore(release): sync app version baselines from main`)
+raising exactly those apps to match `main`'s current value — no new merge authority needed, same
+tier as the pre-cut floor bump PR. **Additive only, never a downgrade**: an app `develop` already
+matches or leads is left untouched. If nothing is reported below baseline, no PR is opened. Full
+command sequence: `.agents/skills/promoter/references/promotion-runbook.md`'s "Sync develop's
+version baselines from main" section; checkpoint classification:
+`.agents/skills/promoter/SKILL.md`'s checkpoint table (unattended, same reasoning as the floor bump
+PR).
+
+**No interaction with #1610** (the tag-immutability/candidate-identity conflict) — this step only
+ever edits a source-tree `package.json` `version` field, never builds, tags, or publishes an image,
+and never reads or writes the `org.dgfy-platform.candidate-source-sha` label #1610 concerns. A
+version this step writes is still governed by ADR 0081 Decision 6's ordinary bump-mode rules the
+next time it's actually published on a future candidate — this step shortcuts none of those checks.
+
+`[default]`-tier new mechanism — corrected 2026-09-10 (PR #1813 review, RF-1) from an earlier
+version of this entry that mislabeled it `[snapshot]`. Per ADR 0039, `[snapshot]` is a point-in-time
+description that is "never a constraint" and whose staleness "is not a violation"; this entry
+instead records a standing, recurring procedure (run the sync script every ordinary promotion, open
+and merge a PR whenever it reports drift), which is exactly `[default]`'s own "rollout sequencing"
+example category. **This does not change any `[binding]`/`[default]` clause's own text or tier —
+ADR 0081 Decisions 6, 7, and 8 are unchanged in substance**; it is itself a new `[default]`-tier
+procedure, amended onto ADR 0081 via that ADR's own dated-Amendment path (`status: amended`, no
+superseding ADR needed). ADR 0081's own matching 2026-09-10 Amendment carries the full design
+statement; not restated here beyond this operational summary.
+
+PR: (this PR). Closes #1807. Refs #1548, #1610, #1611, #1740, #1802.

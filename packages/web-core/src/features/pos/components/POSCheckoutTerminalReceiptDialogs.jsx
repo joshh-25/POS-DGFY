@@ -1,4 +1,4 @@
-import React, { Suspense } from 'react';
+import React, { Suspense, useLayoutEffect, useRef } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { Printer, Receipt, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -127,6 +127,13 @@ export function POSCheckoutTerminalReceiptDialogs({
     handlePrintOrder,
     OrderPreviewView
 }) {
+    const receiptPreviewTitleRef = useRef(null);
+
+    useLayoutEffect(() => {
+        if (!receiptPreviewModalOpen) return;
+        receiptPreviewTitleRef.current?.focus();
+    }, [receiptPreviewModalOpen, receiptPreviewSource]);
+
     return (
         <>
             <Dialog open={splitPaymentCancelModalOpen} onOpenChange={(nextOpen) => {
@@ -185,7 +192,13 @@ export function POSCheckoutTerminalReceiptDialogs({
                                 <Receipt className="h-5 w-5" />
                             </div>
                             <div>
-                                <DialogTitle id="pos-history-receipt-modal-title" className="text-lg font-black text-[#0F172A]">
+                                <DialogTitle
+                                    ref={receiptPreviewTitleRef}
+                                    id="pos-history-receipt-modal-title"
+                                    autoFocus
+                                    tabIndex={-1}
+                                    className="text-lg font-black text-[#0F172A] focus:outline-none"
+                                >
                                     {receiptPreviewSource === 'order_preview' ? 'Order Preview' : 'Receipt Preview'}
                                 </DialogTitle>
                                 <DialogDescription className="mt-0.5 text-xs text-[#64748B]">
@@ -202,7 +215,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                         <button
                             type="button"
                             onClick={closeReceiptPreviewModal}
-                            className="absolute right-5 top-1/2 -translate-y-1/2 rounded-xl border border-slate-300 bg-slate-50 p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1A4E8D] focus:ring-offset-2 transition-colors"
+                            className="absolute right-5 top-1/2 -translate-y-1/2 rounded-xl border border-slate-300 bg-slate-50 p-2 text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2 transition-colors"
                             aria-label="Close receipt preview"
                         >
                             <X className="h-5 w-5" />

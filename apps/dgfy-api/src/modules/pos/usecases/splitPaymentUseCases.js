@@ -486,6 +486,7 @@ export const buildCreatePosPaymentSessionUseCase = ({ posRepository, quotePosChe
             user,
             transaction,
             quoteOnly: true,
+            validateInventoryAvailability: true,
             discountApproval,
             itemDiscountApprovals
         });
@@ -583,7 +584,7 @@ export const buildGetActivePosPaymentSessionUseCase = ({ posRepository }) => asy
     }
 };
 
-export const buildAddPosPaymentAllocationUseCase = ({ posRepository }) => async ({ paymentSessionId, payload = {}, user }) => {
+export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosCheckoutUseCase }) => async ({ paymentSessionId, payload = {}, user }) => {
     let transaction = null;
     try {
         const normalizedSessionId = toPositiveInt(paymentSessionId);
@@ -635,6 +636,42 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository }) => async 
             if (String(existing.request_hash || '') !== requestHash) throw paymentError(DomainErrorCode.CONFLICT, 'Allocation idempotency_key was already used with a different payload.', 409, { reason_code: 'POS_PAYMENT_ALLOCATION_IDEMPOTENCY_CONFLICT' });
             await finishTransaction(transaction, 'commit');
             return ok({ session: publicSession(loaded.session, loaded.allocations), allocation: publicAllocation(existing), idempotent_replay: true }, 'POS payment allocation replayed');
+        }
+
+        const hasAcceptedOrPendingAllocation = loaded.allocations.some((allocation) => (
+            allocation?.status === 'successful' || allocation?.status === 'pending'
+        ));
+        if (!hasAcceptedOrPendingAllocation) {
+            if (typeof quotePosCheckoutUseCase !== 'function') {
+                throw paymentError(DomainErrorCode.INTERNAL_ERROR, 'POS inventory validation is unavailable.', 500);
+            }
+            const storedSnapshot = parseStoredSnapshot(loaded.session.snapshot);
+            const sourceSnapshot = isPlainObject(storedSnapshot?.checkout_payload)
+                ? storedSnapshot.checkout_payload
+                : storedSnapshot;
+            if (!isPlainObject(sourceSnapshot)) {
+                throw paymentError(DomainErrorCode.CONFLICT, 'The saved payment session has an invalid checkout snapshot. No payment was accepted.', 409, {
+                    reason_code: 'POS_PAYMENT_SESSION_SNAPSHOT_INVALID'
+                });
+            }
+            const preflightResult = await quotePosCheckoutUseCase({
+                payload: buildPricingPayload({
+                    snapshot: sourceSnapshot,
+                    scope,
+                    parkedSaleId: toPositiveInt(loaded.session.parked_sale_id),
+                    idempotencyKey: `allocation-${idempotencyKey}`
+                }),
+                userId: scope.userId,
+                user,
+                transaction,
+                quoteOnly: true,
+                validateInventoryAvailability: true,
+                trustedDiscountApproval: extractTrustedDiscountApproval(sourceSnapshot),
+                trustedItemDiscountApprovals: extractTrustedItemDiscountApprovals(sourceSnapshot)
+            });
+            if (!preflightResult?.success) {
+                throw preflightResult?.error || paymentError(DomainErrorCode.CONFLICT, 'Inventory availability could not be validated. No payment was accepted.', 409);
+            }
         }
 
         const balance = calculateBalance(loaded.session, loaded.allocations);

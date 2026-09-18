@@ -20125,7 +20125,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   ADR 0081 Decision 6's base-aware bump-level rule per `(base, head)` pair; wired into
   `shared-changed-paths.yml` + `scripts/pr-checks.js`; ships advisory (non-blocking) per ADR 0081
   Decision 9.
-- Status: planned.
+- Status: in_progress.
 - Dependencies: Phase 273 / ADR 0081 (Decisions 6 and 9 specifically); #1560 (filed, not started).
 - Acceptance and validation evidence: not yet started. Expected at implementation: a script test
   suite covering each `(base, head)` bump-level mode from ADR 0081 Decision 6, plus a live advisory
@@ -20142,7 +20142,7 @@ unrelated Phase 264 (#1511), had already claimed and merged their numbers around
   verdict (`.agents/skills/pr-reviewer/SKILL.md`); `implement` gains its own version-bump obligation
   in `.agents/skills/implement/SKILL.md`, matching ADR 0081 Decision 6's "whoever's PR changes an
   app bumps that app's version" rule.
-- Status: planned.
+- Status: completed.
 - Dependencies: Phase 273 / ADR 0081 Decision 6; Phase 274 (#1560, the check this proposal builds
   on). Not yet filed as a GitHub issue — per epic #1548's own candidate slate, graduates
   wave-at-a-time (`docs/process/ISSUE-TAXONOMY.md`'s deferred-decomposition rule).
@@ -22100,3 +22100,1441 @@ content differs from what was implemented and tested under the "303" label.
   the scoping and add a cross-check command), `.agents/skills/promoter/SKILL.md` (floor-step
   paraphrase corrected to state the list is scoped), issue #1740.
 - Next eligible phase: 306.
+
+## Phase 306 - Split-payment inventory preflight before tender acceptance
+
+- Initiative/release: POS split payment and Inventory consistency / current release.
+- Objective and scope: validate every stock-bearing direct item, recipe ingredient, and linked
+  modifier SKU before a split-payment session is created and again before its first allocation.
+  FIFO ledger drift and insufficient stock prevent tender acceptance, with a cashier-facing
+  message confirming that no payment was accepted. Final checkout retains its locked inventory
+  validation and stock issue.
+- Status: completed.
+- Dependencies: ADR 0029 Inventory ownership; ADR 0040 FIFO valuation; ADR 0063 split tender;
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Acceptance and validation evidence: `node --check` passed for all changed API source files;
+  `posSplitPayment.usecases.test.js` passed 31/31; targeted migrated-database FIFO preflight and
+  final-checkout reconciliation tests passed with no transaction, movement, or stock mutation on
+  the preflight failure.
+- Completion date: 2026-09-07.
+- Contracts/files: `apps/dgfy-api/src/services/stockMovementService.js`, Inventory stock command
+  service and contract, POS checkout and split-payment use cases, their focused tests,
+  `docs/compliance/impact-declarations/2026-09-07-pos-split-inventory-preflight.md`, and
+  `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Next eligible phase: 308.
+
+## Phase 307 - Standalone mobile POS item-option bootstrap parity
+
+- Initiative/release: standalone native cashier offline parity / current release.
+- Objective and scope: enrich `GET /mobile-pos/bootstrap/catalog` with the
+  existing authoritative F&B modifier assignment snapshot and tenant-scoped
+  active Services option groups. Service assignments are loaded in one batch,
+  and add-on groups remain hidden when the service disables add-ons. This is an
+  additive `mobile-pos.v1` response extension; checkout remains authoritative
+  and continues to validate selections, availability, and server-owned prices.
+- Status: completed.
+- Dependencies: existing F&B modifier catalog includes, Services option-group
+  repository, Services quote validation, and mobile POS checkout replay.
+- Acceptance and validation evidence: focused mobile catalog-bootstrap and
+  transport Jest suites pass (11 tests); the native consumer validates the
+  nested snapshot and sends `line_modifiers` plus `selected_option_ids` for
+  server revalidation.
+- Completion date: 2026-09-07.
+- Contracts/files: mobile POS catalog bootstrap use case and composition,
+  Services option repository batch query,
+  `apps/dgfy-api/tests/mobilePosCatalogBootstrap.usecases.test.js`, and
+  `docs/api/specification.md`.
+- Next eligible phase: 308.
+
+## Phase 308 - POS Items on-demand HD image source contract
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: define one pure POS catalog resolver that returns the
+  lightweight thumbnail, on-demand optimized large image, ordered deduplicated
+  gallery, and medium/thumbnail fallbacks from existing Catalog and Storefront
+  image fields. POS-specific image overrides retain precedence. This phase does
+  not add the clickable viewer, request the HD asset, upload another image, or
+  persist an image copy in POS.
+- Status: completed.
+- Dependencies: ADR 0029 Catalog/Storefront ownership boundaries, ADR 0067
+  Chrome 80 browser floor, existing optimized image variants, and the POS
+  service-worker `/uploads/` cache bypass.
+- Acceptance and validation evidence: focused POS utility tests cover POS
+  override precedence, Storefront gallery ordering, duplicate suppression,
+  large-to-original-to-medium-to-thumbnail fallback order, and missing images;
+  POS production build, architecture check, compliance check, and diff check
+  pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `resolvePosCatalogPreviewGallery` in
+  `packages/web-core/src/features/pos/utils/posCheckoutTerminalUtils.js`, its
+  focused utility tests, `apps/dgfy-pos/public/sw.js`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-preview-source-contract.md`.
+- Next eligible phase: 309.
+
+## Phase 309 - POS Items on-demand HD image viewer
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: make each POS Items thumbnail keyboard-accessible and
+  open an on-demand full-size viewer backed by Phase 308's existing server URL
+  contract. The responsive viewer supports close, Escape, previous/next image,
+  gallery thumbnail selection, three zoom levels, body-scroll locking, and
+  per-image fallback without eagerly loading inactive HD images.
+- Status: completed.
+- Dependencies: completed Phase 308 preview-source contract, ADR 0029
+  Catalog/Storefront ownership boundaries, ADR 0067 Chrome 80 browser floor,
+  and existing optimized image variants.
+- Acceptance and validation evidence: focused viewer behavior tests verify
+  on-demand active-image loading, ordered source fallback, gallery navigation,
+  zoom, and keyboard close; focused Phase 308 resolver tests and the POS
+  production build pass.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, its focused POS app behavior test,
+  POS Items integration in `TerminalOperationsWorkspace.jsx`, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-hd-image-viewer.md`.
+- Next eligible phase: 310.
+
+## Phase 310 - POS Items compact image viewer and price context
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: constrain the Phase 309 HD viewer to a smaller desktop
+  and APK-safe viewport, keep its header and controls visible, limit scrolling
+  to the image canvas, and show the selected item's formatted selling price in
+  the viewer header. Image ownership, loading, fallbacks, and persistence remain
+  unchanged.
+- Status: completed.
+- Dependencies: completed Phases 308 and 309, existing POS catalog selling-price
+  field, ADR 0029 ownership boundaries, and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused viewer behavior tests verify the
+  selling-price context alongside on-demand HD loading, fallbacks, gallery
+  navigation, zoom, and keyboard close; the POS production build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: `PosItemImageViewer.jsx`, POS Items preview invocation in
+  `TerminalOperationsWorkspace.jsx`, the focused POS app behavior test, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-compact-image-viewer.md`.
+- Next eligible phase: 311.
+
+## Phase 311 - POS Items sharp HD source selection
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: distinguish a true POS image override from the backend's
+  Storefront-backed effective POS image using `pos_image_source`, so the viewer
+  selects the Storefront 1920px large variant instead of stretching a 144px POS
+  thumbnail. Preserve legacy payload compatibility when the source marker is
+  absent, and avoid transform compositing at the default 100% zoom. The black
+  viewer backdrop remains a lightweight translucent color with no blur filter.
+- Status: completed.
+- Dependencies: completed Phases 308-310, backend POS catalog image-source
+  marker, existing optimized Storefront variants, ADR 0029 ownership boundaries,
+  and ADR 0067 Chrome 80 browser floor.
+- Acceptance and validation evidence: focused resolver tests cover a backend-
+  shaped Storefront fallback whose POS fields point at a thumbnail and confirm
+  selection of the Storefront large variant; focused viewer tests confirm no
+  transform at 100% and explicit scaling only after zoom; POS build passes.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers in `posCheckoutTerminalUtils.js`,
+  `PosItemImageViewer.jsx`, their focused tests, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-sharp-hd-source-selection.md`.
+- Next eligible phase: 312.
+
+## Phase 312 - POS Items image-viewer PR-readiness hardening
+
+- Initiative/release: POS Items image viewing / current release.
+- Objective and scope: close the final audit gaps from Phases 308-311 by merging
+  duplicate primary gallery metadata instead of discarding HD variants,
+  supporting legacy path-only POS images, limiting zoom to real source pixels,
+  using the shared accessible dialog for focus trapping and restoration, and
+  preventing inactive gallery controls from falling back to full-size images.
+  Apply the required minor version increases to all three web-core consumers.
+- Status: completed.
+- Dependencies: completed Phases 308-311, shared dialog accessibility contract,
+  ADR 0029 ownership boundaries, ADR 0067 Chrome 80 browser floor, and ADR 0081
+  per-app version policy.
+- Acceptance and validation evidence: focused resolver tests cover HD metadata
+  merging and path-only records; focused viewer tests cover pixel-aware zoom,
+  focus containment/restoration, fallback, navigation, and close behavior; POS
+  production build, architecture, compliance, documentation, and app-version
+  checks pass.
+- Completion date: 2026-09-08.
+- Contracts/files: POS image resolvers, `PosItemImageViewer.jsx`, focused POS
+  tests, consuming app package manifests and lockfiles, and
+  `docs/compliance/impact-declarations/2026-09-08-pos-items-image-viewer-pr-readiness.md`.
+- Next eligible phase: 313.
+
+## Phase 313 - Shared POS and Storefront category ordering
+
+- Initiative/release: POS catalog category management / current release.
+- Objective and scope: let tenant administrators rearrange category rows from
+  POS Items with pointer, touch, or keyboard input; persist the complete order
+  transactionally in Catalog-owned `item_folders.sort_order`; and render F&B
+  and services Storefront category controls in the same order while keeping the
+  synthetic All category first. Reordering is disabled while search is active,
+  failed saves restore the prior UI order, and newly created categories append.
+- Status: completed.
+- Dependencies: completed Phase 312, ADR 0029 Catalog ownership, ADR 0080
+  primary/secondary category identity rules, existing `categories:manage`
+  authorization, and tenant migration runner coverage.
+- Acceptance and validation evidence: additive migration applied to the local
+  development database and all 15 active local tenant databases; tenant schema
+  capability `2026-09-08.1` detects and repairs `item_folders.sort_order` with
+  deterministic one-time backfill; the public Storefront serializer preserves
+  primary and secondary category IDs and display order (verified against the
+  live 118-item Masu Cafe catalog); inventory repository/transport suites passed (118
+  tests); POS category interaction/contract suites passed (21 tests);
+  Storefront F&B/services ordering suites passed (20 tests); POS, Storefront,
+  and IMS production builds passed; architecture, compliance, documentation,
+  migration syntax, and per-app version gates passed. The Phase 313 corrective
+  audit now also excludes legacy `product_folder` text, heuristic labels, and
+  inactive/deleted primary folders from Storefront category controls while
+  retaining unassigned items in All; focused API and F&B/services model tests
+  cover that boundary.
+- Completion date: 2026-09-09.
+- Contracts/files: `item_folders.sort_order`, inventory folder repository/use
+  case/route, shared item service, POS category workspace, Storefront category
+  view models, focused tests, and Phase 313 compliance declaration.
+- Next eligible phase: 314.
+
+## Phase 314 - Category presentation and business-rule isolation
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: isolate public active-category display from stored primary
+  IDs used by voucher pricing and inherited F&B modifiers; retain unassigned items.
+- Status: completed.
+- Dependencies: Phase 313; ADR 0029 and ADR 0080; existing F&B modifier contract.
+- Acceptance and validation evidence: the shared Storefront folder include keeps
+  inherited modifier associations and status fields; the repository mapper keeps
+  the stored primary ID for voucher/modifier inputs while public serialization
+  redacts inactive/deleted category fields. API repository/catalog tests passed
+  28/28, voucher/store use-case tests 81/81, dedicated F&B modifier tests 3/3,
+  resolver/primary-membership safeguards 6/6, and architecture, compliance,
+  documentation, and app-version gates passed. The legacy-only stock fallback
+  fixture now uses an explicit active folder, preserving its original coverage.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.js, storeUseCases.js, effectiveFnbModifierGroups.js and related tests.
+- Next eligible phase: 315.
+
+## Phase 315 - Category regression and synchronization closure
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: repair the confirmed legacy-fixture test failure and verify
+  category order, secondary-only items, stale saves, and tenant isolation end to end.
+- Status: completed.
+- Dependencies: Phase 314.
+- Acceptance and validation evidence: the category reorder handler submits the
+  complete folder ID list, keeps the optimistic order after a successful save, and
+  reloads the authoritative tenant-scoped list after a rejected stale save. POS
+  rendered category behavior tests passed 16/16. Storefront F&B and services
+  model tests passed 24/24 and the full Storefront suite passed 218 files and
+  1,175 tests, covering secondary-only items, invalid IDs, colliding names,
+  inactive/deleted memberships, unique All membership, and persisted relative
+  order. API repository/category suites passed 96/96, including secondary sort
+  order and active/deleted filtering. The local public catalog payload and
+  rendered Storefront for Masu Cafe exposed the same eligible category order; a
+  second tenant had a distinct category set with no ID overlap. POS and
+  Storefront production builds plus architecture, compliance, documentation,
+  app-version, and diff checks passed. Authenticated live POS credentials were
+  unavailable, so no destructive browser reorder was attempted; the rendered
+  handler and API atomic reorder contract provide the mutation evidence.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  storeRepository.locationStockFallback.test.js, storeRepositorySecondaryCategories.test.js,
+  F&B/services view-model tests, TerminalOperationsWorkspace.jsx,
+  categoryPlacement.behavior.test.jsx, and local cross-app validation evidence.
+- Next eligible phase: 316.
+
+## Phase 316 - Image viewer rendered validation and final readiness
+
+- Initiative/release: POS catalog final audit / current release.
+- Objective and scope: verify viewer mobile/desktop layout, zoom/resize, focus,
+  network/storage behavior and affected application gates; fix only reproduced gaps.
+- Status: completed.
+- Dependencies: Phase 315; ADR 0067 and architecture governance rendered-proof rules.
+- Acceptance and validation evidence: the rendered POS viewer reproduced a stale
+  explicit-dimension gap after a narrow viewport change. `PosItemImageViewer.jsx`
+  now clears zoom and metrics on `resize`/`orientationchange`, then remeasures the
+  loaded image on the next animation frame (with a timer fallback). The focused
+  POS viewer suite passes 4/4 and the shared resolver/asset suites pass 23/23.
+  Authenticated local POS browser proof passed at desktop 1280x800, mobile
+  360x640, and landscape 640x360: the dialog stayed within the viewport, zoom
+  remained scrollable, resize cleared explicit dimensions, navigation moved from
+  image 1 of 3 to a distinct image 2 of 3, Escape closed and restored focus, and
+  close/reopen worked. The viewer requested one active HD image and three
+  thumbnails, added no localStorage keys, and produced no page errors, failed
+  requests, or viewer response errors. No production or tenant data was changed.
+  Physical iMin validation is excluded per user instruction.
+- Completion date: 2026-09-09.
+- Contracts/files: [audit and implementation plan](POS_CATALOG_FINAL_AUDIT_PHASES_314_316.md),
+  PosItemImageViewer.jsx, POS viewer tests, and local rendered validation artifacts.
+- Next eligible phase: 317.
+
+## Phase 317 - Add/Edit Item image draft consistency
+
+- Initiative/release: POS catalog item image management / current release.
+- Objective and scope: make Edit Item image changes transactional from the
+  operator's perspective. New files, removals, reordering, and Primary selection
+  remain local until Save Item; the save sends one validated gallery intent to the
+  asynchronous gallery worker so an upload cannot replace or duplicate the existing
+  gallery. Repeated file selections are deduplicated, stale concurrent edits are
+  rejected with a reopen message, and legacy append uploads retain their behavior.
+- Status: in_progress.
+- Reopened 2026-09-09: final audit found seven untested recovery/persistence
+  gaps. The prior implementation evidence below remains valid, but does not
+  establish complete-flow acceptance. Closure requires Phases 318-320 in the
+  [photo repair plan](POS_ITEM_PHOTO_REPAIR_PHASES_318_320.md).
+- Dependencies: Phase 316; existing storefront gallery API and image worker;
+  ADR 0029 catalog/storefront ownership boundaries; ADR 0067 browser floor.
+- Acceptance and validation evidence: POS draft-helper, Edit Item save-contract,
+  and carousel suites passed 3/3 each; POS app suite passed 4/4; API gallery
+  use-case and worker suites passed 41/41, including stale-edit rejection for
+  populated and empty galleries and atomic reorder/remove/Primary application;
+  POS production build passed;
+  changed-file lint, architecture, compliance, documentation, app-version, and
+  committed-diff checks passed. No database migration was required.
+- Completion date: prior completion recorded 2026-09-09; reopened the same day.
+- Contracts/files: `posEditImageDraft.js`, Edit Item image flow in
+  `TerminalOperationsWorkspace.jsx`, `storefrontCatalogService.js`, gallery-intent
+  transport/controller/worker/use-case code, and focused frontend/API tests.
+- Next eligible phase: 318.
+
+## Phase 318 - Safe item gallery persistence
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: atomic stale checking, commit-before-cleanup, and stored
+  metadata preservation across gallery writers; audit gaps G1, G2 and G4.
+- Status: completed.
+- Dependencies: Phase 317 implementation; ADR 0029 and ADR 0055.
+- Acceptance and validation evidence: `storefrontCatalogUseCases.test.js`,
+  `inventoryItemRepository.test.js`, `itemHandlers.transport.test.js`,
+  `catalogImageUploadWorker.test.js`, `storefrontCatalogImagePersistence.integration.test.js`,
+  and `storefrontCatalogGenerateImageUseCases.test.js` passed (6 suites, 162
+  tests); focused POS editor/inventory contract tests passed (2 files, 21
+  tests); changed API lint, architecture/controller-boundary, compliance/API
+  contract, docs/ADR, and `git diff --check` passed; POS, IMS, and Storefront
+  production builds passed. The covered tests include stale and empty-base
+  conflicts, metadata preservation, commit-before-cleanup, remove-all DB
+  failure, cleanup failure, and lifecycle metadata compatibility.
+- Completion date: 2026-09-09.
+- Contracts/files: gallery controllers/use cases, item repository, image workers,
+  storefrontCatalogService.js and their tests; exact paths in the linked plan.
+- Next eligible phase: 319.
+
+## Phase 319 - Item photo editor state and retry consistency
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: controlled Primary state, retained failed-save drafts,
+  AI gallery refresh and current Add Item retry selections; gaps G3, G5-G7.
+- Status: completed.
+- Dependencies: Phase 318; ADR 0067.
+- Acceptance and validation evidence: focused Phase 319 suite passed 8 files and
+  40 tests, covering controlled Primary identity, retained failed-save drafts,
+  upload retry/idempotency metadata, stale AI completion, Add recovery, and
+  uncertain-upload reconciliation. POS, IMS, and Storefront production builds
+  passed. Architecture, compliance/API-contract, documentation/ADR,
+  workspace-hygiene, app-version, and diff checks passed. Changed-file ESLint
+  has only the pre-existing React Compiler memoization errors in the large
+  TerminalOperationsWorkspace component; no new Phase 319 lint error was added.
+  The full IMS Vitest run had 2,316 passing tests and three pre-existing failures
+  in `posItemsModalViewport.contract.test.js`, whose obsolete contract still
+  expects removed modal classes and Escape/scroll-lock code; this Phase 319
+  change does not alter that portal contract. No database migration was required.
+  Authenticated browser proof and latency measurements remain Phase 320 acceptance
+  work; physical iMin validation is excluded.
+- Completion date: 2026-09-09.
+- Contracts/files: TerminalOperationsWorkspace.jsx, SelectedItemImageCarousel.jsx,
+  posEditImageDraft.js, preview store and their rendered tests.
+- Next eligible phase: 320.
+
+## Phase 320 - Item photo end-to-end validation and closure
+
+- Initiative/release: POS item photo repair / current release.
+- Objective and scope: prove all seven repairs through real handlers, worker and
+  persistence boundaries; local desktop/mobile interaction and latency evidence.
+- Status: completed.
+- Dependencies: Phases 318 and 319; architecture governance rendered-proof rules.
+- Acceptance and validation evidence: authenticated local Masu Cafe browser proof
+  passed at 360x640 and 1280x800 for Add Item 1/3/5-image selection, sixth-image
+  retention, contained scrolling, Escape close, body scroll lock, and no console,
+  page, unexpected request, or HTTP errors. Edit Item preserved the saved image,
+  appended distinct images, changed Primary, and discarded drafts on Cancel and
+  reopen. The affected API matrix passed 9 suites/173 tests, the focused rendered
+  frontend matrix passed 9 files/58 tests, the POS image viewer passed 4/4, and
+  the full IMS suite passed 358 files/2,319 tests. POS, IMS, and Storefront builds;
+  architecture, compliance/API-contract, docs/ADR, workspace-hygiene,
+  app-version, and diff gates passed. Targeted changed-API ESLint and POS/IMS app
+  lint had no errors. The full API lint's four bulk-image-import errors and the
+  optional imageLifecycleFullValidation v2-path assertion remain unrelated
+  baseline failures and are recorded in the plan. Runtime health reported
+  database/Redis/schema healthy with zero missing migrations/columns and the
+  bulk-image worker had zero tick failures. Draft selection made no image API
+  request and preview was available within the 50 ms browser assertion window;
+  carousel tests verify object-URL cleanup. No prior runtime timing baseline was
+  recorded, so no invented before/after number is claimed. No migration was
+  required.
+- Completion date: 2026-09-09.
+- Contracts/files: linked repair plan, API and rendered editor tests, local browser
+  artifacts and compliance declaration. Physical iMin validation excluded.
+- Next eligible phase: 321.
+
+## Phase 321 - POS large-cart search and receipt-print responsiveness
+
+- Initiative/release: POS terminal large-cart performance / current release.
+- Objective and scope: reduce avoidable work when a cashier searches with more than
+  ten cart lines and reduce client-driver receipt audit latency while preserving
+  catalog results, financial totals, print outcomes, audit idempotency, and
+  iMin browser compatibility.
+- Status: completed.
+- Dependencies: Phase 320; ADR 0014 Storefront/POS cache and read-performance
+  contracts; ADR 0053 client-executed hardware audit contract; ADR 0067 browser
+  support baseline.
+- Acceptance and validation evidence: stale catalog requests are cancelled
+  with the existing sequence guard as fallback; catalog card quantity lookup
+  is linear per cart render; financial calculation stages are memoized by their
+  input snapshots; client-driver receipt audits fetch only identity and receipt
+  contract metadata and skip settings/logo rasterization while still awaiting
+  the required idempotent audit. Focused shared POS contracts passed 3 files /
+  15 tests; client-delegated receipt API tests passed 12/12; POS production
+  build passed; changed-file API/frontend lint and `git diff --check` passed.
+  No schema or database migration was required. The full API suite was not used
+  as a gate because it retains the unrelated baseline
+  `imageLifecycleFullValidation` v2-path fixture failure outside this phase.
+- Completion date: 2026-09-10.
+- Contracts/files: `usePosCatalogWorkflow.js`, `posService.js`,
+  `POSCheckoutTerminalView.jsx`, `usePosFinancialWorkflow.js`,
+  `posRepository.js`, `posDeviceUseCases.js`, and their focused contract/unit
+  tests. Performance behavior remains governed by ADR 0014 and hardware audit
+  behavior by ADR 0053.
+- Next eligible phase: 322.
+
+## Phase 322 - POS item image reliability and responsiveness
+
+- Initiative/release: POS item image upload repair / current release.
+- Objective and scope: keep Add Item, Edit Item, Items, and Sell previews
+  attempt-scoped and usable while asynchronous image workers complete; deliver
+  verified POS thumbnails, bounded decoding/retries, safe refresh handoff,
+  tenant/session cleanup, and recovery without changing Storefront gallery
+  ownership or checkout behavior.
+- Status: in_progress.
+- Dependencies: Phase 321; ADR 0017 image acknowledgement and POS thumbnail
+  contract; ADR 0029 catalog ownership; ADR 0055 authorized catalog refresh;
+  ADR 0067 browser support baseline.
+- Acceptance and validation evidence: local authenticated browser checks covered
+  Add Item 1/3/5-image selection, sixth-image retention, Edit Item replacement
+  and cancel/reopen behavior, contained scrolling, preview latency, and no
+  page/request errors. Focused API image/gallery matrix passed 9 suites/173
+  tests; focused rendered frontend matrix passed 9 files/58 tests; POS, IMS,
+  and Storefront builds plus architecture, compliance/API-contract, docs,
+  workspace, app-version, and diff checks passed. Device/APK evidence remains
+  open as the plan records; physical iMin validation is excluded by user
+  instruction. Phase 322-A's executable contract-freeze regressions passed
+  6 shared frontend test files / 21 tests, covering stale job versus newer preview,
+  failed catalog refresh retention, failed thumbnail handoff, and Items-to-Sell
+  renderer navigation. The recorded POS URL-selection, worker-processing,
+  cleanup, caller-boundary, and no-schema-impact contracts are in the linked
+  plan. No database migration was required for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `packages/web-core/src/features/pos/services/posPendingItemImagePreviewStore.js`,
+  POS item image components/services, catalog image worker/storage, focused
+  frontend/API tests, and the Phase 322 compliance declarations.
+- Next eligible phase: 323.
+
+## Phase 323 - Recoverable bulk POS image packages
+
+- Initiative/release: POS catalog bulk image upload / current release.
+- Objective and scope: provide one resumable ZIP plus CSV workflow for up to 500
+  existing POS items with byte-bounded transfer, strict mapping and archive
+  validation, durable Redis-backed processing, per-file status, failed-only
+  retry, tenant isolation, and non-blocking POS progress. The workflow never
+  creates items or writes Storefront image/gallery fields.
+- Status: in_progress.
+- Dependencies: Phase 322 acceptance; ADR 0017 recoverable bulk package and
+  client-derived variant contracts; production shared Redis and worker-accessible
+  persistent storage; existing `items:edit` authorization and import feature flag.
+- Acceptance and validation evidence: manifest, storage, worker, use-case, and
+  transport suites cover chunk hashes, resumable replay, ZIP traversal and
+  expansion limits, tenant/SKU mapping, lease recovery, concurrency fencing,
+  idempotent completion, failure retention, and failed-only retry. POS build and
+  focused shared/API tests passed; local tenant schema report in read-only mode
+  returned `total=15, ok=15, failed=0` before migration rollout review. The
+  automated gates pass, while APK interaction/memory/request-count evidence and
+  production Redis/storage verification remain open. No migration was executed
+  locally for this phase.
+- Contracts/files: [POS image upload plan](POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md),
+  `apps/dgfy-api/src/modules/pos/{controllers,domain,repositories,usecases}/*`,
+  bulk image worker/storage, shared bulk upload services, focused API/POS tests,
+  and ADR 0017's bulk-package amendment.
+- Next eligible phase: 324.
+
+## Phase 324 - Flip the web-core reachability oracle from shadow-mode to gating, extend it to PR-check path filtering (#1809)
+
+- Initiative/release: CI-tooling correctness (standalone issue, epic #1548) / current release
+  process.
+- Objective and scope: closes #1809 -- flips Phase 304 (#1695)'s shadow-mode-only reachability
+  oracle to actually gate `check-app-version-bump.js`'s changed-app verdict, in **both** the per-PR
+  path (`runCheck()`) and the pre-cut promotion-floor path (`runFloor()`), and extends the same
+  shared oracle to narrow `shared-changed-paths.yml`'s `frontend_ims`/`frontend_pos`/
+  `frontend_storefront` build-trigger filter. The issue's own DoD named only `runCheck()`, but the
+  issue's own "Fresh evidence" section (candidate `2026-09-10-02`) traced back to a `runFloor()`
+  bug specifically: `dgfy-storefront` was force-bumped to the minor floor (1.11.6 -> 1.12.0) ahead
+  of cutting `to-staging/2026-09-10-02` purely because an unrelated `apps/dgfy-pos`/`apps/dgfy-ims`
+  change under `packages/web-core` tripped the directory-level fan-out check -- `dgfy-storefront`'s
+  own bundle never reached the changed file. Flipping only `runCheck()` would have left that exact
+  incident fully reproducible on the next promotion, so this phase's scope was widened to cover
+  `runFloor()` too (both call through one new shared function, not two parallel reimplementations).
+  A second, independent bug was found during re-verification (not just re-confirmation of #1695's
+  existing shadow evidence): the old shadow computation derived `relevantChangedFiles` from only
+  ONE of an app's `REACHABILITY_SCOPE_DIRS` dependency packages (whichever `detectChangedApps()`'s
+  `depPackages.find()` happened to pick first in `package.json` key order) -- a real changed file
+  under the OTHER scoped package (`packages/web-core` vs. `packages/shared-constants`) was silently
+  dropped from consideration entirely. Harmless while log-only; a real false-negative risk once
+  gating went live. Fixed as part of this same flip, not left latent.
+- Mechanically: extracted `resolveAppReachabilityVerdict(repoRoot, app, changedFiles, {
+  fileExistsAtRef })` into `scripts/resolve-web-core-reachability.js` -- the single shared oracle
+  both consumers below call through, scoped against the FULL `REACHABILITY_SCOPE_DIRS` union (the
+  multi-scope-package bug fix), never throwing past its one caller-programming-error precondition
+  (a missing `fileExistsAtRef` callback) -- every other failure (a missing entry file, a `madge`
+  parse error) is caught internally and degrades to the same conservative "changed" a pre-#1809
+  caller would have reached, centralizing the old `computeReachabilityShadowVerdict`'s "never
+  throws" contract in one place instead of every consumer re-implementing it.
+  `scripts/check-app-version-bump.js`: deleted the shadow-only `computeReachabilityShadowVerdict`/
+  `runReachabilityShadowAudit`; added `detectChangedAppsNarrowed()` (async), which calls the
+  unchanged, sync `detectChangedApps()` first and then narrows every `fan-out:`-triggered entry
+  through the shared oracle -- gated by a new one-line rollback lever,
+  `scripts/lib/web-core-reachability-gate-toggle.js` (mirrors #1569/#1592's own
+  `version-bump-gate-toggle.js` pattern), currently `NARROWING_ENABLED = true`. `runCheck()` and
+  `runFloor()` are now `async function`s that filter through `detectChangedAppsNarrowed()` instead
+  of the raw `detectChangedApps()`; both return objects gain an additive `narrowedEntries` field so
+  `printCheckResult()`/`printFloorResult()` can print one `[REACHABILITY]` line per narrowed entry
+  (including one that got narrowed all the way to "unchanged" -- the case that matters most for
+  visibility, since it's exactly what the `2026-09-10-02` incident needed to be legible) --
+  replacing the old `[SHADOW]` log lines with the real decision, not a parallel computation.
+  `scripts/propose-version-level.js`'s own `proposeVersionLevels()` and `main()` became `async` to
+  follow `runCheck()`'s new signature (a pure mechanical `await` migration, isolated as its own
+  commit); its own separate `detectChangedApps()` call (line 168) stays deliberately unnarrowed,
+  same precedent #1592 set for this file's own prior sibling flip -- named as a residual gap below,
+  not fixed here. New `scripts/resolve-frontend-build-triggers.js`: a thin orchestration layer
+  (mirrors `check-app-version-bump.js`/`resolve-build-skip-plan.js`'s own shape) over the shared
+  oracle plus a `UNCONDITIONAL_TRIGGER_PATTERNS` table that is the exact non-web-core-scope portion
+  of `shared-changed-paths.yml`'s own per-app bash regex, kept as the single JS source of truth for
+  the `validate_pr_metadata: true` path (that workflow's bash regex stays the deliberate,
+  documented fallback for the currently-dead `validate_pr_metadata: false`/push-mode path).
+  `.github/workflows/shared-changed-paths.yml`: the existing "Detect changed paths" step is
+  byte-for-byte unchanged except two new output lines (`diff_available`, `base_sha`); "Set up Node"
+  and "Install root dependencies" moved earlier (now serving two consumers, not one); a new
+  "Narrow frontend build triggers via web-core/shared-constants reachability" step calls the new
+  script when a diff is available, else keeps the filter step's own fail-safe "build everything"
+  verdict; the job's `frontend_ims`/`frontend_pos`/`frontend_storefront` outputs now prefer that
+  step's verdict via the same `a && b || c` ternary idiom already established elsewhere in this repo
+  (e.g. `pr-checks.yml:254`). `dgfy_api`/`migration_runner`/`android` outputs are untouched -- none
+  of their trigger patterns reference `packages/web-core`/`packages/shared-constants`.
+- Status: completed.
+- Dependencies: Phase 304 (#1695)'s shadow-mode oracle and its own stated evidence bar. Re-verified
+  at implementation time (not just Phase 304's original evidence, per #1592's own "re-confirm at
+  implementation time" discipline): 4 live CI runs across 2 feature branches since PR #1708 merged
+  (34478388194, 34475546389, 34464477521, 34431497157), 8 total shadow verdicts, 100% agreement
+  with ground truth (every `DISAGREE` correctly narrowed a real false positive away from
+  `dgfy-storefront`, every `AGREE` confirmed a real reachable change; `safety-net=PASS` in all 8
+  samples), plus the `2026-09-10-02` incident itself as independent real-world confirmation of the
+  same failure mode from the opposite direction. No dedicated readiness-counting script exists for
+  this check (unlike #1592's `check-version-bump-flip-readiness.js`) -- not built here, out of this
+  issue's DoD; the realistic qualifying-PR population is small enough that a manual sample,
+  repeated close to implementation time, was judged proportionate.
+- Acceptance and validation evidence: `node --check` on every changed/new `.js` file (9 files, all
+  OK -- no build step applies, scripts/`.github/workflows`-only). `node --test` on every
+  changed/new test file: `scripts/resolve-web-core-reachability.test.js` (26/26 -- adds the
+  multi-scope-package regression test plus full `resolveAppReachabilityVerdict()` coverage:
+  not-applicable/no-scope-change, not-applicable/backend-app, not-reachable, deleted-file
+  fail-closed, safety-net-tripped, an unexpected-error fail-closed case, and the
+  missing-`fileExistsAtRef`-callback throw); `scripts/check-app-version-bump.test.js` (31/31 -- all
+  24 pre-existing tests pass byte-for-byte unchanged behind the new `await`/`async` migration
+  (confirmed: `baseFixture()`'s placeholder apps, with no real `main.jsx`, deterministically hit the
+  new `reachability-error-fail-closed` path, reproducing the exact old conservative verdict those
+  tests already asserted), plus 7 new tests driven through the real
+  `detectChangedApps()`-\>`detectChangedAppsNarrowed()` path -- a real reachability hit, the PR
+  #1689/`dgfy-storefront`-not-reachable shape, the deleted-file fail-closed shape, a safety-net
+  trip, a direct-change untouched case, a backend-app untouched case, and a dedicated
+  `runFloor()`-specific regression test reproducing the `2026-09-10-02` incident shape verbatim (an
+  app below floor purely via directory-level fan-out, with no real reachability, no longer appears
+  in `belowFloor`)); `scripts/propose-version-level.test.js` (15/15, unchanged assertions --
+  8 call sites mechanically migrated to `await`/`async`, one `assert.throws`-\>`assert.rejects`
+  conversion for the now-async early-throw case); `scripts/resolve-frontend-build-triggers.test.js`
+  (10/10, new -- unconditional triggers for each app shape, the reachability-narrowed case reusing
+  the PR #1689 shape, safety-net-trip fallback, deletion fail-closed, no-relevant-change);
+  `scripts/lib/web-core-reachability-gate-toggle.test.js` (2/2, new, minimal per the toggle's own
+  single-consumer/single-behavior surface). `scripts/resolve-build-skip-plan.test.js` re-run
+  unmodified (24/24) confirming its own, deliberately-wider reuse of shared helpers is unaffected,
+  per the plan's explicit "do not touch" scope (item 3's re-audit: no code change warranted there,
+  full reasoning in the PR body). `npm run check:architecture` (OK, 54 modules/569 files + 95
+  controllers). `npm run check:adr` (OK, 89 ADRs -- no amendment needed: this flip changes a
+  mechanism's correctness, not ADR 0081 Decision 6's enforced meaning, same `[snapshot]`-equivalent
+  classification Phase 305/#1740's own floor-scoping fix used). `npm run check:compliance` (no
+  compliance-sensitive changes detected -- `scripts/`/`.github/workflows/` is not a classified
+  surface, per Phase 304/#1592's own precedent). `package-lock.json` confirmed untouched -- no new
+  dependency (`madge` already a devDependency since Phase 304); `package.json` itself was touched
+  only to register the two new test files' `test:*` scripts and add them to the
+  `test:development-to-production` chain, matching this repo's existing per-test-file convention.
+  Live smoke test against the real repo at HEAD (not just fixtures):
+  `node scripts/resolve-frontend-build-triggers.js --base HEAD~5 --head HEAD` correctly reported
+  `dgfy-storefront` triggering (`unconditional` -- the real, recent storefront version-bump commits)
+  and `dgfy-ims`/`dgfy-pos` not triggering (`no-relevant-change`). One pre-existing, unrelated test
+  failure was found and isolated, not introduced by this phase:
+  `scripts/pr-checks.test.js`'s "PATH_FILTERS stay verbatim in sync with shared-changed-paths.yml"
+  fails on a clean `origin/develop` checkout too (confirmed via a temporary `git stash`
+  isolation) -- `scripts/pr-checks.js`'s own ported `PATH_FILTERS.frontend_ims` is missing the
+  `pr-frontend-lint-checks` workflow-file alternative the real bash regex has, an existing drift
+  this phase's own workflow edits did not touch and do not fix (out of this issue's scope; worth its
+  own follow-up issue).
+- Completion date: 2026-09-11.
+- Contracts/files: `scripts/resolve-web-core-reachability.js` (`resolveAppReachabilityVerdict`
+  added), `scripts/resolve-web-core-reachability.test.js` (regression + full coverage added),
+  `scripts/check-app-version-bump.js` (`computeReachabilityShadowVerdict`/
+  `runReachabilityShadowAudit` removed; `detectChangedAppsNarrowed` added; `runCheck`/`runFloor` now
+  async and gating), `scripts/check-app-version-bump.test.js` (24 pre-existing tests migrated to
+  `await`, 7 tests replaced), `scripts/lib/web-core-reachability-gate-toggle.js` (new) +
+  `.test.js` (new), `scripts/propose-version-level.js`/`.test.js` (async migration only, no logic
+  change), `scripts/resolve-frontend-build-triggers.js` (new) + `.test.js` (new),
+  `.github/workflows/shared-changed-paths.yml` (step reorder + new narrowing step + job-output
+  ternaries), `package.json` (new `test:*` scripts + chain entries, no new dependency), issue #1809,
+  epic #1548. No ADR or `docs/ops/RELEASE_CANDIDATE_POLICY.md` amendment -- neither document
+  described the shadow-mode oracle in enforceable terms, and this flip changes a mechanism's
+  correctness (a directory-level false positive) rather than any `[binding]`/`[default]` clause's
+  meaning, matching Phase 305/#1740's own classification for its sibling `runFloor()` fix. Named
+  residual gaps, not fixed here (full reasoning in the PR body): (1) `propose-version-level.js`'s
+  own unnarrowed `detectChangedApps()` usage, matching #1592's own precedent for this file; (2)
+  `packages/pos-receipt` fan-out stays fully unnarrowed in both consumers, the `REACHABILITY_SCOPE_DIRS`
+  boundary from Phase 304 unchanged; (3) `resolve-build-skip-plan.js`'s outcome 3/4 content-diff
+  stays directory-level, deliberately (needs to catch Dockerfile-only changes too); (4) the
+  safety-net fail-closed path has zero live-fire confirmation in production (100% PASS in every
+  real sample found); (5) full live confirmation of "rebuilds only the reachable app at every
+  environment" is deferred to the next real promotion carrying a POS-only `packages/web-core`
+  change, per the plan's own §5.3 -- this PR's own throwaway-branch live-CI verification (§5.2) was
+  deferred, so this issue closes via `Refs #1809`, not `Closes #1809` (see the PR body for why).
+- Next eligible phase: 325.
+
+## Phase 325 - Manual planner-to-worker handoff workflow (#1842)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add a planning-only `/planner` skill that writes a compact local
+  `.tmp/plan-<issue>.md` handoff, extend `/implement` to validate and consume it, and let
+  `/pr-reviewer` use the handoff when available. The human remains the coordinator; no new
+  dispatcher or replacement for `/conduct` is introduced.
+- Status: completed.
+- Dependencies: canonical agent-surface layout (#442), existing `/pm`, `/implement`, and
+  `/pr-reviewer` role contracts, and the issue/epic taxonomy.
+- Acceptance and validation evidence: `npm run check:agent-surfaces`, the skill creator validator,
+  `npm run lint:docs`, `npm run check:architecture`, `git diff --check`, and pre-commit compliance/
+  whitespace gates all pass. The planner contract covers the normal, refresh, ambiguity, epic, and
+  Worker/Reviewer fallback paths; no runtime application surface or deployment path is changed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/planner/`, `.claude/skills/planner/`, the canonical
+  Worker/Reviewer/PM role definitions, `AGENTS.md`, `scripts/check-agent-surfaces.js`, and this
+  phase ledger entry.
+
+### Concurrent tenant-manager registration action guard initiative
+
+- Initiative/release: platform-admin tenant lifecycle reliability / current release.
+- Objective and scope: close the approval-action gap where a pending tenant without a pending public registration application still renders Approve, causing the API error `This tenant is not a pending public registration application.` The landlord tenant list now supplies a server-computed registration action, and Tenant Manager renders only lifecycle-valid approval/retry controls.
+- Mechanically: `buildTenantRegistrationAction` maps the existing application review/provisioning states to `approve`, `retry`, `setting_up`, or `reconcile`; an approved `in_progress` attempt is retryable only after the existing ten-minute timeout. The UI fails closed during mixed-version rollout, refreshes after failed lifecycle requests, and leaves the existing backend atomic approval/retry predicates unchanged.
+- Status: completed.
+- Dependencies: existing company registration application and provisioning lifecycle; no schema migration.
+- Acceptance and validation evidence: `npm test -- --runTestsByPath tests/listTenants.usecase.test.js` (3/3), `npm test -- --run packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx` (4/4), `npm run lint` in `apps/dgfy-api` (0 errors; existing warnings), `npm run lint` in `apps/dgfy-ims` (0 errors; existing warnings), `npm run build` in `apps/dgfy-ims` (pass), and `git diff --check` (pass). The broader `adminTenantLifecycle.integration.test.js` remains blocked by its pre-existing mocked `emailService.js` `verifyConnection` export mismatch before tests execute.
+- Completion date: 2026-09-10.
+- Contracts/files: `apps/dgfy-api/src/modules/tenants/usecases/tenantRegistrationActionPolicy.js`, `apps/dgfy-api/src/modules/tenants/usecases/listTenantsUseCase.js`, `apps/dgfy-api/src/modules/tenants/repositories/tenantAdminRepository.js`, `apps/dgfy-api/tests/listTenants.usecase.test.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `packages/web-core/src/pages/__tests__/TenantManager.registrationApproval.integration.test.jsx`, `docs/api/specification.md`, `docs/features/PLATFORM_ADMIN_AND_QA_INVOICING.md`, `docs/compliance/impact-declarations/2026-09-10-admin-tenant-approval-action-guard.md`.
+- Next eligible phase: 326.
+
+## Phase 326 - Manual token-aware session handoff (#1847)
+
+- Initiative/release: agent workflow and token-cost control / current release.
+- Objective and scope: add an explicit-only `/handoff` skill that writes timestamped,
+  snapshot-only `dgfy-handoff/v1` artifacts for manual transfer to Codex, Claude, or Gemini;
+  extend planner, implementer, and reviewer contracts to consume matching handoff snapshots;
+  preserve the human-coordinated, non-orchestrated workflow.
+- Status: completed.
+- Dependencies: Phase 325; canonical agent-surface layout; existing planner, Worker, and Reviewer
+  role contracts; issue/PR taxonomy.
+- Acceptance and validation evidence: canonical skill validation, agent-surface validation,
+  documentation lint, architecture/compliance gates, whitespace validation, and manual checks for
+  dirty and clean worktrees, active PRs, interrupted work, explicit target runtimes, repeated
+  handoffs, and snapshot-only safety boundaries all passed.
+- Completion date: 2026-09-11.
+- Contracts/files: `.agents/skills/handoff/`, `.claude/skills/handoff/`,
+  `.agents/skills/{planner,implement,pr-reviewer}/SKILL.md`, `AGENTS.md`,
+  `scripts/check-agent-surfaces.js`, and this phase ledger entry. No ADR or application runtime
+  surface changed.
+- Next eligible phase: 327.
+
+## Phase 327 - Establish a five-run measurement window for promotion IMS/POS sales E2E (#1844)
+
+- Initiative/release: CI quality-gate trust / current release.
+- Objective and scope: temporarily raise the `frontend-ims-pos-sales-e2e-quality` job envelope from
+  20 to 200 minutes and its `run_ims_pos_sales_e2e` step budget from 15 to 150 minutes, a 10x
+  measurement window. Bound the command itself with a 140-minute salvage timeout so a hung process
+  reaches artifact upload, cleanup, and outcome reporting. Observe five fresh completed runs, record
+  the peak job/step/setup timings, then reduce the bounds to the measured peak plus explicit
+  setup/upload/cleanup margin. Preserve the existing advisory disposition; #1749 owns any later
+  advisory-to-blocking decision.
+- Status: in_progress.
+- Dependencies: #1712's promotion E2E job, #1749's separate blocking-flip track, and the
+  `promotion-quality-gate.yml`/`scripts/check-pr-quality-workflow.js` reporting contract.
+- Acceptance and validation evidence: static workflow contract checks and the 41-test
+  `scripts/check-pr-quality-workflow.test.js` suite pass on the implementation branch. Five fresh
+  post-change `workflow_dispatch` or `release/* -> main` promotion runs must reach artifact upload,
+  cleanup, and `record_outcomes`, including when the command-level salvage timeout fires; their peak
+  timings must be recorded before the temporary bounds are optimized.
+- Contracts/files: `.github/workflows/promotion-quality-gate.yml` target job and step timeout,
+  command-level salvage wrapper, and comments; `scripts/check-pr-quality-workflow.js` remains
+  unchanged; five-run timing evidence; this ledger entry.
+- Next eligible phase: 328 after Phase 327 completion.
+
+## Phase 328 - DeliveryRun date-range tenant schema registry parity (#1879)
+
+### Initiative and release
+
+Delivery Runs reliability follow-up in the current release, continuing Phase 260 (#1489).
+
+### Objective and scope
+
+Restore parity between the shipped DeliveryRun date-range migration and the API tenant-schema
+repair/provisioning registry. Register `delivery_runs.scheduled_date_end`, require the replacement
+`idx_delivery_runs_status_scheduled_range` index, update the whole-table fallback DDL, and add
+contract coverage so future registry drift fails in tests.
+
+No new migration is introduced: the existing Phase 260 migration is already shipped and remains
+the source of truth for upgraded tenant schemas.
+
+### Status
+
+`in_progress` — registry, version, and regression-test changes are implemented; live STAGING/PROD
+tenant report, repair, endpoint verification, and Sentry quiet-period evidence remain deployment
+acceptance gates.
+
+### Dependencies
+
+Phase 260's shipped date-range migration and the existing tenant-schema sync repair workflow.
+
+### Acceptance and validation evidence
+
+- [ ] `scheduled_date_end` is present in `REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs`.
+- [ ] `idx_delivery_runs_status_scheduled_range` is present in
+  `REQUIRED_TENANT_SCHEMA_INDEXES.delivery_runs`.
+- [ ] The `delivery_runs` fallback DDL matches the range column/index shape.
+- [ ] Focused migration and registry contract tests pass.
+- [ ] `npm run check:architecture`, tenant-schema coverage, compliance, documentation lint, and
+  API version-bump checks pass.
+- [ ] Post-deployment STAGING and PROD report mode shows zero affected tenants; the endpoint no
+  longer returns the missing-column error and no new `DGFY-BACKEND-C` events occur.
+
+### Links
+
+- Issue: #1879 (`Refs`; live deployment evidence remains open).
+- Existing migration: `apps/dgfy-migration-runner/migrations/20260907000001-add-delivery-run-scheduled-date-end.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Tests: `apps/dgfy-api/tests/deliveryRunScheduledDateEnd.migration.test.js`.
+
+### Next eligible phase
+
+329.
+
+## Phase 329 - Proof-of-delivery evidence and recipient signature (#1462)
+
+### Initiative and release
+
+Manual POS delivery evidence in the current release, under the delivery
+workflow parent #1178 and ADR 0034.
+
+### Objective and scope
+
+Add a tenant-local, append-only completion-evidence record for manual delivery
+jobs: zero or more private staff-captured images, one optional recipient
+signature, assignment-scoped write authorization, authenticated metadata and
+streaming reads, raw-file idempotent replay, and explicit retention posture.
+The change does not alter the delivered transition, order-completion gate,
+payment ledger, provider integration, or mobile/native UI.
+
+### Status
+
+`in_progress` — implementation, documentation, issue acceptance criteria, and
+static repository gates are complete. Full Jest and tenant-schema coverage are
+waiting on the local workspace's missing `node_modules` dependencies; live
+deployment verification remains a later QA/release gate.
+
+### Dependencies
+
+ADR 0034's manual delivery-job contract; ADR 0063's non-provider-verification
+evidence posture; #1178; #243's future retention/export/erasure work; the
+existing POS operation-replay and private payment-proof storage precedents.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration creates both evidence tables across active tenant
+      databases and the repair registry remains in lockstep.
+- [ ] Authenticated upload/read routes preserve staff-image versus recipient-
+      signature distinction and never expose private storage paths or hashes.
+- [ ] Assignment authorization, attach-once behavior, idempotent replay,
+      conflict handling, validation, cleanup, and cross-order reads are covered
+      by focused tests.
+- [ ] EXIF/orientation metadata is absent from normalized stored objects.
+- [ ] `node --check` passes for every changed/new JavaScript or migration file;
+      architecture, controller-boundary, compliance, ADR, and documentation
+      gates pass.
+- [ ] Jest and tenant-schema coverage execute successfully once dependencies
+      are installed, followed by deployed QA verification.
+
+### Links
+
+- Issue: #1462 (`Refs`; acceptance criteria added 2026-09-13).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Related ADR: `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-create-delivery-completion-evidence.cjs`.
+- Tests: `apps/dgfy-api/tests/posDeliveryCompletionEvidence.usecase.test.js`,
+  `apps/dgfy-api/tests/deliveryCompletionEvidenceStorage.test.js`,
+  `apps/dgfy-api/tests/createDeliveryCompletionEvidence.migration.test.js`.
+
+330.
+
+## Phase 330 - Optional packed-order packing evidence images (#1460)
+
+### Initiative and release
+
+Retail online-order fulfillment evidence in the current release.
+
+### Objective and scope
+
+Add an optional zero-or-more private image attachment contract for orders after the logical
+`packed` transition. The scope includes tenant-local JSON metadata, private EXIF-stripped WebP
+storage, six-image cumulative cap, normalized-output SHA retry dedupe, packed-by authorization
+for narrow `orders:pack` callers, authenticated list/stream reads, count-only existing order
+serialization, and a small POS queue upload/view affordance. F&B and Services retain their
+existing no-packed-step behavior.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, deployment,
+post-deployment tenant-schema/endpoint verification, and Sentry quiet-period evidence remain.
+
+### Dependencies
+
+Phase 211's `packed_by`/`packed_at` attribution and additive packed transition, ADR 0031's
+logical order-lifecycle authorization boundary, ADR 0034's fulfillment lifecycle, the existing
+tenant-schema migration fan-out/repair mechanism, and the private payment-proof storage precedent
+(used for shape only, not payment semantics).
+
+### Acceptance and validation evidence
+
+- [x] `packing_evidence_images` is added to the tenant migration, API model, and schema-repair
+      registry with idempotent active-tenant fan-out and an explicit file-orphan rollback note.
+- [x] Private normalized WebP storage, magic-byte validation, six-image count bound, normalized
+      SHA retry dedupe, row-locked read-modify-write, safe serializers, and authenticated streams
+      are implemented.
+- [x] Focused backend use-case tests pass (9/9), including duplicate, authorization, cross-tenant
+      read, zero-image, not-packed, count-limit, rollback, and magic-byte cases.
+- [x] Focused POS behavior tests pass (3/3), and the existing fulfillment UI regression pair
+      passes (16/16).
+- [x] `npm run check:architecture`, `npm run check:compliance`, all three consuming frontend
+      builds, API/migration syntax checks, and `git diff --check` pass locally.
+- [ ] PR review/merge, staging deployment, tenant-schema report, endpoint/UI verification, and
+      post-deployment Sentry quiet-period evidence.
+
+### Links
+
+- Issue: #1460 (`Refs`; behavior-changing independent QA remains after merge).
+- Handoff: `.tmp/plan-1460.md` (planning head `a15194157a6e2ff84e08879348733d542f999d24`).
+- Architecture: `docs/architecture/adr/0031-pos-terminal-pairing-and-order-lifecycle.md`,
+      `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Compliance: `docs/compliance/impact-declarations/2026-09-13-pos-packing-evidence-images.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-order-packing-evidence-images.cjs`.
+- Tests: `apps/dgfy-api/tests/posPackingEvidence.usecase.test.js`,
+      `packages/web-core/src/features/pos/__tests__/packingEvidence.behavior.test.jsx`.
+
+### Next eligible phase
+
+331 after Phase 330 deployment acceptance is complete.
+
+## Phase 331 - Optional DeliveryRun transportation label (#1463)
+
+### Initiative and release
+
+Delivery Runs platform contract, current release, continuing the Phase 225 delivery-run foundation
+and Phase 328 tenant-schema registry parity work.
+
+### Objective and scope
+
+Add the optional nullable `delivery_runs.transportation_label` display descriptor as a bounded
+free-text field. Thread it through DeliveryRun create, update, list/detail serialization, tenant
+schema repair/provisioning, and backend regression coverage. Preserve the existing `TRANSACT_POS`
+permission and ensure no delivery-run behavior branches on the label's value. POS UI, vehicle
+entities, fleet management, route optimization, tracking, and a dedicated manifest endpoint remain
+out of scope.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review and deployed QA
+remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081's DeliveryRun contract, Phase 260/#1489's additive date-range migration pattern,
+and Phase 328/#1879's tenant-schema registry parity precedent.
+
+### Acceptance and validation evidence
+
+- [x] `transportation_label` is nullable `VARCHAR(120)`, added by a new idempotent migration and
+      registered in both tenant-schema repair and fresh-provisioning surfaces.
+- [x] Create/update validators, use cases, repository persistence, and list/detail serialization
+      cover set, null, and clear behavior without introducing a new permission or route.
+- [x] Migration, validator, use-case, serializer, dispatch, and write-through focused tests pass
+      locally: 6 suites, 88 tests.
+- [x] Tier 0 syntax, API version-bump, architecture, compliance, documentation, and tenant-schema
+      coverage gates pass on the final worktree diff; the backend focused suites pass 88/88 tests.
+- [ ] Deployed QA confirms tenant-schema report/repair parity and the POST/PATCH/GET contract.
+
+### Links
+
+- Issue: #1463 (`Refs`; standalone acceptance criteria require deployed QA).
+- Migration: `apps/dgfy-migration-runner/migrations/20260913000001-add-delivery-run-transportation-label.cjs`.
+- Registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Contract tests: `apps/dgfy-api/tests/deliveryRunTransportationLabel.migration.test.js` and
+  the existing DeliveryRun validator/use-case/serializer suites.
+- PR: #1888, `feature/1463-delivery-run-transportation-label` → `develop`.
+
+### Next eligible phase
+
+332.
+
+---
+
+## Phase 332 - Runtime-aware verified AI attribution and OpenCode context injection (#1885)
+
+### Initiative and release
+
+Developer-experience attribution follow-up for AI-assisted pull requests and review comments.
+
+### Objective and scope
+
+Upgrade the local attribution record to preserve runtime plus canonical provider/model identity,
+make OpenCode's verified `providerID`/`model.id` visible to the model through its plugin context,
+and fail closed when a session observes missing or multiple identities. Update existing runtime
+adapters, tests, PR guidance, and the authoritative attribution documentation. Do not add automatic
+GitHub comment wrappers, retroactive comment edits, or a missing-tag CI check.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review remains outstanding.
+
+### Dependencies
+
+Phase 167/#1024's verified attribution contract, the shared `scripts/ai-attribution.js` utility,
+the current OpenCode V1 plugin surface, and the runtime hook contracts documented in
+`docs/ai/AI_MODEL_ATTRIBUTION.md`.
+
+### Acceptance and validation evidence
+
+- [x] Version-2 records preserve runtime, session, canonical provider/model identity, expiry, and
+      clone-wide storage; missing or ambiguous identities emit no tag.
+- [x] OpenCode captures `providerID`/`model.id` and injects the exact formatter command without
+      blocking a session or taking ownership of GitHub writes.
+- [x] Claude, Codex, Cursor, and Antigravity adapters remain schema-compatible; Antigravity is
+      not marked active without a verified hook registration/payload contract.
+- [x] Focused attribution and OpenCode plugin tests pass, including Muse Spark, missing provider,
+      multiple identities, context injection, and cross-worktree behavior.
+- [x] Documentation, architecture, compliance, agent-surface, syntax, version, and diff checks pass.
+- [ ] PR review and any follow-up validation are complete.
+
+### Implementation links
+
+- `scripts/ai-attribution.js`
+- `scripts/ai-attribution.test.js`
+- `.opencode/plugins/dgfy-ai-attribution.js`
+- `docs/ai/AI_MODEL_ATTRIBUTION.md`
+- `docs/ai/PR.md`
+
+### Next eligible phase
+
+333 after Phase 332 implementation and acceptance evidence are complete.
+
+## Phase 333 - Delivery-run loading verification and dispatcher attestation (#1461)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 225 delivery-run foundation.
+
+### Objective and scope
+
+Add tenant-local per-member loading states (`pending`, `loaded`, `not_loaded`, `exception`) with a
+required exception reason, marking actor/timestamp, a run-level loading confirmation actor/timestamp,
+idempotent audited API mutations, ordinary POS order-surface fields, and POS operator controls.
+Dispatch remains warn-only and reports unverified/exception dispatched members. Provider-owned
+delivery integrations, automated route optimization, and a new permission capability remain out of
+scope.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, the tenant-schema
+migration/repair pattern, and ADR 0034's 2026-09-14 loading-verification amendment.
+
+### Acceptance and validation evidence
+
+- [ ] Tenant migration fans out loading columns, foreign keys, and index to landlord/active tenants;
+      tenant-schema repair registry remains in lockstep.
+- [ ] Member loading state, required/cleared exception reason, run confirmation actor/timestamp,
+      and same-key replay are covered by focused backend tests.
+- [ ] Dispatch succeeds with unverified members and returns explicit warning IDs; ordinary POS order
+      responses expose the loading fields.
+- [ ] POS UI records per-member state/reason, allows loading confirmation, and visibly warns without
+      blocking dispatch; focused behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      version-bump gates pass; deployed QA remains a later verification step.
+
+### Links
+
+- Issue: #1461 (`Refs`; acceptance criteria must be reconciled before PR because the issue body had
+  no `## Acceptance criteria` section when this phase started).
+- Handoff: `.tmp/plan-1461.md` (planning head `c603878a5989c2b275dbf16bad5add95743ca8ed`).
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000001-add-delivery-run-loading-verification.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunLoading.usecase.test.js`,
+      `apps/dgfy-api/tests/addDeliveryRunLoadingVerification.migration.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+334 after Phase 333 acceptance evidence and deployed QA are complete.
+
+## Phase 334 - Courier cash custody, remittance, and variance ledger (#1887)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, implementing the tenant-local
+courier custody and remittance follow-up deferred by ADR 0083.
+
+### Objective and scope
+
+Add three tenant-local append-only tables for one remittance per delivery run,
+order-level allocations, and original/reversal variance entries. Expose atomic
+remittance confirmation plus list/detail reads and supervisor-authorized variance
+resolution through POS API routes. Derive expected cash from delivery-handover
+evidence, preserve provider/prepaid/non-cash exclusions, and never mutate
+payment, drawer, settlement, or fiscal records. No UI or collection endpoint is
+included.
+
+### Status
+
+`in_progress` — implementation and focused local validation are complete; commit,
+PR review, and deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership and lifecycle, Phase 228/#1273 dispatch
+and delivery completion, Phase 333/#1461 tenant-schema fan-out precedent, and
+ADR 0083's binding financial boundary.
+
+### Acceptance and validation evidence
+
+- [x] Tenant migration fans out the remittance, allocation, and variance tables
+      across landlord/active tenant schemas, with dependency-safe rollback and
+      fresh-tenant schema registry parity.
+- [x] Atomic remittance confirmation derives expected cash from
+      `cash_received - change_amount`, records order allocations, rejects
+      duplicate runs, and leaves payment fields unchanged.
+- [x] Shortage and overage reasons, provider/non-cash/non-delivered/non-member
+      boundaries, location isolation, idempotent replay, and supervisor-only
+      append-only variance resolution are covered by focused tests.
+- [x] Transport validators, handlers, route permissions, models, serializers,
+      repository methods, and API operation keys are covered by implementation
+      wiring and focused transport tests.
+- [x] Fresh tenant provisioning uses explicit MySQL-safe names for both
+      remittance-variance indexes; the prior unnamed allocation index generated
+      `ALTER TABLE ... ADD INDEX
+      delivery_run_remittance_variances_delivery_run_remittance_allocation_id`
+      and failed with `ER_TOO_LONG_IDENT` (errno 1059, SQLSTATE 42000).
+- [x] `node --check`, API version-bump, architecture, compliance, documentation,
+      and final diff gates pass on the complete worktree; deployed tenant-schema
+      and endpoint QA remain later verification steps.
+
+### Links
+
+- Issue: #1887 (behavior-changing implementation; PR linkage must use the issue's
+      reconciled acceptance-criteria contract).
+- Handoff: `.tmp/plan-1887.md` (planning head
+      `1dfcb709b7a0840e7bd06c5009808033403ec70b`).
+- ADR: `docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`.
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md`.
+- Migration: `apps/dgfy-migration-runner/migrations/20260914000002-create-delivery-run-remittances.cjs`.
+- Tests: `apps/dgfy-api/tests/deliveryRunRemittance.usecase.test.js`,
+      `apps/dgfy-api/tests/createDeliveryRunRemittances.migration.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRemittance.transport.test.js`.
+- Follow-up fix: #1911 (fresh-tenant remittance-variance index identifier).
+
+### Next eligible phase
+
+335 after Phase 334 acceptance evidence and deployed QA are complete.
+
+## Phase 335 - Assigned delivery staff lifecycle actions (#1549)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, dedicated native assigned-delivery workspace API.
+
+### Objective and scope
+
+Allow `delivery_runs:act` staff to advance currently assigned manual delivery jobs through
+`assigned -> picked_up -> delivered` without a POS shift, with locked-transaction assignment and
+location enforcement, explicit null shift audit attribution, and additive location-scoped
+`delivery_jobs` discovery on `/users/me/assignments`. Preserve the broad open-shift POS path and all
+queue, checkout, payment, drawer, assignment, provider, and schema boundaries.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0034; Phase 225/#1081 delivery-run membership; staff capability/assignment foundation (#1459).
+
+### Acceptance and validation evidence
+
+- [x] Narrow direct-assignee and run-member lifecycle success, run-less support, stable denials,
+      location/tenant isolation, provider/lifecycle guards, idempotent replay, and null-shift audit.
+- [x] Additive `delivery_jobs` assignment projection is capability-, location-, and assignment-scoped
+      without changing `orders` or `delivery_runs` compatibility.
+- [x] Focused API tests, architecture/compliance/docs gates, syntax checks, and diff checks pass.
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1549
+- Handoff: `.tmp/plan-1549.md` (planning head `8d2698ac16e516eec2a867b73bced5c68d5fac97`)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md`
+- Feature: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+- Compliance: `docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md`
+- Tests: `apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js`, `apps/dgfy-api/tests/staffAssignments.usecase.test.js`, `apps/dgfy-api/tests/rbacRouteCoverage.contract.test.js`
+
+### Next eligible phase
+
+336 after Phase 335 acceptance evidence and deployed QA are complete.
+
+## Phase 336 - DGLaundry RFC 9421 provider transport interoperability (#519)
+
+### Initiative and release
+
+DGLaundry external runtime connection, current release, provider-side signed
+request compatibility.
+
+### Objective and scope
+
+Align the DGFY DGLaundry partner client and middleware with the shared
+`external-runtime-v0.1` request profile: P-256 ECDSA signatures are encoded as
+fixed-width 64-byte IEEE P1363 `r || s`, the incoming request is verified
+separately from its short-lived machine token, and distinct DGLaundry public
+keys are required for partner requests and Ed25519 provider events. Preserve
+the local HMAC fixture path and all ordinary DGFY tenant/payment behavior.
+
+### Status
+
+`in_progress` — focused implementation and provider tests pass locally; PR
+review, provider key installation, hosted qualification and deployed QA remain
+outstanding. P-256 partner-request nonces now use atomic Redis `SET NX EX` in
+production, fail closed with `503` when Redis is unavailable, and retain only
+a documented process-local fallback for non-production tests.
+
+### Dependencies
+
+ADR 0079 (proposed external runtime contract), DGLaundry PR #16, current
+DGLaundry event/request profiles, and the provider's existing machine-token and
+registration-intent routes.
+
+### Acceptance and validation evidence
+
+- [x] DGFY emits 64-byte P-256 IEEE P1363 partner request signatures.
+- [x] DGFY middleware verifies covered target/query/body components and rejects
+      missing keys, malformed/DER/altered/unknown-key/expired/replayed requests.
+- [x] Production replay protection uses shared Redis atomic claims and rejects
+      production integration configuration without Redis; concurrent duplicate
+      requests admit exactly one verifier result.
+- [x] Existing Ed25519 DGLaundry event tests and focused partner tests pass;
+      backend lint has zero errors.
+- [ ] Independent review, terminal-green repository checks, provider
+      JWKS/client registration, and hosted
+      `laundry.surebizcorp.com` qualification remain required.
+
+### Links
+
+- Issue: #519 under epic #517
+- Provider PR: #1920
+- Consumer PR: Sieitzz/dglaundry#16
+- ADR: `docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md`
+- Tests: `apps/dgfy-api/tests/dglaundryPartnerAuth.test.js`,
+      `apps/dgfy-api/tests/dglaundryPartnerClient.test.js`,
+      `apps/dgfy-api/tests/dglaundryEventSignature.test.js`
+
+### Next eligible phase
+
+337 after Phase 336 acceptance evidence and deployed QA are complete.
+
+## Phase 337 - Delivery Runs workspace for F&B tenants in POS (#1924)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 226 delivery-run management
+UI. Frontend presentation change only, inside the existing shared POS boundary.
+
+### Objective and scope
+
+Make the existing POS Delivery Runs workspace reachable for `retail` and `fnb` tenants behind one
+shared `isDeliveryRunMode` predicate (`retail` or `fnb`; services and every other workflow mode
+stay excluded): Delivery Runs and viewport-qualified Queue + Run tabs, run-option loading, bulk
+assign bar, queue run filter, run labels, and selection controls. The retail-only packed-order
+dispatch preflight stays retail-only -- F&B dispatches without the packing check, per ADR 0034's
+2026-09-01 amendment. No API, database schema, permission, route, or backend-type change; retail
+behavior is unchanged.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; commit/PR review, rendered POS
+proof, and live staging QA (F&B run create/configure, add eligible COD order, loading, dispatch,
+delivery-status advance, cash collection, remittance) remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership (keyed on `delivery_jobs`, never `fulfillment_status`),
+Phase 226/#1273 run management UI, Phase 227-231/#1289-#1290 bulk assign/filter/split view,
+Phase 333/#1461 loading verification, Phase 334/#1887 remittance ledger, ADR 0034 (retail-only
+packing precondition, F&B dispatch skips it), and `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
+as the authoritative UI contract.
+
+### Acceptance and validation evidence
+
+- [x] F&B Orders sub-nav shows `Delivery Runs` and, at `>=768px`, `Queue + Run`; services shows
+      neither and issues no run fetch.
+- [x] F&B run options load; retail <-> F&B flips keep the run surface; flips into an unsupported
+      mode fall back to Active Queue and clear run-only selection/filter state.
+- [x] F&B dispatch of a run with an unpacked member is enabled with no packed notice; the same
+      run in retail stays blocked with the notice.
+- [x] Focused suites pass: `deliveryRunsWorkspace`, `deliveryRunSplitViewDnd`,
+      `deliveryRunBulkAssign`, `deliveryRunQueueFilter`, `deliveryRunLoading`, `deliveryRunDispatch`
+      (82 tests), plus adjacent `incomingQueueRunMemberFulfillmentGate`, `terminalViewModeContracts`,
+      `terminalBalanceSettlement`, `terminalDownpaymentVisibility`, `incomingQueueViewMode`,
+      `webViewStringCompat`, `orderFulfillmentUi` (113 tests).
+- [x] `npm run build:pos` and `npm run build:skupervisor` pass; `build:store` not required (the
+      changed shared import graph does not reach the storefront -- only the untouched
+      `skupervisorHandoff.js` util is shared). `npm run check:architecture` passes.
+- [ ] Rendered POS proof (retail + F&B at desktop/tablet widths, F&B below 768px, opening
+      Delivery Runs, one primary run interaction) and live staging F&B end-to-end QA.
+
+### Links
+
+- Issue: #1924
+- Contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (retail + F&B UI scope)
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (2026-08-31 membership and
+  2026-09-01 dispatch amendments; unchanged by this phase)
+- Implementation: `packages/web-core/src/features/pos/components/TerminalOperationsPanels.jsx`
+  (`isDeliveryRunMode`),
+  `packages/web-core/src/features/pos/components/DeliveryRunsWorkspacePanel.jsx`
+  (`isRetailMode` preflight prop),
+  `packages/web-core/src/features/pos/hooks/useDeliveryRunOptions.js`,
+  `packages/web-core/src/features/pos/components/IncomingQueueOrderList.jsx`,
+  `packages/web-core/src/features/pos/components/QueueOrderTableView.jsx`,
+  `packages/web-core/src/features/pos/components/QueueRunAssignBar.jsx`
+- Tests: `packages/web-core/src/features/pos/__tests__/deliveryRunsWorkspace.behavior.test.jsx`,
+  `deliveryRunSplitViewDnd.behavior.test.jsx`, `deliveryRunBulkAssign.behavior.test.jsx`,
+  `deliveryRunQueueFilter.behavior.test.jsx`, `deliveryRunDispatch.behavior.test.jsx`
+### Next eligible phase
+
+338 after Phase 337 acceptance evidence and deployed QA are complete.
+
+## Phase 338 - Delivery-run dispatch canonical warnings (#1927)
+
+### Initiative and release
+
+Manual POS delivery workflow, current release, extending the Phase 333/#1461 loading-verification
+contract.
+
+### Objective and scope
+
+Add an additive `data.warnings` array to the successful
+`POST /pos/delivery-runs/:deliveryRunId/dispatch` response naming every run member left in a
+non-terminal loading state (`pending`, `not_loaded`, `exception`) at dispatch time, with the
+exact per-member state and the recorded exception reason. Dispatch stays best-effort and
+warn-only; the legacy `loading_warning` compat surface is preserved. The POS shared summary
+prefers `warnings` with a legacy fallback; mobile adoption is tracked separately under
+`dgfy-mobile#177`. No route, permission, migration, error code, or ADR change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; commit/PR review and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Phase 225/#1081 delivery-run membership, Phase 228/#1273 dispatch fan-out, Phase 333/#1461
+loading verification and dispatcher attestation, Phase 337/#1924 F&B delivery-run workspace,
+and ADR 0034's warn-only dispatch clause.
+
+### Acceptance and validation evidence
+
+- [ ] Mixed `pending`/`not_loaded`/`exception`/`loaded` dispatch returns one warning per
+      unresolved member with the exact state and exception reason; `pending` and `not_loaded`
+      stay distinct.
+- [ ] All-loaded dispatch returns `warnings: []` with no false positive; warnings never block
+      partial success or reclassify `dispatched`/`skipped`/`failed`.
+- [ ] Same-key idempotency replay returns the identical warnings payload; the transport
+      response stays `success: true` with the warning data under `data`.
+- [ ] The POS summary renders canonical warnings and still handles the legacy field; focused
+      backend and behavior tests pass.
+- [ ] `node --check`, API/frontend builds, architecture, compliance, ADR, documentation, and
+      whitespace gates pass; deployed QA (mixed-state and all-loaded runs) remains a later
+      verification step.
+
+### Links
+
+- Issue: #1927 (follow-up to #1461's warn-only acceptance criteria).
+- Handoff: `.tmp/plan-1927.md` (planning head `6c9e5bcdd6bb57f2e4560238e4a42360a79228ff`).
+- Mobile consumer: `Sieitzz/dgfy-mobile#177`.
+- ADR: `docs/architecture/adr/0034-manual-delivery-job-foundation.md` (warn-only clause, no
+  amendment needed -- `warnings` is a superset identifying the same dispatched orders).
+- Feature contract: `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md` (dispatch warning contract).
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md`.
+- Tests: `apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js`,
+      `apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js`,
+      `packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx`.
+
+### Next eligible phase
+
+339 after Phase 338 acceptance evidence and deployed QA are complete.
+
+## Phase 339 - Quadruper geocoding provider with bundled-dataset fallback
+
+### Initiative and release
+
+Geo search and address resolution, current release.
+
+### Objective and scope
+
+Replace the 37-entry bundled PH-local geocoder with the DGFY-operated Quadruper service (Photon
+over OpenStreetMap, ~850k PH places), retaining the bundled dataset as an automatic fallback and
+adding nearby-landmark output to reverse geocoding. Scope: `apps/dgfy-api/src/modules/geoSearch`
+(new `providers/`, `mappers/`, `landmarks/`, `shared/` units), `src/config/geocodeConfig.js`,
+`src/validators/geoSearchValidator.js`, `packages/web-core/src/components/maps/MapPinPicker.jsx`.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed QA
+remain outstanding.
+
+### Dependencies
+
+ADR 0013 (amended 2026-09-17); declaration `2026-09-17-quadruper-geocoder-swap`.
+
+### Acceptance and validation evidence
+
+- [x] `tests/geoLandmarkClassifier.test.js`, `tests/geoPhotonFeatureMapper.test.js`,
+      `tests/geoQuadruperProvider.test.js`, `tests/geoLocalProvider.test.js`,
+      `tests/geoCircuitBreaker.test.js`, `tests/geoFallbackPolicy.test.js`,
+      `tests/geoAddressSearchValidator.test.js` pass (75/75, 8/8 suites).
+- [x] `MapPinPicker.maplibre.test.jsx` passes (25/25).
+- [x] `npm run check:compliance`, `npm run check:architecture`, `npm run lint:docs` pass; three
+      frontend builds (`build:skupervisor`, `build:pos`, `build:store`) succeed.
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1963 (`Refs`; deployed QA remains outstanding); PR #1962 carries this work.
+- ADR: `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
+- Compliance declaration: `docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md`
+- Design/plan: `docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md`,
+  `docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md`.
+- Completion date: not yet merged — set at merge time.
+
+### Next eligible phase
+
+340 after Phase 339's PR is filed, reviewed, merged, and deployed QA is complete.
+
+## Phase 340 - Conduct interactive Orca worktree fallback for OpenCode and Antigravity (#1964)
+
+### Initiative and release
+
+Conduct (Orca orchestration preset, #331), current release.
+
+### Objective and scope
+
+Add an explicit interactive external-agent strategy (`orca-interactive`, Tier 2B) for CLIs whose
+custom command and model can be expressed outside `worker-start` launch preferences, so Conduct
+prefers a visible, Orca-managed interactive terminal for OpenCode and Antigravity instead of the
+headless fallback. Scope: `scripts/conduct-model-slot.js` (interactive-adapter registry plus
+`orca-pty` > `orca-interactive` > `in-session` > `direct-cli` classification),
+`scripts/conduct-model-slot.test.js` (positive OpenCode/Antigravity cases, alias normalization,
+priority cases, unavailable/missing-context failures, Claude/Codex/Cursor and headless-fallback
+preservation), `.agents/skills/conduct/SKILL.md` (sections 1.2, 1.4, 1.5, 1.7, 1.8, 1.9), and
+`.agents/skills/conduct/references/model-slot-parsing-examples.md`. No application runtime,
+API, database, frontend, deployment, ADR, or compliance-declaration change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; live Orca evidence runs,
+PR review, merge, and deployed QA remain outstanding.
+
+### Dependencies
+
+Live Orca orchestration guide (`orca skills get orchestration` plus `references/coordinator-loop.md`
+and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue #1964's manual
+2026-09-17 OpenCode/Antigravity experiment.
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:conduct-model-slot` passes (54/54: OpenCode/Antigravity interactive cases,
+      priority cases, fail-closed cases, Claude/Codex/Cursor and headless-fallback preservation).
+- [x] `npm run test:conduct-cleanup-policy` passes unchanged (11/11: active, dirty, unpushed,
+      unrelated, and failed interactive worktrees remain retained).
+- [x] `npm run lint:docs` (30 governed docs) and `npm run check:architecture` pass; no ADR required.
+- [x] Live OpenCode Conduct run: Orca-managed target worktree `phase-340-opencode-probe`
+      (`pat/phase-340-opencode-probe`, linked issue 1964) plus visible terminal
+      `term_0032f0bb-e9ee-449a-ada1-d93fde277f81` running
+      `opencode --model opencode-go/muse-spark-1.3-contributor`; `tui-idle` satisfied first try;
+      `dispatch --inject` recorded `ctx_0c186ef12b1a`/`task_a3ae55309e5d` (unsupervised lane);
+      explicit send+Enter accepted; reply `PROBE-OK-OPENCODE` observed with attribution
+      `Build · Muse Spark 1.3 Contributor · 9.7s`; worktree clean (`git status --porcelain` empty).
+- [x] Live Antigravity Conduct run: worktree `phase-340-agy-probe`
+      (`pat/phase-340-agy-probe`, linked issue 1964) plus visible terminal
+      `term_3264afd1-19aa-49c5-8de0-2c3570124f25` running
+      `agy --model gemini-3.8-flash --effort medium`; trust prompt confirmed explicitly
+      (`Yes, I trust this folder`; TUI advanced to `Gemini 3.8 Flash (Medium)` main screen);
+      `dispatch --inject` refused with `agent_prompt_blocked` while Orca's trust gate was latched
+      (fail-closed, recorded); explicit send+Enter accepted; reply `PROBE-OK-AGY` observed;
+      worktree clean. Both probe sessions/worktrees retained, not released or removed.
+- [x] Preview/draft mode displays but does not inject and cannot produce completion evidence:
+      the `node scripts/conduct-model-slot.js ...` pre-dispatch runs printed the exact
+      `interactiveCommand` strings without creating any worktree, terminal, task, or dispatch.
+- [x] Readiness, trust, and injection failures are explicit and fail safely: `tui-idle`
+      unsatisfied with `blockedReason: agent-trust-workspace` (3 consecutive waits, then
+      no-Enter liveness probe); second `dispatch --inject` and `worker-start --terminal` refused
+      while the first inject dispatch stayed active (`agent_readiness`); permitted fallback
+      reported as headless nowhere (no fallback was invoked — both runs completed
+      interactively). Trust *refusal* ("No, exit") intentionally not exercised.
+- [x] One feedback iteration per CLI demonstrates retained worktree/role ownership:
+      `SECOND-PROBE-OK-OPENCODE` and `SECOND-PROBE-OK-AGY` observed on the same retained
+      terminals/worktrees via the low-level send path (structured re-dispatch blocked by the
+      active-dispatch guard — documented in SKILL.md Tier 2B live-behavior notes).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1964 (child of #331).
+- Handoff: `.tmp/plan-1964.md` (planning head `eaacd6db9ce809712a1f14edbc0cc1f8eb6246f9`).
+- Implementation: `scripts/conduct-model-slot.js`, `scripts/conduct-model-slot.test.js`,
+  `.agents/skills/conduct/SKILL.md`,
+  `.agents/skills/conduct/references/model-slot-parsing-examples.md`.
+- Prior Conduct work: #1811, #1258, #1259, #1826.
+- Completion date: not yet merged — set at merge time.
+
+### Next eligible phase
+
+341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).

@@ -233,7 +233,31 @@ const getGrantedLocationIdsForUser = async (user = null) => {
         .filter(Boolean);
 };
 
-export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase }) => {
+const normalizeMobileServiceOptionGroup = (group = {}) => ({
+    group_id: toPositiveInt(group.group_id),
+    name: safeTrimmedText(group.name, ''),
+    description: safeTrimmedText(group.description, ''),
+    group_type: safeTrimmedText(group.group_type, 'addon'),
+    selection_type: safeTrimmedText(group.selection_type, 'single'),
+    min_selections: Math.max(Number.parseInt(group.min_selections, 10) || 0, 0),
+    max_selections: Math.max(Number.parseInt(group.max_selections, 10) || 0, 0),
+    is_required: group.is_required === true,
+    display_order: Number.parseInt(group.display_order, 10) || 0,
+    options: (Array.isArray(group.options) ? group.options : []).map((option) => ({
+        option_id: toPositiveInt(option.option_id),
+        name: safeTrimmedText(option.name, ''),
+        description: safeTrimmedText(option.description, ''),
+        price_adjustment_centavos: Number.parseInt(option.price_adjustment_centavos, 10) || 0,
+        duration_adjustment_minutes: Number.parseInt(option.duration_adjustment_minutes, 10) || 0,
+        linked_physical_item_id: toPositiveInt(option.linked_physical_item_id),
+        display_order: Number.parseInt(option.display_order, 10) || 0
+    })).filter((option) => option.option_id)
+});
+
+export const buildGetMobilePosCatalogBootstrapUseCase = ({
+    listPosCatalogUseCase,
+    serviceOptionRepository = null
+}) => {
     return async ({ query = {}, user }) => {
         try {
             const normalizedQuery = normalizeCatalogBootstrapQuery(query);
@@ -242,11 +266,35 @@ export const buildGetMobilePosCatalogBootstrapUseCase = ({ listPosCatalogUseCase
                 user
             });
             const data = unwrapApplicationResultOrThrow(result);
+            const catalog = Array.isArray(data) ? data : [];
+            const itemIds = catalog.map((item) => toPositiveInt(item?.item_id)).filter(Boolean);
+            const tenantId = dbStore.getStore()?.tenantId || null;
+            const serviceGroupsByItemId = serviceOptionRepository?.getItemOptionGroupsByItemIds
+                ? await serviceOptionRepository.getItemOptionGroupsByItemIds(itemIds, tenantId, { activeOnly: true })
+                : new Map();
+            const enrichedCatalog = catalog.map((item) => {
+                const itemId = toPositiveInt(item?.item_id);
+                const addOnsEnabled = item?.serviceDetail?.addons_enabled === true
+                    || item?.service_detail?.addons_enabled === true;
+                const serviceOptionGroups = (serviceGroupsByItemId.get(itemId) || [])
+                    .filter((group) => group?.group_type !== 'addon' || addOnsEnabled)
+                    .map(normalizeMobileServiceOptionGroup)
+                    .filter((group) => group.group_id);
+                return {
+                    ...item,
+                    // Keep the existing camelCase field for compatibility and
+                    // add explicit mobile snapshot fields for native clients.
+                    fnb_modifier_groups: Array.isArray(item?.fnbModifierGroups)
+                        ? item.fnbModifierGroups
+                        : (Array.isArray(item?.fnb_modifier_groups) ? item.fnb_modifier_groups : []),
+                    service_option_groups: serviceOptionGroups
+                };
+            });
             return ok({
                 generated_at: new Date().toISOString(),
                 bootstrap_version: MOBILE_CHECKPOINT_VERSION,
                 query: normalizedQuery,
-                catalog: Array.isArray(data) ? data : []
+                catalog: enrichedCatalog
             });
         } catch (error) {
             return fail(error instanceof DomainError

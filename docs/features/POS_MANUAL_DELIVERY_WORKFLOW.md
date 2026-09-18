@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: pos
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-13
 applies_to: pos_manual_delivery_workflow
 ---
 
@@ -82,6 +82,67 @@ cashier shift at the order location. The assignment endpoint is idempotency-key
 protected and writes the assignment plus the `pending_dispatch -> assigned`
 transition in one transaction.
 
+The dedicated native assigned-delivery workspace (Sieitzz/dgfy-mobile #174/#178)
+uses the same status route with `delivery_runs:act`. A currently assigned
+registered delivery person may advance only that manual job through
+`assigned -> picked_up -> delivered` without a cash-drawer shift. The server
+rechecks direct assignment or current run membership and the actor's location
+grant inside the mutation transaction; direct run-less assignments are valid.
+The narrow path leaves `order.shift_id` unchanged and records a null shift in
+the audit event. Broad `pos:transact` operators retain the open-shift path, and
+no checkout, payment, drawer, assignment, full-queue, or provider-owned action
+is included in this exception.
+
+`GET /users/me/assignments?location_id=<id>` additively returns `delivery_jobs`
+for actors with `delivery_runs:view_assigned` or `delivery_runs:act`. Results
+are limited to manual jobs in `out_for_delivery` orders with status `assigned`,
+`picked_up`, or `delivered`, in the requested granted location and covered by
+the same assignment union. The projection contains only public order/customer/
+delivery fields; an absent location never broadens the query.
+
+## Delivery-completion evidence (#1462)
+
+Delivery evidence is an optional, append-only operational record for a manual
+delivery job. It documents what an authorized actor captured at handover; it
+does not redefine the `delivered` transition, gate order completion, or claim
+that DGFY independently verified payment or recipient identity.
+
+The record has two explicit evidence channels:
+
+- `images`: zero or more staff-captured delivery images, bounded to five source
+  files at 15 MB per file; and
+- `signature`: zero or one recipient-supplied signature image.
+
+The backend stores these in separate tenant-local parent/child tables and
+returns only the delivery-job ID, image IDs/count, signature presence, actor,
+and timestamp. Storage paths, hashes, and private file metadata never leave
+the repository/use-case boundary. Every uploaded file is magic-byte validated,
+normalized to private WebP storage with EXIF/GPS metadata removed, and served
+only by authenticated `private, no-store` streams.
+
+The API boundary is:
+
+- `POST /pos/orders/:id/delivery-job/evidence` — `pos:transact` or
+  `delivery_runs:act`; no terminal pairing is required. A non-operator staff
+  member must be the job's direct registered assignee or a member of its run.
+- `GET /pos/orders/:id/delivery-job/evidence` — `pos:view` or
+  `delivery_runs:view_assigned`; returns metadata only.
+- `GET /pos/orders/:id/delivery-job/evidence/images/:image_id` and
+  `GET /pos/orders/:id/delivery-job/evidence/signature` — the same read
+  permissions; both stream only tenant-owned private objects.
+
+Evidence may be attached before or after `delivered`, but never to a failed or
+cancelled job. An all-empty submission is valid when the authorized actor has
+no image or signature to capture. The attach route fingerprints the raw file
+digests through the generic POS idempotency mechanism: an identical retry
+returns the original response without another row or file, while a changed
+payload conflicts. A genuinely new submission after an evidence row exists is
+rejected; replacement and deletion are not in scope.
+
+Retention is the life of the tenant/order record for this phase. No automated
+purge or erasure route ships here; bounded retention, export, and erasure work
+is deferred to #243, with manual operational purge available out-of-band.
+
 ## Phase 3 POS controls
 
 The POS Incoming Online Queue now provides the operator workflow for the API
@@ -135,7 +196,8 @@ whole-run dispatch.
 - `POST /pos/delivery-runs` creates a run in `draft` status (`pos:transact`).
 - `GET /pos/delivery-runs`, `GET /pos/delivery-runs/:deliveryRunId` read runs
   and their personnel/members (`pos:view`).
-- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and moves
+- `PATCH /pos/delivery-runs/:deliveryRunId` edits label/date/notes and the optional
+  `transportation_label` display descriptor, and moves
   between `draft`/`scheduled`/`cancelled` only -- `dispatched` and `completed`
   are rejected here; those transitions belong to Phase 228 (`pos:transact`).
 - `PUT /pos/delivery-runs/:deliveryRunId/personnel` replaces the **whole**
@@ -241,13 +303,15 @@ Phase 225 wired the API; Phase 226 puts a management surface over it inside the 
 ### Where it lives, and who sees it
 
 A third "Delivery Runs" tab sits alongside Active Queue / Order History in the terminal's incoming-
-orders workspace, **retail mode only** -- gated on
-`normalizeWorkflowMode(workflowMode) === 'retail'`, the same check `orderFulfillmentUi.js` already
-uses for the `packed` handoff step. This is a UI-visibility gate only: the run API itself stays
-mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see above), so an F&B
-tenant is not locked out at the data layer, only from this particular tab. If the workflow mode
-flips off retail while the tab is open, the view falls back to Active Queue automatically rather
-than continuing to render a tab that no longer applies.
+orders workspace, **in retail and F&B modes** -- gated on the workflow mode being delivery-run-
+capable (`retail` or `fnb`, #1924), the same family of check `orderFulfillmentUi.js` already uses
+for the `packed` handoff step, minus the F&B exclusion. This is a UI-visibility gate only: the run
+API itself stays mode-agnostic (membership is keyed on `delivery_jobs`, never on `packed` -- see
+above), and the packed dispatch precondition below stays retail-only, so an F&B tenant dispatches
+without ever needing `packed`. Services and every other workflow mode stay excluded from this tab.
+If the workflow mode flips to an unsupported mode while the tab is open, the view falls back to
+Active Queue automatically rather than continuing to render a tab that no longer applies; a
+retail <-> F&B flip keeps the run surface open.
 
 ### What the tab does, and does not, do
 
@@ -256,6 +320,9 @@ run exists -- its `draft`/`scheduled`/`cancelled` status); replace its personnel
 (exactly one person marked accountable, enforced client-side before the request is even sent, on
 top of the server's own enforcement); and, per member order, remove it from the run or move it to
 another run.
+
+The API-only `transportation_label` field is not surfaced as a POS input in this phase; the mobile
+consumer owns its UI against the platform contract.
 
 **Setting personnel before adding members is surfaced, not just enforced.** The server already
 409s `DELIVERY_RUN_ACCOUNTABLE_REQUIRED` if a run with no accountable person is asked to add a
@@ -304,9 +371,64 @@ list, not the full one -- an order selected before the filter was applied is nei
 nor auto-dropped while hidden; a hint names how many selections are currently hidden, and clearing
 the filter restores them.
 
-Retail-mode gated identically to the tab above, and cleared by the same mode-flip reset effect. The
+Delivery-run-mode gated identically to the tab above (#1924: retail and F&B), and cleared by the same mode-flip reset effect. The
 filter and the assign-to-run picker now share one `GET /pos/delivery-runs` fetch
 (`useDeliveryRunOptions`) so the two views can never disagree about which runs exist.
+
+## Loading verification and dispatcher attestation (Phase 333, #1461)
+
+The POS Delivery Runs workspace records loading per member before dispatch. Each tenant-local
+`delivery_jobs` row has one of four states: `pending` (no operator decision yet), `loaded`,
+`not_loaded`, or `exception`. An exception requires a reason, and changing to another state clears
+the previous reason. The actor and timestamp for the latest member mark are retained with the job.
+
+The API exposes `PATCH /pos/delivery-runs/:deliveryRunId/members/:posTransactionId/loading` and
+`POST /pos/delivery-runs/:deliveryRunId/loading-confirmation`, both authorized by `pos:transact`.
+Both mutations use the existing operation-replay/idempotency contract and append an audit event.
+The confirmation records the actor and timestamp at run level and can be repeated with a new key
+when a later attestation is needed.
+
+Loading confirmation is not a dispatch gate. Dispatch continues for loaded and unverified members,
+and returns a warning listing dispatched orders that remain `pending`/`not_loaded` or are marked
+`exception`. The POS UI surfaces those warnings and lets the operator update a member even after
+dispatch, while completed and cancelled runs remain unavailable for loading changes.
+
+### Dispatch response warning contract (Phase 338, #1927)
+
+A successful `POST /pos/delivery-runs/:deliveryRunId/dispatch` response carries an additive
+`data.warnings` array naming every run member left in a non-terminal loading state at dispatch
+time -- one entry per unresolved member, derived from the dispatch-time member snapshot (not
+just the members transitioned by that call):
+
+```json
+{
+  "data": {
+    "warnings": [
+      { "pos_transaction_id": 501, "loading_state": "pending" },
+      { "pos_transaction_id": 502, "loading_state": "not_loaded" },
+      {
+        "pos_transaction_id": 503,
+        "loading_state": "exception",
+        "exception_reason": "Damaged package"
+      }
+    ]
+  }
+}
+```
+
+`loading_state` is the member's exact dispatch-time state (`pending`, `not_loaded`, or
+`exception`; `pending` and `not_loaded` stay distinct). `exception_reason` is present only on
+`exception` entries and is `null` when no reason was recorded. `warnings` is `[]` when every
+member is `loaded`. The array is warn-only: it never blocks dispatch and never reclassifies the
+`dispatched`/`skipped`/`failed` buckets. It is persisted with the idempotency replay payload,
+so a same-key retry returns the identical array.
+
+Compatibility: the pre-337 `data.loading_warning` object
+(`unloaded_pos_transaction_ids`/`exception_pos_transaction_ids`, derived only from members
+dispatched by that call) is preserved unchanged. The POS shared summary
+(`DeliveryRunDispatchSummary`) renders `warnings` when present and falls back to
+`loading_warning` for older responses. The mobile dispatch-confirmation flow
+(`Sieitzz/dgfy-mobile#177`) must consume `data.warnings`, not `loading_warning`.
 
 ## Permissions and ownership
 
@@ -338,6 +460,47 @@ The existing completion guard remains mandatory:
 For the implementation phase, delivery confirmation must use the customer's
 tracking PIN or an equivalent server-verified confirmation. A cashier must not
 be able to claim delivery based only on a browser-side status change.
+
+## Courier cash custody and remittance (ADR 0083, #838)
+
+Collecting cash at handover and getting that cash back to the business are two
+separate facts. The payment flows above record that the customer paid; they do not
+record where the physical cash is afterward. That second leg is DGFY's
+operational/audit responsibility under
+`docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`:
+
+- **Collection.** The courier's delivery-completion/handover action is the
+  authoritative collection event, attributed to the courier (a registered person
+  or a typed third-party name, per the assignment contract above) or to the
+  staff member recording on their behalf. It must never be inferred from order
+  `payment_status`, `amount_paid`, or run summary totals.
+- **Remittance.** Settlement is per run with order-level allocations: a courier
+  carrying several orders settles cash once at run end, confirmed by the
+  receiving location and receiving actor at hand-back.
+- **Variance.** Shortage/overage is an explicit append-only variance record,
+  resolved only under supervisor/manager authority. Duplicate remittance is
+  rejected; corrections are new reversal entries, never edits.
+- **Scope.** In-house personnel and typed third-party couriers only.
+  Provider-owned jobs stay read-only and outside this model; #870's
+  pre-dispatch/prepaid orders are "nothing to collect," not a remittance case.
+- **Boundary.** Custody and remittance records never touch `pos_order_payments`,
+  order payment status, cash-drawer reconciliation, revenue settlement, or
+  fiscal receipts — a parallel operational ledger, not an accounting change.
+
+The Phase 334 API implementation records that ledger without adding a collection
+endpoint or a UI. `POST /pos/delivery-runs/:deliveryRunId/remittances` atomically
+confirms one remittance, its order-level allocations, and any shortage/overage
+rows. The server derives expected cash as `cash_received - change_amount`; each
+requested member must be delivered, manual-provider, and have non-null cash
+evidence. The receiving location defaults to the run location and the action
+uses `pos:transact`, operation replay, and an audit event. `GET` list/detail
+routes expose the tenant-local record under `pos:view`.
+
+`POST /pos/delivery-runs/:deliveryRunId/remittances/:remittanceId/variances/:varianceId/resolution`
+adds an append-only reversal under
+`pos:delivery_run_variance_resolve`; it never updates the original variance.
+Provider-owned jobs, prepaid/non-cash orders, cancelled runs, and payment or
+fiscal records remain outside this ledger.
 
 ## Failure behavior
 

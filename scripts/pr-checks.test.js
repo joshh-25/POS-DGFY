@@ -300,11 +300,12 @@ test('a blocking, failing app-version-bump check now fails overallResult, not me
   assert.equal(computeOverallResult(checks), 'FAIL');
 });
 
-test('the live BLOCKING toggle, threaded through resolveAppVersionsCheckResult, actually blocks a missing bump (#1592)', () => {
-  // Reads the real toggle module, the same one shared-changed-paths.yml and this file's own
-  // runChecks() both derive from -- this is the end-to-end proof that the flip in
-  // scripts/lib/version-bump-gate-toggle.js is not just documented as blocking but demonstrably
-  // produces a real FAIL for a missing/insufficient version bump, per #1592's own validation ask.
+test('the global BLOCKING kill switch, threaded through resolveAppVersionsCheckResult, actually blocks a missing bump (#1592)', () => {
+  // Reads the real toggle module's global kill switch. #1774 made the actual per-check blocking
+  // argument runChecks() passes base-aware (see resolveBlocking() and the test below) -- this test
+  // now only proves the kill switch itself is still on and that resolveAppVersionsCheckResult()
+  // still honors a `true` blocking argument correctly, not that runChecks() passes raw BLOCKING
+  // (it no longer does).
   const { BLOCKING } = require('./lib/version-bump-gate-toggle');
   assert.equal(BLOCKING, true, 'version-bump-gate-toggle.js BLOCKING must be true once #1592 has shipped');
 
@@ -313,6 +314,28 @@ test('the live BLOCKING toggle, threaded through resolveAppVersionsCheckResult, 
 
   const checks = [{ name: 'app version bump', result: missingBumpResult, blocking: BLOCKING, excludeFromOverallResult: false }];
   assert.equal(computeOverallResult(checks), 'FAIL');
+});
+
+// --- app-version-bump check: base-aware blocking via resolveBlocking (#1774) --------------------
+// #1774: runChecks()'s own call site (scripts/pr-checks.js) now derives the `blocking` argument to
+// resolveAppVersionsCheckResult() from resolveBlocking(options.base, options.headRefName) instead
+// of the flat BLOCKING constant -- a develop-base PR stays advisory even with a failing bump check,
+// while a staging/main-base PR (a promotion leg) still blocks. Composed here the same way the
+// buildCheckEnv/resolveMode tests above prove the real wiring, rather than spawning the real
+// runChecks() (which shells out to check:compliance, npm ci --dry-run, etc.).
+
+test('runChecks\' call site: a develop-base PR with a failing bump check stays "warn" (advisory)', () => {
+  const { resolveBlocking } = require('./lib/version-bump-gate-toggle');
+  const blocking = resolveBlocking('develop', undefined);
+  assert.equal(blocking, false);
+  assert.equal(resolveAppVersionsCheckResult(/* ok */ false, blocking), 'warn');
+});
+
+test('runChecks\' call site: a staging-base PR (to-staging/* head) with a failing bump check is "fail" (blocking)', () => {
+  const { resolveBlocking } = require('./lib/version-bump-gate-toggle');
+  const blocking = resolveBlocking('staging', 'to-staging/2026-09-10-01');
+  assert.equal(blocking, true);
+  assert.equal(resolveAppVersionsCheckResult(/* ok */ false, blocking), 'fail');
 });
 
 // --- classifyCiUnavailability ---------------------------------------------

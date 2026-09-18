@@ -36,6 +36,7 @@ const mockRenderItemBarcodeLabelUseCase = jest.fn();
 const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
 const mockUpdateFolderUseCase = jest.fn();
+const mockReorderFoldersUseCase = jest.fn();
 const mockDeleteFolderUseCase = jest.fn();
 // #1124/#1469: added alongside #1318's list/replace item category membership API.
 const mockListItemFoldersUseCase = jest.fn();
@@ -87,6 +88,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getFoldersUseCase: mockGetFoldersUseCase,
   createFolderUseCase: mockCreateFolderUseCase,
   updateFolderUseCase: mockUpdateFolderUseCase,
+  reorderFoldersUseCase: mockReorderFoldersUseCase,
   deleteFolderUseCase: mockDeleteFolderUseCase,
   listItemFoldersUseCase: mockListItemFoldersUseCase,
   replaceItemFoldersUseCase: mockReplaceItemFoldersUseCase,

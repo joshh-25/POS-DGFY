@@ -71,29 +71,28 @@ const toComparableAssetUrl = (value, baseHref = '') => {
   }
 };
 
-export const advanceAssetImageFallback = (event, candidates = []) => {
-  const image = event?.currentTarget;
-  if (!image) return false;
-
+export const resolveNextAssetImageFallback = ({
+  currentUrl = '',
+  candidates = [],
+  startIndex = 0,
+  baseHref = ''
+} = {}) => {
   const fallbackCandidates = (Array.isArray(candidates) ? candidates : [candidates])
     .map((candidate) => String(candidate || '').trim())
     .filter(Boolean);
-  let candidateIndex = Number.parseInt(image.dataset?.assetFallbackIndex || '0', 10);
+  let candidateIndex = Number.parseInt(startIndex, 10);
   if (!Number.isFinite(candidateIndex) || candidateIndex < 0) candidateIndex = 0;
-
-  const baseHref = image.ownerDocument?.baseURI || (typeof window !== 'undefined' ? window.location.href : '');
-  const currentUrl = toComparableAssetUrl(image.currentSrc || image.src, baseHref);
+  const comparableBaseHref = baseHref || (typeof window !== 'undefined' ? window.location.href : '');
+  const comparableCurrentUrl = toComparableAssetUrl(currentUrl, comparableBaseHref);
 
   while (candidateIndex < fallbackCandidates.length) {
     const candidate = fallbackCandidates[candidateIndex];
     candidateIndex += 1;
-    if (image.dataset) image.dataset.assetFallbackIndex = String(candidateIndex);
-    if (toComparableAssetUrl(candidate, baseHref) === currentUrl) continue;
-    image.src = candidate;
-    return true;
+    if (toComparableAssetUrl(candidate, comparableBaseHref) === comparableCurrentUrl) continue;
+    return { src: candidate, nextIndex: candidateIndex };
   }
 
-  return false;
+  return null;
 };
 
 export const resolveAppAssetUrl = (value, options = {}) => {

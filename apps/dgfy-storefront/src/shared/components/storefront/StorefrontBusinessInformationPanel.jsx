@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Bike, ChevronDown, ChevronUp, Maximize, Sparkles } from 'lucide-react';
+import { getDeliveryPartnerBrandColor } from '../../../../../../packages/web-core/src/utils/deliveryPartnerAssets.js';
 import { StoresMap } from '../../../discovery/components/StoresMapLazy.jsx';
 import { StorefrontExpandedMapModal } from '../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { StorefrontAboutDescription } from '../../../features/shared-storefront/components/StorefrontAboutDescription.jsx';
@@ -110,10 +111,12 @@ const DeliveryPartners = ({ links, palette, onOpenAction }) => {
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', minWidth: 0 }}>
         {links.map((platform) => {
-          const badge = platform.logoUrl ? (
-            <img src={platform.logoUrl} alt={platform.label} loading="lazy" decoding="async" style={{ maxHeight: 16, width: 'auto', display: 'block', objectFit: 'contain' }} />
-          ) : (
-            <span style={{ fontSize: typography.action, fontWeight: 800, color: palette.accent, whiteSpace: 'nowrap' }}>{platform.label}</span>
+          const brandColor = platform.brandColor || getDeliveryPartnerBrandColor(platform.partner) || palette.accent;
+          const badge = (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: typography.action, fontWeight: 800, color: brandColor, whiteSpace: 'nowrap' }}>
+              {platform.logoUrl ? <img src={platform.logoUrl} alt="" aria-hidden="true" loading="lazy" decoding="async" style={{ width: 20, height: 20, flexShrink: 0, display: 'block', borderRadius: 5, objectFit: 'contain' }} /> : null}
+              <span style={{ color: brandColor }}>{platform.label}</span>
+            </span>
           );
           return platform.href ? (
             <button key={platform.partner || platform.label} type="button" onClick={() => onOpenAction(platform.href)} style={{ padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}>{badge}</button>

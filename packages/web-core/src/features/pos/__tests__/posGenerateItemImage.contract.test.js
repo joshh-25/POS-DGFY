@@ -60,19 +60,19 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const surrounding = workspace.slice(buttonStart - 400, buttonEnd);
 
         expect(surrounding).toContain('canEditItems &&');
-        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}');
+        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage || hasUnsavedEditImages}');
         expect(surrounding).toContain("'Regenerate Image (AI)' : 'Generate Image (AI)'");
         expect(surrounding).toContain("'Queuing…'");
         expect(surrounding).toContain("'Generating…'");
     });
 
-    it('closeEdit cancels an in-flight poll and blocks closing while generating/polling, resetting both flags', () => {
+    it('closeEdit cancels an in-flight poll so a closed editor cannot be mutated', () => {
         const closeStart = workspace.indexOf('const closeEdit = ({ force = false } = {}) => {');
         const closeEnd = workspace.indexOf('\n  };', closeStart);
         const closeHandler = workspace.slice(closeStart, closeEnd);
 
-        expect(closeHandler).toContain('generatingEditImage || pollingEditImage');
         expect(closeHandler).toContain('cancelImageGenerationPoll();');
+        expect(closeHandler).toContain('editSessionRef.current');
         expect(closeHandler).toContain('setGeneratingEditImage(false);');
         expect(closeHandler).toContain('setPollingEditImage(false);');
     });

@@ -21,6 +21,7 @@ COPY apps/dgfy-api/package*.json ./
 # host copy of these files is untouched and still needs 2 hops.
 RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
@@ -37,11 +38,15 @@ WORKDIR /app
 # entrypoint's tenant-schema-sync step and the exec'd node process. su-exec
 # lets entrypoint.sh drop from root to the unprivileged `app` user after
 # fixing bind-mount ownership (see entrypoint.sh).
-RUN apk add --no-cache curl tini su-exec \
+COPY infrastructure/docker/install-alpine-runtime-packages.sh /usr/local/bin/install-alpine-runtime-packages
+RUN chmod +x /usr/local/bin/install-alpine-runtime-packages \
+ && install-alpine-runtime-packages curl tini su-exec \
+ && rm /usr/local/bin/install-alpine-runtime-packages \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 COPY apps/dgfy-api/package*.json ./
 COPY apps/dgfy-api/src ./src
 COPY apps/dgfy-api/assets ./assets

@@ -128,4 +128,59 @@ describe('POS Workflow Panels Contract', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
     expect(setCounterMethod).toHaveBeenCalledWith('delivery');
   });
+
+  it('uses the full available row for takeout order notes', () => {
+    render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes=""
+        setKitchenNotes={vi.fn()}
+        isTabletViewport
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Applies to the whole order').closest('label').className).toContain('col-span-full');
+
+    const desktopView = render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes=""
+        setKitchenNotes={vi.fn()}
+        isTabletViewport={false}
+      />
+    );
+    expect(desktopView.container.querySelector('label').className).not.toContain('col-span-full');
+  });
+
+  it('collapses optional table and kitchen details after an item is added', () => {
+    const panelProps = {
+      orderMethod: 'dine_in',
+      setOrderMethod: vi.fn(),
+      tableNumber: 'T-10',
+      kitchenNotes: 'No spice',
+      setKitchenNotes: vi.fn(),
+      buttonLayout: true
+    };
+    const { rerender } = render(<FnbWorkflowPanel key="cart-0" {...panelProps} cartItemCount={0} />);
+
+    expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+
+    rerender(<FnbWorkflowPanel key="cart-1" {...panelProps} cartItemCount={1} />);
+
+    expect(screen.getByTestId('pos-checkout-order-method-buttons')).toBeDefined();
+    expect(screen.queryByText('Table # (Optional)')).toBeNull();
+    expect(screen.queryByText('Order Notes (Global)')).toBeNull();
+
+    const detailsToggle = screen.getByRole('button', { name: 'Edit table & notes' });
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('false');
+
+    fireEvent.click(detailsToggle);
+
+    expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(detailsToggle.getAttribute('aria-expanded')).toBe('true');
+  });
 });

@@ -4,6 +4,8 @@ import { setBrowserSession, clearBrowserSession } from '../../../../services/bro
 import {
   stagePendingPosItemImagePreview,
   bindPendingPosItemImagePreviewJob,
+  completePendingPosItemImagePreview,
+  markPendingPosItemImagePreviewUncertain,
   clearPendingPosItemImagePreview,
   resetPendingPosItemImagePreviews,
   getPendingPosItemImagePreviews
@@ -36,8 +38,30 @@ describe('POS upload attempt isolation', () => {
     const first = stagePendingPosItemImagePreview({ itemId: 22, url: 'blob:first' });
     stagePendingPosItemImagePreview({ itemId: 22, url: 'blob:second' });
     bindPendingPosItemImagePreviewJob({ itemId: 22, attemptId: first, jobId: 'old-job' });
+    completePendingPosItemImagePreview({
+      itemId: 22,
+      attemptId: first,
+      jobId: 'old-job',
+      url: '/uploads/old144.webp',
+      resultUrl: '/uploads/old.webp'
+    });
     clearPendingPosItemImagePreview({ itemId: 22, attemptId: first, jobId: 'old-job' });
     expect(getPendingPosItemImagePreviews()['22']?.url).toBe('blob:second');
     expect(getPendingPosItemImagePreviews()['22']?.jobId).toBeNull();
+  });
+
+  it('retains the accepted file intent when a network result is ambiguous', () => {
+    const attemptId = stagePendingPosItemImagePreview({
+      itemId: 22,
+      url: 'blob:preview',
+      fileKeys: ['dish\u001f10\u001f1\u001fimage/png'],
+      galleryIntent: { base_keys: ['old.webp'] }
+    });
+    markPendingPosItemImagePreviewUncertain({ itemId: 22, attemptId });
+    expect(getPendingPosItemImagePreviews()['22']).toMatchObject({
+      status: 'uncertain',
+      fileKeys: ['dish\u001f10\u001f1\u001fimage/png'],
+      galleryIntent: { base_keys: ['old.webp'] }
+    });
   });
 });

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-10
-last_reviewed: 2026-09-01
+last_reviewed: 2026-09-14
 review_by: 2027-01-10
 applies_to: architecture_decision
 topic: manual_delivery_job_foundation
@@ -175,3 +175,74 @@ active run member" from "was in a run that got cancelled." Every other member of
 that order, in particular `packed`, is left untouched: gating the whole action list at `preparing`
 in retail mode would deadlock the `DELIVERY_RUN_UNPACKED_MEMBERS` precondition above, which requires
 every run member to reach `packed` before the run can dispatch at all.
+
+### 2026-09-13 — Delivery-completion evidence and recipient signature (#1462)
+
+Manual delivery jobs may carry an optional, append-only completion-evidence record in two tenant-local
+tables: one parent row per `delivery_job` and zero or more staff-captured image rows. The parent may
+also carry one recipient-supplied signature image. The schema/API split is intentional: staff images
+and recipient signature are distinct facts and must remain distinct in the response contract. This
+evidence documents a delivery operation; it does not redefine `delivered`, gate order completion, or
+claim provider/payment verification. `[default]`
+
+The attach route accepts evidence for a manual job in any non-`failed`/non-`cancelled` state, so
+evidence capture cannot become a hidden precondition of the existing lifecycle. A broad POS operator
+may attach through `pos:transact`; otherwise the authenticated staff member must hold
+`delivery_runs:act` and be either the job's direct registered assignee or a member of its delivery
+run. Read metadata and authenticated image streams use the existing `pos:view` or
+`delivery_runs:view_assigned` read permissions. No terminal pairing or active-operator middleware
+is required because these are delivery-job/order-status actions rather than terminal-hardware
+actions. `[default]`
+
+The upload is bounded to five staff images and one optional signature, with a 15 MB source limit per
+file. Every source is magic-byte validated, normalized to a private tenant-scoped WebP object with
+orientation/GPS metadata removed, and served only through authenticated `private, no-store` routes.
+API responses expose only evidence counts, image IDs, signature presence, actor, and timestamp;
+storage paths, hashes, and file metadata remain repository/use-case concerns. `[default]`
+
+The attach operation uses the generic POS operation-replay mechanism. Its request fingerprint
+contains the order/job identity and the raw uploaded-file SHA-256 digests, so a same-key identical
+retry returns the cached response without another database row or storage write, while a changed
+payload conflicts. A genuinely new submission is attach-once and returns `409` after an evidence
+record already exists. An all-empty submission is valid and records that the authorized actor
+completed the evidence step without captured media. `[default]`
+
+Retention is explicitly set to the life of the tenant/order record for this phase. No automated purge
+or erasure endpoint ships here; manual operational purge remains possible out-of-band, and bounded
+retention, export, and erasure work is deferred to #243. This is a deliberate privacy decision for
+handwritten signatures and address imagery, not an omission. `[default]`
+
+### 2026-09-14 — Delivery-run loading verification (#1461, Phase 333)
+
+Manual delivery runs now carry a per-member loading verification state with four explicit values:
+`pending`, `loaded`, `not_loaded`, and `exception`. A member remains `pending` until an operator
+records a state; `not_loaded` is an explicit operational result and must not be conflated with an
+unmarked member. `exception` requires a non-empty reason, and changing to another state clears the
+old reason. The fields are tenant-local on `delivery_jobs`, with the marking actor and timestamp
+recorded for auditability. `[default]`
+
+The run-level confirmation records the authenticated actor and timestamp and is idempotent through
+the existing POS operation-replay mechanism. Both member marking and run confirmation use
+`pos:transact`, matching the existing delivery-run mutation authority; no assigned-run-specific
+capability is introduced. `[default]`
+
+### 2026-09-14 — Assigned delivery staff lifecycle actions (#1549, Phase 335)
+
+An authenticated staff member with `delivery_runs:act` may advance a currently assigned manual
+delivery job through `assigned -> picked_up -> delivered` without an open POS shift. Assignment is
+rechecked inside the locked transaction: the actor must be the job's current direct registered
+assignee or a member of its current Delivery Run, and must hold a grant for the order location.
+Run-less direct assignments remain valid. The narrow path never claims or changes `order.shift_id`;
+its audit event records `shift_id: null` while retaining actor, location, transition, and timestamp.
+
+The existing `pos:transact` path is unchanged and still requires an owned open shift. This exception
+is limited to the delivery-job status route and does not extend to checkout, cash-drawer/payment
+operations, assignment, the full incoming queue, general order status, or provider-owned jobs.
+`GET /users/me/assignments` may expose only the actor's current manual delivery jobs in a validated
+location, using the same direct-assignee/run-membership rule and a public-safe order projection.
+`[default]`
+
+Dispatch remains warn-only with respect to loading verification. It may dispatch members that are
+`pending`, `not_loaded`, or `exception`, and its response identifies the dispatched orders in those
+categories. Loading confirmation is an operator attestation and is not a dispatch precondition,
+fulfillment transition, payment rule, or provider integration. `[default]`

@@ -19,6 +19,10 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
     type: DataTypes.DATEONLY,
     allowNull: true
   },
+  transportation_label: {
+    type: DataTypes.STRING(120),
+    allowNull: true
+  },
   status: {
     type: DataTypes.ENUM('draft', 'scheduled', 'dispatched', 'completed', 'cancelled'),
     allowNull: false,
@@ -38,6 +42,14 @@ const DeliveryRun = sequelize.define('DeliveryRun', {
   },
   updated_by: {
     type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  loading_confirmed_by: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  loading_confirmed_at: {
+    type: DataTypes.DATE,
     allowNull: true
   }
 }, {

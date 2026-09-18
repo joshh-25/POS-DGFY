@@ -51,6 +51,10 @@ import {
   stopStorefrontDiscoveryIndexReconciliationScheduler
 } from './services/storefrontDiscoveryIndexService.js';
 import {
+  startTenantProvisioningReconciliationScheduler,
+  stopTenantProvisioningReconciliationScheduler
+} from './schedulers/tenantProvisioningReconciliationScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -67,6 +71,10 @@ import {
   startCatalogImageUploadWorker,
   stopCatalogImageUploadWorker
 } from './workers/catalogImageUploadWorker.js';
+import {
+  startPosBulkImageImportWorker,
+  stopPosBulkImageImportWorker
+} from './workers/posBulkImageImportWorker.js';
 import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
@@ -758,6 +766,7 @@ app.use(tenantHandler);
 // API routes
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
+import staffRoleRoutes from './routes/staffRoles.js';
 import itemRoutes from './routes/items.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchaseOrders.js';
@@ -799,6 +808,7 @@ import onboardingRoutes from './routes/onboarding.js';
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/staff-roles', staffRoleRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/items', itemRoutes);
 app.use('/api/v1/suppliers', supplierRoutes);
@@ -973,9 +983,11 @@ const startServer = async () => {
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
+    startTenantProvisioningReconciliationScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
+    startPosBulkImageImportWorker();
 
     // Batch menu import worker — gated on its own flag (like geo inventory
     // above, its tick() no-ops whenever Redis isn't connected, so it's safe
@@ -1060,6 +1072,7 @@ const startServer = async () => {
         billingFunnelAuditInterval = null;
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
+      stopTenantProvisioningReconciliationScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {
@@ -1069,6 +1082,7 @@ const startServer = async () => {
         stopItemImageWorker();
       }
       stopCatalogImageUploadWorker();
+      stopPosBulkImageImportWorker();
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

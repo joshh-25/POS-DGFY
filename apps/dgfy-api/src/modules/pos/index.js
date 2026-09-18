@@ -17,6 +17,8 @@ import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js
 // already-proven-safe direction.
 import { settingsRepository } from '../settings/repositories/settingsRepository.js';
 import { posPaymentProofStorage } from './repositories/posPaymentProofStorage.js';
+import { posPackingEvidenceStorage } from './repositories/posPackingEvidenceStorage.js';
+import { deliveryCompletionEvidenceStorage } from './repositories/deliveryCompletionEvidenceStorage.js';
 import {
     inventoryStockCommandService,
     inventoryReservationService,
@@ -89,6 +91,13 @@ import {
     buildRecordOrderBalancePaymentUseCase,
     buildAttachOrderBalancePaymentProofUseCase,
     buildGetOrderBalancePaymentProofUseCase,
+    buildAttachOrderPackingEvidenceUseCase,
+    buildGetOrderPackingEvidenceListUseCase,
+    buildGetOrderPackingEvidenceImageUseCase,
+    buildAttachDeliveryCompletionEvidenceUseCase,
+    buildGetDeliveryCompletionEvidenceUseCase,
+    buildGetDeliveryCompletionEvidenceImageUseCase,
+    buildGetDeliveryCompletionEvidenceSignatureUseCase,
     buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
@@ -157,6 +166,7 @@ import { createPosCashierAttendanceUseCases } from './usecases/posCashierAttenda
 import { createPosCashierLifecycleUseCases } from './usecases/posCashierLifecycleUseCases.js';
 import { createPosCashierAttendanceConfigUseCases } from './usecases/posCashierAttendanceConfigUseCases.js';
 import { resolveMovementLocation, assertLocationAccess } from '../../services/locationInventoryService.js';
+import { publishCatalogChange } from '../shared/services/catalogChangeEventBus.js';
 import { resolvePosCashierAttendanceFeature, requirePosCashierAttendanceFeature } from './services/posCashierAttendanceFeature.js';
 import { assertPosAttendanceLifecyclePermission } from './services/posAttendancePermissionPolicy.js';
 import posOperatorAuthorityService from './services/posOperatorAuthorityService.js';
@@ -170,7 +180,13 @@ import {
     buildSetDeliveryRunPersonnelUseCase,
     buildAddDeliveryRunMembersUseCase,
     buildRemoveDeliveryRunMemberUseCase,
-    buildDispatchDeliveryRunUseCase
+    buildDispatchDeliveryRunUseCase,
+    buildUpdateDeliveryRunMemberLoadingUseCase,
+    buildConfirmDeliveryRunLoadingUseCase,
+    buildCreateDeliveryRunRemittanceUseCase,
+    buildListDeliveryRunRemittancesUseCase,
+    buildGetDeliveryRunRemittanceUseCase,
+    buildResolveDeliveryRunRemittanceVarianceUseCase
 } from './usecases/deliveryRunUseCases.js';
 
 const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
@@ -196,7 +212,8 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
     calculateServiceQuoteUseCase: posCalculateServiceQuoteUseCase,
-    completeClaimedPosParkedSaleUseCase
+    completeClaimedPosParkedSaleUseCase,
+    publishCatalogChange
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
@@ -213,7 +230,10 @@ export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCas
 });
 export const getPosPaymentSessionUseCase = buildGetPosPaymentSessionUseCase({ posRepository });
 export const getActivePosPaymentSessionUseCase = buildGetActivePosPaymentSessionUseCase({ posRepository });
-export const addPosPaymentAllocationUseCase = buildAddPosPaymentAllocationUseCase({ posRepository });
+export const addPosPaymentAllocationUseCase = buildAddPosPaymentAllocationUseCase({
+    posRepository,
+    quotePosCheckoutUseCase: checkoutPosUseCase
+});
 export const cancelPosPaymentAllocationUseCase = buildCancelPosPaymentAllocationUseCase({ posRepository });
 export const confirmPosPaymentAllocationUseCase = buildConfirmPosPaymentAllocationUseCase({
     posRepository,
@@ -238,7 +258,8 @@ export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase(
 export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
-    employeeCreditService
+    employeeCreditService,
+    publishCatalogChange
 });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
@@ -321,6 +342,28 @@ export const getOrderBalancePaymentProofUseCase = buildGetOrderBalancePaymentPro
     posRepository,
     proofStorage: posPaymentProofStorage
 });
+export const attachOrderPackingEvidenceUseCase = buildAttachOrderPackingEvidenceUseCase({
+    posRepository,
+    packingEvidenceStorage: posPackingEvidenceStorage
+});
+export const getOrderPackingEvidenceListUseCase = buildGetOrderPackingEvidenceListUseCase({ posRepository });
+export const getOrderPackingEvidenceImageUseCase = buildGetOrderPackingEvidenceImageUseCase({
+    posRepository,
+    packingEvidenceStorage: posPackingEvidenceStorage
+});
+export const attachDeliveryCompletionEvidenceUseCase = buildAttachDeliveryCompletionEvidenceUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
+});
+export const getDeliveryCompletionEvidenceUseCase = buildGetDeliveryCompletionEvidenceUseCase({ posRepository });
+export const getDeliveryCompletionEvidenceImageUseCase = buildGetDeliveryCompletionEvidenceImageUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
+});
+export const getDeliveryCompletionEvidenceSignatureUseCase = buildGetDeliveryCompletionEvidenceSignatureUseCase({
+    posRepository,
+    evidenceStorage: deliveryCompletionEvidenceStorage
+});
 export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const createDeliveryRunUseCase = buildCreateDeliveryRunUseCase({ deliveryRunRepository });
@@ -331,6 +374,12 @@ export const setDeliveryRunPersonnelUseCase = buildSetDeliveryRunPersonnelUseCas
 export const addDeliveryRunMembersUseCase = buildAddDeliveryRunMembersUseCase({ posRepository, deliveryRunRepository });
 export const removeDeliveryRunMemberUseCase = buildRemoveDeliveryRunMemberUseCase({ posRepository, deliveryRunRepository });
 export const dispatchDeliveryRunUseCase = buildDispatchDeliveryRunUseCase({ posRepository, deliveryRunRepository });
+export const updateDeliveryRunMemberLoadingUseCase = buildUpdateDeliveryRunMemberLoadingUseCase({ posRepository, deliveryRunRepository });
+export const confirmDeliveryRunLoadingUseCase = buildConfirmDeliveryRunLoadingUseCase({ posRepository, deliveryRunRepository });
+export const createDeliveryRunRemittanceUseCase = buildCreateDeliveryRunRemittanceUseCase({ posRepository, deliveryRunRepository });
+export const listDeliveryRunRemittancesUseCase = buildListDeliveryRunRemittancesUseCase({ deliveryRunRepository });
+export const getDeliveryRunRemittanceUseCase = buildGetDeliveryRunRemittanceUseCase({ deliveryRunRepository });
+export const resolveDeliveryRunRemittanceVarianceUseCase = buildResolveDeliveryRunRemittanceVarianceUseCase({ posRepository, deliveryRunRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
@@ -439,7 +488,10 @@ export const revokePosOperatorSessionsForUser = posOperatorAuthorityUseCases.rev
 // Keep the repository-backed revocation adapter available to close/unpair paths and export the
 // policy use case for callers that need the same behavior outside a shift close transaction.
 export { revokePosOperatorSessionsForTerminal };
-export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
+export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({
+    listPosCatalogUseCase,
+    serviceOptionRepository: posServiceOptionRepository
+});
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });

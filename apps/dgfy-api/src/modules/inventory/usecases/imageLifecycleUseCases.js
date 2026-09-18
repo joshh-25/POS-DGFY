@@ -49,6 +49,7 @@ const readResponsiveAssetManifest = async ({ inputPath, uploadsRoot }) => {
 };
 
 const buildVariantMetadataFromManifest = (manifest = {}) => ({
+    pos_thumbnail: manifest?.variants?.pos_thumbnail || null,
     thumbnail: manifest?.variants?.thumbnail || null,
     catalog_card: manifest?.variants?.medium || null,
     checkout: manifest?.variants?.thumbnail || null,
@@ -236,6 +237,7 @@ export const ensureOptimizedItemImage = async ({
         });
 
         const variant_metadata = {
+            pos_thumbnail: stored.variants?.pos_thumbnail || null,
             thumbnail: stored.variants?.thumbnail || null,
             catalog_card: stored.variants?.medium || null,
             checkout: stored.variants?.thumbnail || null,

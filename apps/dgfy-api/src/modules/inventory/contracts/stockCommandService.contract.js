@@ -28,10 +28,13 @@ export const StockCommandServiceCoreContract = Object.freeze([
 ]);
 
 export const StockCommandServiceNamedCommands = Object.freeze([
+    'validateStockIssueAvailability',
     'issueStockForPosSale',
     'issueStockForOnlineFulfillment',
     'issueStockForDispatch',
     'returnStockForVoidedSale',
+    // #1931: one-time reversal of a Retail online order's accept-time goods-issue.
+    'reverseOnlineOrderGoodsIssue',
     'receivePurchasedStock',
     'transferStock',
     'adjustStock',

@@ -67,7 +67,12 @@ export const reverseGeocode = async (req, res, next) => {
 export const searchAddresses = async (req, res, next) => {
     try {
         const q = req.validatedQuery || req.query;
-        const result = await addressSearchUseCase({ query: q.query, limit: q.limit });
+        const result = await addressSearchUseCase({
+            query: q.query,
+            limit: q.limit,
+            biasLatitude: q.lat,
+            biasLongitude: q.lon
+        });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({

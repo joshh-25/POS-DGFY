@@ -14,6 +14,7 @@ import {
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
+import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
@@ -97,7 +98,7 @@ function useSplitViewportEligible() {
   return isEligible;
 }
 
-function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -111,6 +112,17 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
             </div>
           )}
         </div>
+      </section>
+    );
+  }
+
+  // Settings already owns its inner cards and navigation surfaces. Keep the shell
+  // spacing for consistent content alignment, while removing the redundant card
+  // chrome that constrains small viewports.
+  if (bare) {
+    return (
+      <section className={`min-w-0 max-w-full ${className}`}>
+        {children}
       </section>
     );
   }
@@ -137,8 +149,9 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       icon: Receipt
     }
   ];
-  // Phase 226 (#1273): retail-only third tab -- the caller decides visibility via
-  // normalizeWorkflowMode(...) === 'retail', this component just renders what it's told.
+  // Phase 226 (#1273), widened #1924: third tab for delivery-run-capable modes (retail + fnb) --
+  // the caller decides visibility via its isDeliveryRunMode predicate, this component just renders
+  // what it's told.
   if (showDeliveryRuns) {
     tabs.push({
       key: 'runs',
@@ -148,7 +161,8 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
     });
   }
   // Phase 229 (#1289), §2.4: a 4th view, not a replacement of the tabbed arrangement -- gated by
-  // the caller on retail mode AND viewport width (§2.6), same "caller decides, this just renders"
+  // the caller on delivery-run mode (retail or fnb) AND viewport width (§2.6), same
+  // "caller decides, this just renders"
   // contract as showDeliveryRuns above.
   if (showSplitView) {
     tabs.push({
@@ -441,7 +455,11 @@ function IncomingQueueWorkspace({
     setViewMode(writeQueueViewModePreference(nextMode));
   };
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
-  const isRetailMode = normalizeWorkflowMode(workflowMode) === 'retail';
+  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const isRetailMode = normalizedWorkflowMode === 'retail';
+  // #1924: Delivery Runs are available in both retail and F&B modes. Keep the retail-only
+  // predicate separate for packed-fulfillment presentation inside the run workspace.
+  const isDeliveryRunMode = normalizedWorkflowMode === 'retail' || normalizedWorkflowMode === 'fnb';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
@@ -460,7 +478,7 @@ function IncomingQueueWorkspace({
   // QueueRunAssignBar's target picker via useDeliveryRunOptions, so the two can never disagree
   // about which runs exist.
   const [runFilter, setRunFilter] = React.useState(QUEUE_RUN_FILTER_ALL);
-  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isRetailMode });
+  const { runs: deliveryRuns, loading: deliveryRunsLoading, errorMessage: deliveryRunsError } = useDeliveryRunOptions(queueLocationScopeId, { enabled: isDeliveryRunMode });
   const runFilterOptions = React.useMemo(
     () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
       ...run,
@@ -751,23 +769,23 @@ function IncomingQueueWorkspace({
   }, [activeView, orderHistoryPageSize, refreshOrderHistory]);
 
   // Phase 226 (#1273): WORKFLOW_MODE_CHANGED_EVENT can flip the mode while this tab is open --
-  // a stale activeView === 'runs' must never render the panel once retail mode is off. Belt +
-  // braces alongside the isRetailMode guard on the render branch itself below.
-  // Phase 227: a bulk-add selection is a retail-only concept -- clear it here too so it never
-  // survives a flip into F&B mode.
-  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (retail-only), plus its
+  // a stale activeView === 'runs' must never render the panel once delivery-run mode is off. Belt
+  // + braces alongside the isDeliveryRunMode guard on the render branch itself below.
+  // Phase 227: a bulk-add selection is a delivery-run-only concept -- clear it here too so it never
+  // survives a flip into services (or another unsupported mode).
+  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (delivery-run modes), plus its
   // own viewport gate -- a stale activeView === 'split' must never render the panel once the
   // window narrows below the split threshold either (e.g. a POS window resize).
-  // Phase 231 (#1290): the run filter is retail-only too (D-3) -- clear it on the same mode-flip
-  // so it never survives into F&B mode either.
+  // Phase 231 (#1290): the run filter is delivery-run-only too (D-3) -- clear it on the same
+  // mode-flip so it never survives into an unsupported mode.
   React.useEffect(() => {
-    if ((activeView === 'runs' || activeView === 'split') && !isRetailMode) setActiveView('active');
+    if ((activeView === 'runs' || activeView === 'split') && !isDeliveryRunMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
-    if (!isRetailMode) {
+    if (!isDeliveryRunMode) {
       setSelectedOrderIds(new Set());
       setRunFilter(QUEUE_RUN_FILTER_ALL);
     }
-  }, [activeView, isRetailMode, isSplitViewportEligible]);
+  }, [activeView, isDeliveryRunMode, isSplitViewportEligible]);
 
   if (activeView === 'history') {
     return (
@@ -777,9 +795,9 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
-          showDeliveryRuns={isRetailMode}
+          showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
-          showSplitView={isRetailMode && isSplitViewportEligible}
+          showSplitView={isDeliveryRunMode && isSplitViewportEligible}
         />
         <OnlineOrderHistoryPanel
           canViewPos={canViewPos}
@@ -796,7 +814,7 @@ function IncomingQueueWorkspace({
     );
   }
 
-  if (activeView === 'runs' && isRetailMode) {
+  if (activeView === 'runs' && isDeliveryRunMode) {
     return (
       <div id={sectionId} className="space-y-4">
         <OrderWorkspaceTabs
@@ -804,9 +822,9 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
-          showDeliveryRuns={isRetailMode}
+          showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
-          showSplitView={isRetailMode && isSplitViewportEligible}
+          showSplitView={isDeliveryRunMode && isSplitViewportEligible}
         />
         <DeliveryRunsWorkspacePanel
           canViewPos={canViewPos}
@@ -814,6 +832,7 @@ function IncomingQueueWorkspace({
           locked={locked}
           isOnline={isOnline}
           hasActiveShift={hasActiveShift}
+          isRetailMode={isRetailMode}
           queueLocationScopeId={queueLocationScopeId}
           deliveryPersonnelState={deliveryPersonnelState}
           ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
@@ -823,11 +842,12 @@ function IncomingQueueWorkspace({
     );
   }
 
-  // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both retail mode and the
+  // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both delivery-run mode
+  // (retail and fnb) and the
   // >=SPLIT_VIEW_MIN_WIDTH_PX viewport (the reset effect above already guards against a stale
   // activeView here, this is belt + braces on the render branch itself, matching the 'runs'
   // branch's own pattern).
-  if (activeView === 'split' && isRetailMode && isSplitViewportEligible) {
+  if (activeView === 'split' && isDeliveryRunMode && isSplitViewportEligible) {
     const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
     const activeDragOrder = activeDragOrderId !== null
       ? splitQueueCandidates.find((order) => Number(order?.pos_transaction_id) === activeDragOrderId)
@@ -847,9 +867,9 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
-          showDeliveryRuns={isRetailMode}
+          showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
-          showSplitView={isRetailMode && isSplitViewportEligible}
+          showSplitView={isDeliveryRunMode && isSplitViewportEligible}
         />
         <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
@@ -900,7 +920,7 @@ function IncomingQueueWorkspace({
               <div className="min-w-0 max-h-[70vh] overflow-y-auto pr-1">
                 <IncomingQueueOrderList
                   orders={splitQueueCandidates}
-                  isRetailMode={isRetailMode}
+                  isDeliveryRunMode={isDeliveryRunMode}
                   selectedOrderIds={selectedOrderIds}
                   onToggleSelection={toggleOrderSelection}
                   incomingOrderActionState={incomingOrderActionState}
@@ -981,11 +1001,11 @@ function IncomingQueueWorkspace({
         onChange={setActiveView}
         activeCount={incomingOrders.length}
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
-        showDeliveryRuns={isRetailMode}
+        showDeliveryRuns={isDeliveryRunMode}
         runCount={deliveryRunCount}
-        showSplitView={isRetailMode && isSplitViewportEligible}
+        showSplitView={isDeliveryRunMode && isSplitViewportEligible}
       />
-      {isRetailMode ? (
+      {isDeliveryRunMode ? (
         <QueueRunAssignBar
           orders={visibleIncomingOrders}
           selectedCount={visibleSelectedCount}
@@ -1014,7 +1034,7 @@ function IncomingQueueWorkspace({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isRetailMode ? (
+          {isDeliveryRunMode ? (
             <QueueRunFilterControl
               value={runFilter}
               onChange={setRunFilter}
@@ -1135,7 +1155,7 @@ function IncomingQueueWorkspace({
         // to Table would silently bypass it.
         <QueueOrderTableView
           orders={visibleIncomingOrders}
-          isRetailMode={isRetailMode}
+          isDeliveryRunMode={isDeliveryRunMode}
           selectedOrderIds={selectedOrderIds}
           toggleOrderSelection={toggleOrderSelection}
           bulkAssignSubmitting={bulkAssignSubmitting}
@@ -1197,7 +1217,7 @@ function IncomingQueueWorkspace({
                 <div>
                   <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
-                      {isRetailMode ? (
+                      {isDeliveryRunMode ? (
                         <QueueOrderSelectCheckbox
                           orderId={orderId}
                           checked={selectedOrderIds.has(orderId)}
@@ -1210,7 +1230,7 @@ function IncomingQueueWorkspace({
                       <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      {isRetailMode && deliveryJob?.delivery_run_id ? (
+                      {isDeliveryRunMode && deliveryJob?.delivery_run_id ? (
                         <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">
                           Run: {runLabelById.get(String(deliveryJob.delivery_run_id)) || `#${deliveryJob.delivery_run_id}`}
                         </span>
@@ -1404,6 +1424,14 @@ function IncomingQueueWorkspace({
                     onSave={handleUpdateOnlineOrderDeliveryAddress}
                   />
                 </div>
+
+                <PackingEvidenceControl
+                  order={order}
+                  canTransactPos={canTransactPos}
+                  canViewPos={canViewPos}
+                  locked={locked}
+                  isOnline={isOnline}
+                />
 
                 <div>
                   <div className="mt-4 pt-3 border-t border-slate-200 grid grid-cols-2 gap-2">

@@ -547,11 +547,17 @@ export const resolvePosCatalogImageSources = (item = {}) => {
             return [];
         }
     };
-    const hasPosOverride = Boolean(item?.pos_image_url);
+    const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
+    const hasPosOverride = imageSource
+        ? imageSource === 'override'
+        : Boolean(
+            item?.pos_image_url
+            && item.pos_image_url !== item?.storefront_image_url
+        );
     const gallery = [
         ...(hasPosOverride ? parseGallery(item?.pos_image_gallery) : []),
         ...(!hasPosOverride ? parseGallery(item?.storefront_image_gallery) : [])
-    ].filter((entry) => entry?.url || entry?.path || entry?.variants);
+    ].filter((entry) => typeof entry === 'string' || entry?.url || entry?.path || entry?.variants);
     const posVariants = item?.pos_image_variants || {};
     const storefrontVariants = item?.storefront_image_variants || {};
     const hasVariantUrl = (variantSet = {}) => [
@@ -624,7 +630,178 @@ export const resolvePosCatalogImageSources = (item = {}) => {
         webpSrcSet: fallbackVariants.posThumbnailUrl ? undefined : webpVariants.srcSet,
         mobileSrc: webpVariants.thumbnailUrl || fallbackVariants.thumbnailUrl || configuredSrc || '',
         placeholderSrc: resolveAssetUrl(variants?.placeholder_url || ''),
-        fallbackSrcs: [...new Set(galleryFallbackSrcs)]
+        // A stale POS override must not hide an item that still has a valid
+        // Storefront image. Keep the override first, then let the card's
+        // onError handler try these Storefront candidates in order.
+        fallbackSrcs: hasPosOverride
+            ? resolveStorefrontCatalogImageFallbacks(item)
+            : [...new Set(galleryFallbackSrcs)]
+    };
+};
+
+const parseCatalogImageGallery = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+};
+
+const resolveStoredCatalogImageUrl = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^(data|blob):/i.test(raw) || /^https?:\/\//i.test(raw) || raw.startsWith('/')) {
+        return resolveAssetUrl(raw);
+    }
+    return resolveAssetUrl(`/uploads/${raw.replace(/^\/+/, '')}`);
+};
+
+const uniqueImageUrls = (values = []) => Array.from(new Set(values.filter(Boolean)));
+
+const resolveStorefrontCatalogImageFallbacks = (item = {}) => {
+    const candidates = [];
+    const addEntryCandidates = (entry = {}) => {
+        const variants = entry?.variants && typeof entry.variants === 'object' ? entry.variants : {};
+        [
+            variants.large_url,
+            variants.medium_url,
+            variants.thumbnail_url,
+            variants.pos_thumbnail_url,
+            entry?.url,
+            entry?.path
+        ].forEach((value) => {
+            const resolved = resolveStoredCatalogImageUrl(value);
+            if (resolved) candidates.push(resolved);
+        });
+    };
+
+    addEntryCandidates({
+        url: item?.storefront_image_url,
+        path: item?.storefront_image_path,
+        variants: item?.storefront_image_variants
+    });
+
+    parseCatalogImageGallery(item?.storefront_image_gallery).forEach((entry) => {
+        if (entry && typeof entry === 'object') {
+            addEntryCandidates({
+                url: entry.url || entry.image_url,
+                path: entry.path || entry.original_path,
+                variants: entry.variants || entry.image_variants
+            });
+        } else {
+            addEntryCandidates({ url: entry });
+        }
+    });
+
+    return uniqueImageUrls(candidates);
+};
+
+const buildPosCatalogPreviewEntry = ({ url, path, variants } = {}) => {
+    const configuredSrc = resolveStoredCatalogImageUrl(url || path || '');
+    const resolvedVariants = variants && typeof variants === 'object' ? variants : {};
+    const posThumbnailSrc = resolveStoredCatalogImageUrl(resolvedVariants.pos_thumbnail_url);
+    const thumbnailSrc = resolveStoredCatalogImageUrl(resolvedVariants.thumbnail_url);
+    const mediumSrc = resolveStoredCatalogImageUrl(resolvedVariants.medium_url);
+    const largeSrc = resolveStoredCatalogImageUrl(resolvedVariants.large_url);
+    const previewCandidates = uniqueImageUrls([
+        largeSrc,
+        configuredSrc,
+        mediumSrc,
+        thumbnailSrc,
+        posThumbnailSrc
+    ]);
+
+    return {
+        thumbnailSrc: posThumbnailSrc || thumbnailSrc || '',
+        previewSrc: previewCandidates[0] || '',
+        previewFallbacks: previewCandidates.slice(1)
+    };
+};
+
+// Defines the on-demand image contract used by the POS Items viewer. This pure
+// resolver only returns existing server-hosted URLs; it does not fetch, copy, or
+// persist an image. The Items list can keep requesting `thumbnailSrc`, while a
+// viewer may request `previewSrc` only after the cashier opens it.
+export const resolvePosCatalogPreviewGallery = (item = {}) => {
+    const imageSource = String(item?.pos_image_source || '').trim().toLowerCase();
+    const hasPosImage = Boolean(item?.pos_image_url || item?.pos_image_path);
+    const hasPosOverride = imageSource
+        ? imageSource === 'override'
+        : Boolean(
+            hasPosImage
+            && (!item?.pos_image_url || item.pos_image_url !== item?.storefront_image_url)
+        );
+    const rawEntries = hasPosOverride
+        ? [{
+            url: item?.pos_image_url,
+            path: item?.pos_image_path,
+            variants: item?.pos_image_variants
+        }]
+        : parseCatalogImageGallery(item?.storefront_image_gallery);
+    const configuredStorefrontEntry = hasPosOverride ? null : {
+        url: item?.storefront_image_url,
+        path: item?.storefront_image_path,
+        variants: item?.storefront_image_variants
+    };
+    const entries = rawEntries.map((entry) => (
+        entry && typeof entry === 'object'
+            ? {
+                url: entry.url || entry.image_url,
+                path: entry.path,
+                originalPath: entry.original_path,
+                variants: entry.variants || entry.image_variants
+            }
+            : { url: entry }
+    ));
+
+    if (configuredStorefrontEntry?.url || configuredStorefrontEntry?.path) {
+        entries.unshift(configuredStorefrontEntry);
+    }
+
+    const identityIndexes = new Map();
+    const gallery = entries.reduce((result, entry) => {
+        const identity = resolveStoredCatalogImageUrl(entry?.url || entry?.path || entry?.originalPath);
+        if (!identity) return result;
+        const sourceIdentity = resolveStoredCatalogImageUrl(entry?.originalPath || '');
+        const matchingIndex = [identity, sourceIdentity]
+            .map((key) => identityIndexes.get(key))
+            .find((index) => index !== undefined);
+        if (matchingIndex !== undefined) {
+            const index = matchingIndex;
+            const previous = result[index];
+            const variants = { ...(entry?.variants || {}) };
+            Object.entries(previous.variants || {}).forEach(([key, value]) => {
+                if (value !== null && value !== undefined && value !== '') variants[key] = value;
+            });
+            result[index] = {
+                ...buildPosCatalogPreviewEntry({ url: previous.configuredSrc || identity, variants }),
+                configuredSrc: previous.configuredSrc || identity,
+                variants,
+                isPrimary: index === 0
+            };
+            [identity, sourceIdentity].filter(Boolean).forEach((key) => identityIndexes.set(key, index));
+            return result;
+        }
+        const index = result.length;
+        [identity, sourceIdentity].filter(Boolean).forEach((key) => identityIndexes.set(key, index));
+        const resolved = buildPosCatalogPreviewEntry(entry);
+        result.push({
+            ...resolved,
+            configuredSrc: identity,
+            variants: entry?.variants || {},
+            isPrimary: result.length === 0
+        });
+        return result;
+    }, []);
+
+    return {
+        thumbnailSrc: gallery[0]?.thumbnailSrc || '',
+        previewSrc: gallery[0]?.previewSrc || '',
+        previewFallbacks: gallery[0]?.previewFallbacks || [],
+        gallery
     };
 };
 

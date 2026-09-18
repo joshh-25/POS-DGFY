@@ -242,6 +242,24 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.DATE,
         allowNull: true
     },
+    packing_evidence_images: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    // #1931. Retail accept-time goods-issue evidence: two nullable, additive columns following
+    // the existing accepted_at/packed_at/rejected_at lifecycle-timestamp pattern. No Sequelize
+    // association. `inventory_issued_at` is set exactly once, at whichever checkpoint actually
+    // performs the goods-issue (accept-time for Retail; completion-time otherwise and for
+    // pre-deploy legacy orders). `inventory_reversed_at` is set exactly once, when a
+    // post-acceptance cancel/reject reverses that issue. Neither is ever cleared.
+    inventory_issued_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
+    inventory_reversed_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     payment_type: {
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
         // (#1085). Split-tender allocations copy their method onto this column

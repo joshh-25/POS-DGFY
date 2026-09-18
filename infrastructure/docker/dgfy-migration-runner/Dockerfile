@@ -15,6 +15,7 @@ COPY apps/dgfy-migration-runner/package*.json ./
 # Dockerfile; see the comment there for why.
 RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
@@ -30,11 +31,15 @@ WORKDIR /app
 # Same tini/su-exec/non-root pattern as infrastructure/docker/dgfy-api/Dockerfile,
 # minus curl: this is a one-shot CLI (not a long-running HTTP service), so
 # there is no liveness probe to curl against.
-RUN apk add --no-cache tini su-exec \
+COPY infrastructure/docker/install-alpine-runtime-packages.sh /usr/local/bin/install-alpine-runtime-packages
+RUN chmod +x /usr/local/bin/install-alpine-runtime-packages \
+ && install-alpine-runtime-packages tini su-exec \
+ && rm /usr/local/bin/install-alpine-runtime-packages \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/tenant-bootstrap /packages/tenant-bootstrap
 COPY apps/dgfy-migration-runner/package*.json ./
 COPY apps/dgfy-migration-runner/.sequelizerc ./.sequelizerc
 COPY apps/dgfy-migration-runner/migrations ./migrations

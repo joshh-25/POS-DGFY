@@ -38,7 +38,8 @@ or signing private keys.
    fulfillment, and counter payments. DGFY materializes only sanitized public
    projections and remains authoritative for DGFY-origin online payment
    capture, refund, cancellation, and receipt events.
-5. The public staff origin is `https://laundry.dgfy.ph`; the customer URL is
+5. The public staff origin for the Surebizcorp deployment is
+   `https://laundry.surebizcorp.com`; the customer URL is
    `https://dgfy.ph/tenant-store/<handle>`. DGFY Nginx and the DGLaundry
    gateway share only the external `dgfy-dglaundry-edge` network.
 6. Provider events and requests are signed, idempotent, ordered, replay

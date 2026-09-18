@@ -73,11 +73,11 @@ export const createTenantSessionForDgfyAccount = async ({
     const User = dbStore.get('User');
     const tenantUserId = Number.parseInt(membership.tenant_user_id, 10);
     let user = Number.isInteger(tenantUserId) && tenantUserId > 0
-      ? await User.findByPk(tenantUserId)
+      ? await User.findByPk(tenantUserId, { include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] })
       : null;
 
     if (!user && String(process.env.DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED || '').trim().toLowerCase() === 'true') {
-      user = await User.findOne({ where: { email: String(account.email || '').trim().toLowerCase() } });
+      user = await User.findOne({ where: { email: String(account.email || '').trim().toLowerCase() }, include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] });
       if (user) {
         await membership.update({ tenant_user_id: user.user_id }).catch(() => null);
       }
@@ -163,7 +163,7 @@ export const configureTenantDayClosePinForDgfyAccount = async ({
     const User = dbStore.get('User');
     const tenantUserId = Number.parseInt(membership.tenant_user_id, 10);
     const user = Number.isInteger(tenantUserId) && tenantUserId > 0
-      ? await User.findByPk(tenantUserId)
+      ? await User.findByPk(tenantUserId, { include: [{ model: dbStore.get('StaffRole'), as: 'staffRole', required: false }] })
       : null;
 
     if (!user || String(user.email || '').trim().toLowerCase() !== String(account.email || '').trim().toLowerCase()) {

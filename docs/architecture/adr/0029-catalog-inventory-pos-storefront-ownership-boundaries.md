@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-26
-last_reviewed: 2026-07-14
+last_reviewed: 2026-09-16
 review_by: 2026-12-26
 applies_to: architecture_decision
 topic: catalog_inventory_pos_storefront_ownership_boundaries
@@ -199,3 +199,41 @@ ledger before an online order is accepted:
 
 This amendment defines the reservation state, expiry, commit, release, and
 available-to-sell semantics required by the original compatibility decision.
+
+## Amendment (2026-09-16): Retail Acceptance-Time Goods-Issue (#1931)
+
+For **Retail** workflow-mode tenants only, acceptance -- not completion -- now converts the
+hold and issues Inventory's goods-issue effect. Every other workflow mode keeps the
+2026-08-21 Amendment's completion-time policy unchanged.
+
+1. The first successful **Accept** (`placed -> confirmed`) of a Retail online order
+   atomically records Inventory-owned goods-issue/FIFO effects at the order's branch (via
+   the existing `issueStockForOnlineFulfillment` command and `createStockMovement`'s
+   real-time on-hand check), updates the derived global stock balance, transitions the
+   order to `confirmed`, and converts the hold. Deduction happens at acceptance even when
+   the order's `scheduled_for` is later. Any failure -- shortfall or otherwise -- rolls
+   back the order-status change with it; nothing commits partially.
+2. A permitted post-acceptance cancel/reject (customer cancel from `confirmed`, staff
+   `confirmed -> rejected`) reverses **only** the recorded original deduction, once,
+   preserving item, quantity, branch, and FIFO/cost evidence, through the Inventory-owned
+   `reverseOnlineOrderGoodsIssue` command (void semantics, including the
+   batch-consumed-downstream guard) inside the same transaction as the status update.
+   Cancel/reject before acceptance still only releases the hold and adds no stock. The
+   existing cancellation/rejection eligibility windows and all payment/refund rules are
+   unchanged.
+3. Once-only behavior rests on persisted evidence, not on status or mode assumptions: two
+   additive nullable `pos_transactions` columns, `inventory_issued_at` (set at whichever
+   checkpoint actually issues) and `inventory_reversed_at` (set when a reversal runs).
+   Completion still deducts when `inventory_issued_at` is null (Retail orders accepted
+   before this change deployed, and every non-Retail order) and skips when it is set.
+   The transition-edge guards (`placed` has no incoming edges; `completed`/`rejected`/
+   `cancelled` are terminal) plus the row lock make repeat, retried, concurrent, or
+   cross-idempotency-key Accepts a no-op for the issue branch.
+4. Boundary Rules 1-2 are unaffected: POS and Storefront still only *request* stock
+   effects; every issue and every reversal is recorded by Inventory-owned commands. No
+   `[binding]` clause changes -- this amends the 2026-08-21 Amendment's `[default]`-tier
+   completion-time sentence only, via this dated block per ADR 0039 (no new ADR, no
+   tech-lead approval required).
+
+`status: amended` is set per `ARCHITECTURE_GOVERNANCE.md`; this is an amendment, not a
+revision of the original decision history.

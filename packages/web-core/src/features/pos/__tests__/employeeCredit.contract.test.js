@@ -25,7 +25,7 @@ const employeePanelContent = readPosFile('components/EmployeeManagementPanel.jsx
 const employeeCreditPanelContent = readPosFile('components/EmployeeCreditManagementPanel.jsx');
 const employeeCreditPaymentContent = readPosFile('components/EmployeeCreditPaymentPanel.jsx');
 const employeeCreditReportContent = readPosFile('components/EmployeeCreditReportPanel.jsx');
-const settingsWorkspaceContent = readPosFile('components/TerminalOperationsWorkspace.jsx');
+const settingsWorkspaceContent = readPosFile('settings/PosSettingsWorkspace.jsx');
 const terminalPageContent = readPosFile('pages/TerminalPage.jsx');
 const reportsWorkspaceContent = readPosFile('components/PosReportsAnalyticsWorkspace.jsx');
 
@@ -121,7 +121,8 @@ describe('Employee Credit POS contract', () => {
     expect(employeeServiceContent).toContain('`/pos/employees/${employeeId}`');
     expect(employeePanelContent).toContain('Add workmates without creating POS usernames, passwords, or roles.');
     expect(employeeCreditPanelContent).toContain('entry.employee_id');
-    expect(employeeCreditPanelContent).toContain('Enable active employees');
+    expect(employeeCreditPanelContent).toContain('Enable Credit to All Employees');
+    expect(employeeCreditPanelContent).toContain('active employee');
     expect(employeeCreditPanelContent).toContain('Inactive employees are not affected.');
     expect(employeeCreditPanelContent).toContain('ConfirmActionDialog');
     expect(employeeCreditPanelContent).toContain('refreshKey');

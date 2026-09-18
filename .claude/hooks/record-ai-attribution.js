@@ -17,10 +17,13 @@ if (!raw) process.exit(0); // nothing recorded — stay silent, never block the 
 
 let record;
 try { record = JSON.parse(raw); } catch { process.exit(0); }
-if (!record || !record.sessionId || !record.model) process.exit(0);
+const { identityLabel, runtimeLabel } = require(scriptPath);
+const identity = identityLabel(record);
+const runtime = runtimeLabel(record.runtime);
+if (!record || !record.sessionId || !identity || !runtime) process.exit(0);
 
 process.stdout.write(
-  `AI attribution recorded for this session (runtime=claude-code, model=${record.model}). ` +
+  `AI attribution recorded for this session (runtime=${runtime}, identity=${identity}). ` +
   `To tag a PR body or comment, run: node scripts/ai-attribution.js format claude-code ` +
   `${record.sessionId} <Opened|Review|Addressed> <role>\n`
 );

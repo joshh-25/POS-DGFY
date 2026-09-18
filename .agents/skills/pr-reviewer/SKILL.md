@@ -36,6 +36,13 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    real, open, topically relevant issue** — `gh issue view N`, don't take the number on faith. A
    plausible-looking number is not verification; a wrong reference was caught and fixed by hand
    earlier in this repo's history precisely because it wasn't checked before it was pushed.
+   When the PR uses `Refs #N`, also check whether the issue passes the QA-able acceptance-criteria
+   gate described in the Board transition section below. A missing gate is never an `RF-` row in the
+   main `## Review` table and never turns the verdict `BLOCK` or withholds merge — it only means the
+   Board transition step can't write `For QA` yet (see that section for the separate,
+   distinctly-headed comment it produces instead). It is also never a reason to silently substitute
+   `Closes`, and never this role's job to add, edit, or suggest wording for the missing section —
+   that decision belongs to `pm` alone (#1908; `.agents/skills/pm/SKILL.md`).
 3. **Compliance** — run `npm run check:compliance` (wraps
    `scripts/check-compliance-impact.js` + `check-compliance-api-contracts.js`) against the PR's
    diff. A required-but-missing impact declaration is an automatic **BLOCK**, full stop — this is
@@ -77,20 +84,25 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    `no_breach` is a `should-fix` at PR time, since `check-compliance-impact.js` will fail it closed.
 4. **Version level** — run `node scripts/propose-version-level.js --base <base> --head <head>`;
    compare its proposed level per changed app against `check-app-version-bump.js`'s own pass/fail
-   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). **`check:app-versions` is
-   now blocking, live (#1592, epic #1548 Phase 283, flipped 2026-09-05) — not advisory.** A missing
-   or insufficient bump (the check's own FAIL) now fails CI outright on both consuming surfaces
-   (`shared-changed-paths.yml`, `scripts/pr-checks.js`); that failure mode should already show up as
-   a red check under Merge readiness (item 8 below), not something this item has to catch by hand.
-   What this item still catches that CI does not: a proposed level *higher* than what the diff's
-   actual bump satisfies (e.g. the commits look like a `feat` but the PR only bumped patch) — CI's
-   `any-increase` mode (the mode a `develop`-base PR always runs under) accepts *any* increase
-   regardless of size, so a too-small-but-nonzero bump still passes CI. That mismatch is now a
-   **`blocker`**, not a `should-fix` — with blocking live, a mismatched level is a real policy gap,
-   not just a style note (previously: `nit` while advisory, `should-fix` once flipped — that flip has
-   now landed). A proposed level *lower* than the actual bump is never a finding — bumping more than
-   the diff calls for is never wrong. Add one row to the fixed `## Review` table shape for this
-   finding when it fires.
+   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). **`check:app-versions`
+   blocking is base-aware (#1774, epic #1548, revised 2026-09-10 from #1592/Phase 283's 2026-09-05
+   global flip) — blocking on a promotion-leg PR (a `staging`/`main`-base PR: `to-staging/*`,
+   `fix/staging/*`, `release/*`, or a plain hotfix branch), advisory on a `develop`-base PR.** On a
+   promotion-leg PR, a missing or insufficient bump (the check's own FAIL) fails CI outright on both
+   consuming surfaces (`shared-changed-paths.yml`, `scripts/pr-checks.js`); that failure mode should
+   already show up as a red check under Merge readiness (item 8 below), not something this item has
+   to catch by hand. On a `develop`-base PR, a missing bump only warns — `develop -> staging`'s own
+   minor-floor bump (ADR 0081 Decision 6) is what actually enforces the requirement at promotion
+   time, so a missing bump here is a `should-fix`, not a blocker. What this item still catches that
+   CI does not, on either base: a proposed level *higher* than what the diff's actual bump satisfies
+   (e.g. the commits look like a `feat` but the PR only bumped patch) — CI's `any-increase` mode (the
+   mode a `develop`-base PR always runs under, and the mode a `release/*`-headed `main`-base PR also
+   runs under) accepts *any* increase regardless of size, so a too-small-but-nonzero bump still
+   passes CI. That mismatch is a **`blocker`** on a promotion-leg PR — with blocking live there, a
+   mismatched level is a real policy gap, not just a style note — and a **`should-fix`** on a
+   `develop`-base PR, since CI doesn't block that leg at all. A proposed level *lower* than the
+   actual bump is never a finding — bumping more than the diff calls for is never wrong. Add one row
+   to the fixed `## Review` table shape for this finding when it fires.
 5. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 6. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
@@ -118,11 +130,26 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    (#725 RF-2).
 9. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
+10. **Planner handoff, when present** — if the PR body contains `## Plan Handoff` and identifies a
+    local `.tmp/plan-<issue>.md` that exists in the current worktree, read the handoff and compare
+    its scope and acceptance criteria with the issue and diff. A missing ignored local artifact is
+    not a finding; the PR body, linked issue, diff, and authoritative docs remain sufficient.
+
+## Manual session handoff input
+
+An explicit `/handoff` may resume this role with `/pr-reviewer <PR> @.tmp/handoff-<...>.md`. Validate
+the `dgfy-handoff/v1` schema, confirm `role: reviewer`, and confirm the PR identity matches the
+live PR. Use the artifact only to recover prior review context; the live PR, issue, diff, and
+authoritative docs remain the source of truth. A missing, malformed, mismatched, or ambiguous
+handoff is a hard stop when supplied. Without one, the existing reviewer workflow and fallback
+behavior are unchanged.
 
 ## Output — one PR comment, fixed shape
 
 Post via `gh pr comment <N> --body-file <file>`. Exactly one `## Review` comment per run, so a
-Worker (or a human) can parse it mechanically:
+Worker (or a human) can parse it mechanically. The acceptance-gate failure comment and the
+`## Board transition warning` comment described below are deliberate, distinctly-headed
+operational exceptions; they do not replace or duplicate the single `## Review` verdict:
 
 ```markdown
 ## Review — <APPROVE | BLOCK | COMMENT>
@@ -220,10 +247,34 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
 - **On merge** (the first Merge-policy row above): check how the PR linked its issue and act per
   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
   consequence for this role.
-  - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
-    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; the
-    Verifier/QA role (`.agents/skills/verifier/SKILL.md`, #536) is what eventually flips it to
-    `Done` or `Failed`.
+  - PR used **`Refs #N`** → first fetch the linked issue body and run the mechanical QA-able gate:
+    there must be a level-2 heading matching `## Acceptance criteria` (case-insensitive), and the
+    section before the next level-2 heading must contain at least one non-empty Markdown checklist
+    item matching `- [ ] ...` or `- [x] ...`. A `## Definition of done` heading alone does not
+    satisfy this gate. The exact shell check is:
+
+    ```bash
+    BODY=$(gh issue view <N> --json body -q .body)
+    printf '%s\n' "$BODY" | awk '
+      BEGIN { in_section=0; found_item=0 }
+      tolower($0) ~ /^##[[:space:]]+acceptance criteria[[:space:]]*$/ { in_section=1; next }
+      in_section && /^##[[:space:]]/ { exit(found_item ? 0 : 1) }
+      in_section && /^[[:space:]]*[-*][[:space:]]+\[[ xX]\][[:space:]]+[^[:space:]]/ { found_item=1 }
+      END { if (!in_section || !found_item) exit 1; exit 0 }
+    '
+    ```
+
+    If the gate fails, **refuse the `For QA` write** and leave the issue open. Post a durable PR
+    comment naming the issue, the missing gate, and the required PM follow-up; do not silently close
+    it or substitute another Status. **This is independent of the PR's own `## Review` verdict and
+    the merge decision — a missing acceptance-criteria section never turns an otherwise-mergeable PR
+    into `BLOCK`, and this role never writes or edits the missing section itself** (#1908); closing the
+    gap is `pm`'s to do.
+
+    If the gate passes, set the issue's board `Status` to `For QA` and **leave it open** — that's
+    deliberate, not an oversight to "fix" by closing it. The Verifier/QA role (`.agents/skills/verifier/SKILL.md`,
+    #536) advances it to `For Prod` or `Failed`, and the Promoter later completes the production
+    transition.
   - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
     workflow already set `Done`.
 - **Independent of merge** — verdict **`BLOCK`** → move the card back to `In progress` (taxonomy:
@@ -234,6 +285,12 @@ Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't confl
   merge `main`" rule above. Those two lanes belong to the Verifier/QA role.
 - Field IDs and the write mutation are in `.agents/skills/pm/references/board-operations.md` — don't
   copy them here. A failed board write is reported, never a reason to withhold the merge itself.
+  The write must be read back immediately: verify the issue's project item now reports `For QA`.
+  If `gh project item-edit` fails, the item is missing, or read-back reports any other Status, post
+  one durable `## Board transition warning` PR comment containing the issue number, target Status,
+  command/API error or observed Status, and the exact retry/follow-up needed. A successful command
+  without a matching read-back is not evidence that the transition landed; this is the #1563
+  hardening path for transient GraphQL failures and silent no-ops.
 
 ## First live use
 

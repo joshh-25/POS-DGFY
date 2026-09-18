@@ -535,6 +535,9 @@ body {
     align-items: flex-end;
   }
 
+/* Keep the checkout confirmation sheet reachable on short mobile viewports.
+   The text-size setting is included because larger POS typography changes the
+   usable content height without changing the dialog's ownership. */
   .pos-checkout-mobile-sheet {
     box-sizing: border-box;
     transform: translate3d(0, 100%, 0);
@@ -830,6 +833,8 @@ body {
 /* Keep tablet action targets touch-safe without changing the shared six-track
  * layout. The component assigns two wide tracks to Checkout/Print and three
  * equal tracks to the secondary actions. */
+/* Tablet action buttons retain larger touch targets while reusing the same
+ * parked-sale grouping and ordering as the PC layout. */
 @media (min-width: 640px) and (max-width: 1023.98px) {
   .dgfy-pos-tablet-action-grid > button {
     min-height: 54px;
@@ -1004,7 +1009,8 @@ body {
 }
 
 .dgfy-pos-shell {
-  --pos-shell-bg: linear-gradient(180deg, #f8fbff 0%, #f7fafc 42%, #eef4ff 100%);
+  --pos-font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+  --pos-shell-bg: #ffffff;
   --pos-shell-panel: rgba(255, 255, 255, 0.9);
   --pos-shell-panel-strong: #ffffff;
   --pos-shell-border: rgba(148, 163, 184, 0.22);
@@ -1027,7 +1033,56 @@ body {
   min-height: 0;
   background: var(--pos-shell-bg);
   color: var(--pos-shell-text);
-  font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+  font-family: var(--pos-font-family);
+}
+
+/* POS dialogs and notifications render through document.body portals. Keep
+ * them on the same Inter-first stack as the visible POS shell. The surface
+ * marker also covers auth/setup routes before TerminalPage mounts. */
+body[data-pos-surface="pos"],
+body[data-pos-text-size] {
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+}
+
+body[data-pos-surface="pos"] .wizard-core-typography,
+body[data-pos-surface="pos"] [data-sonner-toaster] {
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
+}
+
+/* Inter keeps body copy, product names, and prices at normal tracking. Add
+ * modest role-based spacing to labels and compact controls so readability
+ * improves without making the entire POS surface feel loose. */
+@media screen {
+  .dgfy-pos-shell,
+  body[data-pos-surface="pos"],
+  body[data-pos-text-size] {
+    letter-spacing: 0;
+    line-height: 1.45;
+  }
+
+  .dgfy-pos-shell :where(.text-xs, [class*="text-[10px]"], [class*="text-[11px]"], [class*="text-[12px]"]),
+  body[data-pos-surface="pos"] :where(.text-xs, [class*="text-[10px]"], [class*="text-[11px]"], [class*="text-[12px]"]),
+  body[data-pos-text-size] :where(.text-xs, [class*="text-[10px]"], [class*="text-[11px]"], [class*="text-[12px]"]) {
+    letter-spacing: 0.02em;
+  }
+
+  .dgfy-pos-shell :is(label, button, [role="button"], [class*="text-[14px]"]),
+  body[data-pos-surface="pos"] :is(label, button, [role="button"], [class*="text-[14px]"]),
+  body[data-pos-text-size] :is(label, button, [role="button"], [class*="text-[14px]"]) {
+    letter-spacing: 0.03em;
+  }
+
+  .dgfy-pos-shell :where(.uppercase, [class*="uppercase"]),
+  body[data-pos-surface="pos"] :where(.uppercase, [class*="uppercase"]),
+  body[data-pos-text-size] :where(.uppercase, [class*="uppercase"]) {
+    letter-spacing: 0.06em;
+  }
+
+  .dgfy-pos-shell .tracking-tight,
+  body[data-pos-surface="pos"] .tracking-tight,
+  body[data-pos-text-size] .tracking-tight {
+    letter-spacing: -0.01em;
+  }
 }
 
 html.dgfy-pos-document-scroll-lock,
@@ -1079,6 +1134,13 @@ body.dgfy-pos-document-scroll-lock {
   box-shadow: var(--pos-control-focus-shadow);
   outline: none;
   transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+/* The sticky topbar only needs a quiet separation from the workspace below.
+ * Keep the larger panel elevation for content surfaces, while avoiding a
+ * heavy shadow across the full viewport edge. */
+.dgfy-pos-topbar {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .dgfy-pos-terminal-badge {
@@ -1272,6 +1334,11 @@ body[data-pos-text-size="extra-large"] {
     font-size: calc(15px * var(--pos-text-size-scale));
   }
 
+  body[data-pos-text-size="large"] :where([class*="text-[16px]"]),
+  body[data-pos-text-size="extra-large"] :where([class*="text-[16px]"]) {
+    font-size: calc(16px * var(--pos-text-size-scale));
+  }
+
   body[data-pos-text-size="large"] :where([class*="text-[17px]"]),
   body[data-pos-text-size="extra-large"] :where([class*="text-[17px]"]) {
     font-size: calc(17px * var(--pos-text-size-scale));
@@ -1389,14 +1456,16 @@ body[data-pos-text-size="extra-large"] {
 }
 
 /* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
-   must not override this inside the standalone POS terminal. */
-@media (max-width: 639.98px) {
+   must not override this inside the standalone POS terminal, including
+   Settings forms rendered through body-level portals. */
+@media (max-width: 767.98px) {
   html {
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
   }
 
-  .dgfy-pos-shell :is(input, textarea, select) {
+  .dgfy-pos-shell :is(input, textarea, select),
+  body[data-pos-surface="pos"] :is(input, textarea, select) {
     font-size: 16px !important;
   }
 
@@ -1408,6 +1477,18 @@ body[data-pos-text-size="extra-large"] {
     font-size: 0.75rem !important;
     font-weight: 600;
     line-height: 1rem;
+
+  }
+  /* POS Settings keeps its compact field scale on mobile. The workspace still
+     provides the touch-friendly control height, while labels and values remain
+     visually consistent with the desktop Settings density. */
+  .dgfy-pos-shell :is([data-pos-settings-workspace], #pos-settings-panel) :is(input, textarea, select) {
+    font-size: 13px !important;
+  }
+
+  .dgfy-pos-shell :is([data-pos-settings-workspace], #pos-settings-panel) [aria-label$="per page"],
+  .dgfy-pos-shell :is([data-pos-settings-workspace], #pos-settings-panel) [aria-label$="page"] {
+    font-size: 12px !important;
   }
 }
 
@@ -1785,6 +1866,44 @@ html.dgfy-imin-performance [class~="transition-all"] {
 .pos-checkout-mobile-portrait-sheet .pos-checkout-payment-suggestion-scroll,
 .pos-checkout-mobile-portrait-sheet .pos-checkout-discount-type-scroll {
   touch-action: pan-x pan-y !important;
+
+}
+/*
+ * POS Items custom modals cannot rely on dynamic viewport units because the
+ * iMin wrapper supports Chrome 80. Keep the vh declaration first so older
+ * WebViews retain a real constraint, then let newer browsers refine it with
+ * dvh as the software keyboard and browser chrome change the visual viewport.
+ */
+.pos-items-modal-panel {
+  height: calc(100vh - 1.5rem);
+  height: calc(100dvh - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.pos-items-modal-panel--auto {
+  height: auto;
+}
+
+.pos-items-modal-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pos-items-modal-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .pos-items-modal-panel {
+    height: auto;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
 }
 
 @media print {
@@ -1846,9 +1965,7 @@ html.dgfy-imin-performance [class~="transition-all"] {
 }
 
 .wizard-core-typography {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Inter', 'Roboto', system-ui, sans-serif;
 }
 
 .wizard-core-typography .wizard-title {

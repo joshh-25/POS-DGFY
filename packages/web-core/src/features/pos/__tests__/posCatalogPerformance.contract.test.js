@@ -63,6 +63,22 @@ describe('hosted POS catalog performance contracts', () => {
     expect(catalogWorkflowSource).toContain('catalogRequestSequenceRef');
     expect(catalogWorkflowSource).toContain('catalogReadRerunRef.current = true;');
     expect(catalogWorkflowSource).toContain('if (catalogRequestSequenceRef.current !== requestSequence) return;');
+    expect(catalogWorkflowSource).toContain('catalogRequestAbortControllerRef');
+    expect(catalogWorkflowSource).toContain('{ signal: requestAbortController.signal }');
+    expect(readSource(path.resolve(webCoreRoot, 'src/features/pos/services/posService.js')))
+      .toContain('export const fetchPosCatalog = async (params = {}, requestConfig = {})');
+  });
+
+  it('avoids cart-sized work while the catalog search rerenders', () => {
+    const checkoutSource = readCheckoutRenderSource();
+    const financialSource = readSource(path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosFinancialWorkflow.js'));
+
+    expect(checkoutSource).toContain('const cartQuantityByItemId = React.useMemo');
+    expect(checkoutSource).toContain('cartQuantityByItemId.get(Number(item.item_id)) || 0');
+    expect(checkoutSource).not.toContain('safeCart\n                                .filter((line) => line.item_id === item.item_id)');
+    expect(financialSource).toContain('const itemDiscountTotals = useMemo(');
+    expect(financialSource).toContain('const governedDiscountTotals = useMemo(');
+    expect(financialSource).toContain('const vatBreakdown = useMemo(');
   });
 
   it('initializes receipt settings before callbacks that use them', () => {

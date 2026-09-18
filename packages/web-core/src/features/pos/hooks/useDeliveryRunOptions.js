@@ -12,9 +12,10 @@ import { fetchDeliveryRuns } from '../services/deliveryRunService.js';
 
 const getErrorMessage = (error, fallback) => error?.response?.data?.message || fallback;
 
-// `enabled` (Phase 229): the run API is mode-agnostic, but retail is the only mode with any UI
-// that surfaces a run -- gate the fetch itself so an F&B tenant (or a not-yet-retail-mode render)
-// never issues it. Mirrors D-3's retail gate on the filter/assign-bar UI at the data layer.
+// `enabled` (Phase 229, widened #1924): the run API is mode-agnostic, and retail + fnb are the
+// modes with UI that surfaces a run -- gate the fetch itself so a services tenant (or a
+// not-yet-loaded-mode render) never issues it. Mirrors D-3's delivery-run-mode gate on the
+// filter/assign-bar UI at the data layer.
 export default function useDeliveryRunOptions(queueLocationScopeId, { enabled = true } = {}) {
   const [state, setState] = React.useState({ loading: false, runs: [], errorMessage: '' });
   const requestIdRef = React.useRef(0);

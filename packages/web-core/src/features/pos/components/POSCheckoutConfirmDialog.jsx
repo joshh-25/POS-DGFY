@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
 import {
     formatSplitPaymentMethod,
     getCartLineSubtotal,
@@ -160,6 +161,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
     const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);
     const [orderSummaryOpen, setOrderSummaryOpen] = useState(false);
+    const [isIminRuntime] = useState(() => isIminWrapperRuntime());
     const [discountWorkspaceMounted, setDiscountWorkspaceMounted] = useState(false);
     const [discountWorkspaceOpen, setDiscountWorkspaceOpen] = useState(false);
     const [checkoutSheetMotionOpen, setCheckoutSheetMotionOpen] = useState(false);
@@ -217,6 +219,12 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         const scrollRegion = checkoutSheetRef.current?.querySelector('[data-testid="pos-checkout-scroll-container"]');
         if (scrollRegion) scrollRegion.scrollTop = 0;
     }, [checkoutConfirmModalOpen, discountModalOpen, isMobilePortraitViewport]);
+
+    useEffect(() => {
+        if (checkoutConfirmModalOpen) return;
+        setPaymentAmountDraft(null);
+        setOrderSummaryOpen(false);
+    }, [checkoutConfirmModalOpen]);
 
     if (!checkoutConfirmModalOpen) return null;
 
@@ -317,7 +325,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         <Dialog
             open={checkoutConfirmModalOpen}
             mobileSheet
-            overlayClassName={`pos-checkout-mobile-overlay ${checkoutSheetMotionOpen ? 'pos-checkout-mobile-overlay-visible' : ''} ${checkoutOpenedFromCurrentSale ? 'pos-checkout-mobile-overlay-handoff' : ''} bg-slate-950/70 backdrop-blur-none`}
+            overlayClassName={`pos-checkout-mobile-overlay ${checkoutSheetMotionOpen ? 'pos-checkout-mobile-overlay-visible' : ''} ${checkoutOpenedFromCurrentSale ? 'pos-checkout-mobile-overlay-handoff' : ''} bg-slate-950/70 backdrop-blur-none ${isIminRuntime ? 'pos-checkout-imin-overlay' : ''}`}
             onOpenChange={(nextOpen) => {
                 if (nextOpen) {
                     setCheckoutConfirmModalOpen(true);
@@ -429,7 +437,9 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 servicesNotes={servicesNotes}
                                 setServicesNotes={setServicesNotes}
                                 buttonLayout={true}
+                                isTabletViewport={isTabletViewport}
                                 disabled={posActionsBlocked || checkoutLoading}
+                                cartItemCount={safeCart.length}
                             />
                         </Suspense>
                     </div>

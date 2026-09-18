@@ -37,6 +37,7 @@ const maplibreMocks = vi.hoisted(() => {
       this.fitBounds = vi.fn();
       this.resize = vi.fn();
       this.remove = vi.fn();
+      this.addControl = vi.fn();
       this.canvas = { style: {} };
       maps.push(this);
       setTimeout(() => this.handlers.load?.(), 0);
@@ -146,6 +147,12 @@ const maplibreMocks = vi.hoisted(() => {
     }
   }
 
+  class MockAttributionControl {
+    constructor(options) {
+      this.options = options;
+    }
+  }
+
   return {
     maps,
     markers,
@@ -154,6 +161,9 @@ const maplibreMocks = vi.hoisted(() => {
     }),
     Marker: vi.fn(function MarkerConstructor(options) {
       return new MockMarker(options);
+    }),
+    AttributionControl: vi.fn(function AttributionControlConstructor(options) {
+      return new MockAttributionControl(options);
     })
   };
 });
@@ -161,7 +171,8 @@ const maplibreMocks = vi.hoisted(() => {
 vi.mock('maplibre-gl', () => ({
   default: {
     Map: maplibreMocks.Map,
-    Marker: maplibreMocks.Marker
+    Marker: maplibreMocks.Marker,
+    AttributionControl: maplibreMocks.AttributionControl
   }
 }));
 
@@ -255,7 +266,8 @@ describe('MapPinPicker MapLibre behavior', () => {
       pitch: 0,
       minZoom: 4,
       maxZoom: 18,
-      trackResize: false
+      trackResize: false,
+      attributionControl: false
     }));
     expect(maplibreMocks.Map.mock.calls[0][0]).not.toHaveProperty('maxBounds');
     expect(maplibreMocks.Map.mock.calls[0][0].center).toEqual([122.5621, 10.7202]);
@@ -263,9 +275,259 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(maplibreMocks.Map.mock.calls[0][0]).toHaveProperty('transformRequest');
     expect(maplibreMocks.maps[0].dragRotate.disable).toHaveBeenCalled();
     expect(maplibreMocks.maps[0].touchZoomRotate.disableRotation).toHaveBeenCalled();
+    expect(maplibreMocks.AttributionControl).toHaveBeenCalledWith({ compact: true });
+    expect(maplibreMocks.maps[0].addControl).toHaveBeenCalledWith(expect.anything(), 'bottom-right');
     expect(await screen.findByLabelText(/Map location picker/i)).toBeTruthy();
     expect(screen.getByText(/No pin selected yet\./i)).toBeTruthy();
     expect(maplibreMocks.Marker).not.toHaveBeenCalled();
+  });
+
+  it('renders a read-only map preview with the selected pin and no picker controls', async () => {
+    render(<MapPinPicker readOnly latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await waitFor(() => expect(maplibreMocks.markers[0]).toBeTruthy());
+
+    const mapSurface = screen.getByRole('application', { name: 'Map location picker' }).parentElement.parentElement.parentElement;
+    expect(mapSurface).toBeTruthy();
+    expect(mapSurface.className).toContain('h-[260px]');
+    expect(mapSurface.className).toContain('sm:h-[340px]');
+    expect(mapSurface.className).toContain('lg:h-[420px]');
+    expect(screen.queryByRole('searchbox', { name: 'Search business address' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Adjust Pin' })).toBeNull();
+    expect(maplibreMocks.markers[0].lngLat).toEqual({ lng: 122.5621, lat: 10.7202 });
+  });
+
+  it('renders the streamlined Storefront location editor with direct pin editing', async () => {
+    const onChange = vi.fn();
+    render(
+      <MapPinPicker
+        locationEditorMode
+        defaultAdjustMode
+        latitude={10.7202}
+        longitude={122.5621}
+        addressLine="Jaro, Iloilo City, Iloilo, Philippines"
+        deliveryRadiusKm={5}
+        onChange={onChange}
+      />
+    );
+
+    await waitFor(() => expect(maplibreMocks.maps[0]).toBeTruthy());
+    await waitFor(() => expect(maplibreMocks.markers[0]).toBeTruthy());
+
+    const useCurrentLocationButton = screen.getByRole('button', { name: /Use Current Location/i });
+    expect(useCurrentLocationButton.className).toContain('min-h-11');
+    expect(useCurrentLocationButton.className).toContain('px-3');
+    expect(useCurrentLocationButton.className).toContain('text-[12px]');
+    const mapSurface = screen.getByRole('application', { name: 'Map location picker' }).parentElement.parentElement.parentElement;
+    expect(mapSurface).toBeTruthy();
+    expect(mapSurface.className).toContain('h-[260px]');
+    expect(mapSurface.className).toContain('sm:h-[340px]');
+    expect(mapSurface.className).toContain('lg:h-[420px]');
+    expect(screen.queryByText('Selected location')).toBeNull();
+    expect(screen.queryByText('5.00 km radius')).toBeNull();
+    expect(screen.queryByText('Pinned coordinates')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reset View/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Adjust Pin/i })).toBeNull();
+    expect(screen.queryByText(/Location is locked/i)).toBeNull();
+    expect(maplibreMocks.markers[0].options.draggable).toBe(true);
+
+    act(() => {
+      maplibreMocks.maps[0].handlers.click({
+        lngLat: { lng: 122.599488, lat: 10.720263 }
+      });
+    });
+    expect(onChange).toHaveBeenCalledWith({ latitude: 10.720263, longitude: 122.599488 });
+
+    const searchInput = screen.getByRole('searchbox', { name: 'Search business address' });
+    await userEvent.click(screen.getByRole('button', { name: 'Clear address search' }));
+    expect(searchInput.value).toBe('');
+  });
+
+  it('expands an editor map only within the feature-owned settings boundary', async () => {
+    const user = userEvent.setup();
+    const expansionBoundaryRef = { current: null };
+    const { container } = render(
+      <div ref={(node) => { expansionBoundaryRef.current = node; }}>
+        <MapPinPicker
+          locationEditorMode
+          latitude={10.7202}
+          longitude={122.5621}
+          deliveryRadiusKm={5}
+          onChange={vi.fn()}
+          expansionBoundaryRef={expansionBoundaryRef}
+        />
+      </div>
+    );
+    const boundary = container.firstElementChild;
+    Object.defineProperty(boundary, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 244, top: 80, width: 900, height: 720, right: 1144, bottom: 800 })
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Expand map' }));
+
+    const mapSurface = screen.getByRole('dialog', { name: 'Set branch location' });
+    expect(mapSurface.className).toContain('fixed');
+    expect(screen.queryByText('Search for an address or adjust the exact store location.')).toBeNull();
+    const expandedSearch = screen.getByRole('search', { name: 'Search for a storefront location in the expanded map' });
+    expect(expandedSearch.className).toBe('space-y-2');
+    const dismissScrim = screen.getByRole('button', { name: 'Dismiss expanded map' });
+    expect(dismissScrim.className).toContain('fixed z-40');
+    expect(dismissScrim.className).not.toContain('inset-0');
+    expect(dismissScrim.className).toContain('bg-slate-950/25');
+    expect(dismissScrim.style.left).toBe('244px');
+    expect(dismissScrim.style.top).toBe('80px');
+    expect(dismissScrim.style.width).toBe(`${Math.min(1144, window.innerWidth) - 244}px`);
+    const inset = window.innerWidth >= 1024 ? 24 : window.innerWidth >= 640 ? 18 : 12;
+    const leftEdge = 244 + inset;
+    const rightEdge = Math.min(1144, window.innerWidth) - inset;
+    const topEdge = 80 + inset;
+    const bottomEdge = Math.min(800, window.innerHeight) - inset;
+    const availableHeight = bottomEdge - topEdge;
+    const expectedHeight = Math.min(window.innerWidth >= 1024 ? 620 : 680, availableHeight);
+    expect(mapSurface.style.left).toBe(`${leftEdge}px`);
+    expect(mapSurface.style.top).toBe(`${topEdge + ((availableHeight - expectedHeight) / 2)}px`);
+    expect(mapSurface.style.width).toBe(`${Math.min(1040, rightEdge - leftEdge)}px`);
+    expect(mapSurface.style.height).toBe(`${expectedHeight}px`);
+    expect(screen.getByRole('searchbox', { name: 'Search business address' })).toBeTruthy();
+  });
+
+  it('uses a semantic expanded dialog and restores focus after closing', async () => {
+    const user = userEvent.setup();
+    const expansionBoundaryRef = { current: null };
+    render(
+      <div ref={(node) => { expansionBoundaryRef.current = node; }}>
+        <MapPinPicker
+          locationEditorMode
+          latitude={10.7202}
+          longitude={122.5621}
+          deliveryRadiusKm={5}
+          onChange={vi.fn()}
+          expansionBoundaryRef={expansionBoundaryRef}
+        />
+      </div>
+    );
+    Object.defineProperty(expansionBoundaryRef.current, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 12, top: 12, width: 700, height: 700, right: 712, bottom: 712 })
+    });
+
+    const expandButton = await screen.findByRole('button', { name: 'Expand map' });
+    await user.click(expandButton);
+    const closeButton = await screen.findByRole('button', { name: 'Close expanded map' });
+    await waitFor(() => expect(document.activeElement).toBe(closeButton));
+    expect(screen.getByRole('dialog', { name: 'Set branch location' }).getAttribute('aria-modal')).toBe('true');
+    expect(closeButton.getAttribute('title')).toBe('Close expanded map');
+
+    await user.click(closeButton);
+    const restoredExpandButton = await screen.findByRole('button', { name: 'Expand map' });
+    await waitFor(() => expect(document.activeElement).toBe(restoredExpandButton));
+
+    await user.click(restoredExpandButton);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Set branch location' })).toBeNull());
+  });
+
+  it('locks the settings scroll parent and recalculates bounds on scroll', async () => {
+    const user = userEvent.setup();
+    const scrollParentRef = { current: null };
+    const expansionBoundaryRef = { current: null };
+    let rect = { left: 20, top: 20, width: 700, height: 600, right: 720, bottom: 620 };
+    render(
+      <div ref={(node) => { scrollParentRef.current = node; }} style={{ overflowY: 'auto' }}>
+        <div ref={(node) => { expansionBoundaryRef.current = node; }}>
+          <MapPinPicker
+            locationEditorMode
+            latitude={10.7202}
+            longitude={122.5621}
+            deliveryRadiusKm={5}
+            onChange={vi.fn()}
+            expansionBoundaryRef={expansionBoundaryRef}
+            expansionScrollParentRef={scrollParentRef}
+          />
+        </div>
+      </div>
+    );
+    Object.defineProperty(scrollParentRef.current, 'scrollHeight', { configurable: true, value: 1200 });
+    Object.defineProperty(scrollParentRef.current, 'clientHeight', { configurable: true, value: 600 });
+    Object.defineProperty(expansionBoundaryRef.current, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => rect
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Expand map' }));
+    expect(scrollParentRef.current.style.overflowY).toBe('hidden');
+    rect = { left: 80, top: 40, width: 500, height: 500, right: 580, bottom: 540 };
+    act(() => window.dispatchEvent(new Event('scroll')));
+    const responsiveInset = window.innerWidth >= 1024 ? 24 : window.innerWidth >= 640 ? 18 : 12;
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Set branch location' }).style.left).toBe(`${80 + responsiveInset}px`));
+
+    await user.click(screen.getByRole('button', { name: 'Close expanded map' }));
+    expect(scrollParentRef.current.style.overflowY).toBe('auto');
+  });
+
+  it('keeps the expanded surface inside mobile, tablet, and desktop viewports', async () => {
+    const user = userEvent.setup();
+    const expansionBoundaryRef = { current: null };
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+    const setViewport = (width, height) => {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
+    };
+
+    render(
+      <div ref={(node) => { expansionBoundaryRef.current = node; }}>
+        <MapPinPicker
+          locationEditorMode
+          latitude={10.7202}
+          longitude={122.5621}
+          deliveryRadiusKm={5}
+          onChange={vi.fn()}
+          expansionBoundaryRef={expansionBoundaryRef}
+        />
+      </div>
+    );
+    Object.defineProperty(expansionBoundaryRef.current, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: -24, top: 20, width: 2000, height: 2000, right: 1976, bottom: 2020 })
+    });
+
+    try {
+      setViewport(390, 844);
+      await user.click(await screen.findByRole('button', { name: 'Expand map' }));
+
+      for (const [width, height] of [[390, 844], [768, 1024], [1024, 768], [1440, 900]]) {
+        setViewport(width, height);
+        act(() => window.dispatchEvent(new Event('resize')));
+        await waitFor(() => {
+          const dialog = screen.getByRole('dialog', { name: 'Set branch location' });
+          const left = Number.parseFloat(dialog.style.left);
+          const top = Number.parseFloat(dialog.style.top);
+          const dialogWidth = Number.parseFloat(dialog.style.width);
+          const dialogHeight = Number.parseFloat(dialog.style.height);
+          expect(left).toBeGreaterThanOrEqual(0);
+          expect(top).toBeGreaterThanOrEqual(0);
+          expect(left + dialogWidth).toBeLessThanOrEqual(width);
+          expect(top + dialogHeight).toBeLessThanOrEqual(height);
+        });
+      }
+
+      await user.click(screen.getByRole('button', { name: 'Close expanded map' }));
+    } finally {
+      setViewport(originalInnerWidth, originalInnerHeight);
+    }
+  });
+
+  it('does not fall back to covering the viewport without a feature boundary', async () => {
+    const user = userEvent.setup();
+    render(<MapPinPicker locationEditorMode latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Expand map' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Set branch location' })).toBeNull();
+    expect(screen.getByText(/cannot be expanded in this view/i)).toBeTruthy();
   });
 
   it('keeps POS map tiles on OpenFreeMap when the POS host has no local tile proxy', () => {

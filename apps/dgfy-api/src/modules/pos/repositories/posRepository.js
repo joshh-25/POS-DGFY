@@ -92,17 +92,33 @@ const buildTransactionPaymentTypeWhere = (sequelize, paymentType) => {
     const normalized = normalizePaymentType(paymentType);
     if (!normalized) return null;
 
+    // Normalized payment_breakdown values can include zero-value placeholder
+    // rows for supported tenders, so a cash-only transaction can still contain
+    // a zero-value GCash row. Match only positive allocations for split-tender
+    // history/report filters.
+    const escapedPaymentType = typeof sequelize.escape === 'function'
+        ? sequelize.escape(normalized)
+        : `'${normalized.replace(/'/g, "''")}'`;
+    const paymentBreakdownExpression = 'COALESCE(`PosTransaction`.`payment_breakdown`, JSON_ARRAY())';
+    // MariaDB 10.4 does not support JSON_TABLE. JSON_SEARCH gives us the
+    // matching allocation path, which is then rewritten from payment_type to
+    // amount so zero-value placeholder rows cannot satisfy the filter.
+    const positiveBreakdownPayment = sequelize.literal(`
+        JSON_SEARCH(${paymentBreakdownExpression}, 'one', ${escapedPaymentType}, NULL, '$[*].payment_type') IS NOT NULL
+        AND CAST(JSON_UNQUOTE(JSON_EXTRACT(
+            ${paymentBreakdownExpression},
+            REPLACE(
+                JSON_UNQUOTE(JSON_SEARCH(${paymentBreakdownExpression}, 'one', ${escapedPaymentType}, NULL, '$[*].payment_type')),
+                '.payment_type',
+                '.amount'
+            )
+        )) AS DECIMAL(18, 4)) > 0
+    `);
+
     return {
         [Op.or]: [
             { payment_type: normalized },
-            sequelize.where(
-                sequelize.fn(
-                    'JSON_CONTAINS',
-                    sequelize.col('PosTransaction.payment_breakdown'),
-                    JSON.stringify({ payment_type: normalized })
-                ),
-                1
-            )
+            positiveBreakdownPayment
         ]
     };
 };
@@ -183,11 +199,17 @@ const normalizeTerminalRegistry = (rawValue) => {
             return;
         }
         const locationId = toPositiveInt(entry?.location_id);
+        const cashierUserIds = Array.isArray(entry?.cashier_user_ids)
+            ? Array.from(new Set(entry.cashier_user_ids
+                .map((userId) => Number.parseInt(userId, 10))
+                .filter((userId) => Number.isInteger(userId) && userId > 0)))
+            : null;
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: locationId
+            location_id: locationId,
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     });
     return normalized;
@@ -629,9 +651,39 @@ const resolvePosDisplayImage = ({ override, storefrontImage }) => {
     return {
         path,
         url,
-        variants: deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url }),
+        variants: override?.pos_image_path || override?.pos_image_url
+            ? deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url })
+            : deriveStorefrontImageVariants(storefrontImage),
         source
     };
+};
+
+const resolvePrimaryStorefrontGalleryEntry = (storefrontImage) => {
+    const gallery = parseJsonLoosely(storefrontImage?.storefront_image_gallery);
+    if (!Array.isArray(gallery) || gallery.length === 0) {
+        return null;
+    }
+
+    const primaryPath = String(storefrontImage?.storefront_image_path || '').trim();
+    const primaryUrl = String(storefrontImage?.storefront_image_url || '').trim();
+    return gallery.find((entry) => entry?.is_primary === true)
+        || gallery.find((entry) => (
+            (primaryPath && String(entry?.path || '').trim() === primaryPath)
+            || (primaryUrl && String(entry?.url || '').trim() === primaryUrl)
+        ))
+        || gallery[0]
+        || null;
+};
+
+const deriveStorefrontImageVariants = (storefrontImage) => {
+    const derived = deriveImageAssetVariantUrls({
+        storedPath: storefrontImage?.storefront_image_path || null,
+        storedUrl: storefrontImage?.storefront_image_url || null
+    });
+    const explicit = resolvePrimaryStorefrontGalleryEntry(storefrontImage)?.variants;
+    return explicit && typeof explicit === 'object' && !Array.isArray(explicit)
+        ? { ...derived, ...explicit }
+        : derived;
 };
 
 const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
@@ -727,10 +779,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_source: posDisplayImage.source,
                 storefront_image_path: storefrontImage?.storefront_image_path || null,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
                 ...(options.includePrimaryBarcode === true
                     ? { primary_barcode: primaryBarcodeMap.get(Number(item.item_id)) || null }
@@ -975,6 +1024,10 @@ export const buildTransactionInclude = () => ([
         attributes: [
             'delivery_job_id',
             'delivery_run_id',
+            'loading_state',
+            'loading_exception_reason',
+            'loading_marked_by',
+            'loading_marked_at',
             'provider',
             'provider_delivery_id',
             'status',
@@ -3526,6 +3579,12 @@ export const posRepository = {
             include: buildTransactionInclude()
         };
 
+        // Client-side printer audit confirmation only needs transaction
+        // identity and receipt-contract metadata. Allow that path to avoid
+        // loading every line, discount, delivery, F&B, and user association.
+        if (Array.isArray(options.attributes)) queryOptions.attributes = options.attributes;
+        if (options.include === false) delete queryOptions.include;
+
         if (options.transaction) {
             queryOptions.transaction = options.transaction;
             if (options.lock) {
@@ -4655,10 +4714,7 @@ export const posRepository = {
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 pos_readiness: readiness
             }
         };
@@ -4908,10 +4964,7 @@ export const posRepository = {
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
                 storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveImageAssetVariantUrls({
-                    storedPath: storefrontImage?.storefront_image_path || null,
-                    storedUrl: storefrontImage?.storefront_image_url || null
-                }),
+                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
                 has_override: Boolean(override),
                 pos_readiness: readiness,
                 catalog_setup_recommendation: recommendation
@@ -4919,7 +4972,7 @@ export const posRepository = {
         });
     },
 
-    async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null } = {}) {
+    async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null, locationId = null } = {}) {
         const Item = dbStore.get('Item');
         const ItemFolder = dbStore.get('ItemFolder');
         const normalizedItemId = Number.parseInt(itemId, 10);
@@ -4956,11 +5009,15 @@ export const posRepository = {
         if (!item) return null;
 
         const payload = toPlain(item);
+        const locationStock = await loadItemLocationStockMap([normalizedItemId], locationId);
+        const [readinessItem] = locationStock.locationScopeResolved
+            ? applyItemLocationStockMap([payload], locationStock.stockMap)
+            : [payload];
         const override = toPlain(await this.findCatalogOverrideByItemId(normalizedItemId));
         const effectiveOverride = forcedPosVisible === null
             ? override
             : { ...(override || {}), pos_visible: forcedPosVisible === true };
-        const readiness = buildPosReadiness({ item: payload, override: effectiveOverride });
+        const readiness = buildPosReadiness({ item: readinessItem, override: effectiveOverride });
         const workflowMode = await getCurrentWorkflowMode();
         const recommendation = buildCatalogSetupRecommendation({
             item: payload,
@@ -4980,10 +5037,7 @@ export const posRepository = {
             pos_image_variants: posDisplayImage.variants,
             storefront_image_path: storefrontImage?.storefront_image_path || null,
             storefront_image_url: storefrontImage?.storefront_image_url || null,
-            storefront_image_variants: deriveImageAssetVariantUrls({
-                storedPath: storefrontImage?.storefront_image_path || null,
-                storedUrl: storefrontImage?.storefront_image_url || null
-            }),
+            storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
             storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
             pos_readiness: readiness,
             catalog_setup_recommendation: recommendation
@@ -6235,6 +6289,53 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findDeliveryCompletionEvidenceByDeliveryJobId(deliveryJobId, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const normalizedJobId = toPositiveInt(deliveryJobId);
+        if (!normalizedJobId) return null;
+
+        const row = await DeliveryCompletionEvidence.findOne({
+            where: { delivery_job_id: normalizedJobId },
+            include: [{
+                model: dbStore.get('DeliveryCompletionEvidenceImage'),
+                as: 'images',
+                required: false,
+                order: [['sort_order', 'ASC'], ['delivery_completion_evidence_image_id', 'ASC']]
+            }],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidence(payload = {}, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const row = await DeliveryCompletionEvidence.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidenceImage(payload = {}, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const row = await DeliveryCompletionEvidenceImage.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findDeliveryCompletionEvidenceImageById(imageId, evidenceId, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const normalizedImageId = toPositiveInt(imageId);
+        const normalizedEvidenceId = toPositiveInt(evidenceId);
+        if (!normalizedImageId || !normalizedEvidenceId) return null;
+
+        const row = await DeliveryCompletionEvidenceImage.findOne({
+            where: {
+                delivery_completion_evidence_image_id: normalizedImageId,
+                delivery_completion_evidence_id: normalizedEvidenceId
+            },
+            transaction: options.transaction
+        });
         return toPlain(row);
     },
 

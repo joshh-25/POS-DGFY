@@ -20,7 +20,9 @@ vi.mock('../services/deliveryRunService.js', () => ({
   setDeliveryRunPersonnel: vi.fn(),
   addDeliveryRunMembers: vi.fn(),
   removeDeliveryRunMember: vi.fn(),
-  dispatchDeliveryRun: vi.fn()
+  dispatchDeliveryRun: vi.fn(),
+  updateDeliveryRunMemberLoading: vi.fn(),
+  confirmDeliveryRunLoading: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
@@ -103,13 +105,19 @@ beforeEach(() => {
   fetchDeliveryRun.mockResolvedValue(null);
 });
 
-describe('Retail gate', () => {
-  it('renders the filter control only in retail mode', async () => {
+describe('Delivery-run-mode gate (#1924)', () => {
+  it('renders the filter control in retail and fnb modes', async () => {
     const { unmount } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     expect(await screen.findByLabelText('Filter by delivery run')).toBeTruthy();
     unmount();
 
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+    expect(await screen.findByLabelText('Filter by delivery run')).toBeTruthy();
+  });
+
+  it('hides the filter control for an unsupported mode', async () => {
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
+    expect(await screen.findByRole('tab', { name: /Active Queue/i })).toBeTruthy();
     expect(screen.queryByLabelText('Filter by delivery run')).toBeNull();
   });
 });
@@ -274,7 +282,7 @@ describe('Selection and drift re-derivation against the filtered list', () => {
 });
 
 describe('Filter reset triggers', () => {
-  it('resets to "all" on a mode flip out of retail', async () => {
+  it('keeps the filter when flipping between the supported retail/fnb modes (#1924)', async () => {
     const order = buildOrder({ pos_transaction_id: 9001, deliveryJob: { provider: 'manual', status: 'pending_dispatch', delivery_run_id: 501 } });
     const { rerender } = render(<IncomingQueueWorkspace {...baseProps({
       incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
@@ -286,6 +294,25 @@ describe('Filter reset triggers', () => {
 
     rerender(<IncomingQueueWorkspace {...baseProps({
       workflowMode: 'fnb',
+      incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    // Both modes are delivery-run-capable: the control stays and the chosen filter is preserved.
+    expect(await screen.findByLabelText('Filter by delivery run')).toHaveProperty('value', '501');
+  });
+
+  it('resets to "all" on a mode flip into an unsupported mode', async () => {
+    const order = buildOrder({ pos_transaction_id: 9001, deliveryJob: { provider: 'manual', status: 'pending_dispatch', delivery_run_id: 501 } });
+    const { rerender } = render(<IncomingQueueWorkspace {...baseProps({
+      incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
+    })} />);
+
+    await waitFor(() => expect(fetchDeliveryRuns).toHaveBeenCalled());
+    fireEvent.change(await screen.findByLabelText('Filter by delivery run'), { target: { value: '501' } });
+    expect(screen.getByLabelText('Filter by delivery run').value).toBe('501');
+
+    rerender(<IncomingQueueWorkspace {...baseProps({
+      workflowMode: 'services',
       incomingOrdersState: { orders: [order], accessState: 'allowed', errorMessage: '' }
     })} />);
 

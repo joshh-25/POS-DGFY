@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceSource = fs.readFileSync(
-  path.resolve(testDirectory, '../components/TerminalOperationsWorkspace.jsx'),
+  path.resolve(testDirectory, '../settings/PosSettingsWorkspace.jsx'),
   'utf8'
 );
 

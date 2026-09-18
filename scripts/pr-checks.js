@@ -51,7 +51,7 @@ const { REASON_CODES, evaluateSelfHostedPool, evaluateGithubStatusOutage } = req
 // #1569: single repo-level toggle shared with .github/workflows/shared-changed-paths.yml's
 // "Load check:app-versions gate toggle" step -- see that module's own header for why this is a
 // genuine single source of truth, not a hand-kept-in-sync pair.
-const { BLOCKING: APP_VERSIONS_CHECK_BLOCKING } = require('./lib/version-bump-gate-toggle');
+const { resolveBlocking: resolveAppVersionsCheckBlocking } = require('./lib/version-bump-gate-toggle');
 
 const repoRoot = path.resolve(__dirname, '..');
 const REPO_SLUG = 'Sieitzz/dgfy-platform';
@@ -349,17 +349,22 @@ function runChecks(options, changedFiles, components) {
   const receiptResult = runCommand('node', ['scripts/check-pos-receipt-version-bump.js'], { env });
   addCheck(checks, 'pos-receipt version bump', 'node scripts/check-pos-receipt-version-bump.js', receiptResult.ok ? 'pass' : 'warn', false);
 
-  // #1569: `blocking` reads scripts/lib/version-bump-gate-toggle.js's BLOCKING constant instead
-  // of a hardcoded literal -- see that module's header for the flip history. #1592 flipped it to
-  // `true` and fixed the result-severity mapping below to actually honor it (see
-  // resolveAppVersionsCheckResult()'s own comment).
+  // #1569: `blocking` reads scripts/lib/version-bump-gate-toggle.js's toggle instead of a
+  // hardcoded literal -- see that module's header for the flip history. #1592 flipped it to
+  // blocking globally and fixed the result-severity mapping below to actually honor it (see
+  // resolveAppVersionsCheckResult()'s own comment). #1774 then made the toggle base-aware:
+  // `resolveBlocking(base, head)` is blocking only on a `staging`/`main` base (a promotion leg or
+  // a hotfix), advisory on `develop` -- see that module's own header for why a `develop`-base PR
+  // should not be blocked here (ADR 0081 Decision 6's minor-floor bump at `develop -> staging`
+  // already supersedes whatever an individual `develop` PR did or didn't bump).
   const appVersionsResult = runCommand('node', ['scripts/check-app-version-bump.js'], { env });
+  const appVersionsBlocking = resolveAppVersionsCheckBlocking(options.base, options.headRefName);
   addCheck(
     checks,
     'app version bump',
     'node scripts/check-app-version-bump.js',
-    resolveAppVersionsCheckResult(appVersionsResult.ok, APP_VERSIONS_CHECK_BLOCKING),
-    APP_VERSIONS_CHECK_BLOCKING,
+    resolveAppVersionsCheckResult(appVersionsResult.ok, appVersionsBlocking),
+    appVersionsBlocking,
   );
 
   const complianceResult = runCommand('npm', ['run', 'check:compliance'], { env });

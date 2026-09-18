@@ -6,12 +6,17 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const userManagementPath = path.resolve(webCoreRoot, 'Components/users/UserManagementModal.jsx');
 const userServicePath = path.resolve(webCoreRoot, 'src/services/userService.js');
-const terminalWorkspacePath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
+const terminalWorkspacePath = path.resolve(webCoreRoot, 'src/features/pos/settings/PosSettingsWorkspace.jsx');
 const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const terminalPageLayoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx');
 const userManagementContent = fs.readFileSync(userManagementPath, 'utf8');
 const userServiceContent = fs.readFileSync(userServicePath, 'utf8');
-const terminalWorkspaceContent = fs.readFileSync(terminalWorkspacePath, 'utf8');
+const terminalWorkspaceContent = [
+  fs.readFileSync(terminalWorkspacePath, 'utf8'),
+  fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/settings/PosSetupSettingsPane.jsx'), 'utf8'),
+  fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/settings/PosOperationsAccessSection.jsx'), 'utf8'),
+  fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/settings/PosAccountPermissionsSection.jsx'), 'utf8')
+].join('\n');
 const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
 const checkoutViewContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),

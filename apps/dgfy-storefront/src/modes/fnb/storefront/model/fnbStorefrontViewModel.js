@@ -227,7 +227,7 @@ const resolveItemDescription = (item = {}, productKind) => {
 const resolveNumericFolderId = (folderId) => {
   if (folderId === null || folderId === undefined || folderId === '') return null;
   const numeric = Number(folderId);
-  return Number.isFinite(numeric) ? numeric : null;
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
 };
 
 // RF-1 (PR #1583 review): grouping/dedup identity for one section occurrence, primary or
@@ -237,9 +237,8 @@ const resolveNumericFolderId = (folderId) => {
 // normalized display label. Two genuinely distinct folders whose *names* happen to normalize
 // identically (e.g. "A B" and "A_B" both -> `a_b`) must never collapse into one group, and a real
 // secondary membership must never be silently dropped just because its name matches the primary's.
-// Only a genuinely ID-less occurrence (no primary folder at all -- the section resolved from one
-// of `resolveSectionLabel`'s heuristic fallback fields instead) falls back to the name-based
-// identity, unchanged from pre-Phase-289 behavior for that case.
+// Public grouping callers only admit live numeric folder identities. The name fallback remains
+// defensive for non-public callers and never creates a Storefront category control.
 // NOT the same field as `sectionKey`/`sectionLabel`: those stay name-derived on purpose (icon/
 // preset matching via `resolveSectionVisualMeta`, and any existing consumer keyed on them) and are
 // not guaranteed unique across two distinct folders that happen to share a display name -- this
@@ -248,6 +247,10 @@ const resolveSectionIdentity = (folderId, sectionKey) => {
   const numericFolderId = resolveNumericFolderId(folderId);
   return numericFolderId !== null ? `folder:${numericFolderId}` : `name:${sectionKey}`;
 };
+
+const hasValidPrimarySection = (item = {}) => (
+  resolveNumericFolderId(item?.folder_id) !== null && normalizeText(item?.folder_name).length > 0
+);
 
 // ADR 0080 Decision 5 opt-in (Phase 289, #1318): resolves the distinct secondary sections an
 // item also belongs to, beyond its primary `sectionKey`/`sectionLabel` already computed above.
@@ -264,6 +267,7 @@ const resolveSecondarySectionOccurrences = (item = {}, primarySectionIdentity) =
   const seenIdentities = new Set([primarySectionIdentity]);
   const occurrences = [];
   secondaryCategories.forEach((secondaryCategory) => {
+    if (resolveNumericFolderId(secondaryCategory?.folder_id) === null) return;
     const secondaryLabel = titleCase(normalizeText(secondaryCategory?.folder_name));
     if (!secondaryLabel) return;
     const secondarySectionKey = normalizeKey(secondaryLabel).replace(/\s+/g, '_');
@@ -271,7 +275,7 @@ const resolveSecondarySectionOccurrences = (item = {}, primarySectionIdentity) =
     const secondaryIdentity = resolveSectionIdentity(secondaryCategory?.folder_id, secondarySectionKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity });
+    occurrences.push({ sectionKey: secondarySectionKey, sectionLabel: secondaryLabel, sectionIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
   });
 
   return occurrences;
@@ -290,6 +294,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
         sectionKey: normalizeKey(sectionLabel).replace(/\s+/g, '_') || `section_${index}`,
         sectionLabel,
         sectionVisualMeta,
+        categorySortOrder: Number(item?.folder_sort_order || 0),
         productKind,
         availabilityMeta,
         unitLabel: formatUnitLabel(item?.unit_of_measure),
@@ -308,8 +313,12 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   // single-label surfaces).
   const sectionEntries = [];
   menuItems.forEach((item) => {
-    const primaryIdentity = resolveSectionIdentity(item.folder_id, item.sectionKey);
-    sectionEntries.push({ ...item, sectionIdentity: primaryIdentity, menuItemKey: `${primaryIdentity}:${item.item_id}` });
+    const primaryIdentity = hasValidPrimarySection(item)
+      ? resolveSectionIdentity(item.folder_id, item.sectionKey)
+      : null;
+    if (primaryIdentity) {
+      sectionEntries.push({ ...item, sectionIdentity: primaryIdentity, menuItemKey: `${primaryIdentity}:${item.item_id}` });
+    }
     resolveSecondarySectionOccurrences(item, primaryIdentity).forEach((occurrence) => {
       sectionEntries.push({
         ...item,
@@ -317,6 +326,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
         sectionLabel: occurrence.sectionLabel,
         sectionIdentity: occurrence.sectionIdentity,
         sectionVisualMeta: resolveSectionVisualMeta(occurrence.sectionLabel),
+        categorySortOrder: occurrence.sortOrder,
         menuItemKey: `${occurrence.sectionIdentity}:${item.item_id}`
       });
     });
@@ -333,6 +343,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
       sectionKey: item.sectionKey,
       sectionLabel: item.sectionLabel,
       sectionIdentity: item.sectionIdentity,
+      sortOrder: item.categorySortOrder,
       items: [],
       firstSeenIndex: index
     };
@@ -341,7 +352,7 @@ export const getFoodBeverageStorefrontViewModel = (catalog = []) => {
   });
 
   const menuSections = [...sectionMap.values()]
-    .sort((left, right) => left.firstSeenIndex - right.firstSeenIndex)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.firstSeenIndex - right.firstSeenIndex)
     .map((section) => ({
       ...section,
       visualMeta: section.items[0]?.sectionVisualMeta || resolveSectionVisualMeta(section.sectionLabel),

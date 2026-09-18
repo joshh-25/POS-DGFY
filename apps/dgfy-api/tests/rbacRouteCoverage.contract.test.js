@@ -168,7 +168,7 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             method: 'patch',
             routePath: '/orders/:id/delivery-job/status',
             requiredFragments: [
-                'checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS)',
+                'checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS])',
                 'validatePosTransactionIdParam',
                 'validateUpdateDeliveryJobStatus',
                 'posController.updateDeliveryJobStatus'

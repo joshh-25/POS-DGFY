@@ -24,10 +24,13 @@ const getRegisteredTerminalHeaders = (terminalId = '') => {
 };
 
 const coordinateCatalogRead = createCatalogReadCoordinator();
-export const fetchPosCatalog = async (params = {}) => {
+export const fetchPosCatalog = async (params = {}, requestConfig = {}) => {
     const session = getBrowserSessionSnapshot();
     const key = JSON.stringify([session.companyToken, session.generation, Object.entries(params).sort()]);
-    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', { params }));
+    const response = await coordinateCatalogRead(key, () => api.get('/pos/catalog', {
+        ...requestConfig,
+        params
+    }));
     if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
     void reconcilePosImageUploads(response.data?.data || []);
     return response.data?.data || [];
@@ -42,6 +45,10 @@ export const fetchPosCatalogPage = async (params = {}) => {
     if (getBrowserSessionSnapshot().generation !== session.generation) throw new Error('Catalog session changed.');
     const payload = response.data?.data || {};
     const items = Array.isArray(payload.items) ? payload.items : [];
+    // Paged POS catalog reads are the primary data refresh used by Items.
+    // Run the same worker reconciliation used by the unpaged catalog path so
+    // Edit Item previews are replaced as soon as the background job completes.
+    void reconcilePosImageUploads(items);
     return {
         items,
         pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
@@ -889,6 +896,33 @@ export const fetchOrderBalancePaymentProof = async (posTransactionId, paymentId)
     return URL.createObjectURL(response.data);
 };
 
+// Phase 330 (#1460): optional packing evidence is uploaded after the order reaches `packed`.
+// Keep the multipart field name aligned with the API's `.array('images', 6)` contract and fetch
+// private image bytes into object URLs so the authenticated Bearer header is preserved.
+export const uploadOrderPackingEvidence = async (posTransactionId, files, { terminal_id: terminalId } = {}) => {
+    const form = new FormData();
+    Array.from(files || []).forEach((file) => form.append('images', file));
+    const response = await api.post(
+        `/pos/orders/${posTransactionId}/packing-evidence`,
+        form,
+        { headers: getRegisteredTerminalHeaders(terminalId) }
+    );
+    return response.data?.data;
+};
+
+export const fetchOrderPackingEvidenceList = async (posTransactionId) => {
+    const response = await api.get(`/pos/orders/${posTransactionId}/packing-evidence`);
+    return response.data?.data || { images: [], total_count: 0 };
+};
+
+export const fetchOrderPackingEvidenceImage = async (posTransactionId, imageId) => {
+    const response = await api.get(
+        `/pos/orders/${posTransactionId}/packing-evidence/${imageId}`,
+        { responseType: 'blob' }
+    );
+    return URL.createObjectURL(response.data);
+};
+
 export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
     return response.data?.data;
@@ -1028,6 +1062,9 @@ export default {
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,
+    uploadOrderPackingEvidence,
+    fetchOrderPackingEvidenceList,
+    fetchOrderPackingEvidenceImage,
     updateDeliveryJobStatus,
     assignDeliveryPersonnel,
     updateOnlineOrderStatus,

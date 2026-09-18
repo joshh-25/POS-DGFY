@@ -28,11 +28,14 @@ describe('POS text-size CSS compatibility contract', () => {
         expect(cssSource).toContain(':where(.text-2xl, [class*="text-2xl"])');
         expect(cssSource).toContain(':where([class*="text-[10px]"])');
         expect(cssSource).toContain(':where([class*="text-[13.5px]"])');
+        expect(cssSource).toContain(':where([class*="text-[16px]"])');
         expect(cssSource).toContain(':where([class*="text-[26px]"])');
     });
 
     it('retains the POS mobile input zoom guard and print reset', () => {
         expect(cssSource).toContain('.dgfy-pos-shell :is(input, textarea, select)');
+        expect(cssSource).toContain('body[data-pos-surface="pos"] :is(input, textarea, select)');
+        expect(cssSource).toContain('@media (max-width: 767.98px)');
         expect(cssSource).toContain('font-size: 16px !important;');
         expect(cssSource).toContain('@media print');
         expect(cssSource).toContain('--pos-text-size-scale: 1;');
@@ -55,5 +58,26 @@ describe('POS text-size CSS compatibility contract', () => {
         expect(cssSource).toContain('[class*="shadow-["]');
         expect(cssSource).toContain(':where(input, textarea, select):focus');
         expect(cssSource).toContain(':where(button, [role="button"], a, summary):focus-visible');
+    });
+
+  it('uses Inter as the POS primary font with Roboto as the fallback', () => {
+        expect(cssSource).toContain("--pos-font-family: 'Inter', 'Roboto', system-ui, sans-serif;");
+        expect(cssSource).toContain("body[data-pos-surface=\"pos\"],\nbody[data-pos-text-size] {\n  font-family: 'Inter', 'Roboto', system-ui, sans-serif;\n}");
+    expect(cssSource).toContain("body[data-pos-surface=\"pos\"] [data-sonner-toaster]");
+  });
+
+  it('uses a white background for the POS shell', () => {
+    expect(cssSource).toContain('--pos-shell-bg: #ffffff;');
+  });
+
+  it('uses role-based POS letter spacing without changing print typography', () => {
+        expect(cssSource).toContain('letter-spacing: 0;');
+        expect(cssSource).toContain('letter-spacing: 0.03em;');
+        expect(cssSource).toContain('letter-spacing: 0.06em;');
+        expect(cssSource).toContain('letter-spacing: 0.02em;');
+        expect(cssSource).toContain('line-height: 1.45;');
+        expect(cssSource).toContain('.dgfy-pos-shell .tracking-tight');
+        expect(cssSource).toContain('letter-spacing: -0.01em;');
+        expect(cssSource).toContain('@media print');
     });
 });

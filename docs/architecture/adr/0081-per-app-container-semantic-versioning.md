@@ -144,9 +144,17 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
    evidence of a #1007 expedited promotion or a main hotfix, not a defect — the gate documents the
    fact, it does not forbid it.
 9. `[default]` The PR-time version-bump check (issue #1560; base-aware — it applies the level rule
-   from Decision 6 according to the PR's `(base, head)` pair) lands advisory first and flips to
-   blocking only in a later, dedicated phase, once enough clean-run evidence exists — matching this
-   repo's own established pattern (Phase 272, #1550/#1551).
+   from Decision 6 according to the PR's `(base, head)` pair) is **blocking on a `staging`/`main`-base
+   PR** (a promotion leg or hotfix) **and advisory on a `develop`-base PR** —
+   `develop -> staging`'s own minor-floor bump (Decision 6) already supersedes whatever an
+   individual `develop` PR did or didn't bump, so blocking a `develop`-base PR at PR time would
+   enforce a requirement that becomes irrelevant at promotion time while needlessly blocking
+   contributors. Historically: shipped advisory on every base first, matching this repo's own
+   established advisory-to-blocking rollout pattern (Phase 272, #1550/#1551); flipped to blocking on
+   every base by #1592 (epic #1548, Phase 283, 2026-09-05) once enough clean-run evidence existed;
+   then narrowed to this base-aware split by #1774 (2026-09-10) once the global flip was found to
+   block `develop`-base PRs on exactly the requirement promotion already supersedes — see the
+   2026-09-10 Amendments entry below for the full record.
 10. `[snapshot]` Known accepted gap, not solved by this ADR: two PRs opened in parallel that each
     bump the same app to the same next version can both pass the (equality-based or increase-based)
     check and merge without conflict, since there is no push-triggered check on `develop`.
@@ -180,10 +188,14 @@ own precedent check, `scripts/check-pos-receipt-version-bump.js`.
 - **Sentry (#633) and the PWA update toast (#276) gain a real version to key off**, once they wire
   up to Decision 5's format — this ADR only hands them the format as a comment; consuming it is
   explicitly out of scope here (Decision 5).
-- **The PR-time enforcement check (#1560) ships advisory, not blocking**, in the same spirit as this
-  repo's existing advisory-to-blocking rollout pattern (Phase 272, #1550/#1551) — a version-bump
-  omission is visible but non-fatal to a PR until Decision 9's later blocking flip, tracked as epic
-  #1548's Wave 2 (planned Phase 276).
+- **The PR-time enforcement check (#1560) is blocking on a `staging`/`main`-base PR, advisory on a
+  `develop`-base PR** (Decision 9) — a `develop`-base version-bump omission is visible but
+  non-fatal, since `develop -> staging`'s own minor-floor bump (Decision 6) is what actually
+  enforces the requirement at promotion time. Historically: shipped advisory on every base first, in
+  the same spirit as this repo's existing advisory-to-blocking rollout pattern (Phase 272,
+  #1550/#1551); flipped to blocking on every base by #1592 (epic #1548, Phase 283, 2026-09-05); then
+  narrowed to the current base-aware split by #1774 (2026-09-10, epic #1548) — see the 2026-09-10
+  Amendments entry below for the full record.
 - **The parallel-PR race (Decision 10) stays open** — two PRs racing to bump the same app to the
   same next version can both merge clean today. Closing it would need a push-triggered check on
   `develop`, which is new scope this ADR does not build.
@@ -451,6 +463,117 @@ version increments happen) is unaffected and continues to apply as general guida
 superseding ADR, per ADR 0039 — decided by Pat, 2026-09-09. Full detail: issue #1770,
 `Sieitzz/dgfy-mobile#195`, `dgfy-mobile/docs/VERSIONING.md`.
 
+### 2026-09-10 — Decision 9's blocking flag never carried Decision 6's own base split forward; `check:app-versions` blocking is now base-aware, not global
+
+Filed and found as #1774 (epic #1548). #1592 (Phase 283, 2026-09-05) flipped
+`check:app-versions`' `BLOCKING` toggle `true` for every base — `develop`, `staging`, and `main`
+alike. PR #1773 hit the consequence directly: three apps unbumped on a `develop`-base PR, blocked
+from merging for a requirement that, per Decision 6's own mode table, was never meant to bind
+`develop` at that strictness. Decision 6 already treats `develop` as the least-restrictive tier
+(`'any-increase'` mode, "non-blocking by design" per the mode table's own framing) precisely because
+`develop -> staging`'s minor-floor bump requirement supersedes whatever an individual `develop` PR
+did or didn't bump — Decision 9's own blocking flag, introduced separately, never carried that same
+base distinction forward when it was armed. That's the gap this amendment closes: not a new
+decision about bump *levels* (Decision 6's mode table is unchanged), but a correction to *whether
+the check blocks at all*, which Decision 9 conflated with "trust the check enough to ever block"
+instead of "block on every base uniformly."
+
+**Resolution:** `scripts/lib/version-bump-gate-toggle.js` now exports `resolveBlocking(base, head)`
+— blocking only when `base` is `staging` or `main` (a promotion leg or a hotfix), advisory on
+`develop` — in place of the flat `BLOCKING` constant both consuming surfaces
+(`scripts/pr-checks.js`, `.github/workflows/shared-changed-paths.yml`) used to read directly.
+`BLOCKING` itself remains exported as a global kill switch. Deliberately not derived from
+`resolveMode(base, head)`: a `release/*` head into `main` resolves to the same `'any-increase'` mode
+`develop` gets, so a `resolveMode(...) !== 'any-increase'` proxy would silently leave the
+release-to-`main` leg advisory — exactly the case that must stay blocking. Full rationale, the
+correctness hazard found and avoided, and both consuming surfaces' re-verification:
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching 2026-09-10 dated entry.
+
+`[default]` tier (Decision 9 is `[default]`-tagged; this amendment corrects how Decision 9 is
+implemented, not Decision 6's own mode table, which is unchanged) — decided by Pat, 2026-09-10. Full
+detail: issue #1774, `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry,
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`'s updated status line.
+
+### 2026-09-10 — Post-promotion `develop` version-baseline sync, a new mechanism this ADR did not
+previously cover (#1807, epic #1548)
+
+Filed as #1807: an app several promotions never touch stays on `develop` at whatever version it
+had the last time it *was* touched, even after a repair or hotfix later advances it further on
+`staging`/`main`. Decision 6's floor step and the per-fix backport obligation (#1611) are both
+best-effort, per-touch mechanisms — neither is a periodic reconciliation — so a backport that's
+missed, delayed, or only partially applied can leave `develop`'s source-tree version genuinely
+behind what `main` is already running. Production safety is unaffected either way: the floor step
+already forces the correct, larger leapfrogged bump the moment `develop` next actually touches
+that app (Decision 6's own `[snapshot]` sub-clause on accepted numeric overlap between channels).
+This is a source-tree honesty problem, not a safety gap.
+
+**Resolution: `scripts/sync-app-version-baselines.js` (new), run once per ordinary promotion, after
+`main` has deployed and the parity gate/GitHub Release step (Decision 8) completes.** Compares each
+of the five apps' `package.json` `version` on `origin/develop` against `origin/main`; where
+`main`'s version is a real semver increase over `develop`'s, the promoter opens one ordinary
+`develop`-base PR (`chore(release): sync app version baselines from main`) raising exactly those
+apps to match `main`'s current value. **Additive only, per app, never a downgrade** — an app where
+`develop`'s version is already `>=` `main`'s is left untouched; this mechanism never lowers a
+version and never bumps an app `main` hasn't moved past. Full procedure:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Sync develop's version baselines from
+main" section; full script design and constraints: the script's own header comment.
+
+**Deliberately a new, separate script, not a mode added to `check-app-version-bump.js`.** That
+script's `--floor` mode has had two recent regressions from scope creep (#1740, #1802) — floor
+enforcement (a minimum bump required for an app a promotion is actively touching, scoped to
+changed files, compared against `staging`) and baseline reconciliation (an unconditional
+comparison of two absolute version numbers against `main`, with no changed-files scoping at all)
+are genuinely distinct concerns. The new script reuses that script's exported `APPS`/
+`readVersionAt`/`parseVersion`/`compareVersionTuples` rather than re-deriving them a second time —
+the same one-directional, read-only reuse pattern `resolve-build-skip-plan.js` already established
+for its own sibling concern (the 2026-09-05 Amendment above).
+
+**No clause change; no interaction with #1610.** This does not modify Decision 6's bump-level
+rules, Decision 7's tag-immutability guard, or Decision 8's per-app candidate-source-identity
+resolution (the #1610 conflict) — the sync mechanism only ever edits a source-tree `package.json`
+`version` field on `develop`, after `main` has already deployed, and never builds, tags, or
+publishes an image. It does not read or write the `org.dgfy-platform.candidate-source-sha` label
+#1610 is about, so it cannot trip Decision 7's guard (nothing here ever pushes an image tag to
+collide with) and cannot affect the parity gate's per-app comparison. A version this script writes
+is still governed by Decision 6's ordinary bump-mode rules the next time it's actually published
+— this script creates, removes, and shortcuts none of those checks.
+
+`[default]` tier — corrected 2026-09-10 (PR #1813 review, RF-1) from an earlier version of this
+entry that mislabeled it `[snapshot]`. This Amendment adds a new, recurring rollout procedure — run
+`scripts/sync-app-version-baselines.js` once per ordinary promotion, and open and merge a sync PR
+whenever it reports drift — not a point-in-time description of current state. Per ADR 0039's own
+tier table, `[snapshot]` is "documentation, never a constraint" whose "staleness is not a
+violation"; a standing "do this every promotion" obligation is squarely the `[default]` tier's own
+example category ("rollout sequencing"), not `[snapshot]`. **Decisions 6, 7, and 8's own text and
+tier are unchanged by this Amendment** — their substance is not modified (see "No clause change; no
+interaction with #1610" above); this Amendment adds one new `[default]`-tier obligation alongside
+them, via ADR 0039's own amendment path for a `default`-tier change ("append to the ADR in the same
+PR that implements the change... normal code review is sufficient," no superseding ADR needed).
+`status: amended` (front matter, already set) and this dated Amendment block together are exactly
+what that path requires — nothing added "anyway"; it's the mechanism itself. Full detail:
+`scripts/sync-app-version-baselines.js` (+ its test file),
+`.agents/skills/promoter/SKILL.md`/`references/promotion-runbook.md`, issue #1807.
+
+### 2026-09-17 — Separate candidate identity from the physical staging head used for release cuts
+
+The first live promotion exercising the candidate-manifest validator exposed a latent assumption:
+GitHub can fast-forward a staging promotion PR even when the promoter invokes `gh pr merge --merge`.
+In that case the frozen candidate source identity used for OCI provenance remains the initial or
+latest repair SHA, while the physical `origin/staging` head used to cut `release/<candidate>` is a
+different SHA. Requiring `release_revision.source_staging_sha` to equal `current_staging_sha`
+therefore rejects a valid fast-forward promotion and surfaces only at the release step.
+
+**Resolution:** candidate manifests may record `staging_head_sha`, the actual staging head after
+the staging promotion/repair merge. A released candidate must have this field, and its
+`release_revision.source_staging_sha` must equal it. `current_staging_sha` remains unchanged as
+the candidate source identity consumed by per-app production provenance resolution. The promoter
+runbook now requires recording `staging_head_sha` immediately after the staging merge, before
+cutting the release branch.
+
+`[default]` tier — a release-process clarification and validator correction; Decisions 6–8's
+candidate identity and per-app provenance semantics are unchanged. No production deploy is
+authorized from a manifest that fails this validation.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
@@ -502,6 +625,9 @@ superseding ADR, per ADR 0039 — decided by Pat, 2026-09-09. Full detail: issue
 - #495 (epic #492) — owns the per-service `IMAGE_TAG` compose split, `:latest` retirement/pinning,
   and rollback; this ADR documents the tag contract #495 must honor but does not implement it.
 - Phase 272, #1550, #1551 — the advisory-to-blocking rollout precedent Decision 9 follows.
+- #1807 — the post-promotion `develop` version-baseline sync mechanism added by this ADR's
+  2026-09-10 Amendment above; `[default]` tier (a recurring rollout procedure, not a point-in-time
+  snapshot), no change to Decisions 6-8's own text or tier, no interaction with #1610.
 - `scripts/check-pos-receipt-version-bump.js` — the existing single-package version-bump precedent
   this ADR's scheme deliberately does not fold `packages/pos-receipt` into.
 - Sieitzz/dgfy-mobile#78, #79 — the sibling repo's versioning policy cited for pattern reuse in

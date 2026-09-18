@@ -550,6 +550,10 @@ const updateFolderSchema = Joi.object({
   show_in_pos_filter: Joi.boolean().optional()
 }).min(1);
 
+const reorderFoldersSchema = Joi.object({
+  folder_ids: Joi.array().items(Joi.number().integer().positive()).min(1).max(500).unique().required()
+});
+
 const deleteFolderSchema = Joi.object({
   replacement_folder_id: Joi.number().integer().positive().optional()
 });
@@ -715,6 +719,7 @@ export const validateStorefrontCatalogOverridesQuery = validateSchema(storefront
 export const validateUpdateStorefrontCatalogOverride = validateSchema(updateStorefrontCatalogOverrideSchema, 'body', 'validatedData');
 export const validateCreateFolder = validateSchema(createFolderSchema, 'body', 'validatedData');
 export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', 'validatedData');
+export const validateReorderFolders = validateSchema(reorderFoldersSchema, 'body', 'validatedData');
 export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 export const validateReplaceItemFolderMemberships = validateSchema(replaceItemFolderMembershipsSchema, 'body', 'validatedData');

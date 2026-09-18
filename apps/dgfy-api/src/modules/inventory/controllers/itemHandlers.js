@@ -39,6 +39,7 @@ import {
   getFoldersUseCase,
   createFolderUseCase,
   updateFolderUseCase,
+  reorderFoldersUseCase,
   deleteFolderUseCase,
   listItemFoldersUseCase,
   replaceItemFoldersUseCase
@@ -833,6 +834,24 @@ const cleanupQueuedCatalogImageFiles = async (files = []) => {
   }));
 };
 
+const parseGalleryIntent = (rawIntent, fileCount) => {
+  if (rawIntent === undefined || rawIntent === null || rawIntent === '') return null;
+  let intent;
+  try {
+    intent = typeof rawIntent === 'string' ? JSON.parse(rawIntent) : rawIntent;
+  } catch {
+    return { error: 'gallery_intent must be valid JSON.' };
+  }
+  if (!intent || typeof intent !== 'object' || Array.isArray(intent)
+    || !Array.isArray(intent.base_keys)
+    || !Array.isArray(intent.entries) || !Array.isArray(intent.pending_keys)
+    || intent.pending_keys.length !== fileCount
+    || intent.entries.length > 5) {
+    return { error: 'gallery_intent is invalid for this image upload.' };
+  }
+  return { value: intent };
+};
+
 const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
   const itemId = req.validatedParams?.item_id || req.params.item_id;
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
@@ -840,6 +859,20 @@ const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
     return res.status(400).json({
       success: false,
       message: 'At least one image file is required.',
+      error_code: 'VALIDATION_FAILED',
+      request_id: requestId(req, res),
+      timestamp: timestamp()
+    });
+  }
+
+  const parsedGalleryIntent = mode === 'gallery'
+    ? parseGalleryIntent(req.body?.gallery_intent, normalizedFiles.length)
+    : null;
+  if (parsedGalleryIntent?.error) {
+    await cleanupQueuedCatalogImageFiles(normalizedFiles);
+    return res.status(400).json({
+      success: false,
+      message: parsedGalleryIntent.error,
       error_code: 'VALIDATION_FAILED',
       request_id: requestId(req, res),
       timestamp: timestamp()
@@ -867,7 +900,8 @@ const queueStorefrontCatalogImages = async ({ req, res, mode, files }) => {
       },
       itemId,
       mode,
-      files: normalizedFiles
+      files: normalizedFiles,
+      galleryIntent: parsedGalleryIntent?.value || null
     });
 
     return res.status(202).json({
@@ -1161,10 +1195,33 @@ export const uploadBulkStorefrontCatalogImages = async (req, res, next) => {
 export const updateStorefrontCatalogGallery = async (req, res, next) => {
   try {
     const itemId = req.validatedParams?.item_id || req.params.item_id;
+    const payload = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? req.body
+      : null;
+    const gallery = payload?.gallery ?? payload?.storefront_image_gallery;
+    if (!payload || !Array.isArray(gallery) || gallery.length > 5) {
+      return res.status(422).json({
+        success: false,
+        message: 'Gallery must be an array containing at most 5 images.',
+        error_code: 'VALIDATION_FAILED',
+        request_id: requestId(req, res),
+        timestamp: timestamp()
+      });
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'expected_gallery_keys')
+      && !Array.isArray(payload.expected_gallery_keys)) {
+      return res.status(422).json({
+        success: false,
+        message: 'expected_gallery_keys must be an array when provided.',
+        error_code: 'VALIDATION_FAILED',
+        request_id: requestId(req, res),
+        timestamp: timestamp()
+      });
+    }
     const result = await runInventoryUseCase(
       () => updateStorefrontCatalogGalleryUseCase({
         itemId,
-        payload: req.body,
+        payload,
         user: req.user
       }),
       'Failed to update storefront catalog image gallery'
@@ -1392,6 +1449,23 @@ export const updateFolder = async (req, res, next) => {
   }
 };
 
+export const reorderFolders = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => reorderFoldersUseCase({ folderIds: req.validatedData?.folder_ids || [] }),
+      'Failed to reorder categories'
+    );
+    await publishCatalogInvalidation(req, 'category_order_updated');
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({ success: true, data: result.data, message: 'Category order updated.', timestamp: timestamp() }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Phase 257 (#1318) — secondary category memberships only. Does not read or
 // write items.folder_id (the primary category); see ADR 0080 clause 1/2.
 export const listItemFolders = async (req, res, next) => {
@@ -1501,6 +1575,7 @@ export default {
   getFolders,
   createFolder,
   updateFolder,
+  reorderFolders,
   deleteFolder,
   listItemFolders,
   replaceItemFolders

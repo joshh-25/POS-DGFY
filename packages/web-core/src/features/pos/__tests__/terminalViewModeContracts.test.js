@@ -495,6 +495,14 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('services')}");
   });
 
+  it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
+    expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
+    expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
+    expect(terminalOperationsWorkspaceContent).toContain('bare={isSettingsView}');
+    expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
+    expect(terminalOperationsPanelsContent).toContain('if (bare) {');
+  });
+
   it('adds report navigation with horizontal report tabs', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
@@ -530,6 +538,10 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps history receipt modal close action in the header and print action in the footer', () => {
     expect(posCheckoutTerminalReceiptDialogsContent).toContain('aria-label="Close receipt preview"');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('autoFocus');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('tabIndex={-1}');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('focus:outline-none');
+    expect(posCheckoutTerminalReceiptDialogsContent).toContain('focus-visible:ring-2');
     expect(posCheckoutTerminalReceiptDialogsContent).toContain("onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}");
     expect(posCheckoutTerminalReceiptDialogsContent).toContain("{receiptPrinting ? 'Printing...' : 'Print'}");
     expect(posCheckoutTerminalContent).toContain('<POSCheckoutTerminalReceiptDialogs');

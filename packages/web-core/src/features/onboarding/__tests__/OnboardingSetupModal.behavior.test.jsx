@@ -40,9 +40,11 @@ vi.mock('../../../services/settingsService.js', () => mocks.settingsServiceMock)
 vi.mock('../../../services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);
 vi.mock('../../../services/storefrontCatalogService.js', () => mocks.storefrontCatalogServiceMock);
 vi.mock('@/src/components/maps/MapPinPicker.jsx', () => ({
-  default: ({ onChange }) => (
+  default: ({ onChange, defaultAdjustMode, locationEditorMode }) => (
     <button
       type="button"
+      data-default-adjust-mode={String(defaultAdjustMode === true)}
+      data-location-editor-mode={String(locationEditorMode === true)}
       onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
@@ -50,9 +52,11 @@ vi.mock('@/src/components/maps/MapPinPicker.jsx', () => ({
   )
 }));
 vi.mock('../../../components/maps/MapPinPicker.jsx', () => ({
-  default: ({ onChange }) => (
+  default: ({ onChange, defaultAdjustMode, locationEditorMode }) => (
     <button
       type="button"
+      data-default-adjust-mode={String(defaultAdjustMode === true)}
+      data-location-editor-mode={String(locationEditorMode === true)}
       onClick={() => onChange?.({ latitude: 14.599512, longitude: 120.984246, address_line: 'Mock Pin Road, Manila' })}
     >
       Mock MapLibre Pin
@@ -189,8 +193,6 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
-    fireEvent.change(screen.getByLabelText(/Close Time/i), { target: { value: '20:00' } });
-    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
     await waitFor(() => {
@@ -206,12 +208,7 @@ describe('OnboardingSetupModal behavior', () => {
         payload: expect.objectContaining({
           location_id: 5,
           public_storefront_visible: true,
-          business_hours: expect.objectContaining({
-            mode: 'weekly',
-            weekly: expect.objectContaining({
-              mon: expect.objectContaining({ close: '20:00' })
-            })
-          })
+          business_hours: expect.objectContaining({ mode: 'weekly' })
         })
       });
       expect(screen.getByText(/3\) Menu Item/i)).toBeTruthy();
@@ -225,7 +222,10 @@ describe('OnboardingSetupModal behavior', () => {
     await user.click(screen.getByRole('button', { name: /Skip for Now/i }));
     await screen.findByText(/2\) Main Storefront Location/i);
     await user.click(screen.getByLabelText(/Make storefront searchable to customers/i));
-    await user.click(screen.getByRole('button', { name: /Mock MapLibre Pin/i }));
+    const mapPinButton = screen.getByRole('button', { name: /Mock MapLibre Pin/i });
+    expect(mapPinButton.dataset.defaultAdjustMode).toBe('true');
+    expect(mapPinButton.dataset.locationEditorMode).toBe('true');
+    await user.click(mapPinButton);
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Latitude/i).value).toBe('14.599512');

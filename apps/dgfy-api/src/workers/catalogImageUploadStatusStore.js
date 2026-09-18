@@ -6,11 +6,12 @@ const memoryStatuses = new Map();
 
 const statusKey = (tenantId, itemId) => `catalog_image_upload:status:${tenantId}:${itemId}`;
 
-const normalizeStatus = ({ tenantId, itemId, jobId, status, error_code = null, error_message = null }) => ({
+const normalizeStatus = ({ tenantId, itemId, jobId, status, image_url = null, error_code = null, error_message = null }) => ({
     tenant_id: tenantId,
     item_id: Number(itemId),
     job_id: jobId || null,
     status,
+    image_url,
     error_code,
     error_message,
     updated_at: new Date().toISOString()

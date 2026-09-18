@@ -307,7 +307,7 @@ export const getServiceCategoryMeta = (categoryKey, items = []) => {
 const resolveNumericFolderId = (folderId) => {
   if (folderId === null || folderId === undefined || folderId === '') return null;
   const numeric = Number(folderId);
-  return Number.isFinite(numeric) ? numeric : null;
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
 };
 
 // RF-1 (PR #1583 review): grouping/dedup identity for one category occurrence, primary or
@@ -316,10 +316,9 @@ const resolveNumericFolderId = (folderId) => {
 // non-null (ADR 0080 Decision 1's "the primary category and the single tiebreak") -- over the
 // normalized display label. Two genuinely distinct folders whose *names* happen to normalize
 // identically must never collapse into one group, and a real secondary membership must never be
-// silently dropped just because its name matches the primary's. Only a genuinely ID-less
-// occurrence (no primary folder at all -- `resolveServiceGroupingLabel` fell back to
-// `service_detail.service_category` or the `'services'` default) falls back to the name-based
-// identity, unchanged from pre-Phase-289 behavior for that case.
+// silently dropped just because its name matches the primary's. Public grouping callers only
+// admit live numeric folder identities; heuristic service labels may describe an All-card but
+// never create a Storefront category control.
 // NOT the same field as `categoryKey`: that stays name-derived on purpose (`getServiceCategoryMeta`
 // matches `CATEGORY_PRESETS` and derives icon/label off it, and existing tests assert its literal
 // value) and is not guaranteed unique across two distinct folders sharing a display name -- this
@@ -328,6 +327,10 @@ const resolveCategoryIdentity = (folderId, categoryKey) => {
   const numericFolderId = resolveNumericFolderId(folderId);
   return numericFolderId !== null ? `folder:${numericFolderId}` : `name:${categoryKey}`;
 };
+
+const hasValidPrimaryCategory = (item = {}) => (
+  resolveNumericFolderId(item?.folder_id) !== null && String(item?.folder_name || '').trim().length > 0
+);
 
 // ADR 0080 Decision 5 opt-in (Phase 289, #1318): the distinct secondary categories a service also
 // belongs to, beyond its primary `categoryKey` already resolved via `resolveServiceGroupingLabel`.
@@ -344,13 +347,14 @@ const resolveSecondaryCategoryOccurrences = (item = {}, primaryCategoryIdentity)
   const seenIdentities = new Set([primaryCategoryIdentity]);
   const occurrences = [];
   secondaryCategories.forEach((secondaryCategory) => {
+    if (resolveNumericFolderId(secondaryCategory?.folder_id) === null) return;
     const rawLabel = String(secondaryCategory?.folder_name || '').trim();
     if (!rawLabel) return;
     const secondaryCategoryKey = normalizeCategoryKey(rawLabel);
     const secondaryIdentity = resolveCategoryIdentity(secondaryCategory?.folder_id, secondaryCategoryKey);
     if (seenIdentities.has(secondaryIdentity)) return;
     seenIdentities.add(secondaryIdentity);
-    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity });
+    occurrences.push({ categoryKey: secondaryCategoryKey, categoryIdentity: secondaryIdentity, sortOrder: Number(secondaryCategory?.sort_order || 0) });
   });
 
   return occurrences;
@@ -368,6 +372,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
       return {
         ...item,
         categoryKey,
+        categorySortOrder: Number(item?.folder_sort_order || 0),
         intakeFields,
         requiredIntakeCount,
         hasAvailability,
@@ -388,13 +393,18 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
   // 5's carve-out for single-label surfaces; only `serviceGroups[].items` opts into the union.
   const categoryEntries = [];
   services.forEach((item) => {
-    const primaryIdentity = resolveCategoryIdentity(item.folder_id, item.categoryKey);
-    categoryEntries.push({ ...item, categoryIdentity: primaryIdentity, serviceItemKey: `${primaryIdentity}:${item.item_id}` });
+    const primaryIdentity = hasValidPrimaryCategory(item)
+      ? resolveCategoryIdentity(item.folder_id, item.categoryKey)
+      : null;
+    if (primaryIdentity) {
+      categoryEntries.push({ ...item, categoryIdentity: primaryIdentity, serviceItemKey: `${primaryIdentity}:${item.item_id}` });
+    }
     resolveSecondaryCategoryOccurrences(item, primaryIdentity).forEach((occurrence) => {
       categoryEntries.push({
         ...item,
         categoryKey: occurrence.categoryKey,
         categoryIdentity: occurrence.categoryIdentity,
+        categorySortOrder: occurrence.sortOrder,
         serviceItemKey: `${occurrence.categoryIdentity}:${item.item_id}`
       });
     });
@@ -410,6 +420,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
     const existing = grouped.get(item.categoryIdentity) || {
       categoryKey: item.categoryKey,
       categoryIdentity: item.categoryIdentity,
+      sortOrder: item.categorySortOrder,
       items: [],
       firstSeenIndex: grouped.size
     };
@@ -418,7 +429,7 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
   });
 
   const serviceGroups = [...grouped.values()]
-    .sort((left, right) => left.firstSeenIndex - right.firstSeenIndex)
+    .sort((left, right) => left.sortOrder - right.sortOrder || left.firstSeenIndex - right.firstSeenIndex)
     .map((group) => {
       const categoryMeta = getServiceCategoryMeta(group.categoryKey, group.items);
       const sortedItems = group.items
@@ -446,9 +457,22 @@ export const getServicesStorefrontViewModel = (catalog = []) => {
   const primaryCategoryIdentityByItemId = new Map(
     services.map((item) => [item.item_id, resolveCategoryIdentity(item.folder_id, item.categoryKey)])
   );
-  const normalizedServices = serviceGroups
-    .flatMap((group) => group.items)
-    .filter((item) => item.categoryIdentity === primaryCategoryIdentityByItemId.get(item.item_id));
+  const groupedPrimaryServices = new Map(
+    serviceGroups
+      .flatMap((group) => group.items)
+      .filter((item) => item.categoryIdentity === primaryCategoryIdentityByItemId.get(item.item_id))
+      .map((item) => [item.item_id, item])
+  );
+  const normalizedServices = services.map((item) => {
+    const groupedPrimary = groupedPrimaryServices.get(item.item_id);
+    if (groupedPrimary) return groupedPrimary;
+    const categoryMeta = getServiceCategoryMeta(item.categoryKey, [item]);
+    return {
+      ...item,
+      categoryMeta,
+      variantName: stripServicePrefix(item?.name, categoryMeta)
+    };
+  });
   const inStoreCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'in_store').length;
   const onSiteCount = normalizedServices.filter((item) => normalizeAreaType(item?.service_detail?.service_area_type) === 'customer_location').length;
   const servicesWithRequiredIntakeCount = normalizedServices.filter((item) => item.requiredIntakeCount > 0).length;
