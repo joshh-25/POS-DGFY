@@ -793,7 +793,7 @@ return (
                                                 Out of stock
                                             </span>
                                         )}
-                                        {IS_DGFY_POS_SURFACE && (
+                                        {IS_DGFY_POS_SURFACE && !isTabletPortraitMobileLayout && (
                                             <>
                                                 <div className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)]">
                                                     <CatalogItemBadges
@@ -930,6 +930,13 @@ return (
                                             <p className="min-w-0 max-w-full truncate text-left font-black text-[#0F172A]">
                                                 {item.name}
                                             </p>
+                                        )}
+                                        {isTabletPortraitMobileLayout && (
+                                            <CatalogItemBadges
+                                                isServiceItem={isServiceItem}
+                                                isAlwaysAvailable={isAlwaysAvailable}
+                                                isBestSeller={isBestSeller}
+                                            />
                                         )}
                                         <span className={`font-black tracking-[0.01em] ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
                                             {isOutOfStock

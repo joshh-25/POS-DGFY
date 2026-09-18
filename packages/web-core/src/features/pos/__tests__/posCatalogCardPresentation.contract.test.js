@@ -39,10 +39,12 @@ describe('standalone POS catalog card presentation', () => {
         expect(source).toContain(": 'Not set'");
     });
 
-    it('renders compact status badges over standalone catalog images', () => {
+    it('keeps tablet portrait status badges in the card text column', () => {
         const source = read('packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx');
 
-        expect(source).toContain('                                                        overlay');
+        expect(source).toContain('{IS_DGFY_POS_SURFACE && !isTabletPortraitMobileLayout && (');
+        expect(source).toContain('{isTabletPortraitMobileLayout && (');
+        expect(source).toContain('isAlwaysAvailable={isAlwaysAvailable}');
         expect(source).toContain('{!IS_DGFY_POS_SURFACE && (');
     });
 
