@@ -5539,6 +5539,13 @@ export default function TerminalPage() {
         toast.success('Online order status updated.');
       }
       await refreshIncomingOrders({ silent: true });
+      // #1931: Retail acceptance records Inventory's goods-issue immediately, so the
+      // visible counts must agree with persisted stock without a manual reload. Reuse the
+      // same post-sale refresh a completed POS sale runs (handleCheckoutCompleted) rather
+      // than inventing a second refresh mechanism.
+      if (nextStatus === 'confirmed' && workflowMode === 'retail') {
+        await refreshOperationalContext({ suppressGlobalErrors: true }).catch(() => {});
+      }
       return true;
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
