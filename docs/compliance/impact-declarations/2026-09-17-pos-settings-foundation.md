@@ -1,14 +1,14 @@
 ---
 status: draft_pr
 owner: DGFY POS/settings
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-18
 related_adr: docs/architecture/adr/0071-frontend-split-into-three-apps.md
 declaration_id: 2026-09-17-pos-settings-foundation
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.17
-verification_evidence: npm run check:compliance,npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .,npm run build:skupervisor,npm run build:pos,npm run build:store,focused Vitest settings suites,git diff --check
+verification_evidence: npm run check:compliance,npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .,npm run lint POS,npm run build:pos,npm run build:store,npm run build:ims -- --outDir .tmp-settings-build,focused Vitest settings and contract suites,git diff --check
 rollback_note: Revert the POS Settings frontend and this declaration; existing backend settings and terminal contracts remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -16,14 +16,14 @@ preflight_run_at: 2026-09-17T06:26:13.267Z
 preflight_request_ref: PREFLIGHT-35189543674-2026-09-17-POS-SETTINGS-FOUNDATION
 ---
 
-# POS Settings Frontend Foundation (PR #1950)
+# POS Settings Frontend Foundation (frontend follow-up)
 
 ## Compliance Impact Classification
 
 Major. The PR changes files under `packages/web-core/src/features/pos/`, which the
 repository compliance guardrail classifies at the `major` floor for the `pos` and
 `terminal` surfaces. The change restores and standardizes the POS Settings frontend
-foundation, including settings navigation, POS Setup, Storefront, Employees, shared
+foundation and its responsive follow-up, including settings navigation, POS Setup, Storefront, Employees, shared
 form primitives, pagination, Business Hours/Locations presentation, and terminal/cashier
 settings presentation. It does not add a backend endpoint, migration, database field, or
 new credential authority.
