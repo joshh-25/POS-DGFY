@@ -61,7 +61,7 @@ const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
       <div ref={rootRef} data-dialog-root="true" className="fixed inset-0 z-[100] flex items-center justify-center">
         <div
           data-dialog-overlay="true"
-          className={cn('fixed inset-0 bg-slate-950/60 backdrop-blur-sm', overlayClassName)}
+          className={cn('fixed inset-0 bg-black/50 backdrop-blur-none', overlayClassName)}
           onClick={() => onOpenChange && onOpenChange(false)}
         />
         {/*
