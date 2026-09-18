@@ -3,12 +3,20 @@ import fs from 'node:fs';
 
 const profile = () => String(process.env.DGLAUNDRY_SIGNATURE_PROFILE || (process.env.NODE_ENV === 'production' ? 'http-message-signatures-v1' : 'hmac-local-v1')).trim();
 const keyId = () => String(process.env.DGLAUNDRY_INTEGRATION_KEY_ID || 'dglaundry').trim();
+const eventKeyId = () => String(process.env.DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID || 'dgfy-event-ed25519').trim();
 const maxSkewSeconds = () => Math.max(30, Number(process.env.DGLAUNDRY_INTEGRATION_MAX_SKEW_SECONDS || 300));
 const seenNonces = new Map();
 const publicKey = () => {
   const direct = String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY || '').trim();
   if (direct) return direct;
   const file = String(process.env.DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE || '').trim();
+  if (!file) return '';
+  try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
+};
+const configured = (name) => {
+  const direct = String(process.env[name] || '').trim();
+  if (direct) return direct;
+  const file = String(process.env[`${name}_FILE`] || '').trim();
   if (!file) return '';
   try { return fs.readFileSync(file, 'utf8').trim(); } catch { return ''; }
 };
@@ -114,4 +122,34 @@ export const signDgfyRequest = ({ method = 'POST', authority, path, body }) => {
     headers['x-dgfy-signature'] = `sha256=${crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex')}`;
   }
   return { rawBody, headers };
+};
+
+/** Sign provider-origin events sent to DGLaundry using the event profile.
+ * This is deliberately separate from P-256 partner requests: the receiver
+ * selects the registry by the event algorithm and key ID, not by route name.
+ */
+export const signDgfyEvent = ({ method = 'POST', authority, path, body }) => {
+  const rawBody = JSON.stringify(body ?? {});
+  const privateKey = configured('DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY');
+  if (!privateKey) throw new Error('DGFY_EVENT_SIGNING_PRIVATE_KEY_REQUIRED');
+  const created = Math.floor(Date.now() / 1000);
+  const expires = created + 300;
+  const nonce = crypto.randomUUID();
+  const digest = `sha-256=:${crypto.createHash('sha256').update(rawBody).digest('base64')}:`;
+  const signatureParams = `("@method" "@authority" "@path" "content-digest" "content-type");created=${created};expires=${expires};nonce="${nonce}";keyid="${eventKeyId()}";alg="ed25519";tag="dglaundry-dgfy-v1"`;
+  const signatureBase = [
+    `"@method": ${String(method).toUpperCase()}`,
+    `"@authority": ${authority}`,
+    `"@path": ${path}`,
+    `"content-digest": ${digest}`,
+    `"content-type": application/json`,
+    `"@signature-params": ${signatureParams}`
+  ].join('\n');
+  const signature = crypto.sign(null, Buffer.from(signatureBase), privateKey).toString('base64');
+  return {
+    'content-type': 'application/json',
+    'content-digest': digest,
+    'signature-input': `sig1=${signatureParams}`,
+    signature: `sig1=:${signature}:`
+  };
 };
