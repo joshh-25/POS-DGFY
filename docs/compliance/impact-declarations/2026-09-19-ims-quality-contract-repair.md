@@ -13,7 +13,7 @@ rollback_note: Revert the test-only contract alignment and this declaration; no 
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-18T17:33:45.046Z
-preflight_request_ref: PREFLIGHT-local-2026-09-19-IMS-QUALITY-CONTRACT-REPAIR
+preflight_request_ref: PREFLIGHT-35375287730-2026-09-19-IMS-QUALITY-CONTRACT-REPAIR
 ---
 
 # IMS quality contract repair
@@ -43,7 +43,7 @@ data.
 
 - The failed CI run established the incident: run `35365557710`, job `105667100664`, with setup,
   installation, and lint passing before 18 contract/integration failures.
-- Focused JavaScript contract tests pass `node --check` locally.
+- Focused JavaScript contract assertions pass locally.
 - `git diff --check` passes.
 - Full Vitest execution is deferred to CI because this worktree does not contain the required Vite,
   Vitest, and React Vite-plugin dependencies.

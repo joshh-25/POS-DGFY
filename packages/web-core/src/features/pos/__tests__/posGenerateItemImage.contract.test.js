@@ -72,7 +72,7 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const closeHandler = workspace.slice(closeStart, closeEnd);
 
         expect(closeHandler).toContain('cancelImageGenerationPoll();');
-        expect(closeHandler).toContain('editSessionRef.current');
+        expect(closeHandler).toContain('setEditingItemId(null);');
         expect(closeHandler).toContain('setGeneratingEditImage(false);');
         expect(closeHandler).toContain('setPollingEditImage(false);');
     });

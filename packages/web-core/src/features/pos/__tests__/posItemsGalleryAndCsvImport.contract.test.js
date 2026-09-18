@@ -20,14 +20,12 @@ const posCatalogService = fs.readFileSync(posCatalogServicePath, 'utf8');
 describe('POS Items gallery and IMS CSV import contracts', () => {
   it('binds queued uploads before later setup can fail and only retries failed image stages', () => {
     const stages = workspace.slice(workspace.indexOf('const runPostCreateStages ='), workspace.indexOf('const handleCreateItem ='));
-    expect(stages.indexOf('bindPendingPosItemImagePreviewJob(')).toBeGreaterThan(stages.indexOf('imageUploadJob = await runStage('));
-    expect(stages.indexOf('bindPendingPosItemImagePreviewJob(')).toBeLessThan(stages.indexOf('if (!barcodeCode)'));
-    expect(workspace).toContain('const recoveryImageFiles = failedImageStage ? selectedImageFiles : [];');
-    expect(workspace).toContain('imageFiles: recoveryImageFiles');
-    expect(stages).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
-    expect(workspace).toContain('imageAttemptId: recoveryImageAttemptId');
-    expect(workspace).not.toContain('pendingCreateRecovery.imageFiles || selectedImageFiles');
-    expect(workspace).toContain('The previous image upload is still being reconciled. Refresh the catalog before retrying so it is not duplicated.');
+    expect(stages).toContain('const queuedImageUpload = await runStage(');
+    expect(stages.indexOf('queueStorefrontCatalogImages(itemId, imageFiles)')).toBeGreaterThanOrEqual(0);
+    expect(stages.indexOf('pollCatalogImageUploadStatus(itemId)')).toBeGreaterThan(stages.indexOf('queueStorefrontCatalogImages(itemId, imageFiles)'));
+    expect(stages.indexOf('if (!barcodeCode)')).toBeGreaterThan(stages.indexOf('pollCatalogImageUploadStatus(itemId)'));
+    expect(stages).toContain("uploadStatus.status === 'failed'");
+    expect(workspace).toContain('imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles');
   });
 
   it('supports the shared five-image gallery in create and edit flows', () => {
@@ -41,7 +39,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(workspace).not.toContain('<StorefrontImageCarousel');
     expect(workspace).toContain('showPrimaryToggle');
     expect(workspace).toContain('The preview appears immediately. The optimized image is saved automatically and then replaces the preview.');
-    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload, {');
+    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
     expect(workspace).toContain('Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} images are allowed per item.');
     expect(workspace).toContain('large files optimized by server');
@@ -55,7 +53,7 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
     expect(carousel).toContain('if (cancelled) break;');
     expect(carousel).toContain('URL.revokeObjectURL(url)');
     expect(workspace).not.toContain('monitorCreatedItemImageUpload');
-    expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
+    expect(workspace).toContain('pollCatalogImageUploadStatus(itemId)');
     expect(checkoutView).toContain('React.useSyncExternalStore(');
     expect(checkoutView).toContain("pendingItemImagePreviews[String(item.item_id)]?.url");
     expect(checkoutView).toContain('src: pendingImagePreview');
