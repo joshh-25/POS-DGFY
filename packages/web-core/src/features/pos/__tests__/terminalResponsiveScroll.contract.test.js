@@ -51,6 +51,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('min-h-screen');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
+    expect(terminalLayoutContent).toContain('dgfy-pos-topbar');
+    expect(appStylesContent).toContain('.dgfy-pos-topbar {');
+    expect(appStylesContent).toContain('box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
     expect(terminalLayoutContent).toContain("? (isTabletLayout");
     expect(terminalLayoutContent).toContain("'md:grid md:grid-cols-[68px_minmax(0,1fr)]'");

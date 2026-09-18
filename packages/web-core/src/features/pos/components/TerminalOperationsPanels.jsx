@@ -97,7 +97,7 @@ function useSplitViewportEligible() {
   return isEligible;
 }
 
-function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -111,6 +111,17 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
             </div>
           )}
         </div>
+      </section>
+    );
+  }
+
+  // Settings already owns its inner cards and navigation surfaces. Keep the shell
+  // spacing for consistent content alignment, while removing the redundant card
+  // chrome that constrains small viewports.
+  if (bare) {
+    return (
+      <section className={`min-w-0 max-w-full ${className}`}>
+        {children}
       </section>
     );
   }
@@ -149,8 +160,9 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
     });
   }
   // Phase 229 (#1289), §2.4: a 4th view, not a replacement of the tabbed arrangement -- gated by
-  // the caller on delivery-run mode (#1924: retail or fnb) AND viewport width (§2.6), same
-  // "caller decides, this just renders" contract as showDeliveryRuns above.
+  // the caller on delivery-run mode (retail or fnb) AND viewport width (§2.6), same
+  // "caller decides, this just renders"
+  // contract as showDeliveryRuns above.
   if (showSplitView) {
     tabs.push({
       key: 'split',
@@ -452,11 +464,8 @@ function IncomingQueueWorkspace({
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
   const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
   const isRetailMode = normalizedWorkflowMode === 'retail';
-  // #1924: the Delivery Runs workspace (tabs, run-option fetch, bulk assign, queue filter, run
-  // labels, selection controls) is reachable in retail AND fnb. Run membership is keyed on
-  // delivery_jobs -- never on fulfillment_status -- so F&B orders that may never become `packed`
-  // stay eligible. Services and every other workflow mode remain excluded. isRetailMode above
-  // stays for genuinely retail-only presentation (the packed fulfillment affordance).
+  // #1924: Delivery Runs are available in both retail and F&B modes. Keep the retail-only
+  // predicate separate for packed-fulfillment presentation inside the run workspace.
   const isDeliveryRunMode = normalizedWorkflowMode === 'retail' || normalizedWorkflowMode === 'fnb';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
@@ -770,14 +779,12 @@ function IncomingQueueWorkspace({
   // a stale activeView === 'runs' must never render the panel once delivery-run mode is off. Belt
   // + braces alongside the isDeliveryRunMode guard on the render branch itself below.
   // Phase 227: a bulk-add selection is a delivery-run-only concept -- clear it here too so it never
-  // survives a flip into services (or another unsupported) mode.
-  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (delivery-run modes), plus
-  // its own viewport gate -- a stale activeView === 'split' must never render the panel once the
+  // survives a flip into services (or another unsupported mode).
+  // Phase 229 (#1289), §2.4/§2.6: 'split' is gated the same way as 'runs' (delivery-run modes), plus its
+  // own viewport gate -- a stale activeView === 'split' must never render the panel once the
   // window narrows below the split threshold either (e.g. a POS window resize).
   // Phase 231 (#1290): the run filter is delivery-run-only too (D-3) -- clear it on the same
-  // mode-flip so it never survives into an unsupported mode either.
-  // #1924: retail <-> fnb flips keep the run surface (both modes are delivery-run-capable); only a
-  // flip out of those modes -- e.g. into services -- falls back and clears run-only state.
+  // mode-flip so it never survives into an unsupported mode.
   React.useEffect(() => {
     if ((activeView === 'runs' || activeView === 'split') && !isDeliveryRunMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
@@ -841,9 +848,10 @@ function IncomingQueueWorkspace({
   }
 
   // Phase 229 (#1289), §2.4-2.9: the 4th "Queue + Run" view -- gated on both delivery-run mode
-  // (#1924: retail and fnb) and the >=SPLIT_VIEW_MIN_WIDTH_PX viewport (the reset effect above
-  // already guards against a stale activeView here, this is belt + braces on the render branch
-  // itself, matching the 'runs' branch's own pattern).
+  // (retail and fnb) and the
+  // >=SPLIT_VIEW_MIN_WIDTH_PX viewport (the reset effect above already guards against a stale
+  // activeView here, this is belt + braces on the render branch itself, matching the 'runs'
+  // branch's own pattern).
   if (activeView === 'split' && isDeliveryRunMode && isSplitViewportEligible) {
     const dragDisabled = !canTransactPos || locked || !isOnline || !hasActiveShift || bulkAssignSubmitting;
     const activeDragOrder = activeDragOrderId !== null

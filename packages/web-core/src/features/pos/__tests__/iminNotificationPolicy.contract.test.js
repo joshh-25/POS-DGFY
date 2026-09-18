@@ -18,6 +18,7 @@ describe('iMin notification policy contract', () => {
       'src/features/pos/components/SkupervisorPOSBarcodeScanner.jsx',
       'src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx',
       'src/features/pos/components/TerminalOperationsWorkspace.jsx',
+      'src/features/pos/settings/PosSettingsWorkspace.jsx',
       'src/features/pos/pages/PosPageShell.jsx',
       'src/features/pos/pages/TerminalPage.jsx'
     ].forEach((relativePath) => {

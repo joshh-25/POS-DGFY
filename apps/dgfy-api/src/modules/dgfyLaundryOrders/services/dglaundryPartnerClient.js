@@ -1,4 +1,4 @@
-import { signDgfyRequest } from './dglaundryEventSignature.js';
+import { signDgfyRequest, signDgfyEvent } from './dglaundryEventSignature.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
@@ -52,12 +52,14 @@ export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempoten
   };
 };
 
-const request = async (path, body, { method = 'POST', idempotencyKey = null } = {}) => {
+const request = async (path, body, { method = 'POST', idempotencyKey = null, profile = 'request' } = {}) => {
   const target = new URL(path, baseUrl());
   const rawBody = method === 'GET' ? '' : JSON.stringify(body ?? {});
-  const headers = process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
-    ? signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
-    : signDgfyRequest({ method, authority: target.host, path: `${target.pathname}${target.search}`, body }).headers;
+  const headers = profile === 'event'
+    ? signDgfyEvent({ method, authority: target.host, path: `${target.pathname}${target.search}`, body })
+    : process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
+      ? signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
+      : signDgfyRequest({ method, authority: target.host, path: `${target.pathname}${target.search}`, body }).headers;
   if (idempotencyKey && !headers['idempotency-key']) headers['idempotency-key'] = idempotencyKey;
   if (process.env.DGLAUNDRY_PARTNER_TOKEN && !headers['x-dglaundry-partner-token']) headers['x-dglaundry-partner-token'] = String(process.env.DGLAUNDRY_PARTNER_TOKEN);
   const response = await fetch(target, { method, headers, body: rawBody || undefined });
@@ -74,9 +76,9 @@ const request = async (path, body, { method = 'POST', idempotencyKey = null } = 
 export const dglaundryPartnerClient = {
   prepareQuote: (payload) => request('/api/v1/integrations/dgfy/quotes', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
   prepareBookingGroup: (payload) => request('/api/v1/integrations/dgfy/booking-groups/prepare', payload, { idempotencyKey: payload?.idempotencyKey || payload?.idempotency_key }),
-  submitOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
-  updateOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
-  cancelOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id }),
+  submitOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
+  updateOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
+  cancelOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
   resolveOrder: (payload) => request('/api/v1/integrations/dgfy/order-projections/resolve', payload, { method: 'POST' }),
   health: () => request('/api/v1/integrations/dgfy/health', {}, { method: 'GET' })
 };
