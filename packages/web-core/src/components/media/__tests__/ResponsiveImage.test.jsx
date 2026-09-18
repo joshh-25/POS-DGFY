@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 
 import { ResponsiveImage } from '../ResponsiveImage.jsx';
+import { StorefrontCoverImage } from '../StorefrontCoverImage.jsx';
+import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 
 afterEach(cleanup);
 
@@ -160,5 +162,33 @@ describe('ResponsiveImage', () => {
     );
 
     expect(container.querySelector('img').hidden).toBe(true);
+  });
+
+  it('normalizes saved aliases and clamps unsafe cover-photo values', () => {
+    expect(normalizeCoverPhotoTransform(JSON.stringify({ positionX: 140.123456, positionY: -140, zoom: 3 }))).toEqual({
+      x: 100,
+      y: -100,
+      scale: 2.5
+    });
+    expect(normalizeCoverPhotoTransform({ x: 28.123456, y: -16.987654, scale: 1.234567 })).toEqual({
+      x: 28.1235,
+      y: -16.9877,
+      scale: 1.2346
+    });
+  });
+
+  it('renders the cover-photo transform through the same image element', () => {
+    const { container } = render(
+      <StorefrontCoverImage
+        sources={{ src: 'https://cdn.example.test/cover.jpg' }}
+        transform={{ x: 28.5, y: -16, scale: 1.75 }}
+        alt="Cover photo"
+      />
+    );
+
+    const image = container.querySelector('img');
+    expect(image.style.objectPosition).toBe('35.75% 58%');
+    expect(image.style.transform).toBe('scale(1.75)');
+    expect(image.style.transformOrigin).toBe('center center');
   });
 });

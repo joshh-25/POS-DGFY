@@ -437,6 +437,7 @@ cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
   "status": "staging_soak",
   "source_develop_sha": "$CANDIDATE_SHA",
   "current_staging_sha": "$CANDIDATE_SHA",
+  "staging_head_sha": null,
   "revisions": [
     { "kind": "initial", "sha": "$CANDIDATE_SHA", "parent_sha": null, "branch": "to-staging/$CANDIDATE_ID" }
   ],
@@ -467,6 +468,13 @@ See \`docs/ops/RELEASE_CANDIDATE_POLICY.md\` for the promotion-PR compliance exe
 # Wait on pr-checks.yml, then:
 gh pr merge <N> --merge   # never --squash — see SKILL.md
 ```
+
+Immediately after the staging PR merges, refresh `origin/staging` and record its actual head in
+the local candidate manifest as `staging_head_sha`. This is deliberately separate from
+`current_staging_sha`: the latter is the frozen candidate source identity used for image
+provenance, while the former is the Git SHA from which the release branch is physically cut.
+GitHub may fast-forward a `--merge` PR when the target is already an ancestor, so these values
+are not guaranteed to match.
 
 Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop`: set
 `TARGET_REF` accordingly and run the identical commands from the "#1007-gated exception" section
@@ -550,8 +558,9 @@ git switch -c release/$CANDIDATE_ID-r$RELEASE_REVISION origin/staging
 git push -u origin release/$CANDIDATE_ID-r$RELEASE_REVISION
 ```
 
-Update the manifest's `release_revision` field (`revision`, `source_staging_sha` — must equal
-`current_staging_sha`, `branch`, `pr`) before validating and building release evidence:
+Set `release_revision.source_staging_sha` to the recorded `staging_head_sha` (the exact SHA from
+which the release branch was cut), then update the manifest's `release_revision` field (`revision`,
+`source_staging_sha`, `branch`, `pr`) before validating and building release evidence:
 
 ```bash
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json

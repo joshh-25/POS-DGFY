@@ -35,6 +35,12 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('throw lookupError;');
   });
 
+  it('keeps company lookup pending through a transient API cold start', () => {
+    expect(terminalPageSource).toContain('COMPANY_LOOKUP_MAX_RETRIES');
+    expect(terminalPageSource).toContain('isRetryableCompanyLookupError(error)');
+    expect(terminalPageSource).toContain('Math.min(COMPANY_LOOKUP_RETRY_DELAY_MS * (2 ** (retryCount - 1)), 10000)');
+  });
+
   it('does not auto-bind standalone POS dev sessions to the legacy tenant unless explicitly enabled', () => {
     expect(standalonePosMainSource).toContain("import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true'");
     expect(standalonePosMainSource).toContain('devAutoLoginCompanyToken');

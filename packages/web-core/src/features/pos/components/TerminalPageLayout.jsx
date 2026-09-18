@@ -199,6 +199,7 @@ export default function TerminalPageLayout({
     refreshTerminalMeta = async () => {},
     onPosSetupSaved = async () => {},
     onStorefrontSetupSaved = async () => {},
+    onStorefrontContentStateChange = () => {},
     setOnlineOrderSoundEnabled = () => {},
     posTextSize = 'normal',
     onPosTextSizeChange = () => {},
@@ -663,10 +664,17 @@ export default function TerminalPageLayout({
           </Suspense>
         </div>
       )}
-      <main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
+      <main
+        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
+        style={{
+          '--pos-main-left': isTabletLayout
+            ? '68px'
+            : (!isFloatingSidebarLayout && !effectiveSidebarCollapsed ? '244px' : '0px')
+        }}
+      >
       <div
         key={locked ? 'terminal-header-locked' : 'terminal-header-unlocked'}
-        className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName}`}
+        className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName} dgfy-pos-topbar`}
       >
         <div className={headerShellClassName}>
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1053,8 +1061,10 @@ export default function TerminalPageLayout({
                 refreshTerminalMeta={refreshTerminalMeta}
                 onPosSetupSaved={onPosSetupSaved}
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
+                onStorefrontContentStateChange={onStorefrontContentStateChange}
                 setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
                 sectionIds={TERMINAL_SECTION_IDS}
+                workspacePaneRef={workspacePaneRef}
               />
             </Suspense>}
             </div>

@@ -238,18 +238,25 @@ const validatePayPalConfig = (env, errors) => {
 const validateDglaundryProviderConfig = (env, errors) => {
   if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
   if (!hasValue(env, 'REDIS_URL')) errors.push('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
-  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE']) {
+  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID']) {
     if (!hasValue(env, key)) addMissing(errors, key);
   }
+  if (!hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY') && !hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE')) addMissing(errors, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE (or DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY)');
   if (!hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE (or DGLAUNDRY_INTEGRATION_PUBLIC_KEY)');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE (or DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY)');
+  const integrationEnvironment = String(env.DGLAUNDRY_INTEGRATION_ENVIRONMENT || '').trim().toLowerCase();
+  if (!['staging', 'production'].includes(integrationEnvironment)) {
+    errors.push('DGLAUNDRY_INTEGRATION_ENVIRONMENT must be explicitly staging or production');
+  }
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
   if (redirect !== 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback') {
     errors.push('DGFY_DGLAUNDRY_REDIRECT_URI must be the registered HTTPS DGLaundry callback');
   }
-  if (String(env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc').trim() !== 'https://api.dgfy.ph/oidc') {
-    errors.push('DGFY_OIDC_ISSUER must be https://api.dgfy.ph/oidc for production');
+  if (!hasValue(env, 'DGFY_OIDC_ISSUER')) errors.push('DGFY_OIDC_ISSUER must be explicit for each hosted environment; do not inherit the production issuer in staging');
+  const expectedIssuer = integrationEnvironment === 'staging' ? 'https://api.stage.dgfy.ph/oidc' : 'https://api.dgfy.ph/oidc';
+  if (integrationEnvironment && String(env.DGFY_OIDC_ISSUER || '').trim() !== expectedIssuer) {
+    errors.push(`DGFY_OIDC_ISSUER must be ${expectedIssuer} for ${integrationEnvironment}`);
   }
 };
 

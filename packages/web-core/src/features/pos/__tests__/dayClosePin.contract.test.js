@@ -28,7 +28,12 @@ describe('POS Day Close PIN contract', () => {
   });
 
   it('shows the cashier account and keeps PIN creation self-service', () => {
-    const workspaceSource = readSource('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const workspaceSource = [
+      readSource('src/features/pos/settings/PosSettingsWorkspace.jsx'),
+      readSource('src/features/pos/settings/PosSetupSettingsPane.jsx'),
+      readSource('src/features/pos/settings/PosOperationsAccessSection.jsx'),
+      readSource('src/features/pos/settings/PosAccountPermissionsSection.jsx')
+    ].join('\n');
     const terminalPageSource = [
       readSource('src/features/pos/pages/TerminalPage.jsx'),
       readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')

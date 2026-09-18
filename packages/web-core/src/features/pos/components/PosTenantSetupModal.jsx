@@ -16,7 +16,7 @@ import {
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
+import { createSuggestedTerminalId, normalizeTerminalCashierIds, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 import {
   createDefaultStorefrontBusinessHours,
@@ -74,6 +74,9 @@ const createTerminalDraft = (entry = {}, isFirst = false, existingEntries = []) 
   is_default: entry?.is_default === true || (isFirst && entry?.is_default !== false),
   pairing_version: String(entry?.pairing_version || '').trim(),
   paired_device_ready: entry?.paired_device_ready === true,
+  ...(Array.isArray(entry?.cashier_user_ids)
+    ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+    : {}),
   rotate_pairing: false
 });
 
@@ -228,9 +231,13 @@ export default function PosTenantSetupModal({
     setTerminalDrafts((current) => {
       const next = current.map((entry) => ({ ...entry }));
       const entry = next[index] || createTerminalDraft({}, index === 0, next);
+      const previousLocationId = entry.location_id;
       entry[key] = key === 'terminal_id'
         ? sanitizeTerminalId(value)
         : (key === 'location_id' ? toPositiveInt(value) : value);
+      if (key === 'location_id' && previousLocationId !== entry.location_id) {
+        entry.cashier_user_ids = [];
+      }
 
       if (key === 'is_default' && value === true) {
         next.forEach((candidate, candidateIndex) => {
@@ -292,6 +299,9 @@ export default function PosTenantSetupModal({
           is_active: entry?.is_active !== false,
           is_default: entry?.is_default === true,
           pairing_version: String(entry?.pairing_version || ''),
+          ...(Array.isArray(entry?.cashier_user_ids)
+            ? { cashier_user_ids: normalizeTerminalCashierIds(entry.cashier_user_ids) }
+            : {}),
           rotate_pairing: false
         }))
         .filter((entry) => entry.terminal_id || entry.label || entry.location_id || entry.is_default || entry.is_active === false);

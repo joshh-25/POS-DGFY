@@ -60,7 +60,7 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const surrounding = workspace.slice(buttonStart - 400, buttonEnd);
 
         expect(surrounding).toContain('canEditItems &&');
-        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage || hasUnsavedEditImages}');
+        expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}');
         expect(surrounding).toContain("'Regenerate Image (AI)' : 'Generate Image (AI)'");
         expect(surrounding).toContain("'Queuing…'");
         expect(surrounding).toContain("'Generating…'");
@@ -72,7 +72,7 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const closeHandler = workspace.slice(closeStart, closeEnd);
 
         expect(closeHandler).toContain('cancelImageGenerationPoll();');
-        expect(closeHandler).toContain('editSessionRef.current');
+        expect(closeHandler).toContain('setEditingItemId(null);');
         expect(closeHandler).toContain('setGeneratingEditImage(false);');
         expect(closeHandler).toContain('setPollingEditImage(false);');
     });
