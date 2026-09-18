@@ -76,7 +76,7 @@ export function FnbWorkflowPanel({
       )}
 
       {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
-        <label className="block text-[11px] font-bold text-slate-600">
+        <label className={`${orderMethod === 'takeout' ? 'col-span-full ' : ''}block w-full min-w-0 text-[11px] font-bold text-slate-600`}>
           Order Notes (Global)
           <input
             type="text"

@@ -451,6 +451,18 @@ export default function TerminalPage() {
     };
   }, [posTextSize]);
 
+  useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE || typeof document === 'undefined') return undefined;
+
+    const previousValue = document.body.getAttribute('data-dgfy-pos-surface');
+    document.body.setAttribute('data-dgfy-pos-surface', 'true');
+
+    return () => {
+      if (previousValue === null) document.body.removeAttribute('data-dgfy-pos-surface');
+      else document.body.setAttribute('data-dgfy-pos-surface', previousValue);
+    };
+  }, []);
+
   // Never render protected POS workspaces from a merely persisted token. The
   // session must be validated by hydrateUser before bootstrap requests run.
   const [locked, setLocked] = useState(true);
@@ -838,6 +850,7 @@ export default function TerminalPage() {
     if (!IS_DGFY_POS_SURFACE || typeof window === 'undefined') return false;
     return isPosTabletViewport({
       viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
       isDgfyPosSurface: IS_DGFY_POS_SURFACE,
       windowObj: window
     });
@@ -1745,7 +1758,8 @@ export default function TerminalPage() {
     search = '',
     fulfillmentStatus = '',
     paymentStatus = '',
-    page = 1
+    page = 1,
+    limit = 20
   } = {}) => {
     if (!silent) {
       setOrderHistoryState((previous) => ({
@@ -1764,7 +1778,8 @@ export default function TerminalPage() {
       search,
       fulfillmentStatus,
       paymentStatus,
-      page
+      page,
+      limit
     });
     setOrderHistoryState(result.state);
     if (!silent && result.toastMessage) toast.error(result.toastMessage);
@@ -6191,6 +6206,7 @@ export default function TerminalPage() {
       setIsDesktopWide(viewportWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
       setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletViewport({
         viewportWidth,
+        viewportHeight: window.innerHeight,
         isDgfyPosSurface: IS_DGFY_POS_SURFACE,
         windowObj: window
       }));

@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, History, RefreshCcw } from 'lucide-react';
+import { CalendarDays, Eye, History, RefreshCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
+
+const CASHIER_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
 
 const getManilaDate = () => {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -50,6 +53,7 @@ export default function CashierHistoryPanel({
 }) {
     const [rangeMode, setRangeMode] = useState('today');
     const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
     const today = useMemo(() => getManilaDate(), []);
     const records = Array.isArray(state?.records) ? state.records : [];
     const pagination = state?.pagination || {};
@@ -62,16 +66,16 @@ export default function CashierHistoryPanel({
         && records.some((record) => String(record?.shift?.pos_terminal_shift_id || record?.shift?.shift_id || '') === String(activeShiftId))
     );
 
-    const buildFilters = useCallback((nextPage = page, nextRangeMode = rangeMode) => ({
+    const buildFilters = useCallback((nextPage = page, nextRangeMode = rangeMode, nextPageSize = pageSize) => ({
         page: nextPage,
-        limit: 10,
+        limit: nextPageSize,
         ...(nextRangeMode === 'today' ? { date_from: today, date_to: today } : {})
-    }), [page, rangeMode, today]);
+    }), [page, pageSize, rangeMode, today]);
 
-    const refresh = useCallback((nextPage = page, nextRangeMode = rangeMode) => {
+    const refresh = useCallback((nextPage = page, nextRangeMode = rangeMode, nextPageSize = pageSize) => {
         setPage(nextPage);
-        return onRefresh(buildFilters(nextPage, nextRangeMode));
-    }, [buildFilters, onRefresh, page, rangeMode]);
+        return onRefresh(buildFilters(nextPage, nextRangeMode, nextPageSize));
+    }, [buildFilters, onRefresh, page, pageSize, rangeMode]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -270,34 +274,24 @@ export default function CashierHistoryPanel({
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                <span>
-                    Showing {records.length} of {Number(pagination.total || records.length)} records
-                </span>
-                <div className="flex items-center gap-2">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="h-8 rounded-lg px-2 text-xs font-bold"
-                        onClick={() => void refresh(Math.max(1, page - 1), rangeMode)}
-                        disabled={state?.loading || page <= 1 || !isOnline}
-                        aria-label="Previous cashier history page"
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    <span className="min-w-20 text-center font-bold">Page {page} of {totalPages}</span>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="h-8 rounded-lg px-2 text-xs font-bold"
-                        onClick={() => void refresh(Math.min(totalPages, page + 1), rangeMode)}
-                        disabled={state?.loading || page >= totalPages || !isOnline}
-                        aria-label="Next cashier history page"
-                    >
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
-            </div>
+            <GlobalPagination
+                testId="pos-cashier-history-pagination"
+                ariaLabel="Cashier history pagination"
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={Number(pagination.total || records.length || 0)}
+                pageSize={pageSize}
+                pageSizeOptions={CASHIER_HISTORY_PAGE_SIZE_OPTIONS}
+                itemLabel="records"
+                loading={state?.loading}
+                disabled={!isOnline}
+                onPageChange={(nextPage) => void refresh(nextPage, rangeMode)}
+                onPageSizeChange={(nextPageSize) => {
+                    setPageSize(nextPageSize);
+                    void refresh(1, rangeMode, nextPageSize);
+                }}
+                className="border-0 border-t border-slate-100 px-0 shadow-none"
+            />
         </div>
     );
 }

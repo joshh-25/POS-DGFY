@@ -38,6 +38,13 @@ describe('POS text-size CSS compatibility contract', () => {
         expect(cssSource).toContain('--pos-text-size-scale: 1;');
     });
 
+    it('does not retain text-size hover styling after touch taps', () => {
+        expect(cssSource).toContain('@media (max-width: 1023.98px), (hover: none), (pointer: coarse)');
+        expect(cssSource).toContain('.pos-text-size-control__trigger:hover');
+        expect(cssSource).toContain('.pos-text-size-control__option:not([aria-selected="true"]):hover');
+        expect(cssSource).toContain('-webkit-tap-highlight-color: transparent;');
+    });
+
     it('uses a restrained global elevation and focus-shadow system', () => {
         expect(cssSource).toContain('--pos-shell-shadow: 0 1px 4px');
         expect(cssSource).toContain('--pos-surface-shadow: 0 2px 8px');

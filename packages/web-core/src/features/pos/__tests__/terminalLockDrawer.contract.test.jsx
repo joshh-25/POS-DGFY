@@ -40,6 +40,23 @@ describe('TerminalLockDrawer contract', () => {
     expect(drawer.firstElementChild.classList.contains('min-h-full')).toBe(true);
   });
 
+  it('keeps the company dropdown accessible while applying the POS visual treatment', () => {
+    const { container } = render(<TerminalLockDrawer {...buildProps({
+      dgfyPosState: {
+        authenticated: true,
+        companies: [{ tenant_id: 'tenant-1', company_name: 'Main Company' }]
+      }
+    })} />);
+    const companySelect = container.querySelector('#dgfy-pos-company');
+
+    expect(companySelect).toBeTruthy();
+    expect(companySelect.classList.contains('dgfy-pos-company-select')).toBe(true);
+    expect(companySelect.getAttribute('aria-haspopup')).toBe('listbox');
+    fireEvent.click(companySelect);
+    expect(container.querySelector('#dgfy-pos-company-options')).toBeTruthy();
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(2);
+  });
+
   it('does not render company token input in terminal lock drawer', () => {
     render(<TerminalLockDrawer {...buildProps()} />);
 
@@ -68,6 +85,7 @@ describe('TerminalLockDrawer contract', () => {
       }
     })} />);
 
+    fireEvent.click(screen.getByLabelText('Company'));
     expect(screen.getByLabelText('Company')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Select accessible company' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Main Company' })).toBeTruthy();
@@ -86,6 +104,7 @@ describe('TerminalLockDrawer contract', () => {
       }
     })} />);
 
+    fireEvent.click(screen.getByLabelText('Company'));
     expect(screen.getByLabelText('Company')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Masu Cafe' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Second Company' })).toBeTruthy();
