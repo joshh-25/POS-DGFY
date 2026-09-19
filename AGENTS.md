@@ -195,8 +195,10 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
 - **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
   files → Worker fixes → fast-track Reviewer → Promoter redeploys), also reachable manually via
   `/hotfix` (#861) for an on-demand fix outside the monitor loop. Carries a narrow, phrase-gated
-  override to merge a hotfix into `main` during an open incident; every other case keeps "never
-  merge `main`" absolute. Also carries a mandatory compliance-preflight reconciliation step for any
+  override to merge a hotfix into `main` during an open incident; the manual `/hotfix` path may
+  additionally reach `main` without an active incident when an open issue documents why waiting for
+  the next scheduled promotion is unacceptable (#2006) — autonomous monitor-triggered handling
+  remains actively-incident-only. Also carries a mandatory compliance-preflight reconciliation step for any
   hotfix diff touching an outstanding `NOT-EXECUTED-*` declaration (#1700, `npm run
   compliance:reconcile-local` — see that role's own SKILL.md), never waivable via #1007 or its own
   `main`-merge override. Only runs when explicitly authorized — either an active incident session,
@@ -232,7 +234,8 @@ he says go once. This is unchanged from the standing rule already in `implement`
 with **two** narrow exceptions, neither a standing pre-authorization: `incident-responder`'s
 phrase-gated override (`.agents/skills/incident-responder/SKILL.md`), which supersedes this file's
 earlier "no exception" framing *only* for that role, *only* mid-incident, *only* on Pat's explicit
-real-time phrase; and `promoter`'s own #1007 expedited-promotion override, defined in full
+real-time phrase — plus that role's separate manual `/hotfix` path, which may reach `main` without
+an active incident when an open issue documents why waiting is unacceptable (#2006); and `promoter`'s own #1007 expedited-promotion override, defined in full
 immediately below, which supersedes it *only* for that role, *only* for Pat's business-urgency
 call (not necessarily an incident), *only* on his explicit real-time phrase.
 
