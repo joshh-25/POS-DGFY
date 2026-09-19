@@ -32,6 +32,14 @@ ENV NODE_ENV=production
 # `docker build` with no --build-arg working unchanged (see scripts/deploy-local.sh).
 ARG APP_VERSION=""
 ENV APP_VERSION=${APP_VERSION}
+# #1977 (Phase 341): explicit release floor (bare X.Y.Z production floor) and candidate
+# revision (rN) metadata, baked in at build time so a running container can report both
+# without inferring the floor from an alias. Empty defaults keep a local `docker build`
+# with no --build-arg working unchanged (see scripts/deploy-local.sh).
+ARG APP_RELEASE_FLOOR=""
+ENV APP_RELEASE_FLOOR=${APP_RELEASE_FLOOR}
+ARG APP_RELEASE_REVISION=""
+ENV APP_RELEASE_REVISION=${APP_RELEASE_REVISION}
 WORKDIR /app
 
 # tini as PID 1 for correct signal forwarding/zombie reaping between the

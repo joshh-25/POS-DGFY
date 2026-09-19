@@ -6,7 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
-import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
+import { resolveAppVersion, resolveReleaseFloor, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build` so it can't perturb
 // production build size/timing. See issue #282's Phase A baseline:
@@ -29,7 +29,11 @@ const appNodeModules = path.resolve(__dirname, 'node_modules');
 // fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
 // index.html's <meta name="dgfy-version"> and a generated version.json. See
 // docs/deployment/PWA_SURFACE_CONTRACT.md.
+// #1977 (Phase 341): the release floor (bare X.Y.Z) and candidate revision (rN) ride alongside
+// as APP_RELEASE_FLOOR/APP_RELEASE_REVISION (VITE_-prefixed spellings in the builder stage),
+// stamped into version.json/meta tags so runtime consumers never infer the floor from an alias.
 const appVersion = resolveAppVersion(__dirname);
+const releaseInfo = resolveReleaseFloor(__dirname);
 const securityHeaders = {
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data: https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
   'X-Content-Type-Options': 'nosniff',
@@ -101,7 +105,7 @@ export default defineConfig(async () => {
   plugins: [
     react(),
     esCompatGuardPlugin(),
-    buildStampPlugin(appVersion),
+    buildStampPlugin(appVersion, releaseInfo),
     ...buildSentryVitePlugins(appSurface),
     ...(shouldAnalyzeBundle
       ? [visualizer({
@@ -121,7 +125,9 @@ export default defineConfig(async () => {
   define: {
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString()),
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('store'),
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_APP_RELEASE_FLOOR': JSON.stringify(releaseInfo.floor),
+    'import.meta.env.VITE_APP_RELEASE_REVISION': JSON.stringify(releaseInfo.revision ?? '')
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
