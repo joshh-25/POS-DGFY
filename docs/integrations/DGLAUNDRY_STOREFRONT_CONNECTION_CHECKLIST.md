@@ -18,9 +18,10 @@ team and DGLaundry owner; it does not enable payments or deploy either runtime.
 
 ## Source and authority
 
-Reviewed DGFY source: `3ce45d095` (resolve and record the full SHA when qualifying).
-Reviewed DGLaundry source: `3d071db124bc528b64e2fbec7388a8a8cd94f217`.
-Recheck both deployed SHAs before acceptance; source presence is not live proof.
+The SHAs cited in older comments and handoffs are historical review references,
+not qualification evidence. Record the exact DGFY and DGLaundry PR heads and
+deployed SHAs in the execution register when qualifying; source presence is
+not live proof.
 
 Read `docs/START_HERE.md`, architecture boundaries/governance, accepted ADRs
 0013 and 0029, and the Surebizcorp provider handoff first. DGFY ADR 0079 is
@@ -47,6 +48,16 @@ The former `laundry.dgfy.ph` and shared-edge instructions in the older booking
 handoff do not apply to Surebizcorp. DGFY connects over signed HTTPS, not a
 shared host network, database, runtime or secret store.
 
+For DGLaundry-originated requests, retain the existing DGLaundry machine
+client and short-lived opaque DGFY access-token flow with DGLaundry's P-256
+request signature. For DGFY-originated quote, booking-preparation, and
+resolution requests, use a separate DGFY OIDC-key-signed, five-minute RS256
+JWT with one exact operation scope and active company/location mapping claims,
+plus an independent DGFY P-256 HTTP Message Signature. The service client ID
+must be explicitly registered and must match the DGLaundry inbound client
+configuration. DGFY-origin events remain Ed25519-signed. Do not configure a
+static bearer token for the hosted profile.
+
 ## Current findings to resolve before claiming readiness
 
 - `apps/dgfy-api/src/routes/dgfyLaundryOrders.js` exposes catalog, availability,
@@ -68,9 +79,11 @@ shared host network, database, runtime or secret store.
   route does not establish explicit business application for those types.
   Both owners must prove durable update/refund effects or deliver matching
   producer/consumer fixes. Do not equate inbox acceptance with application.
-- DGFY's partner client calls `GET /api/v1/integrations/dgfy/health`; this GET
-  is not established in the reviewed DGLaundry integration route. Confirm its
-  mounted implementation or fix the mismatch; SPA HTML is not API health.
+- DGLaundry's integration router implements
+  `GET /api/v1/integrations/dgfy/health`. A healthy response with
+  `connection: disabled` proves the API route and persistence health only; it
+  does not prove provider configuration or an enabled connection. Confirm the
+  deployed API route returns JSON through the public proxy.
 - Production event transport must interoperate byte-for-byte. DGFY uses the
   Ed25519 HTTP-message-signatures profile; do not reuse the separate P-256
   partner/identity credential contract. Some older catalog prose describes

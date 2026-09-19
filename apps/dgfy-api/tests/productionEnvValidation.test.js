@@ -68,6 +68,98 @@ describe('production environment validation', () => {
     expect(result.errors).toContain('DGFY_OIDC_ISSUER must be https://api.stage.dgfy.ph/oidc for staging');
   });
 
+  it('requires an explicit service client and exact HTTPS partner audience for DGLaundry', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+        DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
+        DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
+        DGFY_OIDC_PRIVATE_KEY_FILE: '/run/secrets/dgfy-oidc-private.pem',
+        DGFY_OIDC_PUBLIC_KEY_FILE: '/run/secrets/dgfy-oidc-public.pem',
+        DGFY_OIDC_KEY_ID: 'dgfy-oidc-stage-1',
+        DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-stage',
+        DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-machine.pub.pem',
+        DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: 'dgfy-laundry-partner-stage',
+        DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: 'dgfy-event-stage-1',
+        DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-event.pem',
+        DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-event.pub.pem',
+        DGLAUNDRY_PARTNER_REQUEST_KEY_ID: 'dgfy-request-stage-1',
+        DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: '/run/secrets/dgfy-request.pub.pem',
+        DGLAUNDRY_PARTNER_SIGNING_KEY_ID: 'dgfy-request-stage-1',
+        DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-request-private.pem',
+        DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
+        DGLAUNDRY_PARTNER_AUDIENCE: 'https://laundry.surebizcorp.com',
+        DGLAUNDRY_SIGNATURE_PROFILE: 'http-message-signatures-v1',
+        PAYMONGO_MODE: 'test'
+      }
+    });
+    expect(result.errors).not.toContain('Missing required environment value: DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
+    expect(result.errors).not.toContain('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
+  });
+
+  it('rejects a DGLaundry partner audience that does not match its HTTPS origin', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+        DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
+        DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
+        DGLAUNDRY_PARTNER_AUDIENCE: 'https://api.stage.dgfy.ph'
+      }
+    });
+    expect(result.errors).toContain('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
+  });
+
+  it('requires the outbound P-256 request key and registered key ID for hosted DGLaundry access', () => {
+    const base = {
+      ...baseEnv,
+      DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+      DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+      DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
+      DGFY_DGLAUNDRY_REDIRECT_URI: 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback',
+      DGFY_OIDC_PRIVATE_KEY_FILE: '/run/secrets/dgfy-oidc-private.pem',
+      DGFY_OIDC_PUBLIC_KEY_FILE: '/run/secrets/dgfy-oidc-public.pem',
+      DGFY_OIDC_KEY_ID: 'dgfy-oidc-stage-1',
+      DGFY_DGLAUNDRY_MACHINE_CLIENT_ID: 'dglaundry-machine-stage',
+      DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-machine.pub.pem',
+      DGFY_DGLAUNDRY_SERVICE_CLIENT_ID: 'dgfy-laundry-partner-stage',
+      DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID: 'dgfy-event-stage-1',
+      DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-event.pem',
+      DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE: '/run/secrets/dglaundry-event.pub.pem',
+      DGLAUNDRY_PARTNER_REQUEST_KEY_ID: 'dgfy-request-stage-1',
+      DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE: '/run/secrets/dgfy-request.pub.pem',
+      DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
+      DGLAUNDRY_PARTNER_AUDIENCE: 'https://laundry.surebizcorp.com',
+      DGLAUNDRY_SIGNATURE_PROFILE: 'http-message-signatures-v1',
+      PAYMONGO_MODE: 'test'
+    };
+    const missing = validateProductionEnv({ env: base });
+    expect(missing.errors).toContain('Missing required environment value: DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
+    expect(missing.errors).toContain('Missing required environment value: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE (or DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY)');
+
+    const configured = validateProductionEnv({ env: { ...base, DGLAUNDRY_PARTNER_SIGNING_KEY_ID: 'dgfy-request-stage-1', DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE: '/run/secrets/dgfy-request-private.pem' } });
+    expect(configured.errors).not.toContain('Missing required environment value: DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
+    expect(configured.errors).not.toContain('Missing required environment value: DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE (or DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY)');
+  });
+
+  it('rejects live PayMongo mode while the DGLaundry provider environment is staging', () => {
+    const result = validateProductionEnv({
+      env: {
+        ...baseEnv,
+        DGLAUNDRY_INTEGRATION_ENABLED: 'true',
+        DGLAUNDRY_INTEGRATION_ENVIRONMENT: 'staging',
+        DGFY_OIDC_ISSUER: 'https://api.stage.dgfy.ph/oidc',
+        DGLAUNDRY_PARTNER_BASE_URL: 'https://laundry.surebizcorp.com',
+        DGLAUNDRY_PARTNER_AUDIENCE: 'https://laundry.surebizcorp.com',
+        PAYMONGO_MODE: 'live'
+      }
+    });
+    expect(result.errors).toContain('DGLaundry staging integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in staging');
+  });
+
   it('fails closed for missing production auth and database values', () => {
     const result = validateProductionEnv({
       env: {

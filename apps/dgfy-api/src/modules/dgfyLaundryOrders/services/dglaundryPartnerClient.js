@@ -1,4 +1,5 @@
 import { signDgfyRequest, signDgfyEvent } from './dglaundryEventSignature.js';
+import { issueDglaundryPartnerAccessToken } from './dglaundryPartnerAccessToken.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
@@ -13,12 +14,13 @@ const configured = (name) => {
 };
 
 export const signDglaundryPartnerRequest = ({ method, target, rawBody, idempotencyKey }) => {
-  const token = configured('DGLAUNDRY_PARTNER_ACCESS_TOKEN') || configured('DGLAUNDRY_PARTNER_TOKEN');
   const signingKey = configured('DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY');
-  const signingKeyId = configured('DGLAUNDRY_PARTNER_SIGNING_KEY_ID') || 'dgfy-partner-p256';
-  const appId = configured('DGLAUNDRY_PARTNER_APP_ID') || 'dgfy';
+  const signingKeyId = configured('DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
+  const appId = configured('DGFY_DGLAUNDRY_SERVICE_CLIENT_ID');
   const contractVersion = configured('DGLAUNDRY_PARTNER_CONTRACT_VERSION') || 'external-runtime-v0.1';
-  if (!token || !signingKey) throw new Error('DGLAUNDRY_PARTNER_ASYMMETRIC_CREDENTIALS_REQUIRED');
+  if (!signingKey || !signingKeyId || !appId) throw new Error('DGLAUNDRY_PARTNER_ASYMMETRIC_CREDENTIALS_REQUIRED');
+  const payload = rawBody ? JSON.parse(rawBody) : {};
+  const token = issueDglaundryPartnerAccessToken({ method, target, payload });
   const created = Math.floor(Date.now() / 1000);
   const expires = created + 300;
   const nonce = crypto.randomUUID();
@@ -57,11 +59,15 @@ const request = async (path, body, { method = 'POST', idempotencyKey = null, pro
   const rawBody = method === 'GET' ? '' : JSON.stringify(body ?? {});
   const headers = profile === 'event'
     ? signDgfyEvent({ method, authority: target.host, path: `${target.pathname}${target.search}`, body })
-    : process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
+    : profile === 'public'
+      ? { accept: 'application/json' }
+      : process.env.DGLAUNDRY_SIGNATURE_PROFILE === 'http-message-signatures-v1'
       ? signDglaundryPartnerRequest({ method, target, rawBody, idempotencyKey })
       : signDgfyRequest({ method, authority: target.host, path: `${target.pathname}${target.search}`, body }).headers;
   if (idempotencyKey && !headers['idempotency-key']) headers['idempotency-key'] = idempotencyKey;
-  if (process.env.DGLAUNDRY_PARTNER_TOKEN && !headers['x-dglaundry-partner-token']) headers['x-dglaundry-partner-token'] = String(process.env.DGLAUNDRY_PARTNER_TOKEN);
+  if (process.env.DGLAUNDRY_SIGNATURE_PROFILE !== 'http-message-signatures-v1' && process.env.NODE_ENV !== 'production' && process.env.DGLAUNDRY_PARTNER_TOKEN && !headers['x-dglaundry-partner-token']) {
+    headers['x-dglaundry-partner-token'] = String(process.env.DGLAUNDRY_PARTNER_TOKEN);
+  }
   const response = await fetch(target, { method, headers, body: rawBody || undefined });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || payload.success === false) {
@@ -80,5 +86,5 @@ export const dglaundryPartnerClient = {
   updateOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
   cancelOrder: (envelope) => request('/api/v1/integrations/dgfy/events', envelope, { idempotencyKey: envelope?.id, profile: 'event' }),
   resolveOrder: (payload) => request('/api/v1/integrations/dgfy/order-projections/resolve', payload, { method: 'POST' }),
-  health: () => request('/api/v1/integrations/dgfy/health', {}, { method: 'GET' })
+  health: () => request('/api/v1/integrations/dgfy/health', {}, { method: 'GET', profile: 'public' })
 };

@@ -121,12 +121,25 @@ describe('DGFY DGLaundry storefront/order projections', () => {
     const payload = { companyId: 'company-a', locationId: 'location-a', lines: [{ variantId: 'svc-1', quantity: 1 }], fulfillment: { mode: 'pickup' } };
     await useCases.quote({ payload, idempotencyKey: 'quote-key' });
     await useCases.quote({ payload, idempotencyKey: 'quote-key' });
+    expect(repository.findActiveMapping).toHaveBeenCalledWith({ companyId: 'company-a', locationId: 'location-a' });
     expect(partnerClient.prepareQuote).toHaveBeenCalledTimes(1);
     const orderPayload = { ...payload, externalOrderReference: 'order-1', externalTrackingReference: 'track-1' };
     await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
     await useCases.submitOrder({ payload: orderPayload, accountId: 'account-1', idempotencyKey: 'order-key' });
     expect(partnerClient.submitOrder).toHaveBeenCalledTimes(1);
     expect(partnerClient.submitOrder.mock.calls[0][0].data).toEqual(expect.objectContaining({ customerReference: 'account-1', customerReferenceKind: 'dgfy_account' }));
+  });
+
+  it('blocks quote creation when the company/location mapping is not active', async () => {
+    const repository = makeRepository();
+    repository.findActiveMapping.mockResolvedValue(null);
+    const partnerClient = { prepareQuote: jest.fn() };
+    const useCases = buildDgfyLaundryOrderUseCases({ repository, partnerClient });
+    await expect(useCases.quote({
+      payload: { companyId: 'company-a', locationId: 'unmapped-location', lines: [{ variantId: 'svc-1', quantity: 1 }] },
+      idempotencyKey: 'blocked-quote'
+    })).rejects.toMatchObject({ code: 'AUTHORIZATION_FAILED', statusCode: 403 });
+    expect(partnerClient.prepareQuote).not.toHaveBeenCalled();
   });
 
   it('only exposes an order to the immutable account that submitted it', async () => {
