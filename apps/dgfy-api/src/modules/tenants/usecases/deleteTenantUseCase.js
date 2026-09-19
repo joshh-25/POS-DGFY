@@ -8,7 +8,7 @@ export const buildDeleteTenantUseCase = ({
     syncStorefrontDiscoveryIndexForTenant,
     logger
 }) => {
-    return async ({ id }) => {
+    return async ({ id, forceDeleteRegistrationHistory = false }) => {
         try {
             const tenant = await tenantAdminRepository.findTenantById(id);
             if (!tenant) {
@@ -17,6 +17,28 @@ export const buildDeleteTenantUseCase = ({
                     'Tenant not found',
                     { statusCode: 404 }
                 ));
+            }
+
+            const registrationApplication = await tenantAdminRepository.findCompanyRegistrationApplicationForTenant(tenant.id);
+            if (registrationApplication) {
+                const invoiceCount = await tenantAdminRepository.countPlatformInvoicesForRegistrationApplication(registrationApplication.id);
+                if (invoiceCount > 0) {
+                    return fail(new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `Tenant cannot be deleted because registration application ${registrationApplication.id} has ${invoiceCount} platform invoice(s). Invoices are never deleted by tenant deletion.`,
+                        { statusCode: 409 }
+                    ));
+                }
+
+                if (!forceDeleteRegistrationHistory) {
+                    return fail(new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `Tenant cannot be deleted because registration application ${registrationApplication.id} has review status "${registrationApplication.review_status}". Pass forceDeleteRegistrationHistory=true to delete its registration history.`,
+                        { statusCode: 409 }
+                    ));
+                }
+
+                await tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory(registrationApplication.id);
             }
 
             if (typeof removeStorefrontDiscoveryIndexForTenant === 'function') {

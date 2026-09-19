@@ -75,6 +75,7 @@ let getPricingSettings;
 let registerCompanyRequest;
 let provisionNewTenant;
 let updateTenant;
+let deleteTenant;
 let getTenantPosMetadata;
 let updateTenantPosMetadata;
 let listTenantPosMetadataAuditLogs;
@@ -89,6 +90,7 @@ beforeAll(async () => {
   registerCompanyRequest = mod.registerCompanyRequest;
   provisionNewTenant = mod.provisionNewTenant;
   updateTenant = mod.updateTenant;
+  deleteTenant = mod.deleteTenant;
   getTenantPosMetadata = mod.getTenantPosMetadata;
   updateTenantPosMetadata = mod.updateTenantPosMetadata;
   listTenantPosMetadataAuditLogs = mod.listTenantPosMetadataAuditLogs;
@@ -287,6 +289,35 @@ describe('adminTenantHandlers transport contracts', () => {
       surface: 'admin_tenants',
       action: 'update_tenant'
     }));
+  });
+
+  it('deleteTenant forwards the registration-history force query parameter', async () => {
+    mockDeleteTenantUseCase.mockResolvedValue({
+      success: true,
+      data: {
+        statusCode: 200,
+        payload: { success: true, message: 'Tenant and database permanently deleted' }
+      }
+    });
+
+    const req = {
+      params: { id: 'tenant-1' },
+      query: { forceDeleteRegistrationHistory: 'true' },
+      user: { user_id: 1, tenant_id: 'landlord', is_master_admin: true }
+    };
+    const res = createRes();
+
+    await deleteTenant(req, res);
+
+    expect(mockDeleteTenantUseCase).toHaveBeenCalledWith({
+      id: 'tenant-1',
+      forceDeleteRegistrationHistory: true
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      message: 'Tenant and database permanently deleted'
+    });
   });
 
   it('getTenantPosMetadata returns metadata data for platform-admin review UI', async () => {
