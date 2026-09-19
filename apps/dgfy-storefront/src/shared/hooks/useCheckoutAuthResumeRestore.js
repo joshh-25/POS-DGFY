@@ -47,6 +47,18 @@ export function useCheckoutAuthResumeRestore({
     const normalizedDraftSlug = toSlug(draft?.routeSlug || '');
     const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
     if (!draft || !normalizedDraftSlug || !normalizedCurrentSlug || normalizedDraftSlug !== normalizedCurrentSlug) return;
+    const draftWorkflowMode = String(draft.workflowMode || '').trim().toLowerCase();
+    const currentWorkflowMode = String(
+      selectedStore?.workflow_mode
+      || selectedStore?.ops_workflow_mode
+      || selectedStore?.business_mode
+      || ''
+    ).trim().toLowerCase();
+    // A checkout-auth draft is a one-tab resume contract. Keep it scoped to
+    // the same workflow as the storefront that created it; otherwise a stale
+    // F&B/customer/payment step can be restored into a different mode under
+    // the same slug after a tenant configuration change.
+    if (draftWorkflowMode && currentWorkflowMode && draftWorkflowMode !== currentWorkflowMode) return;
     setCart(Array.isArray(draft.cart) ? draft.cart : []);
     if (draft.selectedLocationId != null) setSelectedLocationId(draft.selectedLocationId);
     if (draft.selectedSavedLocationId) setSelectedSavedLocationId(draft.selectedSavedLocationId);
@@ -86,6 +98,9 @@ export function useCheckoutAuthResumeRestore({
     hasAppliedCheckoutAuthResume,
     isDgfyCustomerSignedIn,
     routeSlug,
-    selectedStore?.slug
+    selectedStore?.slug,
+    selectedStore?.workflow_mode,
+    selectedStore?.ops_workflow_mode,
+    selectedStore?.business_mode
   ]);
 }

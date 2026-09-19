@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  buildLegacyStorefrontCartStorageKey,
   buildStorefrontCartStorageKey,
   clearStorefrontCartSnapshot,
   normalizeStorefrontCartLine,
@@ -34,7 +35,9 @@ describe('storefront cart storage', () => {
   });
 
   it('builds store-scoped keys', () => {
-    expect(buildStorefrontCartStorageKey('Kusina-Caf-E36B28')).toBe('dgfy_storefront_cart_v1:kusina-caf-e36b28');
+    expect(buildStorefrontCartStorageKey('Kusina-Caf-E36B28', { mode: 'fnb' })).toBe('dgfy_storefront_cart_v2:fnb:kusina-caf-e36b28');
+    expect(buildStorefrontCartStorageKey('Kusina-Caf-E36B28', { mode: 'retail' })).not.toBe(buildStorefrontCartStorageKey('Kusina-Caf-E36B28', { mode: 'fnb' }));
+    expect(buildLegacyStorefrontCartStorageKey('Kusina-Caf-E36B28')).toBe('dgfy_storefront_cart_v1:kusina-caf-e36b28');
     expect(buildStorefrontCartStorageKey('')).toBe('');
   });
 
@@ -153,16 +156,49 @@ describe('storefront cart storage', () => {
       mode: 'fnb',
       cart: [{ item_id: 10, name: 'Americano', quantity: 1, price: 110 }]
     });
-    expect(storage.has(buildStorefrontCartStorageKey('kusina'))).toBe(true);
+    expect(storage.has(buildStorefrontCartStorageKey('kusina', { mode: 'fnb' }))).toBe(true);
     expect(readStorefrontCartSnapshot('kusina', { mode: 'fnb' })).toMatchObject({
       storeSlug: 'kusina',
       mode: 'fnb',
       cart: [{ item_id: 10, name: 'Americano' }]
     });
 
-    clearStorefrontCartSnapshot('kusina');
-    expect(localStorage.removeItem).toHaveBeenCalledWith(buildStorefrontCartStorageKey('kusina'));
-    expect(storage.has(buildStorefrontCartStorageKey('kusina'))).toBe(false);
+    clearStorefrontCartSnapshot('kusina', { mode: 'fnb' });
+    expect(localStorage.removeItem).toHaveBeenCalledWith(buildStorefrontCartStorageKey('kusina', { mode: 'fnb' }));
+    expect(storage.has(buildStorefrontCartStorageKey('kusina', { mode: 'fnb' }))).toBe(false);
+  });
+
+  it('keeps same-slug carts isolated by workflow mode', () => {
+    installLocalStorage();
+    writeStorefrontCartSnapshot({
+      storeSlug: 'shared-slug',
+      mode: 'fnb',
+      cart: [{ item_id: 11, quantity: 1, price: 120 }]
+    });
+    writeStorefrontCartSnapshot({
+      storeSlug: 'shared-slug',
+      mode: 'retail',
+      cart: [{ item_id: 22, quantity: 2, price: 80 }]
+    });
+
+    expect(readStorefrontCartSnapshot('shared-slug', { mode: 'fnb' })?.cart[0].item_id).toBe(11);
+    expect(readStorefrontCartSnapshot('shared-slug', { mode: 'retail' })?.cart[0].item_id).toBe(22);
+  });
+
+  it('migrates a valid legacy slug-only snapshot into the requested mode key', () => {
+    const { localStorage, storage } = installLocalStorage();
+    storage.set(buildLegacyStorefrontCartStorageKey('legacy-store'), JSON.stringify({
+      version: 1,
+      storeSlug: 'legacy-store',
+      mode: 'fnb',
+      cart: [{ item_id: 31, quantity: 1, price: 60 }],
+      savedAt: Date.now(),
+      expiresAt: Date.now() + STOREFRONT_CART_STORAGE_TTL_MS
+    }));
+
+    expect(readStorefrontCartSnapshot('legacy-store', { mode: 'fnb' })?.cart[0].item_id).toBe(31);
+    expect(storage.has(buildStorefrontCartStorageKey('legacy-store', { mode: 'fnb' }))).toBe(true);
+    expect(localStorage.removeItem).toHaveBeenCalledWith(buildLegacyStorefrontCartStorageKey('legacy-store'));
   });
 
   // #768: an applied voucher/promo code was lost on refresh -- it only ever lived in React state,
@@ -240,6 +276,6 @@ describe('storefront cart storage', () => {
       cart: [{ category: 'service', serviceAreaLabel: 'Iloilo City' }]
     });
     expect(readStorefrontCartSnapshot('abeezee-bb983b', { mode: 'fnb' })).toBeNull();
-    expect(storage.has(buildStorefrontCartStorageKey('abeezee-bb983b'))).toBe(true);
+    expect(storage.has(buildStorefrontCartStorageKey('abeezee-bb983b', { mode: 'services' }))).toBe(true);
   });
 });

@@ -43,6 +43,8 @@ describe('useStorefrontNavigation', () => {
 
     expect(props.setIsCheckoutOpen).toHaveBeenCalledWith(false);
     expect(props.setCheckoutTab).toHaveBeenCalledWith('checkout');
+    expect(props.setFnbOrderStep).toHaveBeenCalledWith(2);
+    expect(props.setSimpleOrderStep).toHaveBeenCalledWith(1);
     expect(props.setShowFnbMobileOrderSummary).toHaveBeenCalledWith(false);
     expect(props.setRouteSlug).toHaveBeenCalledWith('fnb-store');
   });

@@ -104,6 +104,7 @@ export function useCustomerAuthNavigation({
   const persistCheckoutAuthResume = useCallback((resumeTarget = {}) => {
     writeCheckoutAuthResumeDraft({
       routeSlug: selectedStore?.slug || routeSlug,
+      workflowMode: selectedStore?.workflow_mode || selectedStore?.ops_workflow_mode || selectedStore?.business_mode || '',
       returnTo: buildContextualCustomerReturnUrl(),
       checkoutTab: resumeTarget.checkoutTab || checkoutTab || 'checkout',
       fnbOrderStep: resumeTarget.fnbOrderStep ?? fnbOrderStep,
@@ -147,6 +148,9 @@ export function useCustomerAuthNavigation({
     selectedSavedLocationId,
     selectedServiceDetail?.item_id,
     selectedStore?.slug,
+    selectedStore?.workflow_mode,
+    selectedStore?.ops_workflow_mode,
+    selectedStore?.business_mode,
     serviceAppointmentAt,
     serviceBookingStep,
     serviceIntakeResponses,
