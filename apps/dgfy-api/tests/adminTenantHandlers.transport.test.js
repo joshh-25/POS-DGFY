@@ -311,13 +311,38 @@ describe('adminTenantHandlers transport contracts', () => {
 
     expect(mockDeleteTenantUseCase).toHaveBeenCalledWith({
       id: 'tenant-1',
-      forceDeleteRegistrationHistory: true
+      forceDeleteRegistrationHistory: true,
+      actor: { is_platform_admin: true, username: 'platform_admin', user_id: null },
+      metadata: { request_id: null, ip_address: null, user_agent: null }
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       success: true,
       message: 'Tenant and database permanently deleted'
     });
+  });
+
+  it.each([
+    ['missing', {}],
+    ['false', { forceDeleteRegistrationHistory: 'false' }]
+  ])('deleteTenant passes false for %s registration-history force query', async (_label, query) => {
+    mockDeleteTenantUseCase.mockResolvedValue({
+      success: false,
+      error: { code: 'CONFLICT', statusCode: 409, message: 'Registration history requires explicit force' }
+    });
+
+    const req = { params: { id: 'tenant-1' }, query };
+    const res = createRes();
+
+    await deleteTenant(req, res);
+
+    expect(mockDeleteTenantUseCase).toHaveBeenCalledWith({
+      id: 'tenant-1',
+      forceDeleteRegistrationHistory: false,
+      actor: { is_platform_admin: true, username: 'platform_admin', user_id: null },
+      metadata: { request_id: null, ip_address: null, user_agent: null }
+    });
+    expect(res.status).toHaveBeenCalledWith(409);
   });
 
   it('getTenantPosMetadata returns metadata data for platform-admin review UI', async () => {

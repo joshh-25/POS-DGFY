@@ -45,9 +45,11 @@ This declaration covers a targeted fix for three runtime contracts:
 3. Storefront discovery reconciliation remains the fallback cleanup path, but tenant delete must not rely on the scheduler to hide removed tenants.
 4. Pending and active tenants must remain premium-capable even if a legacy admin update payload includes `plan=standard`.
 5. Tenant deletion must not expose raw database constraint text. Existing registration applications
-   return a `409 Conflict`; the force path deletes only email deliveries, workflow events, attempts,
-   and the application itself after confirming that no platform invoice references it. Invoice rows
-   and their financial/audit history are never deleted by this flow.
+   return a `409 Conflict`; the force path locks and re-checks the application before deleting only
+   email deliveries, workflow events, attempts, and the application itself. Invoice rows and their
+   financial/audit history are never deleted by this flow.
+6. A forced registration-history deletion records the acting platform admin, request metadata, and
+   application identifier in the tenant-admin audit contract before destructive cleanup begins.
 
 ## Verification Evidence
 
@@ -59,3 +61,4 @@ This declaration covers a targeted fix for three runtime contracts:
 - `git diff --check`
 - `npm --prefix apps/dgfy-api test -- --runTestsByPath tests/deleteTenantUseCase.test.js tests/adminTenantHandlers.transport.test.js`
 - `node --check` on every changed `apps/dgfy-api` JavaScript file
+- `node --check` on the changed migration-runner migration

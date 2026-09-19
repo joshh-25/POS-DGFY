@@ -1,6 +1,12 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
+const buildRegistrationInvoiceConflict = (applicationId, invoiceCount) => fail(new DomainError(
+    DomainErrorCode.CONFLICT,
+    `Tenant cannot be deleted because registration application ${applicationId} has ${invoiceCount} platform invoice(s). Invoices are never deleted by tenant deletion.`,
+    { statusCode: 409 }
+));
+
 export const buildDeleteTenantUseCase = ({
     tenantAdminRepository,
     deleteTenantDatabase,
@@ -8,7 +14,7 @@ export const buildDeleteTenantUseCase = ({
     syncStorefrontDiscoveryIndexForTenant,
     logger
 }) => {
-    return async ({ id, forceDeleteRegistrationHistory = false }) => {
+    return async ({ id, forceDeleteRegistrationHistory = false, actor = {}, metadata = {} }) => {
         try {
             const tenant = await tenantAdminRepository.findTenantById(id);
             if (!tenant) {
@@ -23,11 +29,7 @@ export const buildDeleteTenantUseCase = ({
             if (registrationApplication) {
                 const invoiceCount = await tenantAdminRepository.countPlatformInvoicesForRegistrationApplication(registrationApplication.id);
                 if (invoiceCount > 0) {
-                    return fail(new DomainError(
-                        DomainErrorCode.CONFLICT,
-                        `Tenant cannot be deleted because registration application ${registrationApplication.id} has ${invoiceCount} platform invoice(s). Invoices are never deleted by tenant deletion.`,
-                        { statusCode: 409 }
-                    ));
+                    return buildRegistrationInvoiceConflict(registrationApplication.id, invoiceCount);
                 }
 
                 if (!forceDeleteRegistrationHistory) {
@@ -38,7 +40,27 @@ export const buildDeleteTenantUseCase = ({
                     ));
                 }
 
-                await tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory(registrationApplication.id);
+                await tenantAdminRepository.createTenantAdminAuditLog({
+                    tenant_id: tenant.id,
+                    action: 'force_delete_registration_history',
+                    actor_username: String(actor?.username || 'platform_admin').slice(0, 120),
+                    reason: 'Tenant deletion explicitly requested with forceDeleteRegistrationHistory=true',
+                    request_id: metadata?.request_id || null,
+                    ip_address: metadata?.ip_address || null,
+                    user_agent: metadata?.user_agent || null,
+                    before_snapshot: null,
+                    after_snapshot: null,
+                    metadata: {
+                        registration_application_id: registrationApplication.id,
+                        review_status: registrationApplication.review_status,
+                        force_delete_registration_history: true
+                    }
+                });
+
+                const historyDeletion = await tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory(registrationApplication.id);
+                if (historyDeletion?.invoiceCount > 0) {
+                    return buildRegistrationInvoiceConflict(registrationApplication.id, historyDeletion.invoiceCount);
+                }
             }
 
             if (typeof removeStorefrontDiscoveryIndexForTenant === 'function') {

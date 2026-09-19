@@ -8,6 +8,7 @@ describe('deleteTenantUseCase', () => {
             findCompanyRegistrationApplicationForTenant: jest.fn().mockResolvedValue(null),
             countPlatformInvoicesForRegistrationApplication: jest.fn().mockResolvedValue(0),
             removeCompanyRegistrationApplicationAndHistory: jest.fn(),
+            createTenantAdminAuditLog: jest.fn().mockResolvedValue(),
             removeTenantDependencies: jest.fn(),
             destroyTenant: jest.fn()
         };
@@ -129,6 +130,11 @@ describe('deleteTenantUseCase', () => {
         expect(result.success).toBe(true);
         expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory)
             .toHaveBeenCalledWith('application-forced');
+        expect(deps.tenantAdminRepository.createTenantAdminAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            tenant_id: 'tenant-forced',
+            action: 'force_delete_registration_history',
+            metadata: expect.objectContaining({ registration_application_id: 'application-forced' })
+        }));
         expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mock.invocationCallOrder[0])
             .toBeLessThan(deps.tenantAdminRepository.removeTenantDependencies.mock.invocationCallOrder[0]);
         expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mock.invocationCallOrder[0])
@@ -153,6 +159,27 @@ describe('deleteTenantUseCase', () => {
         expect(deps.tenantAdminRepository.removeTenantDependencies).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.destroyTenant).not.toHaveBeenCalled();
         expect(deps.removeStorefrontDiscoveryIndexForTenant).not.toHaveBeenCalled();
+    });
+
+    it('rechecks invoices inside the forced history deletion and returns a conflict if one appears', async () => {
+        const deps = makeDeps();
+        const tenant = { id: 'tenant-race', db_name: null };
+        deps.tenantAdminRepository.findTenantById.mockResolvedValue(tenant);
+        deps.tenantAdminRepository.findCompanyRegistrationApplicationForTenant.mockResolvedValue({
+            id: 'application-race',
+            review_status: 'approved'
+        });
+        deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mockResolvedValue({ invoiceCount: 1 });
+
+        const useCase = buildDeleteTenantUseCase(deps);
+        const result = await useCase({ id: tenant.id, forceDeleteRegistrationHistory: true });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.message).toContain('1 platform invoice(s)');
+        expect(deps.tenantAdminRepository.removeTenantDependencies).not.toHaveBeenCalled();
+        expect(deps.tenantAdminRepository.destroyTenant).not.toHaveBeenCalled();
     });
 
     it('fails tenant deletion if storefront discovery index cleanup fails', async () => {

@@ -115,12 +115,34 @@ export const tenantAdminRepository = {
         const CompanyRegistrationAttempt = getCompanyRegistrationAttemptModel();
         const CompanyRegistrationEvent = getCompanyRegistrationEventModel();
         const CompanyRegistrationEmailDelivery = getCompanyRegistrationEmailDeliveryModel();
+        const PlatformInvoice = getPlatformInvoiceModel();
 
         return this.transaction(async (transaction) => {
+            // Lock the application row before re-checking invoices so a concurrent invoice insert
+            // cannot pass the pre-check and race the RESTRICT foreign key during deletion.
+            const application = await CompanyRegistrationApplication.findOne({
+                where: { id: applicationId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!application) return { invoiceCount: 0 };
+
+            const invoiceCount = await PlatformInvoice.count({
+                where: {
+                    [Op.or]: [
+                        { registration_application_id: applicationId },
+                        { original_registration_application_id: applicationId }
+                    ]
+                },
+                transaction
+            });
+            if (invoiceCount > 0) return { invoiceCount };
+
             await CompanyRegistrationEmailDelivery.destroy({ where: { application_id: applicationId }, transaction });
             await CompanyRegistrationEvent.destroy({ where: { application_id: applicationId }, transaction });
             await CompanyRegistrationAttempt.destroy({ where: { application_id: applicationId }, transaction });
             await CompanyRegistrationApplication.destroy({ where: { id: applicationId }, transaction });
+            return { invoiceCount: 0 };
         });
     },
     destroyTenant(tenant, options = {}) {
