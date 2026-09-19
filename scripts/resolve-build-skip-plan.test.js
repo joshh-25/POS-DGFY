@@ -285,3 +285,29 @@ test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main
   assert.equal(inspectedRefs.length, 1);
   assert.doesNotMatch(inspectedRefs[0], /-dev$|-staging$/);
 });
+
+// #1977 (Phase 341) -- revision-aware tag derivation: with a candidate release revision the
+// checked tag is the matrix tag (frontend X.Y.Z-rN-staging, backend env-neutral X.Y.Z-rN,
+// PROD X.Y.Z-rN); without one, the legacy uniform X.Y.Z[-channel] derivation applies.
+const { deriveVersionTag } = require('./resolve-build-skip-plan');
+
+test('deriveVersionTag: legacy derivation when no release revision is set (DEV/ad-hoc unchanged)', () => {
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', revision: undefined }), '1.13.0-dev');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-pos', revision: '' }), '1.13.0-staging');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'PROD', app: 'dgfy-api', revision: null }), '1.13.0');
+});
+
+test('deriveVersionTag: revision-aware matrix tags for a candidate dispatch', () => {
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-pos', revision: 'r16' }), '1.13.0-r16-staging');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-api', revision: 'r16' }), '1.13.0-r16');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'PROD', app: 'dgfy-pos', revision: 'r16' }), '1.13.0-r16');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'PROD', app: 'dgfy-migration-runner', revision: 16 }), '1.13.0-r16');
+});
+
+test('parseArgs: --release-revision is optional (omitted for DEV/ad-hoc dispatches)', () => {
+  const without = parseArgs(['--revision', 'abc123']);
+  assert.equal(without.releaseRevision, '');
+  const withRevision = parseArgs(['--revision', 'abc123', '--environment', 'STAGING', '--release-revision', 'r16']);
+  assert.equal(withRevision.releaseRevision, 'r16');
+  assert.equal(withRevision.environment, 'STAGING');
+});
