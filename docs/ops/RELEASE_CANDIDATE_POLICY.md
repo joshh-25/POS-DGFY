@@ -222,8 +222,10 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
 
 ### 2026-08-18: Hotfix and back-port
 
-A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow — the
-P0-production-outage case, e.g. #664/PR #665) creates a real risk: `main` now contains a fix that
+A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow —
+originally the P0-production-outage case, e.g. #664/PR #665; since #2006 the manual `/hotfix` path
+may also use this procedure whenever the open issue documents that waiting for the next scheduled
+promotion is unacceptable) creates a real risk: `main` now contains a fix that
 `develop` and `staging` don't, and the next ordinary promotion can silently overwrite it if the same
 line is touched upstream. This happened for real with PR #665 — its own body flagged the gap and
 promised a follow-up, closed by #675.
@@ -1668,3 +1670,19 @@ superseding ADR needed). ADR 0081's own matching 2026-09-10 Amendment carries th
 statement; not restated here beyond this operational summary.
 
 PR: (this PR). Closes #1807. Refs #1548, #1610, #1611, #1740, #1802.
+
+### 2026-09-19: Manual `/hotfix` direct-`main` eligibility relaxation (#2006)
+
+The 2026-08-18 "Hotfix and back-port" entry above framed direct-`main` hotfixes as the
+P0-production-outage case. Since #2006, the manual `/hotfix` path
+(`.agents/skills/incident-responder/SKILL.md`) may also land directly on `main` whenever the open
+issue documents that waiting for the next scheduled promotion is unacceptable — independent of
+same-day discovery or fix timing, and without requiring an actively open incident. The
+back-port procedure in that entry is unchanged: every direct-`main` hotfix still back-ports to
+`develop` via a cut branch off fresh `origin/develop` before the incident is considered closed
+(`staging` still inherits on the next promotion, no separate back-port). Review, Merge Safety,
+release-note (ADR 0082), compliance-preflight reconciliation (#1700), and fresh-issue back-port
+controls all remain in force; autonomous monitor-triggered handling remains
+actively-incident-only. #2005 is the calibration reference and is not rerouted by this change.
+
+PR: (this PR). Refs #2006.

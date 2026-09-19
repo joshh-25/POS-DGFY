@@ -23538,3 +23538,63 @@ and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue 
 ### Next eligible phase
 
 341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).
+
+## Phase 341 - Relax manual `/hotfix` same-day eligibility to an issue-backed necessity test (#2006)
+
+### Initiative and release
+
+Incident-responder process policy, current release.
+
+### Objective and scope
+
+Relax the manual `/hotfix` direct-`main` eligibility rule from the same-day/active-incident gate
+to an issue-backed necessity test: explicit `/hotfix` plus an open issue documenting the affected
+production or production-relevant behavior, why waiting for the next scheduled promotion is
+unacceptable, expected harm/risk from delay, and timing context. No same-day discovery or fix
+requirement applies. Scope: `.agents/skills/incident-responder/SKILL.md` (manual-entry procedure,
+manual/autonomous authorization boundary, restate-and-log discipline), `AGENTS.md`
+(incident-responder role summaries), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-08-18 framing
+correction plus a dated 2026-09-19 amendment; back-port procedure unchanged). No application
+runtime, API, database, frontend, deployment, board, ADR, or compliance-declaration change; no
+change to #2005's issue or board state.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2006 (decision); #861 (manual `/hotfix` entry point); #546 (incident-responder loop);
+#1700 (compliance-preflight reconciliation, unchanged); ADR 0082 (release-note obligation,
+unchanged); #2005 as calibration reference only (not rerouted).
+
+### Acceptance and validation evidence
+
+- [x] A defect discovered days after deployment can qualify for manual direct-`main` hotfix
+      handling when the open issue documents why waiting is unacceptable; no same-day gate
+      remains on the manual path.
+- [x] Missing open issue or missing explicit `/hotfix` still stops the manual path (propose
+      only).
+- [x] Autonomous monitor-triggered handling remains actively-incident-only; the relaxation does
+      not leak into the autonomous loop or its `main`-merge override.
+- [x] Direct-`main` hotfixes still require review, Merge Safety, release notes, compliance
+      reconciliation, and back-porting; #2005 is calibration only and untouched.
+- [x] `npm run lint:docs` passes (30 governed docs; ADR lint 90 ADRs).
+- [x] `npm run check:agent-surfaces` passes (13 canonical roles, 10 shims).
+- [x] `npm run check:architecture` passes (55 modules / 595 code files; 98 controller files).
+- [x] Targeted search confirms no contradictory `same-day` eligibility gate remains on the
+      manual path (remaining mentions are the explicit negation plus unrelated history).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #2006 (`Refs`; calibration reference #2005, not rerouted).
+- Handoff: `.tmp/plan-2006.md` (planning head `1c6bf202da8b41fa47a755d269b0ec37dfe8199b`).
+- Implementation: `.agents/skills/incident-responder/SKILL.md`, `AGENTS.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Completion date: not yet merged — set at merge time.
+
+### Next eligible phase
+
+342 after Phase 341's PR is filed, reviewed, merged, and deployed QA is complete.
