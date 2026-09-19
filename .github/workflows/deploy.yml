@@ -91,6 +91,15 @@ on:
           misleading one. See .agents/skills/promoter/references/promotion-runbook.md.
         type: string
         default: ''
+      release_revision:
+        description: >-
+          Candidate-wide release revision (#1977, Phase 341 -- the candidate manifest's
+          release_revision.revision, e.g. "r16"). Set this whenever the STAGING dispatch is part
+          of a to-staging/<candidate_id> promotion -- the builders fail closed without it, and
+          the published staging tags carry it (frontend X.Y.Z-rN-staging, backend X.Y.Z-rN).
+          Leave empty for a DEV dispatch or any ad hoc STAGING rebuild outside a real promotion.
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -149,6 +158,7 @@ jobs:
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read
