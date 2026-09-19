@@ -423,7 +423,7 @@ describe('Settings deep-linking and action wiring', () => {
 
     renderSettings('/settings?tab=storefront');
     await screen.findByText('Legacy Zero Pin');
-    await user.click(screen.getByRole('button', { name: /Edit Branch/i }));
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
     await user.click(screen.getByRole('button', { name: /Update Location/i }));
 
     expect(mocks.toastMock.error).toHaveBeenCalledWith('Please pin the location on the map.');

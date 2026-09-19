@@ -47,3 +47,8 @@ data.
 - `git diff --check` passes.
 - Full Vitest execution is deferred to CI because this worktree does not contain the required Vite,
   Vitest, and React Vite-plugin dependencies.
+- Reviewer follow-up adds the three omitted shared POS contract-test alignment hunks from PR #1993:
+  `editItemImageSave.contract.test.js`, `posCatalogPerformance.contract.test.js`, and
+  `posGenerateItemImage.contract.test.js`.
+- The develop backport preserves the same test-only contract alignment and does not change runtime
+  application behavior, backend authorization, persistence, or tenant data.
