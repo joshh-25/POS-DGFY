@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Digest-based image-alias promotion -- issue #1977 (Phase 341).
+ * Digest-based image-alias promotion -- issue #1977 (Phase 342).
  *
  * Backend PROD reuses the staging candidate digest instead of rebuilding
  * (`X.Y.Z-rN` is environment-neutral for `dgfy-api`/`dgfy-migration-runner`), and every
@@ -18,7 +18,7 @@
  * Read-only until the final create: both inspects are `docker buildx imagetools inspect`,
  * the same classification as `scripts/check-tag-immutability.js`'s inspect step.
  *
- * Label contract (stamped by the builder workflows, Phase 341):
+ * Label contract (stamped by the builder workflows, Phase 342):
  *   - `org.opencontainers.image.version` -- the immutable revision tag (e.g. `1.13.0-r16`).
  *   - `org.dgfy-platform.release-floor` -- the bare production floor (e.g. `1.13.0`).
  *   - `org.dgfy-platform.release-revision` -- the candidate revision fragment (e.g. `r16`).

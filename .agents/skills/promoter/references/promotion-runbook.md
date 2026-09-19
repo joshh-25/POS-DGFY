@@ -626,7 +626,7 @@ git rev-list --count origin/staging..origin/main
 # (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
 # promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
-# release_revision (#1977, Phase 341) is the candidate-wide rN -- one greater than the latest
+# release_revision (#1977, Phase 342) is the candidate-wide rN -- one greater than the latest
 # staging repair revision -- read from the manifest this file writes in "Default: develop ->
 # staging -> main" (release_revision.revision, NOT a Docker build-attempt count):
 RELEASE_REVISION=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').release_revision.revision")
@@ -712,7 +712,7 @@ gh run view <id> --json conclusion
 A `conclusion: failure` here has no rollback to fall back on (#495 open) — report and escalate,
 don't retry blindly.
 
-**Promotion parity gate (ADR 0081 Decision 8, #1588; revision-aware since #1977, Phase 341)** —
+**Promotion parity gate (ADR 0081 Decision 8, #1588; revision-aware since #1977, Phase 342)** —
 after `deploy-main.yml` has actually built
 and pushed the PROD images (only then do the `X.Y.Z-rN` revision tags and bare `X.Y.Z` aliases
 exist to compare against), confirm

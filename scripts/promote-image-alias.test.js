@@ -13,7 +13,7 @@ const {
   RELEASE_REVISION_LABEL,
 } = require('./promote-image-alias');
 
-// Issue #1977 (Phase 341) -- digest-based alias promotion. Every case here injects canned
+// Issue #1977 (Phase 342) -- digest-based alias promotion. Every case here injects canned
 // `docker buildx imagetools inspect` fixtures; none of these tests shell out to `docker`
 // or touch a real registry.
 

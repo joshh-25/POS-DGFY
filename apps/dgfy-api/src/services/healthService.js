@@ -119,7 +119,7 @@ export const resolveAppVersionInfo = ({
     return { version: null, source: null };
 };
 
-// #1977 (Phase 341): explicit release floor (bare X.Y.Z production floor) and candidate
+// #1977 (Phase 342): explicit release floor (bare X.Y.Z production floor) and candidate
 // revision (rN) metadata, baked in as the APP_RELEASE_FLOOR/APP_RELEASE_REVISION build-arg/env
 // vars. The floor falls back to apps/dgfy-api's own package.json version (which carries the
 // bare floor by definition under ADR 0081 Decision 3); the revision has no file fallback --

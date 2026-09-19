@@ -634,7 +634,7 @@ describe('healthService', () => {
             }));
         });
 
-        it('reports release floor/revision metadata alongside the version in /health (#1977 Phase 341)', async () => {
+        it('reports release floor/revision metadata alongside the version in /health (#1977 Phase 342)', async () => {
             process.env = {
                 ...originalEnv,
                 HOSTING_PROFILE: 'shared',
@@ -702,7 +702,7 @@ describe('healthService', () => {
     });
 });
 
-describe('resolveReleaseFloorInfo (#1977 Phase 341)', () => {
+describe('resolveReleaseFloorInfo (#1977 Phase 342)', () => {
     it('prefers explicit arguments over env vars', () => {
         expect(resolveReleaseFloorInfo({
             explicitFloor: '1.13.0',

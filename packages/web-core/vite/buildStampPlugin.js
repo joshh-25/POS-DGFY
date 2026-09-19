@@ -40,7 +40,7 @@ export const resolveAppVersion = (appDir, env = process.env) => {
 };
 
 /**
- * #1977 (Phase 341): resolves the explicit release floor and candidate revision this app's
+ * #1977 (Phase 342): resolves the explicit release floor and candidate revision this app's
  * build should stamp alongside the version. The floor is the bare per-app `X.Y.Z`
  * (`APP_RELEASE_FLOOR`, falling back to the app's own package.json -- which carries the bare
  * floor by definition under ADR 0081 Decision 3); the revision is the candidate `rN` fragment
@@ -99,7 +99,7 @@ const resolveReleaseRevision = (env) => {
  *      checked into git; this value is build-derived and would go stale the moment it's copied
  *      there instead of regenerated).
  *
- * #1977 (Phase 341): when `release` (`resolveReleaseFloor` above) is supplied, the plugin also
+ * #1977 (Phase 342): when `release` (`resolveReleaseFloor` above) is supplied, the plugin also
  * stamps `<meta name="dgfy-release-floor">` / `<meta name="dgfy-release-revision">` (the latter
  * only when a revision is known) and extends `version.json` to
  * `{"version": "...", "release_floor": "...", "release_revision": "..."|null}` -- explicit

@@ -63,7 +63,7 @@
  *   node scripts/resolve-build-skip-plan.js --revision <github.sha> [--apps app1,app2,...]
  *     [--project-root <path>] [--environment <DEV|STAGING|PROD>] [--release-revision <rN>]
  *
- *   `--release-revision` (#1977, Phase 341) is the candidate-wide release revision; when set,
+ *   `--release-revision` (#1977, Phase 342) is the candidate-wide release revision; when set,
  *   each app's checked tag is its revision-aware matrix tag (frontend `X.Y.Z-rN-staging`,
  *   backend `X.Y.Z-rN`, PROD `X.Y.Z-rN`) instead of the legacy uniform `X.Y.Z[-channel]` tag.
  *   Omit it for DEV/ad-hoc dispatches (unchanged legacy behavior).
@@ -83,7 +83,7 @@ const path = require('node:path');
 const { decideImmutability, runInspect } = require('./check-tag-immutability');
 const { APPS, resolveFileDependencyPackages, readVersionAt } = require('./check-app-version-bump');
 const { IMAGE_NAME_BY_APP } = require('./check-image-version-parity');
-// #1977 (Phase 341): revision-aware tag derivation -- a candidate dispatch checks the
+// #1977 (Phase 342): revision-aware tag derivation -- a candidate dispatch checks the
 // revision tag (X.Y.Z-rN[-staging]), not the legacy uniform X.Y.Z[-channel] tag.
 const { resolveReleaseTags } = require('./resolve-release-tags');
 
@@ -251,7 +251,7 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
  * resolution) is still allowed to propagate out of the CLI and fail the calling CI job, per §2/§7.
  */
 /**
- * #1977 (Phase 341): resolves the tag a dispatch would publish for one app. With a
+ * #1977 (Phase 342): resolves the tag a dispatch would publish for one app. With a
  * candidate `revision`, this is the revision-aware matrix tag
  * (`scripts/resolve-release-tags.js` -- frontend `X.Y.Z-rN-staging`, backend
  * environment-neutral `X.Y.Z-rN`, PROD `X.Y.Z-rN`); without one, the legacy uniform

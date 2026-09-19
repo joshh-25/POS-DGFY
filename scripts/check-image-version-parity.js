@@ -100,7 +100,7 @@
  *   - prod 'not-found'                                      -> skip
  *   - prod 'error'                                           -> error
  *
- * #1977 (Phase 341) adds a revision-aware layer on top of both modes, without changing the
+ * #1977 (Phase 342) adds a revision-aware layer on top of both modes, without changing the
  * legacy behavior underneath:
  *   - Manifest mode with a `release_revision` resolves each app's matrix tags via
  *     `scripts/resolve-release-tags.js` (frontend staging `X.Y.Z-rN-staging` vs production
@@ -141,7 +141,7 @@ const path = require('node:path');
 const { validatePromotionCandidate, resolveCandidateSourceShaByApp, PromotionCandidateError } = require('./check-promotion-candidate');
 const { isNotFoundError, collectRevisionLabelInfo } = require('./check-tag-immutability');
 const { APPS, readVersionAt } = require('./check-app-version-bump');
-// #1977 (Phase 341): revision-aware tag matrix (X.Y.Z floor + rN revision tags) and the
+// #1977 (Phase 342): revision-aware tag matrix (X.Y.Z floor + rN revision tags) and the
 // release-revision label the alias check compares.
 const { resolveReleaseTags, ReleaseTagsError } = require('./resolve-release-tags');
 const { RELEASE_REVISION_LABEL } = require('./promote-image-alias');
@@ -338,7 +338,7 @@ function decideDirectParity({ prod, expectedSha }) {
  * JSON output. Pure aside from the injected `inspectFn`. Returns
  * { ref, state: 'ok'|'not-found'|'error', digest?, reason? }.
  *
- * #1977 (Phase 341): the production floor alias (`X.Y.Z`) and the revision tag (`X.Y.Z-rN`)
+ * #1977 (Phase 342): the production floor alias (`X.Y.Z`) and the revision tag (`X.Y.Z-rN`)
  * must reference the same digest -- this is the read half of that comparison (and of the
  * backend same-digest-reuse check); `decideRevisionParity` below is the verdict half.
  */
@@ -370,7 +370,7 @@ function inspectImageDigest({ image, tag, inspectFn }) {
 
 /**
  * Reads one `<image>:<tag>` ref's agreed release-revision label
- * (`org.dgfy-platform.release-revision`, Phase 341). Pure aside from the injected
+ * (`org.dgfy-platform.release-revision`, Phase 342). Pure aside from the injected
  * `inspectFn`. Returns { ref, state: 'ok'|'not-found'|'no-label'|'inconsistent'|'error',
  * value?, reason? } -- same state vocabulary as `inspectImageLabel`, so the verdict
  * function below can treat both uniformly.
@@ -407,7 +407,7 @@ function inspectImageRevision({ image, tag, inspectFn }) {
 
 /**
  * Pure verdict for one app in manifest mode once the candidate carries a release revision
- * (#1977, Phase 341 -- `release_revision.revision` is the authoritative `rN`).
+ * (#1977, Phase 342 -- `release_revision.revision` is the authoritative `rN`).
  *
  * Compares frontend staging `X.Y.Z-rN-staging` to production `X.Y.Z-rN` (backend: the
  * environment-neutral `X.Y.Z-rN` tag on both sides, i.e. the same-digest reuse), then
@@ -543,7 +543,7 @@ function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
 
 /**
  * Orchestrates one app's revision-aware parity (manifest mode with a release revision --
- * #1977, Phase 341). Reads the bare floor version at the app's own resolved candidate SHA,
+ * #1977, Phase 342). Reads the bare floor version at the app's own resolved candidate SHA,
  * derives the matrix tags via `resolveReleaseTags`, then runs the label + digest + alias
  * verdict above. Returns { app, version, revision, candidate_source_sha, verdict, code,
  * detail }.
@@ -594,7 +594,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // #1610: per-app resolution, not one shared current_staging_sha -- see the file header comment.
   const candidateShaByApp = resolveCandidateSourceShaByApp(manifest, apps);
 
-  // #1977 (Phase 341): once the candidate carries a release revision, the manifest's
+  // #1977 (Phase 342): once the candidate carries a release revision, the manifest's
   // `release_revision.revision` is the authoritative candidate-wide `rN` -- compare frontend
   // staging `X.Y.Z-rN-staging` to production `X.Y.Z-rN`, the backend candidate digest reused
   // across environments, and each bare production alias against its revision tag. A candidate
@@ -636,7 +636,7 @@ function checkAppDirect({ repoRoot, app, sourceSha, revision, inspectFn }) {
   }
 
   const image = IMAGE_NAME_BY_APP(app);
-  // #1977 (Phase 341): a direct production hotfix increments the patch and uses the same
+  // #1977 (Phase 342): a direct production hotfix increments the patch and uses the same
   // paired revision/canonical tags (`X.Y.Z-rN` + alias `X.Y.Z`) without a staging parity
   // predecessor. When --revision is supplied, the PROD tag under test is the revision tag
   // and the bare alias must reference the same digest; without it, the legacy bare-tag
@@ -762,7 +762,7 @@ function parseArgs(argv) {
       'INVALID_ARGS',
     );
   }
-  // #1977 (Phase 341): the candidate manifest is authoritative for its own revision -- an
+  // #1977 (Phase 342): the candidate manifest is authoritative for its own revision -- an
   // explicit --revision alongside --manifest would let a caller verify against a different rN
   // than the candidate actually released. Pair --revision with --source-sha only.
   if (options.manifestPath && options.revision !== null) {

@@ -58,7 +58,7 @@ on:
         default: ''
       release_revision:
         description: >-
-          Candidate-wide release revision (#1977, Phase 341), threaded straight through to each
+          Candidate-wide release revision (#1977, Phase 342), threaded straight through to each
           builder workflow's own input of the same name -- see deploy-frontend.yml's input
           description for the full contract. Required on a STAGING candidate dispatch (builders
           fail closed without it); ignored on DEV.

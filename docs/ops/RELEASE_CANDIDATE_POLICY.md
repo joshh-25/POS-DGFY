@@ -1669,7 +1669,7 @@ statement; not restated here beyond this operational summary.
 
 PR: (this PR). Closes #1807. Refs #1548, #1610, #1611, #1740, #1802.
 
-### 2026-09-19: Preserve the release floor; staging revisions separate from production patches (#1977, Phase 341)
+### 2026-09-19: Preserve the release floor; staging revisions separate from production patches (#1977, Phase 342)
 
 Not rewritten in place, same convention as every amendment above. ADR 0081's matching 2026-09-19
 Amendment carries the full design statement; this entry is the executable consequence for this

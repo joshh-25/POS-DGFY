@@ -30,7 +30,7 @@ on:
         default: ''
       release_revision:
         description: >-
-          Candidate-wide release revision (#1977, Phase 341 -- scripts/check-promotion-candidate.js's
+          Candidate-wide release revision (#1977, Phase 342 -- scripts/check-promotion-candidate.js's
           manifest release_revision.revision, e.g. "r16" or "16"). Required for a STAGING candidate
           or PROD dispatch (the meta step fails closed without it); ignored for DEV. Selects the
           environment-neutral revision tag (X.Y.Z-rN -- this image bakes no VITE_* values, so the
@@ -128,7 +128,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
-          # ADR 0081 Decisions 1/3 (#1977, Phase 341): revision-aware version tag, resolved by the
+          # ADR 0081 Decisions 1/3 (#1977, Phase 342): revision-aware version tag, resolved by the
           # central resolver -- the floor X.Y.Z is read from apps/dgfy-api/package.json, never
           # written here (Decision 6 -- bumps are PR-authored); rN comes from the candidate-wide
           # release_revision input. STAGING/PROD fail closed here when the revision is missing
@@ -155,7 +155,7 @@ jobs:
           # block below, so a blank input cleanly omits the line instead of stamping an empty label --
           # docker/build-push-action's multi-line labels input is a plain heredoc from this step's own
           # output, same pattern already used for `tags` above.
-          # #1977 (Phase 341): the release floor is stamped unconditionally (runtime consumers must
+          # #1977 (Phase 342): the release floor is stamped unconditionally (runtime consumers must
           # not infer it from an alias); the revision fragment only when this build carries one
           # (DEV/ad-hoc builds have no candidate revision -- same omit-when-empty rule as above).
           {

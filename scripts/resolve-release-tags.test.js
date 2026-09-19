@@ -11,7 +11,7 @@ const {
   parseArgs,
 } = require('./resolve-release-tags');
 
-// Issue #1977 (Phase 341) -- the release floor stays X.Y.Z while candidate revisions (rN)
+// Issue #1977 (Phase 342) -- the release floor stays X.Y.Z while candidate revisions (rN)
 // identify the exact artifact. Frontends keep environment-qualified tags (baked VITE_*);
 // dgfy-api and dgfy-migration-runner use environment-neutral candidate tags.
 

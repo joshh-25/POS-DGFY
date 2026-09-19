@@ -286,7 +286,7 @@ test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main
   assert.doesNotMatch(inspectedRefs[0], /-dev$|-staging$/);
 });
 
-// #1977 (Phase 341) -- revision-aware tag derivation: with a candidate release revision the
+// #1977 (Phase 342) -- revision-aware tag derivation: with a candidate release revision the
 // checked tag is the matrix tag (frontend X.Y.Z-rN-staging, backend env-neutral X.Y.Z-rN,
 // PROD X.Y.Z-rN); without one, the legacy uniform X.Y.Z[-channel] derivation applies.
 const { deriveVersionTag } = require('./resolve-build-skip-plan');

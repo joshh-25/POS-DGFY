@@ -93,7 +93,7 @@ on:
         default: ''
       release_revision:
         description: >-
-          Candidate-wide release revision (#1977, Phase 341 -- the candidate manifest's
+          Candidate-wide release revision (#1977, Phase 342 -- the candidate manifest's
           release_revision.revision, e.g. "r16"). Set this whenever the STAGING dispatch is part
           of a to-staging/<candidate_id> promotion -- the builders fail closed without it, and
           the published staging tags carry it (frontend X.Y.Z-rN-staging, backend X.Y.Z-rN).

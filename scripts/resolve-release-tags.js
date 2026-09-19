@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Release tag resolver -- issue #1977 (Phase 341).
+ * Release tag resolver -- issue #1977 (Phase 342).
  *
  * Centralizes the release-version tag matrix so app type and environment cannot drift between
  * workflows. ADR 0081 Decision 1 used to apply `-dev`/`-staging`/bare uniformly to all five

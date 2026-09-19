@@ -341,7 +341,7 @@ each app's `X.Y.Z-staging` and bare `X.Y.Z` published images. **Resolved per app
 0081 Decision 8 amendment)** — an app never touched by a staging repair keeps its earlier candidate
 identity for the life of the candidate rather than being compared against whatever the latest repair
 advanced `current_staging_sha` to; see that ADR's matching 2026-09-04 Amendment for the full
-mechanism. **Revision-aware since #1977 (ADR 0081's 2026-09-19 Amendment, Phase 341)** — frontend
+mechanism. **Revision-aware since #1977 (ADR 0081's 2026-09-19 Amendment, Phase 342)** — frontend
 STAGING `X.Y.Z-rN-staging` is compared to PROD `X.Y.Z-rN` (backend: the environment-neutral
 `X.Y.Z-rN` digest reused across environments; backend PROD is never rebuilt environment-specific),
 each bare `X.Y.Z` production alias must reference its revision tag's digest with agreeing

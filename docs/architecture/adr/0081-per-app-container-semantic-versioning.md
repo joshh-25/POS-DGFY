@@ -574,7 +574,7 @@ cutting the release branch.
 candidate identity and per-app provenance semantics are unchanged. No production deploy is
 authorized from a manifest that fails this validation.
 
-### 2026-09-19 — Preserve the release floor and separate staging revisions from production patches (#1977, Phase 341)
+### 2026-09-19 — Preserve the release floor and separate staging revisions from production patches (#1977, Phase 342)
 
 Decision 1 applied `-dev`/`-staging`/bare uniformly to all five images, and Decision 8 compared
 `X.Y.Z-staging` with bare `X.Y.Z`. That pairing conflates two things the release process needs

@@ -23539,7 +23539,7 @@ and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue 
 
 341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).
 
-## Phase 341 - Preserve the release floor and separate staging revisions from production patches (#1977)
+## Phase 342 - Preserve the release floor and separate staging revisions from production patches (#1977)
 
 ### Initiative and release
 
@@ -23579,7 +23579,7 @@ deployed QA remain outstanding.
 ADR 0081 (Decisions 1, 3, 4, 8 as amended 2026-09-19; Decision 7 `[binding]` unchanged),
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `scripts/check-promotion-candidate.js` (candidate-wide
 `release_revision.revision` as the authoritative `rN`), Phase 340 (sequence predecessor; Phase
-342 becomes eligible only after this phase's implementation, review, merge, and deployed QA).
+343 becomes eligible only after this phase's implementation, review, merge, and deployed QA).
 
 ### Acceptance and validation evidence
 
@@ -23612,5 +23612,5 @@ Not yet merged — set at merge time.
 
 ### Next eligible phase
 
-342 after Phase 341's implementation, review, merge, and deployed QA evidence are complete
+343 after Phase 342's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).

@@ -22,7 +22,7 @@ const appNodeModules = path.resolve(__dirname, 'node_modules');
 // fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
 // index.html's <meta name="dgfy-version"> and a generated version.json. See
 // docs/deployment/PWA_SURFACE_CONTRACT.md.
-// #1977 (Phase 341): the release floor (bare X.Y.Z) and candidate revision (rN) ride alongside
+// #1977 (Phase 342): the release floor (bare X.Y.Z) and candidate revision (rN) ride alongside
 // as APP_RELEASE_FLOOR/APP_RELEASE_REVISION (VITE_-prefixed spellings in the builder stage),
 // stamped into version.json/meta tags so runtime consumers never infer the floor from an alias.
 const appVersion = resolveAppVersion(__dirname);

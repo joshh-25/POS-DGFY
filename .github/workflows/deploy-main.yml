@@ -87,7 +87,7 @@ on:
         default: ''
       release_revision:
         description: >-
-          Candidate-wide release revision (#1977, Phase 341 -- the candidate manifest's
+          Candidate-wide release revision (#1977, Phase 342 -- the candidate manifest's
           release_revision.revision, e.g. "r16", one greater than the latest staging repair
           revision). Required for a release/<candidate_id>-rN -> main promotion dispatch AND for
           a direct production hotfix (which uses the same paired revision/canonical tags without
@@ -372,7 +372,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # #1977 (Phase 341): --release-revision makes the skip check hit each app's
+          # #1977 (Phase 342): --release-revision makes the skip check hit each app's
           # revision-aware matrix tag (omitted for ad-hoc dispatches -- legacy behavior).
           # Backend PROD on a promotion dispatch is the mechanism that actually skips the
           # environment-specific rebuild: the revision tag already exists from the STAGING
@@ -568,7 +568,7 @@ jobs:
   # already transitively skips everything) -- so once both of those explicitly succeeded, the
   # remaining "every build job is skipped" case is always either an unchecked build_* input or a
   # verified-safe #1610 skip, never a silent failure.
-  # #1977 (Phase 341): creates each app's bare `X.Y.Z` production floor alias from the
+  # #1977 (Phase 342): creates each app's bare `X.Y.Z` production floor alias from the
   # same digest as its `X.Y.Z-rN` revision tag (`scripts/promote-image-alias.js` -- refuses
   # an existing alias on a different digest or revision, creates only when absent or
   # already identical). Backend PROD is alias-only by construction here: the revision tag

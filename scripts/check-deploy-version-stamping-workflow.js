@@ -51,7 +51,7 @@ const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
 
 /**
  * The "Compute image tags" (`id: meta`) step must: resolve the revision-aware version tag via
- * the central `scripts/resolve-release-tags.js` (#1977, Phase 341 -- app type and environment
+ * the central `scripts/resolve-release-tags.js` (#1977, Phase 342 -- app type and environment
  * cannot drift between workflows because only the resolver maps them to tags), read the app's
  * package.json version (Decision 6 -- this step only ever reads it), and emit `version_tag`
  * (plus `release_floor`/`release_revision`) to $GITHUB_OUTPUT. No channel suffix may be
@@ -93,7 +93,7 @@ function checkVersionTagComputation(workflowText, { label, appPathExpr }) {
 }
 
 /**
- * #1977 (Phase 341): each builder must declare the optional `release_revision`
+ * #1977 (Phase 342): each builder must declare the optional `release_revision`
  * workflow_call input and map it into the meta step's env (RELEASE_RELEASE_REVISION flow:
  * `RELEASE_REVISION: ${{ inputs.release_revision }}`) -- the resolver call consumes it from
  * there, and STAGING/PROD fail closed when it is missing.
@@ -120,7 +120,7 @@ function checkReleaseRevisionInput(workflowText, { label }) {
 }
 
 /**
- * #1977 (Phase 341): the labels heredoc must stamp `org.dgfy-platform.release-floor`
+ * #1977 (Phase 342): the labels heredoc must stamp `org.dgfy-platform.release-floor`
  * unconditionally (runtime consumers must not infer the floor from an alias) and
  * `org.dgfy-platform.release-revision` conditionally (DEV/ad-hoc builds carry no revision --
  * same omit-when-empty rule the candidate-source-sha label already follows).
@@ -140,7 +140,7 @@ function checkMetaStepStampsFloorRevisionLabels(workflowText, { label }) {
 }
 
 /**
- * #1977 (Phase 341): the build-push step must bake APP_RELEASE_FLOOR and
+ * #1977 (Phase 342): the build-push step must bake APP_RELEASE_FLOOR and
  * APP_RELEASE_REVISION as build-args (alongside the existing APP_VERSION), so the
  * Dockerfiles can expose them to the running container without re-deriving anything.
  */
@@ -235,7 +235,7 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
 }
 
 /**
- * #1977 (Phase 341): deployment-orchestrator.yml must both declare its own `release_revision`
+ * #1977 (Phase 342): deployment-orchestrator.yml must both declare its own `release_revision`
  * workflow_call input and forward it, unchanged, into each of the five builder jobs -- checked
  * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently missing
  * it isn't masked by another job having it.
@@ -313,7 +313,7 @@ function checkDeployMainCandidateSourceShaWiring(deployMainText) {
 }
 
 /**
- * #1977 (Phase 341): deploy-main.yml must declare the candidate-wide `release_revision`
+ * #1977 (Phase 342): deploy-main.yml must declare the candidate-wide `release_revision`
  * workflow_dispatch input, forward it into each of its five builder jobs' `with:` blocks,
  * thread it into the resolve-build-plan step (`--release-revision`, so the skip check hits
  * each app's revision-aware matrix tag), and run the `promote-aliases` job that creates each
@@ -492,7 +492,7 @@ function checkDeployMainPublishGate(deployMainText) {
     problems.push('deploy-main.yml: "publish" job\'s "if:" still contains an "at least one build succeeded" OR-clause -- #1610 requires dropping it so a legitimate "every app skip-eligible" dispatch can still publish.');
   }
 
-  // #1977 (Phase 341): publish must wait on the promote-aliases job -- a failed alias
+  // #1977 (Phase 342): publish must wait on the promote-aliases job -- a failed alias
   // promotion (refused overwrite, missing source) must block the PROD deploy, since the
   // floor alias is part of the production contract. `!= 'failure'` (not `== 'success'`) so
   // a legacy no-revision dispatch, where promote-aliases legitimately skips, still publishes.
@@ -543,7 +543,7 @@ function checkDockerfileAcceptsAppVersion(dockerfileText, { label }) {
 }
 
 /**
- * #1977 (Phase 341): every Dockerfile must accept and expose APP_RELEASE_FLOOR and
+ * #1977 (Phase 342): every Dockerfile must accept and expose APP_RELEASE_FLOOR and
  * APP_RELEASE_REVISION (same ARG/ENV shape as APP_VERSION above) -- the release floor and
  * revision travel as explicit metadata so runtime consumers never infer the floor from an
  * alias. Frontend Dockerfiles additionally map them into VITE_APP_RELEASE_FLOOR/

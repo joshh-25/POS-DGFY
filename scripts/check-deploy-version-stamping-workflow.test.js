@@ -33,7 +33,7 @@ const {
 // check-pr-quality-workflow.test.js's own pattern) rather than depending on the real files' exact
 // text, so a valid unrelated edit to deploy-api.yml/etc. can't spuriously break these.
 
-// #1977 (Phase 341): the meta step resolves tags via the central resolver -- no inline
+// #1977 (Phase 342): the meta step resolves tags via the central resolver -- no inline
 // channel-suffix derivation anymore. Fixtures below mirror the real builder shape.
 const VALID_META_STEP = `
       - name: Compute image tags
@@ -417,7 +417,7 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
 });
 
 // checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #1977
-// (Phase 341): the candidate-wide release_revision is threaded deploy.yml ->
+// (Phase 342): the candidate-wide release_revision is threaded deploy.yml ->
 // deployment-orchestrator.yml -> builders, and declared + forwarded per job on deploy-main.yml
 // (plus --release-revision into resolve-build-plan and the promote-aliases job).
 

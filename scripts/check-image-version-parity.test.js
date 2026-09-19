@@ -291,10 +291,10 @@ test('checkAppDirect: an app whose version cannot be read at the given source SH
 // candidate SHA (a real, resolvable commit) so readVersionAt succeeds, with every docker inspect
 // call still fixture-injected -- no live registry call, no live docker daemon required.
 
-// #1977 (Phase 341): a manifest WITH a release_revision takes the revision-aware path --
+// #1977 (Phase 342): a manifest WITH a release_revision takes the revision-aware path --
 // frontend staging X.Y.Z-rN-staging vs production X.Y.Z-rN (backend: env-neutral X.Y.Z-rN
 // both sides), plus the bare floor alias on the same digest. The fixture below carries the
-// full Phase 341 label set on every ref, so staging/prod/alias all agree.
+// full Phase 342 label set on every ref, so staging/prod/alias all agree.
 function revisionFixture({ sourceSha, digest = 'sha256:revision-fixture-digest', revision = 'r1', floor = '9.9.9' }) {
   return JSON.stringify({
     digest,
@@ -515,7 +515,7 @@ test('parseArgs: parses --source-sha', () => {
   assert.deepEqual(options.apps, ['dgfy-api']);
 });
 
-// #1977 (Phase 341) -- revision-aware parity: the release floor stays X.Y.Z while rN
+// #1977 (Phase 342) -- revision-aware parity: the release floor stays X.Y.Z while rN
 // identifies the exact artifact. Frontend staging X.Y.Z-rN-staging vs production X.Y.Z-rN;
 // backend the environment-neutral X.Y.Z-rN on both sides (same digest reused); every bare
 // floor alias references its revision tag's digest with agreeing revision labels.

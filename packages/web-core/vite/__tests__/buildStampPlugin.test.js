@@ -68,7 +68,7 @@ describe('buildStampPlugin', () => {
     });
 });
 
-describe('resolveReleaseFloor (#1977 Phase 341)', () => {
+describe('resolveReleaseFloor (#1977 Phase 342)', () => {
     const tempDirs = [];
 
     afterEach(() => {
@@ -107,7 +107,7 @@ describe('resolveReleaseFloor (#1977 Phase 341)', () => {
     });
 });
 
-describe('buildStampPlugin release metadata (#1977 Phase 341)', () => {
+describe('buildStampPlugin release metadata (#1977 Phase 342)', () => {
     it('emits the legacy shape unchanged when called with a bare version string', () => {
         const plugin = buildStampPlugin('1.5.2-staging');
         expect(plugin.transformIndexHtml()).toEqual([

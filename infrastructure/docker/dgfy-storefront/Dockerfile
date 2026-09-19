@@ -49,7 +49,7 @@ ARG VITE_SENTRY_ENABLED=false
 ARG VITE_SENTRY_DSN_STORE=""
 ARG VITE_SENTRY_ENVIRONMENT=""
 ARG VITE_SENTRY_RELEASE=""
-# #1977 (Phase 341): release floor (bare X.Y.Z) + candidate revision (rN). The VITE_-
+# #1977 (Phase 342): release floor (bare X.Y.Z) + candidate revision (rN). The VITE_-
 # prefixed ENV spellings feed the build-stamp plugin at `npm run build` time; the plain
 # spellings ride into the runtime stage below. Empty defaults keep a local `docker build`
 # with no --build-arg working unchanged (see scripts/deploy-local.sh).
@@ -124,7 +124,7 @@ FROM nginx:alpine AS runtime
 # no --build-arg working unchanged (see scripts/deploy-local.sh).
 ARG APP_VERSION=""
 ENV APP_VERSION=${APP_VERSION}
-# #1977 (Phase 341): explicit release floor + candidate revision metadata -- same contract as
+# #1977 (Phase 342): explicit release floor + candidate revision metadata -- same contract as
 # infrastructure/docker/dgfy-api/Dockerfile (see the comment there). nginx doesn't consume
 # these itself; they are inspectable image metadata for the parity/alias tooling.
 ARG APP_RELEASE_FLOOR=""
