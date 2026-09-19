@@ -25,7 +25,7 @@ const buildUseCase = (harness, overrides = {}) => buildDispatchDeliveryRunUseCas
 
 // A fully-assigned member: a completed personnel assignment + `packed` fulfillment status (clears
 // the retail packing gate) + pending_dispatch job status.
-const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfillmentStatus = 'packed' }) => (
+const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfillmentStatus = 'packed', loadingState = 'pending' }) => (
     harness.addOrder({
         orderId,
         deliveryJobId,
@@ -35,12 +35,18 @@ const addDispatchReadyOrder = (harness, { orderId, deliveryJobId, runId, fulfill
         deliveryPersonnelId: 21,
         assignedBy: 12,
         assignedShiftId: 9,
-        assignedAt: new Date('2026-08-31T08:00:00Z')
+        assignedAt: new Date('2026-08-31T08:00:00Z'),
+        loadingState
     })
 );
 
-const setupRunWithAccountable = async (harness, { locationId = 7 } = {}) => {
-    const run = await harness.deliveryRunRepository.createRun({ label: 'Run A', location_id: locationId, created_by: 12 });
+const setupRunWithAccountable = async (harness, { locationId = 7, transportationLabel = null } = {}) => {
+    const run = await harness.deliveryRunRepository.createRun({
+        label: 'Run A',
+        location_id: locationId,
+        transportation_label: transportationLabel,
+        created_by: 12
+    });
     await harness.deliveryRunRepository.replaceRunPersonnel(run.delivery_run_id, [
         { delivery_personnel_id: 21, is_accountable: true, created_by: 12, updated_by: 12 }
     ]);
@@ -94,6 +100,197 @@ describe('buildDispatchDeliveryRunUseCase -- run-level preconditions', () => {
         expect(result.success).toBe(true);
         expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
     });
+
+    it('dispatches a run with an arbitrary transportation label without branching on its value', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness, { transportationLabel: 'not-a-mode' });
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-arbitrary-label' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
+    });
+
+    it('dispatches unverified members and returns a warn-only loading report', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'not_loaded' });
+        addDispatchReadyOrder(harness, { orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id, loadingState: 'exception' });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-loading-warning' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501, 502]);
+        expect(result.data.loading_warning).toEqual({
+            unloaded_pos_transaction_ids: [501],
+            exception_pos_transaction_ids: [502]
+        });
+        // Phase 338 (#1927): the additive canonical warnings mirror the same members with
+        // their exact per-member loading states.
+        expect(result.data.warnings).toEqual([
+            { pos_transaction_id: 501, loading_state: 'not_loaded' },
+            { pos_transaction_id: 502, loading_state: 'exception', exception_reason: null }
+        ]);
+    });
+
+describe('buildDispatchDeliveryRunUseCase -- canonical dispatch warnings (Phase 337, #1927)', () => {
+    it('returns one warning per unresolved member with its exact state and exception reason', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'pending' });
+        addDispatchReadyOrder(harness, { orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id, loadingState: 'not_loaded' });
+        harness.addOrder({
+            orderId: 503,
+            deliveryJobId: 603,
+            runId: run.delivery_run_id,
+            fulfillmentStatus: 'packed',
+            jobStatus: 'pending_dispatch',
+            deliveryPersonnelId: 21,
+            assignedBy: 12,
+            assignedShiftId: 9,
+            assignedAt: new Date('2026-08-31T08:00:00Z'),
+            loadingState: 'exception',
+            loadingExceptionReason: 'Damaged package'
+        });
+        addDispatchReadyOrder(harness, { orderId: 504, deliveryJobId: 604, runId: run.delivery_run_id, loadingState: 'loaded' });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-warnings-mixed' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501, 502, 503, 504]);
+        // `pending` and `not_loaded` stay distinct; the loaded member is excluded; the
+        // exception carries its recorded reason.
+        expect(result.data.warnings).toEqual([
+            { pos_transaction_id: 501, loading_state: 'pending' },
+            { pos_transaction_id: 502, loading_state: 'not_loaded' },
+            { pos_transaction_id: 503, loading_state: 'exception', exception_reason: 'Damaged package' }
+        ]);
+        // Legacy compatibility surface is preserved alongside the canonical array.
+        expect(result.data.loading_warning).toEqual({
+            unloaded_pos_transaction_ids: [501, 502],
+            exception_pos_transaction_ids: [503]
+        });
+    });
+
+    it('returns an empty warnings array -- not a false positive -- when every member is loaded', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'loaded' });
+        addDispatchReadyOrder(harness, { orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id, loadingState: 'loaded' });
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-warnings-all-loaded' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501, 502]);
+        expect(result.data.warnings).toEqual([]);
+        expect(result.data.loading_warning).toEqual({
+            unloaded_pos_transaction_ids: [],
+            exception_pos_transaction_ids: []
+        });
+    });
+
+    it('warns without reclassifying failed/skipped members: warnings never turn best-effort dispatch into an error', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        // 501 dispatches with unresolved loading; 502 fails (no completed personnel
+        // assignment) with unresolved loading; 503 is already out_for_delivery (skipped)
+        // with unresolved loading. Per #1927's "every member left in a non-terminal
+        // loading state" wording, all three are named; the failed/skipped buckets are
+        // unchanged.
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'pending' });
+        harness.addOrder({
+            orderId: 502, deliveryJobId: 602, runId: run.delivery_run_id,
+            fulfillmentStatus: 'packed', jobStatus: 'pending_dispatch', loadingState: 'not_loaded'
+        });
+        addDispatchReadyOrder(harness, {
+            orderId: 503, deliveryJobId: 603, runId: run.delivery_run_id,
+            fulfillmentStatus: 'out_for_delivery', loadingState: 'exception'
+        });
+        harness.state.deliveryJobsByOrder.get(503).loading_exception_reason = 'Torn sack';
+        const useCase = buildUseCase(harness);
+
+        const result = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-warnings-buckets' },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.dispatched.map((entry) => entry.pos_transaction_id)).toEqual([501]);
+        expect(result.data.skipped).toEqual([
+            { pos_transaction_id: 503, reason_code: 'ALREADY_DISPATCHED', idempotent_no_op: true }
+        ]);
+        expect(result.data.failed.map((entry) => entry.reason_code)).toEqual(['DELIVERY_ASSIGNMENT_REQUIRED']);
+        expect(result.data.warnings).toEqual([
+            { pos_transaction_id: 501, loading_state: 'pending' },
+            { pos_transaction_id: 502, loading_state: 'not_loaded' },
+            { pos_transaction_id: 503, loading_state: 'exception', exception_reason: 'Torn sack' }
+        ]);
+    });
+
+    it('replays the identical warnings payload for the same idempotency key', async () => {
+        const harness = createDeliveryRunTestHarness();
+        const run = await setupRunWithAccountable(harness);
+        addDispatchReadyOrder(harness, { orderId: 501, deliveryJobId: 601, runId: run.delivery_run_id, loadingState: 'pending' });
+        harness.addOrder({
+            orderId: 502,
+            deliveryJobId: 602,
+            runId: run.delivery_run_id,
+            fulfillmentStatus: 'packed',
+            jobStatus: 'pending_dispatch',
+            deliveryPersonnelId: 21,
+            assignedBy: 12,
+            assignedShiftId: 9,
+            assignedAt: new Date('2026-08-31T08:00:00Z'),
+            loadingState: 'exception',
+            loadingExceptionReason: 'Damaged package'
+        });
+        const useCase = buildUseCase(harness);
+
+        const first = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-warnings-replay' },
+            user: { user_id: 12 }
+        }));
+        expect(first.success).toBe(true);
+
+        const replay = await runInTenantContext(() => useCase({
+            deliveryRunId: run.delivery_run_id,
+            payload: { idempotency_key: 'dispatch-warnings-replay' },
+            user: { user_id: 12 }
+        }));
+
+        expect(replay.success).toBe(true);
+        expect(replay.data.warnings).toEqual(first.data.warnings);
+        expect(replay.data.warnings).toEqual([
+            { pos_transaction_id: 501, loading_state: 'pending' },
+            { pos_transaction_id: 502, loading_state: 'exception', exception_reason: 'Damaged package' }
+        ]);
+        // Legacy surface replays identically too.
+        expect(replay.data.loading_warning).toEqual(first.data.loading_warning);
+    });
+});
 
     it('409s DELIVERY_RUN_ACCOUNTABLE_REQUIRED when no accountable person is set', async () => {
         const harness = createDeliveryRunTestHarness();

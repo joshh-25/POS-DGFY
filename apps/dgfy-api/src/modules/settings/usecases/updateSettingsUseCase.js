@@ -26,7 +26,8 @@ import {
     POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY,
     POS_TERMINAL_REGISTRY_KEY,
     buildStrictBindingTransitionPatch,
-    assertStrictBindingReadiness
+    assertStrictBindingReadiness,
+    assertTerminalCashierAssignments
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 import { assertPublicStorefrontHandlePatch } from './publicStorefrontHandlePolicy.js';
@@ -487,6 +488,21 @@ export const buildUpdateSettingsUseCase = ({
             if (requestedStrictBinding) {
                 await assertStrictBindingReadiness({ settingsRepository });
             }
+
+            const hasTerminalRegistryUpdate = Object.prototype.hasOwnProperty.call(
+                settingsData,
+                POS_TERMINAL_REGISTRY_KEY
+            );
+            const terminalRegistryEntriesForValidation = hasTerminalRegistryUpdate
+                ? settingsData[POS_TERMINAL_REGISTRY_KEY]
+                : (strictBindingTransitioningOn
+                    ? (settingsData[POS_TERMINAL_REGISTRY_KEY]
+                        || currentBindingSetting?.[POS_TERMINAL_REGISTRY_KEY]?.value)
+                    : null);
+            await assertTerminalCashierAssignments({
+                settingsRepository,
+                entries: terminalRegistryEntriesForValidation
+            });
 
             const currentPinHashSetting = (
                 Object.prototype.hasOwnProperty.call(settingsData, 'pos_settings_access_pin')

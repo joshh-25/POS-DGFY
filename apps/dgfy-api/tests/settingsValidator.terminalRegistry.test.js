@@ -30,6 +30,30 @@ describe('settings validator terminal registry payload', () => {
     ]));
   });
 
+  it('accepts cashier assignment IDs on terminal entries', () => {
+    const req = {
+      body: {
+        pos_terminal_registry: [
+          {
+            terminal_id: 'COUNTER-01',
+            location_id: 7,
+            cashier_user_ids: [21, 22],
+            is_active: true,
+            is_default: true
+          }
+        ]
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateSettings(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.pos_terminal_registry[0].cashier_user_ids).toEqual([21, 22]);
+  });
+
   it('accepts multiple active terminals assigned to the same location', () => {
     const req = {
       body: {

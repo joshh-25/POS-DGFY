@@ -199,12 +199,18 @@ const normalizeTerminalRegistry = (rawValue) => {
             return;
         }
         const locationId = toPositiveInt(entry?.location_id);
+        const cashierUserIds = Array.isArray(entry?.cashier_user_ids)
+            ? Array.from(new Set(entry.cashier_user_ids
+                .map((userId) => Number.parseInt(userId, 10))
+                .filter((userId) => Number.isInteger(userId) && userId > 0)))
+            : null;
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: locationId,
-            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
+            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off',
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     });
     return normalized;
@@ -1101,6 +1107,10 @@ export const buildTransactionInclude = () => ([
         attributes: [
             'delivery_job_id',
             'delivery_run_id',
+            'loading_state',
+            'loading_exception_reason',
+            'loading_marked_by',
+            'loading_marked_at',
             'provider',
             'provider_delivery_id',
             'status',
@@ -6434,6 +6444,53 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findDeliveryCompletionEvidenceByDeliveryJobId(deliveryJobId, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const normalizedJobId = toPositiveInt(deliveryJobId);
+        if (!normalizedJobId) return null;
+
+        const row = await DeliveryCompletionEvidence.findOne({
+            where: { delivery_job_id: normalizedJobId },
+            include: [{
+                model: dbStore.get('DeliveryCompletionEvidenceImage'),
+                as: 'images',
+                required: false,
+                order: [['sort_order', 'ASC'], ['delivery_completion_evidence_image_id', 'ASC']]
+            }],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidence(payload = {}, options = {}) {
+        const DeliveryCompletionEvidence = dbStore.get('DeliveryCompletionEvidence');
+        const row = await DeliveryCompletionEvidence.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async createDeliveryCompletionEvidenceImage(payload = {}, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const row = await DeliveryCompletionEvidenceImage.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findDeliveryCompletionEvidenceImageById(imageId, evidenceId, options = {}) {
+        const DeliveryCompletionEvidenceImage = dbStore.get('DeliveryCompletionEvidenceImage');
+        const normalizedImageId = toPositiveInt(imageId);
+        const normalizedEvidenceId = toPositiveInt(evidenceId);
+        if (!normalizedImageId || !normalizedEvidenceId) return null;
+
+        const row = await DeliveryCompletionEvidenceImage.findOne({
+            where: {
+                delivery_completion_evidence_image_id: normalizedImageId,
+                delivery_completion_evidence_id: normalizedEvidenceId
+            },
+            transaction: options.transaction
+        });
         return toPlain(row);
     },
 

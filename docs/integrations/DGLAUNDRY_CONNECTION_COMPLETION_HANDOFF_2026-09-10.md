@@ -2,14 +2,14 @@
 status: provider_action_required
 authority_level: implementation_handoff
 owner: dgfy-platform integration owners
-last_reviewed: 2026-09-10
+last_reviewed: 2026-09-17
 applies_to: laundry.surebizcorp.com
 topic: staged_dglaundry_connection_completion
 ---
 
 # DGLaundry connection completion handoff
 
-This handoff updates the connected work tracked by [issue #519](https://github.com/Sieitzz/dgfy-platform/issues/519), [PR #1721](https://github.com/Sieitzz/dgfy-platform/pull/1721), and [PR #1769](https://github.com/Sieitzz/dgfy-platform/pull/1769). Please assign named owners in the issue and reply there with the deployed SHA and redacted evidence for every completed row. `@patterueldev` is requested as the release/integration coordinator for the provider side.
+This handoff updates the connected work tracked by [issue #519](https://github.com/Sieitzz/dgfy-platform/issues/519), DGFY [PR #1920](https://github.com/Sieitzz/dgfy-platform/pull/1920), and DGLaundry [PR #20](https://github.com/Sieitzz/dglaundry/pull/20). Please assign named owners in issue #519 and reply there with the deployed SHA and redacted evidence for every completed row. `@patterueldev` is requested as the release/integration coordinator for the provider side.
 
 It is a contract handoff. It does not grant access to DGLaundry, its database,
 its credentials, or Surebizcorp infrastructure, and it does not authorize
@@ -17,7 +17,7 @@ provider activation by itself.
 
 ## Document authority
 
-For the 2026-09-10 connection-completion review, this file is the current
+For the 2026-09-17 connection-completion review, this file is the current
 provider-action checklist. It supersedes the operational guidance in
 [DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md](./DGLAUNDRY_SUREBIZCORP_PROVIDER_HANDOFF.md),
 [DGLAUNDRY_STOREFRONT_ORDERS_HANDOFF.md](./DGLAUNDRY_STOREFRONT_ORDERS_HANDOFF.md),
@@ -25,6 +25,207 @@ provider-action checklist. It supersedes the operational guidance in
 and [DGLAUNDRY_CONNECTION_COMPLETION_UPDATE_2026-09-10.md](./DGLAUNDRY_CONNECTION_COMPLETION_UPDATE_2026-09-10.md).
 Those documents remain historical context only; they must not be used to infer
 provider readiness or authorize activation.
+
+## Current execution status — 2026-09-17
+
+This section is the current provider/DevOps gate. The remaining sections retain
+the contract details and scenario requirements, but any older SHA, PR, CI,
+health, or rollout statement is superseded by this snapshot.
+
+### Why the connection is still disabled
+
+- DGLaundry is hosted and reachable at `https://laundry.surebizcorp.com`, but
+  `GET /api/v1/integrations/dgfy/health` currently reports HTTP 200,
+  `ready: true`, `connection: disabled`. This is a healthy, intentionally
+  closed runtime, not proof of DGFY authentication or commerce connectivity.
+- DGFY production has advanced through its normal release flow. Current heads
+  are `main=bb54b0b616f8f91d758f1a03c59597d2a69f3711`,
+  `staging=18f0ea6048ad195d50958e3e27c6261bbd8f5804`, and
+  `develop=eb4a39fdec1156d6c1577b064ac13b51adad3d0a`. PR #1920 is present in
+  the current `main` history and its deployment-health workflow passed.
+- DGFY discovery responds, but
+  `GET https://api.dgfy.ph/oidc/jwks` still returns HTTP 503
+  `{"error":"oidc_keys_not_configured"}`. Until this is fixed, browser ID
+  tokens and DGLaundry machine-client qualification cannot be validated.
+- DGLaundry PR #20 is open at head
+  `c1437215b0b791bee5bb36b17f0dc5c54cdac88e`. Its four required GitHub checks
+  fail before runner startup with zero executed steps because of the
+  organization Actions billing/spending restriction. This is not a source
+  test failure and must not be bypassed.
+
+### DGLaundry evidence already complete
+
+On the clean PR #20 handoff branch, the DGLaundry team has passed typecheck,
+architecture, connection-contract validation, 18 local contract vectors,
+47/47 integration tests, 339 unit tests (21 intentionally skipped), build,
+documentation, OpenAPI, container, and formatting checks. The acceptance
+runner correctly blocks when QA origins, exact application SHAs, fixture,
+configuration revision, branch-list hash, and secret-manager inputs are not
+provided. The skipped tests are the real MySQL 8.4 qualification tests; local
+MariaDB 10.4 is not accepted as equivalent evidence.
+
+### Required DGFY and DevOps actions
+
+1. **DGFY identity/platform owner:** install the OIDC signing key through the
+   approved secret manager and make the public JWKS return HTTP 200. Register
+   separate browser and machine clients; use the exact callback
+   `https://laundry.surebizcorp.com/api/v1/session/dgfy/callback`; enforce
+   issuer/audience, PAR, PKCE S256, Redis-backed state/nonce, atomic one-time
+   code consumption, logout, switching, and revocation. Configure the machine
+   client with `private_key_jwt`, exact DGLaundry scope/audience, short-lived
+   tokens, renewal, and revocation. Publish only key IDs/fingerprints and
+   sanitized evidence.
+2. **DGFY partner API/security owner:** verify the actual HTTPS proxy against
+   the DGLaundry RFC 9421 profile: P-256 `ecdsa-p256-sha256`, fixed-width
+   64-byte IEEE-P1363 `r || s`, split `Signature-Input`/`Signature` headers,
+   target URI, covered headers, query strings, and empty bodies. Verify
+   DGLaundry accepts Ed25519 events at
+   `POST /api/v1/integrations/dgfy/events`. Prove tamper, unknown/rotated key,
+   expiry, replay, wrong-company/location, idempotency, ordering, retry,
+   reconciliation, and authorized dead-letter redrive behavior.
+3. **DGFY storefront/orders/payments owner:** provide a reviewed synthetic
+   fixture for every proposed branch, including immutable company/location
+   mappings, branch handles, catalog/availability IDs, fixed/per-kilo variants,
+   and the canonical frozen branch-list SHA-256. Keep staff operations on
+   `laundry.surebizcorp.com` and customer tests on an explicit non-production
+   DGFY QA storefront. Prove catalog, availability, quote, order, progress,
+   notification, fulfillment, receipt, counter activity, privacy, and branch
+   isolation. Use sandbox PayMongo only; fixed-price children may be charged,
+   while per-kilo children remain reservation-only until local measurement.
+4. **CI administrator/DevOps owner:** resolve the `Sieitzz` Actions
+   billing/spending restriction or authorize the isolated `sieitz-runner` for
+   DGLaundry. It must provide Linux/Docker/buildx, Node 24, MySQL 8.4,
+   Playwright Chromium, clean workspaces, and no production credentials. After
+   review, set `DGLAUNDRY_RUNNER_LABELS_JSON=["sieitz-runner"]`; registering a
+   runner alone does not reroute existing jobs. Rerun PR #20 and require actual
+   executed steps with terminal `COMPLETED/SUCCESS` results.
+5. **Hosting owner:** maintain the protected qualification stack at
+   `https://laundry.surebizcorp.com` with separate QA MySQL, storage, Redis,
+   worker queues, secrets, identities, and network. Preserve the disabled
+   release/data for rollback. Verify TLS, callback/event routing, private-port
+   restrictions, clock synchronization, migration/runtime identities, the
+   documented 10 GiB reserve, off-server backup/restore (RPO ≤5 minutes,
+   RTO ≤4 hours), acknowledged Zabbix alerts, kill switches, and executable
+   rollback commands.
+6. **Joint test owners:** after the provider and host owners publish exact
+   DGFY/DGLaundry SHAs, configuration revision, reviewed fixture, frozen
+   branch-list hash, and ephemeral browser state, run the six PR #20 suites
+   against the hosted Surebizcorp app and explicit DGFY QA origin. Execute all
+   41 scenario IDs exactly once and attach sanitized reports.
+
+No owner may claim the connection is live while JWKS is 503, PR #20 checks are
+admission-failing, the QA fixture/configuration is absent, or hosted scenario
+evidence is missing. Public admission and payments remain disabled.
+
+## Non-negotiable post-merge release gate
+
+Merging the documentation handoff does not complete deployment. This gate is
+mandatory for the DGLaundry connection and is a release **no-go** until every
+item below has a named owner and terminal evidence in issue #519. A generic
+acknowledgment, a successful documentation PR, or a green deploy-health probe
+does not satisfy this gate.
+
+### Blocking conditions
+
+The release owner must keep DGLaundry disconnected and must not enable staff
+access, the customer storefront, or online payments if any condition below is
+true:
+
+- `GET https://api.dgfy.ph/oidc/jwks` is not HTTP 200 with a valid active key
+  set, or key rotation/revocation evidence is missing.
+- The exact browser callback, issuer, audience, PAR, PKCE S256, state/nonce,
+  logout, switching, revocation, or `private_key_jwt` machine-client checks
+  have not passed.
+- The real proxy-path P-256/Ed25519 signature, replay, idempotency, ordering,
+  retry, dead-letter, company, location, or branch-isolation tests have not
+  passed.
+- A reviewed QA fixture does not cover every proposed branch, or catalog,
+  availability, quote, order, fulfillment, receipt, and sandbox payment/refund
+  evidence is incomplete.
+- DGLaundry PR #20 has queued, zero-step, admission-failed, skipped-required,
+  or non-terminal checks. The CI billing restriction must be resolved or an
+  approved isolated runner must execute the required jobs.
+- The hosted qualification stack lacks isolated data/secrets/queues, TLS and
+  callback routing, backup/restore proof, alert delivery, kill-switch proof, or
+  an executable rollback command.
+- The six-suite acceptance run has not executed all 41 scenario IDs against
+  `https://laundry.surebizcorp.com` with exact application SHAs, configuration
+  revision, contract hashes, and the frozen approved-branch-list hash.
+
+### Required owner reply
+
+The DGFY developer, identity owner, CI administrator, DevOps/hosting owner,
+joint QA owner, and release owner must each reply in issue #519 using this
+format, even when blocked:
+
+`task | owner | DGFY SHA | DGLaundry SHA | environment | evidence | pass/fail/blocked | next action`
+
+Blocked replies must identify the dependency and the owner who can clear it;
+they must not be recorded as complete. Any failed scenario creates a linked
+fix PR or operations task and requires a rerun of the affected suite.
+
+### Mandatory live-staging user acceptance
+
+Automated checks are not sufficient. After the provider and consumer changes
+are merged into their respective development branches and the required CI jobs
+have executed successfully, the release owner must run a real human user-
+acceptance session in the live staging/qualification environment **before** any
+stable production promotion.
+
+The staging run must follow DGFY's governed promotion path:
+
+`feature -> develop -> to-staging/<label> -> staging -> release/<label> -> main`
+
+The staging deployment must use exact recorded DGFY and DGLaundry SHAs, a
+configuration revision, non-production secrets and synthetic accounts. If the
+literal `https://laundry.surebizcorp.com` hostname is used for the staging
+window, DevOps must first prove that its database, storage, Redis/session state,
+queues, secrets, service identities, and traffic are isolated from stable
+production. Otherwise, record the dedicated staging hostname in issue #519.
+Never point staging tests at production data or production payment credentials.
+
+The named QA owner must perform and record these user-visible checks:
+
+1. **Staff sign-in:** open the staff URL, complete DGFY account selection and
+   OIDC login, verify the exact callback, see only explicitly mapped companies
+   and locations, switch accounts/companies, log out, and confirm revoked or
+   wrong-branch access is denied.
+2. **Customer storefront:** open the approved DGFY tenant-store handle as a
+   customer without staff membership; browse branch-specific catalog,
+   availability, pricing, service options, and quote expiry; submit a valid
+   booking; then verify status, history, notifications, tracking, and receipt
+   visibility without exposing another branch's data.
+3. **Sandbox commerce:** exercise fixed-price, per-kilo, and mixed bookings
+   with PayMongo sandbox only. Confirm reservation/charge rules, expiry,
+   cancellation, refund, receipt confirmation, duplicate webhook handling, and
+   reconciliation. Per-kilo children remain reservation-only until local weight
+   measurement; no live charge is permitted in staging.
+4. **Recovery and negative paths:** test an expired quote, altered/replayed
+   signed request, duplicate event, provider or DGLaundry outage, retry,
+   redrive, browser refresh, and rollback/kill-switch procedure. Verify that no
+   duplicate order, inventory effect, or payment/refund is created.
+5. **Responsive journey:** repeat the primary staff and customer paths on a
+   desktop and a mobile viewport, recording screenshots or equivalent sanitized
+   evidence and request/trace IDs.
+
+The QA owner must attach the date/time, tester, staging URLs, both SHAs,
+configuration revision, contract hashes, branch-list hash, scenario IDs,
+sanitized screenshots/logs, sandbox transaction and refund references, and
+pass/fail results to issue #519. The independent reviewer and release owner
+must sign off the staging record. A staging run is a **release prerequisite**,
+not production evidence; any failed check keeps production admission and live
+payments disabled and creates a linked fix/rerun.
+
+### Activation rule
+
+Only after the live-staging user-acceptance record is independently signed off
+may the release owner freeze the individually validated approved-branch
+allowlist, cut the production release branch, and deploy stable production in
+disabled mode. Production still requires exact SHA/configuration verification,
+health and rollback checks, separate authorization for one capped live
+payment/refund/receipt test, and then a single release-controlled activation of
+all approved branches. Until then, the connection remains `connection:
+disabled` and no production or live-payment claim is permitted.
 
 ## Target values and contract identifiers (ratification required)
 
@@ -35,28 +236,28 @@ provider readiness or authorize activation.
 | DGLaundry partner base | `https://laundry.surebizcorp.com` | Fixed integration target |
 | Customer storefront pattern | `https://dgfy.ph/tenant-store/<approved-handle>` | Fixed integration target |
 | DGLaundry partner health | `GET /api/v1/integrations/dgfy/health` | Fixed integration target |
-| Contract versions | `external-runtime-v0.1`, `laundry-mode-v1` | Proposed identifiers; not yet emitted or validated by the DGFY runtime; ratification is tracked in [issue #519](https://github.com/Sieitzz/dgfy-platform/issues/519) |
+| Contract versions | `external-runtime-v0.1`, `laundry-mode-v1` | DGLaundry emits `external-runtime-v0.1`; provider validation and issue #519 ratification remain pending. `laundry-mode-v1` remains proposed until the provider accepts it. |
 
-The URL values are fixed integration targets. The version strings are contract
-proposals from the DGLaundry manifest, not current DGFY constants. Do not treat
-this handoff or the fixture as runtime authority until issue #519 is accepted
-and the provider implementation emits and validates the ratified values.
+The URL values are fixed integration targets. `external-runtime-v0.1` is the
+currently emitted DGLaundry health contract version, but it is not evidence that
+the provider has validated the connected runtime. `laundry-mode-v1` remains a
+proposal. Do not treat this handoff or the fixture as runtime authority until
+issue #519 is accepted and the provider implementation emits and validates the
+ratified values.
 
 Do not substitute `laundry.dgfy.ph`, an IP address, an HTTP URL, a trailing
 slash, or `skupervisor.surebizcorp.com`.
 
 ## DGLaundry package to consume
 
-DGLaundry is delivering the package from its isolated branch
-`codex/dgfy-connection-completion`, created from the deployed baseline
-`da9ced73e98ed4d0a6f886273920cf9ae2a6203c`. The exact qualified and deployed
-application SHA is `253cfcfa771d15942d28b80c73a577b02c58259b` (DGLaundry PR
-[#3](https://github.com/Sieitzz/dglaundry/pull/3)), running at the staff origin
-with DGFY disabled. Its contract manifest hash is
-`a295bed55bfe1d4c98f4613b27bdd239fc83fea181628f00bacfeec700db4df3`, and the
-schema head is `075_mock_provider_credentials.sql`. The immutable image
-digests and deployment verification record are in the DGLaundry release
-manifest; provider qualification remains pending.
+DGLaundry’s connection implementation is already merged through its governed
+`develop`/`master` path. The current consumer qualification and provider
+handoff are tracked in DGLaundry [PR #20](https://github.com/Sieitzz/dglaundry/pull/20)
+at head `c1437215b0b791bee5bb36b17f0dc5c54cdac88e`. The hosted application at
+`https://laundry.surebizcorp.com` is healthy but remains `connection: disabled`;
+immutable image publication and hosted qualification are pending the CI/QA
+gates above. Do not reuse older PR #3 or `253cfcfa...` values as current
+qualification evidence.
 
 The provider can run the neutral, secret-free contract fixture checked into this
 repository at `tests/fixtures/dgfy/connection-contract.json` without importing
@@ -156,10 +357,13 @@ the corresponding public PEM files are in
 2. Staff activation enables OIDC login and company setup while commerce remains
    off. Verify callback, multiple applications, approval, switching, staff
    branch permissions, logout, and revocation.
-3. After recovery, backup, monitoring, and signed-transport gates pass, enable
-   exactly one approved branch. Run a controlled payment and refund through the
-   complete customer journey.
-4. Observe 24 hours for queue age, authorization failures, order divergence,
+3. After recovery, backup, monitoring, and signed-transport gates pass, freeze
+   and independently validate the complete approved-branch allowlist. Run the
+   full sandbox customer journey for every listed branch. Obtain separate human
+   authorization for one capped live payment and its refund/receipt
+   reconciliation before enabling live online payments.
+4. Enable **all approved branches together** through one release-controlled
+   activation revision. Observe 24 hours for queue age, authorization failures, order divergence,
    resource pressure, backup freshness, and operator alerts. If a gate fails,
    disable new online orders, preserve accepted work, keep reconciliation
    available, and roll back only to a compatible application image.

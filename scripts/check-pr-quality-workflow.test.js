@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   checkPromotionPrefixSync,
   checkStagingLegSkipShape,
+  checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
@@ -177,6 +178,84 @@ test('checkStagingLegSkipShape: hardcoded continue-on-error: false is still flag
   assert.match(problems[0], /"frontend-pos-quality"'s `continue-on-error:` must be exactly/);
 });
 
+// #1432: backend.test_matrix remains advisory by design, but its OOM and evidence safeguards are
+// part of the contract. Keep these checks independent of the full workflow fixture so a future
+// edit cannot pass merely because the same env names happen to occur in another job.
+function buildBackendMatrixWorkflow({
+  nodeOptions = '--max-old-space-size=4096',
+  maxWorkers = '2',
+  workerMemoryLimit = '1G',
+  releaseTargetSha = '${{ github.sha }}',
+  includeMatrixStep = true
+} = {}) {
+  const matrixStep = includeMatrixStep
+    ? [
+      '      - name: Run dgfy-api test matrix',
+      '        id: run_test_matrix',
+      '        continue-on-error: true',
+      '        env:',
+      `          NODE_OPTIONS: ${nodeOptions}`,
+      `          BACKEND_TEST_MATRIX_FAST_MAX_WORKERS: ${maxWorkers}`,
+      `          BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT: ${workerMemoryLimit}`,
+      `          RELEASE_TARGET_SHA: ${releaseTargetSha}`
+    ].join('\n')
+    : '      - name: Some other step\n        id: some_other_step';
+  return [
+    '',
+    '  dgfy-api-quality:',
+    '    needs: gate',
+    '    continue-on-error: true',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    matrixStep,
+    '  unrelated-job:',
+    '    runs-on: ubuntu-latest',
+    '    steps:',
+    '      - run: echo noop',
+    ''
+  ].join('\n');
+}
+
+test('checkBackendMatrixResourceGuards: bounded heap, worker count, worker memory, and target SHA report no problems', () => {
+  assert.deepEqual(checkBackendMatrixResourceGuards(buildBackendMatrixWorkflow()), []);
+});
+
+test('checkBackendMatrixResourceGuards: missing matrix step is reported', () => {
+  const problems = checkBackendMatrixResourceGuards(buildBackendMatrixWorkflow({ includeMatrixStep: false }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /no step with id "run_test_matrix"/);
+});
+
+test('checkBackendMatrixResourceGuards: missing safeguards are reported instead of silently weakening the advisory matrix', () => {
+  const text = buildBackendMatrixWorkflow({
+    nodeOptions: '',
+    maxWorkers: '',
+    workerMemoryLimit: '',
+    releaseTargetSha: ''
+  });
+  const problems = checkBackendMatrixResourceGuards(text);
+  assert.equal(problems.length, 4);
+  assert.ok(problems.some((problem) => problem.includes('NODE_OPTIONS')));
+  assert.ok(problems.some((problem) => problem.includes('BACKEND_TEST_MATRIX_FAST_MAX_WORKERS')));
+  assert.ok(problems.some((problem) => problem.includes('BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT')));
+  assert.ok(problems.some((problem) => problem.includes('RELEASE_TARGET_SHA')));
+});
+
+test('checkBackendMatrixResourceGuards: unsafe resource values are caught', () => {
+  const cases = [
+    { options: { nodeOptions: '--max-old-space-size=8192' }, marker: 'NODE_OPTIONS' },
+    { options: { maxWorkers: '1' }, marker: 'BACKEND_TEST_MATRIX_FAST_MAX_WORKERS' },
+    { options: { workerMemoryLimit: 'unbounded' }, marker: 'BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT' },
+    { options: { workerMemoryLimit: '0G' }, marker: 'BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT' },
+    { options: { releaseTargetSha: 'HEAD' }, marker: 'RELEASE_TARGET_SHA' }
+  ];
+  for (const { options, marker } of cases) {
+    const problems = checkBackendMatrixResourceGuards(buildBackendMatrixWorkflow(options));
+    assert.equal(problems.length, 1, marker);
+    assert.match(problems[0], new RegExp(marker));
+  }
+});
+
 // #1066 (2026-08-26): checkStepLevelAdvisory had zero test coverage before this -- the reviewer's
 // RF-4 finding named this gap explicitly. Builds a job with a configurable number of steps, each
 // optionally missing its own step-level continue-on-error, to exercise the count-comparison logic
@@ -309,10 +388,16 @@ const CORRECT_BLOCKING_JOB_BUILDERS = {
     'frontend-budgets-quality',
     ['checkout', 'check_frontend_budgets'],
     { coeAt: ['checkout'] }
+  ),
+  // #1856: the post-install executable check is intentionally blocking within the advisory E2E job.
+  'frontend-ims-pos-sales-e2e-quality': () => buildJobWithNamedSteps(
+    'frontend-ims-pos-sales-e2e-quality',
+    ['checkout', 'verify_playwright_install', 'run_ims_pos_sales_e2e'],
+    { coeAt: ['checkout', 'run_ims_pos_sales_e2e'] }
   )
 };
 
-test('checkStepLevelAdvisory: the 20 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
+test('checkStepLevelAdvisory: the 21 blocking steps with no continue-on-error, and every other step with exactly one, reports no problems', () => {
   const text = buildAdvisoryWorkflow(CORRECT_BLOCKING_JOB_BUILDERS);
   assert.deepEqual(checkStepLevelAdvisory(text), []);
 });

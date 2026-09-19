@@ -13,6 +13,7 @@ const posItemImagePath = path.resolve(webCoreRoot, 'src/features/pos/components/
 const layoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx');
 const sidebarPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
 const operationsPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
+const pendingPreviewStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posPendingItemImagePreviewStore.js');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
 const readCheckoutRenderSource = () => [checkoutPath, checkoutViewPath].map(readSource).join('\n');
@@ -24,6 +25,7 @@ describe('hosted POS catalog performance contracts', () => {
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
     const posItemImageSource = readSource(posItemImagePath);
     const operationsSource = readSource(operationsPath);
+    const pendingPreviewStoreSource = readSource(pendingPreviewStorePath);
     const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
@@ -48,8 +50,8 @@ describe('hosted POS catalog performance contracts', () => {
     // bindPendingPosItemImagePreviewJob) -- the previous assertion here (`toContain('<PosItemImage')`)
     // was asserting removed implementation detail, not a still-load-bearing contract. Assert the
     // mechanism that actually replaced it instead of a stale JSX string match.
-    expect(operationsSource).toContain('stagePendingPosItemImagePreview');
-    expect(operationsSource).toContain('bindPendingPosItemImagePreviewJob');
+    expect(pendingPreviewStoreSource).toContain('stagePendingPosItemImagePreview');
+    expect(pendingPreviewStoreSource).toContain('bindPendingPosItemImagePreviewJob');
   });
 
   it('keeps the existing catalog rendered during background refreshes', () => {

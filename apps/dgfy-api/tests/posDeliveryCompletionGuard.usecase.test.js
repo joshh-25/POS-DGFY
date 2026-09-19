@@ -88,7 +88,8 @@ describe('POS delivery completion guard', () => {
         // POS lifecycle action, same as buildOnlineOrderShiftAttributionPayload's own doc comment.
         expect(repository.updateOrderById).toHaveBeenCalledWith(
             44,
-            { fulfillment_status: 'completed', shift_id: 9, cashier_id: 12 },
+            // #1931: a completion-time issue stamps its own evidence (no prior accept-time issue).
+            { fulfillment_status: 'completed', shift_id: 9, cashier_id: 12, inventory_issued_at: expect.any(Date) },
             expect.objectContaining({ lock: true })
         );
     });

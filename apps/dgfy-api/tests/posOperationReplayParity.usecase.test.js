@@ -701,7 +701,8 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             posRepository,
             inventoryCommandService: {
                 createStockMovement: jest.fn()
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'fnb', enabledCapabilities: [] })
         });
 
         const sequelize = {
@@ -986,7 +987,8 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             posRepository,
             inventoryCommandService: {
                 createStockMovement: jest.fn()
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'fnb', enabledCapabilities: [] })
         });
 
         const sequelize = {

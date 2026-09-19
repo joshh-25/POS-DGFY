@@ -1,15 +1,84 @@
 // OpenCode's chat.params runs immediately before dispatch and exposes the live model selection.
+// The system transform makes the formatter command discoverable to the model; neither hook
+// intercepts GitHub commands or blocks a session when attribution cannot be proven.
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import path from 'node:path';
+
+// OpenCode is a native executable on supported installs. Its process.execPath is
+// therefore the OpenCode binary, not a JavaScript runtime capable of running the
+// attribution script.
+const NODE_COMMAND = 'node';
+
+function modelIdentity(input) {
+  const model = input?.model;
+  const identity = {
+    providerID: model?.providerID || input?.providerID || input?.provider?.info?.id || input?.provider?.id,
+    modelID: model?.modelID || model?.id || input?.modelID,
+  };
+  if (process.env.DGFY_AI_ATTRIBUTION_DEBUG === '1') {
+    console.error(`[dgfy-ai-attribution] OpenCode model shape ${JSON.stringify({
+      sessionID: input?.sessionID || '',
+      inputKeys: Object.keys(input || {}).sort(),
+      modelKeys: Object.keys(model || {}).sort(),
+      providerID: identity.providerID || '',
+      modelID: identity.modelID || '',
+    })}`);
+  }
+  return identity;
+}
+
+function recordFor(worktree, input) {
+  const script = path.join(worktree, 'scripts', 'ai-attribution.js');
+  const { providerID, modelID } = modelIdentity(input);
+  const result = spawnSync(NODE_COMMAND, [script, 'record', 'opencode'], {
+    cwd: worktree,
+    input: JSON.stringify({
+      sessionId: input?.sessionID,
+      worktree,
+      providerID,
+      modelID,
+    }),
+    encoding: 'utf8',
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
+  try { return JSON.parse((result.stdout || '').trim() || 'null'); } catch { return null; }
+}
+
 export default async function dgfyAiAttribution({ worktree }) {
+  const require = createRequire(path.join(worktree, 'scripts', 'ai-attribution.js'));
+  let attribution;
+  try { attribution = require(path.join(worktree, 'scripts', 'ai-attribution.js')); } catch { attribution = null; }
+  const cache = new Map();
+
+  function observedRecord(input) {
+    const sessionID = input?.sessionID;
+    const { providerID, modelID } = modelIdentity(input);
+    if (!sessionID || !providerID || !modelID) return null;
+    const key = `${providerID || ''}\0${modelID || ''}`;
+    const cached = sessionID && cache.get(sessionID);
+    if (cached?.key === key) return cached.record;
+    const record = recordFor(worktree, input);
+    if (sessionID) cache.set(sessionID, { key, record });
+    return record;
+  }
+
   return {
+    'chat.message': async (input) => {
+      observedRecord(input);
+    },
     'chat.params': async (input) => {
-      const script = path.join(worktree, 'scripts', 'ai-attribution.js');
-      spawnSync(process.execPath, [script, 'record', 'opencode'], {
-        cwd: worktree,
-        input: JSON.stringify({ sessionId: input.sessionID, worktree, providerID: input.model.providerID, modelID: input.model.id }),
-        stdio: ['pipe', 'ignore', 'ignore'],
-      });
+      observedRecord(input);
+    },
+    'experimental.chat.system.transform': async (input, output) => {
+      const record = observedRecord(input);
+      const identity = attribution?.identityLabel?.(record) || '';
+      if (!input?.sessionID || !identity || !Array.isArray(output?.system)) return;
+      output.system.push(
+        `AI attribution is active for this session (runtime=OpenCode, identity=${identity}). ` +
+        `To tag a PR body or comment, run: node scripts/ai-attribution.js format opencode ` +
+        `${input.sessionID} <Opened|Review|Addressed> <role>`,
+      );
     },
   };
 }

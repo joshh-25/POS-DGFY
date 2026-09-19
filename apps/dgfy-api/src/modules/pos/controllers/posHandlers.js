@@ -60,6 +60,13 @@ import {
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
+    attachOrderPackingEvidenceUseCase,
+    getOrderPackingEvidenceListUseCase,
+    getOrderPackingEvidenceImageUseCase,
+    attachDeliveryCompletionEvidenceUseCase,
+    getDeliveryCompletionEvidenceUseCase,
+    getDeliveryCompletionEvidenceImageUseCase,
+    getDeliveryCompletionEvidenceSignatureUseCase,
     assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
@@ -2235,6 +2242,181 @@ export const getOrderBalancePaymentProof = async (req, res, next) => {
     }
 };
 
+// Phase 330 (#1460): packing evidence is a separate append-only attachment flow, available after
+// the order's packed transition and independent of terminal pairing/active-operator state.
+export const uploadOrderPackingEvidence = async (req, res, next) => {
+    try {
+        const result = await attachOrderPackingEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            files: req.files,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Packing evidence attached to this order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const attachDeliveryCompletionEvidence = async (req, res, next) => {
+    try {
+        const result = await attachDeliveryCompletionEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            files: req.files || {},
+            payload: req.validatedData || req.body || {},
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery completion evidence attached.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getOrderPackingEvidenceList = async (req, res, next) => {
+    try {
+        const result = await getOrderPackingEvidenceListUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeliveryCompletionEvidence = async (req, res, next) => {
+    try {
+        const result = await getDeliveryCompletionEvidenceUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery completion evidence retrieved.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getOrderPackingEvidenceImage = async (req, res, next) => {
+    try {
+        const result = await getOrderPackingEvidenceImageUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            imageId: req.validatedParams?.image_id || req.params.image_id,
+            user: req.user
+        });
+        if (!result.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        const { mime_type: mimeType, size_bytes: sizeBytes, stream } = result.data;
+        res.set({
+            'Content-Type': mimeType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'private, no-store',
+            ...(Number.isFinite(sizeBytes) ? { 'Content-Length': String(sizeBytes) } : {})
+        });
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: 'Packing evidence could not be read.' });
+            } else {
+                res.destroy();
+            }
+        });
+        return stream.pipe(res);
+    } catch (error) {
+        next(error);
+    }
+};
+
+const streamDeliveryCompletionEvidence = async (req, res, next, useCase, missingMessage) => {
+    try {
+        const result = await useCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            imageId: req.validatedParams?.image_id || req.params.image_id
+        });
+        if (!result.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+        const { mime_type: mimeType, size_bytes: sizeBytes, stream } = result.data;
+        res.set({
+            'Content-Type': mimeType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+            'Cache-Control': 'private, no-store',
+            ...(Number.isFinite(sizeBytes) ? { 'Content-Length': String(sizeBytes) } : {})
+        });
+        stream.on('error', () => {
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, message: missingMessage });
+            } else {
+                res.destroy();
+            }
+        });
+        return stream.pipe(res);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDeliveryCompletionEvidenceImage = (req, res, next) => streamDeliveryCompletionEvidence(
+    req,
+    res,
+    next,
+    getDeliveryCompletionEvidenceImageUseCase,
+    'Delivery evidence image could not be read.'
+);
+
+export const getDeliveryCompletionEvidenceSignature = (req, res, next) => streamDeliveryCompletionEvidence(
+    req,
+    res,
+    next,
+    getDeliveryCompletionEvidenceSignatureUseCase,
+    'Delivery recipient signature could not be read.'
+);
 export const assignDeliveryPersonnel = async (req, res, next) => {
     try {
         const result = await assignDeliveryPersonnelUseCase({

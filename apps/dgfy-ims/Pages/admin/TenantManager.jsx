@@ -256,6 +256,27 @@ const getTenantCapabilities = (tenant = {}) => ({
     ...(tenant.capabilities && typeof tenant.capabilities === 'object' ? tenant.capabilities : {})
 });
 
+// Issue #1923: a 2xx PATCH only proves the write was accepted, not that the
+// value is durable and readable through the same list path the UI renders
+// after reload. Compare every patched consumer key against the fresh list
+// read before claiming success; a missing/unavailable read or any mismatch
+// must fail loud instead of toasting success for a rolled-back state.
+// The registration-stage PATCH key differs from the read-model key; every
+// other capability PATCH key matches its read key exactly.
+const CAPABILITY_PATCH_TO_READ_KEY = {
+    customer_access_registration_stage: 'registration_stage'
+};
+
+export const findUnreflectedCapabilityKeys = (freshCapabilities, patch = {}) => {
+    if (!freshCapabilities || freshCapabilities.unavailable) return ['capabilities_unavailable'];
+    return Object.entries(patch)
+        .filter(([key, value]) => {
+            const readKey = CAPABILITY_PATCH_TO_READ_KEY[key] || key;
+            return freshCapabilities[readKey] !== value;
+        })
+        .map(([key]) => key);
+};
+
 const getCustomerAccessModeLabel = (mode) => (
     CUSTOMER_ACCESS_MODE_OPTIONS.find((option) => option.value === String(mode || '').trim().toLowerCase())?.label
     || mode
@@ -656,6 +677,8 @@ export default function TenantManager() {
     // `silent: true` (issue #1825's provisioning-status poll below) skips the loading spinner
     // and the error banner so a background refresh never flickers the page - a failed silent
     // poll just tries again on the next tick instead of surfacing an error.
+    // Returns the fresh tenant list on success (issue #1923's write verification
+    // compares the post-write read against the requested patch), null otherwise.
     async function loadTenants({ silent = false, pollGeneration } = {}) {
         if (!silent) {
             setLoading(true);
@@ -667,8 +690,10 @@ export default function TenantManager() {
             // effect was cleaned up (statusFilter changed, or unmount) is stale - never apply
             // it. Compared against the current generation, not a boolean, so this is correct
             // regardless of which later effect run did the bumping.
-            if (silent && pollGeneration !== undefined && pollGeneration !== pollGenerationRef.current) return;
-            setTenants(response.data || []);
+            if (silent && pollGeneration !== undefined && pollGeneration !== pollGenerationRef.current) return null;
+            const freshTenants = response.data || [];
+            setTenants(freshTenants);
+            return freshTenants;
         } catch (err) {
             if (silent) {
                 console.error('[TenantManager] Silent provisioning-status poll failed', err);
@@ -676,6 +701,7 @@ export default function TenantManager() {
                 setError('Failed to load tenants');
                 console.error(err);
             }
+            return null;
         } finally {
             if (!silent) setLoading(false);
         }
@@ -769,7 +795,16 @@ export default function TenantManager() {
         setCapabilityLoading(loadingKey);
         try {
             await adminService.updateTenantCapabilities(tenant.id, { ...patch, reason });
-            await loadTenants();
+            const freshTenants = await loadTenants();
+            const freshTenant = (freshTenants || []).find((entry) => entry?.id === tenant.id);
+            // Issue #1923: never toast success for a state that was rolled back
+            // or that the fresh list read cannot see. Keep the confirmation open
+            // so the operator can inspect the audit log or retry deliberately.
+            const unreflectedKeys = findUnreflectedCapabilityKeys(freshTenant?.capabilities, patch);
+            if (unreflectedKeys.length > 0) {
+                toast.error(`Capability change saved, but the fresh tenant read does not reflect it (${unreflectedKeys.join(', ')}). Reload and check the audit log before retrying.`);
+                return;
+            }
             setPendingCapabilityChange(null);
             setCapabilityReason('');
             toast.success('Tenant capabilities updated');

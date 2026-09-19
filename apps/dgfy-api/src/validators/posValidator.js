@@ -582,6 +582,25 @@ const balancePaymentProofParamsSchema = Joi.object({
     payment_id: Joi.number().integer().positive().required()
 });
 
+// Phase 330 (#1460): params-only schemas for the private packing-evidence list and stream
+// routes. Multipart files are validated by the strict image uploader and the use case.
+const packingEvidenceParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required()
+});
+
+const packingEvidenceImageParamsSchema = packingEvidenceParamsSchema.keys({
+    image_id: Joi.string().guid({ version: 'uuidv4' }).required()
+});
+
+const deliveryCompletionEvidenceImageParamsSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    image_id: Joi.number().integer().positive().required()
+});
+
+const deliveryCompletionEvidenceBodySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional()
+}).unknown(false);
+
 const posCatalogOverrideParamSchema = Joi.object({
     item_id: Joi.number().integer().positive().required()
 });
@@ -913,7 +932,8 @@ const createDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().optional(),
     scheduled_date_end: Joi.date().iso().min(Joi.ref('scheduled_date')).optional(),
     location_id: Joi.number().integer().positive().optional(),
-    notes: Joi.string().trim().max(2000).allow('', null).optional()
+    notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional()
 }).with('scheduled_date_end', 'scheduled_date');
 
 // Deliberately no Joi.ref cross-check between scheduled_date/scheduled_date_end here -- a PATCH
@@ -925,6 +945,7 @@ const updateDeliveryRunSchema = Joi.object({
     scheduled_date: Joi.date().iso().allow(null).optional(),
     scheduled_date_end: Joi.date().iso().allow(null).optional(),
     notes: Joi.string().trim().max(2000).allow('', null).optional(),
+    transportation_label: Joi.string().trim().max(120).allow('', null).optional(),
     // dispatched/completed are deliberately excluded -- Phase 228 (#1271) owns those transitions.
     status: Joi.string().valid(...DELIVERY_RUN_UPDATABLE_STATUSES).optional()
 }).min(1);
@@ -961,6 +982,53 @@ const addDeliveryRunMembersSchema = Joi.object({
 // member of the run, best-effort. Body is just the idempotency key.
 const dispatchDeliveryRunSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const deliveryRunMemberLoadingUpdateSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    loading_state: Joi.string().valid('pending', 'loaded', 'not_loaded', 'exception').required(),
+    exception_reason: Joi.when('loading_state', {
+        is: 'exception',
+        then: Joi.string().trim().min(1).max(2000).required(),
+        otherwise: Joi.string().trim().max(2000).allow('', null).optional()
+    })
+});
+
+const deliveryRunLoadingConfirmSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const deliveryRunRemittanceParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    remittanceId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunRemittanceVarianceParamSchema = Joi.object({
+    deliveryRunId: Joi.number().integer().positive().required(),
+    remittanceId: Joi.number().integer().positive().required(),
+    varianceId: Joi.number().integer().positive().required()
+});
+
+const deliveryRunRemittanceAllocationSchema = Joi.object({
+    pos_transaction_id: Joi.number().integer().positive().required(),
+    remitted_amount: Joi.number().min(0).precision(4).required()
+});
+
+const deliveryRunRemittanceCreateSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    location_id: Joi.number().integer().positive().optional(),
+    allocations: Joi.array()
+        .items(deliveryRunRemittanceAllocationSchema)
+        .min(1)
+        .max(500)
+        .unique('pos_transaction_id')
+        .required(),
+    variance_reason: Joi.string().trim().max(2000).allow('', null).optional()
+});
+
+const deliveryRunVarianceResolutionSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    resolution_reason: Joi.string().trim().min(1).max(2000).required()
 });
 
 const deliveryRunListQuerySchema = Joi.object({
@@ -1432,6 +1500,8 @@ export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', '
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validateDecideBusinessAdminApproval = validateSchema(businessAdminApprovalSchema, 'body', 'validatedData');
+export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
+export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
@@ -1482,11 +1552,19 @@ export const validateDeliveryRunMemberParam = validateSchema(deliveryRunMemberPa
 export const validateDeliveryRunPersonnelSet = validateSchema(setDeliveryRunPersonnelSchema, 'body', 'validatedData');
 export const validateDeliveryRunMembersAdd = validateSchema(addDeliveryRunMembersSchema, 'body', 'validatedData');
 export const validateDeliveryRunDispatch = validateSchema(dispatchDeliveryRunSchema, 'body', 'validatedData');
+export const validateDeliveryRunMemberLoadingUpdate = validateSchema(deliveryRunMemberLoadingUpdateSchema, 'body', 'validatedData');
+export const validateDeliveryRunLoadingConfirm = validateSchema(deliveryRunLoadingConfirmSchema, 'body', 'validatedData');
+export const validateDeliveryRunRemittanceCreate = validateSchema(deliveryRunRemittanceCreateSchema, 'body', 'validatedData');
+export const validateDeliveryRunRemittanceParam = validateSchema(deliveryRunRemittanceParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunRemittanceVarianceParam = validateSchema(deliveryRunRemittanceVarianceParamSchema, 'params', 'validatedParams');
+export const validateDeliveryRunVarianceResolution = validateSchema(deliveryRunVarianceResolutionSchema, 'body', 'validatedData');
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
+export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');
+export const validateDeliveryCompletionEvidenceImageParams = validateSchema(deliveryCompletionEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');

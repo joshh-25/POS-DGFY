@@ -87,6 +87,40 @@ describe('tenantModelFactory — index preservation (issue #1825, RF-1)', () => 
         );
     });
 
+    test('keeps the delivery evidence image parent index explicitly named within MySQL limits', () => {
+        const { fakeSequelize, recorded } = buildRecordingSequelize();
+        getTenantModels(fakeSequelize);
+
+        const parentIndex = recorded.DeliveryCompletionEvidenceImage?.options?.indexes?.find(
+            (index) => index.fields?.join(',') === 'delivery_completion_evidence_id'
+        );
+
+        expect(parentIndex).toEqual(expect.objectContaining({
+            name: 'idx_delivery_completion_evidence_images_parent',
+            fields: ['delivery_completion_evidence_id']
+        }));
+        expect(parentIndex.name.length).toBeLessThanOrEqual(64);
+    });
+
+    test('keeps remittance variance indexes deterministic and within MySQL limits', () => {
+        const { fakeSequelize, recorded } = buildRecordingSequelize();
+        getTenantModels(fakeSequelize);
+
+        const indexes = recorded.DeliveryRunRemittanceVariance?.options?.indexes || [];
+
+        expect(indexes).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                name: 'idx_delivery_run_remittance_variances_allocation',
+                fields: ['delivery_run_remittance_allocation_id']
+            }),
+            expect.objectContaining({
+                name: 'idx_delivery_run_remittance_variances_reversal',
+                fields: ['reversal_of_variance_id']
+            })
+        ]));
+        expect(indexes.every((index) => index.name.length <= 64)).toBe(true);
+    });
+
     test('preserves StoreCustomer\'s non-unique explicit indexes while still deduping its own duplicate unique(email)', () => {
         const { fakeSequelize, recorded } = buildRecordingSequelize();
         getTenantModels(fakeSequelize);

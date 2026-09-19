@@ -1,42 +1,28 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import SettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
+import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import { createPortal } from 'react-dom';
-import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import {
   AlertCircle,
   AlertTriangle,
-  Award,
   Banknote,
   BarChart3,
-  BookOpen,
-  Briefcase,
   CalendarDays,
   CalendarPlus,
   Check,
-  CheckCircle2,
   ChevronDown,
   CircleDollarSign,
   ClipboardList,
-  Clock,
-  Compass,
-  Copy,
   Barcode,
-  FileText,
-  Ghost,
-  GripVertical,
   History,
   ImagePlus,
   Info,
-  KeyRound,
-  Mail,
-  MapPin,
-  MessageSquare,
   Monitor,
   Pencil,
   MapPinned,
   Package,
   Percent,
-  Phone,
   Plus,
   Receipt,
   RefreshCcw,
@@ -46,16 +32,13 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingBag,
-  ShoppingCart,
   SlidersHorizontal,
   Star,
   Store,
   UserRound,
-  Users,
   Tags,
   Ticket,
   Trash2,
-  TrendingUp,
   Truck,
   Upload,
   UtensilsCrossed,
@@ -64,10 +47,9 @@ import {
 import { Button } from '@/components/ui/button';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
 import CSVImportModal from '@/components/items/CSVImportModal.jsx';
-import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
+import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
-import { acquireModalScrollLock } from '@/components/ui/dialog';
 import {
   Dialog,
   DialogContent,
@@ -90,7 +72,6 @@ import {
   listItemFolders,
   lookupExternalProduct,
   replaceItemFolders,
-  reorderFolders,
   updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
@@ -109,85 +90,27 @@ import {
 import { persistPosItemBarcode } from '../utils/posItemBarcodePersistence.js';
 import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
-  bindPendingPosItemImagePreviewJob,
-  getPendingPosItemImagePreviews,
-  markPendingPosItemImagePreviewFailed,
-  markPendingPosItemImagePreviewUncertain,
-  stagePendingPosItemImagePreview
-} from '../services/posPendingItemImagePreviewStore.js';
-import {
   updateStorefrontCatalogOverride,
   importExternalStorefrontCatalogImage,
   queueStorefrontCatalogImage,
   queueStorefrontCatalogImages,
+  getStorefrontCatalogImageUploadStatus,
   updateStorefrontCatalogGallery,
+  deleteStorefrontCatalogImage,
   generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
-import {
-  buildEditGalleryIntent,
-  dedupeImageFiles,
-  getImageFileSelectionKey,
-  getPendingGalleryEntryKey,
-  getSavedGalleryEntryKey,
-  getGallerySignature
-} from '../utils/posEditImageDraft.js';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
-import {
-  deleteStorefrontAsset,
-  generateStorefrontSlug,
-  getCompanyInfo,
-  getAllSettings,
-  updateSettingByKey,
-  updateSettings,
-  uploadStorefrontAsset
-} from '@/services/settingsService.js';
-import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile, updateUserPermissions } from '@/services/userService.js';
-import * as tenantLocationService from '@/services/tenantLocationService.js';
+
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveEditItemSaveError } from '../utils/editItemSaveErrors.js';
-import { normalizeTerminalRegistry } from '@/src/features/pos/utils/terminalIdentity.js';
+
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
-import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
-import { normalizeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
-import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
-import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
-import {
-  SETTINGS_FIELD_LABELS,
-  CUSTOMER_ACCESS_MODE_RANK,
-  normalizeCustomerAccessMode,
-  mapCustomerAccessRuntimeSettings,
-  toPositiveInt,
-  formatFirstValidationError,
-  formatValidationErrorDescription,
-  collectValidationErrors,
-  formatValidationModalTitle,
-  createDefaultLocationForm,
-  hydratePosSettingsForm,
-  hydrateStorefrontSettingsForm,
-  hydrateStorefrontAssets,
-  updateTerminalRegistryEntry as updateTerminalRegistryEntryModel,
-  addTerminalRegistryEntry as addTerminalRegistryEntryModel,
-  removeTerminalRegistryEntry as removeTerminalRegistryEntryModel,
-  buildTerminalRegistryPayload,
-  buildSettingsVersionMap,
-  getSettingsWriteFailureMessage,
-  buildPosSettingsPayload,
-  buildStorefrontSettingsPayload,
-  buildLocationPayload,
-  validateLocationPayload,
-  updateStorefrontList as updateStorefrontListModel,
-  appendStorefrontList as appendStorefrontListModel,
-  removeStorefrontList as removeStorefrontListModel,
-  updateStorefrontObjectRow as updateStorefrontObjectRowModel,
-  appendStorefrontObjectRow as appendStorefrontObjectRowModel,
-  removeStorefrontObjectRow as removeStorefrontObjectRowModel
-} from '../utils/settingsWorkspaceModel.js';
-import resolveAssetUrl, { advanceAssetImageFallback } from '@/src/utils/assetUrl.js';
+
+import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
-import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
-import PosItemImageViewer from './PosItemImageViewer.jsx';
-import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
+import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+
 import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
 import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
@@ -196,40 +119,32 @@ import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPane
 import PosServicesOperationsWorkspace from './PosServicesOperationsWorkspace.jsx';
 import PosFnbModifiersWorkspace from './PosFnbModifiersWorkspace.jsx';
 import {
-  fetchPosSetupCashiers,
-  fetchPosCatalog,
   fetchPosCatalogPage,
-  fetchPosTransactions,
-  fetchTerminalTodayDashboard,
   fetchMerchantTenderReconciliation,
   reviewMerchantTenderReconciliation
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import CashierHistoryPanel from './CashierHistoryPanel.jsx';
-import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
-import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
-import DeliveryPersonnelManagementPanel from './DeliveryPersonnelManagementPanel.jsx';
+
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import VoucherManagementPanel from './VoucherManagementPanel.jsx';
 import PricelistManagementPanel from './PricelistManagementPanel.jsx';
-import DownpaymentSettingsPanel from './DownpaymentSettingsPanel.jsx';
-import PosDeliveryPricingSettingsCard from './PosDeliveryPricingSettingsCard.jsx';
-import PosCashierAttendanceSettingsCard from './PosCashierAttendanceSettingsCard.jsx';
+
 import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
 import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
 import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
-import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
-import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
+import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
-const isAmbiguousImageUploadError = (error) => (
-  !error?.response
-  && Boolean(error?.request || /network|timeout|fetch/i.test(String(error?.message || '')))
-);
-
-const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
+const SETTINGS_VIEW_MODES = new Set([
+  'location_scope',
+  'settings_profile',
+  'settings_pos',
+  'settings_storefront',
+  'terminal_setup'
+]);
 
 const MODE_META = {
   incoming_queue: {
@@ -305,15 +220,24 @@ const MODE_META = {
   },
   terminal_setup: {
     icon: Settings2,
-    title: 'Terminal Setup',
-    subtitle: 'Manage terminal registry, branch binding, queue scope, and local device preferences.'
+    title: 'Settings',
+    subtitle: 'Manage shared profile, POS setup, and storefront settings inside the POS surface.'
   },
 };
 
-const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
+const money = (value) => Number(value || 0).toFixed(2);
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
+
+// RF-2 (PR #1656 review, #1410): the create-item modal disables its own close button while
+// postCreateSaving is true, so a stuck background upload job locks the operator out of the
+// modal for the full poll duration -- unlike handleGenerateEditImage's edit-modal path, which
+// stays dismissible throughout its own poll. Reusing useItemImageGenerationPoll's full
+// ITEM_IMAGE_POLL_TIMEOUT_MS (90s) here would mean a genuinely stuck job locks the modal that
+// long; bound it to a much shorter ceiling instead -- the common/fast case still resolves in a
+// couple of seconds well under this, and a timeout here degrades to today's pre-fix behavior
+// (soft warning, pos.catalog.changed SSE backstop), not a hard failure.
+const CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS = 15 * 1000;
 
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
@@ -363,36 +287,6 @@ const normalizeStorefrontItemGallery = (item = {}) => {
     sort_order: index
   }));
 };
-const CUSTOMER_ACCESS_MODE_OPTIONS = [
-  { value: 'ghost', label: 'Ghost', description: 'Profile and contact only; catalog, cart, checkout, and booking are hidden.', icon: Ghost, iconClassName: 'bg-indigo-50 text-indigo-500' },
-  { value: 'catalog', label: 'Catalog Only', description: 'Customers can browse catalog, prices, and inventory labels only.', icon: BookOpen, iconClassName: 'bg-emerald-50 text-emerald-600' },
-  { value: 'inquiry', label: 'Inquiry', description: 'Customers can browse and contact you through existing channels.', icon: MessageSquare, iconClassName: 'bg-amber-50 text-amber-500' },
-  { value: 'transaction', label: 'Transaction', description: 'Customers can quote, checkout, and book services online.', icon: ShoppingCart, iconClassName: 'bg-blue-50 text-blue-600' }
-];
-
-const resolveUserPermissionList = (user) => {
-  if (Array.isArray(user?.permissions)) return user.permissions;
-  if (typeof user?.permissions !== 'string') return [];
-  try {
-    const parsed = JSON.parse(user.permissions);
-    if (Array.isArray(parsed)) return parsed;
-    if (!parsed || typeof parsed !== 'object') return [];
-    return Object.entries(parsed).flatMap(([entity, actions]) => (
-      actions && typeof actions === 'object'
-        ? Object.entries(actions)
-          .filter(([, allowed]) => allowed === true)
-          .map(([action]) => `${entity}:${action}`)
-        : []
-    ));
-  } catch {
-    return [];
-  }
-};
-
-
-const getReadableFieldName = (field) => SETTINGS_FIELD_LABELS[field] || field;
-
-const RequiredMark = () => <span className="ml-1 text-rose-600">*</span>;
 
 const isValidOpeningCashAmount = (value) => {
   const rawValue = String(value ?? '').trim();
@@ -432,8 +326,8 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
       setObserved(Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
         key,
         latestObserved?.[key] != null
-          ? Number(latestObserved[key]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : Number(data?.expected?.breakdown?.[key]?.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          ? String(Number(latestObserved[key]).toFixed(2))
+          : String(Number(data?.expected?.breakdown?.[key]?.amount || 0).toFixed(2))
       ])));
       setReviewNote(data?.latest_reconciliation?.review_note || '');
       setState({ loading: false, saving: false, data, error: '' });
@@ -493,16 +387,16 @@ function MerchantTenderReconciliationPanel({ shiftId, salesSummary = null, disab
                 {MERCHANT_TENDER_METHODS.map(({ key, label }) => (
                   <tr key={key} className="border-t border-blue-100">
                     <td className="py-2 font-bold text-slate-800">{label}</td>
-                    <td className="py-2">₱{money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
+                    <td className="py-2">PHP {money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
                     <td className="py-2"><Input aria-label={`${label} observed total`} type="number" min="0" step="0.01" className="h-8 w-32 bg-white text-[11px]" value={observed[key]} onChange={(event) => setObserved((previous) => ({ ...previous, [key]: event.target.value }))} disabled={state.saving || disabled} /></td>
-                  <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>₱{money(variances[key])}</td>
+                    <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
                   </tr>
                 ))}
                 <tr className="border-t border-blue-200 bg-white/60" data-testid="employee-credit-reconciliation-row">
                   <td className="py-2 font-bold text-slate-800">
                     Employee Credit <span className="block text-[10px] font-medium text-slate-500">Internal receivable · {employeeCreditCount} transaction{employeeCreditCount === 1 ? '' : 's'}</span>
                   </td>
-                  <td className="py-2 font-bold text-[#1A4E8D]">₱{money(employeeCredit.amount)}</td>
+                  <td className="py-2 font-bold text-[#1A4E8D]">PHP {money(employeeCredit.amount)}</td>
                   <td className="py-2 text-slate-500">Not applicable</td>
                   <td className="py-2 text-right text-slate-500">Not applicable</td>
                 </tr>
@@ -531,8 +425,6 @@ function ShiftControlsWorkspace({
   locationsState,
   operatingLocationId,
   setOperatingLocationId,
-  viewingLocationId = null,
-  setViewingLocationId = () => {},
   canSwitchPosLocation,
   handleSwitchShiftLocation,
   openShiftForm,
@@ -545,7 +437,6 @@ function ShiftControlsWorkspace({
   dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
   refreshDayCloseReadiness = async () => null,
   canAdminBypassShiftPrompt = false,
-  canViewAdminLocationMonitor = false,
   closeShiftForm,
   setCloseShiftForm,
   handleCloseShift,
@@ -570,30 +461,8 @@ function ShiftControlsWorkspace({
   sectionId,
   initialTab = 'shift_location'
 }) {
-  const locations = (Array.isArray(locationsState?.locations) ? locationsState.locations : [])
-    .filter((location) => location?.is_active !== false);
+  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const [switchReason, setSwitchReason] = useState('');
-  const [switchTargetLocationId, setSwitchTargetLocationId] = useState(null);
-  const [switchTargetTerminalId, setSwitchTargetTerminalId] = useState('');
-  const [switchCashForm, setSwitchCashForm] = useState({
-    closingCashAmount: '',
-    openingFloatAmount: '',
-    closingNote: '',
-    openingNote: ''
-  });
-  const [switchConflict, setSwitchConflict] = useState(null);
-  useEffect(() => {
-    setSwitchTargetLocationId(null);
-    setSwitchTargetTerminalId('');
-    setSwitchReason('');
-    setSwitchConflict(null);
-    setSwitchCashForm({
-      closingCashAmount: '',
-      openingFloatAmount: '',
-      closingNote: '',
-      openingNote: ''
-    });
-  }, [shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.location_id]);
   const [requestedAdminTerminalId, setRequestedAdminTerminalId] = useState('');
   const [pendingAdminTerminalId, setPendingAdminTerminalId] = useState('');
   const [staleRecoveryShift, setStaleRecoveryShift] = useState(null);
@@ -608,18 +477,12 @@ function ShiftControlsWorkspace({
     opacity: 1,
     transition: 'transform 150ms ease, opacity 150ms ease'
   });
-  const isIminRuntime = isIminWrapperRuntime();
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
   const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
   const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
-  const registerLocationId = Number(operatingLocationId || 0) || null;
-  const effectiveViewingLocationId = Number(viewingLocationId || operatingLocationId || 0) || null;
-  const registerLocation = locations.find((location) => Number(location?.location_id || 0) === registerLocationId);
-  const registerLocationLabel = registerLocation?.name || registerLocation?.location_name || registerLocationId || 'Not selected';
-  const displayCurrency = currencyLabel(terminalMeta?.pettyCashSymbol);
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
@@ -634,12 +497,6 @@ function ShiftControlsWorkspace({
       (entry) => Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
     ),
     [activeTerminals, operatingLocationId]
-  );
-  const switchTargetTerminals = useMemo(
-    () => activeTerminals.filter(
-      (entry) => Number(entry?.location_id || 0) === Number(switchTargetLocationId || 0)
-    ),
-    [activeTerminals, switchTargetLocationId]
   );
   const openTerminalShiftById = useMemo(() => {
     const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
@@ -670,52 +527,11 @@ function ShiftControlsWorkspace({
     operatorUserId
   );
   const branchMonitorOrders = Array.isArray(adminLocationMonitorState?.orders)
-    && Number(adminLocationMonitorState?.locationId || 0) === effectiveViewingLocationId
     ? adminLocationMonitorState.orders
     : [];
   const branchTerminalShifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
-    && Number(adminLocationMonitorState?.locationId || 0) === effectiveViewingLocationId
     ? adminLocationMonitorState.terminalShifts
     : [];
-  const switchConflictLocation = locations.find(
-    (location) => Number(location?.location_id || 0) === Number(switchConflict?.targetLocationId || 0)
-  );
-  const switchConflictTerminal = activeTerminals.find(
-    (terminal) => String(terminal?.terminal_id || '').trim() === String(switchConflict?.targetTerminalId || '').trim()
-  );
-  const switchConflictTargetLabel = [
-    switchConflictTerminal?.label || switchConflictTerminal?.terminal_id,
-    switchConflictLocation?.name
-  ].filter(Boolean).join(' · ') || 'the selected destination';
-  const switchConflictGuidance = switchConflict?.reasonCode === 'POS_OPERATOR_ACTIVE_ELSEWHERE'
-    ? 'This operator already has an active register elsewhere. Resume or close that register through the normal authorized flow before retrying.'
-    : 'Choose another authorized terminal or resolve the existing shift before retrying.';
-  const submitShiftLocationSwitch = async () => {
-    setSwitchConflict(null);
-    try {
-      const result = await handleSwitchShiftLocation?.({
-        targetLocationId: switchTargetLocationId,
-        terminalId: switchTargetTerminalId,
-        closingCashAmount: switchCashForm.closingCashAmount,
-        openingFloatAmount: switchCashForm.openingFloatAmount,
-        closingNote: switchCashForm.closingNote,
-        openingNote: switchCashForm.openingNote,
-        reason: switchReason
-      });
-      if (result?.conflict) setSwitchConflict(result.conflict);
-    } catch {
-      // The page-level handler reports its own terminal failure. Keep this
-      // wrapper quiet so it never replaces the server's error with an
-      // unhelpful unhandled-promise message.
-    }
-  };
-  const refreshSwitchAvailability = async () => {
-    setSwitchConflict(null);
-    await Promise.allSettled([
-      refreshOperationalContext?.(),
-      refreshAdminLocationMonitor?.()
-    ]);
-  };
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
     { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
@@ -755,17 +571,6 @@ function ShiftControlsWorkspace({
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
 
-    if (isIminRuntime) {
-      setActiveTab(nextTab);
-      setRenderedTab(nextTab);
-      setPaneInlineStyle({
-        transform: 'translateX(0)',
-        opacity: 1,
-        transition: 'none'
-      });
-      return;
-    }
-
     const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
     const enterOffset = movingForward ? 28 : -28;
@@ -797,7 +602,7 @@ function ShiftControlsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers, isIminRuntime]);
+  }, [activeTab, clearAnimationTimers]);
 
   const summaryRows = activeShift ? [
     {
@@ -827,25 +632,25 @@ function ShiftControlsWorkspace({
     {
       icon: CircleDollarSign,
       label: 'Opening/Petty Cash:',
-      value: `${displayCurrency}${money(activeShift.opening_float_amount)}`,
+      value: `${terminalMeta.pettyCashSymbol} ${money(activeShift.opening_float_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#0F172A]'
     },
     {
       icon: Receipt,
       label: 'Total Sales (excluding opening cash):',
-      value: `${displayCurrency}${money(shiftState.salesSummary?.total_amount)}`,
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.salesSummary?.total_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-[#1A4E8D]'
     },
     {
       icon: Banknote,
       label: 'Expected Cash in Drawer:',
-      value: `${displayCurrency}${money(shiftState.cashSummary?.expected_cash_amount)}`,
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.expected_cash_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
       icon: Banknote,
       label: 'Cash Sales:',
-      value: `${displayCurrency}${money(shiftState.cashSummary?.cash_sales_amount)}`,
+      value: `${terminalMeta.pettyCashSymbol} ${money(shiftState.cashSummary?.cash_sales_amount)}`,
       valueClassName: 'text-[13px] font-extrabold text-emerald-700'
     },
     {
@@ -895,11 +700,11 @@ function ShiftControlsWorkspace({
     return (
       <>
         <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-          <Label htmlFor="admin-register-location" className="block text-[12px] font-black text-[#0F172A]">
-            Register Branch
+          <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
+            Operating Location
           </Label>
           <select
-            id="admin-register-location"
+            id="admin-operating-location"
             className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
             value={operatingLocationId || ''}
             onChange={(event) => {
@@ -910,47 +715,21 @@ function ShiftControlsWorkspace({
             }}
           >
             {locations.map((location) => (
-              <option key={`admin-register-location-${location.location_id}`} value={location.location_id}>
+              <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
                 {location.name}
               </option>
             ))}
           </select>
           <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-            This is the register branch used for terminal selection and shift opening. Admin branch viewing is separate and read-only.
+            Admin navigation can use this location without a shift for read-only monitoring. Select an available terminal below before opening a shift or transacting.
           </p>
 
-          {canViewAdminLocationMonitor ? (
-            <div className="mt-4 border-t border-blue-100 pt-3">
-              <Label htmlFor="admin-viewing-location" className="block text-[12px] font-black text-[#0F172A]">
-                Viewing Branch
-              </Label>
-              <select
-                id="admin-viewing-location"
-                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                value={effectiveViewingLocationId || ''}
-                onChange={(event) => setViewingLocationId(event.target.value ? Number(event.target.value) : null)}
-              >
-                {locations.map((location) => (
-                  <option key={`admin-viewing-location-${location.location_id}`} value={location.location_id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-                Read-only orders and shift monitoring for the selected branch. This never changes the register branch, terminal assignment, cash, or order ownership.
-              </p>
-              <div className="mt-2 rounded-md border border-slate-200 bg-white px-2.5 py-2 text-[11px] text-slate-600">
-                Register branch: <span className="font-bold text-slate-800">{registerLocationLabel}</span>
-              </div>
-            </div>
-          ) : null}
-
           <div className="mt-4 border-t border-blue-100 pt-3">
-            <Label htmlFor="admin-register-terminal" className="block text-[12px] font-black text-[#0F172A]">
-              Register Terminal
+            <Label htmlFor="admin-operating-terminal" className="block text-[12px] font-black text-[#0F172A]">
+              Branch Terminal
             </Label>
             <select
-              id="admin-register-terminal"
+              id="admin-operating-terminal"
               className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               value={selectedAdminTerminalId}
               onChange={(event) => setRequestedAdminTerminalId(event.target.value)}
@@ -1018,7 +797,6 @@ function ShiftControlsWorkspace({
           </div>
         </div>
 
-        {canViewAdminLocationMonitor ? <>
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1144,7 +922,6 @@ function ShiftControlsWorkspace({
             </div>
           )}
         </div>
-        </> : null}
       </>
     );
   };
@@ -1158,7 +935,7 @@ function ShiftControlsWorkspace({
           </p>
           {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({displayCurrency})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1263,153 +1040,46 @@ function ShiftControlsWorkspace({
             </div>
 
             <div className="mt-4 border-t border-slate-200 pt-4">
-              <p className="text-[12px] font-black text-[#0F172A]">Relocate Register Shift</p>
+              <p className="text-[12px] font-black text-[#0F172A]">Change Active Shift Location</p>
               <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-                This closes the current register after an explicit cash count, then opens a new shift on an authorized destination terminal. Cash is not transferred automatically.
+                Reassign the active shift to another location. This requires a reason and permission.
               </p>
               {canSwitchPosLocation ? (
                 <>
-                  <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">Destination Branch</Label>
+                  <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">New Shift Location</Label>
                   <select
                     className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                    aria-label="New Shift Location"
-                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                    value={switchTargetLocationId || ''}
+                    value={operatingLocationId || ''}
                     onChange={(event) => {
                       const nextValue = event.target.value ? Number(event.target.value) : null;
-                      setSwitchTargetLocationId(nextValue);
-                      setSwitchTargetTerminalId('');
-                      setSwitchConflict(null);
+                      setOperatingLocationId(nextValue);
                     }}
                   >
-                    <option value="">Select a target location</option>
                     {locations.map((location) => (
                       <option key={`switch-location-${location.location_id}`} value={location.location_id}>
                         {location.name}
                       </option>
                     ))}
                   </select>
-                  <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">Destination Terminal</Label>
-                  <select
-                    className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                    aria-label="Destination Terminal"
-                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation || !switchTargetLocationId || switchTargetTerminals.length === 0}
-                    value={switchTargetTerminalId}
-                    onChange={(event) => {
-                      setSwitchTargetTerminalId(event.target.value);
-                      setSwitchConflict(null);
-                    }}
-                  >
-                    <option value="">Select an active destination terminal</option>
-                    {switchTargetTerminals.map((terminal) => (
-                      <option key={`switch-terminal-${terminal.terminal_id}`} value={terminal.terminal_id}>
-                        {terminal.label || terminal.terminal_id}
-                      </option>
-                    ))}
-                  </select>
-                  {switchTargetLocationId && switchTargetTerminals.length === 0 ? (
-                    <p className="mt-2 text-[11px] text-amber-700">No active terminal is registered to this branch.</p>
-                  ) : null}
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div>
-                      <Label className="block text-[12px] font-black text-[#0F172A]">Counted Closing Cash</Label>
-                      <Input
-                        className="mt-2 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                        value={switchCashForm.closingCashAmount}
-                        onChange={(event) => setSwitchCashForm((current) => ({ ...current, closingCashAmount: event.target.value }))}
-                        placeholder="0.00"
-                        inputMode="decimal"
-                        aria-label="Counted Closing Cash"
-                        disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                      />
-                    </div>
-                    <div>
-                      <Label className="block text-[12px] font-black text-[#0F172A]">Destination Opening Float</Label>
-                      <Input
-                        className="mt-2 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                        value={switchCashForm.openingFloatAmount}
-                        onChange={(event) => setSwitchCashForm((current) => ({ ...current, openingFloatAmount: event.target.value }))}
-                        placeholder="0.00"
-                        inputMode="decimal"
-                        aria-label="Destination Opening Float"
-                        disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <Input
-                      className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                      value={switchCashForm.closingNote}
-                      onChange={(event) => setSwitchCashForm((current) => ({ ...current, closingNote: event.target.value }))}
-                      placeholder="Closing cash note (optional)"
-                      aria-label="Closing cash note"
-                      disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                    />
-                    <Input
-                      className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                      value={switchCashForm.openingNote}
-                      onChange={(event) => setSwitchCashForm((current) => ({ ...current, openingNote: event.target.value }))}
-                      placeholder="Opening float note (optional)"
-                      aria-label="Opening float note"
-                      disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
-                    />
-                  </div>
                   <Input
                     className="mt-3 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                     value={switchReason}
                     onChange={(event) => setSwitchReason(event.target.value)}
                     placeholder="Reason for shift location change"
-                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     className="mt-3 h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                    disabled={locked
-                      || !isOnline
-                      || shiftState.loading
-                      || String(switchReason || '').trim().length < 8
-                      || shiftActionLoading.switchLocation
-                      || !switchTargetLocationId
-                      || Number(switchTargetLocationId) === Number(shiftLocationId)
-                      || !switchTargetTerminalId
-                      || !isValidOpeningCashAmount(switchCashForm.closingCashAmount)
-                      || !isValidOpeningCashAmount(switchCashForm.openingFloatAmount)}
-                    onClick={submitShiftLocationSwitch}
+                    disabled={shiftActionLoading.switchLocation || !operatingLocationId || Number(operatingLocationId) === Number(shiftLocationId)}
+                    onClick={() => handleSwitchShiftLocation?.({
+                      targetLocationId: operatingLocationId,
+                      reason: switchReason
+                    })}
                   >
                     <RefreshCcw className="mr-2 h-4 w-4" />
                     {shiftActionLoading.switchLocation ? 'Switching...' : 'Change Shift Location'}
                   </Button>
-                  {switchConflict ? (
-                    <div
-                      data-testid="pos-shift-location-conflict"
-                      role="alert"
-                      className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-[11px] leading-4 text-rose-950"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" aria-hidden="true" />
-                        <div className="min-w-0">
-                          <p className="font-extrabold">Shift location change was not completed.</p>
-                          <p className="mt-1 text-rose-900">{switchConflict.message}</p>
-                          <p className="mt-1 text-rose-900">
-                            Current register: {shiftLocationLabel}{currentTerminalId ? ` · ${currentTerminalId}` : ''}. Requested: {switchConflictTargetLabel}.
-                          </p>
-                          <p className="mt-1 font-semibold text-rose-900">
-                            {switchConflictGuidance} No takeover, cash transfer, or automatic close was performed.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="mt-3 h-9 w-full border-rose-300 bg-white px-3 text-[11px] font-extrabold text-rose-900 hover:bg-rose-100 sm:w-auto"
-                        onClick={refreshSwitchAvailability}
-                      >
-                        <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
-                        Refresh shift and terminal availability
-                      </Button>
-                    </div>
-                  ) : null}
                 </>
               ) : (
                 <p className="mt-3 text-[11px] text-slate-500">
@@ -1528,7 +1198,7 @@ function ShiftControlsWorkspace({
             No active shift is open. Start a shift here before using cashier-only actions.
           </p>
           <div className="mt-4 space-y-3">
-            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({displayCurrency})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Opening Cash ({terminalMeta.pettyCashSymbol})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1579,10 +1249,10 @@ function ShiftControlsWorkspace({
           <div className="mt-3 space-y-3">
             <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
               <span className="text-xs font-semibold text-slate-600">Total Sales (excluding opening cash)</span>
-              <span className="text-sm font-black text-[#1A4E8D]">{displayCurrency}{money(shiftState.salesSummary?.total_amount)}</span>
+              <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
             </div>
             <p className="text-xs text-slate-600">
-              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{displayCurrency}{money(shiftState.cashSummary?.expected_cash_amount)}</span>
+              Expected Cash in Drawer: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
             {canCloseDay ? (
               <MerchantTenderReconciliationPanel
@@ -1591,7 +1261,7 @@ function ShiftControlsWorkspace({
                 disabled={locked || !isOnline}
               />
             ) : null}
-            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({displayCurrency})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1674,7 +1344,7 @@ function ShiftControlsWorkspace({
               <option value="opening_adjustment">Opening Adjustment</option>
               <option value="closing_adjustment">Closing Adjustment</option>
             </select>
-            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({displayCurrency})</Label>
+            <Label className="text-[12px] font-black text-[#0F172A]">Amount ({terminalMeta.pettyCashSymbol})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
               type="number"
@@ -1723,7 +1393,7 @@ function ShiftControlsWorkspace({
       activeShift={activeShift}
       locked={locked}
       isOnline={isOnline}
-      currency={displayCurrency}
+      currency={terminalMeta.pettyCashSymbol}
     />
   );
 
@@ -2129,14 +1799,12 @@ function ItemsWorkspace({
   stockFilterPreset = '',
   onStockFilterPresetApplied = () => {},
   workflowMode = '',
-  currencySymbol = 'PHP',
   locked,
   isOnline = true,
   onQueueOfflineItemDraft = async () => '',
   operatingLocationId = null,
   storefrontSlug = '',
-  sectionId,
-  refreshTerminalUser = async () => {}
+  sectionId
 }) {
   const [items, setItems] = useState([]);
   const [itemsTotal, setItemsTotal] = useState(0);
@@ -2159,17 +1827,25 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);
-  const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);
-  const [selectedEditPrimaryKey, setSelectedEditPrimaryKey] = useState('');
-  const [editGalleryBase, setEditGalleryBase] = useState([]);
-  const [editGalleryDraft, setEditGalleryDraft] = useState([]);
-  const editSessionRef = useRef({ id: 0, itemId: null });
+  const [deferredEditImageFiles, setDeferredEditImageFiles] = useState([]);
+  const [selectedEditPrimaryFile, setSelectedEditPrimaryFile] = useState(null);
+  const [editImageUploadJob, setEditImageUploadJob] = useState(null);
+  const [pendingEditImageRefresh, setPendingEditImageRefresh] = useState(null);
   // generatingEditImage covers the POST that queues the job; pollingEditImage
   // covers the wait for a terminal status afterwards — split so the button
   // label can tell the operator which stage it's actually in.
   const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [pollingEditImage, setPollingEditImage] = useState(false);
   const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
+  // Same generic poll-until-terminal-status hook as above, just pointed at the
+  // catalog-image-upload-status endpoint instead of the AI-generation one --
+  // used by runPostCreateStages below to wait out the async image upload
+  // worker (catalogImageUploadWorker.js) before the post-create item refetch.
+  // A shorter timeout than the hook's 90s default (see
+  // CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS above) -- this poll runs while
+  // the create-item modal is locked, unlike the AI-generation path this hook
+  // was originally built for.
+  const { pollItemImageGeneration: pollCatalogImageUploadStatus } = useItemImageGenerationPoll(getStorefrontCatalogImageUploadStatus, CREATE_ITEM_IMAGE_UPLOAD_POLL_TIMEOUT_MS);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2186,10 +1862,8 @@ function ItemsWorkspace({
   const [focusedEditMoneyField, setFocusedEditMoneyField] = useState('');
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
-  const [editPermissionDenied, setEditPermissionDenied] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
-  const [itemImagePreview, setItemImagePreview] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -2218,7 +1892,6 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
-  const [isCreateImageDragActive, setIsCreateImageDragActive] = useState(false);
   const [manualBarcode, setManualBarcode] = useState('');
   const [externalBarcode, setExternalBarcode] = useState('');
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
@@ -2231,7 +1904,6 @@ function ItemsWorkspace({
 
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
   const isServicesMode = normalizeWorkflowMode(workflowMode) === 'services';
-  const itemDisplayCurrency = currencyLabel(currencySymbol);
   const itemWorkspacePresentation = useMemo(
     () => resolveItemWorkspacePresentation(workflowMode),
     [workflowMode]
@@ -2295,7 +1967,6 @@ function ItemsWorkspace({
       setItemsTotal(Number(data?.pagination?.total || 0));
       itemsLoaded.current = true;
       loadPrimaryBarcodes(catalogItems);
-      return catalogItems;
     } catch (loadError) {
       if (itemsReadSequence.current !== sequence) return;
       setError(loadError?.response?.data?.message || 'Failed to load POS-visible IMS items.');
@@ -2390,10 +2061,8 @@ function ItemsWorkspace({
   }, [createForm.name, showCreateModal, skuSeedItems]);
 
   const sortedItems = useMemo(
-    () => categoryFilter === 'all'
-      ? [...(Array.isArray(items) ? items : [])]
-      : [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),
-    [categoryFilter, items]
+    () => [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),
+    [items]
   );
 
   const foodCategoryOptions = useMemo(() => {
@@ -2441,17 +2110,6 @@ function ItemsWorkspace({
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || editingItemSnapshot,
     [editingItemId, editingItemSnapshot, sortedItems]
   );
-  const activeEditItemIsService = String(activeEditItem?.category || '').trim().toLowerCase() === 'service';
-  const canEditActiveItem = activeEditItemIsService ? canManageServiceCatalog : canEditItems;
-  const canSaveActiveItem = canEditActiveItem && !editPermissionDenied;
-
-  const selectedEditPrimaryFile = useMemo(() => (
-    selectedEditImageFiles.find((file) => getPendingGalleryEntryKey(file) === selectedEditPrimaryKey) || null
-  ), [selectedEditImageFiles, selectedEditPrimaryKey]);
-  const editPrimaryEntryKey = selectedEditPrimaryKey
-    || (editGalleryDraft[0] ? getSavedGalleryEntryKey(editGalleryDraft[0], 0) : '');
-  const hasUnsavedEditImages = selectedEditImageFiles.length > 0
-    || getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase);
 
   // Real, already-persisted item id backing the open edit modal, or 0 when
   // there isn't one. This modal only ever opens for an item found in
@@ -2588,126 +2246,72 @@ function ItemsWorkspace({
     }
   };
 
-  const queueEditImageFiles = useCallback(async ({
-    itemId,
-    files,
-    existingGalleryCount,
-    baseGallery,
-    galleryDraft,
-    pendingPrimaryFile
-  }) => {
-    const normalizedFiles = dedupeImageFiles(files);
+  const queueDeferredEditImageFiles = useCallback(async ({ itemId, files, existingGalleryCount }) => {
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     const availableSlots = Math.max(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount);
     const filesToUpload = normalizedFiles.slice(0, availableSlots);
-    if (!itemId || filesToUpload.length === 0) {
-      return {
-        accepted: false,
-        message: normalizedFiles.length > 0
-          ? 'Remove an existing image before uploading another one.'
-          : '',
-        jobId: null,
-        files: []
-      };
-    }
-    const skippedCount = normalizedFiles.length - filesToUpload.length;
-    const fileKeys = filesToUpload.map(getImageFileSelectionKey);
-    const galleryIntent = buildEditGalleryIntent({
-      baseGallery,
-      draftGallery: galleryDraft,
-      pendingFiles: filesToUpload,
-      pendingPrimaryFile
-    });
-    const intentMatches = (pending) => (
-      pending?.fileKeys?.length === fileKeys.length
-      && pending.fileKeys.every((key, index) => key === fileKeys[index])
-      && JSON.stringify(pending.galleryIntent || {}) === JSON.stringify(galleryIntent)
-    );
-    const existingAttempt = getPendingPosItemImagePreviews()[String(itemId)];
-    if (['uploading', 'processing'].includes(existingAttempt?.status)) {
-      return intentMatches(existingAttempt)
-        ? {
-          accepted: true,
-          alreadyAccepted: true,
-          message: '',
-          jobId: existingAttempt.jobId || null,
-          files: filesToUpload
-        }
-        : {
-          accepted: false,
-          requiresReconciliation: true,
-          message: 'An earlier image upload is still being processed. Refresh the item before changing or retrying its gallery.',
-          jobId: existingAttempt.jobId || null,
-          files: []
-        };
-    }
-    if (existingAttempt?.status === 'uncertain') {
-      return {
-        accepted: false,
-        requiresReconciliation: true,
-        message: 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.',
-        jobId: null,
-        files: []
-      };
-    }
+    const remainingFiles = normalizedFiles.slice(filesToUpload.length);
+    if (!itemId || filesToUpload.length === 0) return;
 
-    const imageAttemptId = stagePendingPosItemImagePreview({
+    setPendingEditImageRefresh({
       itemId,
-      file: filesToUpload[0],
-      fileKeys,
-      galleryIntent
+      existingGalleryCount,
+      pendingCount: filesToUpload.length,
+      remainingFiles
     });
+    setEditImageUploadJob({ itemId, jobId: null });
     try {
-      // Edit always uses the gallery endpoint. The singular endpoint replaces
-      // the item's gallery, so using it for one newly-added photo silently
-      // deleted every existing photo.
-      const queued = await queueStorefrontCatalogImages(itemId, filesToUpload, {
-        galleryIntent
-      });
-      if (queued?.job_id && imageAttemptId) {
-        bindPendingPosItemImagePreviewJob({
-          itemId,
-          attemptId: imageAttemptId,
-          jobId: queued.job_id,
-          fileKeys,
-          galleryIntent
-        });
-      } else if (imageAttemptId) {
-        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
-        return {
-          accepted: false,
-          message: 'Image upload was not accepted. The preview is kept so you can retry.',
-          jobId: null,
-          files: []
-        };
-      }
-      return {
-        accepted: true,
-        message: skippedCount > 0
-          ? `Only ${filesToUpload.length} image${filesToUpload.length === 1 ? '' : 's'} uploaded; the item gallery limit is ${STOREFRONT_ITEM_IMAGE_MAX_COUNT}.`
-          : '',
-        jobId: queued?.job_id || null,
-        files: filesToUpload
-      };
+      const queued = filesToUpload.length === 1
+        ? await queueStorefrontCatalogImage(itemId, filesToUpload[0])
+        : await queueStorefrontCatalogImages(itemId, filesToUpload);
+      setEditImageUploadJob((current) => (
+        current?.itemId === itemId
+          ? { ...current, jobId: queued?.job_id || null }
+          : current
+      ));
     } catch (error) {
-      const ambiguous = isAmbiguousImageUploadError(error);
-      if (imageAttemptId) {
-        if (ambiguous) {
-          markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
-        } else {
-          markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
-        }
-      }
-      return {
-        accepted: false,
-        requiresReconciliation: ambiguous,
-        message: ambiguous
-          ? 'The image upload result is uncertain. Refresh the item before retrying so it is not uploaded twice.'
-          : error?.response?.data?.message || 'Image upload failed. The preview is kept so you can retry.',
-        jobId: null,
-        files: []
-      };
+      setSelectedEditImageFiles([]);
+      setDeferredEditImageFiles([]);
+      setSelectedEditPrimaryFile(null);
+      setPendingEditImageRefresh((current) => (
+        current?.itemId === itemId ? null : current
+      ));
+      toast.error(error?.response?.data?.message || 'Image upload failed. Try selecting the image again.');
+    } finally {
+      setEditImageUploadJob((current) => (
+        current?.itemId === itemId ? null : current
+      ));
     }
   }, []);
+
+  useEffect(() => {
+    if (!pendingEditImageRefresh || !activeEditItem) return;
+    if (Number(activeEditItem.item_id) !== Number(pendingEditImageRefresh.itemId)) return;
+    const galleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
+    const expectedGalleryCount = pendingEditImageRefresh.existingGalleryCount
+      + pendingEditImageRefresh.pendingCount;
+    if (galleryCount < expectedGalleryCount) return;
+    const remainingFiles = Array.isArray(pendingEditImageRefresh.remainingFiles)
+      ? pendingEditImageRefresh.remainingFiles.filter(Boolean)
+      : [];
+    setSelectedEditImageFiles(remainingFiles);
+    setDeferredEditImageFiles(remainingFiles);
+    setSelectedEditPrimaryFile(null);
+    setPendingEditImageRefresh(null);
+  }, [activeEditItem, pendingEditImageRefresh]);
+
+  useEffect(() => {
+    if (!activeEditItem || deferredEditImageFiles.length === 0 || editImageUploadJob || pendingEditImageRefresh) return;
+    const itemId = Number(activeEditItem.item_id || 0);
+    if (!itemId) return;
+    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem).length;
+    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) return;
+    void queueDeferredEditImageFiles({
+      itemId,
+      files: deferredEditImageFiles,
+      existingGalleryCount
+    });
+  }, [activeEditItem, deferredEditImageFiles, editImageUploadJob, pendingEditImageRefresh, queueDeferredEditImageFiles]);
 
   const activeEditStorefrontUrl = useMemo(() => resolveStorefrontItemUrl({
     slug: storefrontSlug,
@@ -2718,10 +2322,6 @@ function ItemsWorkspace({
       if (canManageServiceCatalog) setEditingServiceItem(item);
       return;
     }
-    editSessionRef.current = {
-      id: editSessionRef.current.id + 1,
-      itemId: Number(item?.item_id || 0)
-    };
     const savedFolderId = Number(item?.folder_id || 0);
     const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
     const matchedActiveCategory = savedFolderId > 0
@@ -2729,7 +2329,6 @@ function ItemsWorkspace({
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setEditingItemSnapshot(item || null);
-    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     const savedBarcode = primaryBarcodes[String(item?.item_id)] || item?.primary_barcode || null;
     const savedBarcodeCode = String(savedBarcode?.code || '').trim();
@@ -2753,31 +2352,25 @@ function ItemsWorkspace({
       gtin: savedBarcodeIsGtin ? savedBarcodeCode : ''
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
-    const initialEditGallery = normalizeStorefrontItemGallery(item || {});
-    setEditGalleryBase(initialEditGallery);
-    setEditGalleryDraft(initialEditGallery);
     setSelectedEditImageFiles([]);
-    setIsEditImageDragActive(false);
-    setSelectedEditPrimaryKey('');
+    setDeferredEditImageFiles([]);
+    setSelectedEditPrimaryFile(null);
+    setEditImageUploadJob(null);
+    setPendingEditImageRefresh(null);
   };
 
   const closeEdit = ({ force = false } = {}) => {
-    if (!force && (savingItem || persistingEditAssets)) return;
-    editSessionRef.current = {
-      id: editSessionRef.current.id + 1,
-      itemId: null
-    };
+    if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
     cancelImageGenerationPoll();
     setEditingItemId(null);
     setEditingItemSnapshot(null);
-    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
-    setIsEditImageDragActive(false);
-    setSelectedEditPrimaryKey('');
-    setEditGalleryBase([]);
-    setEditGalleryDraft([]);
+    setDeferredEditImageFiles([]);
+    setSelectedEditPrimaryFile(null);
+    setEditImageUploadJob(null);
+    setPendingEditImageRefresh(null);
     setGeneratingEditImage(false);
     setPollingEditImage(false);
     setEditCategoryInput('');
@@ -2800,7 +2393,6 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
-    setIsCreateImageDragActive(false);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -2818,7 +2410,6 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
-    setIsCreateImageDragActive(false);
     setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
@@ -2828,28 +2419,6 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
   };
-
-  useEffect(() => {
-    if (!showCreateModal && !activeEditItem) return undefined;
-    const releaseScrollLock = acquireModalScrollLock();
-    const handleKeyDown = (event) => {
-      if (event.key !== 'Escape') return;
-      if (showCreateModal && !creatingItem && !postCreateSaving) {
-        event.preventDefault();
-        closeCreate();
-        return;
-      }
-      if (activeEditItem && !savingItem && !persistingEditAssets) {
-        event.preventDefault();
-        closeEdit();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-      releaseScrollLock();
-    };
-  }, [activeEditItem, creatingItem, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
 
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
 
@@ -2861,10 +2430,6 @@ function ItemsWorkspace({
 
   const handleSave = async () => {
     if (!activeEditItem) return;
-    if (!canSaveActiveItem) {
-      toast.error('Item editing is no longer available for this account. Your draft remains open; close and reopen it after access is restored.');
-      return;
-    }
 
     const editItemId = activeEditItem.item_id;
     let editSaveStage = 'item_details';
@@ -2903,12 +2468,6 @@ function ItemsWorkspace({
     }
     if (barcodeSelection.validationMessage) {
       toast.error(barcodeSelection.validationMessage);
-      return;
-    }
-
-    const currentEditGallery = normalizeStorefrontItemGallery(activeEditItem);
-    if (getGallerySignature(currentEditGallery) !== getGallerySignature(editGalleryBase)) {
-      toast.error('This item images changed while you were editing. Reopen the item and try again.');
       return;
     }
 
@@ -2974,33 +2533,6 @@ function ItemsWorkspace({
         attachBarcode: attachItemBarcode,
         updateBarcode: updateItemBarcode
       });
-      let imageUploadMessage = '';
-      if (selectedEditImageFiles.length > 0) {
-        editSaveStage = 'images';
-        const imageUploadResult = await queueEditImageFiles({
-          itemId: editItemId,
-          files: selectedEditImageFiles,
-          existingGalleryCount: editGalleryDraft.length,
-          baseGallery: editGalleryBase,
-          galleryDraft: editGalleryDraft,
-          pendingPrimaryFile: selectedEditPrimaryFile
-        });
-        imageUploadMessage = imageUploadResult.message;
-        if (!imageUploadResult.accepted) {
-          const recoveryMessage = imageUploadResult.requiresReconciliation
-            ? imageUploadMessage
-            : `Item details were saved, but the images still need attention. ${imageUploadMessage}`;
-          toast.warning(recoveryMessage);
-          return;
-        }
-      } else if (getGallerySignature(editGalleryDraft) !== getGallerySignature(editGalleryBase)) {
-        editSaveStage = 'images';
-        await updateStorefrontCatalogGallery(editItemId, editGalleryDraft, {
-          expectedGalleryKeys: editGalleryBase
-            .map((entry) => entry?.path || entry?.url)
-            .filter(Boolean)
-        });
-      }
       editSaveStage = 'refresh';
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
@@ -3010,24 +2542,8 @@ function ItemsWorkspace({
         barcode: barcodeSelection.shouldGenerate ? existingPrimaryCode : barcodeSelection.code,
         action: 'updated'
       });
-      if (imageUploadMessage) toast.warning(imageUploadMessage);
     } catch (updateError) {
-      const resolvedError = resolveEditItemSaveError(updateError, editSaveStage);
-      if (resolvedError.status === 403) {
-        setEditPermissionDenied(true);
-        let permissionsRefreshed = false;
-        try {
-          await refreshTerminalUser({ suppressGlobalErrors: true });
-          permissionsRefreshed = true;
-        } catch {
-          // Keep the draft fail-closed when the permission refresh is unavailable.
-        }
-        toast.error(`${resolvedError.message} ${permissionsRefreshed
-          ? 'Permissions were refreshed. Your draft remains open; review access before retrying.'
-          : 'Your draft remains open. Refresh the session before retrying.'}`);
-      } else {
-        toast.error(resolvedError.message);
-      }
+      toast.error(resolveEditItemSaveError(updateError, editSaveStage).message);
     } finally {
       setPersistingEditAssets(false);
       setItemSaveInFlight(false);
@@ -3035,7 +2551,7 @@ function ItemsWorkspace({
   };
 
   const handleSelectCreateImageFiles = (files) => {
-    const normalizedFiles = dedupeImageFiles(files, selectedImageFiles);
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
     if (normalizedFiles.length === 0) return;
     const remainingSlots = STOREFRONT_ITEM_IMAGE_MAX_COUNT - selectedImageFiles.length;
     if (remainingSlots <= 0) {
@@ -3053,44 +2569,6 @@ function ItemsWorkspace({
 
   const removeSelectedCreateImageFile = (imageIndex) => {
     setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
-  };
-
-  const handleCreateImageDrop = async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsCreateImageDragActive(false);
-    if (creatingItem || postCreateSaving) return;
-
-    const droppedFiles = Array.from(event.dataTransfer?.files || []);
-    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
-    if (droppedFiles.length > imageFiles.length) {
-      toast.error('Only image files can be added as item images.');
-    }
-    if (imageFiles.length > 0) {
-      handleSelectCreateImageFiles(imageFiles);
-      return;
-    }
-
-    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
-      .split(/\r?\n/)
-      .find((value) => value && !value.startsWith('#'));
-    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
-      toast.error('Drag the saved image from File Explorer into this box.');
-      return;
-    }
-
-    try {
-      const response = await fetch(droppedUrl);
-      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
-      const blob = await response.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
-      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
-      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
-      handleSelectCreateImageFiles([new File([blob], filename, { type: blob.type })]);
-    } catch {
-      toast.error('Chrome blocked access to that image. Save it first, then drag it from File Explorer.');
-    }
   };
 
   const handleExternalBarcodeChange = (value) => {
@@ -3170,97 +2648,97 @@ function ItemsWorkspace({
   };
 
   const handleSelectEditImageFile = (files) => {
-    const normalizedFiles = dedupeImageFiles(Array.isArray(files) ? files : (files ? [files] : []), selectedEditImageFiles);
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
     const itemId = Number(activeEditItem?.item_id || 0);
     if (normalizedFiles.length === 0 || !itemId) return;
-    const existingGalleryCount = editGalleryDraft.length;
-    const availableSlots = Math.max(
-      0,
-      STOREFRONT_ITEM_IMAGE_MAX_COUNT - existingGalleryCount - selectedEditImageFiles.length
-    );
-    if (availableSlots === 0) {
-      toast.info('Remove an existing image before adding another one.');
+    if (editImageUploadJob || pendingEditImageRefresh) {
+      toast.info('The previous image is still being optimized. It will be replaced automatically when ready.');
       return;
     }
-    const filesToAdd = normalizedFiles.slice(0, availableSlots);
-    if (normalizedFiles.length > filesToAdd.length) {
-      toast.error(`Only ${availableSlots} more image${availableSlots === 1 ? '' : 's'} can be added to this item.`);
+    const existingGalleryCount = normalizeStorefrontItemGallery(activeEditItem || {}).length;
+    const filesToPreview = normalizedFiles.slice(0, STOREFRONT_ITEM_IMAGE_MAX_COUNT);
+    if (normalizedFiles.length > filesToPreview.length) {
+      toast.error(`Only ${STOREFRONT_ITEM_IMAGE_MAX_COUNT} pending images can be selected at once.`);
     }
 
-    // Selection is local-only. The worker starts after Save Item, matching Add
-    // Item and allowing the operator to replace the preview before committing.
-    setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);
-  };
-
-  const handleEditImageDrop = async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsEditImageDragActive(false);
-    if (savingItem || persistingEditAssets) return;
-
-    const droppedFiles = Array.from(event.dataTransfer?.files || []);
-    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith('image/'));
-    if (droppedFiles.length > imageFiles.length) {
-      toast.error('Only image files can be added as item images.');
-    }
-    if (imageFiles.length > 0) {
-      handleSelectEditImageFile(imageFiles);
-      return;
-    }
-
-    const droppedUrl = String(event.dataTransfer?.getData('text/uri-list') || '')
-      .split(/\r?\n/)
-      .find((value) => value && !value.startsWith('#'));
-    if (!droppedUrl || !/^https?:\/\//i.test(droppedUrl)) {
-      toast.error('Drag the saved image from File Explorer into this box.');
-      return;
-    }
-
-    try {
-      const response = await fetch(droppedUrl);
-      if (!response.ok) throw new Error(`Image request failed with ${response.status}`);
-      const blob = await response.blob();
-      if (!blob.type.startsWith('image/')) throw new Error('Dropped URL is not an image');
-      const urlName = new URL(droppedUrl).pathname.split('/').pop() || 'dragged-item-image';
-      const extension = blob.type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-      const filename = urlName.includes('.') ? urlName : `${urlName}.${extension}`;
-      handleSelectEditImageFile([new File([blob], filename, { type: blob.type })]);
-    } catch {
-      toast.error('Chrome blocked access to that image. Save it first, then drag it from File Explorer.');
+    // Always mount the local preview first. If legacy data already exceeds
+    // the gallery limit, the selected files stay deferred until the operator
+    // removes enough existing images; no existing image is deleted silently.
+    setSelectedEditImageFiles(filesToPreview);
+    setDeferredEditImageFiles(filesToPreview);
+    setSelectedEditPrimaryFile(null);
+    if (existingGalleryCount >= STOREFRONT_ITEM_IMAGE_MAX_COUNT) {
+      toast.info('Preview shown. Remove existing images to make room; upload will continue automatically.');
     }
   };
 
   const handleRemoveSelectedEditImageFile = (imageIndex) => {
     const removedFile = selectedEditImageFiles[imageIndex];
-    if (removedFile && getPendingGalleryEntryKey(removedFile) === selectedEditPrimaryKey) {
-      setSelectedEditPrimaryKey('');
+    if (removedFile === selectedEditPrimaryFile) {
+      setSelectedEditPrimaryFile(null);
     }
     setSelectedEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+    setDeferredEditImageFiles((current) => current.filter((_, index) => index !== imageIndex));
   };
 
   const handleSetPendingEditPrimary = (file) => {
-    setSelectedEditPrimaryKey(file ? getPendingGalleryEntryKey(file) : '');
+    setSelectedEditPrimaryFile(file || null);
   };
 
-  const handleSetSavedEditPrimary = (imageIndex) => {
-    setSelectedEditPrimaryKey('');
-    setEditGalleryDraft((current) => {
-      const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
-      const selected = current[normalizedImageIndex];
-      return [selected, ...current.filter((_, index) => index !== normalizedImageIndex)]
-        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-    });
+  const handleSetSavedEditPrimary = async (imageIndex) => {
+    setSelectedEditPrimaryFile(null);
+    await handleSetPrimaryStorefrontImage(activeEditItem, imageIndex);
   };
 
-  const handleRemoveSavedEditImage = (imageIndex) => {
-    setEditGalleryDraft((current) => {
+  const handleRemoveSavedEditImage = async (imageIndex) => {
+    await handleDeleteStorefrontImage(activeEditItem, imageIndex);
+  };
+
+  const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+    const current = normalizeStorefrontItemGallery(item);
+    const normalizedImageIndex = Number.parseInt(imageIndex, 10);
+    if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex <= 0 || normalizedImageIndex >= current.length) return;
+    const nextGallery = [
+      current[normalizedImageIndex],
+      ...current.filter((_, index) => index !== normalizedImageIndex)
+    ].map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+
+    try {
+      await updateStorefrontCatalogGallery(itemId, nextGallery);
+      await loadItems();
+      toast.success(`Primary item image updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update primary item image');
+    }
+  };
+
+  const handleDeleteStorefrontImage = async (item, imageIndex = null) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+
+    try {
       const normalizedImageIndex = Number.parseInt(imageIndex, 10);
-      if (!Number.isInteger(normalizedImageIndex) || normalizedImageIndex < 0 || normalizedImageIndex >= current.length) return current;
-      return current
-        .filter((_, index) => index !== normalizedImageIndex)
-        .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
-    });
+      const isSingleImageDelete = Number.isInteger(normalizedImageIndex) && normalizedImageIndex >= 0;
+      if (isSingleImageDelete) {
+        const currentGallery = normalizeStorefrontItemGallery(item);
+        if (normalizedImageIndex >= currentGallery.length) {
+          toast.error('This item image is no longer available. Reopen the item and try again.');
+          return;
+        }
+        const nextGallery = currentGallery
+          .filter((_, index) => index !== normalizedImageIndex)
+          .map((entry, index) => ({ ...entry, is_primary: index === 0, sort_order: index }));
+        await updateStorefrontCatalogGallery(itemId, nextGallery);
+      } else {
+        await deleteStorefrontCatalogImage(itemId);
+      }
+      await loadItems();
+      toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to remove item image');
+    }
   };
 
   // The POST only confirms the item was queued, not that a photo exists yet
@@ -3273,39 +2751,17 @@ function ItemsWorkspace({
   const handleGenerateEditImage = async (item) => {
     const itemId = item?.item_id;
     if (!itemId) return;
-    if (hasUnsavedEditImages) {
-      toast.info('Save or discard your pending image changes before generating an AI image.');
-      return;
-    }
-    const sessionId = editSessionRef.current.id;
-    const isCurrentEditSession = () => (
-      editSessionRef.current.id === sessionId
-      && Number(editSessionRef.current.itemId) === Number(itemId)
-    );
 
     setGeneratingEditImage(true);
     try {
       await generateStorefrontCatalogImage(itemId);
-      if (!isCurrentEditSession()) return;
       setGeneratingEditImage(false);
       setPollingEditImage(true);
 
       const result = await pollItemImageGeneration(itemId);
-      if (!isCurrentEditSession() || result.status === 'cancelled') return; // modal closed or switched mid-poll
+      if (result.status === 'cancelled') return; // modal closed mid-poll — no toast for an item no longer in view
       if (result.status === 'completed') {
-        const refreshedItems = await loadItems();
-        if (!isCurrentEditSession()) return;
-        const refreshedItem = Array.isArray(refreshedItems)
-          ? refreshedItems.find((entry) => Number(entry?.item_id) === Number(itemId))
-          : null;
-        if (refreshedItem) {
-          const refreshedGallery = normalizeStorefrontItemGallery(refreshedItem);
-          setEditingItemSnapshot(refreshedItem);
-          setEditGalleryBase(refreshedGallery);
-          setEditGalleryDraft(refreshedGallery);
-          setSelectedEditImageFiles([]);
-          setSelectedEditPrimaryKey('');
-        }
+        await loadItems();
         notifyPosCatalogUpdated();
         toast.success(`Image generated for ${item.name}.`);
       } else if (result.status === 'failed') {
@@ -3314,13 +2770,10 @@ function ItemsWorkspace({
         toast.error(`Still working on ${item.name}'s image — check back in a bit.`);
       }
     } catch (error) {
-      if (!isCurrentEditSession()) return;
       toast.error(error?.response?.data?.message || 'Failed to queue image generation');
     } finally {
-      if (isCurrentEditSession()) {
-        setGeneratingEditImage(false);
-        setPollingEditImage(false);
-      }
+      setGeneratingEditImage(false);
+      setPollingEditImage(false);
     }
   };
 
@@ -3331,43 +2784,28 @@ function ItemsWorkspace({
     externalProductCode = '',
     requestedBarcodeCode = '',
     posAlwaysAvailable,
-    posBestSellerMode = 'auto',
-    retryStageKeys = null,
-    imageAttemptId = null
+    posBestSellerMode = 'auto'
   }) => {
 
     const failedStages = [];
-    let imageUploadAmbiguous = false;
     let barcodeCode = String(requestedBarcodeCode || '').trim();
 
     const runStage = async (key, label, action) => {
-      if (retryStageKeys instanceof Set && !retryStageKeys.has(key)) return null;
       try {
         return await action();
       } catch (error) {
-        if (key === 'storefront_images' && imageAttemptId) {
-          imageUploadAmbiguous = isAmbiguousImageUploadError(error);
-          if (imageUploadAmbiguous) {
-            markPendingPosItemImagePreviewUncertain({ itemId, attemptId: imageAttemptId });
-          } else {
-            markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
-          }
-        }
         failedStages.push({
           key,
           label,
           message: getStageErrorMessage(error),
-          readinessBlocked: error?.is_pos_readiness_blocked === true,
-          missingRequirements: Array.isArray(error?.missing_requirements)
-            ? error.missing_requirements
-            : []
+          readinessBlocked: error?.is_pos_readiness_blocked === true
         });
         return null;
       }
     };
 
     if (Array.isArray(imageFiles) && imageFiles.length > 0) {
-      const imageUploadJob = await runStage(
+      const queuedImageUpload = await runStage(
         'storefront_images',
         imageFiles.length === 1 ? 'Item image upload' : 'Item image gallery upload',
         () => (imageFiles.length === 1
@@ -3375,18 +2813,26 @@ function ItemsWorkspace({
           : queueStorefrontCatalogImages(itemId, imageFiles))
       );
 
-      // The local primary preview remains visible while the accepted job runs.
-      // Authorized catalog refreshes reconcile it with the stored image later,
-      // so item creation never waits for every gallery variant to be encoded.
-      if (imageUploadJob?.job_id) {
-        bindPendingPosItemImagePreviewJob({
-          itemId,
-          attemptId: imageAttemptId,
-          jobId: imageUploadJob.job_id,
-          fileKeys: Array.isArray(imageFiles) ? imageFiles.map(getImageFileSelectionKey) : []
-        });
-      } else if (imageAttemptId && !imageUploadAmbiguous) {
-        markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId });
+      // The queue call above only confirms the upload was accepted (HTTP 202,
+      // {job_id, queued: true}) -- the backend worker
+      // (catalogImageUploadWorker.js) still resizes/attaches the image in the
+      // background afterwards. Without waiting here, finalizeCreatedItem's
+      // loadItems() below fires immediately after this function returns and
+      // commonly beats the worker, so the new item renders with no image
+      // until a manual refresh or a pos.catalog.changed SSE event happens to
+      // land. Mirrors handleGenerateEditImage's own
+      // `await pollItemImageGeneration(itemId)` above, just against the
+      // upload-status endpoint instead of the generation-status one -- same
+      // hook, different readStatus.
+      if (queuedImageUpload) {
+        const uploadStatus = await pollCatalogImageUploadStatus(itemId);
+        if (uploadStatus.status === 'failed') {
+          toast.warning(`Item #${itemId} was created, but its image failed to process${uploadStatus.error_message ? `: ${uploadStatus.error_message}` : '.'} Try re-uploading it from Edit Item.`);
+        } else if (uploadStatus.status === 'timeout') {
+          toast.warning(`Item #${itemId} was created — its image is still processing and will appear shortly.`);
+        }
+        // 'completed': loadItems() below will already return the image, no
+        // toast needed. 'cancelled': the workspace unmounted mid-poll.
       }
     } else if (externalProductCode) {
       await runStage(
@@ -3414,24 +2860,22 @@ function ItemsWorkspace({
         : 'auto'
     }));
     await runStage('pos_visibility', 'POS visibility', () => updatePosCatalogOverride(itemId, {
-      pos_visible: true,
-      location_id: operatingLocationId
+      pos_visible: true
     }));
 
     if (failedStages.length > 0) {
       setPendingCreateRecovery({
         itemId,
         name: itemName,
-        imageFiles: failedStages.some((stage) => stage.key === 'storefront_images') ? imageFiles : [],
+        imageFiles,
         externalProductCode,
         requestedBarcodeCode: barcodeCode,
         posAlwaysAvailable,
         posBestSellerMode,
-        imageAttemptId,
         failedStages
       });
       const labels = failedStages.map((stage) => stage.label).join(', ');
-      throw new Error(`${itemName} was created, but setup needs attention: ${labels}. Your item was saved and will not be duplicated.`);
+      throw new Error(`Item #${itemId} was created, but these post-create steps still need retry: ${labels}.`);
     }
 
     setPendingCreateRecovery(null);
@@ -3556,48 +3000,19 @@ function ItemsWorkspace({
       setPostCreateSaving(true);
       if (pendingCreateRecovery?.itemId) {
         const recoveryName = pendingCreateRecovery.name || name;
-        const failedImageStage = pendingCreateRecovery.failedStages
-          .some((stage) => stage.key === 'storefront_images');
-        const pendingRecoveryImageAttempt = failedImageStage
-          ? getPendingPosItemImagePreviews()[String(pendingCreateRecovery.itemId)]
-          : null;
-        if (pendingRecoveryImageAttempt && ['uploading', 'processing', 'uncertain'].includes(pendingRecoveryImageAttempt.status)) {
-          toast.warning('The previous image upload is still being reconciled. Refresh the catalog before retrying so it is not duplicated.');
-          return;
-        }
-        const recoveryImageFiles = failedImageStage ? selectedImageFiles : [];
-        const recoveryItemPatch = { ...payload };
-        delete recoveryItemPatch.manufacturer_barcode;
-        delete recoveryItemPatch.internal_barcode;
-        delete recoveryItemPatch.create_category_name;
-        const recoveryImageAttemptId = failedImageStage && recoveryImageFiles[0]
-          ? stagePendingPosItemImagePreview({
-            itemId: pendingCreateRecovery.itemId,
-            file: recoveryImageFiles[0],
-            fileKeys: recoveryImageFiles.map(getImageFileSelectionKey)
-          })
-          : null;
-        await updateItem(pendingCreateRecovery.itemId, recoveryItemPatch);
-        const retryStageKeys = new Set([
-          ...pendingCreateRecovery.failedStages.map((stage) => stage.key),
-          'always_available',
-          'best_seller_mode'
-        ]);
         const result = await runPostCreateStages({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
-          imageFiles: recoveryImageFiles,
+          imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
           requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
-          posAlwaysAvailable: createForm.pos_always_available === true,
-          posBestSellerMode: createForm.pos_best_seller_mode,
-          retryStageKeys,
-          imageAttemptId: recoveryImageAttemptId
+          posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
+          posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
         });
         await finalizeCreatedItem({
           barcode: result.barcodeCode,
           action: 'created',
-          warningMessage: `${recoveryName} setup completed.`
+          warningMessage: `Post-create setup completed for item #${pendingCreateRecovery.itemId}.`
         });
         toast.success('POS item setup resumed successfully.');
         return;
@@ -3616,14 +3031,6 @@ function ItemsWorkspace({
         });
       }
 
-      const imageAttemptId = selectedImageFiles[0]
-        ? stagePendingPosItemImagePreview({
-          itemId,
-          file: selectedImageFiles[0],
-          fileKeys: selectedImageFiles.map(getImageFileSelectionKey)
-        })
-        : null;
-
       const result = await runPostCreateStages({
         itemId,
         itemName: name,
@@ -3634,13 +3041,12 @@ function ItemsWorkspace({
         requestedBarcodeCode: barcodeSelection.code,
         posAlwaysAvailable: createForm.pos_always_available === true,
         posBestSellerMode: createForm.pos_best_seller_mode,
-        imageAttemptId
       });
 
       await finalizeCreatedItem({ barcode: result.barcodeCode });
       toast.success('POS item created.');
     } catch (createError) {
-      if (pendingCreateRecovery?.itemId || /setup needs attention/i.test(String(createError?.message || ''))) {
+      if (pendingCreateRecovery?.itemId || /post-create steps still need retry/i.test(String(createError?.message || ''))) {
         await loadItems().catch(() => {});
         toast.warning(createError.message);
       } else {
@@ -3682,46 +3088,26 @@ function ItemsWorkspace({
   }
 
   return (
-    <div
-      id={sectionId}
-      data-pos-items-panel={IS_DGFY_POS_SURFACE ? 'main' : undefined}
-      className="min-w-0 max-w-full space-y-4"
-    >
-      <div
-        data-pos-items-toolbar={IS_DGFY_POS_SURFACE ? 'true' : undefined}
-        data-pos-items-search-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}
-        className={`rounded-xl border p-4 sm:p-5 ${IS_DGFY_POS_SURFACE
-          ? 'border-slate-200 bg-white shadow-[0_10px_28px_-22px_rgba(15,23,42,0.7)]'
-          : 'border-slate-200 bg-white shadow-sm shadow-slate-200/70'}`}
-      >
-        <div className={`hidden w-full gap-3 sm:grid ${IS_DGFY_POS_SURFACE
-          ? 'xl:grid-cols-[minmax(18rem,1.55fr)_minmax(9.5rem,0.65fr)_minmax(9.5rem,0.65fr)_minmax(13rem,1fr)]'
-          : 'xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]'}`}>
+    <div id={sectionId} className="min-w-0 max-w-full space-y-4">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+        <div className="hidden w-full gap-3 sm:grid xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]">
             <div>
-              <Label htmlFor="pos-items-search" className={IS_DGFY_POS_SURFACE
-                ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#1A4E8D]'
-                : 'text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]'}>Search</Label>
+              <Label htmlFor="pos-items-search" className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Search</Label>
               <Input
                 id="pos-items-search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search by item name, SKU, or barcode"
-                className={`mt-1.5 ${IS_DGFY_POS_SURFACE
-                  ? 'h-10 rounded-lg border-slate-200 bg-white shadow-none'
-                  : 'h-11 rounded-xl border-slate-200 bg-slate-50/70'}`}
+                className="mt-2 h-11 rounded-xl border-slate-200 bg-slate-50/70"
               />
             </div>
             <div>
-              <Label htmlFor="pos-items-category-filter" className={IS_DGFY_POS_SURFACE
-                ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#1A4E8D]'
-                : 'text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]'}>Category</Label>
+              <Label htmlFor="pos-items-category-filter" className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Category</Label>
               <select
                 id="pos-items-category-filter"
                 value={categoryFilter}
                 onChange={(event) => setCategoryFilter(event.target.value)}
-                className={`mt-1.5 h-10 w-full border border-slate-200 px-3 text-sm text-[#0F172A] outline-none focus:border-[#2563EB] ${IS_DGFY_POS_SURFACE
-                  ? 'rounded-lg bg-white shadow-none'
-                  : 'rounded-xl bg-slate-50/70 shadow-sm'}`}
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
               >
                 {categoryOptions.map((option) => (
                   <option key={option} value={option}>
@@ -3731,16 +3117,12 @@ function ItemsWorkspace({
               </select>
             </div>
             <div>
-              <Label htmlFor="pos-items-stock-filter" className={IS_DGFY_POS_SURFACE
-                ? 'font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-[#1A4E8D]'
-                : 'text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]'}>Stock</Label>
+              <Label htmlFor="pos-items-stock-filter" className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Stock</Label>
               <select
                 id="pos-items-stock-filter"
                 value={stockFilter}
                 onChange={(event) => setStockFilter(event.target.value)}
-                className={`mt-1.5 h-10 w-full border border-slate-200 px-3 text-sm text-[#0F172A] outline-none focus:border-[#2563EB] ${IS_DGFY_POS_SURFACE
-                  ? 'rounded-lg bg-white shadow-none'
-                  : 'rounded-xl bg-slate-50/70 shadow-sm'}`}
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm text-[#0F172A] shadow-sm outline-none focus:border-[#2563EB]"
               >
                 <option value="all">All stock</option>
                 <option value="in_stock">In stock</option>
@@ -3754,16 +3136,12 @@ function ItemsWorkspace({
                 type="button"
                 onClick={openCreate}
                 disabled={locked || creatingItem}
-                className={`h-10 bg-[#1A4E8D] px-5 text-white shadow-sm shadow-blue-900/15 hover:bg-[#143F73] xl:self-end ${IS_DGFY_POS_SURFACE
-                  ? 'w-full rounded-lg'
-                  : 'rounded-xl'}`}
+                className="h-11 rounded-xl bg-[#1A4E8D] px-5 text-white shadow-sm shadow-blue-900/15 hover:bg-[#143F73] xl:self-end"
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Add Item
               </Button>
             ) : null}
-            {(canImportItems || (isServicesMode && canManageServiceCatalog) || (canCreateItems && menuImportEntryEnabled)) ? (
-            <div className={`flex flex-wrap items-center gap-2 ${IS_DGFY_POS_SURFACE ? 'xl:col-span-4' : 'contents'}`}>
             {canImportItems ? (
               <Button
                 type="button"
@@ -3771,9 +3149,7 @@ function ItemsWorkspace({
                 onClick={() => setShowCsvImport(true)}
                 disabled={locked || !isOnline}
                 title={!isOnline ? 'Reconnect to import items.' : 'Import items using the IMS CSV template.'}
-                className={`border-[#1A4E8D]/30 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 ${IS_DGFY_POS_SURFACE
-                  ? 'h-8 rounded-md px-3 text-xs'
-                  : 'h-11 rounded-xl px-5 xl:self-end'}`}
+                className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Import Items
@@ -3785,9 +3161,7 @@ function ItemsWorkspace({
                 variant="outline"
                 onClick={() => setShowCreateServiceModal(true)}
                 disabled={locked}
-                className={`border-teal-600/30 text-teal-700 shadow-sm hover:bg-teal-50 ${IS_DGFY_POS_SURFACE
-                  ? 'h-8 rounded-md px-3 text-xs'
-                  : 'h-11 rounded-xl px-5 xl:self-end'}`}
+                className="h-11 rounded-xl border-teal-600/30 px-5 text-teal-700 shadow-sm hover:bg-teal-50 xl:self-end"
               >
                 <CalendarPlus className="mr-2 h-4 w-4" />
                 Add Service
@@ -3799,15 +3173,11 @@ function ItemsWorkspace({
                 variant="outline"
                 onClick={() => setShowPdfMenuImport(true)}
                 disabled={locked}
-                className={`border-[#1A4E8D]/30 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 ${IS_DGFY_POS_SURFACE
-                  ? 'h-8 rounded-md px-3 text-xs'
-                  : 'h-11 rounded-xl px-5 xl:self-end'}`}
+                className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
               >
                 <Upload className="mr-2 h-4 w-4" />
                 {menuImportButtonLabel}
               </Button>
-            ) : null}
-            </div>
             ) : null}
         </div>
 
@@ -4003,187 +3373,10 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="space-y-4">
-          {IS_DGFY_POS_SURFACE ? (
-            <div
-              data-pos-items-table="true"
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_-22px_rgba(15,23,42,0.7)]"
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1060px] border-collapse text-left">
-                  <colgroup>
-                    <col className="w-[4.5rem]" />
-                    <col className="w-[22rem]" />
-                    <col className="w-[8rem]" />
-                    <col className="w-[10rem]" />
-                    <col className="w-[10rem]" />
-                    <col className="w-[6rem]" />
-                    <col className="w-[6rem]" />
-                    <col className="w-[9rem]" />
-                  </colgroup>
-                  <thead className="bg-slate-50/80">
-                    <tr className="border-b border-slate-200">
-                      {['Item', 'Details & Identification', 'Category', 'Stock Status', 'Profit Margin', 'Price', 'Cost', 'Actions'].map((heading) => (
-                        <th
-                          key={heading}
-                          scope="col"
-                          className="px-3 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[#1A4E8D]"
-                        >
-                          {heading}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedItems.map((item) => {
-                      const isServiceItem = isServiceCatalogItem(item);
-                      const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-                      const imageSources = resolvePosCatalogImageSources(item);
-                      const previewSources = resolvePosCatalogPreviewGallery(item);
-                      const stockQuantity = Number(item?.current_stock || 0);
-                      const isAlwaysAvailable = item?.pos_always_available === true;
-                      const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
-                      const profitMargin = Number(item?.default_sale_price || 0) > 0
-                        ? (profit / Number(item.default_sale_price)) * 100
-                        : 0;
-                      const threshold = Number(item?.min_threshold);
-                      const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
-                      const almostOutOfStock = !isAlwaysAvailable && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
-                      const stockStatusLabel = isServiceItem
-                        ? 'Stock Exempt'
-                        : isAlwaysAvailable
-                        ? 'Always Available'
-                        : stockQuantity <= 0 ? 'Out of Stock' : almostOutOfStock ? 'Almost Out of Stock' : 'In Stock';
-                      const stockStatusClassName = isServiceItem
-                        ? 'border-teal-200 bg-teal-50 text-teal-700'
-                        : isAlwaysAvailable
-                        ? 'border-blue-200 bg-blue-50 text-blue-700'
-                        : stockQuantity <= 0
-                        ? 'border-rose-200 bg-rose-50 text-rose-600'
-                        : almostOutOfStock
-                          ? 'border-amber-200 bg-amber-50 text-amber-700'
-                          : 'border-emerald-200 bg-emerald-50 text-emerald-700';
-
-                      return (
-                        <tr
-                          key={item.item_id}
-                          data-pos-items-row="true"
-                          className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60"
-                        >
-                          <td className="px-3 py-3 align-middle">
-                            <button
-                              type="button"
-                              disabled={previewSources.gallery.length === 0}
-                              aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
-                              onClick={() => setItemImagePreview({
-                                itemName: item.name,
-                                sellingPrice: item.default_sale_price,
-                                gallery: previewSources.gallery
-                              })}
-                              className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in"
-                            >
-                              <ImagePlus className="h-4 w-4 text-slate-300" />
-                              {imageSources.src ? (
-                                <ResponsiveImage
-                                  sources={imageSources}
-                                  alt={item?.name || 'Item image'}
-                                  sizes="36px"
-                                  width={144}
-                                  height={144}
-                                  className="absolute h-full w-full object-cover"
-                                  onError={(event) => {
-                                    if (advanceAssetImageFallback(event, [
-                                      imageSources.configuredLargeSrc,
-                                      ...(imageSources.fallbackSrcs || [])
-                                    ])) return;
-                                    event.currentTarget.hidden = true;
-                                  }}
-                                />
-                              ) : null}
-                            </button>
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <p className="max-w-[20rem] truncate text-sm font-extrabold leading-5 text-[#0F172A]">{item.name || 'Unnamed item'}</p>
-                            <div className="mt-2 space-y-1 text-[10px] text-[#64748B]">
-                              <p className="truncate"><span className="font-semibold text-[#1A4E8D]">SKU</span> {item.sku_code || 'Not set'}</p>
-                              <p className="truncate"><span className="font-semibold text-[#1A4E8D]">Barcode</span> {barcode || 'Not generated yet'}</p>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <span className="inline-flex max-w-[7rem] truncate rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold text-[#334155]">
-                              {isServiceItem ? 'Service' : (item.folder?.name || item.product_folder || 'Uncategorized')}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div className="space-y-1.5">
-                              <p className="text-xs font-bold text-[#0F172A]">{isServiceItem ? '—' : stockQuantity}</p>
-                              <span className={`inline-flex max-w-[8.5rem] items-start gap-1 rounded-full border px-2 py-1 text-[10px] font-bold leading-3 ${stockStatusClassName}`}>
-                                <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
-                                {stockStatusLabel}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <p className="text-xs font-bold text-[#0F172A]">
-                              {isServiceItem && item.cost_per_unit == null
-                                ? 'Not tracked'
-                                : <>Profit {itemDisplayCurrency}{money(profit)}</>}
-                            </p>
-                            {!(isServiceItem && item.cost_per_unit == null) ? (
-                              <p className="mt-0.5 text-[10px] font-bold text-[#1A4E8D]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</p>
-                            ) : null}
-                          </td>
-                          <td className="px-3 py-3 align-middle text-right">
-                            <p className="text-sm font-black text-[#0F172A]">{itemDisplayCurrency}{money(item.default_sale_price)}</p>
-                          </td>
-                          <td className="px-3 py-3 align-middle text-right">
-                            <p className="text-sm font-bold text-[#0F172A]">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : `${itemDisplayCurrency}${money(item.cost_per_unit)}`}</p>
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div data-pos-items-actions="true" className="flex items-center gap-1.5">
-                              {(isServiceItem ? canManageServiceCatalog : canEditItems) && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => openEdit(item)}
-                                  disabled={locked || savingItem || deletingItem || creatingItem || (isServiceItem && !isOnline)}
-                                  className="h-7 rounded-md border-blue-200 bg-blue-50/30 px-2 text-[10px] font-bold text-[#2563EB] hover:bg-blue-50"
-                                  title={`Edit ${item.name || 'item'}`}
-                                >
-                                  <Pencil className="mr-1 h-3 w-3" />
-                                  Edit
-                                </Button>
-                              )}
-                              {canDeleteItems && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => setDeleteConfirmItem(item)}
-                                  disabled={locked || savingItem || deletingItem || creatingItem}
-                                  className="h-7 rounded-md border-rose-200 bg-rose-50/30 px-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50"
-                                  title={`Delete ${item.name || 'item'}`}
-                                >
-                                  <Trash2 className="mr-1 h-3 w-3" />
-                                  Delete
-                                </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {!IS_DGFY_POS_SURFACE ? (
-          <div className="space-y-4">
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageSources = resolvePosCatalogImageSources(item);
-            const previewSources = resolvePosCatalogPreviewGallery(item);
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -4211,24 +3404,11 @@ function ItemsWorkspace({
             return (
               <div
                 key={item.item_id}
-                data-pos-items-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}
-                className={`border bg-white p-2.5 transition-shadow sm:p-3 ${IS_DGFY_POS_SURFACE
-                  ? 'rounded-2xl border-slate-200 shadow-[0_8px_24px_-18px_rgba(15,23,42,0.8)] hover:shadow-[0_14px_30px_-18px_rgba(15,23,42,0.72)]'
-                  : 'rounded-[18px] border-slate-100 shadow-[0_8px_20px_rgba(148,163,184,0.08)] hover:shadow-[0_12px_24px_rgba(148,163,184,0.12)]'}`}
+                className="rounded-[18px] border border-slate-100 bg-white p-2.5 shadow-[0_8px_20px_rgba(148,163,184,0.08)] transition-shadow hover:shadow-[0_12px_24px_rgba(148,163,184,0.12)] sm:p-3"
               >
                 <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.18fr)_minmax(18.5rem,0.96fr)] xl:items-center">
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
-                    <button
-                      type="button"
-                      disabled={previewSources.gallery.length === 0}
-                      aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
-                      onClick={() => setItemImagePreview({
-                        itemName: item.name,
-                        sellingPrice: item.default_sale_price,
-                        gallery: previewSources.gallery
-                      })}
-                      className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in sm:h-[4.5rem] sm:w-[4.5rem]"
-                    >
+                    <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
                       <ImagePlus className="h-5 w-5 text-slate-300" />
                       {imageSources.src ? (
                         <ResponsiveImage
@@ -4238,24 +3418,16 @@ function ItemsWorkspace({
                           width={288}
                           height={288}
                           className="absolute h-full w-full object-cover"
-                          onError={(event) => {
-                            if (advanceAssetImageFallback(event, [
-                              imageSources.configuredLargeSrc,
-                              ...(imageSources.fallbackSrcs || [])
-                            ])) return;
-                            event.currentTarget.hidden = true;
-                          }}
+                          fallbackSrcs={[imageSources.configuredLargeSrc].filter(Boolean)}
                         />
                       ) : null}
-                    </button>
+                    </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-h-full flex-col">
                         <div className="min-h-[2.875rem]">
                           <div className="min-w-0 max-w-[15rem]">
                             <p className="truncate text-base font-black leading-5 tracking-tight text-[#0F172A]">{item.name || 'Unnamed item'}</p>
-                            {isServiceItem ? (
-                              <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-[#64748B]">Service catalog entry</p>
-                            ) : null}
+                            <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-[#64748B]">{isServiceItem ? 'Service catalog entry' : 'Inventory item synced from IMS'}</p>
                           </div>
                         </div>
                         <div className="my-2.5 h-px bg-slate-100" />
@@ -4318,7 +3490,7 @@ function ItemsWorkspace({
                             <p className="mt-0.5 text-xs font-bold text-[#0F172A]">
                               {isServiceItem && item.cost_per_unit == null
                                 ? 'Not tracked'
-                                 : <>{itemDisplayCurrency}{money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
+                                : <>PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
                             </p>
                           </div>
                         </div>
@@ -4336,7 +3508,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Price</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                   <p className="text-[10px] font-bold tracking-[0.06em] text-[#1A4E8D]">{itemDisplayCurrency}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-[#1A4E8D]">PHP</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-[#1A4E8D]">{money(item.default_sale_price)}</p>
                                 </div>
                               </div>
@@ -4350,7 +3522,7 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Cost</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                   <p className="text-[10px] font-bold tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : itemDisplayCurrency}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : 'PHP'}</p>
                                   <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : money(item.cost_per_unit)}</p>
                                 </div>
                               </div>
@@ -4358,7 +3530,7 @@ function ItemsWorkspace({
                           </div>
                         </div>
                       </div>
-                      <div data-pos-items-actions={IS_DGFY_POS_SURFACE ? 'true' : undefined} className="grid gap-2 sm:grid-cols-2 sm:items-stretch">
+                      <div className="grid gap-2 sm:grid-cols-2 sm:items-stretch">
                         {(isServiceItem ? canManageServiceCatalog : canEditItems) && (
                           <Button
                             type="button"
@@ -4392,19 +3564,12 @@ function ItemsWorkspace({
               </div>
             );
           })}
-          </div>
-          ) : null}
 
-          <div data-pos-items-footer="true" className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-medium text-[#64748B]">
-              {IS_DGFY_POS_SURFACE && totalItemsPages === 1
-                ? `Showing ${itemsTotal} items synced`
-                : `Showing ${itemsTotal === 0 ? 0 : ((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1}–${Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, itemsTotal)} of ${itemsTotal} items`}
+              Showing {itemsTotal === 0 ? 0 : ((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, itemsTotal)} of {itemsTotal} items
             </p>
-            {IS_DGFY_POS_SURFACE && totalItemsPages === 1 ? (
-              <p className="text-xs font-medium text-[#94A3B8]">{isOnline ? 'IMS Catalog Connected' : 'IMS Catalog Offline'}</p>
-            ) : null}
-            {totalItemsPages > 1 ? <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -4426,25 +3591,21 @@ function ItemsWorkspace({
               >
                 Next
               </Button>
-            </div> : null}
+            </div>
           </div>
         </div>
       )}
 
-      <PosItemImageViewer preview={itemImagePreview} onClose={() => setItemImagePreview(null)} />
-
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
           onClick={closeCreate}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4471,7 +3632,7 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
               <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
                 <div className="flex items-start gap-3">
                   <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
@@ -4574,7 +3735,7 @@ function ItemsWorkspace({
                         {externalProductLookup.suggested_price ? (
                           <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                             <p className="font-semibold">
-                               Suggested selling price: {itemDisplayCurrency}{Number(externalProductLookup.suggested_price.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
                             </p>
                             <p>
                               {externalProductLookup.suggested_price.label} from Open Prices
@@ -4624,26 +3785,10 @@ function ItemsWorkspace({
 
                   <label
                     htmlFor="pos-item-image"
-                    data-testid="pos-create-item-image-drop-zone"
-                    className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-5 text-center transition-colors ${(isCreateImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      setIsCreateImageDragActive(true);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = 'copy';
-                      setIsCreateImageDragActive(true);
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget)) {
-                        setIsCreateImageDragActive(false);
-                      }
-                    }}
-                    onDrop={handleCreateImageDrop}
+                    className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-5 text-center transition-colors hover:bg-blue-50/20 ${(creatingItem || postCreateSaving) ? 'cursor-not-allowed opacity-50' : ''}`}
                   >
                     <Upload className="mx-auto h-10 w-10 text-blue-500" aria-hidden="true" />
-                    <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
+                    <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Add item images</p>
                     <p className="mt-1 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server)</p>
                     <p className="mt-3 text-[10px] leading-normal text-[#94A3B8]">
                       Up to 5 images per item. The first image is the primary image; all images are shared with Storefront.
@@ -4682,21 +3827,12 @@ function ItemsWorkspace({
                 <div className="space-y-4">
                   {pendingCreateRecovery?.itemId ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs sm:text-sm text-amber-800">
-                      <p className="font-bold">
-                        {pendingCreateRecovery.name || 'Your item'} was created, but setup needs attention. Your item was saved and will not be duplicated.
-                      </p>
+                      <p className="font-bold">Item #{pendingCreateRecovery.itemId} was created. Resume setup retries only unfinished post-create stages and will not create a duplicate item.</p>
                       {Array.isArray(pendingCreateRecovery.failedStages) && pendingCreateRecovery.failedStages.length > 0 ? (
                         <ul className="mt-2 list-disc space-y-1 pl-5">
-                          {pendingCreateRecovery.failedStages.flatMap((stage) => {
-                            if (stage.readinessBlocked && stage.missingRequirements.length > 0) {
-                              return stage.missingRequirements.map((requirement, index) => (
-                                <li key={`${stage.key}-${requirement?.code || index}`}>
-                                  {requirement?.fix_hint || requirement?.label || 'Complete the missing POS requirement.'}
-                                </li>
-                              ));
-                            }
-                            return [<li key={stage.key}>{stage.label}: {stage.message}</li>];
-                          })}
+                          {pendingCreateRecovery.failedStages.map((stage) => (
+                            <li key={stage.key}>{stage.label}: {stage.message}</li>
+                          ))}
                         </ul>
                       ) : null}
                     </div>
@@ -4828,7 +3964,7 @@ function ItemsWorkspace({
                         Selling Price <span className="text-rose-500">*</span>
                       </label>
                       <div className="relative">
-                         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">{itemDisplayCurrency}</span>
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                         <Input
                           type="number"
                           min="0"
@@ -4847,7 +3983,7 @@ function ItemsWorkspace({
                         Cost Price <span className="text-rose-500">*</span>
                       </label>
                       <div className="relative">
-                         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">{itemDisplayCurrency}</span>
+                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                         <Input
                           type="number"
                           min="0"
@@ -4913,7 +4049,7 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
+            <div className="shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -4945,16 +4081,14 @@ function ItemsWorkspace({
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
           onClick={closeEdit}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => event.preventDefault()}
         >
           <div
-            className="pos-items-modal-panel relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -4972,43 +4106,14 @@ function ItemsWorkspace({
                 type="button"
                 onClick={closeEdit}
                 disabled={savingItem || persistingEditAssets}
-                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-700 bg-transparent px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors focus-visible:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-700 bg-transparent px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 transition-colors focus-visible:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-900"
               >
                 <X className="h-4 w-4" />
                 <span>Close</span>
               </button>
             </div>
 
-            <div className="pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
-              <div
-                data-testid="pos-edit-item-shared-catalog-notice"
-                className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-blue-950"
-              >
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
-                <div className="min-w-0">
-                  <p className="text-xs font-extrabold">Shared catalog impact</p>
-                  <p className="mt-1 text-[11px] leading-4 text-blue-900">
-                    Item name and selling price are shared across this tenant&apos;s POS and storefront. Stock and POS availability apply to the selected branch.
-                  </p>
-                </div>
-              </div>
-
-              {(!canSaveActiveItem) ? (
-                <div
-                  data-testid="pos-edit-item-permission-denied"
-                  role="alert"
-                  className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-amber-950"
-                >
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
-                  <div className="min-w-0">
-                    <p className="text-xs font-extrabold">Editing permission is unavailable</p>
-                    <p className="mt-1 text-[11px] leading-4 text-amber-900">
-                      The server denied this edit. Your draft remains open and Save Item is disabled. Close and reopen the item after an administrator restores access.
-                    </p>
-                  </div>
-                </div>
-              ) : null}
-
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
               {/* Top Horizontal Row: 3 Toggle Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Toggle Card 1: Always Available */}
@@ -5098,34 +4203,18 @@ function ItemsWorkspace({
                     </div>
 
                     {(() => {
-                      const editGallery = editGalleryDraft;
+                      const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
                       return (
                         <div className="space-y-3">
                           <label
                             htmlFor="pos-item-edit-image"
-                            data-testid="pos-edit-item-image-drop-zone"
-                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed p-4 text-center transition-colors ${(isEditImageDragActive ? 'border-blue-500 bg-blue-100/70 ring-2 ring-blue-200' : 'border-blue-200 bg-blue-50/10 hover:bg-blue-50/20')} ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
-                            onDragEnter={(event) => {
-                              event.preventDefault();
-                              setIsEditImageDragActive(true);
-                            }}
-                            onDragOver={(event) => {
-                              event.preventDefault();
-                              event.dataTransfer.dropEffect = 'copy';
-                              setIsEditImageDragActive(true);
-                            }}
-                            onDragLeave={(event) => {
-                              if (!event.currentTarget.contains(event.relatedTarget)) {
-                                setIsEditImageDragActive(false);
-                              }
-                            }}
-                            onDrop={handleEditImageDrop}
+                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-4 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh) ? 'cursor-not-allowed opacity-50' : ''}`}
                           >
                             <Upload className="mx-auto h-9 w-9 text-blue-500" aria-hidden="true" />
-                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Drag item images here or choose files</p>
+                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Add item images</p>
                             <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (large files optimized by server, up to 5 total)</p>
                             <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
-                              The preview appears immediately. Save Item uploads it silently and replaces the preview when ready.
+                              The preview appears immediately. The optimized image is saved automatically and then replaces the preview.
                             </p>
                             <input
                               id="pos-item-edit-image"
@@ -5133,7 +4222,7 @@ function ItemsWorkspace({
                               accept="image/*"
                               multiple
                               className="hidden"
-                              disabled={savingItem || persistingEditAssets}
+                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
                               onChange={(event) => {
                                 const files = Array.from(event.target.files || []);
                                 void handleSelectEditImageFile(files);
@@ -5146,26 +4235,32 @@ function ItemsWorkspace({
                             files={selectedEditImageFiles}
                             savedGallery={editGallery}
                             itemName={editForm.name || activeEditItem?.name || 'Item'}
-                            disabled={savingItem || persistingEditAssets}
+                            disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh}
                             showPrimaryToggle
-                            primaryEntryKey={editPrimaryEntryKey}
                             onRemove={handleRemoveSelectedEditImageFile}
                             onSetPendingPrimary={handleSetPendingEditPrimary}
                             onSetSavedPrimary={handleSetSavedEditPrimary}
                             onRemoveSaved={handleRemoveSavedEditImage}
                           />
 
+                          {selectedEditImageFiles.length > 0
+                            && editGallery.length >= STOREFRONT_ITEM_IMAGE_MAX_COUNT
+                            && !editImageUploadJob
+                            && !pendingEditImageRefresh && (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-medium leading-normal text-amber-800" role="status">
+                              Preview ready. Remove existing images to make room; the upload will continue automatically.
+                            </p>
+                          )}
+
                           {canEditItems && (
                             <Button
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage || hasUnsavedEditImages}
+                              disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}
                               className="w-full rounded-xl"
                               title={
-                                hasUnsavedEditImages
-                                  ? 'Save or discard your pending image changes before generating an AI image.'
-                                  : editGallery.length > 0
+                                editGallery.length > 0
                                   ? 'Generate a new AI photo, replacing the current one.'
                                   : 'Generate an AI photo for this item (watermarked).'
                               }
@@ -5229,7 +4324,7 @@ function ItemsWorkspace({
                       Selling Price <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                       <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">{itemDisplayCurrency}</span>
+                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                       <Input
                         type="text"
                         inputMode="decimal"
@@ -5253,7 +4348,7 @@ function ItemsWorkspace({
                       Cost Price <span className="text-rose-500">*</span>
                     </label>
                     <div className="relative">
-                       <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">{itemDisplayCurrency}</span>
+                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                       <Input
                         type="text"
                         inputMode="decimal"
@@ -5465,12 +4560,12 @@ function ItemsWorkspace({
             </div>
 
             {/* Footer */}
-            <div className="pos-items-modal-footer shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-600 w-full sm:w-auto">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
                   <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 </span>
-                <span>Catalog name and price are shared; stock and availability apply to this branch.</span>
+                <span>Changes will update this item across POS and storefront immediately.</span>
               </div>
 
               <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
@@ -5486,7 +4581,7 @@ function ItemsWorkspace({
                 <Button
                   type="button"
                   onClick={handleSave}
-                  disabled={savingItem || persistingEditAssets || !canSaveActiveItem}
+                  disabled={savingItem || persistingEditAssets}
                   className="h-11 rounded-xl bg-blue-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Save className="h-4 w-4" />
@@ -5500,7 +4595,7 @@ function ItemsWorkspace({
 
       {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-none transition-all duration-300"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
           role="status"
           aria-live="assertive"
           aria-label={itemWorkspacePresentation.savingAriaLabel}
@@ -5558,7 +4653,7 @@ function ItemsWorkspace({
 
       {savedMessage.name && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/70 backdrop-blur-none px-4 py-6 animate-pos-overlay-fade-in"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-4 py-6 animate-pos-overlay-fade-in"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-saved-modal-title"
@@ -5619,7 +4714,7 @@ function ItemsWorkspace({
 
       {deleteConfirmItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-delete-confirm-modal-title"
@@ -5667,7 +4762,7 @@ function ItemsWorkspace({
 
       {deletedItemName && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/70 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-deleted-modal-title"
@@ -5706,35 +4801,6 @@ function ItemsWorkspace({
   );
 }
 
-function DraggableCategoryRow({ folder, disabled, children }) {
-  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
-    id: folder.folder_id,
-    disabled,
-    attributes: { role: 'group', roleDescription: 'sortable category', tabIndex: disabled ? -1 : 0 }
-  });
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: folder.folder_id, disabled });
-  const setNodeRef = useCallback((node) => { setDragRef(node); setDropRef(node); }, [setDragRef, setDropRef]);
-  return (
-    <div
-      ref={setNodeRef}
-      {...attributes}
-      {...listeners}
-      role="group"
-      tabIndex={disabled ? -1 : 0}
-      aria-disabled={disabled ? 'true' : undefined}
-      aria-pressed={undefined}
-      aria-label={`Reorder ${folder.name}`}
-      aria-roledescription="sortable category"
-      data-pos-category-card="true"
-      data-testid={`pos-category-card-${folder.folder_id}`}
-      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
-      className={`touch-none cursor-default ${isDragging ? 'relative z-10 opacity-70 shadow-lg' : ''} ${isOver && !isDragging ? 'bg-blue-50' : 'bg-white'}`}
-    >
-      {children}
-    </div>
-  );
-}
-
 function CategoryManagementWorkspace() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -5744,10 +4810,6 @@ function CategoryManagementWorkspace() {
   const [editor, setEditor] = useState(null);
   const [form, setForm] = useState({ name: '', description: '' });
   const [pendingAction, setPendingAction] = useState(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor)
-  );
 
   const loadFolders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -5765,20 +4827,13 @@ function CategoryManagementWorkspace() {
             // #1318 follow-up (ADR 0080 Consequences item 4) — items that list this
             // folder only as a secondary category, invisible to item_count above.
             secondary_item_count: Number(folder?.secondary_item_count || 0),
-            is_active: folder?.is_active !== false,
-            sort_order: Number(folder?.sort_order || 0)
+            is_active: folder?.is_active !== false
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
       );
-      return true;
     } catch (loadError) {
-      // Keep the last known list when a silent refresh fails. Callers use a
-      // silent refresh after a rejected reorder to reconcile a stale tab; an
-      // unavailable refresh must not replace the useful local list with an
-      // empty state.
-      if (!silent) setFolders([]);
+      setFolders([]);
       setError(loadError?.response?.data?.message || 'Failed to load categories.');
-      return false;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -5792,37 +4847,11 @@ function CategoryManagementWorkspace() {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     return [...folders]
       .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
-      .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
+      .sort((left, right) => {
+        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
+        return left.name.localeCompare(right.name);
+      });
   }, [folders, query]);
-
-  const handleCategoryDragEnd = async ({ active, over }) => {
-    if (!over || active.id === over.id || query.trim() || busy) return;
-    const previous = folders;
-    const fromIndex = folders.findIndex((folder) => folder.folder_id === Number(active.id));
-    const toIndex = folders.findIndex((folder) => folder.folder_id === Number(over.id));
-    if (fromIndex < 0 || toIndex < 0) return;
-    const next = [...folders];
-    const [moved] = next.splice(fromIndex, 1);
-    next.splice(toIndex, 0, moved);
-    const normalized = next.map((folder, index) => ({ ...folder, sort_order: index }));
-    setFolders(normalized);
-    setBusy(true);
-    try {
-      await reorderFolders(normalized.map((folder) => folder.folder_id));
-      notifyPosCatalogUpdated({ reason: 'category_order_updated' });
-      toast.success('Category order updated.');
-    } catch (reorderError) {
-      // A 409 means another tab changed the category set while this one was
-      // open. Reload the authoritative tenant-scoped order so the UI cannot
-      // keep showing a list that the server rejected. If that reconciliation
-      // request also fails, retain the previous list rather than blanking it.
-      const refreshed = await loadFolders({ silent: true });
-      if (!refreshed) setFolders(previous);
-      toast.error(reorderError?.response?.data?.message || 'Unable to save category order.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
@@ -5927,7 +4956,6 @@ function CategoryManagementWorkspace() {
             Refresh
           </Button>
         </div>
-        <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">Drag any category card to rearrange categories. Clear search before rearranging.</p>
 
         {error ? (
           <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -5940,14 +4968,11 @@ function CategoryManagementWorkspace() {
             <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
           </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
-            <div className="divide-y divide-slate-100">
-              {filteredFolders.map((folder) => (
-                <DraggableCategoryRow key={folder.folder_id} folder={folder} disabled={Boolean(query.trim()) || busy}>
-                  <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+          <div className="divide-y divide-slate-100">
+            {filteredFolders.map((folder) => (
+              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span aria-hidden="true" className="rounded-md p-1 text-slate-400"><GripVertical className="h-5 w-5" /></span>
                     <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
@@ -5955,21 +4980,19 @@ function CategoryManagementWorkspace() {
                   <p className="mt-2 text-xs font-semibold text-slate-500">{folder.item_count} assigned item{folder.item_count === 1 ? '' : 's'}</p>
                 </div>
                 <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                  <Button type="button" variant="outline" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
-                  <Button type="button" variant="outline" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
-                  <Button type="button" variant="outline" onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()} onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
+                  <Button type="button" variant="outline" onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
+                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
+                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
                 </div>
-                  </div>
-                </DraggableCategoryRow>
-              ))}
-            </div>
-          </DndContext>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
       {editor && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-editor-title"
@@ -6000,7 +5023,7 @@ function CategoryManagementWorkspace() {
 
       {pendingAction && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/70 px-3 py-3 backdrop-blur-none sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-category-action-title"
@@ -6098,15 +5121,12 @@ function ItemsCatalogWorkspace({
   }
 
   return (
-    <div id={sectionId} data-pos-items-design={IS_DGFY_POS_SURFACE ? 'apex' : undefined} className="min-w-0 max-w-full space-y-4">
+    <div id={sectionId} className="min-w-0 max-w-full space-y-4">
       {availableTabs.length > 1 ? (
           <div
-            data-testid="pos-items-design-tabs"
             role="tablist"
             aria-label="Items workspace navigation"
-            className={`grid min-w-0 gap-2 border border-slate-200 bg-white p-2 sm:grid-cols-2 lg:grid-cols-3 ${IS_DGFY_POS_SURFACE
-              ? 'rounded-2xl shadow-[0_8px_24px_-20px_rgba(15,23,42,0.75)]'
-              : 'rounded-xl shadow-sm shadow-slate-200/70'}`}
+            className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70 sm:grid-cols-2 lg:grid-cols-3"
         >
           {availableTabs.map((tab) => {
             const Icon = tab.icon;
@@ -6119,8 +5139,7 @@ function ItemsCatalogWorkspace({
                 aria-selected={active}
                 aria-controls={active ? `pos-items-${tab.id}-panel` : undefined}
                 onClick={() => setSelectedTab(tab.id)}
-                data-pos-items-tab={IS_DGFY_POS_SURFACE ? tab.id : undefined}
-                className={`flex min-h-12 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-extrabold transition ${
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-extrabold transition ${
                   active
                     ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
                     : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
@@ -6182,3830 +5201,6 @@ function ItemsCatalogWorkspace({
   );
 }
 
-const settingsWorkspaceNoop = () => {};
-
-const TerminalQueueScopeField = ({ queueLocationScopeId, locations = [] }) => (
-  <div className="grid gap-2">
-    <Label className="text-[12px] font-bold text-slate-700">Queue Location (Active Shift)</Label>
-    <div className="relative flex items-center">
-      <MapPin className="absolute left-4 h-5 w-5 text-blue-600 pointer-events-none" />
-      <select
-        className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-10 text-[14px] font-semibold text-[#0F172A] outline-none appearance-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20"
-        value={queueLocationScopeId || ''}
-        disabled
-      >
-        <option value="" disabled>Open a shift to select the branch</option>
-        {locations.map((location) => (
-          <option key={`settings-location-${location.location_id}`} value={location.location_id}>
-            {location.name}
-          </option>
-        ))}
-      </select>
-      <ChevronDown className="absolute right-4 h-4 w-4 text-slate-400 pointer-events-none" />
-    </div>
-    <p className="text-[11px] text-slate-500">Orders from other branches are not visible in this terminal queue.</p>
-  </div>
-);
-
-const TerminalSoundField = ({ onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, locked, loading }) => (
-  <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 flex items-center justify-between shadow-sm shadow-slate-100/50">
-    <div className="min-w-0 pr-4">
-      <span className="block text-[13px] font-bold text-slate-800">Online order sound</span>
-      <span className="block text-[11px] text-slate-400 font-medium mt-0.5">
-        Local device setting for this terminal. Mute or enable the APK chime for new online orders.
-      </span>
-    </div>
-    <button
-      type="button"
-      role="switch"
-      aria-checked={onlineOrderSoundEnabled === true}
-      onClick={() => setOnlineOrderSoundEnabled((current) => !current)}
-      disabled={locked || loading}
-      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-        onlineOrderSoundEnabled === true ? 'bg-blue-600' : 'bg-slate-200'
-      }`}
-    >
-      <span
-        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-          onlineOrderSoundEnabled === true ? 'translate-x-5' : 'translate-x-0'
-        }`}
-      />
-    </button>
-  </div>
-);
-
-export function SettingsWorkspace({
-  terminalUser,
-  terminalMeta,
-  locationsState,
-  queueLocationScopeId,
-  incomingOrdersState,
-  onlineOrderSoundEnabled = true,
-  setOnlineOrderSoundEnabled = () => {},
-  locked,
-  sectionId,
-  initialTab = 'pos_setup',
-  allowedTabIds = null,
-  readOnly = false,
-  showTerminalOnlyControls = true,
-  locationScopeId = null,
-  editorSection = null,
-  onRefreshTerminalUser = async () => {},
-  onRefreshTerminalMeta = async () => {},
-  onPosSetupSaved = async () => {},
-  onStorefrontSetupSaved = async () => {},
-  onSettingsSaved = async () => {},
-  onDeliveryPersonnelChanged = () => {},
-  onDirtyChange = settingsWorkspaceNoop
-  // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
-  // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
-  // here.
-}) {
-  const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
-  const canManageCashiers = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('users:manage');
-  const canEditSettings = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('settings:edit');
-  const canViewSettings = terminalUser?.is_master_admin === true
-    || canEditSettings
-    || resolveUserPermissionList(terminalUser).includes('settings:view');
-  // The legacy terminal surface intentionally hides delivery pricing from view-only users;
-  // the Business Admin migration opts into a read-only view through showTerminalOnlyControls=false.
-  const canViewDeliveryPricing = canEditSettings || (showTerminalOnlyControls === false && canViewSettings);
-  const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
-  const canManageDayClosePins = terminalUser?.is_master_admin === true;
-  const canManageEmployeeCredit = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
-  const canManageEmployees = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
-  // Reuses pos:employees:manage (Phase 205, #1080) -- declared under its own name so a
-  // future permission split for the delivery personnel registry is a one-line change.
-  const canManageDeliveryPersonnel = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
-  // Phase 143 (#848): separate view/manage gate for the Payments tab -- downpayment:view
-  // sees it, downpayment:settings can save it, mirroring the same two-tier split
-  // downpaymentSettings.js already enforces server-side.
-  const canViewDownpayment = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('downpayment:view')
-    || resolveUserPermissionList(terminalUser).includes('downpayment:settings');
-  const [activeTab, setActiveTab] = useState(initialTab);
-  const [renderedTab, setRenderedTab] = useState(initialTab);
-  const [paneInlineStyle, setPaneInlineStyle] = useState({
-    transform: 'translateX(0)',
-    opacity: 1,
-    transition: 'transform 150ms ease, opacity 150ms ease'
-  });
-  const isIminRuntime = isIminWrapperRuntime();
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [savingTab, setSavingTab] = useState('');
-  const [companyInfo, setCompanyInfo] = useState(null);
-  const [settingsVersionMap, setSettingsVersionMap] = useState({});
-  const [cashierUsers, setCashierUsers] = useState([]);
-  const [cashiersLoading, setCashiersLoading] = useState(false);
-  const [cashiersLoaded, setCashiersLoaded] = useState(false);
-  const [cashierVoidAccessSavingUserId, setCashierVoidAccessSavingUserId] = useState(null);
-  const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
-  const [discountApprovers, setDiscountApprovers] = useState([]);
-  const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
-  const [discountAuthorizationSavingUserId, setDiscountAuthorizationSavingUserId] = useState(null);
-  const [approvalPinUser, setApprovalPinUser] = useState(null);
-  const [approvalPin, setApprovalPin] = useState('');
-  const [savingApprovalPin, setSavingApprovalPin] = useState(false);
-  const [dayCloseOperators, setDayCloseOperators] = useState([]);
-  const [dayCloseOperatorsLoading, setDayCloseOperatorsLoading] = useState(false);
-  const [dayCloseAccessSavingUserId, setDayCloseAccessSavingUserId] = useState(null);
-  const [dayClosePinUser, setDayClosePinUser] = useState(null);
-  const [savingDayClosePin, setSavingDayClosePin] = useState(false);
-  const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
-  const [profileForm, setProfileForm] = useState({
-    username: '',
-    email: '',
-    phoneNumber: ''
-  });
-  const [posForm, setPosForm] = useState({
-    registeredName: '',
-    businessName: '',
-    businessStyle: '',
-    taxpayerType: '',
-    tinBranch: '',
-    businessAddress: '',
-    ptuNumber: '',
-    minNumber: '',
-    accreditationNumber: '',
-    fiscalBuyerDetailsRequired: false,
-    receiptFooterMessage: '',
-    terminalRegistry: [],
-    terminalRegistryMode: 'warn',
-    terminalLocationBindingEnforced: false,
-    voucherPosRedemptionEnabled: false,
-    settingsAccessPinEnabled: false,
-    settingsAccessPin: '',
-    clearSettingsAccessPin: false,
-    discountProfiles: [],
-    employeeDiscountSelfApprovalEnabled: false,
-    posReceiptMetadataPendingReview: null,
-    pettyCashSymbol: 'PHP',
-    pettyCashAmount: 0,
-    activeDiscountCount: 0,
-    posOpenStatus: true,
-    posWaitTimeMinutes: 15,
-    inventoryLowStockDisplayThreshold: 5,
-    bestSellerAutoTaggingEnabled: true,
-    dailyTopBestSellerEnabled: false
-  });
-  const [storefrontForm, setStorefrontForm] = useState({
-    storeTenantSlug: '',
-    storeIsVisible: false,
-    storeHasNoLocation: false,
-    customerAccessMode: 'catalog',
-    customerAccessEffectiveMode: 'catalog',
-    customerAccessMaxMode: 'transaction',
-    customerAccessPlatformMaxMode: 'transaction',
-    customerAccessRegistrationStageMaxMode: 'transaction',
-    customerAccessLimitationReason: '',
-    customerAccessRegistrationStage: 'registered',
-    customerAccessFlagStatus: 'enabled',
-    storefrontTagline: '',
-    storefrontPhone: '',
-    storefrontEmail: '',
-    storefrontAbout: '',
-    storefrontHours: normalizeStorefrontBusinessHours(null),
-    storefrontWhyChooseUs: [''],
-    storefrontSocialMessenger: '',
-    storefrontSocialFacebook: '',
-    storefrontSocialInstagram: '',
-    storefrontUiV2Enabled: false,
-    storefrontCategories: [''],
-    storefrontGalleryImages: [{ url: '', path: '', caption: '', alt: '', sort_order: 0 }],
-    storefrontDeliveryPartners: [{ partner: 'grab', label: '', url: '' }],
-    storefrontReviewHighlights: [{ reviewer_name: '', rating: '', comment: '' }],
-    storefrontReviewSummaryScore: '',
-    storefrontReviewSummaryTotalCount: '',
-    storefrontReviewSummaryStar1: '',
-    storefrontReviewSummaryStar2: '',
-    storefrontReviewSummaryStar3: '',
-    storefrontReviewSummaryStar4: '',
-    storefrontReviewSummaryStar5: '',
-    storefrontFollowEnabled: false,
-    storefrontShareEnabled: false,
-    storefrontGuestCheckoutEnabled: true,
-    storefrontCashPaymentEnabled: true
-  });
-  const [storefrontAssets, setStorefrontAssets] = useState({ cover: '', profile: '' });
-  const [assetUploadingType, setAssetUploadingType] = useState('');
-  const [assetDeletingType, setAssetDeletingType] = useState('');
-  const [storefrontLocations, setStorefrontLocations] = useState([]);
-  const [locationsLoading, setLocationsLoading] = useState(false);
-  const [locationSaving, setLocationSaving] = useState(false);
-  const [pendingLocationAction, setPendingLocationAction] = useState(null);
-  const [editingLocationId, setEditingLocationId] = useState(null);
-  const [locationForm, setLocationForm] = useState(createDefaultLocationForm());
-  const [validationModalState, setValidationModalState] = useState({
-    open: false,
-    title: '',
-    description: '',
-    errors: []
-  });
-  const animationTimersRef = useRef([]);
-  const previousInitialTabRef = useRef(initialTab);
-  const draftBaselineRef = useRef(null);
-  const draftHydratingRef = useRef(false);
-  const [draftHydrationRevision, setDraftHydrationRevision] = useState(0);
-  const [childDirtyState, setChildDirtyState] = useState({});
-  const readiness = terminalMeta?.locationBindingReadiness || null;
-  const storefrontPublicUrl = useMemo(() => resolveStorefrontTenantUrl({
-    slug: storefrontForm.storeTenantSlug
-  }), [storefrontForm.storeTenantSlug]);
-  const visibleStorefrontLocations = useMemo(() => {
-    const scopedId = Number(locationScopeId);
-    if (!Number.isInteger(scopedId) || scopedId <= 0) return storefrontLocations;
-    return storefrontLocations.filter((location) => Number(location?.location_id) === scopedId);
-  }, [locationScopeId, storefrontLocations]);
-  const hasActivePrimaryStorefrontLocation = visibleStorefrontLocations.some((location) => location?.is_active === true && location?.is_primary_storefront === true);
-  const storefrontLocationRequired = storefrontForm.storeIsVisible === true && storefrontForm.storeHasNoLocation !== true;
-  const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
-  const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
-  const lastFulfillmentMethodLocked = effectiveCustomerAccessMode === 'transaction'
-    && locationForm.supports_delivery !== locationForm.supports_pickup;
-  // #1218: mirrors tenantLocationUseCases.js's assertFulfillmentLeadTimeValid via the shared
-  // evaluateFulfillmentLeadTime helper -- same rule handleSaveLocation's own localErrors check
-  // below re-runs against the built payload; this is the live-typing render-time version.
-  const { requiredMissing: leadTimeRequiredMissing, rangeInverted: leadTimeRangeInverted } = evaluateFulfillmentLeadTime(locationForm);
-  const maxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMaxMode || 'transaction', 'transaction');
-  const platformMaxCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessPlatformMaxMode || 'transaction', 'transaction');
-  const customerAccessRollbackActive = storefrontForm.customerAccessFlagStatus === 'rollback';
-  const customerAccessLimitation = CUSTOMER_ACCESS_MODE_RANK[requestedCustomerAccessMode] > CUSTOMER_ACCESS_MODE_RANK[maxCustomerAccessMode]
-    ? (storefrontForm.customerAccessLimitationReason || `Requested mode is currently capped at ${maxCustomerAccessMode}.`)
-    : (storefrontForm.customerAccessLimitationReason || 'Requested mode is currently available.');
-  const activeCashierUsers = useMemo(() => (
-    cashierUsers.filter((user) => String(user?.role || '').toLowerCase() === 'cashier' && user?.is_active !== false && !user?.deleted_at)
-  ), [cashierUsers]);
-  const mainDraftSnapshot = useMemo(() => JSON.stringify({
-    profileForm,
-    posForm,
-    storefrontForm,
-    storefrontAssets,
-    locationForm,
-    editingLocationId
-  }), [editingLocationId, locationForm, posForm, profileForm, storefrontAssets, storefrontForm]);
-  const childDraftDirty = useMemo(
-    () => Object.values(childDirtyState).some((value) => value === true),
-    [childDirtyState]
-  );
-  const reportChildDirty = useCallback((key, dirty) => {
-    setChildDirtyState((current) => {
-      const nextValue = Boolean(dirty);
-      if (current[key] === nextValue) return current;
-      return { ...current, [key]: nextValue };
-    });
-  }, []);
-  const reportAttendanceDirty = useCallback((dirty) => reportChildDirty('attendance', dirty), [reportChildDirty]);
-  const reportPaymentsDirty = useCallback((dirty) => reportChildDirty('payments', dirty), [reportChildDirty]);
-  const reportDeliveryPricingDirty = useCallback((dirty) => reportChildDirty('delivery_pricing', dirty), [reportChildDirty]);
-  const resetDraftBaseline = useCallback(() => {
-    draftBaselineRef.current = null;
-    setDraftHydrationRevision((revision) => revision + 1);
-  }, []);
-  useEffect(() => {
-    if (draftHydratingRef.current || loading) return;
-    if (draftBaselineRef.current === null) {
-      draftBaselineRef.current = mainDraftSnapshot;
-      onDirtyChange(childDraftDirty);
-      return;
-    }
-    onDirtyChange(draftBaselineRef.current !== mainDraftSnapshot || childDraftDirty);
-  }, [childDraftDirty, draftHydrationRevision, loading, mainDraftSnapshot, onDirtyChange]);
-  const getCashiersForLocation = useCallback((locationId) => {
-    const normalizedLocationId = toPositiveInt(locationId);
-    if (!normalizedLocationId) return [];
-    return activeCashierUsers.filter((cashier) => (
-      Array.isArray(cashier?.location_ids)
-      && cashier.location_ids.some((entry) => toPositiveInt(entry) === normalizedLocationId)
-    ));
-  }, [activeCashierUsers]);
-  const openValidationModal = useCallback(({ title, description = '', errors = [] }) => {
-    setValidationModalState({
-      open: true,
-      title: String(title || '').trim(),
-      description: String(description || '').trim(),
-      errors: Array.isArray(errors) ? errors : []
-    });
-  }, []);
-  const closeValidationModal = useCallback(() => {
-    setValidationModalState((current) => ({
-      ...current,
-      open: false
-    }));
-  }, []);
-  const SETTINGS_TABS = [
-    { id: 'profile', label: 'Profile Setting', icon: UserRound },
-    { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
-    { id: 'storefront', label: 'Storefront', icon: Store },
-    // Phase 143 (#848): downpayment policy config -- gated on downpayment:view/downpayment:settings,
-    // not on any of the other tabs' permissions.
-    ...(canViewDownpayment
-      ? [{ id: 'payments', label: 'Payments', icon: Banknote }]
-      : []),
-    // Phase 233b (#1341, epic #1321): hidden entirely (not merely disabled) for a POS role
-    // without settings:edit -- matches #1341's acceptance evidence ("a POS role without the
-    // required permission cannot see or use the screen").
-    ...(canViewDeliveryPricing
-      ? [{ id: 'delivery_pricing', label: 'Delivery Pricing', icon: Truck }]
-      : []),
-    ...(canManageEmployees || canManageEmployeeCredit
-      ? [{ id: 'employees', label: 'Employees', icon: Users }]
-      : [])
-    // #732: Vouchers and Pricelists moved out of this tab strip to their own top-level nav modes
-    // (settings_vouchers / settings_pricelists) -- see the outer renderWorkspace switch.
-  ];
-  const visibleSettingsTabs = Array.isArray(allowedTabIds)
-    ? SETTINGS_TABS.filter((tab) => allowedTabIds.includes(tab.id))
-    : SETTINGS_TABS;
-  const showSettingsTabNavigation = visibleSettingsTabs.length > 1;
-  const effectiveInitialTab = visibleSettingsTabs.some((tab) => tab.id === initialTab)
-    ? initialTab
-    : (visibleSettingsTabs[0]?.id || initialTab);
-  const resolveTabIndex = (tabId) => {
-    const index = visibleSettingsTabs.findIndex((tab) => tab.id === tabId);
-    return index >= 0 ? index : 0;
-  };
-  const showAttendanceEditor = !editorSection || editorSection === 'attendance';
-  const showReceiptMetadataEditor = !editorSection || editorSection === 'profile';
-  const showPosDefaultsEditor = !editorSection || editorSection === 'pos';
-  const showTerminalRegistryEditor = !editorSection || editorSection === 'registers';
-  const showTeamAccessEditor = editorSection === 'team';
-
-  const clearAnimationTimers = useCallback(() => {
-    animationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
-    animationTimersRef.current = [];
-  }, []);
-
-  useEffect(() => () => clearAnimationTimers(), [clearAnimationTimers]);
-
-  useEffect(() => {
-    if (!effectiveInitialTab) return;
-    if (previousInitialTabRef.current === effectiveInitialTab) return;
-    previousInitialTabRef.current = effectiveInitialTab;
-    clearAnimationTimers();
-    const resetTimerId = window.setTimeout(() => {
-      setActiveTab(effectiveInitialTab);
-      setRenderedTab(effectiveInitialTab);
-      setPaneInlineStyle({
-        transform: 'translateX(0)',
-        opacity: 1,
-        transition: 'transform 150ms ease, opacity 150ms ease'
-      });
-    }, 0);
-    animationTimersRef.current.push(resetTimerId);
-  }, [clearAnimationTimers, effectiveInitialTab]);
-
-  useEffect(() => {
-    if (!visibleSettingsTabs.length) return;
-    if (visibleSettingsTabs.some((tab) => tab.id === activeTab)) return;
-    const fallbackTab = visibleSettingsTabs[0].id;
-    setActiveTab(fallbackTab);
-    setRenderedTab(fallbackTab);
-  }, [activeTab, visibleSettingsTabs]);
-
-  useEffect(() => {
-    setProfileForm({
-      username: String(terminalUser?.username || ''),
-      email: String(terminalUser?.email || ''),
-      phoneNumber: String(terminalUser?.phone_number || '')
-    });
-  }, [terminalUser]);
-
-  const loadStorefrontLocations = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) {
-      setLocationsLoading(true);
-    }
-    try {
-      const rows = await tenantLocationService.listTenantLocations({ include_inactive: true });
-      setStorefrontLocations(Array.isArray(rows) ? rows : []);
-    } catch (error) {
-      if (!silent) {
-        toast.error(error?.response?.data?.message || 'Failed to load storefront locations.');
-      }
-    } finally {
-      setLocationsLoading(false);
-    }
-  }, []);
-
-  const loadCashierAccounts = useCallback(async ({ silent = false } = {}) => {
-    if (!canManageCashiers) {
-      setCashierUsers([]);
-      setCashiersLoaded(true);
-      return;
-    }
-    if (!silent) setCashiersLoading(true);
-    try {
-      const rows = await fetchPosSetupCashiers();
-      setCashierUsers(Array.isArray(rows) ? rows : []);
-    } catch (error) {
-      if (!silent) {
-        toast.error(error?.response?.data?.message || 'Failed to load cashier accounts.');
-      }
-    } finally {
-      setCashiersLoading(false);
-      setCashiersLoaded(true);
-    }
-  }, [canManageCashiers]);
-
-  const updateCashierVoidAccess = useCallback(async (user, enabled) => {
-    const userId = Number(user?.user_id);
-    const role = String(user?.role || '').trim().toLowerCase();
-    if (!canManageCashiers || !Number.isInteger(userId) || userId <= 0 || role !== 'cashier' || user?.is_master_admin === true) {
-      return;
-    }
-
-    const permissions = resolveUserPermissionList(user);
-    const nextPermissions = enabled
-      ? Array.from(new Set([...permissions, 'pos:void']))
-      : permissions.filter((permission) => permission !== 'pos:void');
-
-    setCashierVoidAccessSavingUserId(userId);
-    try {
-      const updated = await updateUserPermissions(userId, nextPermissions);
-      setCashierUsers((current) => current.map((entry) => (
-        Number(entry?.user_id) === userId
-          ? { ...entry, permissions: updated?.permissions || nextPermissions }
-          : entry
-      )));
-      toast.success(enabled
-        ? 'POS void access enabled for this cashier.'
-        : 'POS void access disabled for this cashier.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update cashier POS void access.');
-    } finally {
-      setCashierVoidAccessSavingUserId(null);
-    }
-  }, [canManageCashiers]);
-
-  const updateCashierDrawerAccess = useCallback(async (user, enabled) => {
-    const userId = Number(user?.user_id);
-    const role = String(user?.role || '').trim().toLowerCase();
-    if (!canManageCashiers || !Number.isInteger(userId) || userId <= 0 || role !== 'cashier' || user?.is_master_admin === true) {
-      return;
-    }
-
-    const permissions = resolveUserPermissionList(user);
-    const nextPermissions = enabled
-      ? Array.from(new Set([...permissions, 'pos:cash_drawer_adjust']))
-      : permissions.filter((permission) => permission !== 'pos:cash_drawer_adjust');
-
-    setCashierVoidAccessSavingUserId(userId);
-    try {
-      const updated = await updateUserPermissions(userId, nextPermissions);
-      setCashierUsers((current) => current.map((entry) => (
-        Number(entry?.user_id) === userId
-          ? { ...entry, permissions: updated?.permissions || nextPermissions }
-          : entry
-      )));
-      toast.success(enabled
-        ? 'Cash refund and drawer adjustment access enabled for this cashier.'
-        : 'Cash refund and drawer adjustment access disabled for this cashier.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update cashier cash refund access.');
-    } finally {
-      setCashierVoidAccessSavingUserId(null);
-    }
-  }, [canManageCashiers]);
-
-  const loadDiscountApprovers = useCallback(async ({ silent = false } = {}) => {
-    if (!canManageDiscountApprovalPins) {
-      setDiscountApprovers([]);
-      return;
-    }
-    if (!silent) setDiscountApproversLoading(true);
-    try {
-      const rows = await getAllUsers({ include_invitations: false });
-      setDiscountApprovers((Array.isArray(rows) ? rows : [])
-        .filter((user) => user?.is_active !== false && !user?.deleted_at)
-        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
-    } catch (error) {
-      if (!silent) {
-        toast.error(error?.response?.data?.message || 'Failed to load discount approvers.');
-      }
-    } finally {
-      setDiscountApproversLoading(false);
-    }
-  }, [canManageDiscountApprovalPins]);
-
-  const updateDiscountAuthorization = useCallback(async (user, enabled) => {
-    const userId = Number(user?.user_id);
-    if (!Number.isInteger(userId) || userId <= 0 || user?.is_master_admin === true) return;
-    const permissions = resolveUserPermissionList(user);
-    const nextPermissions = enabled
-      ? Array.from(new Set([...permissions, 'pos:discount_authorize']))
-      : permissions.filter((permission) => permission !== 'pos:discount_authorize');
-
-    setDiscountAuthorizationSavingUserId(userId);
-    try {
-      const updated = await updateUserPermissions(userId, nextPermissions);
-      setDiscountApprovers((current) => current.map((entry) => (
-        Number(entry?.user_id) === userId
-          ? { ...entry, permissions: updated?.permissions || nextPermissions }
-          : entry
-      )));
-      toast.success(enabled
-        ? 'POS discount authorization enabled. Set a PIN for this employee.'
-        : 'POS discount authorization disabled for this employee.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS discount authorization.');
-    } finally {
-      setDiscountAuthorizationSavingUserId(null);
-    }
-  }, []);
-
-  const loadDayCloseOperators = useCallback(async ({ silent = false } = {}) => {
-    if (!canManageDayClosePins) {
-      setDayCloseOperators([]);
-      return;
-    }
-    if (!silent) setDayCloseOperatorsLoading(true);
-    try {
-      const rows = await getAllUsers({ include_invitations: false });
-      setDayCloseOperators((Array.isArray(rows) ? rows : [])
-        .filter((user) => user?.is_active !== false && !user?.deleted_at)
-        .filter((user) => (
-          String(user?.role || '').trim().toLowerCase() === 'cashier'
-          || user?.is_master_admin === true
-          || resolveUserPermissionList(user).includes('pos:close_day')
-        ))
-        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
-    } catch (error) {
-      if (!silent) {
-        toast.error(error?.response?.data?.message || 'Failed to load Day Close operators.');
-      }
-    } finally {
-      setDayCloseOperatorsLoading(false);
-    }
-  }, [canManageDayClosePins]);
-
-  const updateDayCloseAccess = useCallback(async (user, enabled) => {
-    const userId = Number(user?.user_id);
-    if (!Number.isInteger(userId) || userId <= 0 || user?.is_master_admin === true) return;
-    const permissions = resolveUserPermissionList(user);
-    const nextPermissions = enabled
-      ? Array.from(new Set([...permissions, 'pos:close_day']))
-      : permissions.filter((permission) => permission !== 'pos:close_day');
-
-    setDayCloseAccessSavingUserId(userId);
-    try {
-      const updated = await updateUserPermissions(userId, nextPermissions);
-      setDayCloseOperators((current) => current.map((entry) => (
-        Number(entry?.user_id) === userId
-          ? { ...entry, permissions: updated?.permissions || nextPermissions }
-          : entry
-      )));
-      toast.success(enabled
-        ? 'Z-reading access enabled. The cashier must create their personal PIN in DGFY Business.'
-        : 'Z-reading access disabled for this cashier.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update cashier Z-reading access.');
-    } finally {
-      setDayCloseAccessSavingUserId(null);
-    }
-  }, []);
-
-  const closeApprovalPinDialog = useCallback(() => {
-    if (savingApprovalPin) return;
-    setApprovalPinUser(null);
-    setApprovalPin('');
-  }, [savingApprovalPin]);
-
-  const saveApprovalPin = useCallback(async ({ clear = false } = {}) => {
-    if (!approvalPinUser) return;
-    if (!clear && !/^\d{4,12}$/.test(approvalPin)) {
-      toast.error('POS approval PIN must contain 4 to 12 digits.');
-      return;
-    }
-    setSavingApprovalPin(true);
-    try {
-      const updated = await updatePosApprovalPin(approvalPinUser.user_id, { pin: approvalPin, clear });
-      setDiscountApprovers((current) => current.map((user) => (
-        user.user_id === approvalPinUser.user_id
-          ? { ...user, pos_approval_pin_configured: updated.pos_approval_pin_configured === true }
-          : user
-      )));
-      toast.success(clear ? 'POS approval PIN cleared.' : 'POS approval PIN configured.');
-      setApprovalPinUser(null);
-      setApprovalPin('');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS approval PIN.');
-    } finally {
-      setSavingApprovalPin(false);
-    }
-  }, [approvalPin, approvalPinUser]);
-
-  const closeDayClosePinDialog = useCallback(() => {
-    if (savingDayClosePin) return;
-    setDayClosePinUser(null);
-  }, [savingDayClosePin]);
-
-  const resetDayClosePin = useCallback(async () => {
-    if (!dayClosePinUser) return;
-    setSavingDayClosePin(true);
-    try {
-      const updated = await updatePosDayClosePin(dayClosePinUser.user_id);
-      setDayCloseOperators((current) => current.map((user) => (
-        user.user_id === dayClosePinUser.user_id
-          ? { ...user, pos_day_close_pin_configured: updated.pos_day_close_pin_configured === true }
-          : user
-      )));
-      toast.success('POS Day Close PIN reset. The cashier must create a new PIN from DGFY Business.');
-      setDayClosePinUser(null);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to reset POS Day Close PIN.');
-    } finally {
-      setSavingDayClosePin(false);
-    }
-  }, [dayClosePinUser]);
-
-  const hydrateSettingsWorkspace = useCallback(async ({ silent = false } = {}) => {
-    draftHydratingRef.current = true;
-    if (!silent) {
-      setLoading(true);
-      setLoadError('');
-    }
-    try {
-      const [settingsPayload, companyPayload] = await Promise.all([
-        getAllSettings({ force: true }),
-        terminalUser?.is_master_admin === true ? getCompanyInfo().catch(() => null) : Promise.resolve(null)
-      ]);
-      const hydratedPosForm = hydratePosSettingsForm(settingsPayload, terminalMeta);
-      const hydratedStorefrontForm = hydrateStorefrontSettingsForm(settingsPayload);
-      setCompanyInfo(companyPayload);
-      setSettingsVersionMap(buildSettingsVersionMap(settingsPayload));
-      setPosForm(hydratedPosForm);
-      setStorefrontForm(hydratedStorefrontForm);
-      setStorefrontAssets(hydrateStorefrontAssets(settingsPayload));
-    } catch (error) {
-      if (!silent) {
-        setLoadError(error?.response?.data?.message || 'Failed to load shared settings.');
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-      draftHydratingRef.current = false;
-      resetDraftBaseline();
-    }
-  }, [resetDraftBaseline, terminalMeta?.pettyCashAmount, terminalMeta?.pettyCashSymbol, terminalUser?.is_master_admin]);
-
-  useEffect(() => {
-    hydrateSettingsWorkspace();
-  }, [hydrateSettingsWorkspace]);
-
-  useEffect(() => {
-    loadStorefrontLocations({ silent: true });
-  }, [loadStorefrontLocations]);
-
-  useEffect(() => {
-    loadCashierAccounts({ silent: true });
-  }, [loadCashierAccounts]);
-
-  useEffect(() => {
-    loadDiscountApprovers({ silent: true });
-  }, [loadDiscountApprovers]);
-
-  useEffect(() => {
-    loadDayCloseOperators({ silent: true });
-  }, [loadDayCloseOperators]);
-
-  const handleTabChange = useCallback((nextTab) => {
-    if (!nextTab || nextTab === activeTab) return;
-    clearAnimationTimers();
-
-    if (isIminRuntime) {
-      setActiveTab(nextTab);
-      setRenderedTab(nextTab);
-      setPaneInlineStyle({
-        transform: 'translateX(0)',
-        opacity: 1,
-        transition: 'none'
-      });
-      return;
-    }
-
-    const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
-    const exitOffset = movingForward ? -28 : 28;
-    const enterOffset = movingForward ? 28 : -28;
-
-    setActiveTab(nextTab);
-    setPaneInlineStyle({
-      transform: `translateX(${exitOffset}px)`,
-      opacity: 0,
-      transition: 'transform 150ms ease, opacity 150ms ease'
-    });
-
-    const swapTimer = window.setTimeout(() => {
-      setRenderedTab(nextTab);
-      setPaneInlineStyle({
-        transform: `translateX(${enterOffset}px)`,
-        opacity: 0,
-        transition: 'none'
-      });
-
-      const enterTimer = window.setTimeout(() => {
-        setPaneInlineStyle({
-          transform: 'translateX(0)',
-          opacity: 1,
-          transition: 'transform 150ms ease, opacity 150ms ease'
-        });
-      }, 16);
-
-      animationTimersRef.current.push(enterTimer);
-    }, 150);
-
-    animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers, isIminRuntime]);
-
-  const handleProfileSave = useCallback(async () => {
-    if (readOnly) return;
-    setSavingTab('profile');
-    try {
-      await updateProfile({
-        username: String(profileForm.username || '').trim(),
-        email: String(profileForm.email || '').trim(),
-        phone_number: String(profileForm.phoneNumber || '').trim()
-      });
-      await onRefreshTerminalUser?.({ suppressGlobalErrors: true });
-      resetDraftBaseline();
-      await onSettingsSaved?.({ section: editorSection || 'profile' });
-      toast.success('Profile settings updated.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update profile settings.');
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, onRefreshTerminalUser, onSettingsSaved, profileForm.email, profileForm.phoneNumber, profileForm.username, readOnly, resetDraftBaseline]);
-
-  const handleDiscountProfileChange = useCallback((index, key, value) => {
-    setPosForm((current) => {
-      const nextProfiles = Array.isArray(current.discountProfiles)
-        ? [...current.discountProfiles]
-        : [];
-      const existing = nextProfiles[index] || { name: '', percentage: 0, active: true };
-      nextProfiles[index] = {
-        ...existing,
-        [key]: key === 'percentage' ? Number(value) : value
-      };
-      return {
-        ...current,
-        discountProfiles: nextProfiles,
-        activeDiscountCount: nextProfiles.filter((profile) => profile && profile.active !== false && String(profile.name || '').trim()).length
-      };
-    });
-  }, []);
-
-  const addDiscountProfile = useCallback(() => {
-    setPosForm((current) => {
-      const nextProfiles = [
-        ...(Array.isArray(current.discountProfiles) ? current.discountProfiles : []),
-        { name: '', percentage: 0, active: true }
-      ];
-      return { ...current, discountProfiles: nextProfiles, activeDiscountCount: nextProfiles.length };
-    });
-  }, []);
-
-  const removeDiscountProfile = useCallback((index) => {
-    setPosForm((current) => {
-      const nextProfiles = (Array.isArray(current.discountProfiles) ? current.discountProfiles : [])
-        .filter((_, profileIndex) => profileIndex !== index);
-      return {
-        ...current,
-        discountProfiles: nextProfiles,
-        activeDiscountCount: nextProfiles.filter((profile) => profile && profile.active !== false && String(profile.name || '').trim()).length
-      };
-    });
-  }, []);
-
-  const handleTerminalRegistryChange = useCallback((index, key, value) => {
-    setPosForm((current) => ({
-      ...current,
-      terminalRegistry: updateTerminalRegistryEntryModel(current.terminalRegistry, index, key, value)
-    }));
-  }, []);
-
-  const addTerminalRegistryEntry = useCallback(() => {
-    setPosForm((current) => ({
-      ...current,
-      terminalRegistry: addTerminalRegistryEntryModel(current.terminalRegistry)
-    }));
-  }, []);
-
-  const removeTerminalRegistryEntry = useCallback((index) => {
-    setPosForm((current) => ({
-      ...current,
-      terminalRegistry: removeTerminalRegistryEntryModel(current.terminalRegistry, index)
-    }));
-  }, []);
-
-  const handleLocationPinChange = useCallback(({ latitude, longitude, address_line }) => {
-    if (readOnly) return;
-    const formatCoordinate = (value) => {
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric.toFixed(6) : String(value || '');
-    };
-
-    const nextAddress = String(address_line || '').trim();
-    setLocationForm((current) => ({
-      ...current,
-      latitude: formatCoordinate(latitude),
-      longitude: formatCoordinate(longitude),
-      ...(nextAddress ? { address_line: nextAddress } : {})
-    }));
-  }, [readOnly]);
-
-  const handleTerminalRegistrySave = useCallback(async () => {
-    if (readOnly) return;
-    setSavingTab('terminal_registry');
-    try {
-      const { posTerminalRegistry, normalizedRegistryState, posTerminalRegistryMode } = buildTerminalRegistryPayload(posForm);
-      const terminalRegistryPayload = {
-        pos_terminal_registry: posTerminalRegistry,
-        pos_terminal_registry_mode: posTerminalRegistryMode,
-        pos_terminal_location_binding_enforced: posForm.terminalLocationBindingEnforced === true
-      };
-      const updatedSettings = Object.keys(settingsVersionMap).length > 0
-        ? await updateSettings(terminalRegistryPayload, { expectedUpdatedAt: settingsVersionMap })
-        : await updateSettings(terminalRegistryPayload);
-      const refreshedSettings = await getAllSettings({ force: true });
-      setSettingsVersionMap(buildSettingsVersionMap(refreshedSettings));
-
-      const savedRegistry = normalizeTerminalRegistry(
-        refreshedSettings?.pos_terminal_registry?.value
-          || updatedSettings?.pos_terminal_registry?.value
-          || updatedSettings?.pos_terminal_registry
-          || normalizedRegistryState
-      );
-
-      setPosForm((current) => ({
-        ...current,
-        terminalRegistry: savedRegistry.map((entry) => ({
-          ...entry,
-          pairing_version: String(entry?.pairing_version || '').trim(),
-          rotate_pairing: false
-        })),
-        terminalRegistryMode: posTerminalRegistryMode
-      }));
-
-      await Promise.all([
-        onRefreshTerminalMeta?.(),
-        onRefreshTerminalUser?.({ suppressGlobalErrors: true })
-      ]);
-      resetDraftBaseline();
-      await onSettingsSaved?.({ section: editorSection || 'registers' });
-      toast.success('Terminal registry saved.');
-    } catch (error) {
-      toast.error(getSettingsWriteFailureMessage(error, 'Failed to save terminal registry.'));
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, onRefreshTerminalMeta, onRefreshTerminalUser, onSettingsSaved, posForm, readOnly, resetDraftBaseline, settingsVersionMap]);
-
-  const handlePosSave = useCallback(async () => {
-    if (readOnly) return;
-    setSavingTab('pos_setup');
-    try {
-      const payload = buildPosSettingsPayload(posForm);
-      if (Object.keys(settingsVersionMap).length > 0) {
-        await updateSettings(payload, { expectedUpdatedAt: settingsVersionMap });
-      } else {
-        await updateSettings(payload);
-      }
-      await Promise.all([
-        hydrateSettingsWorkspace(),
-        onRefreshTerminalMeta?.(),
-        onRefreshTerminalUser?.({ suppressGlobalErrors: true })
-      ]);
-      await onPosSetupSaved?.();
-      await onSettingsSaved?.({ section: editorSection || 'pos' });
-      toast.success('POS setup synced to shared settings.');
-    } catch (error) {
-      toast.error(error?.code === 'DUPLICATE_DISCOUNT_NAME'
-        ? error.message
-        : getSettingsWriteFailureMessage(error, 'Failed to save POS setup.'));
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, hydrateSettingsWorkspace, onPosSetupSaved, onRefreshTerminalMeta, onRefreshTerminalUser, onSettingsSaved, posForm, readOnly, settingsVersionMap]);
-
-  const handleStorefrontSave = useCallback(async () => {
-    if (readOnly) return;
-    setSavingTab('storefront');
-    try {
-      if (storefrontLocationRequired && !hasActivePrimaryStorefrontLocation) {
-        openValidationModal({
-          title: formatValidationModalTitle('Storefront Save'),
-          description: 'A public storefront without the no-map-pin option still needs one active primary storefront location before it can be saved.',
-          errors: [
-            {
-              field: 'storefront_locations.primary_location',
-              message: 'Add or mark one active location as the primary storefront location.'
-            }
-          ]
-        });
-        return;
-      }
-      // #695/#988: buildStorefrontSettingsPayload intentionally omits the frozen legacy
-      // storefront_promo/storefront_promos keys, so a normal save cannot recreate them.
-      const payload = buildStorefrontSettingsPayload(storefrontForm);
-      if (Object.keys(settingsVersionMap).length > 0) {
-        await updateSettings(payload, { expectedUpdatedAt: settingsVersionMap });
-      } else {
-        await updateSettings(payload);
-      }
-      await hydrateSettingsWorkspace({ silent: true });
-      await onStorefrontSetupSaved?.();
-      await onSettingsSaved?.({ section: editorSection || 'storefront' });
-      toast.success('Storefront settings synced to shared settings.');
-    } catch (error) {
-      const validationErrors = collectValidationErrors(error, 'Failed to save storefront settings.');
-      const validationDescription = formatValidationErrorDescription(validationErrors);
-      openValidationModal({
-        title: formatValidationModalTitle('Storefront Save'),
-        description: 'Review the blocking fields below, then try saving again.',
-        errors: validationErrors
-      });
-      toast.error(
-        getSettingsWriteFailureMessage(error, formatFirstValidationError(error, 'Failed to save storefront settings.')),
-        validationDescription ? { description: validationDescription } : undefined
-      );
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, hasActivePrimaryStorefrontLocation, hydrateSettingsWorkspace, onSettingsSaved, onStorefrontSetupSaved, openValidationModal, readOnly, settingsVersionMap, storefrontForm, storefrontLocationRequired]);
-
-  const handleGenerateStorefrontSlug = useCallback(async () => {
-    if (readOnly || savingTab) return;
-    setSavingTab('storefront_slug');
-    try {
-      const generated = await generateStorefrontSlug();
-      const slug = String(generated?.store_tenant_slug || '').trim().toLowerCase();
-      if (!slug) throw new Error('The server did not return a Storefront ID.');
-      setStorefrontForm((current) => ({ ...current, storeTenantSlug: slug }));
-      await hydrateSettingsWorkspace({ silent: true });
-      await onStorefrontSetupSaved?.();
-      await onSettingsSaved?.({ section: editorSection || 'storefront' });
-      toast.success(generated?.generated === false
-        ? 'Storefront ID is already configured.'
-        : 'Storefront ID generated. Item QR codes are now available.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || error?.message || 'Failed to generate Storefront ID.');
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, hydrateSettingsWorkspace, onSettingsSaved, onStorefrontSetupSaved, readOnly, savingTab]);
-
-  const handleCopyStorefrontUrl = useCallback(async () => {
-    if (!storefrontPublicUrl) return;
-    try {
-      await navigator.clipboard.writeText(storefrontPublicUrl);
-      toast.success('Storefront URL copied.');
-    } catch {
-      toast.error('Unable to copy the Storefront URL.');
-    }
-  }, [storefrontPublicUrl]);
-
-  const handleCustomerAccessModeChange = useCallback(async (nextMode) => {
-    if (readOnly) return;
-    const normalizedMode = normalizeCustomerAccessMode(nextMode);
-    const previousMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
-    if (!normalizedMode || normalizedMode === previousMode) return;
-
-    setStorefrontForm((current) => ({ ...current, customerAccessMode: normalizedMode }));
-    setSavingTab('storefront_access_mode');
-    try {
-      if (settingsVersionMap.customer_access_mode) {
-        await updateSettingByKey('customer_access_mode', normalizedMode, {
-          expectedUpdatedAt: settingsVersionMap.customer_access_mode
-        });
-      } else {
-        await updateSettingByKey('customer_access_mode', normalizedMode);
-      }
-      const refreshedSettings = await getAllSettings({ force: true });
-      const refreshedRuntime = mapCustomerAccessRuntimeSettings(refreshedSettings);
-      setSettingsVersionMap(buildSettingsVersionMap(refreshedSettings));
-      setStorefrontForm((current) => ({
-        ...current,
-        ...refreshedRuntime
-      }));
-      resetDraftBaseline();
-      await onStorefrontSetupSaved?.();
-      await onSettingsSaved?.({ section: editorSection || 'storefront' });
-      toast.success('Customer access mode updated.');
-    } catch (error) {
-      setStorefrontForm((current) => ({
-        ...current,
-        customerAccessMode: previousMode
-      }));
-      toast.error(getSettingsWriteFailureMessage(error, 'Failed to update customer access mode.'));
-    } finally {
-      setSavingTab('');
-    }
-  }, [editorSection, onSettingsSaved, onStorefrontSetupSaved, readOnly, resetDraftBaseline, settingsVersionMap.customer_access_mode, storefrontForm.customerAccessMode]);
-
-  const handleStorefrontListChange = useCallback((field, index, value) => {
-    setStorefrontForm((current) => updateStorefrontListModel(current, field, index, value));
-  }, []);
-
-  const addStorefrontListRow = useCallback((field, fallback = '') => {
-    setStorefrontForm((current) => appendStorefrontListModel(current, field, fallback));
-  }, []);
-
-  const removeStorefrontListRow = useCallback((field, index, fallback = '') => {
-    setStorefrontForm((current) => removeStorefrontListModel(current, field, index, fallback));
-  }, []);
-
-  const handleStorefrontObjectRowChange = useCallback((field, index, key, value) => {
-    setStorefrontForm((current) => updateStorefrontObjectRowModel(current, field, index, key, value));
-  }, []);
-
-  const addStorefrontObjectRow = useCallback((field, fallback) => {
-    setStorefrontForm((current) => appendStorefrontObjectRowModel(current, field, fallback));
-  }, []);
-
-  const removeStorefrontObjectRow = useCallback((field, index, fallback) => {
-    setStorefrontForm((current) => removeStorefrontObjectRowModel(current, field, index, fallback));
-  }, []);
-
-  const resetLocationForm = useCallback(() => {
-    if (readOnly) return;
-    setEditingLocationId(null);
-    setLocationForm(createDefaultLocationForm());
-  }, [readOnly]);
-
-  const handleEditLocation = useCallback((location) => {
-    if (readOnly || !location) return;
-    setEditingLocationId(location.location_id);
-    setLocationForm({
-      name: String(location.name || ''),
-      address_line: String(location.address_line || ''),
-      latitude: String(location.latitude ?? ''),
-      longitude: String(location.longitude ?? ''),
-      location_version: String(location.updated_at || ''),
-      delivery_radius_km: String(normalizeDeliveryRadiusKm(location.delivery_radius_km)),
-      current_wait_time_minutes: String(location.current_wait_time_minutes ?? '15'),
-      is_open: location.is_open !== false,
-      is_active: location.is_active !== false,
-      is_primary_storefront: location.is_primary_storefront === true,
-      allow_out_of_stock_sales: location.allow_out_of_stock_sales === true,
-      supports_delivery: location.supports_delivery !== false,
-      supports_pickup: location.supports_pickup !== false,
-      supports_dine_in: location.supports_dine_in !== false,
-      scheduling_enabled: location?.scheduling_enabled !== false,
-      immediate_fulfillment_enabled: location?.immediate_fulfillment_enabled !== false,
-      fulfillment_lead_time_min_days: location?.fulfillment_lead_time_min_days == null ? '' : String(location.fulfillment_lead_time_min_days),
-      fulfillment_lead_time_max_days: location?.fulfillment_lead_time_max_days == null ? '' : String(location.fulfillment_lead_time_max_days)
-    });
-    setRenderedTab('storefront');
-    setActiveTab('storefront');
-  }, [readOnly]);
-
-  const handleSaveLocation = useCallback(async () => {
-    if (readOnly) return;
-    const payload = buildLocationPayload(locationForm, editingLocationId);
-    const localErrors = validateLocationPayload(payload);
-
-    if (localErrors.length > 0) {
-      openValidationModal({
-        title: formatValidationModalTitle(editingLocationId ? 'Update Location' : 'Add Location'),
-        description: 'Fill in the required location fields before saving.',
-        errors: localErrors
-      });
-      toast.error(localErrors[0].message);
-      return;
-    }
-    setLocationSaving(true);
-    try {
-      if (editingLocationId) {
-        await tenantLocationService.updateTenantLocation(editingLocationId, payload);
-        toast.success('Tenant location updated.');
-      } else {
-        await tenantLocationService.createTenantLocation(payload);
-        toast.success('Tenant location created.');
-      }
-      await loadStorefrontLocations({ silent: true });
-      resetLocationForm();
-      resetDraftBaseline();
-      await onSettingsSaved?.({ section: editorSection || 'branches' });
-    } catch (error) {
-      const validationErrors = collectValidationErrors(error, 'Failed to save storefront location.');
-      const validationDescription = formatValidationErrorDescription(validationErrors);
-      openValidationModal({
-        title: formatValidationModalTitle(editingLocationId ? 'Update Location' : 'Add Location'),
-        description: 'Review the location errors below, then try again.',
-        errors: validationErrors
-      });
-      toast.error(
-        error?.response?.data?.message || 'Failed to save storefront location.',
-        validationDescription ? { description: validationDescription } : undefined
-      );
-    } finally {
-      setLocationSaving(false);
-    }
-  }, [editorSection, editingLocationId, loadStorefrontLocations, locationForm, onSettingsSaved, openValidationModal, readOnly, resetDraftBaseline, resetLocationForm]);
-
-  const handleSetPrimaryLocation = useCallback(async (location) => {
-    if (readOnly || !location?.location_id) return;
-    setLocationSaving(true);
-    try {
-      await tenantLocationService.updateTenantLocation(location.location_id, {
-        is_primary_storefront: true,
-        ...(location.updated_at ? { last_known_updated_at: location.updated_at } : {})
-      });
-      toast.success('Primary storefront location updated.');
-      await loadStorefrontLocations({ silent: true });
-      await onSettingsSaved?.({ section: editorSection || 'branches' });
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to set primary storefront location.');
-    } finally {
-      setLocationSaving(false);
-    }
-  }, [editorSection, loadStorefrontLocations, onSettingsSaved, readOnly]);
-
-  const handleDeactivateLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
-    if (readOnly) return false;
-    if (!confirmed) {
-      setPendingLocationAction({ type: 'deactivate', locationId });
-      return true;
-    }
-    setLocationSaving(true);
-    try {
-      await tenantLocationService.deactivateTenantLocation(locationId);
-      toast.success('Tenant location deactivated.');
-      await loadStorefrontLocations({ silent: true });
-      if (editingLocationId === locationId) {
-        resetLocationForm();
-      }
-      await onSettingsSaved?.({ section: editorSection || 'branches' });
-      return true;
-    } catch (error) {
-      const message = error?.response?.data?.message || 'Failed to deactivate tenant location.';
-      toast.error(message);
-      return { success: false, message };
-    } finally {
-      setLocationSaving(false);
-    }
-  }, [editorSection, editingLocationId, loadStorefrontLocations, onSettingsSaved, readOnly, resetLocationForm]);
-
-  const handleReactivateLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
-    if (readOnly) return false;
-    if (!confirmed) {
-      setPendingLocationAction({ type: 'reactivate', locationId });
-      return true;
-    }
-    setLocationSaving(true);
-    try {
-      await tenantLocationService.reactivateTenantLocation(locationId);
-      toast.success('Tenant location reactivated.');
-      await loadStorefrontLocations({ silent: true });
-      await onSettingsSaved?.({ section: editorSection || 'branches' });
-      return true;
-    } catch (error) {
-      const message = error?.response?.data?.message || 'Failed to reactivate tenant location.';
-      toast.error(message);
-      return { success: false, message };
-    } finally {
-      setLocationSaving(false);
-    }
-  }, [editorSection, loadStorefrontLocations, onSettingsSaved, readOnly]);
-
-  const handleDeleteLocation = useCallback(async (locationId, { confirmed = false } = {}) => {
-    if (readOnly) return false;
-    if (!confirmed) {
-      setPendingLocationAction({ type: 'delete', locationId });
-      return true;
-    }
-    setLocationSaving(true);
-    try {
-      await tenantLocationService.deleteTenantLocation(locationId);
-      toast.success('Tenant location pin deleted.');
-      await loadStorefrontLocations({ silent: true });
-      if (editingLocationId === locationId) {
-        resetLocationForm();
-      }
-      await onSettingsSaved?.({ section: editorSection || 'branches' });
-      return true;
-    } catch (error) {
-      const message = error?.response?.data?.message || 'Failed to delete storefront location pin.';
-      toast.error(message);
-      return { success: false, message };
-    } finally {
-      setLocationSaving(false);
-    }
-  }, [editorSection, editingLocationId, loadStorefrontLocations, onSettingsSaved, readOnly, resetLocationForm]);
-
-  const handleUploadAsset = useCallback(async (assetType, file) => {
-    if (readOnly || !file) return;
-    setAssetUploadingType(assetType);
-    try {
-      await uploadStorefrontAsset(assetType, file);
-      await hydrateSettingsWorkspace();
-      await onSettingsSaved?.({ section: editorSection || 'storefront' });
-      toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} updated.`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to upload storefront asset.');
-    } finally {
-      setAssetUploadingType('');
-    }
-  }, [editorSection, hydrateSettingsWorkspace, onSettingsSaved, readOnly]);
-
-  const handleGalleryAssetUpload = useCallback(async (index, file) => {
-    if (readOnly || !file) return;
-    const uploadKey = `gallery-${index}`;
-    setAssetUploadingType(uploadKey);
-    try {
-      const uploaded = await uploadStorefrontAsset('gallery', file);
-      handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'path', String(uploaded?.path || ''));
-      handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'url', '');
-      toast.success('Gallery image uploaded. Save Storefront Settings to publish it.');
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to upload gallery image.');
-    } finally {
-      setAssetUploadingType(null);
-    }
-  }, [handleStorefrontObjectRowChange, readOnly]);
-
-  const handleDeleteAsset = useCallback(async (assetType) => {
-    if (readOnly) return;
-    setAssetDeletingType(assetType);
-    try {
-      await deleteStorefrontAsset(assetType);
-      await hydrateSettingsWorkspace();
-      await onSettingsSaved?.({ section: editorSection || 'storefront' });
-      toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} removed.`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to delete storefront asset.');
-    } finally {
-      setAssetDeletingType('');
-    }
-  }, [editorSection, hydrateSettingsWorkspace, onSettingsSaved, readOnly]);
-
-  const renderProfilePane = () => (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
-        <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-4">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600">
-              <UserRound className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-[15px] font-bold text-slate-800">Shared Account Profile</h3>
-              <p className="mt-1 text-[12px] leading-5 text-slate-400 font-medium">
-                These values come from the same tenant account used by IMS and POS.
-              </p>
-            </div>
-          </div>
-          {terminalUser?.is_master_admin === true && companyInfo?.company_token ? (
-            <div className="flex items-center gap-2.5 bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 self-stretch sm:self-auto">
-              <ShieldCheck className="h-5 w-5 text-blue-600 shrink-0" />
-              <div className="min-w-0">
-                <span className="block text-[9px] font-extrabold uppercase tracking-[0.15em] text-slate-400">Company Token</span>
-                <span className="block text-[12px] font-bold text-slate-800 break-all">{companyInfo.company_token}</span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label className="text-[12px] font-bold text-slate-700">Username</Label>
-            <div className="relative flex items-center">
-              <UserRound className="absolute left-4 h-5 w-5 text-slate-400" />
-              <Input
-                className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                value={profileForm.username}
-                onChange={(event) => setProfileForm((current) => ({ ...current, username: event.target.value }))}
-                disabled={locked || loading}
-              />
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label className="text-[12px] font-bold text-slate-700">Email</Label>
-            <div className="relative flex items-center">
-              <Mail className="absolute left-4 h-5 w-5 text-slate-400" />
-              <Input
-                className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                value={profileForm.email}
-                onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))}
-                disabled={locked || loading}
-              />
-            </div>
-          </div>
-          <div className="grid gap-2 md:col-span-2">
-            <Label className="text-[12px] font-bold text-slate-700">Phone Number</Label>
-            <div className="relative flex items-center">
-              <Phone className="absolute left-4 h-5 w-5 text-slate-400" />
-              <Input
-                className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                value={profileForm.phoneNumber}
-                onChange={(event) => setProfileForm((current) => ({ ...current, phoneNumber: event.target.value }))}
-                disabled={locked || loading}
-              />
-            </div>
-            <p className="text-[11px] text-slate-400 font-medium">Phone number stays shared across the same tenant account used by IMS and POS.</p>
-          </div>
-        </div>
-        <div className="mt-5 flex justify-end">
-          <Button
-            type="button"
-            className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 text-[13px] font-extrabold text-white shadow-md shadow-blue-500/10 flex items-center gap-2 transition-all duration-200"
-            disabled={locked || loading || savingTab === 'profile'}
-            onClick={handleProfileSave}
-          >
-            {savingTab === 'profile' ? 'Saving...' : (
-              <>
-                <Save className="h-4 w-4" />
-                <span>Save Profile</span>
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
-      {terminalUser?.is_master_admin === true && companyInfo ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200/40">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-400">Company Name</p>
-            <p className="mt-2 text-[15px] font-black text-[#0F172A]">{companyInfo.company_name || '-'}</p>
-          </div>
-          <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm shadow-slate-200/40">
-            <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-400">Company Token</p>
-            <p className="mt-2 break-all text-[13px] font-bold text-[#0F172A]">{companyInfo.company_token || '-'}</p>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-
-  const renderTeamAccessPane = () => (
-    <div className="grid gap-3" data-testid="business-admin-team-access-controls">
-      <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm shadow-slate-200/40 sm:p-6">
-        <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600" aria-hidden="true">
-              <Users className="h-6 w-6" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-[15px] font-bold text-slate-800">Cashier access and invitations</h3>
-              <p className="mt-1 text-[12px] font-medium leading-5 text-slate-500">
-                Invite DGFY cashier accounts and manage the POS void and cash-drawer permissions that are enforced by the existing user API.
-              </p>
-            </div>
-          </div>
-          {canManageCashiers ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 shrink-0 rounded-lg border-blue-200 px-4 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-              onClick={() => setCashierInvitationOpen(true)}
-              disabled={locked || loading || cashiersLoading}
-            >
-              <Plus className="mr-1.5 h-3.5 w-3.5" /> Invite Cashier
-            </Button>
-          ) : null}
-        </div>
-
-        {canManageCashiers ? (
-          <>
-            <div className="mt-4 flex items-start gap-2 text-[11px] font-semibold text-slate-500">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" />
-              <span>These switches update only the selected cashier&apos;s existing POS permissions. They do not grant Business Admin or settings access.</span>
-            </div>
-            <div className="mt-3 flex justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
-                onClick={() => loadCashierAccounts()}
-                disabled={locked || loading || cashiersLoading}
-              >
-                {cashiersLoading ? 'Refreshing...' : 'Refresh cashiers'}
-              </Button>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {activeCashierUsers.map((cashier) => {
-                const cashierPermissions = resolveUserPermissionList(cashier);
-                const hasVoidAccess = cashierPermissions.includes('pos:void');
-                const hasDrawerAccess = cashierPermissions.includes('pos:cash_drawer_adjust');
-                const isSavingAccess = Number(cashierVoidAccessSavingUserId) === Number(cashier?.user_id);
-                const cashierLabel = cashier.username || cashier.email || `cashier ${cashier.user_id}`;
-                return (
-                  <div key={`team-cashier-access-${cashier.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{cashierLabel}</p>
-                      <p className="truncate text-[11px] text-[#64748B]">{cashier.email || 'No account email'}</p>
-                    </div>
-                    <div className="grid gap-2 text-[11px] font-extrabold text-[#334155]">
-                      <label className="flex items-center justify-end gap-2">
-                        <span>Can void POS transactions</span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-label={`Can void POS transactions for ${cashierLabel}`}
-                          aria-checked={hasVoidAccess}
-                          onClick={() => updateCashierVoidAccess(cashier, !hasVoidAccess)}
-                          disabled={locked || loading || isSavingAccess}
-                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasVoidAccess ? 'border-rose-600 bg-rose-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                        >
-                          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasVoidAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      </label>
-                      <label className="flex items-center justify-end gap-2">
-                        <span>Can refund cash / adjust drawer</span>
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-label={`Can refund cash and adjust drawer for ${cashierLabel}`}
-                          aria-checked={hasDrawerAccess}
-                          onClick={() => updateCashierDrawerAccess(cashier, !hasDrawerAccess)}
-                          disabled={locked || loading || isSavingAccess}
-                          className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDrawerAccess ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                        >
-                          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDrawerAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      </label>
-                    </div>
-                  </div>
-                );
-              })}
-              {!cashiersLoaded ? (
-                <p className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-slate-500">Loading active cashier accounts...</p>
-              ) : null}
-              {cashiersLoaded && !cashiersLoading && activeCashierUsers.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-slate-500">No active cashier accounts are available. Invite or activate a cashier first.</p>
-              ) : null}
-            </div>
-          </>
-        ) : (
-          <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[12px] font-semibold text-amber-800">
-            Cashier access changes require the existing <code>users:manage</code> permission. Use User Management above for the users visible to your account.
-          </p>
-        )}
-      </section>
-
-      {canManageDiscountApprovalPins ? (
-        <section className="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm shadow-slate-200/40 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-[15px] font-bold text-slate-800">POS discount approval PINs</h3>
-              <p className="mt-1 text-[12px] font-medium leading-5 text-slate-500">Grant discount authorization and set or clear the write-only PIN used at POS checkout.</p>
-            </div>
-            <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-[12px] font-extrabold" onClick={() => loadDiscountApprovers()} disabled={locked || loading || discountApproversLoading}>
-              {discountApproversLoading ? 'Refreshing...' : 'Refresh approvers'}
-            </Button>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {discountApprovers.map((user) => {
-              const role = String(user?.role || '').trim().toLowerCase();
-              const isBuiltInAuthorizer = user?.is_master_admin === true || ['admin', 'manager'].includes(role);
-              const hasDiscountAuthorization = isBuiltInAuthorizer || resolveUserPermissionList(user).includes('pos:discount_authorize');
-              const isSavingAuthorization = Number(discountAuthorizationSavingUserId) === Number(user?.user_id);
-              const canConfigurePin = hasDiscountAuthorization && user?.is_active !== false;
-              return (
-                <div key={`team-discount-approver-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                    <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {hasDiscountAuthorization ? (user.pos_approval_pin_configured ? 'PIN configured' : 'PIN not set') : 'Authorization off'}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-3">
-                    {isBuiltInAuthorizer ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span> : (
-                      <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
-                        <span>Can authorize discounts</span>
-                        <button type="button" role="switch" aria-label={`Can authorize discounts for ${user.username || user.email || `user ${user.user_id}`}`} aria-checked={hasDiscountAuthorization} onClick={() => updateDiscountAuthorization(user, !hasDiscountAuthorization)} disabled={locked || loading || isSavingAuthorization} className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDiscountAuthorization ? 'border-teal-600 bg-teal-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}>
-                          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDiscountAuthorization ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      </label>
-                    )}
-                    {canConfigurePin ? <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-teal-700" onClick={() => { setApprovalPinUser(user); setApprovalPin(''); }} disabled={locked || loading || isSavingAuthorization}><KeyRound className="mr-1.5 h-4 w-4" />{user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}</Button> : <span className="text-[11px] font-bold text-amber-700">Enable access first</span>}
-                  </div>
-                </div>
-              );
-            })}
-            {!discountApproversLoading && discountApprovers.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-slate-500">No active employee accounts are available. Add or activate an employee first.</p> : null}
-          </div>
-        </section>
-      ) : null}
-
-      {canManageDayClosePins ? (
-        <section className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm shadow-slate-200/40 sm:p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-[15px] font-bold text-slate-800">POS Day Close PIN administration</h3>
-              <p className="mt-1 text-[12px] font-medium leading-5 text-slate-500">Grant Z-reading access and reset a cashier&apos;s private Day Close PIN when required.</p>
-            </div>
-            <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-[12px] font-extrabold" onClick={() => loadDayCloseOperators()} disabled={locked || loading || dayCloseOperatorsLoading}>
-              {dayCloseOperatorsLoading ? 'Refreshing...' : 'Refresh operators'}
-            </Button>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {dayCloseOperators.map((user) => {
-              const isMasterAdmin = user?.is_master_admin === true;
-              const hasDayCloseAccess = isMasterAdmin || resolveUserPermissionList(user).includes('pos:close_day');
-              const isSavingAccess = Number(dayCloseAccessSavingUserId) === Number(user?.user_id);
-              return (
-                <div key={`team-day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                    <p className="truncate text-[11px] text-[#64748B]">{user.email || 'No account email'}</p>
-                    <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {hasDayCloseAccess ? (user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN setup pending') : 'Z-reading access off'}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-end gap-3">
-                    {isMasterAdmin ? <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span> : (
-                      <label className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
-                        <span>Can generate Z-reading</span>
-                        <button type="button" role="switch" aria-label={`Can generate Z-reading for ${user.username || user.email || `user ${user.user_id}`}`} aria-checked={hasDayCloseAccess} onClick={() => updateDayCloseAccess(user, !hasDayCloseAccess)} disabled={locked || loading || isSavingAccess} className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDayCloseAccess ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}>
-                          <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDayCloseAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                        </button>
-                      </label>
-                    )}
-                    {hasDayCloseAccess && user.pos_day_close_pin_configured ? <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700" onClick={() => setDayClosePinUser(user)} disabled={locked || loading || isSavingAccess}><KeyRound className="mr-1.5 h-4 w-4" />Reset PIN</Button> : hasDayCloseAccess ? <span className="text-[11px] font-bold text-amber-700">Cashier setup pending</span> : null}
-                  </div>
-                </div>
-              );
-            })}
-            {!dayCloseOperatorsLoading && dayCloseOperators.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-slate-500">No active cashier accounts are available. Add or activate a cashier first.</p> : null}
-          </div>
-        </section>
-      ) : null}
-    </div>
-  );
-
-  const renderPosSetupPane = () => (
-    <div className="grid gap-3">
-      {showTeamAccessEditor ? renderTeamAccessPane() : null}
-      <div className="grid gap-3">
-          {showAttendanceEditor ? (
-            <PosCashierAttendanceSettingsCard
-              locked={locked || readOnly}
-              canEdit={canEditSettings && !readOnly}
-              onDirtyChange={reportAttendanceDirty}
-              onSaved={() => onSettingsSaved?.({ section: editorSection || 'attendance' })}
-            />
-          ) : null}
-          {showReceiptMetadataEditor ? <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
-            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-100 pb-5">
-              <div className="flex items-center gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600">
-                  <FileText className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-[15px] font-bold text-slate-800">Receipt &amp; POS Metadata</h3>
-                  <p className="mt-1 text-[12px] leading-5 text-slate-400 font-medium">
-                    Shared receipt identity, terminal policy, cashier defaults, and checkout presets used by both POS and IMS.
-                  </p>
-                </div>
-              </div>
-              <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
-                <Button
-                  type="button"
-                  className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 text-[13px] font-extrabold text-white shadow-md shadow-blue-500/10 flex items-center gap-2 transition-all duration-200 self-stretch sm:self-auto"
-                  disabled={locked || loading || savingTab === 'pos_setup'}
-                  onClick={handlePosSave}
-                >
-                  {savingTab === 'pos_setup' ? (
-                    'Saving...'
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      <span>Save POS Setup</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {/* Row 1: Registered Name beside Business Name */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Registered Name</Label>
-                <div className="relative flex items-center">
-                  <UserRound className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.registeredName}
-                    onChange={(event) => setPosForm((current) => ({ ...current, registeredName: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Business Name</Label>
-                <div className="relative flex items-center">
-                  <Store className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.businessName}
-                    onChange={(event) => setPosForm((current) => ({ ...current, businessName: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Business Style beside Taxpayer Type */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Business Style</Label>
-                <div className="relative flex items-center">
-                  <Briefcase className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.businessStyle}
-                    onChange={(event) => setPosForm((current) => ({ ...current, businessStyle: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Taxpayer Type</Label>
-                <div className="relative flex items-center">
-                  <Users className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 pr-10 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.taxpayerType}
-                    onChange={(event) => setPosForm((current) => ({ ...current, taxpayerType: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                  <ChevronDown className="absolute right-4 h-4 w-4 text-slate-400" />
-                </div>
-              </div>
-
-              {/* Row 3: TIN / Branch beside Accreditation Number */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">TIN / Branch</Label>
-                <div className="relative flex items-center">
-                  <span className="absolute left-4 text-lg font-bold text-blue-600 select-none">#</span>
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.tinBranch}
-                    onChange={(event) => setPosForm((current) => ({ ...current, tinBranch: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Accreditation Number</Label>
-                <div className="relative flex items-center">
-                  <Award className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.accreditationNumber}
-                    onChange={(event) => setPosForm((current) => ({ ...current, accreditationNumber: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 4: Business Address full width */}
-              <div className="grid gap-2 md:col-span-2">
-                <Label className="text-[12px] font-bold text-slate-700">Business Address</Label>
-                <div className="relative flex items-center">
-                  <MapPin className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.businessAddress}
-                    onChange={(event) => setPosForm((current) => ({ ...current, businessAddress: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 5: PTU Number beside MIN Number */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">PTU Number</Label>
-                <div className="relative flex items-center">
-                  <FileText className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.ptuNumber}
-                    onChange={(event) => setPosForm((current) => ({ ...current, ptuNumber: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">MIN Number</Label>
-                <div className="relative flex items-center">
-                  <ShieldCheck className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.minNumber}
-                    onChange={(event) => setPosForm((current) => ({ ...current, minNumber: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 6: Receipt Footer Message full width */}
-              <div className="grid gap-2 md:col-span-2">
-                <Label className="text-[12px] font-bold text-slate-700">Receipt Footer Message</Label>
-                <div className="relative flex items-center">
-                  <MessageSquare className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    value={posForm.receiptFooterMessage}
-                    onChange={(event) => setPosForm((current) => ({ ...current, receiptFooterMessage: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom: fiscal invoice checkbox card */}
-            <div className="mt-5 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/30 p-4">
-              <label className="flex items-start gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-4.5 w-4.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 accent-blue-600"
-                  checked={posForm.fiscalBuyerDetailsRequired === true}
-                  onChange={(event) => setPosForm((current) => ({ ...current, fiscalBuyerDetailsRequired: event.target.checked }))}
-                  disabled={locked || loading}
-                />
-                <div>
-                  <span className="block text-[13px] font-bold text-slate-800">Require buyer fiscal details on fiscal invoices</span>
-                  <span className="block text-[11px] text-slate-400 font-medium mt-0.5">
-                    Matches the shared fiscal invoice requirement used across receipt rendering.
-                  </span>
-                </div>
-              </label>
-              <div className="text-blue-500 shrink-0">
-                <AlertCircle className="h-5 w-5" />
-              </div>
-            </div>
-          </div> : null}
-
-          {showPosDefaultsEditor ? <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
-            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-100 pb-5">
-              <div className="flex items-center gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600">
-                  <Settings2 className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-[15px] font-bold text-slate-800">Cashier closeout defaults</h3>
-                  <p className="mt-1 text-[12px] leading-5 text-slate-400 font-medium">
-                    Used by shifts, queue operations, stock alerts, and daily reconciliation without changing receipt identity.
-                  </p>
-                </div>
-              </div>
-              <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:items-end">
-                <Button
-                  type="button"
-                  className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 text-[13px] font-extrabold text-white shadow-md shadow-blue-500/10 flex items-center gap-2 transition-all duration-200 self-stretch sm:self-auto"
-                  disabled={locked || loading || savingTab === 'pos_setup'}
-                  onClick={handlePosSave}
-                >
-                  {savingTab === 'pos_setup' ? (
-                    'Saving...'
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      <span>Save Defaults</span>
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {showTerminalOnlyControls ? (
-                <TerminalQueueScopeField queueLocationScopeId={queueLocationScopeId} locations={locations} />
-              ) : null}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Petty Cash Currency Symbol</Label>
-                <div className="relative flex items-center">
-                  <CircleDollarSign className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    maxLength={12}
-                    value={posForm.pettyCashSymbol}
-                    onChange={(event) => setPosForm((current) => ({ ...current, pettyCashSymbol: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 2: Petty Cash Amount beside Default Wait Time */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Petty Cash Amount</Label>
-                <div className="relative flex items-center">
-                  <Banknote className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={posForm.pettyCashAmount}
-                    onChange={(event) => setPosForm((current) => ({ ...current, pettyCashAmount: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Default Wait Time (minutes)</Label>
-                <div className="relative flex items-center">
-                  <Clock className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={posForm.posWaitTimeMinutes}
-                    onChange={(event) => setPosForm((current) => ({ ...current, posWaitTimeMinutes: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-
-              {/* Row 3: Low Stock Alert Threshold beside Live Queue card */}
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Low Stock Alert Threshold</Label>
-                <div className="relative flex items-center">
-                  <AlertTriangle className="absolute left-4 h-5 w-5 text-blue-600" />
-                  <Input
-                    className="h-12 pl-12 rounded-xl border-slate-200 text-[14px] font-semibold text-[#0F172A] focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={posForm.inventoryLowStockDisplayThreshold}
-                    onChange={(event) => setPosForm((current) => ({ ...current, inventoryLowStockDisplayThreshold: event.target.value }))}
-                    disabled={locked || loading}
-                  />
-                </div>
-              </div>
-              <div className="flex flex-col justify-end">
-                <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 flex items-center justify-between shadow-sm shadow-slate-100/50">
-                  <div className="min-w-0 pr-4">
-                    <span className="block text-[13px] font-bold text-slate-800">Live Queue</span>
-                    <span className="block text-[11px] text-slate-400 font-medium mt-0.5">
-                      Current online queue items waiting on the terminal.
-                    </span>
-                  </div>
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-600 text-white font-extrabold shadow-sm shadow-blue-500/20 text-sm">
-                    {incomingOrders.length}
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 4: POS visible to customers toggle card beside online order sound device toggle */}
-              <div className="rounded-xl border border-slate-100 bg-white p-4 flex items-center justify-between shadow-sm shadow-slate-100/50">
-                <div className="min-w-0 pr-4">
-                  <span className="block text-[13px] font-bold text-slate-800">POS visible to customers</span>
-                  <span className="block text-[11px] text-slate-400 font-medium mt-0.5">
-                    Shared tenant POS availability flag used across surfaces.
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={posForm.posOpenStatus === true}
-                  onClick={() => setPosForm((current) => ({ ...current, posOpenStatus: !current.posOpenStatus }))}
-                  disabled={locked || loading}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                    posForm.posOpenStatus === true ? 'bg-blue-600' : 'bg-slate-200'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      posForm.posOpenStatus === true ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-              {showTerminalOnlyControls ? (
-                <TerminalSoundField
-                  onlineOrderSoundEnabled={onlineOrderSoundEnabled}
-                  setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-                  locked={locked}
-                  loading={loading}
-                />
-              ) : null}
-            </div>
-          </div> : null}
-
-          {showTerminalOnlyControls && editorSection === 'registers' ? (
-            <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
-              <div className="border-b border-slate-100 pb-4">
-                <h3 className="text-[15px] font-bold text-slate-800">Terminal-only controls</h3>
-                <p className="mt-1 text-[12px] leading-5 text-slate-400 font-medium">
-                  Branch queue scope and local order alerts stay on this POS terminal.
-                </p>
-              </div>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <TerminalQueueScopeField queueLocationScopeId={queueLocationScopeId} locations={locations} />
-                <TerminalSoundField
-                  onlineOrderSoundEnabled={onlineOrderSoundEnabled}
-                  setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-                  locked={locked}
-                  loading={loading}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {showTerminalRegistryEditor ? <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm shadow-slate-200/40">
-            {/* Terminal Registry Header */}
-            <div className="flex flex-col sm:flex-row items-start justify-between gap-4 border-b border-slate-100 pb-5">
-              <div className="flex items-center gap-4">
-                <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600">
-                  <Monitor className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-[15px] font-bold text-slate-800">Terminal Registry</h3>
-                  <p className="mt-1 text-[12px] leading-5 text-slate-400 font-medium">
-                    Managed POS counters used for shift-open and checkout location control.
-                  </p>
-                </div>
-              </div>
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <Button
-                  type="button"
-                  className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-5 text-[13px] font-extrabold text-white shadow-md shadow-blue-500/10 flex items-center gap-2 transition-all duration-200"
-                  onClick={handleTerminalRegistrySave}
-                  disabled={locked || loading || savingTab === 'terminal_registry'}
-                >
-                  {savingTab === 'terminal_registry' ? 'Saving...' : (
-                    <>
-                      <Save className="h-4 w-4" />
-                      <span>Save</span>
-                    </>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 rounded-xl border-slate-200 px-4 text-[13px] font-extrabold text-slate-700 hover:border-blue-300 hover:text-[#1A4E8D] flex items-center gap-2"
-                  onClick={addTerminalRegistryEntry}
-                  disabled={locked || loading}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Terminal
-                </Button>
-              </div>
-            </div>
-
-            {/* Terminal Registry Mode section */}
-            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-              <div className="grid gap-4 md:grid-cols-[minmax(0,220px)_1fr] md:items-start">
-                <div className="grid gap-2">
-                  <Label className="text-[12px] font-bold text-slate-700">Terminal Registry Mode</Label>
-                  <div className="relative flex items-center">
-                    <select
-                      className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-4 pr-10 text-[14px] font-semibold text-[#0F172A] outline-none appearance-none focus:border-blue-500"
-                      value={posForm.terminalRegistryMode || 'warn'}
-                      onChange={(event) => setPosForm((current) => ({ ...current, terminalRegistryMode: event.target.value }))}
-                      disabled={locked || loading}
-                    >
-                      <option value="warn">Warn (allow manual IDs)</option>
-                      <option value="enforce">Enforce (registry only)</option>
-                    </select>
-                    <ChevronDown className="absolute right-4 h-4 w-4 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-3 text-[12px] text-slate-600">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-                  <span>
-                    {(posForm.terminalRegistryMode || 'warn') === 'enforce'
-                      ? 'Enforce mode blocks unlock, open-shift, and checkout when the terminal ID is not in the active registry.'
-                      : 'Warn mode still allows manual or fallback terminal IDs, but shows policy warnings.'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Strict Shift Location Binding */}
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <span className="block text-[13px] font-bold text-slate-800">Strict Shift Location Binding</span>
-                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, shift open, checkout, and switch require location-bound terminal policy readiness.</span>
-              </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
-                checked={posForm.terminalLocationBindingEnforced === true}
-                onChange={(event) => setPosForm((current) => ({ ...current, terminalLocationBindingEnforced: event.target.checked }))}
-                disabled={locked || loading}
-              />
-            </div>
-
-            {/* Voucher Redemption at POS (#604) -- tenant-wide master switch, default off. Currently
-                gates nothing at runtime: POS voucher redemption itself is not built yet, so this
-                ships the setting and its server-side guard pre-gated, ahead of that feature. */}
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 flex items-center gap-4">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
-                <Percent className="h-5 w-5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <span className="block text-[13px] font-bold text-slate-800">Voucher Redemption at POS</span>
-                <span className="block text-[11px] text-slate-400 font-medium mt-0.5">When enabled, cashiers can redeem voucher codes at checkout. Off by default -- turn on once you&apos;re ready to accept voucher codes at the counter.</span>
-              </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-[#1A4E8D] shrink-0"
-                checked={posForm.voucherPosRedemptionEnabled === true}
-                onChange={(event) => setPosForm((current) => ({ ...current, voucherPosRedemptionEnabled: event.target.checked }))}
-                disabled={locked || loading}
-              />
-            </div>
-
-            {/* Location Binding Readiness */}
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
-                  <Search className="h-4 w-4" />
-                </div>
-                <div>
-                  <span className="block text-[13px] font-bold text-slate-800">Location Binding Readiness</span>
-                  <span className={`text-[11px] font-semibold ${readiness?.ready_for_strict_mode ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {readiness?.ready_for_strict_mode ? 'Ready' : 'Needs Review'}
-                  </span>
-                </div>
-              </div>
-              <div className="grid gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-3">
-                <div className="flex items-center gap-2 text-[12px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-slate-400 shrink-0" />
-                  <span>Migration: <span className="font-semibold text-slate-800">{readiness?.migration_tag || '-'}</span></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-blue-500 shrink-0" />
-                  <span>Unresolved: <span className="font-semibold text-slate-800">{Number(readiness?.unresolved_count || 0)}</span></span>
-                </div>
-                <div className="flex items-center gap-2 text-[12px] text-slate-600">
-                  <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                  <span>Low confidence: <span className="font-semibold text-slate-800">{Number(readiness?.low_confidence_count || 0)}</span></span>
-                </div>
-              </div>
-            </div>
-            {terminalUser?.is_master_admin === true ? (
-              <div className="mt-4 grid gap-3">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,280px)_auto] md:items-start">
-                  <div className="grid gap-1.5">
-                    <Label className="text-[12px] font-black text-[#0F172A]">Settings Access PIN</Label>
-                    <Input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      data-1p-ignore="true"
-                      data-lpignore="true"
-                      data-bwignore="true"
-                      style={{ WebkitTextSecurity: 'disc' }}
-                      className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]"
-                      value={posForm.settingsAccessPin}
-                      onChange={(event) => setPosForm((current) => ({
-                        ...current,
-                        settingsAccessPin: event.target.value,
-                        clearSettingsAccessPin: false
-                      }))}
-                      placeholder={posForm.settingsAccessPinEnabled ? 'Leave blank to keep current PIN' : 'Create 4 to 12 digit PIN'}
-                      disabled={locked || loading}
-                    />
-                    <p className={`text-[11px] ${posForm.clearSettingsAccessPin === true ? 'font-semibold text-rose-600' : 'text-[#64748B]'}`}>
-                      {posForm.clearSettingsAccessPin === true
-                        ? 'Current Settings PIN will be cleared on save.'
-                        : (posForm.settingsAccessPinEnabled
-                          ? 'Non-master-admin users must enter this PIN before opening Settings.'
-                          : 'Optional. Add a PIN to protect Settings for non-master-admin users.')}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 md:justify-end">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
-                      posForm.settingsAccessPinEnabled
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}>
-                      {posForm.settingsAccessPinEnabled ? 'PIN Enabled' : 'PIN Not Set'}
-                    </span>
-                    {posForm.settingsAccessPinEnabled ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-10 rounded-lg border-rose-200 px-4 text-[12px] font-extrabold text-rose-600 hover:bg-rose-50"
-                        onClick={() => setPosForm((current) => ({
-                          ...current,
-                          settingsAccessPin: '',
-                          clearSettingsAccessPin: true,
-                          settingsAccessPinEnabled: false
-                        }))}
-                        disabled={locked || loading}
-                      >
-                        Clear PIN
-                      </Button>
-                    ) : null}
-                  </div>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[12px] font-black text-[#0F172A]">POS Discount Authorization</p>
-                      <p className="mt-1 text-[11px] text-[#64748B]">Enable trusted cashiers or staff here, then configure the write-only PIN they use to authorize discounts. Every discount still requires the PIN at checkout.</p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
-                      onClick={() => loadDiscountApprovers()}
-                      disabled={locked || loading || discountApproversLoading}
-                    >
-                      {discountApproversLoading ? 'Refreshing...' : 'Refresh'}
-                    </Button>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {discountApprovers.map((user) => {
-                      const role = String(user?.role || '').trim().toLowerCase();
-                      const isBuiltInAuthorizer = user?.is_master_admin === true || ['admin', 'manager'].includes(role);
-                      const hasDiscountAuthorization = isBuiltInAuthorizer
-                        || resolveUserPermissionList(user).includes('pos:discount_authorize');
-                      const isSavingAuthorization = Number(discountAuthorizationSavingUserId) === Number(user?.user_id);
-                      const canConfigurePin = hasDiscountAuthorization && user?.is_active !== false;
-                      return (
-                        <div key={`discount-approver-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                            <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {hasDiscountAuthorization ? (user.pos_approval_pin_configured ? 'PIN configured' : 'PIN not set') : 'Authorization off'}</p>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-end gap-3">
-                            {isBuiltInAuthorizer ? (
-                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span>
-                            ) : (
-                              <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
-                                <span>Can authorize discounts</span>
-                                <button
-                                  type="button"
-                                  role="switch"
-                                  aria-label={`Can authorize discounts for ${user.username || user.email || `user ${user.user_id}`}`}
-                                  aria-checked={hasDiscountAuthorization}
-                                  onClick={() => updateDiscountAuthorization(user, !hasDiscountAuthorization)}
-                                  disabled={locked || loading || isSavingAuthorization}
-                                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDiscountAuthorization ? 'border-teal-600 bg-teal-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                                >
-                                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDiscountAuthorization ? 'translate-x-6' : 'translate-x-1'}`} />
-                                </button>
-                              </div>
-                            )}
-                            {canConfigurePin ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-teal-700"
-                                onClick={() => {
-                                  setApprovalPinUser(user);
-                                  setApprovalPin('');
-                                }}
-                                disabled={locked || loading || isSavingAuthorization}
-                              >
-                                <KeyRound className="mr-1.5 h-4 w-4" />
-                                {user.pos_approval_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                              </Button>
-                            ) : (
-                              <span className="text-[11px] font-bold text-amber-700">Enable access first</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {!discountApproversLoading && discountApprovers.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active employee accounts are available. Add or activate an employee first.</p>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[12px] font-black text-[#0F172A]">Day Close Access</p>
-                      <p className="mt-1 text-[11px] text-[#64748B]">Grant Z-reading access here. Each cashier creates their private PIN from DGFY Business.</p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
-                      onClick={() => loadDayCloseOperators()}
-                      disabled={locked || loading || dayCloseOperatorsLoading}
-                    >
-                      {dayCloseOperatorsLoading ? 'Refreshing...' : 'Refresh'}
-                    </Button>
-                  </div>
-                  <div className="mt-3 grid gap-2">
-                    {dayCloseOperators.map((user) => {
-                      const isMasterAdmin = user?.is_master_admin === true;
-                      const hasDayCloseAccess = isMasterAdmin || resolveUserPermissionList(user).includes('pos:close_day');
-                      const isSavingAccess = Number(dayCloseAccessSavingUserId) === Number(user?.user_id);
-                      return (
-                        <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                          <div className="min-w-0">
-                            <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                            <p className="truncate text-[11px] text-[#64748B]">{user.email || 'No account email'}</p>
-                            <p className="text-[11px] capitalize text-[#64748B]">
-                              {user.role} · {hasDayCloseAccess
-                                ? (user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN setup pending')
-                                : 'Z-reading access off'}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-end gap-3">
-                            {isMasterAdmin ? (
-                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span>
-                            ) : (
-                              <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
-                                <span>Can generate Z-reading</span>
-                                <button
-                                  type="button"
-                                  role="switch"
-                                  aria-label={`Can generate Z-reading for ${user.username || user.email || `user ${user.user_id}`}`}
-                                  aria-checked={hasDayCloseAccess}
-                                  onClick={() => updateDayCloseAccess(user, !hasDayCloseAccess)}
-                                  disabled={locked || loading || isSavingAccess}
-                                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDayCloseAccess ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                                >
-                                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDayCloseAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                                </button>
-                              </div>
-                            )}
-                            {hasDayCloseAccess && user.pos_day_close_pin_configured ? (
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
-                                onClick={() => {
-                                  setDayClosePinUser(user);
-                                }}
-                                disabled={locked || loading || isSavingAccess}
-                              >
-                                <KeyRound className="mr-1.5 h-4 w-4" />
-                                Reset PIN
-                              </Button>
-                            ) : hasDayCloseAccess ? (
-                              <span className="text-[11px] font-bold text-amber-700">Cashier setup pending</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {!dayCloseOperatorsLoading && dayCloseOperators.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active cashier accounts are available. Add or activate a cashier first.</p>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-            {canManageCashiers ? (
-              <div
-                className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                data-testid="pos-cashier-void-authorization"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[12px] font-black text-[#0F172A]">Cashier Void and Cash Authorization</p>
-                    <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
-                      Manage void and physical cash authority separately. Cashiers need their own open shift for either action; admin voids keep the existing no-shift bypass, but cash refunds never bypass shift accountability.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
-                    onClick={() => loadCashierAccounts()}
-                    disabled={locked || loading || cashiersLoading}
-                  >
-                    {cashiersLoading ? 'Refreshing...' : 'Refresh'}
-                  </Button>
-                </div>
-                <div className="mt-3 grid gap-2">
-                  {activeCashierUsers.map((cashier) => {
-                    const cashierPermissions = resolveUserPermissionList(cashier);
-                    const hasVoidAccess = cashierPermissions.includes('pos:void');
-                    const hasDrawerAccess = cashierPermissions.includes('pos:cash_drawer_adjust');
-                    const isSavingVoidAccess = Number(cashierVoidAccessSavingUserId) === Number(cashier?.user_id);
-                    const cashierLabel = cashier.username || cashier.email || `cashier ${cashier.user_id}`;
-                    return (
-                      <div
-                        key={`cashier-void-access-${cashier.user_id}`}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{cashierLabel}</p>
-                          <p className="truncate text-[11px] text-[#64748B]">
-                            {cashier.email || 'No account email'} · Void {hasVoidAccess ? 'on' : 'off'} · Cash {hasDrawerAccess ? 'on' : 'off'}
-                          </p>
-                        </div>
-                        <div className="grid gap-2 text-[11px] font-extrabold text-[#334155]">
-                          <div className="flex items-center justify-end gap-2">
-                            <span>Can void POS transactions</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              data-testid={`pos-cashier-void-toggle-${cashier.user_id}`}
-                              aria-label={`Can void POS transactions for ${cashierLabel}`}
-                              aria-checked={hasVoidAccess}
-                              onClick={() => updateCashierVoidAccess(cashier, !hasVoidAccess)}
-                              disabled={locked || loading || isSavingVoidAccess}
-                              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasVoidAccess ? 'border-rose-600 bg-rose-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                            >
-                              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasVoidAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-end gap-2">
-                            <span>Can refund cash / adjust drawer</span>
-                            <button
-                              type="button"
-                              role="switch"
-                              data-testid={`pos-cashier-drawer-toggle-${cashier.user_id}`}
-                              aria-label={`Can refund cash and adjust drawer for ${cashierLabel}`}
-                              aria-checked={hasDrawerAccess}
-                              onClick={() => updateCashierDrawerAccess(cashier, !hasDrawerAccess)}
-                              disabled={locked || loading || isSavingVoidAccess}
-                              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDrawerAccess ? 'border-emerald-600 bg-emerald-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
-                            >
-                              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDrawerAccess ? 'translate-x-6' : 'translate-x-1'}`} />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {!cashiersLoaded ? (
-                    <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">
-                      Loading active cashier accounts...
-                    </p>
-                  ) : null}
-                  {cashiersLoaded && !cashiersLoading && activeCashierUsers.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">
-                      No active cashier accounts are available. Invite or activate a cashier first.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
-            <div className="mt-4 grid gap-3">
-              {(Array.isArray(posForm.terminalRegistry) ? posForm.terminalRegistry : []).map((terminal, index) => (
-                <div key={`terminal-registry-${index}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-[0_16px_36px_rgba(148,163,184,0.12)]">
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start">
-                    <div className="min-w-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex min-w-0 items-start gap-3">
-                          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl border border-blue-100 bg-gradient-to-br from-[#EEF4FF] to-white text-[#2563EB] shadow-sm shadow-blue-100/70">
-                            <Settings2 className="h-5 w-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#64748B]">Terminal</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-2">
-                              <h3 className="text-[18px] font-black leading-none tracking-tight text-[#0F172A]">
-                                {terminal.terminal_id || `TERMINAL-${index + 1}`}
-                              </h3>
-                              <span className={`inline-flex items-center rounded-lg border px-2.5 py-0.5 text-[11px] font-extrabold ${
-                                terminal.is_active !== false
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                                  : 'border-slate-200 bg-slate-50 text-slate-500'
-                              }`}>
-                                {terminal.is_active !== false ? 'Active' : 'Inactive'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-slate-400 transition hover:border-slate-200 hover:bg-slate-50 hover:text-slate-600"
-                          disabled
-                          aria-label="Terminal options"
-                        >
-                          <span className="text-[18px] leading-none">...</span>
-                        </button>
-                      </div>
-
-                      <div className="mt-4 border-t border-slate-200/90 pt-4">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <div className="grid gap-1.5 md:col-span-2">
-                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
-                              <Settings2 className="h-3.5 w-3.5 text-blue-500" />
-                              Terminal ID
-                            </Label>
-                            <Input
-                              className="h-11 rounded-xl border-slate-200 px-3.5 text-[14px] font-semibold text-[#0F172A] shadow-none"
-                              value={terminal.terminal_id || ''}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'terminal_id', event.target.value)}
-                              placeholder="COUNTER-01"
-                              disabled={locked || loading}
-                            />
-                            <p className="text-[11px] text-[#64748B]">
-                              Must stay unique. This ID is what the POS uses to keep the terminal visible after reload.
-                            </p>
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
-                              <Tags className="h-3.5 w-3.5 text-violet-500" />
-                              Label
-                            </Label>
-                            <Input
-                              className="h-11 rounded-xl border-slate-200 px-3.5 text-[14px] font-semibold text-[#0F172A] shadow-none"
-                              value={terminal.label || ''}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'label', event.target.value)}
-                              disabled={locked || loading}
-                            />
-                          </div>
-                          <div className="grid gap-1.5">
-                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
-                              <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                              Location
-                            </Label>
-                            <select
-                              className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-[14px] font-semibold text-[#0F172A] outline-none focus:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                              value={terminal.location_id || ''}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'location_id', event.target.value)}
-                              disabled={locked || loading}
-                            >
-                              <option value="">Unassigned</option>
-                              {locations.map((location) => (
-                                <option key={`terminal-location-${location.location_id}`} value={location.location_id}>
-                                  {location.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="grid gap-1.5 md:col-span-2">
-                            <Label className="flex items-center gap-2 text-[12px] font-black text-[#5B6B86]">
-                              <KeyRound className="h-3.5 w-3.5 text-blue-500" />
-                              Terminal Readiness
-                            </Label>
-                            <div className="min-h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-[12px] text-[#475569]">
-                              {terminal.location_id
-                                ? 'Ready for authorized DGFY users with access to this location.'
-                                : 'Assign a store location before this terminal can be used.'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm shadow-slate-200/60">
-                      <p className="text-[12px] font-black uppercase tracking-[0.14em] text-[#64748B]">Status & Actions</p>
-                      <div className="mt-4 space-y-3">
-                        <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 shadow-sm shadow-slate-100/80">
-                          <div className="flex items-center gap-3">
-                            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                            <span className="text-[13px] font-black text-[#0F172A]">Active terminal</span>
-                          </div>
-                          <span className="relative inline-flex items-center">
-                            <input
-                              type="checkbox"
-                              className="peer sr-only"
-                              checked={terminal.is_active !== false}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'is_active', event.target.checked)}
-                              disabled={locked || loading}
-                            />
-                            <span className="flex h-8 w-[56px] items-center rounded-full border border-slate-200 bg-slate-200 px-1 transition peer-checked:bg-[#2563EB] peer-disabled:opacity-60">
-                              <span className="grid h-6 w-6 translate-x-0 place-items-center rounded-full bg-white text-[#2563EB] shadow-sm transition peer-checked:translate-x-[22px]">
-                                <Check className="h-3.5 w-3.5" />
-                              </span>
-                            </span>
-                          </span>
-                        </label>
-                        <label className={`flex items-center justify-between gap-3 rounded-xl border px-3.5 py-3 shadow-sm shadow-slate-100/80 ${
-                          terminal.is_active === false ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white'
-                        }`}>
-                          <div className="flex items-center gap-3">
-                            <Star className={`h-3.5 w-3.5 ${terminal.is_active === false ? 'text-slate-300' : 'text-amber-400'}`} fill="currentColor" />
-                            <span className={`text-[13px] font-black ${terminal.is_active === false ? 'text-slate-400' : 'text-[#0F172A]'}`}>Default terminal</span>
-                          </div>
-                          <span className="relative inline-flex items-center">
-                            <input
-                              type="checkbox"
-                              className="peer sr-only"
-                              checked={terminal.is_default === true}
-                              onChange={(event) => handleTerminalRegistryChange(index, 'is_default', event.target.checked)}
-                              disabled={locked || loading || terminal.is_active === false}
-                            />
-                            <span className="flex h-8 w-[56px] items-center rounded-full border border-slate-200 bg-slate-200 px-1 transition peer-checked:bg-[#2563EB] peer-disabled:opacity-60">
-                              <span className="grid h-6 w-6 translate-x-0 place-items-center rounded-full bg-white text-[#2563EB] shadow-sm transition peer-checked:translate-x-[22px]">
-                                <Check className="h-3.5 w-3.5" />
-                              </span>
-                            </span>
-                          </span>
-                        </label>
-                      </div>
-                      <div className="mt-4 border-t border-slate-200 pt-4">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11 w-full rounded-xl border-rose-300 text-[13px] font-extrabold text-rose-600 hover:bg-rose-50"
-                          onClick={() => removeTerminalRegistryEntry(index)}
-                          disabled={locked || loading}
-                          aria-label={`Remove terminal ${terminal.terminal_id || index + 1}`}
-                        >
-                          <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete Terminal
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  {canManageCashiers ? (
-                    <div className="mt-4 border-t border-slate-200 pt-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-[13px] font-black text-[#0F172A]">Cashiers</p>
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
-                              {cashiersLoading ? 'Loading...' : `${getCashiersForLocation(terminal.location_id).length} assigned`}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[11px] leading-5 text-[#64748B]">
-                            Cashiers are invited through DGFY and receive explicit access to one or more business locations.
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 rounded-lg border-blue-200 px-4 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-                          onClick={() => setCashierInvitationOpen(true)}
-                          disabled={locked || loading || !toPositiveInt(terminal.location_id)}
-                        >
-                          <Plus className="mr-1.5 h-3.5 w-3.5" />
-                          Invite DGFY Cashier
-                        </Button>
-                      </div>
-
-                      {getCashiersForLocation(terminal.location_id).length > 0 ? (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {getCashiersForLocation(terminal.location_id).map((cashier) => (
-                            <div key={cashier.user_id} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                              <p className="truncate text-[12px] font-black text-emerald-900">{cashier.username || cashier.email}</p>
-                              <p className="mt-0.5 truncate text-[10px] font-semibold text-emerald-700">{cashier.email}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-3 text-[11px] font-semibold text-slate-500">
-                          {toPositiveInt(terminal.location_id)
-                            ? 'No cashier is assigned to this terminal store yet.'
-                            : 'Assign a store to this terminal before adding a cashier.'}
-                        </p>
-                      )}
-
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-              {(Array.isArray(posForm.terminalRegistry) ? posForm.terminalRegistry : []).length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-[#64748B]">
-                  {(posForm.terminalRegistryMode || 'warn') === 'enforce'
-                    ? 'No terminals configured yet. Add at least one active terminal before enabling enforce mode.'
-                    : 'No terminals configured yet. In warn mode, terminal users can still enter an ID manually.'}
-                </div>
-              ) : null}
-            </div>
-          </div> : null}
-
-          {showPosDefaultsEditor ? <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-[13px] font-black text-[#0F172A]">POS Discount Presets</p>
-                <p className="mt-1 text-[12px] text-[#475569]">Example: Employee Discount at 20%. Cashiers can select these during checkout.</p>
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={addDiscountProfile} disabled={locked || loading}>
-                <Plus className="mr-1 h-4 w-4" />
-                Add Discount
-              </Button>
-            </div>
-            <div className="mt-4 grid gap-3">
-              {(Array.isArray(posForm.discountProfiles) ? posForm.discountProfiles : []).map((profile, index) => (
-                <div key={`discount-profile-${index}`} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-12 md:items-end">
-                  <div className="grid gap-1 md:col-span-6">
-                    <Label className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#64748B]">Discount Name</Label>
-                    <Input className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]" value={profile.name || ''} onChange={(event) => handleDiscountProfileChange(index, 'name', event.target.value)} disabled={locked || loading} />
-                  </div>
-                  <div className="grid gap-1 md:col-span-3">
-                    <Label className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#64748B]">Percent</Label>
-                    <Input className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]" type="number" min="0" max="100" step="0.01" value={profile.percentage} onChange={(event) => handleDiscountProfileChange(index, 'percentage', event.target.value)} disabled={locked || loading} />
-                  </div>
-                  <label className="flex items-center gap-2 md:col-span-2">
-                    <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={profile.active !== false} onChange={(event) => handleDiscountProfileChange(index, 'active', event.target.checked)} disabled={locked || loading} />
-                    <span className="text-[12px] font-bold text-[#0F172A]">Active</span>
-                  </label>
-                  <div className="md:col-span-1 md:flex md:justify-end">
-                    <Button type="button" variant="outline" size="icon" onClick={() => removeDiscountProfile(index)} disabled={locked || loading} aria-label={`Remove discount profile ${index + 1}`}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {(Array.isArray(posForm.discountProfiles) ? posForm.discountProfiles : []).length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 px-3 py-3 text-[12px] text-[#64748B]">
-                  No discount presets configured yet.
-                </div>
-              ) : null}
-              <div className="flex items-start justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-                <div className="min-w-0">
-                  <Label htmlFor="pos-employee-discount-self-approval" className="text-[12px] font-black text-amber-950">
-                    Allow employee discount self-approval
-                  </Label>
-                  <p className="mt-1 text-[11px] font-semibold leading-relaxed text-amber-800">
-                    When enabled, the cashier receiving an Employee discount may authorize it with their own configured POS approval PIN. Every self-approval is recorded in the transaction audit. Other discount types still require their normal authorization.
-                  </p>
-                </div>
-                <Switch
-                  id="pos-employee-discount-self-approval"
-                  checked={posForm.employeeDiscountSelfApprovalEnabled === true}
-                  onCheckedChange={(checked) => setPosForm((current) => ({
-                    ...current,
-                    employeeDiscountSelfApprovalEnabled: Boolean(checked)
-                  }))}
-                  disabled={locked || loading}
-                />
-              </div>
-            </div>
-           </div> : null}
-
-          {showPosDefaultsEditor ? <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-            <p className="text-[13px] font-black text-[#0F172A]">Best Seller Autotagging Settings</p>
-            <div className="mt-3 space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-[12px] font-medium text-[#64748B]">Tag the top 3 items by completed paid quantity from the previous 30 days.</p>
-                </div>
-                <Switch
-                  id="pos-best-seller-auto-tagging"
-                  checked={posForm.bestSellerAutoTaggingEnabled === true}
-                  onCheckedChange={(checked) => setPosForm((current) => ({
-                    ...current,
-                    bestSellerAutoTaggingEnabled: Boolean(checked)
-                  }))}
-                  disabled={locked || loading}
-                />
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-[12px] font-medium text-[#64748B]">Tag the most-bought item by completed paid quantity from the previous day.</p>
-                </div>
-                <Switch
-                  id="pos-best-seller-daily-auto-tagging"
-                  checked={posForm.dailyTopBestSellerEnabled === true}
-                  onCheckedChange={(checked) => setPosForm((current) => ({
-                    ...current,
-                    dailyTopBestSellerEnabled: Boolean(checked)
-                  }))}
-                  disabled={locked || loading}
-                />
-              </div>
-            </div>
-          </div> : null}
-      </div>
-    </div>
-  );
-
-  const renderEmployeesPane = () => (
-    <div className="grid gap-3">
-      {canManageEmployees ? (
-        <EmployeeManagementPanel
-          disabled={locked || loading || readOnly}
-          onEmployeesChanged={() => setEmployeeDirectoryRevision((revision) => revision + 1)}
-        />
-      ) : null}
-      {canManageDeliveryPersonnel ? (
-        <DeliveryPersonnelManagementPanel
-          disabled={locked || loading || readOnly}
-          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
-        />
-      ) : null}
-      {canManageEmployeeCredit ? (
-        <EmployeeCreditManagementPanel
-          disabled={locked || loading || readOnly}
-          refreshKey={employeeDirectoryRevision}
-        />
-      ) : null}
-    </div>
-  );
-
-  const renderStorefrontPane = () => (
-    <div className="grid gap-3">
-      {editorSection !== 'branches' ? <>
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storeIsVisible === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storeIsVisible: event.target.checked }))} disabled={locked || loading} />
-            <div>
-              <p className="text-[12px] font-black text-[#0F172A]">Storefront visible</p>
-              <p className="text-[11px] text-[#64748B]">Controls public storefront visibility from shared tenant settings.</p>
-            </div>
-          </label>
-          <label className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-            <input
-              type="checkbox"
-              className="h-4 w-4 accent-[#1A4E8D]"
-              checked={storefrontForm.storeHasNoLocation === true}
-              onChange={(event) => {
-                const nextHasNoLocation = event.target.checked === true;
-                setStorefrontForm((current) => ({ ...current, storeHasNoLocation: nextHasNoLocation }));
-                if (!nextHasNoLocation && !hasActivePrimaryStorefrontLocation) {
-                  setLocationForm((current) => (
-                    current.is_active === false
-                      ? current
-                      : { ...current, is_primary_storefront: true }
-                  ));
-                }
-              }}
-              disabled={locked || loading}
-            />
-            <div>
-              <p className="text-[12px] font-black text-[#0F172A]">Searchable without map pin</p>
-              <p className="text-[11px] text-[#64748B]">Preserves the same no-location storefront behavior used in IMS.</p>
-            </div>
-          </label>
-        </div>
-        {storefrontLocationRequired && !hasActivePrimaryStorefrontLocation ? (
-          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-[12px] text-rose-700">
-            Public Storefront currently requires one active primary storefront location. Add a location below and mark it as <span className="font-bold">Primary</span>, or enable <span className="font-bold">Searchable without map pin</span>.
-          </div>
-        ) : null}
-        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-[12px] font-black text-[#0F172A]">Storefront ID and item QR links</p>
-              {storefrontForm.storeTenantSlug ? (
-                <>
-                  <p className="mt-1 text-[11px] text-[#64748B]">
-                    This stable ID is used by Storefront item links and generated POS QR codes.
-                  </p>
-                  <code className="mt-2 block break-all rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-[#1A4E8D]">
-                    {storefrontForm.storeTenantSlug}
-                  </code>
-                </>
-              ) : (
-                <p className="mt-1 text-[11px] text-amber-700">
-                  No Storefront ID is saved yet. Generate one to enable customer-facing item QR codes.
-                </p>
-              )}
-            </div>
-            {storefrontForm.storeTenantSlug ? (
-              <div className="flex shrink-0 flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void handleCopyStorefrontUrl()}
-                  disabled={!storefrontPublicUrl}
-                >
-                  <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" />
-                  Copy URL
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => window.open(storefrontPublicUrl, '_blank', 'noopener,noreferrer')}
-                  disabled={!storefrontPublicUrl}
-                >
-                  Open Storefront
-                </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                className="shrink-0"
-                onClick={() => void handleGenerateStorefrontSlug()}
-                disabled={locked || loading || Boolean(savingTab)}
-              >
-                {savingTab === 'storefront_slug' ? 'Generating...' : 'Generate Storefront ID'}
-              </Button>
-            )}
-          </div>
-        </div>
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
-          <div className="flex items-start gap-4">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600">
-              <Users className="h-6 w-6" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <Label htmlFor="pos-customer-access-mode" className="text-lg font-black tracking-tight text-[#0F172A]">Customer Access Mode</Label>
-              <p className="mt-1 text-[13px] text-[#64748B]">Select a mode to apply changes automatically.</p>
-            </div>
-          </div>
-
-          <select
-            id="pos-customer-access-mode"
-            className="sr-only"
-            value={requestedCustomerAccessMode}
-            onChange={(event) => void handleCustomerAccessModeChange(event.target.value)}
-            disabled={locked || loading || savingTab === 'storefront_access_mode'}
-          >
-            {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => (
-              <option
-                key={option.value}
-                value={option.value}
-                disabled={CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode]}
-              >
-                {option.label}
-              </option>
-            ))}
-          </select>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Customer Access Mode options">
-            {CUSTOMER_ACCESS_MODE_OPTIONS.map((option) => {
-              const ModeIcon = option.icon;
-              const isSelected = requestedCustomerAccessMode === option.value;
-              const isUnavailable = CUSTOMER_ACCESS_MODE_RANK[option.value] > CUSTOMER_ACCESS_MODE_RANK[platformMaxCustomerAccessMode];
-              const isDisabled = locked || loading || savingTab === 'storefront_access_mode' || isUnavailable;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  // Mobile (<sm): compact 2-col grid - image spans both rows on the left,
-                  // label/description auto-flow into the right column via CSS grid's default
-                  // row-then-column placement (no extra wrapper needed).
-                  // sm: and up: original vertical/centered card layout, unchanged.
-                  className={`relative grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1 rounded-2xl border px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 sm:flex sm:min-h-64 sm:flex-col sm:items-center sm:gap-0 sm:px-5 sm:py-7 sm:text-center ${isSelected ? 'border-2 border-blue-600 bg-blue-50/50' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'} ${isDisabled ? 'cursor-not-allowed opacity-50' : ''}`}
-                  onClick={() => setStorefrontForm((current) => ({ ...current, customerAccessMode: option.value }))}
-                  disabled={isDisabled}
-                  aria-pressed={isSelected}
-                  aria-label={`${option.label}: ${option.description}`}
-                >
-                  {isSelected ? (
-                    <span className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-full bg-blue-600 text-white" aria-hidden="true">
-                      <Check className="h-5 w-5 stroke-[3]" />
-                    </span>
-                  ) : null}
-                  <span className={`row-span-2 grid h-20 w-20 shrink-0 place-items-center self-center rounded-full ${option.iconClassName}`} aria-hidden="true">
-                    <ModeIcon className="h-10 w-10 stroke-[1.8]" />
-                  </span>
-                  <span className={`min-w-0 text-[17px] font-black sm:mt-5 ${isSelected ? 'text-blue-600' : 'text-[#0F172A]'}`}>{option.label}</span>
-                  <span className="min-w-0 text-[13px] leading-6 text-[#475569] sm:mt-3">{option.description}</span>
-                  {isSelected ? (
-                    <span className="col-span-2 mt-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700 sm:mt-auto">
-                      <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-                      {savingTab === 'storefront_access_mode'
-                        ? 'Saving automatically'
-                        : (effectiveCustomerAccessMode === option.value ? 'Applied automatically' : `Requested; effective ${effectiveCustomerAccessMode}`)}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <p className="text-[13px] font-black text-[#0F172A]">Storefront Media</p>
-        <p className="mt-1 text-[12px] text-[#475569]">Shared cover photo and profile icon for discovery cards and storefront header.</p>
-        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          {/* Mobile-only: profile icon wrapper moved OUTSIDE the cover's overflow-hidden box.
-              Previously the circular avatar was nested inside the cover container, so its
-              bottom half (via the -bottom-8 overlap offset) was clipped by that container's
-              overflow-hidden instead of only being rounded by it. Cover photo rendering itself
-              (image + rounded-xl clipping) is untouched. */}
-          <div className="relative sm:hidden">
-            <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-              {storefrontAssets.cover ? (
-                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} alt="Storefront cover preview" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
-              )}
-            </div>
-            <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow">
-              {storefrontAssets.profile ? (
-                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-contain" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>
-              )}
-            </div>
-          </div>
-          <div className="relative hidden sm:block">
-            <div className="h-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 md:h-40">
-              {storefrontAssets.cover ? (
-                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} alt="Storefront cover preview" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs font-medium text-slate-500">No cover photo uploaded</div>
-              )}
-            </div>
-            <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
-              {storefrontAssets.profile ? (
-                <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>
-              )}
-            </div>
-          </div>
-          <div className="grid gap-3 pt-8 md:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-sm font-semibold text-slate-900">Cover photo</p>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  id="storefront-cover-upload"
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={locked || assetUploadingType === 'cover' || assetDeletingType === 'cover'}
-                  onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('cover', file); event.target.value = ''; }}
-                />
-                <label
-                  htmlFor="storefront-cover-upload"
-                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === 'cover' || assetDeletingType === 'cover' ? ' pointer-events-none opacity-50' : ''}`}
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  Upload
-                </label>
-                <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.cover || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onClick={() => handleDeleteAsset('cover')}>Remove</Button>
-              </div>
-            </div>
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-sm font-semibold text-slate-900">Profile icon</p>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  id="storefront-profile-upload"
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'}
-                  onChange={(event) => { const file = event.target.files?.[0] || null; handleUploadAsset('profile', file); event.target.value = ''; }}
-                />
-                <label
-                  htmlFor="storefront-profile-upload"
-                  className={`flex flex-1 cursor-pointer items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-white px-4 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === 'profile' || assetDeletingType === 'profile' ? ' pointer-events-none opacity-50' : ''}`}
-                >
-                  <ImagePlus className="h-4 w-4" />
-                  Upload
-                </label>
-                <Button type="button" variant="outline" className="flex-1 h-11 rounded-xl text-[13px] font-extrabold" disabled={locked || !storefrontAssets.profile || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onClick={() => handleDeleteAsset('profile')}>Remove</Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <p className="text-[13px] font-black text-[#0F172A]">Storefront Content</p>
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label className="text-[12px] font-black text-[#0F172A]">Tagline</Label>
-            <Input className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]" value={storefrontForm.storefrontTagline} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontTagline: event.target.value }))} disabled={locked || loading} />
-          </div>
-          <div className="grid gap-2">
-            <Label className="text-[12px] font-black text-[#0F172A]">Phone</Label>
-            <Input className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]" value={storefrontForm.storefrontPhone} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontPhone: event.target.value }))} disabled={locked || loading} />
-          </div>
-          <div className="grid gap-2">
-            <Label className="text-[12px] font-black text-[#0F172A]">Email</Label>
-            <Input className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A]" value={storefrontForm.storefrontEmail} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontEmail: event.target.value }))} disabled={locked || loading} />
-          </div>
-        </div>
-        <div className="mt-4 rounded-lg border border-slate-200 p-3">
-          <StorefrontBusinessHoursScheduler value={storefrontForm.storefrontHours} onChange={(nextHours) => setStorefrontForm((current) => ({ ...current, storefrontHours: nextHours }))} />
-        </div>
-        <div className="mt-4 grid gap-2">
-          <Label className="text-[12px] font-black text-[#0F172A]">About</Label>
-          <textarea className="min-h-[96px] rounded-lg border border-slate-200 px-3 py-2 text-sm" value={storefrontForm.storefrontAbout} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontAbout: event.target.value }))} disabled={locked || loading} />
-        </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <span className="text-[12px] font-black text-[#0F172A]">Harmonized UI</span>
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontUiV2Enabled === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontUiV2Enabled: event.target.checked }))} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <span className="text-[12px] font-black text-[#0F172A]">Show Follow Button</span>
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontFollowEnabled === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontFollowEnabled: event.target.checked }))} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <span className="text-[12px] font-black text-[#0F172A]">Show Share Button</span>
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontShareEnabled === true} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontShareEnabled: event.target.checked }))} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <span className="text-[12px] font-black text-[#0F172A]">Allow Guest Checkout</span>
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontGuestCheckoutEnabled !== false} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontGuestCheckoutEnabled: event.target.checked }))} />
-          </label>
-          <label className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-            <span className="text-[12px] font-black text-[#0F172A]">Accept Cash on Delivery/Pickup</span>
-            <input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={storefrontForm.storefrontCashPaymentEnabled !== false} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontCashPaymentEnabled: event.target.checked }))} />
-          </label>
-        </div>
-
-        <div className="mt-5 space-y-4">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Store Categories</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontListRow('storefrontCategories', '')}><Plus className="mr-1 h-4 w-4" />Add</Button>
-            </div>
-            {(Array.isArray(storefrontForm.storefrontCategories) ? storefrontForm.storefrontCategories : ['']).map((entry, index) => (
-              <div key={`sf-category-${index}`} className="flex gap-2">
-                <Input value={entry} onChange={(event) => handleStorefrontListChange('storefrontCategories', index, event.target.value)} placeholder="BBQ" />
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontListRow('storefrontCategories', index, '')}><Trash2 className="h-4 w-4" /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Why Choose Us</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontListRow('storefrontWhyChooseUs', '')}><Plus className="mr-1 h-4 w-4" />Add</Button>
-            </div>
-            {(Array.isArray(storefrontForm.storefrontWhyChooseUs) ? storefrontForm.storefrontWhyChooseUs : ['']).map((entry, index) => (
-              <div key={`sf-why-${index}`} className="flex gap-2">
-                <Input value={entry} onChange={(event) => handleStorefrontListChange('storefrontWhyChooseUs', index, event.target.value)} placeholder="Freshly grilled daily" />
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontListRow('storefrontWhyChooseUs', index, '')}><Trash2 className="h-4 w-4" /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label>Messenger Link</Label>
-              <Input value={storefrontForm.storefrontSocialMessenger} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontSocialMessenger: event.target.value }))} placeholder="https://m.me/..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Facebook Link</Label>
-              <Input value={storefrontForm.storefrontSocialFacebook} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontSocialFacebook: event.target.value }))} placeholder="https://facebook.com/..." />
-            </div>
-            <div className="space-y-2">
-              <Label>Instagram Link</Label>
-              <Input value={storefrontForm.storefrontSocialInstagram} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontSocialInstagram: event.target.value }))} placeholder="https://instagram.com/..." />
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Gallery Images</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontObjectRow('storefrontGalleryImages', { url: '', path: '', caption: '', alt: '', sort_order: 0 })}><Plus className="mr-1 h-4 w-4" />Add</Button>
-            </div>
-            {(Array.isArray(storefrontForm.storefrontGalleryImages) ? storefrontForm.storefrontGalleryImages : []).map((row, index) => (
-              <div key={`sf-gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
-                <div className="flex items-center gap-2">
-                  <input
-                    id={`sf-gallery-upload-${index}`}
-                    type="file"
-                    accept="image/*"
-                    aria-label={`Upload gallery image ${index + 1}`}
-                    className="sr-only"
-                    disabled={locked || assetUploadingType === `gallery-${index}`}
-                    onChange={(event) => { const file = event.target.files?.[0] || null; handleGalleryAssetUpload(index, file); event.target.value = ''; }}
-                  />
-                  <label
-                    htmlFor={`sf-gallery-upload-${index}`}
-                    className={`flex h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-[13px] font-extrabold text-[#334155] transition-colors hover:bg-slate-50${locked || assetUploadingType === `gallery-${index}` ? ' pointer-events-none opacity-50' : ''}`}
-                  >
-                    <ImagePlus className="h-4 w-4" />
-                    Upload image
-                  </label>
-                </div>
-                <Input value={row.caption || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'caption', event.target.value)} placeholder="Caption" />
-                <Input value={row.alt || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'alt', event.target.value)} placeholder="Alt text" />
-                <Input value={row.sort_order ?? ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontGalleryImages', index, 'sort_order', event.target.value)} placeholder="Sort" />
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontGalleryImages', index, { url: '', path: '', caption: '', alt: '', sort_order: 0 })}><Trash2 className="h-4 w-4" /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Delivery Partners</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontObjectRow('storefrontDeliveryPartners', { partner: 'grab', label: '', url: '' })}><Plus className="mr-1 h-4 w-4" />Add</Button>
-            </div>
-            {(Array.isArray(storefrontForm.storefrontDeliveryPartners) ? storefrontForm.storefrontDeliveryPartners : []).map((row, index) => (
-              <div key={`sf-delivery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[160px_1fr_1fr_auto]">
-                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white" value={row.partner || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'partner', event.target.value)}>
-                  <option value="grab">grab</option>
-                  <option value="foodpanda">foodpanda</option>
-                  <option value="lalamove">lalamove</option>
-                  <option value="custom">custom</option>
-                </select>
-                <Input value={row.label || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'label', event.target.value)} placeholder="Display label" />
-                <Input value={row.url || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontDeliveryPartners', index, 'url', event.target.value)} placeholder="https://partner.example.com" />
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontDeliveryPartners', index, { partner: 'grab', label: '', url: '' })}><Trash2 className="h-4 w-4" /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label>Review Highlights</Label>
-              <Button type="button" variant="outline" size="sm" onClick={() => addStorefrontObjectRow('storefrontReviewHighlights', { reviewer_name: '', rating: '', comment: '' })}><Plus className="mr-1 h-4 w-4" />Add</Button>
-            </div>
-            {(Array.isArray(storefrontForm.storefrontReviewHighlights) ? storefrontForm.storefrontReviewHighlights : []).map((row, index) => (
-              <div key={`sf-review-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_120px_2fr_auto]">
-                <Input value={row.reviewer_name || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontReviewHighlights', index, 'reviewer_name', event.target.value)} placeholder="Reviewer name" />
-                <Input value={row.rating || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontReviewHighlights', index, 'rating', event.target.value)} placeholder="4.8" />
-                <Input value={row.comment || ''} onChange={(event) => handleStorefrontObjectRowChange('storefrontReviewHighlights', index, 'comment', event.target.value)} placeholder="Great food and service." />
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeStorefrontObjectRow('storefrontReviewHighlights', index, { reviewer_name: '', rating: '', comment: '' })}><Trash2 className="h-4 w-4" /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="space-y-3 rounded-lg border border-slate-200 p-4">
-            <Label>Review Summary</Label>
-            <div className="grid min-w-0 max-w-full gap-3 [&>*]:min-w-0 md:grid-cols-2">
-              <Input value={storefrontForm.storefrontReviewSummaryScore} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryScore: event.target.value }))} placeholder="Average score (e.g. 4.8)" />
-              <Input value={storefrontForm.storefrontReviewSummaryTotalCount} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryTotalCount: event.target.value }))} placeholder="Total reviews" />
-            </div>
-            <div className="grid gap-2 md:grid-cols-5">
-              <Input value={storefrontForm.storefrontReviewSummaryStar5} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar5: event.target.value }))} placeholder="5★ count" />
-              <Input value={storefrontForm.storefrontReviewSummaryStar4} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar4: event.target.value }))} placeholder="4★ count" />
-              <Input value={storefrontForm.storefrontReviewSummaryStar3} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar3: event.target.value }))} placeholder="3★ count" />
-              <Input value={storefrontForm.storefrontReviewSummaryStar2} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar2: event.target.value }))} placeholder="2★ count" />
-              <Input value={storefrontForm.storefrontReviewSummaryStar1} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryStar1: event.target.value }))} placeholder="1★ count" />
-            </div>
-          </div>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <Button type="button" className="h-10 rounded-lg bg-[#1A4E8D] px-5 text-[13px] font-extrabold text-white hover:bg-[#143F73]" disabled={locked || loading || savingTab === 'storefront'} onClick={handleStorefrontSave}>
-            {savingTab === 'storefront' ? 'Saving...' : 'Save Storefront'}
-          </Button>
-        </div>
-      </div>
-      </> : null}
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
-        {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm border border-blue-100">
-              <MapPin className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
-                  Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}
-                </h2>
-              </div>
-              <p className="text-xs sm:text-sm font-medium text-slate-500 mt-0.5">
-                {storefrontLocationRequired
-                  ? 'A public storefront with map publication needs one active primary storefront location before Storefront settings can be saved.'
-                  : 'Manage your public storefront locations, delivery coverage, and operational settings.'}
-              </p>
-            </div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => loadStorefrontLocations()}
-            disabled={locationsLoading || locationSaving}
-            className="h-10 rounded-xl border-slate-200 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-          >
-            <RefreshCcw className={`mr-2 h-3.5 w-3.5 ${locationsLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {locationsLoading ? 'Refreshing...' : 'Refresh'}
-          </Button>
-        </div>
-
-        {/* Master-Detail 2-Column Responsive Layout */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Locations List Sidebar (lg:col-span-4) */}
-          <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
-            {/* Sidebar Header */}
-            <div className="flex items-center justify-between gap-2 pb-1">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-[#0F172A]">Locations</h3>
-                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
-                  {visibleStorefrontLocations.length}
-                </span>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={resetLocationForm}
-                disabled={locationSaving}
-                className="h-8 w-8 p-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm flex items-center justify-center"
-                title="Add new location"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-              </Button>
-            </div>
-
-            {/* Location Cards List */}
-            <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
-              {visibleStorefrontLocations.length === 0 ? (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
-                  No storefront locations configured.
-                </div>
-              ) : (
-                visibleStorefrontLocations.map((location) => {
-                  const activeEditingId = locationForm?.location_id || locationForm?.id;
-                  const isSelected = activeEditingId === location.location_id;
-                  return (
-                    <div
-                      key={`pos-storefront-location-${location.location_id}`}
-                      onClick={() => handleEditLocation(location)}
-                      className={`group relative rounded-xl p-3.5 transition-all cursor-pointer border ${
-                        isSelected
-                          ? 'border-2 border-blue-600 bg-blue-50/20 shadow-sm'
-                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
-                      }`}
-                    >
-                      {/* Top Title & Badges Row */}
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`h-3 w-3 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'}`}>
-                            {isSelected && <span className="h-1 w-1 rounded-full bg-white" />}
-                          </span>
-                          <p className="text-sm font-bold text-[#0F172A] truncate group-hover:text-blue-600 transition-colors">
-                            {location.name}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${location.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                            {location.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${location.is_open ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
-                            {location.is_open ? 'Open' : 'Closed'}
-                          </span>
-                          {location.is_primary_storefront === true ? (
-                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                              Primary
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleSetPrimaryLocation(location);
-                              }}
-                              disabled={locationSaving || location.is_active !== true}
-                              className="px-2 py-0.5 text-[10px] font-bold rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
-                            >
-                              Set Primary
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Address Line */}
-                      <div className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
-                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
-                        <span className="truncate">{location.address_line || 'No address specified'}</span>
-                      </div>
-
-                      {/* Metadata Details Row */}
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-slate-500">
-                        <span className="flex items-center gap-1">
-                          <Compass className="h-3 w-3 text-slate-400" />
-                          {location.delivery_radius_km} km
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 text-slate-400" />
-                          {location.current_wait_time_minutes} min
-                        </span>
-                        <span className="font-mono text-[10px] text-slate-400">
-                          {location.latitude}, {location.longitude}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Sidebar Footer */}
-            <div className="pt-2 border-t border-slate-100 text-center text-xs text-slate-400 font-medium">
-              Showing {visibleStorefrontLocations.length} of {storefrontLocations.length} locations
-            </div>
-          </div>
-
-          {/* Right Column: Main Form & Settings Area (lg:col-span-8) */}
-          <div className="lg:col-span-8 space-y-5">
-            {/* 2x2 Section Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Card 1: Basic Details */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <Store className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  <h4 className="text-sm font-bold text-[#0F172A]">Basic Details</h4>
-                </div>
-                <div className="space-y-3">
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Location Name<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.name}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))}
-                      placeholder="Main Branch"
-                      className="h-10 rounded-xl border-slate-200 text-xs"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Address<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.address_line}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, address_line: event.target.value }))}
-                      placeholder="Street, City, Province"
-                      className="h-10 rounded-xl border-slate-200 text-xs"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Coordinates */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <MapPin className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  <h4 className="text-sm font-bold text-[#0F172A]">Coordinates</h4>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Latitude<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.latitude}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, latitude: event.target.value }))}
-                      placeholder="10.69690400"
-                      className="h-10 rounded-xl border-slate-200 text-xs font-mono"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Longitude<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.longitude}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, longitude: event.target.value }))}
-                      placeholder="122.56127000"
-                      className="h-10 rounded-xl border-slate-200 text-xs font-mono"
-                    />
-                  </div>
-                </div>
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-start gap-2 text-xs text-blue-800 font-medium">
-                  <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span><strong>Pinned coordinates:</strong> These coordinates are used for delivery coverage and ETA calculations.</span>
-                </div>
-              </div>
-
-              {/* Card 3: Map & Coverage */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <MapPinned className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                    <h4 className="text-sm font-bold text-[#0F172A]">Map & Coverage</h4>
-                  </div>
-                </div>
-
-                {/* Map Component Container (Map component untouched!) */}
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-                  <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white px-3 py-12 text-center text-xs text-slate-500">Loading map picker...</div>}>
-                    <MapPinPicker
-                      latitude={locationForm.latitude}
-                      longitude={locationForm.longitude}
-                      deliveryRadiusKm={locationForm.delivery_radius_km}
-                      onChange={handleLocationPinChange}
-                    />
-                  </Suspense>
-                </div>
-
-                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-start gap-2 text-xs text-blue-800 font-medium">
-                  <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
-                  <span>Delivery coverage preview: {normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)} km radius around the pinned location.</span>
-                </div>
-              </div>
-
-              {/* Card 4: Operational Settings */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <Settings2 className="h-4 w-4 text-blue-600" aria-hidden="true" />
-                  <h4 className="text-sm font-bold text-[#0F172A]">Operational Settings</h4>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Delivery Radius (km)<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.delivery_radius_km}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))}
-                      placeholder="5"
-                      className="h-10 rounded-xl border-slate-200 text-xs"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label className="text-xs font-bold text-[#0F172A]">Wait Time (min)<RequiredMark /></Label>
-                    <Input
-                      value={locationForm.current_wait_time_minutes}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))}
-                      placeholder="15"
-                      className="h-10 rounded-xl border-slate-200 text-xs"
-                    />
-                  </div>
-                </div>
-
-                {/* Switches / Checkboxes with Subtext */}
-                <div className="space-y-3 pt-2">
-                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.is_open === true}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, is_open: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Open</p>
-                      <p className="text-[11px] text-slate-500">Location is open for orders</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.is_primary_storefront === true}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, is_primary_storefront: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Primary</p>
-                      <p className="text-[11px] text-slate-500">Primary storefront for map publication</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.allow_out_of_stock_sales === true}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, allow_out_of_stock_sales: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Allow OOS Sales</p>
-                      <p className="text-[11px] text-slate-500">Allow out-of-stock item sales</p>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.supports_delivery === true}
-                      disabled={lastFulfillmentMethodLocked && locationForm.supports_delivery === true}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_delivery: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Supports Delivery</p>
-                      <p className="text-[11px] text-slate-500">Enable delivery orders for this location</p>
-                      {lastFulfillmentMethodLocked && locationForm.supports_delivery === true && (
-                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
-                      )}
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.supports_pickup === true}
-                      disabled={lastFulfillmentMethodLocked && locationForm.supports_pickup === true}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, supports_pickup: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Supports Pickup</p>
-                      <p className="text-[11px] text-slate-500">Enable pickup orders for this location</p>
-                      {lastFulfillmentMethodLocked && locationForm.supports_pickup === true && (
-                        <p className="mt-1 text-[11px] text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}</p>
-                      )}
-                    </div>
-                  </label>
-
-                  {/* #1246/#1218: buyer-facing scheduling/lead-time settings. Editing gated on
-                      canEditSettings (settings:edit / is_master_admin) -- same permission the
-                      backend's PUT /tenant-locations/:id already enforces -- disabled rather than
-                      hidden for non-privileged roles, matching PosCashierAttendanceSettingsCard's
-                      own canEdit precedent. */}
-                  <label className={`flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 transition-colors ${canEditSettings ? 'hover:bg-slate-50/70 cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.scheduling_enabled === true}
-                      disabled={!canEditSettings}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, scheduling_enabled: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Allow Scheduled Orders</p>
-                      <p className="text-[11px] text-slate-500">Let buyers choose a delivery or pickup date and time</p>
-                    </div>
-                  </label>
-
-                  <label className={`flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 transition-colors ${canEditSettings ? 'hover:bg-slate-50/70 cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
-                      checked={locationForm.immediate_fulfillment_enabled === true}
-                      disabled={!canEditSettings}
-                      onChange={(event) => setLocationForm((current) => ({ ...current, immediate_fulfillment_enabled: event.target.checked }))}
-                    />
-                    <div>
-                      <p className="text-xs font-bold text-[#0F172A]">Allow Immediate Fulfillment</p>
-                      <p className="text-[11px] text-slate-500">Show the NOW option and an immediate-fulfillment promise at checkout</p>
-                    </div>
-                  </label>
-
-                  {locationForm.immediate_fulfillment_enabled === false && (
-                    <div className="grid gap-1.5 p-2.5 rounded-xl border border-slate-100">
-                      <Label className="text-xs font-bold text-[#0F172A]">Fulfillment Lead Time (days)</Label>
-                      <p className="text-[11px] text-slate-500">
-                        Shown to buyers in place of the NOW promise. Required while immediate fulfillment is off.
-                      </p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          max="365"
-                          placeholder="Minimum days"
-                          value={locationForm.fulfillment_lead_time_min_days}
-                          disabled={!canEditSettings}
-                          onChange={(event) => setLocationForm((current) => ({ ...current, fulfillment_lead_time_min_days: event.target.value }))}
-                          className="h-10 rounded-xl border-slate-200 text-xs"
-                        />
-                        <Input
-                          type="number"
-                          min="0"
-                          max="365"
-                          placeholder="Maximum days"
-                          value={locationForm.fulfillment_lead_time_max_days}
-                          disabled={!canEditSettings}
-                          onChange={(event) => setLocationForm((current) => ({ ...current, fulfillment_lead_time_max_days: event.target.value }))}
-                          className="h-10 rounded-xl border-slate-200 text-xs"
-                        />
-                      </div>
-                      {leadTimeRequiredMissing && (
-                        <p className="text-[11px] text-amber-700">
-                          A minimum and maximum lead time are required while immediate fulfillment is off. Buyers need
-                          something concrete to expect.
-                        </p>
-                      )}
-                      {leadTimeRangeInverted && (
-                        <p className="text-[11px] text-amber-700">Maximum days must be greater than or equal to minimum days.</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Bottom Action Bar Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-bold text-[#0F172A]">Action Bar</p>
-                <p className="text-xs text-slate-500">Add a new location or clear the form to start over.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={resetLocationForm}
-                  disabled={locationSaving}
-                  className="h-10 px-4 rounded-xl border-slate-200 text-xs font-semibold text-slate-700"
-                >
-                  Clear
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleSaveLocation}
-                  disabled={locationSaving}
-                  className="h-10 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm"
-                >
-                  {locationSaving ? 'Saving...' : (locationForm?.location_id ? 'Update Location' : 'Add Location')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderPane = () => {
-    if (loading) {
-      return (
-        <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Loading shared tenant settings...
-        </div>
-      );
-    }
-    if (loadError) {
-      return (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-          <p>{loadError}</p>
-          <Button type="button" variant="outline" className="mt-3" onClick={hydrateSettingsWorkspace}>
-            Retry
-          </Button>
-        </div>
-      );
-    }
-    if (renderedTab === 'profile') return renderProfilePane();
-    if (renderedTab === 'storefront') return renderStorefrontPane();
-    if (renderedTab === 'payments' && canViewDownpayment) {
-      return (
-        <DownpaymentSettingsPanel
-          terminalUser={terminalUser}
-          locked={locked || readOnly}
-          sectionId={sectionId}
-          onDirtyChange={reportPaymentsDirty}
-          onSaved={() => onSettingsSaved?.({ section: editorSection || 'payments' })}
-        />
-      );
-    }
-    if (renderedTab === 'delivery_pricing' && canViewDeliveryPricing) {
-      return (
-        <PosDeliveryPricingSettingsCard
-          terminalUser={terminalUser}
-          locked={locked || readOnly}
-          sectionId={sectionId}
-          onDirtyChange={reportDeliveryPricingDirty}
-          onSaved={() => onSettingsSaved?.({ section: editorSection || 'delivery' })}
-        />
-      );
-    }
-    if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
-      return renderEmployeesPane();
-    }
-    return renderPosSetupPane();
-  };
-
-  return (
-    <div id={sectionId} className="space-y-3">
-      {showSettingsTabNavigation ? (
-        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-          <div
-            className="hidden gap-2 sm:grid"
-            style={{ gridTemplateColumns: `repeat(${visibleSettingsTabs.length}, minmax(0, 1fr))` }}
-          >
-            {visibleSettingsTabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-[14px] font-extrabold transition ${
-                    active
-                      ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
-                      : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
-                  }`}
-                >
-                  <Icon className="h-4.5 w-4.5" />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:hidden">
-            {visibleSettingsTabs.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={`mobile-${tab.id}`}
-                  type="button"
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex min-h-14 min-w-0 items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-extrabold transition ${
-                    active
-                      ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
-                      : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="text-center leading-tight">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-      <div style={paneInlineStyle}>
-        <fieldset disabled={readOnly} className="contents" aria-readonly={readOnly ? 'true' : undefined}>
-          {renderPane()}
-        </fieldset>
-      </div>
-      <Dialog open={validationModalState.open} onOpenChange={(open) => { if (!open) closeValidationModal(); }}>
-        <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl rounded-2xl border border-rose-200 bg-white p-0 shadow-2xl shadow-slate-950/20">
-          <DialogHeader className="border-b border-rose-100 bg-rose-50/70 px-5 py-4">
-            <DialogTitle className="text-lg font-black text-rose-900">{validationModalState.title || 'Validation Error'}</DialogTitle>
-            <DialogDescription className="mt-1 text-sm leading-6 text-rose-800">
-              {validationModalState.description || 'Review the blocking fields below.'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="px-5 py-4">
-            <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-4">
-              <p className="text-xs font-black uppercase tracking-[0.16em] text-rose-700">Blocking Fields</p>
-              <div className="mt-3 space-y-3">
-                {(Array.isArray(validationModalState.errors) ? validationModalState.errors : []).map((entry, index) => (
-                  <div key={`settings-validation-${index}`} className="rounded-lg border border-rose-100 bg-white px-3 py-3">
-                    <p className="text-[12px] font-black text-slate-900">{entry.field ? getReadableFieldName(entry.field) : `Issue ${index + 1}`}</p>
-                    <p className="mt-1 text-sm leading-6 text-slate-700">{entry.message || 'Unknown validation error.'}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter className="border-t border-slate-200 px-5 py-4">
-            <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={closeValidationModal}>
-              Review Fields
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <ConfirmActionDialog
-        open={Boolean(pendingLocationAction)}
-        onOpenChange={(open) => { if (!open) setPendingLocationAction(null); }}
-        title={pendingLocationAction?.type === 'delete'
-          ? 'Delete Storefront Location Pin'
-          : (pendingLocationAction?.type === 'reactivate' ? 'Reactivate Location' : 'Deactivate Location')}
-        description={pendingLocationAction?.type === 'delete'
-          ? 'This permanently removes the inactive storefront location pin. The action is blocked when operational history still references the location.'
-          : (pendingLocationAction?.type === 'reactivate'
-            ? 'This location will become available again for storefront and operational use.'
-            : 'This location will be removed from active storefront and operational choices while historical records remain intact.')}
-        confirmLabel={pendingLocationAction?.type === 'delete'
-          ? 'Delete Pin'
-          : (pendingLocationAction?.type === 'reactivate' ? 'Reactivate' : 'Deactivate')}
-        variant={pendingLocationAction?.type === 'reactivate' ? 'default' : 'destructive'}
-        onConfirm={() => {
-          if (pendingLocationAction?.type === 'delete') {
-            return handleDeleteLocation(pendingLocationAction.locationId, { confirmed: true });
-          }
-          if (pendingLocationAction?.type === 'reactivate') {
-            return handleReactivateLocation(pendingLocationAction.locationId, { confirmed: true });
-          }
-          return handleDeactivateLocation(pendingLocationAction?.locationId, { confirmed: true });
-        }}
-      />
-      <UserInvitationModal
-        open={cashierInvitationOpen}
-        onOpenChange={setCashierInvitationOpen}
-        onSuccess={() => loadCashierAccounts({ silent: true })}
-        fixedRole="cashier"
-        title="Invite DGFY Cashier"
-        submitLabel="Send Cashier Invitation"
-        locationOptions={locations}
-      />
-      <Dialog open={Boolean(approvalPinUser)} onOpenChange={(open) => !open && closeApprovalPinDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-teal-600" />
-              POS Discount Approval PIN
-            </DialogTitle>
-            <DialogDescription>
-              This PIN is used to approve POS discounts. It cannot be viewed after saving.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <p className="font-semibold">{approvalPinUser?.username || approvalPinUser?.email}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {approvalPinUser?.pos_approval_pin_configured
-                  ? 'A PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure a PIN this approver will enter for POS discounts.'}
-              </p>
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-slate-800">New approval PIN</Label>
-              <Input
-                value={approvalPin}
-                onChange={(event) => setApprovalPin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                data-1p-ignore="true"
-                data-lpignore="true"
-                data-bwignore="true"
-                style={{ WebkitTextSecurity: 'disc' }}
-                placeholder="4 to 12 digits"
-                className="mt-1"
-                disabled={savingApprovalPin}
-              />
-            </div>
-          </div>
-          <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
-            <div>
-              {approvalPinUser?.pos_approval_pin_configured ? (
-                <Button type="button" variant="outline" onClick={() => saveApprovalPin({ clear: true })} disabled={savingApprovalPin} className="text-rose-600">
-                  Clear PIN
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={closeApprovalPinDialog} disabled={savingApprovalPin}>Cancel</Button>
-              <Button type="button" onClick={() => saveApprovalPin()} disabled={savingApprovalPin} className="bg-teal-600 hover:bg-teal-700">
-                {savingApprovalPin ? 'Saving...' : 'Save PIN'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={Boolean(dayClosePinUser)} onOpenChange={(open) => !open && closeDayClosePinDialog()}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <KeyRound className="h-5 w-5 text-blue-600" />
-              Reset POS Day Close PIN
-            </DialogTitle>
-            <DialogDescription>
-              Reset this cashier&apos;s PIN when they forgot it. The cashier must create a new personal PIN from DGFY Business.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              <p className="font-semibold">{dayClosePinUser?.username || dayClosePinUser?.email}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {dayClosePinUser?.email || 'No account email'}
-              </p>
-            </div>
-          </div>
-          <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
-            <div />
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={closeDayClosePinDialog} disabled={savingDayClosePin}>Cancel</Button>
-              <Button type="button" onClick={resetDayClosePin} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
-                {savingDayClosePin ? 'Resetting...' : 'Reset PIN'}
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
 export default function TerminalOperationsWorkspace({
   viewMode,
   workflowMode = '',
@@ -10015,7 +5210,7 @@ export default function TerminalOperationsWorkspace({
   refreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
   onStorefrontSetupSaved = async () => {},
-  onSettingsSaved = async () => {},
+  onStorefrontContentStateChange = () => {},
   locked,
   terminalMeta,
   shiftState,
@@ -10070,13 +5265,10 @@ export default function TerminalOperationsWorkspace({
   locationsState = { loading: false, locations: [] },
   operatingLocationId = null,
   setOperatingLocationId = () => {},
-  viewingLocationId = null,
-  setViewingLocationId = () => {},
   queueLocationScopeId = null,
   incomingOrdersState = { loading: false, orders: [] },
   orderHistoryState = { loading: false, orders: [], pagination: null },
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
-  canViewAdminLocationMonitor = false,
   adminTerminalSwitching = false,
   onSelectAdminTerminal = async () => false,
   refreshAdminLocationMonitor = async () => {},
@@ -10109,7 +5301,8 @@ export default function TerminalOperationsWorkspace({
   handleReplayQueuedTerminalOperations = () => {},
   handleRetryQueuedOperation = () => {},
   handleResolveQueuedOperation = () => {},
-  sectionIds = {}
+  sectionIds = {},
+  workspacePaneRef = null
 }) {
   const restrictedMsmeModes = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
@@ -10117,10 +5310,18 @@ export default function TerminalOperationsWorkspace({
     : viewMode;
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
+  const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
   const canImportItems = IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
   );
+  const handleNavigateToOrders = useCallback(() => {
+    if (typeof window === 'undefined') {
+      onSelectViewMode('incoming_queue');
+      return;
+    }
+    window.location.assign('/?view=incoming_queue');
+  }, [onSelectViewMode]);
 
   const content = useMemo(() => {
     switch (effectiveViewMode) {
@@ -10145,12 +5346,7 @@ export default function TerminalOperationsWorkspace({
           refreshIncomingOrders={refreshIncomingOrders}
           refreshOrderHistory={refreshOrderHistory}
           locationsState={locationsState}
-          operatingLocationId={operatingLocationId}
-          viewingLocationId={viewingLocationId}
           queueLocationScopeId={queueLocationScopeId}
-          adminLocationMonitorState={adminLocationMonitorState}
-          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
-          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
           locked={locked}
           isOnline={isOnline}
           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
@@ -10162,6 +5358,7 @@ export default function TerminalOperationsWorkspace({
     case 'settings_profile':
     case 'settings_pos':
     case 'settings_storefront':
+    case 'terminal_setup':
       return (
         <SettingsWorkspace
           terminalUser={terminalUser}
@@ -10180,32 +5377,13 @@ export default function TerminalOperationsWorkspace({
           onRefreshTerminalMeta={refreshTerminalMeta}
           onPosSetupSaved={onPosSetupSaved}
           onStorefrontSetupSaved={onStorefrontSetupSaved}
-          onSettingsSaved={onSettingsSaved}
-          onlineOrderSoundEnabled={onlineOrderSoundEnabled}
-          setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
-        />
-      );
-    case 'terminal_setup':
-      return (
-        <SettingsWorkspace
-          terminalUser={terminalUser}
-          terminalMeta={terminalMeta}
-          locationsState={locationsState}
-          queueLocationScopeId={queueLocationScopeId}
-          incomingOrdersState={incomingOrdersState}
-          locked={locked}
-          sectionId={sectionIds.terminalSetup}
-          initialTab="pos_setup"
-          allowedTabIds={['pos_setup']}
-          editorSection="registers"
-          onRefreshTerminalUser={refreshTerminalUser}
-          onRefreshTerminalMeta={refreshTerminalMeta}
-          onSettingsSaved={onSettingsSaved}
-          onlineOrderSoundEnabled={onlineOrderSoundEnabled}
-          setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-          onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
-        />
+          onStorefrontContentStateChange={onStorefrontContentStateChange}
+           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
+           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
+            onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
+            onNavigateToOrders={handleNavigateToOrders}
+            workspacePaneRef={workspacePaneRef}
+         />
       );
     case 'shift_controls':
     case 'close_shift':
@@ -10219,8 +5397,6 @@ export default function TerminalOperationsWorkspace({
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
-          viewingLocationId={viewingLocationId}
-          setViewingLocationId={setViewingLocationId}
           canSwitchPosLocation={canSwitchPosLocation}
           handleSwitchShiftLocation={handleSwitchShiftLocation}
           openShiftForm={openShiftForm}
@@ -10233,7 +5409,6 @@ export default function TerminalOperationsWorkspace({
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
-          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -10270,8 +5445,6 @@ export default function TerminalOperationsWorkspace({
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
-          viewingLocationId={viewingLocationId}
-          setViewingLocationId={setViewingLocationId}
           canSwitchPosLocation={canSwitchPosLocation}
           handleSwitchShiftLocation={handleSwitchShiftLocation}
           openShiftForm={openShiftForm}
@@ -10284,7 +5457,6 @@ export default function TerminalOperationsWorkspace({
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
-          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -10377,7 +5549,6 @@ export default function TerminalOperationsWorkspace({
           canManageFnbModifiers={canManageFnbModifiers}
           locations={locationsState?.locations || []}
           serviceOperationsPermissions={serviceOperationsPermissions}
-          refreshTerminalUser={refreshTerminalUser}
           shiftState={shiftState}
           activeTerminalId={activeTerminalId}
           stockFilterPreset={itemsStockFilterPreset}
@@ -10385,10 +5556,9 @@ export default function TerminalOperationsWorkspace({
           workflowMode={workflowMode}
           locked={locked}
           isOnline={isOnline}
-           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
-           operatingLocationId={operatingLocationId}
-           currencySymbol={terminalMeta?.pettyCashSymbol || 'PHP'}
-           storefrontSlug={terminalMeta?.storefrontSlug || ''}
+          onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+          operatingLocationId={operatingLocationId}
+          storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
         />
       );
@@ -10398,11 +5568,6 @@ export default function TerminalOperationsWorkspace({
           <PosServicesOperationsWorkspace
             permissions={serviceOperationsPermissions}
             isOnline={isOnline}
-            settlementContext={{
-              shiftId: shiftState?.shift?.pos_terminal_shift_id,
-              terminalId: activeTerminalId,
-              locationId: shiftState?.shift?.location_id || operatingLocationId
-            }}
           />
         </div>
       );
@@ -10427,6 +5592,7 @@ export default function TerminalOperationsWorkspace({
     canManageCategories,
     canManageVouchers,
     canManagePricelists,
+    handleNavigateToOrders,
     onSelectViewMode,
     canManageServiceCatalog,
     canManageFnbModifiers,
@@ -10438,14 +5604,11 @@ export default function TerminalOperationsWorkspace({
     itemsStockFilterPreset,
     workflowMode,
     canSwitchPosLocation,
-    canViewAdminLocationMonitor,
     canTransactPos,
     canViewPos,
     handleDeliveryJobStatusChange,
     handleAssignDeliveryPersonnel,
     deliveryPersonnelState,
-    ensureDeliveryPersonnelLoaded,
-    onDeliveryPersonnelChanged,
     // handleOpenCashCollection is already a dep further down this array (next to
     // handleOpenIncomingOrderReceipt) -- only handleOpenBalanceSettlement is new here.
     handleOpenBalanceSettlement,
@@ -10478,12 +5641,11 @@ export default function TerminalOperationsWorkspace({
     handleResolveQueuedOperation,
     onItemsStockFilterPresetApplied,
     onPosSetupSaved,
-    onSettingsSaved,
     onSelectAdminTerminal,
     onStorefrontSetupSaved,
+    onStorefrontContentStateChange,
     onlineOrderSoundEnabled,
     operatingLocationId,
-    viewingLocationId,
     openShiftForm,
     queueLocationScopeId,
     refreshIncomingOrders,
@@ -10513,7 +5675,6 @@ export default function TerminalOperationsWorkspace({
     refreshTerminalMeta,
     refreshTerminalUser,
     setOperatingLocationId,
-    setViewingLocationId,
     setCashEventForm,
     setCloseShiftForm,
     setOpenShiftForm,
@@ -10525,6 +5686,7 @@ export default function TerminalOperationsWorkspace({
     terminalUser,
     todayDashboard,
     effectiveViewMode,
+    workspacePaneRef,
     viewMode
   ]);
 
@@ -10535,6 +5697,7 @@ export default function TerminalOperationsWorkspace({
       subtitle={modeMeta.subtitle}
       terminalUser={terminalUser}
       locked={locked}
+      bare={isSettingsView}
       className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
       <div key={effectiveViewMode} className="catalog-slide-enter">

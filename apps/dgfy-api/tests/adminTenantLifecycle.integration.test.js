@@ -373,6 +373,11 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
 
         expect(response.status).toBe(202);
         expect(response.body.message).toBe('Tenant approval accepted; provisioning is running in the background');
+        expect(response.body.data).toEqual(expect.objectContaining({
+            tenant_id: tenant.id,
+            provisioning_status: 'in_progress'
+        }));
+        await new Promise((resolve) => setImmediate(resolve));
         expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
             tenantId: tenant.id,
             name: tenant.name,
@@ -382,6 +387,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             adminPasswordHash: tenant.admin_password_hash
         }));
         expect(response.body.data.provisioning_status).toBe('in_progress');
+        expect(response.body.data).not.toHaveProperty('email_sent');
     });
 
     it('rejects pending tenant and persists rejection metadata', async () => {

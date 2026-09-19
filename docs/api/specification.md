@@ -641,6 +641,34 @@ x-company-token: <company-token>
 - `403` - Cannot remove Master Admin / Insufficient hierarchy level
 - `404` - User not found (including already removed users)
 
+### GET /users/me/capabilities
+Get the current authenticated user's effective permission set. Accepts an optional
+`?location_id=<id>` query param, validated against the user's location grants.
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "capabilities": ["orders:pack", "delivery_runs:act"],
+    "location_id": null,
+    "staff_role": {
+      "staff_role_id": 4,
+      "name": "Packer",
+      "capabilities": ["orders:pack", "delivery_runs:act"],
+      "is_active": true
+    }
+  }
+}
+```
+
+`capabilities` is the single authoritative effective-permission set — identical to what backend
+authorization uses (`resolveEffectivePermissions`). `staff_role.capabilities` is informational only:
+the assigned staff role's own raw capability list, which is not merged into `capabilities` when a
+non-empty explicit legacy `permissions` array takes precedence over it, and is not applied at all
+once the staff role is deactivated (`staff_role.is_active: false`). Clients must read `capabilities`,
+never `staff_role.capabilities`, to determine what the user can actually do.
+
 ---
 
 ## Items (SKU Master) Endpoints
@@ -3105,6 +3133,7 @@ List incoming online orders for POS fulfillment queue.
 |------|------|-------------|
 | `location_id` | number | Optional active location filter |
 | `limit` | number | Optional row limit (default 200, max 500) |
+| `shift_id` | number | Required active POS shift that supplies the queue location |
 
 **Response Notes**
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
@@ -3296,7 +3325,7 @@ failure surfaces as `payment_action: 'refund_failed'` for administrator review.
 ### PATCH /pos/orders/:id/delivery-job/status
 Advance the manual delivery job for an online delivery order from the POS queue.
 
-**Permission**: `pos:transact`
+**Permission**: `pos:transact` or `delivery_runs:act`
 **Plan Gate**: Premium (`requirePremium`)
 
 **Request Body**
@@ -3316,9 +3345,20 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`; assignment must be completed through the assignment endpoint before `assigned`, `picked_up`, or `delivered`.
 2. The associated online order must already be `out_for_delivery`.
 3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
-4. Each successful transition records the acting cashier, shift/location context, timestamp, and audit evidence.
+4. Broad operators require an owned open shift and retain shift attribution. Assigned staff with `delivery_runs:act` must be the current direct assignee or a member of the current Delivery Run, hold a grant for the order location, and may act without a shift; their order shift remains unchanged and the audit `shift_id` is `null`.
 5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
 6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
+### GET /users/me/assignments
+Return authenticated staff assignments. Existing `orders` and `delivery_runs`
+fields remain unchanged. With `location_id` (required for delivery-job results)
+and either `delivery_runs:view_assigned` or `delivery_runs:act`, the response also
+contains `data.delivery_jobs`: manual jobs whose order is in the requested
+location, remains `out_for_delivery`, and whose job status is `assigned`,
+`picked_up`, or `delivered`. The actor must be the current direct registered
+assignee or a member of the current run. The additive projection exposes only
+public-safe order/customer/delivery fields; no location-less broad fallback is
+permitted.
 
 ### POST /pos/z-reading/close-day
 Generate the branch-scoped Z-reading summary for completed POS transactions. The branch is resolved from the registered terminal location and the authenticated user's location access.
@@ -3508,7 +3548,7 @@ Manage tenant-private storefront/POS/service location pins from IMS Settings.
 
 **Auth**: Private (`system:edit_settings`)
 
-IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may suggest an address from first-party PH-local reverse geocoding after adjust-mode click, marker drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates. Address suggestions may fill an empty address field, but must not overwrite merchant-edited text unless the merchant applies the suggestion. IMS clients must not coerce empty coordinate fields to `0`; missing values, `0,0`, and coordinates outside the Philippines are invalid merchant storefront pins and must be blocked before tenant-location create/update calls.
+IMS location clients should submit the merchant-editable address with the normal location payload. The shared map pin picker may surface PH reverse-geocoded address suggestions after adjust-mode click, marker drag, or geolocation selection, but backend persistence treats the submitted address text and the submitted latitude/longitude as separate fields; reverse-geocode failure must not prevent saving valid coordinates. Address suggestions may fill an empty address field, but must not overwrite merchant-edited text unless the merchant applies the suggestion. IMS clients must not coerce empty coordinate fields to `0`; missing values, `0,0`, and coordinates outside the Philippines are invalid merchant storefront pins and must be blocked before tenant-location create/update calls.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -6817,8 +6857,9 @@ OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display n
 - Login and current-user bootstrap payloads expose onboarding metadata for tenant master admins.
 - Non-master users do not own onboarding lifecycle and may receive `onboarding: null`.
 - The active wizard has three steps: `brand_assets`, `primary_location`, and `bulk_items`.
-- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may ask the first-party reverse-geocode endpoint for an address suggestion; reverse-geocode failure must not block coordinate saving.
-- `GET /api/v1/geo/reverse-geocode` returns first-party PH-local address metadata for IMS map suggestions. Successful responses include `provider="dgfy-ph-local"`, `precision` (`barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, optional PSGC code fields when a bundled local match exists, and `provenance` with the bundled PSGC release/generation metadata. The endpoint must not return vague `Near ...` labels; when no local match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`.
+- The `primary_location` wizard step uses the shared IMS MapLibre pin picker. The same picker is used by Settings > Storefront location editing. It uses the shared Storefront MapLibre basemap style for visible street context; adjust-mode click, marker drag, browser geolocation, or manual coordinate edits update the same latitude/longitude fields submitted to the tenant-location API. Settings opens locked and requires `Adjust Pin` before map interactions can change coordinates. Onboarding starts in adjust mode only after searchable storefront visibility is enabled and no valid saved pin exists. The picker opens over Iloilo City, Philippines when no saved pin exists, but that is camera state only and must not be saved as an implicit merchant pin. Missing coordinates, `0,0`, and browser geolocation results outside the Philippines are invalid for merchant-store pins. Browser geolocation uses high-accuracy mode when available and shows reported accuracy feedback, but it remains best effort and cannot guarantee device precision. Click, drag, and geolocation selections may request PH reverse-geocoded address suggestions; reverse-geocode failure must not block coordinate saving.
+- `GET /api/v1/geo/reverse-geocode` returns PH address metadata for map pin suggestions. Successful responses include `provider` (`dgfy-quadruper` when resolved by the DGFY-operated Quadruper geocoding service, `dgfy-ph-local` when served by the bundled fallback dataset), `precision` (`house`, `street`, `barangay`, `city`, `province`, or `coordinate_only`), optional `distance_meters`, `components` (`street`, `locality`, `district`, `city`, `state`, `postcode` — every field nullable), and `landmarks` (an always-present array, capped at five, of nearby named points of interest ordered by ascending distance, each with `name`, `category`, `osm_key`, `osm_value`, `distance_meters`, `latitude`, `longitude`; empty on the bundled-fallback path). PSGC code fields and `provenance` appear only on the bundled-fallback path, since OpenStreetMap carries no PSGC identifiers. The endpoint must not return vague `Near ...` labels; when no match is available it returns `Pinned location (lat, lon)` with `precision="coordinate_only"`. Reverse-geocode failure must not block saving valid coordinates.
+- `GET /api/v1/geo/address-search` accepts `query` (2-120 chars), `limit` (1-20, default 8), and optional `lat`/`lon` bias coordinates. `lat` and `lon` are all-or-nothing: supplying exactly one returns `422`. Results are hard-filtered to the Philippines bounding box.
 - The `primary_location` step also accepts `payload.business_hours` and persists it to the shared `storefront_hours` setting. The schedule uses `mode="weekly"`, `timezone` such as `Asia/Manila`, and `weekly.{sun..sat}` entries with `enabled`, compatibility `open`/`close`, and `intervals: [{ open, close }]` in `HH:mm` format. Legacy one-window `{ enabled, open, close }` entries normalize to one interval.
 - Stored legacy `classification_snapshot` data may remain in older `tenant_onboarding_progress` records, but the current wizard does not create or require business classification output.
 

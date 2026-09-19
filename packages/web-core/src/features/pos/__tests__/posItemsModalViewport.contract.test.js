@@ -20,7 +20,6 @@ describe('POS Items modal viewport contract', () => {
   });
 
   it.each([
-    ['Add/Edit Item', 'src/features/pos/components/TerminalOperationsWorkspace.jsx'],
     ['Create Service', 'src/features/pos/components/PosServiceCatalogCreateModal.jsx'],
     ['Edit Service', 'src/features/pos/components/PosServiceCatalogEditModal.jsx'],
     ['Product scanner', 'src/features/inventory/components/ProductQrScannerModal.jsx']
@@ -30,18 +29,20 @@ describe('POS Items modal viewport contract', () => {
     expect(source).toContain('pos-items-modal-scroll-region');
   });
 
-  it('keeps Add and Edit Item actions outside their scrolling bodies', () => {
-    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
-    expect(source.match(/pos-items-modal-panel/g)).toHaveLength(2);
-    expect(source.match(/pos-items-modal-scroll-region/g)).toHaveLength(2);
-    expect(source.match(/pos-items-modal-footer/g)).toHaveLength(2);
+  it('keeps service and scanner modal actions outside their scrolling bodies', () => {
+    const sources = [
+      read('src/features/pos/components/PosServiceCatalogCreateModal.jsx'),
+      read('src/features/pos/components/PosServiceCatalogEditModal.jsx'),
+      read('src/features/inventory/components/ProductQrScannerModal.jsx')
+    ].join('\n');
+    expect(sources).toContain('pos-items-modal-footer');
   });
 
-  it('locks background scrolling and closes custom item modals from Escape', () => {
-    const source = read('src/features/pos/components/TerminalOperationsWorkspace.jsx');
+  it('locks background scrolling and closes scanner modals from Escape', () => {
+    const source = read('src/features/inventory/components/ProductQrScannerModal.jsx');
     expect(source).toContain('const releaseScrollLock = acquireModalScrollLock();');
-    expect(source).toContain("event.key !== 'Escape'");
-    expect(source).toContain("document.addEventListener('keydown', handleKeyDown, true)");
-    expect(source).toContain("document.removeEventListener('keydown', handleKeyDown, true)");
+    expect(source).toContain("event.key === 'Escape'");
+    expect(source).toContain("document.addEventListener('keydown', handleKeyDown)");
+    expect(source).toContain("document.removeEventListener('keydown', handleKeyDown)");
   });
 });

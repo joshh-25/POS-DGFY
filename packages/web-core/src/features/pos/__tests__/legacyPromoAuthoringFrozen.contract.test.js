@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const workspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
 
 // #776/#695/#988: the plural storefront_promos editor -- "Promo Codes (Legacy)" in the Storefront
 // Page settings tab -- went through two stages: #776 froze *creating* a new promo (the "Add Promo"

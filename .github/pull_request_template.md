@@ -1,5 +1,5 @@
 ## Summary
-<!-- Put verified `Opened by (..., role)` output here first; omit it when identity is unproven. -->
+<!-- Put verified `Opened by (Runtime, provider/model, role)` output here first; omit it when identity is unproven. -->
 - What changed
 - Why this change is needed
 

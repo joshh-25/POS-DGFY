@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-13
-last_reviewed: 2026-08-31
+last_reviewed: 2026-09-13
 review_by: 2027-02-13
 applies_to: architecture_decision
 topic: pos_split_tender_collection
@@ -135,6 +135,20 @@ before landing (#965 explicitly asked for that confirmation given clause 3 below
 3. Proof imagery is served only through an authenticated, tenant-scoped route; no public or static
    path may serve it. `[binding]`
 4. Attach-once in this phase; replacement/deletion is not authorized and is deferred. `[default]`
+
+### 2026-09-13: Delivery-completion evidence is a separate operational fact (#1462)
+
+The delivery-completion evidence and recipient-signature record is not payment evidence and does not
+extend the payment allocation or settlement ledger. Staff-captured delivery images and a
+recipient-supplied signature are attached to the tenant-local `delivery_job`, never to
+`pos_order_payments`, and never represent provider verification, payment confirmation, or cash
+remittance. The existing proof-of-payment amendment above remains limited to balance settlements.
+`[default]`
+
+The delivery evidence API must preserve the same non-claim posture as clause 5: an image or signature
+is operational evidence captured by an authorized POS/delivery actor, not an assertion that DGFY
+verified the customer's payment or independently verified the handover. `[binding]` — restated, not
+amended.
 
 ## References
 

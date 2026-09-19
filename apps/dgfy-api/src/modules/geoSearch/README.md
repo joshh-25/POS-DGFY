@@ -14,6 +14,13 @@ Flow:
 | `controllers/geoSearchHandlers.js` | Express handler; delegates to use case, responds via `sendUseCaseResult` |
 | `usecases/geoSearchUseCases.js` | Builder-pattern use case; validates inputs, orchestrates repository calls |
 | `repositories/geoSearchRepository.js` | Two-step SQL: FULLTEXT item lookup → spatial store query; Redis cache read/write |
+| `providers/quadruperGeocodeProvider.js` | HTTP client for the DGFY-operated Quadruper service; strict parameter-name allowlist, 2500 ms timeout |
+| `providers/localGeocodeProvider.js` | Bundled PH-local dataset behind the same interface; the fallback |
+| `providers/geocodeCircuitBreaker.js` | Five-failure / 60-second breaker guarding the remote provider |
+| `providers/geocodeCache.js` | Redis cache keyed on the service's `import_date` |
+| `mappers/photonFeatureMapper.js` | Photon Feature → DGFY contract; label composer, precision map, landmark assembly |
+| `landmarks/landmarkClassifier.js` | `osm_key`/`osm_value` allowlist deciding what counts as a landmark |
+| `shared/geoDistance.js` | Haversine shared by the mapper and the local provider |
 
 ## Query Strategy
 

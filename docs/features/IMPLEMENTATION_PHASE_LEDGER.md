@@ -23780,3 +23780,29 @@ content differs from what was implemented and tested under the "303" label.
 - Acceptance and validation required: No blank page, unauthorized access, lost cart/shift or wrong-company/branch refresh; rendered desktop/mobile and permission evidence, affected builds, applicable architecture checks and docs validation all pass. Document rollback and any remaining limitation before completion.
 - Evidence: Planning only; no implementation or acceptance tests executed for this phase.
 - Completion date: not completed. Current phase remains 365; next eligible phase after its completion is 366. Phase 369 is unallocated.
+
+## Phase 369 - Develop ledger reconciliation during local merge
+
+- Initiative/release: local `dgfy-platform/develop` merge / current release.
+- Objective and scope: Preserve the existing POS-Development phase sequence through Phase 368 while recording the separate develop-branch phase history merged in this operation. The develop branch reused phase numbers 326-340 for different initiatives, so those source identifiers are retained below as provenance rather than renumbering or replacing this branch's records.
+- Status: completed.
+- Dependencies: Phase 368 ledger state; `dgfy-platform/develop` history at merge commit `3513492d2`; merge conflict review.
+- Acceptance and validation evidence: The local continuous ledger through Phase 368 remains intact. The develop source phases 326-340 are explicitly mapped by title below, and no source phase is silently presented as a local phase. Code, migration, and generated-test conflicts are tracked in the merge commit and validated by the merge checks.
+- Imported develop source phase map:
+  - Develop 326 — Manual token-aware session handoff (#1847).
+  - Develop 327 — Five-run measurement window for promotion IMS/POS sales E2E (#1844).
+  - Develop 328 — DeliveryRun date-range tenant schema registry parity (#1879).
+  - Develop 329 — Proof-of-delivery evidence and recipient signature (#1462).
+  - Develop 330 — Optional packed-order packing evidence images (#1460).
+  - Develop 331 — Optional DeliveryRun transportation label (#1463).
+  - Develop 332 — Runtime-aware verified AI attribution and OpenCode context injection (#1885).
+  - Develop 333 — Delivery-run loading verification and dispatcher attestation (#1461).
+  - Develop 334 — Courier cash custody, remittance, and variance ledger (#1887).
+  - Develop 335 — Assigned delivery staff lifecycle actions (#1549).
+  - Develop 336 — DGLaundry RFC 9421 provider transport interoperability (#519).
+  - Develop 337 — Delivery Runs workspace for F&B tenants in POS (#1924).
+  - Develop 338 — Delivery-run dispatch canonical warnings (#1927).
+  - Develop 339 — Quadruper geocoding provider with bundled-dataset fallback.
+  - Develop 340 — Conduct interactive Orca worktree fallback for OpenCode and Antigravity (#1964).
+- Completion date: 2026-09-19.
+- Next eligible phase: 370, after the merged local and develop changes pass the remaining Storefront cache and Step 3 acceptance gates.

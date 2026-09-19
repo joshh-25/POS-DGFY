@@ -267,6 +267,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         packed_by: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packed_by` INT NULL, ADD CONSTRAINT `fk_pos_transactions_packed_by` FOREIGN KEY (`packed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
         }),
+        // Phase 330 (#1460): append-only metadata for private packing evidence files. The files
+        // live outside public static roots; this JSON column stores only their safe metadata and
+        // tenant-scoped storage keys.
+        packing_evidence_images: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `packing_evidence_images` JSON NULL"
+        }),
         // Phase 236 (#1328, epic #1321): two additive columns capturing observation-only
         // server-side road distance at checkout. Kept in lockstep with migration
         // 20260902000001. Neither column feeds delivery-fee math anywhere in this codebase --
@@ -311,6 +317,15 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         delivery_fee_waiver_label_snapshot: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `delivery_fee_waiver_label_snapshot` VARCHAR(255) NULL"
+        }),
+        // #1931: two nullable, additive evidence columns for Retail's accept-time goods-issue
+        // (issued once at acceptance, reversed at most once on post-acceptance cancel/reject).
+        // Kept in lockstep with migration 20260916000001-add-retail-acceptance-inventory-evidence.cjs.
+        inventory_issued_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `inventory_issued_at` DATETIME NULL"
+        }),
+        inventory_reversed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `inventory_reversed_at` DATETIME NULL"
         })
     }),
     employee_attendance_sessions: Object.freeze({
@@ -459,6 +474,38 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         // matching every other delivery_jobs repair entry in this block.
         delivery_run_id: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_run_id` INT NULL"
+        }),
+        // Phase 333 (#1461): per-run loading verification. `pending` means the member has not
+        // been checked; it must remain distinct from an explicit `not_loaded` result.
+        loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_state` ENUM('pending','loaded','not_loaded','exception') NOT NULL DEFAULT 'pending'"
+        }),
+        loading_exception_reason: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_exception_reason` TEXT NULL"
+        }),
+        loading_marked_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_by` INT NULL, ADD CONSTRAINT `fk_delivery_jobs_loading_marked_by` FOREIGN KEY (`loading_marked_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_marked_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `loading_marked_at` DATETIME NULL"
+        })
+    }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): nullable range end; NULL preserves the existing single-day run
+        // contract, with the application treating scheduled_date as the effective end.
+        scheduled_date_end: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `scheduled_date_end` DATE NULL"
+        }),
+        // Phase 329 (#1463): nullable display-only transportation descriptor; no index because
+        // the value is never used for filtering, sorting, or dispatch behavior.
+        transportation_label: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `transportation_label` VARCHAR(120) NULL"
+        }),
+        loading_confirmed_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_by` INT NULL, ADD CONSTRAINT `fk_delivery_runs_loading_confirmed_by` FOREIGN KEY (`loading_confirmed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT"
+        }),
+        loading_confirmed_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD COLUMN `loading_confirmed_at` DATETIME NULL"
         })
     }),
     // Phase 260 (#1489): delivery runs now support an optional inclusive end date. The
@@ -1247,6 +1294,44 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_jobs_ibfk_2` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // #1462: tenant-local, append-only delivery-completion evidence. The parent is deliberately
+    // one-per-job and the child stores only normalized private image metadata; storage keys and
+    // hashes never leave the authenticated API surface. Keep these before delivery-run tables so
+    // repair-apply can create them on a partially provisioned tenant without a dependency gap.
+    delivery_completion_evidence: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence` (\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_job_id` int NOT NULL,\n"
+            + "  `signature_file_path` varchar(800) DEFAULT NULL,\n"
+            + "  `signature_mime_type` varchar(120) DEFAULT NULL,\n"
+            + "  `signature_file_size_bytes` bigint DEFAULT NULL,\n"
+            + "  `signature_sha256` char(64) DEFAULT NULL,\n"
+            + "  `attached_by` int DEFAULT NULL,\n"
+            + "  `attached_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_completion_evidence_job` (`delivery_job_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_job` FOREIGN KEY (`delivery_job_id`) REFERENCES `delivery_jobs` (`delivery_job_id`) ON DELETE CASCADE ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_attached_by` FOREIGN KEY (`attached_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_completion_evidence_images: Object.freeze({
+        sql: "CREATE TABLE `delivery_completion_evidence_images` (\n"
+            + "  `delivery_completion_evidence_image_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_completion_evidence_id` int NOT NULL,\n"
+            + "  `file_path` varchar(800) NOT NULL,\n"
+            + "  `mime_type` varchar(120) NOT NULL,\n"
+            + "  `file_size_bytes` bigint NOT NULL,\n"
+            + "  `sha256` char(64) NOT NULL,\n"
+            + "  `sort_order` int NOT NULL DEFAULT 0,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_completion_evidence_image_id`),\n"
+            + "  KEY `idx_delivery_completion_evidence_images_parent` (`delivery_completion_evidence_id`),\n"
+            + "  CONSTRAINT `fk_delivery_completion_evidence_images_parent` FOREIGN KEY (`delivery_completion_evidence_id`) REFERENCES `delivery_completion_evidence` (`delivery_completion_evidence_id`) ON DELETE CASCADE ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // #1273/#1081 Phase 224: groups many delivery_jobs rows under one manual operational run.
     // delivery_jobs.pos_transaction_id (above) stays UNIQUE, untouched by this table.
     delivery_runs: Object.freeze({
@@ -1260,6 +1345,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `notes` text,\n"
             + "  `created_by` int DEFAULT NULL,\n"
             + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `transportation_label` varchar(120) DEFAULT NULL,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`delivery_run_id`),\n"
@@ -1307,6 +1393,68 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `delivery_run_personnel_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `fk_delivery_run_personnel_delivery_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Phase 334 (#1887): tenant-local append-only courier cash custody and remittance ledger.
+    // Keep the dependency order: remittance -> allocation -> variance. No per-column repair entry
+    // is needed because these are wholly new tables; the migration and this fresh-provisioning
+    // registry are the two creation surfaces for them.
+    delivery_run_remittances: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittances` (\n"
+            + "  `delivery_run_remittance_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_id` int NOT NULL,\n"
+            + "  `location_id` int NOT NULL,\n"
+            + "  `confirmed_by` int NOT NULL,\n"
+            + "  `confirmed_at` datetime NOT NULL,\n"
+            + "  `total_expected_amount` decimal(14,4) NOT NULL,\n"
+            + "  `total_remitted_amount` decimal(14,4) NOT NULL,\n"
+            + "  `total_variance_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_remittances_run` (`delivery_run_id`),\n"
+            + "  KEY `idx_delivery_run_remittances_location_confirmed` (`location_id`,`confirmed_at`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_run` FOREIGN KEY (`delivery_run_id`) REFERENCES `delivery_runs` (`delivery_run_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittances_confirmed_by` FOREIGN KEY (`confirmed_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_run_remittance_allocations: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittance_allocations` (\n"
+            + "  `delivery_run_remittance_allocation_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_remittance_id` int NOT NULL,\n"
+            + "  `pos_transaction_id` int NOT NULL,\n"
+            + "  `delivery_personnel_id` int DEFAULT NULL,\n"
+            + "  `delivery_personnel_name` varchar(255) DEFAULT NULL,\n"
+            + "  `expected_amount` decimal(14,4) NOT NULL,\n"
+            + "  `remitted_amount` decimal(14,4) NOT NULL,\n"
+            + "  `variance_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_allocation_id`),\n"
+            + "  UNIQUE KEY `uq_delivery_run_remittance_allocations_transaction` (`delivery_run_remittance_id`,`pos_transaction_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_allocations_transaction` (`pos_transaction_id`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_remittance` FOREIGN KEY (`delivery_run_remittance_id`) REFERENCES `delivery_run_remittances` (`delivery_run_remittance_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_transaction` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_allocations_personnel` FOREIGN KEY (`delivery_personnel_id`) REFERENCES `delivery_personnel` (`delivery_personnel_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_run_remittance_variances: Object.freeze({
+        sql: "CREATE TABLE `delivery_run_remittance_variances` (\n"
+            + "  `delivery_run_remittance_variance_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `delivery_run_remittance_allocation_id` int NOT NULL,\n"
+            + "  `entry_type` enum('original','reversal') NOT NULL,\n"
+            + "  `reversal_of_variance_id` int DEFAULT NULL,\n"
+            + "  `direction` enum('shortage','overage') NOT NULL,\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `reason` text NOT NULL,\n"
+            + "  `recorded_by` int NOT NULL,\n"
+            + "  `recorded_at` datetime NOT NULL,\n"
+            + "  PRIMARY KEY (`delivery_run_remittance_variance_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_variances_allocation` (`delivery_run_remittance_allocation_id`),\n"
+            + "  KEY `idx_delivery_run_remittance_variances_reversal` (`reversal_of_variance_id`),\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_allocation` FOREIGN KEY (`delivery_run_remittance_allocation_id`) REFERENCES `delivery_run_remittance_allocations` (`delivery_run_remittance_allocation_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_reversal` FOREIGN KEY (`reversal_of_variance_id`) REFERENCES `delivery_run_remittance_variances` (`delivery_run_remittance_variance_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_delivery_run_remittance_variances_recorded_by` FOREIGN KEY (`recorded_by`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     pos_transaction_discount_lines: Object.freeze({
         sql: "CREATE TABLE `pos_transaction_discount_lines` (\n"
@@ -2308,6 +2456,16 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         }),
         idx_delivery_jobs_run_status: Object.freeze({
             sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_status` (`delivery_run_id`,`status`)"
+        }),
+        idx_delivery_jobs_run_loading_state: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_run_loading_state` (`delivery_run_id`,`loading_state`)"
+        })
+    }),
+    delivery_runs: Object.freeze({
+        // Phase 260 (#1489): scheduled_date is the range start, so the required index must include
+        // the nullable range end and use the migration's replacement name.
+        idx_delivery_runs_status_scheduled_range: Object.freeze({
+            sql: "ALTER TABLE `delivery_runs` ADD INDEX `idx_delivery_runs_status_scheduled_range` (`status`,`scheduled_date`,`scheduled_date_end`)"
         })
     }),
     delivery_runs: Object.freeze({

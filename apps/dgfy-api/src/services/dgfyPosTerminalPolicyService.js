@@ -39,6 +39,14 @@ const parseJsonSetting = (setting) => {
   }
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+  Array.isArray(rawValue)
+    ? Array.from(new Set(rawValue
+      .map((userId) => Number.parseInt(userId, 10))
+      .filter((userId) => Number.isInteger(userId) && userId > 0)))
+    : null
+);
+
 export const validateDgfyPosTerminalPolicy = async ({
   tenantId,
   terminalId,
@@ -84,13 +92,17 @@ export const validateDgfyPosTerminalPolicy = async ({
     });
     const lookup = new Map(settings.map((setting) => [setting.setting_key, setting]));
     const registry = parseJsonSetting(lookup.get('pos_terminal_registry'))
-      .map((entry) => ({
-        terminal_id: sanitizeTerminalId(entry?.terminal_id),
-        label: String(entry?.label || '').trim(),
-        location_id: parsePositiveInt(entry?.location_id),
-        is_active: entry?.is_active !== false,
-        device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
-      }))
+      .map((entry) => {
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+        return {
+          terminal_id: sanitizeTerminalId(entry?.terminal_id),
+          label: String(entry?.label || '').trim(),
+          location_id: parsePositiveInt(entry?.location_id),
+          ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
+          is_active: entry?.is_active !== false,
+          device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
+        };
+      })
       .filter((entry) => entry.terminal_id && entry.is_active);
     const mode = String(lookup.get('pos_terminal_registry_mode')?.setting_value || 'warn').trim().toLowerCase() === 'enforce'
       ? 'enforce'
@@ -179,6 +191,26 @@ export const validateDgfyPosTerminalPolicy = async ({
           { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_LOCATION_NOT_GRANTED' } } }
         );
         }
+      const assignedCashierIds = registryEntry?.cashier_user_ids;
+      if (
+        Array.isArray(assignedCashierIds)
+        && assignedCashierIds.length > 0
+        && !assignedCashierIds.includes(resolvedTenantUserId)
+      ) {
+        throw new DomainError(
+          DomainErrorCode.AUTHORIZATION_FAILED,
+          'This cashier is not assigned to the selected terminal.',
+          {
+            statusCode: 403,
+            details: {
+              terminal_identity_policy: {
+                ...context,
+                reason_code: 'CASHIER_TERMINAL_NOT_ASSIGNED'
+              }
+            }
+          }
+        );
+      }
     }
 
     if (registryEntry?.device_enforcement === 'strict' && deviceProof?.verified !== true) {

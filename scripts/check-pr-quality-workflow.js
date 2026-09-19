@@ -323,6 +323,8 @@ const ADVISORY_JOB_NAMES = [...QUALITY_JOB_NAMES, 'gate', 'salvage-api-evidence'
 // *absent* from STEP_OUTCOMES, not missing.
 const REPORTING_EXCLUDED_STEP_ID = 'stop_services';
 const REPORTER_JOB_NAME = 'report-advisory-failures';
+const BACKEND_MATRIX_JOB_NAME = 'dgfy-api-quality';
+const BACKEND_MATRIX_STEP_ID = 'run_test_matrix';
 
 // #1431 Phase 1 (2026-09-02), PR-A: 7 of the 8 `gate:release:local`-covered steps are now blocking
 // on the `release/*->main` leg (and workflow_dispatch/workflow_call) -- step-level
@@ -374,7 +376,11 @@ const BLOCKING_STEP_IDS = {
   'repository-dependency-quality': ['run_production_env_fixtures', 'run_dependency_audit_prod', 'run_compliance_contracts'],
   'repository-ci-contracts-quality': ['validate_pr_quality_workflow', 'validate_runner_routing', 'validate_workspace_hygiene', 'validate_compliance_sweep'],
   'repository-docs-quality': ['run_docs_lint', 'check_whitespace'],
-  'frontend-budgets-quality': ['check_frontend_budgets']
+  'frontend-budgets-quality': ['check_frontend_budgets'],
+  // #1856: a swallowed or partial Playwright install must fail before the browser E2E suite can
+  // produce a misleading launch error. The quality job remains advisory at the job level, but this
+  // deterministic environment check is intentionally blocking within that job.
+  'frontend-ims-pos-sales-e2e-quality': ['verify_playwright_install']
 };
 
 // #1431 Phase C/D (2026-09-03): two of the 16 gates in gate-release-local.js's CI_ENFORCED_GATES
@@ -461,6 +467,94 @@ function checkStagingLegSkipShape(qualityWorkflowText) {
       );
     }
   }
+  return problems;
+}
+
+/**
+ * #1432: the backend matrix is intentionally advisory while its baseline failures are repaired,
+ * but that does not make its resource and evidence safeguards optional. A future edit that drops
+ * the worker bound, worker memory limit, heap cap, or target-SHA binding can turn a known advisory
+ * failure into an OOM/hang or an artifact that cannot be attributed to the promotion candidate.
+ * Keep this check scoped to the matrix step rather than accepting matching env names elsewhere in
+ * the workflow.
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when the matrix safeguards are intact
+ */
+function checkBackendMatrixResourceGuards(qualityWorkflowText) {
+  const problems = [];
+  const jobMatch = qualityWorkflowText.match(
+    new RegExp(`\\n  ${BACKEND_MATRIX_JOB_NAME}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+  );
+  if (!jobMatch) {
+    problems.push(
+      `promotion-quality-gate.yml: could not find the "${BACKEND_MATRIX_JOB_NAME}:" job block -- ` +
+      'checkBackendMatrixResourceGuards needs updating to match.'
+    );
+    return problems;
+  }
+
+  const stepsIndex = jobMatch[1].indexOf('\n    steps:\n');
+  const stepsBlock = stepsIndex === -1 ? '' : jobMatch[1].slice(stepsIndex);
+  const stepChunks = stepsBlock.split(/\n(?= {6}- )/).slice(1);
+  const matrixStep = stepChunks.find((chunk) => new RegExp(`\\bid:\\s*${BACKEND_MATRIX_STEP_ID}\\b`).test(chunk));
+  if (!matrixStep) {
+    problems.push(
+      `promotion-quality-gate.yml: "${BACKEND_MATRIX_JOB_NAME}" has no step with id ` +
+      `"${BACKEND_MATRIX_STEP_ID}" -- the backend matrix was renamed or removed.`
+    );
+    return problems;
+  }
+
+  const envLines = matrixStep.match(/^ {10}([A-Z0-9_]+):\s*(.*)$/gm) || [];
+  const envValues = new Map();
+  for (const line of envLines) {
+    const match = line.match(/^ {10}([A-Z0-9_]+):\s*(.*)$/);
+    if (match) {
+      envValues.set(match[1], envValues.has(match[1]) ? null : match[2].trim());
+    }
+  }
+
+  const nodeOptions = envValues.get('NODE_OPTIONS');
+  const heapMatch = typeof nodeOptions === 'string'
+    ? nodeOptions.match(/(?:^|\s)--max-old-space-size=(\d+)(?:\s|$)/)
+    : null;
+  if (!heapMatch || Number(heapMatch[1]) < 1 || Number(heapMatch[1]) > 4096) {
+    problems.push(
+      `promotion-quality-gate.yml: "${BACKEND_MATRIX_STEP_ID}" must set ` +
+      '`NODE_OPTIONS` with --max-old-space-size between 1 and 4096 MiB -- the matrix needs a ' +
+      'bounded heap on the constrained runner.'
+    );
+  }
+
+  const maxWorkers = envValues.get('BACKEND_TEST_MATRIX_FAST_MAX_WORKERS');
+  if (!maxWorkers || !/^\d+$/.test(maxWorkers) || Number(maxWorkers) < 2) {
+    problems.push(
+      `promotion-quality-gate.yml: "${BACKEND_MATRIX_STEP_ID}" must set ` +
+      '`BACKEND_TEST_MATRIX_FAST_MAX_WORKERS` to an integer >= 2 -- lower values can force the ' +
+      'entire fast tier into one in-band process on hosted runners.'
+    );
+  }
+
+  const workerMemoryLimit = envValues.get('BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT');
+  const workerMemoryMatch = typeof workerMemoryLimit === 'string'
+    ? workerMemoryLimit.match(/^(\d+(?:\.\d+)?)[KMG]$/)
+    : null;
+  if (!workerMemoryMatch || Number(workerMemoryMatch[1]) <= 0) {
+    problems.push(
+      `promotion-quality-gate.yml: "${BACKEND_MATRIX_STEP_ID}" must set ` +
+      '`BACKEND_TEST_MATRIX_FAST_WORKER_IDLE_MEMORY_LIMIT` to a non-zero K/M/G memory limit -- ' +
+      'worker recycling is part of the #1432 OOM mitigation.'
+    );
+  }
+
+  if (envValues.get('RELEASE_TARGET_SHA') !== '${{ github.sha }}') {
+    problems.push(
+      `promotion-quality-gate.yml: "${BACKEND_MATRIX_STEP_ID}" must set ` +
+      '`RELEASE_TARGET_SHA: ${{ github.sha }}` so backend evidence is bound to the promotion head.'
+    );
+  }
+
   return problems;
 }
 
@@ -888,6 +982,7 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkPromotionPrefixSync(complianceScriptText, qualityWorkflowText),
     ...checkRunnerCacheConsistency(prChecksText),
     ...checkStagingLegSkipShape(qualityWorkflowText),
+    ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
     ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
@@ -925,6 +1020,7 @@ module.exports = {
   checkPromotionPrefixSync,
   checkRunnerCacheConsistency,
   checkStagingLegSkipShape,
+  checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
@@ -939,6 +1035,8 @@ module.exports = {
   ADVISORY_JOB_NAMES,
   REPORTING_EXCLUDED_STEP_ID,
   REPORTER_JOB_NAME,
+  BACKEND_MATRIX_JOB_NAME,
+  BACKEND_MATRIX_STEP_ID,
   REQUIRED_PR_CHECKS_MARKERS,
   REQUIRED_QUALITY_MARKERS
 };

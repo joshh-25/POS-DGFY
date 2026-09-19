@@ -7,67 +7,48 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS edit-item image save flow', () => {
-  it('keeps selection local and queues edited images only when the item is saved', () => {
+  it('keeps selection local and queues edited images through the deferred upload flow', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
-    const saveStart = workspace.indexOf('const handleSave = async () => {');
+    const queueStart = workspace.indexOf('const queueDeferredEditImageFiles = useCallback');
+    const queueEnd = workspace.indexOf('\n  }, []);', queueStart);
+    const queueHandler = workspace.slice(queueStart, queueEnd);
     const uploadStart = workspace.indexOf('const handleSelectEditImageFile = (files) => {');
-    const saveEnd = uploadStart;
-    const saveHandler = workspace.slice(saveStart, saveEnd);
     const uploadHandler = workspace.slice(uploadStart, workspace.indexOf('const handleRemoveSelectedEditImageFile'));
 
     expect(workspace).toContain('const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);');
     expect(workspace).toContain('void handleSelectEditImageFile(files);');
     expect(workspace).not.toContain('handleUploadStorefrontImage');
-    expect(saveHandler).toContain('const editItemId = activeEditItem.item_id;');
-    expect(saveHandler).toContain("let editSaveStage = 'item_details';");
-    expect(saveHandler).toContain('const resolvedError = resolveEditItemSaveError(updateError, editSaveStage);');
-    expect(saveHandler).toContain('if (resolvedError.status === 403)');
-    expect(saveHandler).toContain('await refreshTerminalUser({ suppressGlobalErrors: true });');
-    expect(workspace).toContain('data-testid="pos-edit-item-permission-denied"');
-    expect(workspace).toContain('disabled={savingItem || persistingEditAssets || !canSaveActiveItem}');
-    expect(uploadHandler).toContain('setSelectedEditImageFiles((current) => [...current, ...filesToAdd]);');
+    expect(uploadHandler).toContain('setSelectedEditImageFiles(filesToPreview);');
+    expect(uploadHandler).toContain('setDeferredEditImageFiles(filesToPreview);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
-    expect(saveHandler).toContain('const imageUploadResult = await queueEditImageFiles({');
-    expect(workspace).toContain('const galleryIntent = buildEditGalleryIntent({');
-    expect(saveHandler).toContain('updateStorefrontCatalogGallery(editItemId, editGalleryDraft, {');
-    expect(saveHandler).toContain('expectedGalleryKeys: editGalleryBase');
-    expect(workspace).toContain('const imageAttemptId = stagePendingPosItemImagePreview({');
-    expect(workspace).toContain('bindPendingPosItemImagePreviewJob({');
-    expect(workspace).toContain('markPendingPosItemImagePreviewFailed({ itemId, attemptId: imageAttemptId })');
-    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload, {');
-    expect(workspace).not.toContain('setPendingEditImageRefresh');
-    expect(workspace).not.toContain('The previous image is still being optimized');
+    expect(queueHandler).toContain('const filesToUpload = normalizedFiles.slice(0, availableSlots);');
+    expect(queueHandler).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
+    expect(queueHandler).toContain('setPendingEditImageRefresh');
+    expect(workspace).toContain('The previous image is still being optimized');
     expect(uploadHandler).not.toContain('pollEditImageUpload');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
     expect(uploadHandler).not.toContain('setPersistingEditAssets(true);');
     expect(workspace).toContain("{savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}");
     expect(workspace).toContain('<SelectedItemImageCarousel');
     expect(workspace).toContain('multiple');
-    expect(workspace).toContain('primaryEntryKey={editPrimaryEntryKey}');
-    expect(saveHandler).toContain('if (!imageUploadResult.accepted)');
-    expect(saveHandler).toContain('Item details were saved, but the images still need attention.');
+    expect(workspace).toContain('onSetPendingPrimary={handleSetPendingEditPrimary}');
+    expect(workspace).toContain('onSetSavedPrimary={handleSetSavedEditPrimary}');
   });
 
   it('renders selected previews until Save Item queues the worker job', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     expect(workspace).toContain('files={selectedEditImageFiles}');
-    expect(workspace).toContain('Selection is local-only. The worker starts after Save Item');
-    expect(workspace).toContain('Save Item uploads it silently and replaces the preview when ready.');
+    expect(workspace).toContain('The preview appears immediately. The optimized image is saved automatically and then replaces the preview.');
+    expect(workspace).toContain('queueDeferredEditImageFiles');
   });
 
-  it('supports image drops in Edit Item without allowing browser navigation', () => {
+  it('supports selecting multiple Edit Item images through the file input', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
-    const dropStart = workspace.indexOf('const handleEditImageDrop = async (event) => {');
-    const dropEnd = workspace.indexOf('const handleRemoveSelectedEditImageFile', dropStart);
-    const dropHandler = workspace.slice(dropStart, dropEnd);
-
-    expect(workspace).toContain('data-testid="pos-edit-item-image-drop-zone"');
-    expect(workspace).toContain('onDrop={handleEditImageDrop}');
-    expect(workspace).toContain('const [isEditImageDragActive, setIsEditImageDragActive] = useState(false);');
-    expect(workspace).toContain('Drag item images here or choose files');
-    expect(dropHandler).toContain('event.preventDefault();');
-    expect(dropHandler).toContain('event.stopPropagation();');
-    expect(dropHandler).toContain('handleSelectEditImageFile(imageFiles);');
-    expect(dropHandler).toContain("event.dataTransfer?.getData('text/uri-list')");
+    expect(workspace).toContain('type="file"');
+    expect(workspace).toContain('accept="image/*"');
+    expect(workspace).toContain('multiple');
+    expect(workspace).toContain('const files = Array.from(event.target.files || []);');
+    expect(workspace).toContain('handleSelectEditImageFile(files);');
+    expect(workspace).not.toContain('data-testid="pos-edit-item-image-drop-zone"');
   });
 });

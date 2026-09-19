@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-// Phase 227 (#1273). Covers the Active Queue's bulk "add to run" selection: the retail gate,
+// Phase 227 (#1273), widened #1924. Covers the Active Queue's bulk "add to run" selection: the
 // select-all-eligible skipping ineligible orders, selection surviving a re-ordered/errored poll,
 // the ineligible-drift hint, the target-run picker's exclusion rules, submitting one batched
 // addDeliveryRunMembers call, idempotency-key retention/regeneration, the 409 recovery loop
@@ -20,7 +20,9 @@ vi.mock('../services/deliveryRunService.js', () => ({
   setDeliveryRunPersonnel: vi.fn(),
   addDeliveryRunMembers: vi.fn(),
   removeDeliveryRunMember: vi.fn(),
-  dispatchDeliveryRun: vi.fn()
+  dispatchDeliveryRun: vi.fn(),
+  updateDeliveryRunMemberLoading: vi.fn(),
+  confirmDeliveryRunLoading: vi.fn()
 }));
 
 vi.mock('sonner', () => ({
@@ -105,13 +107,19 @@ beforeEach(() => {
   fetchDeliveryRun.mockResolvedValue(null);
 });
 
-describe('Retail gate', () => {
-  it('renders the toolbar and per-card checkbox only in retail mode', async () => {
+describe('Delivery-run-mode gate (#1924)', () => {
+  it('renders the toolbar and per-card checkbox in retail and fnb modes', async () => {
     const { unmount } = render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'retail' })} />);
     expect(await screen.findByLabelText(/Select order 9001/i)).toBeTruthy();
     unmount();
 
     render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'fnb' })} />);
+    expect(await screen.findByLabelText(/Select order 9001/i)).toBeTruthy();
+    expect(await screen.findByText(/Select delivery orders below/i)).toBeTruthy();
+  });
+
+  it('hides the toolbar and per-card checkbox for an unsupported mode', () => {
+    render(<IncomingQueueWorkspace {...baseProps({ workflowMode: 'services' })} />);
     expect(screen.queryByLabelText(/Select order 9001/i)).toBeNull();
     expect(screen.queryByText(/Select delivery orders below/i)).toBeNull();
   });

@@ -22,6 +22,11 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>`.
   cannot be resolved from repository evidence. Do not post a routine “plan ready” comment. The
   comment must state the evidence, the exact decision needed, and the consequence of each option.
   On the first live run, report the proposed comment and wait for operator confirmation.
+- **Missing `## Acceptance criteria` on the linked issue is not, by itself, an implementation-
+  blocking ambiguity** (#1908) — whether an issue carries acceptance criteria is `pm`'s decision, not
+  Planner's to enforce. Do not set `status: needs-decision`, withhold the `/implement` handoff, or
+  post a comment solely because the section is absent; if it's relevant to Worker's later `Closes`
+  vs. `Refs` choice, note it under the plan's Risks/Non-goals and move on.
 
 ## Artifact
 
@@ -53,3 +58,12 @@ session must refresh the plan after the issue decision is resolved.
 
 This role is distinct from `/pm`: `/pm` files/shapes issues and manages project state; `/planner`
 turns an existing issue/epic into a local implementation contract.
+
+## Manual handoff input
+
+When a session resumes from `/handoff`, accept `/planner <issue-or-epic-number> @.tmp/handoff-<...>.md`.
+Validate the `dgfy-handoff/v1` schema, confirm the issue or epic and `role: planner`, and use the
+artifact only as a snapshot of prior progress. Re-read the live issue and authoritative docs; they
+win over the artifact. A missing, malformed, mismatched, or ambiguous handoff is a hard stop with
+an instruction to rerun `/handoff` or resume without the artifact. Without a handoff artifact, the
+existing planner workflow is unchanged.

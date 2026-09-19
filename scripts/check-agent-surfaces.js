@@ -38,6 +38,7 @@ const ROLE_SHIMS = {
   'incident-responder': ['.claude/skills/incident-responder/SKILL.md'],
   notes: ['.claude/skills/notes/SKILL.md'],
   planner: ['.claude/skills/planner/SKILL.md'],
+  handoff: ['.claude/skills/handoff/SKILL.md'],
 };
 
 const SHIM_LINE_CAP = 25;

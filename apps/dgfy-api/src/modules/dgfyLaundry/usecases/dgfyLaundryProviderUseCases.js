@@ -1,6 +1,6 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-const LAUNDRY_ORIGIN = 'https://laundry.dgfy.ph';
+const LAUNDRY_ORIGIN = 'https://laundry.surebizcorp.com';
 const ISSUER = process.env.DGFY_OIDC_ISSUER || 'https://api.dgfy.ph/oidc';
 const toTrimmed = (value) => String(value || '').trim();
 

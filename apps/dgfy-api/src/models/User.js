@@ -70,6 +70,10 @@ const User = sequelize.define('User', {
     allowNull: true,
     defaultValue: []
   },
+  staff_role_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   is_master_admin: {
     type: DataTypes.BOOLEAN,
     defaultValue: false,

@@ -554,6 +554,26 @@ what that path requires — nothing added "anyway"; it's the mechanism itself. F
 `scripts/sync-app-version-baselines.js` (+ its test file),
 `.agents/skills/promoter/SKILL.md`/`references/promotion-runbook.md`, issue #1807.
 
+### 2026-09-17 — Separate candidate identity from the physical staging head used for release cuts
+
+The first live promotion exercising the candidate-manifest validator exposed a latent assumption:
+GitHub can fast-forward a staging promotion PR even when the promoter invokes `gh pr merge --merge`.
+In that case the frozen candidate source identity used for OCI provenance remains the initial or
+latest repair SHA, while the physical `origin/staging` head used to cut `release/<candidate>` is a
+different SHA. Requiring `release_revision.source_staging_sha` to equal `current_staging_sha`
+therefore rejects a valid fast-forward promotion and surfaces only at the release step.
+
+**Resolution:** candidate manifests may record `staging_head_sha`, the actual staging head after
+the staging promotion/repair merge. A released candidate must have this field, and its
+`release_revision.source_staging_sha` must equal it. `current_staging_sha` remains unchanged as
+the candidate source identity consumed by per-app production provenance resolution. The promoter
+runbook now requires recording `staging_head_sha` immediately after the staging merge, before
+cutting the release branch.
+
+`[default]` tier — a release-process clarification and validator correction; Decisions 6–8's
+candidate identity and per-app provenance semantics are unchanged. No production deploy is
+authorized from a manifest that fails this validation.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest

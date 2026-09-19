@@ -282,7 +282,7 @@ skill files reference it rather than restating it.
 
 ## Board status semantics
 
-The eight `Status` options on project #10, and what moves a card between them. Adopted 2026-08-14,
+The nine `Status` options on project #10, and what moves a card between them. Adopted 2026-08-14,
 answering the open checkbox #331 left unresolved ("the 8 existing Status options — keep all, and
 define what moves a card between each"). The `pm` skill (#367) drives this table; it is not
 reinvented per session.
@@ -299,19 +299,20 @@ below for the two transitions that *are* a native GitHub Projects workflow — e
 | **Todo** | Accepted for the current/next iteration, no unresolved blocker | `pm` | `In progress` |
 | **In progress** | A branch exists or work has genuinely started | `implement` (Worker) | `For Review`, when a PR opens |
 | **For Review** | PR open, awaiting review/merge | `implement` (Worker) | `For QA` on merge; back to `In progress` if changes are requested |
-| **For QA** | Merged to `develop`, needs verification on a deployed environment | `pr-reviewer` (Reviewer), only when the PR used `Refs #N` — see "Issue linkage" below | `Done`, or `Failed` |
+| **For QA** | Merged to `develop`, has standalone acceptance criteria, and needs verification on a deployed environment | `pr-reviewer` (Reviewer), only when the PR used `Refs #N` and the acceptance-criteria gate passes — see "Issue linkage" below | `For Prod`, or `Failed` |
+| **For Prod** | Staging verification passed; the issue is awaiting the production deployment that will complete it | `verifier` (Verifier/QA) | `Done` |
 | **Failed** | QA rejected it | `verifier` (Verifier/QA) | `In progress` — **never** back to `Backlog`; the failed attempt stays visible rather than disappearing |
-| **Done** | Verified. Issue closes. | `verifier` (Verifier/QA), or automatic (workflow) when a `Closes #N` PR merges | — |
+| **Done** | The change has been confirmed on production and the issue closes, or the issue needs no deployed verification and a `Closes #N` PR merges | `promoter` after the production deploy, or automatic (workflow) when a `Closes #N` PR merges | — |
 | **Cancelled** | Won't do. Issue closes, **with a reason left as a comment** — a bare status flip with no explanation is not enough. | `pm`, or a human | — |
 
 No WIP limit is defined — #331 said "consider" one, but nothing in this repo enforces it, so adding
 one to the table would be decoration rather than policy. Revisit if the board actually needs one in
 practice, not preemptively.
 
-Added 2026-08-16 (#512/#546): `promoter` and `incident-responder` own no lane in this table.
-Promotion PRs aren't per-issue cards, and `incident-responder` orchestrates the five existing roles
-rather than moving Status itself — each sub-step's move is made by the role that already owns it
-above.
+Added 2026-09-12 (#1681): `promoter` owns the post-production `For Prod` → `Done` transition.
+Promotion PRs aren't per-issue cards, but the promoter is the role that can confirm the candidate
+actually reached production. `incident-responder` still orchestrates the existing roles rather than
+moving Status itself — each sub-step's move is made by the role that owns it above.
 
 ### What the board automates already
 
@@ -332,12 +333,13 @@ QA` if the issue closes at merge.** The QA lane only exists for issues that stay
 This is why "Issue linkage" below splits `Closes` vs. `Refs` rather than using `Closes` uniformly.
 
 **The reverse direction does not happen automatically.** A `For QA` issue is still *open* when
-`verifier` acts on it — none of the three native workflows above fire from a Status field write
-alone, only from the issue actually closing. So a `verifier` `Done` write is **two actions, not
-one**: the project Status field write (`Done`, option `98236657`) *and* an explicit `gh issue close
-<N>` on the issue itself. Skipping the second half leaves the card reading `Done` while the issue
-stays open indefinitely — a `Failed` write, by contrast, is Status-only, since the issue is
-supposed to stay open in that case.
+`verifier` acts on it — none of the native workflows above fire from a Status field write alone.
+Verifier therefore writes `For Prod` (option `9f202543`) only; the issue stays open for the
+production deployment. After the promotion parity gate and release record confirm production,
+`promoter` performs the final **two actions**: write `Done` (option `98236657`) and explicitly run
+`gh issue close <N>`. Skipping the close leaves the card reading `Done` while the issue stays open
+indefinitely. A `Failed` write remains Status-only, since the issue is supposed to stay open in that
+case.
 
 ---
 
@@ -348,18 +350,40 @@ Every PR needs a linked issue. A PR that advances an epic without finishing it s
 
 ### Issue linkage: `Closes #N` vs. `Refs #N`
 
-Amended 2026-08-15 (#331 board-lane wiring). Which verb a PR uses decides whether its issue passes
-through the `For QA` lane at all — see "What the board automates already" above for why: closing an
-issue forces `Status = Done`, which skips QA entirely.
+Amended 2026-09-12 (#1681); amended again 2026-09-14 (#1908) to fix the ownership boundary on
+the last two bullets below. Which verb a PR uses decides whether its issue passes through the
+`For QA` lane at all — see "What the board automates already" above for why: closing an issue forces
+`Status = Done`, which skips QA entirely.
 
 - **`Closes #N`** — only for a diff that needs no deployed verification: docs-only, CI/workflow-only,
   or a pure `chore:` with no runtime behavior change. Merge closes the issue immediately, workflow
   sets `Done`.
-- **`Refs #N`** — everything else, which in practice means anything user-facing or behavior-changing.
-  The issue **stays open** through merge; the Reviewer sets `For QA` on it (see `pr-reviewer`'s merge
-  policy); a Verifier later flips it to `Done` (which closes it) or `Failed`.
-- **When genuinely unsure, use `Refs`.** An issue that lingers in `For QA` an extra day is
-  recoverable; an issue that auto-closes on `Done` without anyone verifying it is not.
+- **`Refs #N`** — a user-facing or behavior-changing diff whose linked issue is independently
+  QA-able. The issue must have a level-2 `## Acceptance criteria` section containing at least one
+  Markdown checklist item (`- [ ]` or `- [x]`); the gate applies uniformly to features, bugs, and
+  epics. The issue **stays open** through merge; the Reviewer sets `For QA` on it, the Verifier
+  advances it to `For Prod`, and the Promoter later advances it to `Done` and closes it.
+- **A non-independent sub-task** — one that has no standalone acceptance criteria and is covered by
+  a parent ticket's QA pass — uses `Closes #N` and goes straight to `Done` on merge. It must not be
+  sent through `For QA` merely because its implementation changed code; the independently testable
+  parent is the tracked QA item. **Whether an issue is this kind of sub-task, or one that should
+  carry its own criteria, is `pm`'s call** (`.agents/skills/pm/SKILL.md`) — Worker and Reviewer
+  don't infer it from the diff.
+- **Whether an issue carries an `## Acceptance criteria` section is `pm`'s decision alone, for the
+  whole life of the issue — not a precondition Planner, Worker, or Reviewer enforce before their own
+  step** (#1908). Pick `Closes` vs. `Refs` by whether the diff needs deployed verification (the two
+  bullets above), independent of whether the linked issue currently has a criteria section. A
+  behavior-changing issue with no criteria yet is **never** a reason to fall back to `Closes` — that
+  reintroduces the exact failure #555 and #771 caught (a diff needing verification auto-closing to
+  `Done` unseen). It is also never a reason to add, append, or demand the criteria yourself, or to
+  pause implementation, PR creation, or review to go get them — hand the gap to `pm` as input (per
+  `AGENTS.md`'s "Role handoffs and composite instructions") and proceed.
+- **If a `Refs`-linked issue doesn't yet pass the acceptance-criteria gate at merge time, that is
+  not a merge blocker.** The PR still opens, reviews, and merges normally; the Reviewer's post-merge
+  check (`.agents/skills/pr-reviewer/SKILL.md`, "Board transition — the QA handoff") simply can't
+  write `For QA` yet and flags the gap to `pm` instead. The card stays where it is until `pm` adds
+  the criteria and the transition is completed by hand — recoverable, unlike an issue that
+  auto-closed to `Done` unverified.
 
 This is a repo-wide rule, not just the `implement` skill's — any PR, agent-authored or not, follows
 it.

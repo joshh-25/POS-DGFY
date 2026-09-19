@@ -34,6 +34,15 @@ issue number, artifact path, planning head, scope summary, and acceptance summar
 file is ignored and must never be force-added merely to make it available to a reviewer. If no
 planner artifact is supplied, the existing Worker workflow remains unchanged.
 
+## Manual session handoff input
+
+An explicit `/handoff` may resume this role with `/implement @.tmp/handoff-<...>.md`. Validate the
+`dgfy-handoff/v1` schema, confirm `role: implementer`, and confirm any issue or PR identity matches
+the live task. Treat the artifact as a progress snapshot only: re-validate the issue and
+authoritative docs, surface conflicts before editing, and never force-add the ignored file. A
+missing, malformed, mismatched, or ambiguous handoff is a hard stop; without one, the existing
+Worker workflow is unchanged.
+
 ## Checkpoint policy — stop and ask before proceeding
 
 No branch protection exists on this repo (no CODEOWNERS, no required-review config) — a self-imposed
@@ -148,7 +157,7 @@ handoffs and composite instructions".
 
 ## Board transitions
 
-Added 2026-08-15 (#331 board-lane wiring). Worker owns two of the eight `Status` lanes on project
+Added 2026-08-15 (#331 board-lane wiring). Worker owns two of the nine `Status` lanes on project
 #10 — the full lifecycle and the `Who moves it` ownership table live in
 `docs/process/ISSUE-TAXONOMY.md`'s "Board status semantics"; read it there rather than expecting
 this section to restate it.

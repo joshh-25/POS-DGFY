@@ -45,7 +45,7 @@ import {
     settingsScopeLabel,
     shouldBlockSettingsNavigation
 } from './businessAdminSettingsModel.js';
-import { SettingsWorkspace } from '../../../../../packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx';
+import SettingsWorkspace from '../../../../../packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx';
 import { publishBusinessAdminSettingsUpdated } from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
 import UserManagementModal from '../../../../../packages/web-core/Components/users/UserManagementModal.jsx';
 import './businessAdmin.css';

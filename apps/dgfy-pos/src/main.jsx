@@ -34,6 +34,13 @@ import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
 
+// Keep POS-only body portals (dialogs, menus, and notifications) on the same
+// typography stack as the shell, including routes that render before the
+// terminal layout mounts.
+if (typeof document !== 'undefined') {
+  document.body.setAttribute('data-pos-surface', 'pos');
+}
+
 // The fixed Chrome 80-84 iMin WebView pays a large full-screen compositing
 // cost for backdrop blur. Install one POS-only marker before React mounts so
 // every shared and hand-built modal gets the same low-effects profile.

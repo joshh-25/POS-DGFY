@@ -26,7 +26,8 @@ import {
     POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY,
     POS_TERMINAL_REGISTRY_KEY,
     buildStrictBindingTransitionPatch,
-    assertStrictBindingReadiness
+    assertStrictBindingReadiness,
+    assertTerminalCashierAssignments
 } from './posTerminalLocationBindingPolicy.js';
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 import { assertPublicStorefrontHandleAvailable } from './publicStorefrontHandlePolicy.js';
@@ -186,6 +187,7 @@ export const buildUpdateSettingByKeyUseCase = ({
         try {
             let normalizedValue = value;
             let strictBindingRegistryPatch = null;
+            let terminalRegistryEntriesForValidation = null;
             if (key === PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY) {
                 return fail(new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,
@@ -365,11 +367,19 @@ export const buildUpdateSettingByKeyUseCase = ({
                     settingsRepository
                 });
                 strictBindingRegistryPatch = strictBindingTransitioningOn ? patchedRegistry : null;
+                if (strictBindingTransitioningOn) {
+                    terminalRegistryEntriesForValidation = strictBindingRegistryPatch;
+                    if (!terminalRegistryEntriesForValidation && typeof settingsRepository?.getSettingsByKeys === 'function') {
+                        const current = await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY]);
+                        terminalRegistryEntriesForValidation = current?.[POS_TERMINAL_REGISTRY_KEY]?.value || [];
+                    }
+                }
             }
             if (key === POS_TERMINAL_LOCATION_BINDING_ENFORCED_KEY && normalizedValue === true) {
                 await assertStrictBindingReadiness({ settingsRepository });
             }
             if (key === POS_TERMINAL_REGISTRY_KEY) {
+                terminalRegistryEntriesForValidation = normalizedValue;
                 const current = typeof settingsRepository?.getSettingsByKeys === 'function'
                     ? await settingsRepository.getSettingsByKeys([POS_TERMINAL_REGISTRY_KEY])
                     : {};
@@ -378,6 +388,11 @@ export const buildUpdateSettingByKeyUseCase = ({
                     currentEntries: current?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
                 });
             }
+
+            await assertTerminalCashierAssignments({
+                settingsRepository,
+                entries: terminalRegistryEntriesForValidation
+            });
 
             const tenant = getTenantComplianceSnapshot();
             if (tenant?.id) {

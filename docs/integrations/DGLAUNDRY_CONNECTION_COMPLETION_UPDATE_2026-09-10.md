@@ -42,5 +42,5 @@ deployed SHAs plus evidence for valid OIDC JWKS/discovery, exact callback
 registration, separate browser and machine clients, P-256 request verification,
 Ed25519 event verification, replay/key rotation, onboarding approval and
 mapping, storefront behavior, and quote-to-refund order reconciliation.
-Staff activation and the one-branch commerce canary remain disabled until the
+Staff activation and all-approved commerce enablement remain disabled until the
 shared tests, recovery, and monitoring gates pass.

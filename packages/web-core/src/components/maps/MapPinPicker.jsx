@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as maplibreModule from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { Crosshair, Maximize2, Search as SearchIcon, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import MapPinExpansionOverlay, { getScrollableAncestor } from './MapPinExpansionOverlay.jsx';
 import {
   DEFAULT_CENTER,
   TILING_SERVER,
@@ -26,6 +28,25 @@ const MIN_ZOOM = 4;
 const MAX_ZOOM = 18;
 const RADIUS_SOURCE = 'delivery-radius';
 const MAP_READY_TIMEOUT_MS = 1500;
+const STOREFRONT_LOCATION_MAP_HEIGHT_CLASS = 'h-[260px] rounded-2xl sm:h-[340px] lg:h-[420px]';
+const MAP_EXPANSION_DESKTOP_MAX_WIDTH_PX = 1040;
+const MAP_EXPANSION_DESKTOP_MAX_HEIGHT_PX = 620;
+const MAP_EXPANSION_DEFAULT_MAX_HEIGHT_PX = 680;
+const MOBILE_ACTION_BAR_RESERVE_PX = 88;
+
+const getMapExpansionInset = (viewportWidth) => {
+  if (viewportWidth >= 1024) return 24;
+  if (viewportWidth >= 640) return 18;
+  return 12;
+};
+
+const getViewportSize = () => {
+  const viewport = typeof window !== 'undefined' ? window.visualViewport : null;
+  return {
+    width: Math.max(0, Number(viewport?.width || window.innerWidth || 0)),
+    height: Math.max(0, Number(viewport?.height || window.innerHeight || 0))
+  };
+};
 
 const getGeolocationErrorMessage = (error) => {
   if (error?.code === 1) {
@@ -124,6 +145,85 @@ function createCirclePolygon(centerLng, centerLat, radiusMeters, steps = 64) {
   return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [coords] } };
 }
 
+function LocationSearchControls({
+  addressQuery,
+  setAddressQuery,
+  searchAddress,
+  addressResults,
+  addressSearchError,
+  isSearchingAddress,
+  selectAddress,
+  clearAddressSearch,
+  expanded = false
+}) {
+  return (
+    <div
+      className="space-y-2"
+      role="search"
+      aria-label={expanded ? 'Search for a storefront location in the expanded map' : 'Search for a storefront location'}
+    >
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#5B739B]" aria-hidden="true" />
+          <Input
+            type="search"
+            value={addressQuery}
+            onChange={(event) => setAddressQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                searchAddress();
+              }
+            }}
+            placeholder="Search for an address"
+            aria-label="Search business address"
+            className="h-11 rounded-xl border-slate-300 pl-10 pr-11 text-[13px]"
+          />
+          {addressQuery ? (
+            <button
+              type="button"
+              aria-label="Clear address search"
+              title="Clear address search"
+              onClick={clearAddressSearch}
+              className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          onClick={searchAddress}
+          disabled={isSearchingAddress}
+          aria-label={isSearchingAddress ? 'Searching address' : 'Search address'}
+          title={isSearchingAddress ? 'Searching address' : 'Search address'}
+          className="h-11 w-11 shrink-0 rounded-xl bg-[#1A4E8D] px-0 text-[13px] font-bold text-white hover:bg-[#143F73] sm:w-auto sm:px-5"
+        >
+          <SearchIcon className="h-4 w-4 sm:mr-1.5" aria-hidden="true" />
+          <span className="hidden sm:inline">{isSearchingAddress ? 'Searching...' : 'Search'}</span>
+        </Button>
+      </div>
+      {addressResults.length > 0 ? (
+        <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="listbox" aria-label="Address search results">
+          {addressResults.map((result) => (
+            <button
+              key={`${result.psgc_code || result.address_line}-${result.latitude}-${result.longitude}`}
+              type="button"
+              role="option"
+              aria-selected="false"
+              className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]"
+              onClick={() => selectAddress(result)}
+            >
+              {result.address_line}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {addressSearchError ? <p className="text-xs text-red-600" role="alert">{addressSearchError}</p> : null}
+    </div>
+  );
+}
+
 export default function MapPinPicker({
   latitude,
   longitude,
@@ -131,6 +231,10 @@ export default function MapPinPicker({
   addressLine = '',
   onChange,
   defaultAdjustMode = false,
+  readOnly = false,
+  locationEditorMode = false,
+  expansionBoundaryRef = null,
+  expansionScrollParentRef = null,
   className
 }) {
   const containerRef = useRef(null);
@@ -154,6 +258,11 @@ export default function MapPinPicker({
   const [addressResults, setAddressResults] = useState([]);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState('');
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapExpandBounds, setMapExpandBounds] = useState(null);
+  const [mapExpandScrimBounds, setMapExpandScrimBounds] = useState(null);
+  const expandButtonRef = useRef(null);
+  const expandedTitleId = useId();
   const effectivePositionRef = useRef(null);
 
   const rawPosition = useMemo(() => {
@@ -176,11 +285,132 @@ export default function MapPinPicker({
     if (!Number.isFinite(parsed) || parsed <= 0) return 0;
     return parsed * 1000;
   }, [deliveryRadiusKm]);
+  const isLocationEditorMode = locationEditorMode && !readOnly;
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
   useEffect(() => { effectivePositionRef.current = effectivePosition; }, [effectivePosition]);
   useEffect(() => { setAddressQuery(String(addressLine || '')); }, [addressLine]);
+  const getMapExpansionContentBounds = () => {
+    const boundary = expansionBoundaryRef?.current;
+    const bounds = boundary?.getBoundingClientRect?.();
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return null;
+    const viewport = getViewportSize();
+    if (viewport.width <= 0 || viewport.height <= 0) return null;
+    const boundaryRight = Number.isFinite(bounds.right) ? bounds.right : bounds.left + bounds.width;
+    const boundaryBottom = Number.isFinite(bounds.bottom) ? bounds.bottom : bounds.top + bounds.height;
+
+    // The feature boundary can extend behind the sticky POS header while its
+    // scroll parent is moving. Intersect both rectangles so the expanded map
+    // stays inside the active Settings viewport and never covers that header.
+    const scrollParent = expansionScrollParentRef?.current || getScrollableAncestor(boundary);
+    const isDocumentScrollParent = scrollParent === document.body
+      || scrollParent === document.documentElement
+      || scrollParent === document.scrollingElement;
+    const measuredScrollParentBounds = !isDocumentScrollParent
+      ? scrollParent?.getBoundingClientRect?.()
+      : null;
+    const scrollParentBounds = measuredScrollParentBounds
+      && measuredScrollParentBounds.width > 0
+      && measuredScrollParentBounds.height > 0
+      ? measuredScrollParentBounds
+      : null;
+    const contentLeft = Math.max(
+      Number.isFinite(bounds.left) ? bounds.left : 0,
+      Number.isFinite(scrollParentBounds?.left) ? scrollParentBounds.left : 0
+    );
+    const contentRight = Math.min(
+      boundaryRight,
+      Number.isFinite(scrollParentBounds?.right) ? scrollParentBounds.right : viewport.width
+    );
+    const contentTop = Math.max(
+      Number.isFinite(bounds.top) ? bounds.top : 0,
+      Number.isFinite(scrollParentBounds?.top) ? scrollParentBounds.top : 0
+    );
+    const contentBottom = Math.min(
+      boundaryBottom,
+      Number.isFinite(scrollParentBounds?.bottom) ? scrollParentBounds.bottom : viewport.height
+    );
+
+    const bottomReserve = isLocationEditorMode && viewport.width < 640
+      ? MOBILE_ACTION_BAR_RESERVE_PX
+      : 0;
+    const leftEdge = Math.max(contentLeft, 0);
+    const rightEdge = Math.min(contentRight, viewport.width);
+    const topEdge = Math.max(contentTop, 0);
+    const bottomEdge = Math.min(contentBottom, viewport.height - bottomReserve);
+    if (rightEdge <= leftEdge || bottomEdge <= topEdge) return null;
+    return { left: leftEdge, right: rightEdge, top: topEdge, bottom: bottomEdge, viewport };
+  };
+
+  const getMapExpandBounds = () => {
+    const contentBounds = getMapExpansionContentBounds();
+    if (!contentBounds) return null;
+    const { viewport, left: contentLeft, right: contentRight, top: contentTop, bottom: contentBottom } = contentBounds;
+    const inset = getMapExpansionInset(viewport.width);
+    const leftEdge = contentLeft + inset;
+    const rightEdge = contentRight - inset;
+    const topEdge = contentTop + inset;
+    const bottomEdge = contentBottom - inset;
+    const availableWidth = rightEdge - leftEdge;
+    const availableHeight = bottomEdge - topEdge;
+    if (availableWidth <= 0 || availableHeight <= 0) return null;
+
+    // Keep the expanded surface readable on large screens without taking over
+    // the whole Settings workspace. Mobile keeps the full safe width so the
+    // search and close controls remain usable at narrow device sizes.
+    const maxWidth = viewport.width >= 640
+      ? Math.min(MAP_EXPANSION_DESKTOP_MAX_WIDTH_PX, availableWidth)
+      : availableWidth;
+    const maxHeight = Math.min(
+      viewport.width >= 1024 ? MAP_EXPANSION_DESKTOP_MAX_HEIGHT_PX : MAP_EXPANSION_DEFAULT_MAX_HEIGHT_PX,
+      availableHeight
+    );
+    const left = leftEdge + ((availableWidth - maxWidth) / 2);
+    const top = topEdge + ((availableHeight - maxHeight) / 2);
+    return {
+      left: `${left}px`,
+      top: `${top}px`,
+      width: `${maxWidth}px`,
+      height: `${maxHeight}px`
+    };
+  };
+
+  const getMapExpansionScrimBounds = () => {
+    const contentBounds = getMapExpansionContentBounds();
+    if (!contentBounds) return null;
+    return {
+      left: `${contentBounds.left}px`,
+      top: `${contentBounds.top}px`,
+      width: `${contentBounds.right - contentBounds.left}px`,
+      height: `${contentBounds.bottom - contentBounds.top}px`
+    };
+  };
+
+  const closeMapExpanded = () => {
+    setIsMapExpanded(false);
+    setMapExpandBounds(null);
+    setMapExpandScrimBounds(null);
+  };
+
+  const toggleMapExpanded = () => {
+    if (isMapExpanded) {
+      closeMapExpanded();
+      return;
+    }
+
+    const nextBounds = getMapExpandBounds();
+    const nextScrimBounds = getMapExpansionScrimBounds();
+    if (!nextBounds || !nextScrimBounds) {
+      setLoadError('The map cannot be expanded in this view. Please resize the settings area and try again.');
+      return;
+    }
+    setLoadError('');
+    setMapExpandBounds(nextBounds);
+    setMapExpandScrimBounds(nextScrimBounds);
+    setIsMapExpanded(true);
+  };
+
   useEffect(() => {
     if (selectedPosition) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop synchronization must discard an obsolete draft pin.
@@ -276,6 +506,12 @@ export default function MapPinPicker({
     }
   };
 
+  const clearAddressSearch = () => {
+    setAddressQuery('');
+    setAddressResults([]);
+    setAddressSearchError('');
+  };
+
   const selectAddress = (result) => {
     const pin = {
       latitude: Number(result.latitude),
@@ -307,7 +543,7 @@ export default function MapPinPicker({
         const nextLongitude = toFixedCoordinate(position.coords.longitude);
         const nextAccuracyMessage = getAccuracyMessage(position.coords.accuracy);
         if (!isCoordinateInPhilippines({ latitude: nextLatitude, longitude: nextLongitude })) {
-          setLoadError('Your browser reported a location outside the Philippines. Please click the map or enter the storefront coordinates manually.');
+          setLoadError('Your browser reported a location outside the Philippines. Please click the map or search for the storefront address manually.');
           setIsLocating(false);
           return;
         }
@@ -411,9 +647,11 @@ export default function MapPinPicker({
         minZoom: MIN_ZOOM,
         maxZoom: MAX_ZOOM,
         trackResize: false,
+        attributionControl: false,
         bearing: 0,
         pitch: 0
       });
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
       applyMapLibreCanvasSizing(map);
       map.dragRotate.disable();
       map.touchZoomRotate.disableRotation();
@@ -456,7 +694,7 @@ export default function MapPinPicker({
 
     map.on('error', () => {
       if (!loadErrorRef.current && !isCancelled) {
-        const message = 'Map interaction is still available. You can place the pin or edit coordinates manually.';
+        const message = 'Map interaction is still available. You can place the pin or search for the storefront address.';
         loadErrorRef.current = message;
         setLoadError(message);
       }
@@ -614,113 +852,198 @@ export default function MapPinPicker({
     }
   }, [effectivePosition, radiusMeters]);
 
-  return (
-    <div className={cn('space-y-2', className)}>
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <Input
-            type="search"
-            value={addressQuery}
-            onChange={(event) => setAddressQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                searchAddress();
-              }
-            }}
-            placeholder="Search barangay, city, municipality, or address"
-            aria-label="Search business address"
-          />
-          <Button type="button" onClick={searchAddress} disabled={isSearchingAddress}>
-            {isSearchingAddress ? 'Searching...' : 'Search'}
+  const locationSearchControls = (
+    <LocationSearchControls
+      addressQuery={addressQuery}
+      setAddressQuery={setAddressQuery}
+      searchAddress={searchAddress}
+      addressResults={addressResults}
+      addressSearchError={addressSearchError}
+      isSearchingAddress={isSearchingAddress}
+      selectAddress={selectAddress}
+      clearAddressSearch={clearAddressSearch}
+      expanded
+    />
+  );
+
+  const mapContent = (
+    <div className="relative h-full min-h-0">
+      {isLocationEditorMode ? (
+        <div className="absolute left-3 top-3 z-20 sm:left-4 sm:top-4">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={centerToCurrentLocation}
+            disabled={isLocating}
+            aria-busy={isLocating}
+            className="min-h-11 max-w-full rounded-lg border-blue-200 bg-white px-3 text-[12px] font-bold text-[#1A4E8D] shadow-lg hover:bg-slate-50"
+          >
+            <Crosshair className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            {isLocating ? 'Locating...' : 'Use Current Location'}
           </Button>
         </div>
-        {addressResults.length > 0 ? (
-          <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="listbox" aria-label="Address search results">
-            {addressResults.map((result) => (
-              <button
-                key={`${result.psgc_code || result.address_line}-${result.latitude}-${result.longitude}`}
+      ) : null}
+      {isLocationEditorMode && !isMapExpanded ? (
+        <div className="absolute right-3 top-3 z-20 sm:right-4 sm:top-4">
+          <Button
+            ref={expandButtonRef}
+            type="button"
+            variant="outline"
+            onClick={toggleMapExpanded}
+            aria-label="Expand map"
+            title="Expand map"
+            className="h-11 min-h-11 w-11 rounded-lg border-blue-200 bg-white p-0 text-[#1A4E8D] shadow-lg hover:bg-slate-50"
+          >
+            <Maximize2 className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+      ) : null}
+      {!isMapReady ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-50 text-sm font-medium text-slate-600">
+          Loading map...
+        </div>
+      ) : null}
+      <div
+        ref={containerRef}
+        className="h-full w-full"
+        role="application"
+        aria-label="Map location picker"
+      />
+    </div>
+  );
+
+  return (
+    <div className={cn(isLocationEditorMode ? 'space-y-4' : 'space-y-2', className)}>
+      {!readOnly ? (
+        isLocationEditorMode ? (
+          !isMapExpanded ? (
+            <LocationSearchControls
+              addressQuery={addressQuery}
+              setAddressQuery={setAddressQuery}
+              searchAddress={searchAddress}
+              addressResults={addressResults}
+              addressSearchError={addressSearchError}
+              isSearchingAddress={isSearchingAddress}
+              selectAddress={selectAddress}
+              clearAddressSearch={clearAddressSearch}
+            />
+          ) : null
+        ) : (
+          <>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  type="search"
+                  value={addressQuery}
+                  onChange={(event) => setAddressQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      searchAddress();
+                    }
+                  }}
+                  placeholder="Search barangay, city, municipality, or address"
+                  aria-label="Search business address"
+                />
+                <Button type="button" onClick={searchAddress} disabled={isSearchingAddress}>
+                  {isSearchingAddress ? 'Searching...' : 'Search'}
+                </Button>
+              </div>
+              {addressResults.length > 0 ? (
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="listbox" aria-label="Address search results">
+                  {addressResults.map((result) => (
+                    <button
+                      key={`${result.psgc_code || result.address_line}-${result.latitude}-${result.longitude}`}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-900"
+                      onClick={() => selectAddress(result)}
+                    >
+                      {result.address_line}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {addressSearchError ? <p className="text-xs text-red-600">{addressSearchError}</p> : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-teal-50 p-2">
+              <Button
                 type="button"
-                role="option"
-                aria-selected="false"
-                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-900"
-                onClick={() => selectAddress(result)}
+                variant="outline"
+                size="sm"
+                className="border-amber-300 text-amber-900 hover:bg-amber-100"
+                onClick={resetViewport}
               >
-                {result.address_line}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {addressSearchError ? <p className="text-xs text-red-600">{addressSearchError}</p> : null}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-teal-50 p-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-amber-300 text-amber-900 hover:bg-amber-100"
-          onClick={resetViewport}
-        >
-          Reset View
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-teal-300 text-teal-900 hover:bg-teal-100"
-          onClick={centerToCurrentLocation}
-          disabled={isLocating || !isPinDragMode}
-        >
-          {isLocating ? 'Locating...' : 'Pin Current Location'}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            'border-slate-300 text-slate-800 hover:bg-slate-100',
-            isPinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
-          )}
-          onClick={handleAdjustPinClick}
-        >
-          {isPinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
-        </Button>
-      </div>
-      <div className="relative h-72 w-full overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-sm">
-        {!isMapReady ? (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-slate-50/60 text-sm font-medium text-slate-600 backdrop-blur-[1px]">
-            Loading map...
-          </div>
-        ) : null}
-        <div
-          ref={containerRef}
-          className="h-full w-full"
-          role="application"
-          aria-label="Map location picker"
-        />
-      </div>
-      {loadError ? (
-        <p className="text-xs text-red-600">{loadError}</p>
-      ) : (
+                Reset View
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-teal-300 text-teal-900 hover:bg-teal-100"
+                onClick={centerToCurrentLocation}
+                disabled={isLocating || !isPinDragMode}
+              >
+                {isLocating ? 'Locating...' : 'Pin Current Location'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'border-slate-300 text-slate-800 hover:bg-slate-100',
+                  isPinDragMode && 'border-teal-400 bg-teal-50 text-teal-800 hover:bg-teal-100'
+                )}
+                onClick={handleAdjustPinClick}
+              >
+                {isPinDragMode ? 'Stop Moving Pin' : 'Adjust Pin'}
+              </Button>
+            </div>
+          </>
+        )
+      ) : null}
+      <MapPinExpansionOverlay
+        open={isMapExpanded}
+        bounds={mapExpandBounds}
+        scrimBounds={mapExpandScrimBounds}
+        boundaryRef={expansionBoundaryRef}
+        scrollParentRef={expansionScrollParentRef}
+        anchorRef={expandButtonRef}
+        titleId={expandedTitleId}
+        onClose={closeMapExpanded}
+        getBounds={getMapExpandBounds}
+        getScrimBounds={getMapExpansionScrimBounds}
+        onBoundsChange={setMapExpandBounds}
+        onScrimBoundsChange={setMapExpandScrimBounds}
+        onMapResize={() => safeResizeMap(mapRef.current, containerRef.current)}
+        search={locationSearchControls}
+        collapsedClassName={readOnly || isLocationEditorMode ? STOREFRONT_LOCATION_MAP_HEIGHT_CLASS : 'h-72 rounded-xl'}
+      >
+        {mapContent}
+      </MapPinExpansionOverlay>
+      {loadError ? <p className="text-xs text-red-600">{loadError}</p> : !readOnly && !isLocationEditorMode ? (
         <p className="text-xs text-slate-500">
           {isPinDragMode
             ? 'Adjust mode is active. Click the map, drag the marker, or use current location to set the storefront pin.'
             : 'Location is locked. Press `Adjust Pin` before changing the storefront pin.'}
         </p>
-      )}
-      {accuracyMessage ? (
-        <p className="text-xs text-slate-600">{accuracyMessage}</p>
       ) : null}
-      {effectivePosition && radiusMeters > 0 ? (
+      {!readOnly && accuracyMessage ? (
+        <p className="text-xs text-slate-600" aria-live="polite">{accuracyMessage}</p>
+      ) : null}
+      {!readOnly && !isLocationEditorMode && effectivePosition && radiusMeters > 0 ? (
         <p className="text-xs text-teal-700">
           Delivery coverage preview: {(radiusMeters / 1000).toFixed(2)} km radius
         </p>
       ) : null}
-      <p className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-        {effectivePosition
-          ? `Pinned: ${effectivePosition.latitude.toFixed(6)}, ${effectivePosition.longitude.toFixed(6)}`
-          : 'No pin selected yet.'}
-      </p>
+      {!readOnly && !isLocationEditorMode ? (
+        <p className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+          {effectivePosition
+            ? `Pinned: ${effectivePosition.latitude.toFixed(6)}, ${effectivePosition.longitude.toFixed(6)}`
+            : 'No pin selected yet.'}
+        </p>
+      ) : null}
     </div>
   );
 }

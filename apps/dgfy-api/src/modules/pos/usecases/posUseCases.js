@@ -12,6 +12,10 @@ import {
 } from '../../compliance/index.js';
 import logger from '../../../config/logger.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
+import {
+    DELIVERY_EVIDENCE_MAX_IMAGES,
+    DELIVERY_EVIDENCE_SOURCE_MAX_BYTES
+} from '../../../config/uploadConfig.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolveMovementLocation } from '../../inventory/index.js';
 import {
@@ -49,12 +53,14 @@ import {
     buildLineStockPolicySubject
 } from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
+import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
+import { assertStaffAssignment, assertStaffLocationAccess } from '../../staff/index.js';
 // #712: direct ESM import of the singleton use case, matching the one existing cross-module
 // precedent (storeUseCases.js imports the same set from '../../vouchers/index.js').
 import {
@@ -157,6 +163,11 @@ const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 // constant here rather than an import, matching this file's own convention for the catalog-image
 // limit above.
 const BALANCE_PROOF_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+// Phase 330 (#1460): keep the source cap local to this use-case module, matching the existing
+// balance-proof validation convention. The uploader and persisted count enforce the same six-file
+// limit at the transport and business layers respectively.
+const PACKING_EVIDENCE_SOURCE_MAX_BYTES = 15 * 1024 * 1024;
+const PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER = 6;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
 const BULK_CATALOG_MAX_IMAGE_FILES = 50;
 const RESET_COUNTER_CONFIRMATION_TEXT = 'INCREMENT RESET COUNTER';
@@ -188,7 +199,12 @@ export const POS_OPERATION_KEYS = Object.freeze({
     // a legitimate retry with a different (e.g. one member removed) member set still replays
     // correctly. See buildDispatchDeliveryRunUseCase's own idempotency comment for the full
     // two-layer design (durable replay + per-member ALREADY_DISPATCHED skip).
-    DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch'
+    DELIVERY_RUN_DISPATCH: 'terminal.delivery_run_dispatch',
+    DELIVERY_RUN_MEMBER_LOADING: 'terminal.delivery_run_member_loading',
+    DELIVERY_RUN_LOADING_CONFIRM: 'terminal.delivery_run_loading_confirm',
+    DELIVERY_RUN_REMITTANCE_CONFIRM: 'terminal.delivery_run_remittance_confirm',
+    DELIVERY_RUN_VARIANCE_RESOLVE: 'terminal.delivery_run_variance_resolve',
+    DELIVERY_COMPLETION_EVIDENCE: 'terminal.delivery_completion_evidence'
 });
 
 // Phase 148 (#825): the methods staff may record a downpayment order's remaining balance with.
@@ -615,6 +631,51 @@ export const toSerializable = (value) => (
         ? value.toJSON()
         : value
 );
+
+const normalizePackingEvidenceImages = (value) => normalizeJsonArray(value)
+    .filter((entry) => isPlainObject(entry) && String(entry.image_id || '').trim());
+
+const toPublicPosTransaction = (value) => {
+    const serialized = toSerializable(value) || {};
+    const { packing_evidence_images: _privateEvidence, ...safeTransaction } = serialized;
+    return {
+        ...safeTransaction,
+        packing_evidence_count: normalizePackingEvidenceImages(_privateEvidence).length
+    };
+};
+
+const hasPermissionContext = (user = {}) => (
+    Array.isArray(user?.permissions)
+    || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+    || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+    || user?.staffRole !== undefined
+);
+
+const buildPackingEvidenceAuthorizationError = (reasonCode) => new DomainError(
+    DomainErrorCode.AUTHORIZATION_FAILED,
+    reasonCode === 'NOT_YOUR_PACKING'
+        ? 'Packing evidence can only be attached or viewed by the staff member who packed this order.'
+        : 'POS packing evidence permission is required.',
+    { statusCode: 403, details: { reason_code: reasonCode } }
+);
+
+const assertPackingEvidenceAccess = ({ order, user, broadPermission }) => {
+    if (!hasPermissionContext(user) || hasEffectivePermission(user, broadPermission)) return;
+    if (!hasEffectivePermission(user, PERMISSIONS.STAFF_FULFILLMENT.actions.PACK_ASSIGNED_ORDERS)) {
+        throw buildPackingEvidenceAuthorizationError('NOT_PERMITTED');
+    }
+    if (parsePositiveInt(order?.packed_by) !== parsePositiveInt(user?.user_id)) {
+        throw buildPackingEvidenceAuthorizationError('NOT_YOUR_PACKING');
+    }
+};
+
+const toPublicPackingEvidenceMetadata = (entry) => ({
+    image_id: String(entry?.image_id || '').trim(),
+    mime_type: String(entry?.mime_type || 'image/webp').trim() || 'image/webp',
+    size_bytes: Number.isFinite(Number(entry?.size_bytes)) ? Number(entry.size_bytes) : null,
+    attached_at: entry?.attached_at || null,
+    attached_by: parsePositiveInt(entry?.attached_by)
+});
 
 const toPublicPosTransactionAdjustment = (value) => {
     const serialized = toSerializable(value) || {};
@@ -1052,6 +1113,14 @@ const sanitizeTerminalId = (value) => {
     return TERMINAL_ID_PATTERN.test(normalized) ? normalized : '';
 };
 
+const normalizeTerminalCashierIds = (rawValue) => (
+    Array.isArray(rawValue)
+        ? Array.from(new Set(rawValue
+            .map((userId) => Number.parseInt(userId, 10))
+            .filter((userId) => Number.isInteger(userId) && userId > 0)))
+        : null
+);
+
 const parseTerminalRegistryFromSettings = (settings = {}) => {
     let rawRegistry = settings?.pos_terminal_registry?.value;
     if (typeof rawRegistry === 'string') {
@@ -1069,11 +1138,13 @@ const parseTerminalRegistryFromSettings = (settings = {}) => {
         const terminalId = sanitizeTerminalId(entry?.terminal_id);
         if (!terminalId || seen.has(terminalId)) continue;
         if (entry?.is_active === false) continue;
+        const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
         seen.add(terminalId);
         normalized.push({
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
-            location_id: parsePositiveInt(entry?.location_id)
+            location_id: parsePositiveInt(entry?.location_id),
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     }
     return normalized;
@@ -1094,11 +1165,15 @@ const resolveTerminalIdentityPolicySettings = async ({ posRepository, settings =
             : 'warn';
         const activeRegistry = Array.isArray(resolved?.active_registry)
             ? resolved.active_registry
-                .map((entry) => ({
-                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                    label: String(entry?.label || '').trim(),
-                    location_id: parsePositiveInt(entry?.location_id)
-                }))
+                .map((entry) => {
+                    const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                    return {
+                        terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                        label: String(entry?.label || '').trim(),
+                        location_id: parsePositiveInt(entry?.location_id),
+                        ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                    };
+                })
                 .filter((entry) => entry.terminal_id)
             : [];
 
@@ -1125,11 +1200,15 @@ const evaluateTerminalIdentityPolicy = ({ terminalId, policy = {}, operation }) 
         : 'warn';
     const activeRegistry = Array.isArray(policy?.active_registry)
         ? policy.active_registry
-            .map((entry) => ({
-                terminal_id: sanitizeTerminalId(entry?.terminal_id),
-                label: String(entry?.label || '').trim(),
-                location_id: parsePositiveInt(entry?.location_id)
-            }))
+            .map((entry) => {
+                const cashierUserIds = normalizeTerminalCashierIds(entry?.cashier_user_ids);
+                return {
+                    terminal_id: sanitizeTerminalId(entry?.terminal_id),
+                    label: String(entry?.label || '').trim(),
+                    location_id: parsePositiveInt(entry?.location_id),
+                    ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
+                };
+            })
             .filter((entry) => entry.terminal_id)
         : [];
     const registryByTerminalId = new Map(activeRegistry.map((entry) => [entry.terminal_id, entry]));
@@ -2090,6 +2169,100 @@ const executeInventoryStockCommand = async ({
     return commandFn(movementData, userId, transaction);
 };
 
+// #1952: best-effort post-commit POS catalog invalidation. The event is a refresh
+// prompt only — the location-filtered catalog read stays authoritative (ADR 0055) —
+// so a publisher failure is logged and must never fail the committed sale or void.
+const publishPosStockChange = async ({ publishCatalogChange, tenantId, reason, itemIds }) => {
+    if (typeof publishCatalogChange !== 'function') return;
+    const normalizedTenantId = String(tenantId || '').trim();
+    if (!normalizedTenantId) return;
+    const uniqueItemIds = [...new Set(
+        (Array.isArray(itemIds) ? itemIds : [itemIds])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0)
+    )];
+    if (uniqueItemIds.length === 0) return;
+    try {
+        await publishCatalogChange({ tenantId: normalizedTenantId, reason, itemIds: uniqueItemIds });
+    } catch (error) {
+        logger.warn('[PosUseCases] POS catalog invalidation failed; committed stock effect stands', {
+            tenant_id: normalizedTenantId,
+            reason,
+            error: error?.message || 'unknown'
+        });
+    }
+};
+
+// #1931: the stock-issue sequence formerly inline in buildUpdateOnlineOrderStatusUseCase's
+// completion branch, extracted verbatim so Retail's accept-time branch reuses it instead of
+// duplicating the loop body. Real-time stock sufficiency is enforced by createStockMovement's
+// own on-hand check -- a shortfall throws and rolls back the whole transaction (order status
+// included) via the caller's catch block. convertOnlineOrderInventory's expired/missing
+// outcomes stay informational (log, don't block): the reservation row is bookkeeping, never
+// the stock-safety authority, since expiry materializes lazily.
+const issueOnlineOrderStockForFulfillment = async ({
+    order,
+    posRepository,
+    stockCommands,
+    actingUserId,
+    transaction,
+    inventoryReservationService = null
+}) => {
+    if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
+        const stockMovements = await buildOnlineOrderStockMovements({
+            order,
+            posRepository,
+            options: {
+                transaction,
+                lock: true
+            }
+        });
+        for (const movement of stockMovements) {
+            await executeInventoryStockCommand({
+                inventoryCommandService: stockCommands,
+                command: 'issueStockForOnlineFulfillment',
+                movementData: movement,
+                userId: actingUserId,
+                transaction
+            });
+        }
+    }
+    if (inventoryReservationService?.convertOnlineOrderInventory) {
+        await inventoryReservationService.convertOnlineOrderInventory({
+            sourceId: order?.pos_transaction_id,
+            transaction
+        });
+    }
+};
+
+// #1931: one-time reversal of a Retail order's accept-time goods-issue for the
+// post-acceptance staff-reject path. Deliberately NOT routed through
+// executeInventoryStockCommand: its createStockMovement fallback would be wrong here (a
+// missing reversal command must fail closed, never degrade into an unrelated movement).
+const reverseOnlineOrderGoodsIssueForOrder = async ({
+    orderId,
+    stockCommands,
+    actingUserId,
+    transaction,
+    reason
+}) => {
+    const reverseFn = stockCommands?.reverseOnlineOrderGoodsIssue;
+    if (typeof reverseFn !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Inventory reversal command is unavailable for this order',
+            {
+                statusCode: 409,
+                details: {
+                    reason_code: 'INVENTORY_REVERSAL_UNAVAILABLE',
+                    order_id: orderId
+                }
+            }
+        );
+    }
+    return reverseFn({ order_id: orderId, reason }, actingUserId, transaction);
+};
+
 const validatePosInventoryIssues = async ({
     inventoryCommandService,
     preparedLines,
@@ -2858,7 +3031,11 @@ export const buildCheckoutPosUseCase = ({
     calculateServiceQuoteUseCase = null,
     completeClaimedPosParkedSaleUseCase = null,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
-    resolveLocationScope = resolvePosOperationalLocationScope
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    // #1952: existing tenant-scoped pos.catalog.changed publisher, wired from the
+    // module composition root. Null-safe: callers (and older tests) that omit it
+    // simply skip the best-effort invalidation.
+    publishCatalogChange = null
 }) => {
     // Phase 9: no `|| stockMovementService` fallback here anymore - a
     // mis-wired container (inventoryCommandService missing) must fail loudly
@@ -4489,6 +4666,11 @@ export const buildCheckoutPosUseCase = ({
                 }, { transaction, lock: true });
             }
 
+            // #1952: item IDs with a real Inventory stock effect, published as a
+            // post-commit catalog invalidation so other open terminals converge.
+            // Exempt lines (stock_effect_type='stock_exempt') never reach the
+            // command below and are therefore never collected here.
+            const stockChangedItemIds = new Set();
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
                 // Recipe consumption always fires when the line has one, regardless
@@ -4513,6 +4695,8 @@ export const buildCheckoutPosUseCase = ({
                             userId: normalizedUserId,
                             transaction
                         });
+                        const recipeItemId = parsePositiveInt(movement.ingredient_item_id);
+                        if (recipeItemId) stockChangedItemIds.add(recipeItemId);
                     }
                 } else if (line.stock_effect_type !== 'stock_exempt') {
                     await executeInventoryStockCommand({
@@ -4530,6 +4714,8 @@ export const buildCheckoutPosUseCase = ({
                         userId: normalizedUserId,
                         transaction
                     });
+                    const directItemId = parsePositiveInt(line.item_id);
+                    if (directItemId) stockChangedItemIds.add(directItemId);
                 }
 
                 for (const modifier of line.fnb_modifiers_snapshot || []) {
@@ -4550,6 +4736,7 @@ export const buildCheckoutPosUseCase = ({
                         userId: normalizedUserId,
                         transaction
                     });
+                    stockChangedItemIds.add(linkedItemId);
                 }
             }
 
@@ -4571,7 +4758,30 @@ export const buildCheckoutPosUseCase = ({
                 transactionId: posTransactionId,
                 idempotentReplay: false
             });
-            if (ownsTransaction) await transaction.commit();
+            // #1952: publish the stock-change invalidation only after the stock
+            // effects are durable. Internally-owned transactions publish right
+            // after the local commit; caller-owned transactions defer via
+            // afterCommit so terminals are never notified about rolled-back stock.
+            // Idempotent replays return earlier and never reach this path.
+            const stockChangeInvalidation = () => publishPosStockChange({
+                publishCatalogChange,
+                tenantId,
+                reason: 'pos_sale_stock_changed',
+                itemIds: [...stockChangedItemIds]
+            });
+            if (ownsTransaction) {
+                await transaction.commit();
+                await stockChangeInvalidation();
+            } else if (transaction && typeof transaction.afterCommit === 'function') {
+                transaction.afterCommit(() => {
+                    stockChangeInvalidation().catch(() => {});
+                });
+            } else {
+                logger.warn('[PosUseCases] Skipped POS catalog invalidation: caller-owned transaction without afterCommit', {
+                    tenant_id: tenantId,
+                    pos_transaction_id: posTransactionId
+                });
+            }
 
             // Best-effort, post-commit: the enrollment was already validated pre-commit above, so
             // this only writes bookkeeping (attribution + earned commission) and must never fail
@@ -4732,7 +4942,7 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService }) => {
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService, publishCatalogChange = null }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
@@ -4907,6 +5117,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
                 : [];
             const stockReversals = [];
+            // #1952: IDs actually reversed, for the post-commit invalidation below.
+            const voidStockChangedItemIds = new Set();
             for (const movement of stockMovements || []) {
                 const quantity = Math.abs(Number(movement.quantity || 0));
                 if (quantity <= 0) continue;
@@ -4925,6 +5137,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     userId: actorUserId,
                     transaction
                 });
+                const reversedItemId = parsePositiveInt(movement.item_id);
+                if (reversedItemId) voidStockChangedItemIds.add(reversedItemId);
                 stockReversals.push({
                     original_movement_id: movement.movement_id || null,
                     reversal_movement_id: reversal?.movement_id || null
@@ -5042,6 +5256,16 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }, { transaction });
 
             await transaction.commit();
+
+            // #1952: void owns its transaction, so post-commit publication is
+            // safe here. Idempotent replays return earlier with no reversal and
+            // never reach this path. Best-effort: never fails the committed void.
+            await publishPosStockChange({
+                publishCatalogChange,
+                tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                reason: 'pos_void_stock_changed',
+                itemIds: [...voidStockChangedItemIds]
+            });
 
             // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
             // sale - must never fail the void that already succeeded.
@@ -5495,8 +5719,9 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
                 ...data,
                 transactions: (data?.transactions || []).map((row) => {
                     const status = printStatuses?.[row?.pos_transaction_id];
+                    const safeRow = toPublicPosTransaction(row);
                     return {
-                        ...row,
+                        ...safeRow,
                         receipt_print_status: status?.status || 'pending',
                         receipt_printed_at: status?.printed_at || null,
                         receipt_print_failure_reason: status?.reason_code || null,
@@ -5794,7 +6019,7 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                     { statusCode: 404 }
                 ));
             }
-            const serialized = toSerializable(data);
+            const serialized = toPublicPosTransaction(data);
             const adjustments = typeof posRepository?.listPosTransactionAdjustmentsForTransaction === 'function'
                 ? await posRepository.listPosTransactionAdjustmentsForTransaction(normalizedId)
                 : [];
@@ -9151,7 +9376,7 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 : {};
             return ok({
                 orders: orders.map((order) => {
-                    const serialized = toSerializable(order);
+                    const serialized = toPublicPosTransaction(order);
                     const status = printStatuses?.[serialized?.pos_transaction_id];
                     const proofStatus = proofStatuses?.[serialized?.pos_transaction_id];
                     return {
@@ -9207,7 +9432,10 @@ export const buildListOnlineOrderHistoryUseCase = ({
                 page: query?.page,
                 limit: query?.limit
             });
-            return ok(history);
+            return ok({
+                ...history,
+                orders: (history?.orders || []).map(toPublicPosTransaction)
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list online order history'));
         }
@@ -9285,7 +9513,7 @@ export const buildGetAdminLocationMonitorUseCase = ({
 
             return ok({
                 location_id: locationScope.location_id,
-                orders: toSerializable(orders),
+                orders: orders.map(toPublicPosTransaction),
                 terminal_shifts: serializedTerminalShifts
             });
         } catch (error) {
@@ -9459,7 +9687,7 @@ const buildCollectCashOnlineOrderUseCase = ({
             }, { transaction });
 
             const responsePayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 collection: {
                     order_method: orderMethod,
                     payment_timing: paymentTiming,
@@ -9786,7 +10014,7 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
             }, { transaction });
 
             const responsePayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 settlement: {
                     order_method: orderMethod,
                     payment_method: paymentMethod,
@@ -10013,6 +10241,623 @@ export const buildGetOrderBalancePaymentProofUseCase = ({ posRepository, proofSt
         }
     };
 };
+
+// Phase 330 (#1460): optional, append-only packing evidence for online orders. The JSON ledger
+// field is private metadata; callers receive only safe descriptors while the storage key and
+// normalized-output SHA remain inside this use-case/repository boundary.
+export const buildAttachOrderPackingEvidenceUseCase = ({ posRepository, packingEvidenceStorage }) => {
+    return async ({ posTransactionId, files = [], user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const uploadFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+        const cleanupTempFiles = async () => {
+            await Promise.all(uploadFiles.map(async (file) => {
+                if (!file?.path) return;
+                try {
+                    await fs.unlink(file.path);
+                } catch {
+                    // Ignore temporary-upload cleanup errors.
+                }
+            }));
+        };
+
+        if (!orderId || !cashierId) {
+            await cleanupTempFiles();
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and authenticated user are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (uploadFiles.length === 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'At least one packing evidence image is required.',
+                { statusCode: 422, details: { reason_code: 'PACKING_EVIDENCE_IMAGE_REQUIRED' } }
+            ));
+        }
+
+        let transaction = null;
+        const storedFiles = [];
+        try {
+            for (const file of uploadFiles) {
+                const validation = await validateImageUploadFile({
+                    file,
+                    maxBytes: PACKING_EVIDENCE_SOURCE_MAX_BYTES
+                });
+                if (!validation.ok) {
+                    logger.warn('[PosUseCases] Rejected packing evidence upload due to file validation failure', {
+                        event_type: 'security_signal',
+                        signal_code: 'packing_evidence_upload_rejected',
+                        reason: validation.reason,
+                        reported_mime: String(file?.mimetype || '').trim().toLowerCase() || null
+                    });
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Only valid image files may be attached as packing evidence.',
+                        { statusCode: 422, details: { reason_code: 'PACKING_EVIDENCE_IMAGE_REJECTED', reason: validation.reason } }
+                    );
+                }
+            }
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+            }
+            if (!order.packed_at) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Packing evidence can only be attached after the order is packed.',
+                    { statusCode: 409, details: { reason_code: 'ORDER_NOT_PACKED' } }
+                );
+            }
+
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.TRANSACT_POS
+            });
+
+            const existingImages = normalizePackingEvidenceImages(order.packing_evidence_images);
+            const existingBySha = new Map(existingImages
+                .filter((entry) => String(entry.sha256 || '').trim())
+                .map((entry) => [String(entry.sha256).trim().toLowerCase(), entry]));
+            const newImages = [];
+            const newBySha = new Map();
+            const alreadyAttached = new Map();
+
+            for (const file of uploadFiles) {
+                const imageId = crypto.randomUUID();
+                const stored = await packingEvidenceStorage.store({
+                    orderId,
+                    tempPath: file.path,
+                    imageId
+                });
+                storedFiles.push(stored);
+                const sha256 = String(stored?.sha256 || '').trim().toLowerCase();
+                const duplicate = existingBySha.get(sha256) || newBySha.get(sha256);
+                if (duplicate) {
+                    alreadyAttached.set(String(duplicate.image_id), duplicate);
+                    await packingEvidenceStorage.remove(stored.storage_key);
+                    storedFiles.splice(storedFiles.lastIndexOf(stored), 1);
+                    continue;
+                }
+
+                const entry = {
+                    image_id: imageId,
+                    storage_key: stored.storage_key,
+                    mime_type: stored.mime_type,
+                    size_bytes: stored.size_bytes,
+                    sha256: stored.sha256,
+                    attached_at: new Date().toISOString(),
+                    attached_by: cashierId
+                };
+                newImages.push(entry);
+                newBySha.set(sha256, entry);
+            }
+
+            if (existingImages.length + newImages.length > PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `An order may have at most ${PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER} packing evidence images.`,
+                    { statusCode: 409, details: { reason_code: 'PACKING_EVIDENCE_LIMIT_EXCEEDED', max_images: PACKING_EVIDENCE_MAX_IMAGES_PER_ORDER } }
+                );
+            }
+
+            const combinedImages = [...existingImages, ...newImages];
+            if (newImages.length > 0) {
+                await posRepository.updateOrderById(orderId, {
+                    packing_evidence_images: combinedImages
+                }, { transaction });
+
+                // Audit only the successful new attachments. Storage keys, image ids, and raw file
+                // data are deliberately absent from the event metadata.
+                await posRepository.createAuditLog({
+                    user_id: cashierId,
+                    entity_type: 'pos_transaction',
+                    entity_id: orderId,
+                    action: 'UPDATE',
+                    changes: {
+                        event: 'order_packing_evidence_attached',
+                        count: newImages.length,
+                        images: newImages.map((entry) => ({
+                            sha256: entry.sha256,
+                            size_bytes: entry.size_bytes,
+                            mime_type: entry.mime_type
+                        }))
+                    },
+                    ip_address: auditContext.ipAddress || null,
+                    user_agent: auditContext.userAgent || null
+                }, { transaction });
+            }
+
+            await transaction.commit();
+            transaction = null;
+            storedFiles.length = 0;
+
+            return ok({
+                attached: newImages.map(toPublicPackingEvidenceMetadata),
+                already_attached: Array.from(alreadyAttached.values()).map(toPublicPackingEvidenceMetadata),
+                total_count: combinedImages.length
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            await Promise.all(storedFiles.map(async (stored) => {
+                try {
+                    await packingEvidenceStorage.remove(stored.storage_key);
+                } catch {
+                    // Ignore cleanup errors for orphaned private files.
+                }
+            }));
+            return fail(mapPosUseCaseError(error, 'Failed to attach packing evidence to this order'));
+        } finally {
+            await cleanupTempFiles();
+        }
+    };
+};
+
+const resolvePackingEvidenceOrder = async ({ posRepository, orderId, transaction }) => {
+    const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction });
+    if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online order not found.', { statusCode: 404 });
+    }
+    return order;
+};
+
+export const buildGetOrderPackingEvidenceListUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, user = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        if (!orderId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const order = await resolvePackingEvidenceOrder({ posRepository, orderId });
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.VIEW_POS
+            });
+            const images = normalizePackingEvidenceImages(order.packing_evidence_images);
+            return ok({
+                images: images.map(toPublicPackingEvidenceMetadata),
+                total_count: images.length
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list packing evidence for this order'));
+        }
+    };
+};
+
+export const buildGetOrderPackingEvidenceImageUseCase = ({ posRepository, packingEvidenceStorage }) => {
+    return async ({ posTransactionId, imageId, user = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const normalizedImageId = String(imageId || '').trim();
+        if (!orderId || !/^[0-9a-f-]{36}$/i.test(normalizedImageId)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A valid order and packing evidence image id are required.',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const order = await resolvePackingEvidenceOrder({ posRepository, orderId });
+            assertPackingEvidenceAccess({
+                order,
+                user,
+                broadPermission: PERMISSIONS.POS.actions.VIEW_POS
+            });
+            const image = normalizePackingEvidenceImages(order.packing_evidence_images)
+                .find((entry) => String(entry.image_id).trim().toLowerCase() === normalizedImageId.toLowerCase());
+            if (!image || !image.storage_key) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Packing evidence image not found.', { statusCode: 404 });
+            }
+
+            return ok({
+                mime_type: image.mime_type || 'image/webp',
+                size_bytes: Number.isFinite(Number(image.size_bytes)) ? Number(image.size_bytes) : null,
+                stream: packingEvidenceStorage.createReadStream(image.storage_key)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read packing evidence for this order'));
+        }
+    };
+};
+
+// #1462: evidence documents a delivery completion but is deliberately not part of the delivery
+// status transition. A manual job may receive evidence before or after `delivered`; failed and
+// cancelled jobs are the only terminal states that cannot accept an attestation.
+const getDeliveryCompletionEvidenceJob = (order, { allowTerminal = false } = {}) => {
+    if (!order || order.order_source !== ONLINE_ORDER_SOURCE || order.order_method !== 'delivery') {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Delivery order not found.', { statusCode: 404 });
+    }
+    const deliveryJob = order.deliveryJob;
+    if (!deliveryJob || String(deliveryJob.provider || '').trim().toLowerCase() !== 'manual') {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Manual delivery job not found.', { statusCode: 404 });
+    }
+    const jobStatus = String(deliveryJob.status || '').trim().toLowerCase();
+    if (!allowTerminal && ['failed', 'cancelled'].includes(jobStatus)) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Delivery evidence cannot be attached to a failed or cancelled delivery job.',
+            { statusCode: 409, details: { reason_code: 'DELIVERY_JOB_NOT_ATTESTABLE' } }
+        );
+    }
+    return deliveryJob;
+};
+
+const normalizeDeliveryEvidenceFiles = (files = {}) => {
+    const images = Array.isArray(files?.images) ? files.images.filter(Boolean) : [];
+    const signatures = Array.isArray(files?.signature) ? files.signature.filter(Boolean) : [];
+    if (signatures.length > 1) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Only one recipient signature may be attached.',
+            { statusCode: 422, details: { reason_code: 'DELIVERY_EVIDENCE_SIGNATURE_COUNT' } }
+        );
+    }
+    if (images.length > DELIVERY_EVIDENCE_MAX_IMAGES) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `No more than ${DELIVERY_EVIDENCE_MAX_IMAGES} delivery images may be attached.`,
+            { statusCode: 422, details: { reason_code: 'DELIVERY_EVIDENCE_IMAGE_COUNT' } }
+        );
+    }
+    return { images, signature: signatures[0] || null };
+};
+
+const validateAndDigestDeliveryEvidenceFile = async (file, kind, index = null) => {
+    const validation = await validateImageUploadFile({
+        file,
+        maxBytes: DELIVERY_EVIDENCE_SOURCE_MAX_BYTES
+    });
+    if (!validation.ok) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Only valid image files may be attached as delivery evidence.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'DELIVERY_EVIDENCE_IMAGE_REJECTED',
+                    kind,
+                    index,
+                    reason: validation.reason
+                }
+            }
+        );
+    }
+    const content = await fs.readFile(file.path);
+    if (content.length > DELIVERY_EVIDENCE_SOURCE_MAX_BYTES) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Delivery evidence image exceeds the maximum source size.',
+            { statusCode: 422, details: { reason_code: 'DELIVERY_EVIDENCE_IMAGE_TOO_LARGE', kind, index } }
+        );
+    }
+    return {
+        raw_sha256: crypto.createHash('sha256').update(content).digest('hex'),
+        raw_size_bytes: content.length,
+        reported_mime_type: validation.reportedMime
+    };
+};
+
+const publicDeliveryCompletionEvidence = ({ deliveryJobId, evidence, imageRows = [], idempotency = null }) => {
+    const serialized = toSerializable(evidence) || {};
+    const serializedImages = Array.isArray(serialized.images) ? serialized.images : imageRows;
+    const payload = {
+        delivery_job_id: parsePositiveInt(deliveryJobId),
+        has_evidence: true,
+        images: {
+            count: serializedImages.length,
+            items: serializedImages
+                .sort((left, right) => (Number(left?.sort_order || 0) - Number(right?.sort_order || 0)))
+                .map((image) => ({ image_id: parsePositiveInt(image?.delivery_completion_evidence_image_id || image?.image_id) }))
+                .filter((image) => image.image_id)
+        },
+        signature: { present: Boolean(serialized.signature_file_path) },
+        attached_by: parsePositiveInt(serialized.attached_by),
+        attached_at: serialized.attached_at instanceof Date
+            ? serialized.attached_at.toISOString()
+            : serialized.attached_at || null
+    };
+    if (idempotency) payload.idempotency = idempotency;
+    return payload;
+};
+
+const cleanupDeliveryEvidenceTempFiles = async (files = {}) => {
+    const paths = [
+        ...(Array.isArray(files?.images) ? files.images : []),
+        ...(Array.isArray(files?.signature) ? files.signature : [])
+    ].map((file) => file?.path).filter(Boolean);
+    await Promise.all(paths.map(async (filePath) => {
+        try {
+            await fs.unlink(filePath);
+        } catch {
+            // Ignore cleanup errors, matching the existing private payment-proof upload path.
+        }
+    }));
+};
+
+const loadDeliveryCompletionEvidence = async (posRepository, posTransactionId) => {
+    const order = await posRepository.getOrderByIdForLifecycle(posTransactionId);
+    const deliveryJob = getDeliveryCompletionEvidenceJob(order, { allowTerminal: true });
+    const evidence = await posRepository.findDeliveryCompletionEvidenceByDeliveryJobId(deliveryJob.delivery_job_id);
+    return { order, deliveryJob, evidence };
+};
+
+export const buildAttachDeliveryCompletionEvidenceUseCase = ({ posRepository, evidenceStorage }) => {
+    return async ({ posTransactionId, files = {}, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const staffId = parsePositiveInt(user?.user_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        let transaction = null;
+        let requestHash = null;
+        const storedFiles = [];
+
+        try {
+            if (!orderId) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'posTransactionId must be a positive integer', { statusCode: 422 });
+            }
+            if (!staffId) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Authenticated staff user is required.', { statusCode: 401 });
+            }
+
+            const normalizedFiles = normalizeDeliveryEvidenceFiles(files);
+            const preliminaryOrder = await posRepository.getOrderByIdForLifecycle(orderId);
+            const preliminaryJob = getDeliveryCompletionEvidenceJob(preliminaryOrder);
+            await assertStaffAssignment({
+                user,
+                resourceType: 'delivery_job',
+                resourceId: preliminaryJob.delivery_job_id
+            });
+
+            const imageDigests = [];
+            for (let index = 0; index < normalizedFiles.images.length; index += 1) {
+                const file = normalizedFiles.images[index];
+                const digest = await validateAndDigestDeliveryEvidenceFile(file, 'image', index);
+                imageDigests.push(digest);
+            }
+            const signatureDigest = normalizedFiles.signature
+                ? await validateAndDigestDeliveryEvidenceFile(normalizedFiles.signature, 'signature')
+                : null;
+            requestHash = hashPayload({
+                pos_transaction_id: orderId,
+                delivery_job_id: parsePositiveInt(preliminaryJob.delivery_job_id),
+                images: imageDigests,
+                signature: signatureDigest
+            });
+
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_COMPLETION_EVIDENCE,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_COMPLETION_EVIDENCE,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                transaction = null;
+                return ok(transactionReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            const deliveryJob = getDeliveryCompletionEvidenceJob(order);
+            await assertStaffAssignment({
+                user,
+                resourceType: 'delivery_job',
+                resourceId: deliveryJob.delivery_job_id,
+                transaction
+            });
+            const existingEvidence = await posRepository.findDeliveryCompletionEvidenceByDeliveryJobId(
+                deliveryJob.delivery_job_id,
+                { transaction, lock: true }
+            );
+            if (existingEvidence) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery completion evidence has already been attached.',
+                    { statusCode: 409, details: { reason_code: 'DELIVERY_EVIDENCE_ALREADY_ATTACHED' } }
+                );
+            }
+
+            for (const file of normalizedFiles.images) {
+                storedFiles.push(await evidenceStorage.store({ posTransactionId: orderId, tempPath: file.path }));
+            }
+            const storedSignature = normalizedFiles.signature
+                ? await evidenceStorage.store({ posTransactionId: orderId, tempPath: normalizedFiles.signature.path })
+                : null;
+            if (storedSignature) storedFiles.push(storedSignature);
+
+            const attachedAt = new Date();
+            const evidence = await posRepository.createDeliveryCompletionEvidence({
+                delivery_job_id: parsePositiveInt(deliveryJob.delivery_job_id),
+                signature_file_path: storedSignature?.storage_key || null,
+                signature_mime_type: storedSignature?.mime_type || null,
+                signature_file_size_bytes: storedSignature?.size_bytes || null,
+                signature_sha256: storedSignature?.sha256 || null,
+                attached_by: staffId,
+                attached_at: attachedAt
+            }, { transaction });
+            const imageRows = [];
+            for (let index = 0; index < storedFiles.length - (storedSignature ? 1 : 0); index += 1) {
+                const storedImage = storedFiles[index];
+                imageRows.push(await posRepository.createDeliveryCompletionEvidenceImage({
+                    delivery_completion_evidence_id: evidence.delivery_completion_evidence_id,
+                    file_path: storedImage.storage_key,
+                    mime_type: storedImage.mime_type,
+                    file_size_bytes: storedImage.size_bytes,
+                    sha256: storedImage.sha256,
+                    sort_order: index
+                }, { transaction }));
+            }
+
+            await posRepository.createAuditLog({
+                user_id: staffId,
+                entity_type: 'delivery_job',
+                entity_id: parsePositiveInt(deliveryJob.delivery_job_id),
+                action: 'UPDATE',
+                changes: {
+                    event: 'delivery_completion_evidence_attached',
+                    pos_transaction_id: orderId,
+                    image_count: imageRows.length,
+                    has_signature: Boolean(storedSignature),
+                    attached_at: attachedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = publicDeliveryCompletionEvidence({
+                deliveryJobId: deliveryJob.delivery_job_id,
+                evidence,
+                imageRows,
+                idempotency: {
+                    key: idempotencyKey || null,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            });
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_COMPLETION_EVIDENCE,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: staffId,
+                transaction
+            });
+            await transaction.commit();
+            transaction = null;
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            for (const stored of storedFiles) {
+                try {
+                    await evidenceStorage.remove(stored.storage_key);
+                } catch {
+                    // Ignore orphan cleanup failures; the audit/ops path can remove them later.
+                }
+            }
+            if (error instanceof DomainError && idempotencyKey && error.details?.idempotency?.outcome !== 'conflict') {
+                try {
+                    await persistOperationReplay({
+                        posRepository,
+                        operationKey: POS_OPERATION_KEYS.DELIVERY_COMPLETION_EVIDENCE,
+                        idempotencyKey,
+                        requestHash: requestHash || hashPayload({ pos_transaction_id: orderId }),
+                        replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                        responsePayload: serializeReplayFailure(error),
+                        createdBy: staffId
+                    });
+                } catch {
+                    // Preserve the original domain failure if replay persistence races or fails.
+                }
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to attach delivery completion evidence'));
+        } finally {
+            await cleanupDeliveryEvidenceTempFiles(files);
+        }
+    };
+};
+
+export const buildGetDeliveryCompletionEvidenceUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        if (!orderId) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'posTransactionId must be a positive integer', { statusCode: 422 }));
+        try {
+            const { deliveryJob, evidence } = await loadDeliveryCompletionEvidence(posRepository, orderId);
+            if (!evidence) {
+                return ok({
+                    delivery_job_id: parsePositiveInt(deliveryJob.delivery_job_id),
+                    has_evidence: false,
+                    images: { count: 0, items: [] },
+                    signature: { present: false },
+                    attached_by: null,
+                    attached_at: null
+                });
+            }
+            return ok(publicDeliveryCompletionEvidence({ deliveryJobId: deliveryJob.delivery_job_id, evidence }));
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to read delivery completion evidence'));
+        }
+    };
+};
+
+const buildGetDeliveryCompletionEvidenceStreamUseCase = ({ posRepository, evidenceStorage, kind }) => async ({ posTransactionId, imageId } = {}) => {
+    const orderId = parsePositiveInt(posTransactionId);
+    if (!orderId) return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'posTransactionId must be a positive integer', { statusCode: 422 }));
+    try {
+        const { evidence } = await loadDeliveryCompletionEvidence(posRepository, orderId);
+        if (!evidence) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Delivery completion evidence not found.', { statusCode: 404 });
+        if (kind === 'signature') {
+            if (!evidence.signature_file_path) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Delivery recipient signature not found.', { statusCode: 404 });
+            return ok({
+                mime_type: evidence.signature_mime_type,
+                size_bytes: Number(evidence.signature_file_size_bytes) || null,
+                stream: evidenceStorage.createReadStream(evidence.signature_file_path)
+            });
+        }
+        const image = await posRepository.findDeliveryCompletionEvidenceImageById(
+            imageId,
+            evidence.delivery_completion_evidence_id
+        );
+        if (!image || !image.file_path) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Delivery evidence image not found.', { statusCode: 404 });
+        return ok({
+            mime_type: image.mime_type,
+            size_bytes: Number(image.file_size_bytes) || null,
+            stream: evidenceStorage.createReadStream(image.file_path)
+        });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to read delivery completion evidence'));
+    }
+};
+
+export const buildGetDeliveryCompletionEvidenceImageUseCase = ({ posRepository, evidenceStorage }) => (
+    buildGetDeliveryCompletionEvidenceStreamUseCase({ posRepository, evidenceStorage, kind: 'image' })
+);
+
+export const buildGetDeliveryCompletionEvidenceSignatureUseCase = ({ posRepository, evidenceStorage }) => (
+    buildGetDeliveryCompletionEvidenceStreamUseCase({ posRepository, evidenceStorage, kind: 'signature' })
+);
 
 export const buildListActiveDeliveryPersonnelUseCase = ({
     posRepository,
@@ -10369,7 +11214,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
-                order: toSerializable(updatedOrder),
+                order: toPublicPosTransaction(updatedOrder),
                 delivery_job: toSerializable(updatedDeliveryJob),
                 assignment: {
                     delivery_personnel: toSerializable(personnel),
@@ -10424,6 +11269,9 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
+        const hasPermissionContext = Array.isArray(user?.permissions) || user?.staffRole != null || user?.role != null;
+        const broadAuthorization = hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+        const narrowAuthorization = !broadAuthorization && hasEffectivePermission(user, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS);
         const requestedStatus = String(payload?.status || '').trim().toLowerCase();
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const requestHash = hashPayload({
@@ -10535,22 +11383,45 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 );
             }
 
-            const activeShift = await assertOpenShiftForPosMutation({
-                posRepository,
-                cashierId,
-                locationId: orderLocationId,
-                transaction,
-                lock: true
-            });
-            const shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
-                order,
-                activeShift
-            });
-            if (Object.keys(shiftAttributionPayload).length > 0) {
-                await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+            let activeShift = null;
+            let shiftAttributionPayload = {};
+            if (narrowAuthorization) {
+                await assertStaffAssignment({
+                    user,
+                    resourceType: 'delivery_job',
+                    resourceId: deliveryJob.delivery_job_id,
+                    transaction
+                });
+                await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
+            } else if (broadAuthorization || !hasPermissionContext) {
+                activeShift = await assertOpenShiftForPosMutation({
+                    posRepository,
+                    cashierId,
+                    locationId: orderLocationId,
                     transaction,
                     lock: true
                 });
+                shiftAttributionPayload = buildOnlineOrderShiftAttributionPayload({
+                    order,
+                    activeShift
+                });
+                if (Object.keys(shiftAttributionPayload).length > 0) {
+                    await posRepository.updateOrderById(orderId, shiftAttributionPayload, {
+                        transaction,
+                        lock: true
+                    });
+                }
+            } else {
+                // The HTTP route admits only broad or assigned-delivery capability; retain a
+                // fail-closed guard for legacy/direct callers that provide a partial permission
+                // context, including the location boundary if this path is ever reached.
+                await assertStaffAssignment({
+                    user,
+                    resourceType: 'delivery_job',
+                    resourceId: deliveryJob.delivery_job_id,
+                    transaction
+                });
+                await assertStaffLocationAccess({ userId: cashierId, locationId: orderLocationId, transaction });
             }
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
             const hasPersonnel = Boolean(
@@ -10643,7 +11514,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                         provider: deliveryJob.provider,
                         previous_status: currentStatus,
                         status: requestedStatus,
-                        shift_id: activeShift.pos_terminal_shift_id,
+                        shift_id: activeShift?.pos_terminal_shift_id || null,
                         location_id: orderLocationId,
                         applied_at: mutationTimestamp.toISOString()
                     },
@@ -10658,7 +11529,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 deliveryJob: updatedDeliveryJob
             };
             const responsePayload = {
-                order: toSerializable(updatedOrder),
+                order: toPublicPosTransaction(updatedOrder),
                 delivery_job: toSerializable(updatedDeliveryJob),
                 status_transition: {
                     current_status: currentStatus,
@@ -10713,7 +11584,11 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     inventoryCommandService,
     commerceOrderLifecycleUseCase = null,
     activityRecorder = recordDgfyOrderActivity,
-    inventoryReservationService = null
+    inventoryReservationService = null,
+    // #1931: tenant workflow-mode gate for Retail's accept-time goods-issue. Injected (same
+    // pattern as storeUseCases.js) so unit tests pin the mode explicitly instead of hitting
+    // SystemSetting; pos/index.js wires the real resolver.
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
@@ -10823,13 +11698,22 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     } }
                 );
             }
-            const activeShift = await assertOpenShiftForPosMutation({
+            // Older internal callers pass only user_id and rely on the route to have performed
+            // authorization. Preserve that compatibility while enforcing the contract whenever a
+            // request carries the authenticated permission context.
+            const hasPermissionContext = Array.isArray(user?.permissions)
+                || Object.prototype.hasOwnProperty.call(user || {}, 'role')
+                || Object.prototype.hasOwnProperty.call(user || {}, 'is_master_admin')
+                || user?.staffRole !== undefined;
+            const hasBroadPosTransaction = !hasPermissionContext
+                || hasEffectivePermission(user, PERMISSIONS.POS.actions.TRANSACT_POS);
+            const activeShift = hasBroadPosTransaction ? await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId: actingUserId,
                 locationId: existing.location_id || null,
                 transaction,
                 lock: true
-            });
+            }) : null;
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {
                 throw new DomainError(
@@ -10837,6 +11721,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     'Current fulfillment state is invalid',
                     { statusCode: 409 }
                 );
+            }
+
+            // Narrow native staff may only perform the assigned packing transition. Keep this
+            // check in the use case as well as the route gate so direct callers cannot bypass it.
+            if (!hasBroadPosTransaction) {
+                if (targetStatus !== 'packed') {
+                    throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'Assigned staff may only pack orders.', { statusCode: 403, details: { reason_code: 'NOT_PERMITTED' } });
+                }
+                await assertStaffAssignment({ user, resourceType: 'order', resourceId: normalizedTransactionId, transaction });
             }
 
             validateOnlineOrderTransition({
@@ -10892,32 +11785,45 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
             const mutationTimestamp = new Date();
 
-            if (currentStatus !== 'completed' && targetStatus === 'completed') {
-                if (stockCommands?.issueStockForOnlineFulfillment || stockCommands?.createStockMovement) {
-                    const stockMovements = await buildOnlineOrderStockMovements({
-                        order: existing,
-                        posRepository,
-                        options: {
-                            transaction,
-                            lock: true
-                        }
-                    });
-                    for (const movement of stockMovements) {
-                        await executeInventoryStockCommand({
-                            inventoryCommandService: stockCommands,
-                            command: 'issueStockForOnlineFulfillment',
-                            movementData: movement,
-                            userId: actingUserId,
-                            transaction
-                        });
-                    }
-                }
-                if (inventoryReservationService?.convertOnlineOrderInventory) {
-                    await inventoryReservationService.convertOnlineOrderInventory({
-                        sourceId: normalizedTransactionId,
-                        transaction
-                    });
-                }
+            // #1931: Retail deducts stock at acceptance (placed -> confirmed), exactly once, even
+            // when the order is scheduled for later. Every other mode keeps the completion-time
+            // policy (ADR 0029 amendment, 2026-09-16). The `!existing.inventory_issued_at`
+            // evidence check is defense-in-depth alongside the edge guard below: `placed` has no
+            // incoming edges and the row lock above serializes concurrent accepts, so the branch
+            // can only commit once per order regardless of retries or idempotency keys.
+            const isAcceptTransition = currentStatus === 'placed' && targetStatus === 'confirmed';
+            let tenantWorkflowMode = null;
+            if (isAcceptTransition && !existing.inventory_issued_at) {
+                tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
+            }
+            let inventoryIssuedAt = null;
+            if (isAcceptTransition && tenantWorkflowMode === 'retail' && !existing.inventory_issued_at) {
+                await issueOnlineOrderStockForFulfillment({
+                    order: existing,
+                    posRepository,
+                    stockCommands,
+                    actingUserId,
+                    transaction,
+                    inventoryReservationService
+                });
+                inventoryIssuedAt = mutationTimestamp;
+            }
+
+            // Completion still deducts when no prior deduction exists (legacy Retail orders
+            // accepted before this change shipped, and every non-Retail order) and skips when
+            // the accept-time issue already ran -- persisted evidence, not a status assumption.
+            const inventoryAlreadyIssued = Boolean(existing.inventory_issued_at) || Boolean(inventoryIssuedAt);
+            let inventoryReversedAt = null;
+            if (currentStatus !== 'completed' && targetStatus === 'completed' && !inventoryAlreadyIssued) {
+                await issueOnlineOrderStockForFulfillment({
+                    order: existing,
+                    posRepository,
+                    stockCommands,
+                    actingUserId,
+                    transaction,
+                    inventoryReservationService
+                });
+                inventoryIssuedAt = mutationTimestamp;
             } else if (
                 currentStatus !== targetStatus
                 && ['cancelled', 'rejected'].includes(targetStatus)
@@ -10928,6 +11834,28 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     transaction,
                     reason: targetStatus
                 });
+                // #1931: a post-acceptance staff reject reverses the accept-time goods-issue,
+                // once. A pre-acceptance placed -> rejected never issued anything, so a plain
+                // reservation release remains correct there. The evidence check short-circuits
+                // before the mode lookup, so non-Retail and never-issued orders never pay for it.
+                if (targetStatus === 'rejected'
+                    && existing.inventory_issued_at
+                    && !existing.inventory_reversed_at
+                ) {
+                    if (tenantWorkflowMode == null) {
+                        tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
+                    }
+                    if (tenantWorkflowMode === 'retail') {
+                        await reverseOnlineOrderGoodsIssueForOrder({
+                            orderId: normalizedTransactionId,
+                            stockCommands,
+                            actingUserId,
+                            transaction,
+                            reason: `Reversal of accept-time goods-issue for online order ${normalizedTransactionId} (staff reject after acceptance)`
+                        });
+                        inventoryReversedAt = mutationTimestamp;
+                    }
+                }
             }
 
             const updatePayload = {
@@ -10955,6 +11883,15 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 updatePayload.rejection_reason = String(payload?.reason || '').trim().slice(0, 255) || null;
                 updatePayload.rejected_by = actingUserId;
                 updatePayload.rejected_at = mutationTimestamp;
+            }
+
+            // #1931: persisted one-time evidence for the accept-time issue and its reversal.
+            // Additive columns -- existing consumers pass them through via toPublicPosTransaction.
+            if (inventoryIssuedAt) {
+                updatePayload.inventory_issued_at = inventoryIssuedAt;
+            }
+            if (inventoryReversedAt) {
+                updatePayload.inventory_reversed_at = inventoryReversedAt;
             }
 
             // Phase 211 (#1180). Retail-only in the UI, additive in the state machine.
@@ -11049,7 +11986,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 }
             }
             const replayPayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 status_transition: {
                     current_status: currentStatus,
                     requested_status: targetStatus,
@@ -11275,7 +12212,7 @@ export const buildUpdateOnlineOrderDeliveryAddressUseCase = ({
             });
 
             const replayPayload = {
-                order: toSerializable(updated),
+                order: toPublicPosTransaction(updated),
                 address_change: {
                     previous_address: existing.delivery_address || null,
                     previous_latitude: existing.delivery_latitude ?? null,

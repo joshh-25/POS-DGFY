@@ -13,8 +13,8 @@ verification_evidence: shared POS performance contract tests,client-delegated re
 rollback_note: Revert the POS performance changes and this declaration together if catalog search results, checkout totals, receipt printing, or client-driver audit confirmation regresses. No database migration or schema rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-10T16:40:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-321-LOCAL-ONLY
+preflight_run_at: 2026-09-11T13:41:56.862Z
+preflight_request_ref: PREFLIGHT-34604460194-2026-09-10-POS-LARGE-CART-PERFORMANCE
 ---
 
 # POS large-cart search and receipt-print performance

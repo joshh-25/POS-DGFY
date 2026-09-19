@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 
 const {
   CLI_ALIASES,
+  INTERACTIVE_ADAPTERS,
+  buildInteractiveCommand,
   formatReportRow,
+  getInteractiveAdapter,
   normalizeCliAlias,
   parseModelSlot,
   resolveDispatchStrategy,
@@ -169,10 +172,13 @@ test('normalizeCliAlias trims before mapping', () => {
   assert.equal(normalizeCliAlias('  agy  '), 'antigravity');
 });
 
-test('resolveDispatchStrategy: coordinator match is Tier 1 short-circuit', () => {
+test('resolveDispatchStrategy: coordinator match is Tier 1 only when no interactive adapter is enabled', () => {
+  // `grok` has no launch-preference support and no registered interactive adapter, so a
+  // matching coordinator is still Tier 1. (For adapter-backed CLIs see the #1964 cases
+  // below: interactive launch wins over coordinator match.)
   const result = resolveDispatchStrategy(
-    { cli: 'antigravity' },
-    { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+    { cli: 'grok' },
+    { coordinatorCli: 'grok', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
   );
   assert.equal(result.strategy, 'in-session');
 });
@@ -185,9 +191,10 @@ test('resolveDispatchStrategy: launch preference match is Tier 2', () => {
   assert.equal(result.strategy, 'orca-pty');
 });
 
-test('resolveDispatchStrategy: no launch preference is Tier 3', () => {
+test('resolveDispatchStrategy: no launch preference and no interactive adapter is Tier 3', () => {
+  // `grok` has neither launch-preference support nor a registered interactive adapter.
   const result = resolveDispatchStrategy(
-    { cli: 'antigravity' },
+    { cli: 'grok' },
     { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
   );
   assert.equal(result.strategy, 'direct-cli');
@@ -195,10 +202,10 @@ test('resolveDispatchStrategy: no launch preference is Tier 3', () => {
 
 test('resolveDispatchStrategy normalizes alias input independently', () => {
   const result = resolveDispatchStrategy(
-    { cli: 'agy' },
+    { cli: 'agy', model: 'gemini-3.8-flash' },
     { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
   );
-  assert.equal(result.strategy, 'in-session');
+  assert.equal(result.strategy, 'orca-interactive');
 });
 
 // #1826: the defect this guards against. A Claude coordinator resolving a slot to `claude` (or a
@@ -224,12 +231,33 @@ test('resolveDispatchStrategy: launch-preference support wins over coordinator m
   assert.equal(result.strategy, 'orca-pty');
 });
 
-test('resolveDispatchStrategy: antigravity coordinator + antigravity slot still uses Tier 1 -- Orca has no launch-preference support for it, unaffected by the #1826 fix', () => {
+test('resolveDispatchStrategy: antigravity coordinator + antigravity slot uses Tier 2B -- interactive launch wins over in-session (#1964)', () => {
+  // Supersedes the pre-#1964 expectation: Orca can launch `agy --model ...` interactively
+  // in a visible terminal, so falling back to in-session would silently substitute the
+  // coordinator's model and lose the visible external session -- the same fidelity argument
+  // as #1826, applied to custom-command launch.
   const result = resolveDispatchStrategy(
-    { cli: 'antigravity' },
+    { cli: 'antigravity', model: 'gemini-3.8-flash', effort: 'medium' },
     { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
   );
+  assert.equal(result.strategy, 'orca-interactive');
+  assert.match(result.command, /agy --model gemini-3\.8-flash --effort medium/);
+});
+
+test('resolveDispatchStrategy: explicitly disabled interactive list preserves Tier 1 for a matching coordinator', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'antigravity' },
+    { coordinatorCli: 'antigravity', launchPreferenceClis: ['claude', 'codex', 'cursor'], interactiveClis: [] },
+  );
   assert.equal(result.strategy, 'in-session');
+});
+
+test('resolveDispatchStrategy: explicitly disabled interactive list preserves Tier 3 otherwise', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'antigravity' },
+    { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'], interactiveClis: [] },
+  );
+  assert.equal(result.strategy, 'direct-cli');
 });
 
 test('resolveDispatchStrategy reports missing launch preferences without guessing', () => {
@@ -274,4 +302,154 @@ test('formatReportRow error row keeps a consistent six-column shape', () => {
   const parsed = parseModelSlot('claude:claude-sonnet-5:high:extra', { knownClis: KNOWN_CLIS });
   const row = formatReportRow('WORKER_BUILDER', parsed, 'env');
   assert.equal(row.split('|').length, 8);
+});
+
+// #1964: interactive custom-command launch (Tier 2B, `orca-interactive`) for CLIs whose
+// model/effort argv Orca's `worker-start` cannot express but whose own TUI accepts.
+
+test('resolveDispatchStrategy: opencode resolves to orca-interactive with the exact model command', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'opencode', model: 'opencode-go/muse-spark-1.3-contributor' },
+    { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.equal(result.strategy, 'orca-interactive');
+  assert.equal(result.command, 'opencode --model opencode-go/muse-spark-1.3-contributor');
+  assert.match(result.reason, /Tier 2B/);
+});
+
+test('resolveDispatchStrategy: opencode wins over coordinator match too (visible session, exact model)', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'opencode', model: 'opencode-go/muse-spark-1.3-contributor' },
+    { coordinatorCli: 'opencode', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.equal(result.strategy, 'orca-interactive');
+});
+
+test('resolveDispatchStrategy: launch-preference support still wins over interactive (Tier 2 over Tier 2B)', () => {
+  // Synthetic overlap: even if a launch-preference CLI were also adapter-backed,
+  // supervised `worker-start` remains the standard path.
+  const result = resolveDispatchStrategy(
+    { cli: 'claude', model: 'claude-sonnet-5' },
+    {
+      coordinatorCli: 'codex',
+      launchPreferenceClis: ['claude', 'codex', 'cursor'],
+      interactiveClis: ['claude', 'opencode', 'antigravity'],
+    },
+  );
+  assert.equal(result.strategy, 'orca-pty');
+});
+
+test('resolveDispatchStrategy: narrowed interactive list excludes unlisted adapters', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'opencode', model: 'opencode-go/muse-spark-1.3-contributor' },
+    {
+      coordinatorCli: 'codex',
+      launchPreferenceClis: ['claude', 'codex', 'cursor'],
+      interactiveClis: ['antigravity'],
+    },
+  );
+  assert.equal(result.strategy, 'direct-cli');
+});
+
+test('resolveDispatchStrategy: enabled-but-unregistered interactive CLI fails closed, never substitutes', () => {
+  const result = resolveDispatchStrategy(
+    { cli: 'grok' },
+    {
+      coordinatorCli: 'codex',
+      launchPreferenceClis: ['claude', 'codex', 'cursor'],
+      interactiveClis: ['grok'],
+    },
+  );
+  assert.equal(result.strategy, undefined);
+  assert.match(result.reason, /fail closed/);
+});
+
+test('resolveDispatchStrategy: orca-interactive reason distinguishes launch-preference, interactive, and headless paths', () => {
+  const interactive = resolveDispatchStrategy(
+    { cli: 'opencode', model: 'opencode-go/muse-spark-1.3-contributor' },
+    { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  const headless = resolveDispatchStrategy(
+    { cli: 'grok' },
+    { coordinatorCli: 'codex', launchPreferenceClis: ['claude', 'codex', 'cursor'] },
+  );
+  assert.match(interactive.reason, /no launch-preference support.*registered interactive adapter/);
+  assert.match(headless.reason, /no launch-preference support and no enabled interactive adapter/);
+  assert.notEqual(interactive.reason, headless.reason);
+});
+
+test('buildInteractiveCommand: opencode forwards the exact provider/model', () => {
+  const built = buildInteractiveCommand('opencode', { model: 'opencode-go/muse-spark-1.3-contributor' });
+  assert.equal(built.ok, true);
+  assert.deepEqual(built.argv, ['opencode', '--model', 'opencode-go/muse-spark-1.3-contributor']);
+  assert.equal(built.command, 'opencode --model opencode-go/muse-spark-1.3-contributor');
+});
+
+test('buildInteractiveCommand: opencode records but never forwards effort (no TUI flag exists)', () => {
+  const built = buildInteractiveCommand('opencode', { model: 'opencode-go/muse-spark-1.3-contributor', effort: 'high' });
+  assert.equal(built.ok, true);
+  assert.deepEqual(built.argv, ['opencode', '--model', 'opencode-go/muse-spark-1.3-contributor']);
+  assert.match(built.effortNote, /recorded, not forwarded/);
+});
+
+test('buildInteractiveCommand: antigravity forwards model and effort', () => {
+  const built = buildInteractiveCommand('antigravity', { model: 'gemini-3.8-flash', effort: 'medium' });
+  assert.equal(built.ok, true);
+  assert.equal(built.command, 'agy --model gemini-3.8-flash --effort medium');
+});
+
+test('buildInteractiveCommand: antigravity omits effort when unset (inherits CLI default)', () => {
+  const built = buildInteractiveCommand('agy', { model: 'gemini-3.8-flash' });
+  assert.equal(built.ok, true);
+  assert.equal(built.command, 'agy --model gemini-3.8-flash');
+});
+
+test('buildInteractiveCommand: antigravity rejects unsupported effort instead of forwarding it', () => {
+  const built = buildInteractiveCommand('antigravity', { model: 'gemini-3.8-flash', effort: 'xhigh' });
+  assert.equal(built.ok, false);
+  assert.match(built.error, /unsupported antigravity effort.*low\|medium\|high/);
+});
+
+test('buildInteractiveCommand: missing model fails closed', () => {
+  const built = buildInteractiveCommand('opencode', {});
+  assert.equal(built.ok, false);
+  assert.match(built.error, /requires an exact model/);
+});
+
+test('buildInteractiveCommand: unregistered CLI fails closed', () => {
+  const built = buildInteractiveCommand('grok', { model: 'grok-4' });
+  assert.equal(built.ok, false);
+  assert.match(built.error, /no registered interactive adapter/);
+});
+
+test('buildInteractiveCommand quotes argv with shell-special characters', () => {
+  const built = buildInteractiveCommand('opencode', { model: 'my provider/model v2' });
+  assert.equal(built.ok, true);
+  assert.equal(built.command, `opencode --model 'my provider/model v2'`);
+});
+
+test('getInteractiveAdapter normalizes aliases and returns undefined for unknown CLIs', () => {
+  assert.equal(getInteractiveAdapter('agy'), INTERACTIVE_ADAPTERS.antigravity);
+  assert.equal(getInteractiveAdapter('opencode'), INTERACTIVE_ADAPTERS.opencode);
+  assert.equal(getInteractiveAdapter('grok'), undefined);
+});
+
+test('interactive adapter aliases stay in sync with CLI_ALIASES', () => {
+  const adapterAliases = Object.fromEntries(
+    Object.values(INTERACTIVE_ADAPTERS).flatMap((adapter) =>
+      adapter.aliases.map((alias) => [alias, adapter.cli]),
+    ),
+  );
+  assert.deepEqual(adapterAliases, { ...CLI_ALIASES });
+});
+
+test('interactive adapters expose readiness, trust, and fallback contract fields', () => {
+  for (const adapter of Object.values(INTERACTIVE_ADAPTERS)) {
+    assert.equal(typeof adapter.executable, 'string');
+    assert.equal(adapter.readiness.waitFor, 'tui-idle');
+    assert.equal(typeof adapter.readiness.timeoutMs, 'number');
+    assert.equal(typeof adapter.trust, 'string');
+    assert.equal(typeof adapter.fallback, 'string');
+    assert.equal(typeof adapter.buildArgs, 'function');
+  }
 });
