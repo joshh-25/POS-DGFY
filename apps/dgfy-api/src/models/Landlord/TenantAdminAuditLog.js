@@ -25,7 +25,8 @@ export default (sequelize) => {
                 'admin_create_account_and_tenant',
                 'admin_assign_owner',
                 'admin_force_assign_owner',
-                'affiliate_slots_update'
+                'affiliate_slots_update',
+                'force_delete_registration_history'
             ),
             allowNull: false
         },
