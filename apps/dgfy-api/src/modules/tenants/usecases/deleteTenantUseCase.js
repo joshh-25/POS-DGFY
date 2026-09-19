@@ -40,6 +40,11 @@ export const buildDeleteTenantUseCase = ({
                     ));
                 }
 
+                const historyDeletion = await tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory(registrationApplication.id);
+                if (historyDeletion?.invoiceCount > 0) {
+                    return buildRegistrationInvoiceConflict(registrationApplication.id, historyDeletion.invoiceCount);
+                }
+
                 await tenantAdminRepository.createTenantAdminAuditLog({
                     tenant_id: tenant.id,
                     action: 'force_delete_registration_history',
@@ -56,11 +61,6 @@ export const buildDeleteTenantUseCase = ({
                         force_delete_registration_history: true
                     }
                 });
-
-                const historyDeletion = await tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory(registrationApplication.id);
-                if (historyDeletion?.invoiceCount > 0) {
-                    return buildRegistrationInvoiceConflict(registrationApplication.id, historyDeletion.invoiceCount);
-                }
             }
 
             if (typeof removeStorefrontDiscoveryIndexForTenant === 'function') {

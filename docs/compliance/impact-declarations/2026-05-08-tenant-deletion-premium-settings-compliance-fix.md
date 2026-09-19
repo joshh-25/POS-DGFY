@@ -49,7 +49,9 @@ This declaration covers a targeted fix for three runtime contracts:
    email deliveries, workflow events, attempts, and the application itself. Invoice rows and their
    financial/audit history are never deleted by this flow.
 6. A forced registration-history deletion records the acting platform admin, request metadata, and
-   application identifier in the tenant-admin audit contract before destructive cleanup begins.
+   application identifier in the tenant-admin audit contract after the transactional cleanup
+   confirms that the registration history was deleted; blocked or failed cleanup attempts do not
+   emit the successful deletion action.
 
 ## Verification Evidence
 

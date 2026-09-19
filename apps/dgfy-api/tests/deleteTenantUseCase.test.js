@@ -138,6 +138,10 @@ describe('deleteTenantUseCase', () => {
         expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mock.invocationCallOrder[0])
             .toBeLessThan(deps.tenantAdminRepository.removeTenantDependencies.mock.invocationCallOrder[0]);
         expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mock.invocationCallOrder[0])
+            .toBeLessThan(deps.tenantAdminRepository.createTenantAdminAuditLog.mock.invocationCallOrder[0]);
+        expect(deps.tenantAdminRepository.createTenantAdminAuditLog.mock.invocationCallOrder[0])
+            .toBeLessThan(deps.tenantAdminRepository.removeTenantDependencies.mock.invocationCallOrder[0]);
+        expect(deps.tenantAdminRepository.removeCompanyRegistrationApplicationAndHistory.mock.invocationCallOrder[0])
             .toBeLessThan(deps.tenantAdminRepository.destroyTenant.mock.invocationCallOrder[0]);
     });
 
@@ -156,6 +160,7 @@ describe('deleteTenantUseCase', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('INTERNAL_ERROR');
+        expect(deps.tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.removeTenantDependencies).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.destroyTenant).not.toHaveBeenCalled();
         expect(deps.removeStorefrontDiscoveryIndexForTenant).not.toHaveBeenCalled();
@@ -178,6 +183,7 @@ describe('deleteTenantUseCase', () => {
         expect(result.error.code).toBe('CONFLICT');
         expect(result.error.statusCode).toBe(409);
         expect(result.error.message).toContain('1 platform invoice(s)');
+        expect(deps.tenantAdminRepository.createTenantAdminAuditLog).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.removeTenantDependencies).not.toHaveBeenCalled();
         expect(deps.tenantAdminRepository.destroyTenant).not.toHaveBeenCalled();
     });
