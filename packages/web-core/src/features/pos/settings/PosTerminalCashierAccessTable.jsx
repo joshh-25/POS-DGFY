@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Info, KeyRound, ListChecks, Search, ShieldCheck, UserRoundPlus, Users, X } from 'lucide-react';
+import { Check, Info, KeyRound, ListChecks, Search, ShieldCheck, Trash2, UserRoundPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
@@ -34,7 +34,9 @@ function PermissionSwitch({ label, ariaLabel, enabled, onChange, disabled, testI
   );
 }
 
-function CashierName({ cashier }) {
+function CashierName({ cashier, canRemoveCashiers = false, onRemove = () => {}, disabled = false }) {
+  const cashierLabel = cashier?.username || cashier?.email || `cashier ${cashier?.user_id || ''}`;
+
   return (
     <div className="flex min-w-0 items-center gap-3">
       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-[12px] font-bold text-[#1A4E8D]">
@@ -45,6 +47,20 @@ function CashierName({ cashier }) {
           {cashier?.username || cashier?.email || `Cashier ${cashier?.user_id || ''}`}
         </p>
         <p className="truncate text-[11px] font-medium text-[#64748B]">{cashier?.email || 'No account email'}</p>
+        {canRemoveCashiers ? (
+          <Button
+            type="button"
+            variant="outline"
+            data-testid={`remove-cashier-${cashier.user_id}`}
+            aria-label={`Remove cashier ${cashierLabel}`}
+            className="mt-1 h-7 whitespace-nowrap rounded-md border-rose-200 px-2 text-[10px] font-extrabold text-rose-700 hover:bg-rose-50"
+            onClick={() => onRemove(cashier)}
+            disabled={disabled}
+          >
+            <Trash2 className="mr-1 h-3 w-3" aria-hidden="true" />
+            Remove access
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -219,6 +235,8 @@ function MobileCashierTable({
   updateDayCloseAccess,
   updateCashierVoidAccess,
   updateCashierDrawerAccess,
+  canRemoveCashiers,
+  setCashierRemoveUser,
   locked,
   loading
 }) {
@@ -270,7 +288,7 @@ function MobileCashierTable({
               return (
                 <tr key={`mobile-terminal-cashier-row-${cashier.user_id}`} className="align-top">
                   <td className="px-2 py-2.5 align-middle">
-                    <CashierName cashier={cashier} />
+                    <CashierName cashier={cashier} canRemoveCashiers={canRemoveCashiers} onRemove={setCashierRemoveUser} disabled={permissionDisabled} />
                   </td>
                   <td className="px-2 py-2.5">
                     <PermissionSwitch
@@ -505,7 +523,9 @@ export default function PosTerminalCashierAccessTable({
   setDayClosePinUser,
   cashierVoidAccessSavingUserId,
   updateCashierVoidAccess,
-  updateCashierDrawerAccess
+  updateCashierDrawerAccess,
+  canRemoveCashiers = false,
+  setCashierRemoveUser = () => {}
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const assignedCashiers = Array.isArray(cashiers) ? cashiers : [];
@@ -621,6 +641,8 @@ export default function PosTerminalCashierAccessTable({
             updateDayCloseAccess={updateDayCloseAccess}
             updateCashierVoidAccess={updateCashierVoidAccess}
             updateCashierDrawerAccess={updateCashierDrawerAccess}
+            canRemoveCashiers={canRemoveCashiers}
+            setCashierRemoveUser={setCashierRemoveUser}
             locked={locked}
             loading={loading}
           />
@@ -669,7 +691,7 @@ export default function PosTerminalCashierAccessTable({
                     className="grid grid-cols-[minmax(220px,1.25fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(150px,0.8fr)] items-center gap-4 border-t border-slate-100 px-4 py-3"
                   >
                     <div role="cell" className="min-w-0">
-                      <CashierName cashier={cashier} />
+                      <CashierName cashier={cashier} canRemoveCashiers={canRemoveCashiers} onRemove={setCashierRemoveUser} disabled={locked || loading} />
                     </div>
                     <div role="cell" className="min-w-0">
                       <div className="flex flex-col items-start gap-2">

@@ -23,6 +23,7 @@ import {
 } from '@/services/settingsService.js';
 import {
   getAllUsers,
+  removeUserFromCompany,
   updatePosApprovalPin,
   updatePosDayClosePin,
   updateProfile,
@@ -306,6 +307,8 @@ export default function PosSettingsWorkspace({
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
+  const canRemoveCashiers = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('users:delete');
   const canEditSettings = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('settings:edit');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
@@ -347,6 +350,7 @@ export default function PosSettingsWorkspace({
   const [cashiersLoaded, setCashiersLoaded] = useState(false);
   const [cashierVoidAccessSavingUserId, setCashierVoidAccessSavingUserId] = useState(null);
   const [cashierInvitationOpen, setCashierInvitationOpen] = useState(false);
+  const [cashierRemoveUser, setCashierRemoveUser] = useState(null);
   const [discountApprovers, setDiscountApprovers] = useState([]);
   const [discountApproversLoading, setDiscountApproversLoading] = useState(false);
   const [discountAuthorizationSavingUserId, setDiscountAuthorizationSavingUserId] = useState(null);
@@ -643,6 +647,31 @@ export default function PosSettingsWorkspace({
       setCashierVoidAccessSavingUserId(null);
     }
   }, [canManageCashiers]);
+
+  const handleRemoveCashier = useCallback(async () => {
+    const userId = Number(cashierRemoveUser?.user_id);
+    const role = String(cashierRemoveUser?.role || '').trim().toLowerCase();
+    if (!canRemoveCashiers || !Number.isInteger(userId) || userId <= 0 || role !== 'cashier' || cashierRemoveUser?.is_master_admin === true) {
+      return false;
+    }
+
+    const cashierLabel = cashierRemoveUser.username || cashierRemoveUser.email || `cashier ${userId}`;
+    try {
+      await removeUserFromCompany(userId);
+      setCashierUsers((current) => current.filter((entry) => Number(entry?.user_id) !== userId));
+      toast.success(`${cashierLabel} was removed from cashier access.`);
+      try {
+        await onRefreshTerminalUser?.({ suppressGlobalErrors: true });
+      } catch (syncError) {
+        console.warn('Cashier removal succeeded but terminal user refresh failed:', syncError);
+      }
+      return true;
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to remove cashier access.';
+      toast.error(message);
+      return { success: false, message };
+    }
+  }, [cashierRemoveUser, canRemoveCashiers, onRefreshTerminalUser]);
 
   const loadDiscountApprovers = useCallback(async ({ silent = false } = {}) => {
     if (!canManageDiscountApprovalPins) {
@@ -1803,7 +1832,7 @@ export default function PosSettingsWorkspace({
     terminalUser, locked, canEditSettings, loading, savingTab, handlePosSave, onCancel: hydrateSettingsWorkspace, posForm, setPosForm, posSetupDirty, locations, incomingOrders,
     queueLocationScopeId,
     onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
-    getCashiersForLocation, setCashierInvitationOpen, cashiersLoaded, activeCashierUsers,
+    getCashiersForLocation, setCashierInvitationOpen, canRemoveCashiers, setCashierRemoveUser, cashiersLoaded, activeCashierUsers,
     cashierVoidAccessSavingUserId, updateCashierVoidAccess, updateCashierDrawerAccess, loadCashierAccounts,
     canManageDiscountApprovalPins, discountApprovers, discountApproversLoading, loadDiscountApprovers,
     updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin, canManageDayClosePins,
@@ -2060,6 +2089,17 @@ export default function PosSettingsWorkspace({
         submitLabel="Send Cashier Invitation"
         locationOptions={locations}
         overlayClassName="bg-black/30 backdrop-blur-none"
+      />
+      <ConfirmActionDialog
+        open={Boolean(cashierRemoveUser)}
+        onOpenChange={(open) => { if (!open) setCashierRemoveUser(null); }}
+        title="Remove cashier access"
+        description={cashierRemoveUser
+          ? `Remove ${cashierRemoveUser.username || cashierRemoveUser.email || 'this cashier'} from this company? Their account will lose access here, while historical sales and shift records remain intact. Any open POS shift or attendance session must be closed before removal.`
+          : ''}
+        confirmLabel="Remove cashier"
+        variant="destructive"
+        onConfirm={handleRemoveCashier}
       />
       <Dialog open={Boolean(approvalPinUser)} onOpenChange={(open) => !open && closeApprovalPinDialog()} overlayClassName="bg-black/30 backdrop-blur-none">
         <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
