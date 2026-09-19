@@ -1,11 +1,24 @@
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 
-export const STOREFRONT_CART_STORAGE_VERSION = 1;
 export const STOREFRONT_CART_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
-const STOREFRONT_CART_STORAGE_PREFIX = 'dgfy_storefront_cart_v1:';
+// v2 makes the physical browser key match the logical scope used by the hook.
+// v1 was keyed only by store slug, so the same slug could overwrite another
+// workflow mode's unfinished cart before the payload mode check ran.
+export const STOREFRONT_CART_LEGACY_STORAGE_VERSION = 1;
+export const STOREFRONT_CART_STORAGE_VERSION = 2;
+const STOREFRONT_CART_STORAGE_PREFIX = 'dgfy_storefront_cart_v2:';
+const STOREFRONT_CART_LEGACY_STORAGE_PREFIX = 'dgfy_storefront_cart_v1:';
 
 const optionalText = (value) => String(value || '').trim();
+
+const normalizeMode = (value) => optionalText(value).toLowerCase();
+
+const encodeStorageSegment = (value) => encodeURIComponent(String(value || ''));
+
+const resolveStorageMode = (options) => normalizeMode(
+  typeof options === 'string' ? options : options?.mode
+);
 
 const normalizeImageVariantSet = (value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -142,9 +155,18 @@ export const normalizeStorefrontCartLine = (line) => {
   };
 };
 
-export const buildStorefrontCartStorageKey = (storeSlug = '') => {
+export const buildStorefrontCartStorageKey = (storeSlug = '', options = {}) => {
   const normalizedStoreSlug = toSlug(storeSlug);
-  return normalizedStoreSlug ? `${STOREFRONT_CART_STORAGE_PREFIX}${normalizedStoreSlug}` : '';
+  if (!normalizedStoreSlug) return '';
+  const normalizedMode = resolveStorageMode(options) || 'default';
+  return `${STOREFRONT_CART_STORAGE_PREFIX}${encodeStorageSegment(normalizedMode)}:${encodeStorageSegment(normalizedStoreSlug)}`;
+};
+
+export const buildLegacyStorefrontCartStorageKey = (storeSlug = '') => {
+  const normalizedStoreSlug = toSlug(storeSlug);
+  return normalizedStoreSlug
+    ? `${STOREFRONT_CART_LEGACY_STORAGE_PREFIX}${encodeStorageSegment(normalizedStoreSlug)}`
+    : '';
 };
 
 export const normalizeStorefrontCartSnapshot = (value, options = {}) => {
@@ -187,27 +209,52 @@ export const normalizeStorefrontCartSnapshot = (value, options = {}) => {
 
 export const readStorefrontCartSnapshot = (storeSlug, options = {}) => {
   if (typeof window === 'undefined') return null;
-  const key = buildStorefrontCartStorageKey(storeSlug);
-  if (!key) return null;
+  const normalizedMode = resolveStorageMode(options);
+  const key = buildStorefrontCartStorageKey(storeSlug, { mode: normalizedMode });
+  const legacyKey = buildLegacyStorefrontCartStorageKey(storeSlug);
+  if (!key || !legacyKey) return null;
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
-    const requestedMode = optionalText(options.mode).toLowerCase();
-    const parsedMode = optionalText(parsed?.mode).toLowerCase();
-    const isModeMismatch = Boolean(requestedMode && parsedMode && requestedMode !== parsedMode);
-    const normalized = normalizeStorefrontCartSnapshot(parsed, {
-      ...options,
-      storeSlug
-    });
-    // Keep a valid snapshot for another mode so a route transition can finish
-    // loading its destination profile without destroying the original store
-    // cart. It remains unreadable until the matching mode is active.
-    const modeAgnosticSnapshot = !normalized && isModeMismatch
-      ? normalizeStorefrontCartSnapshot(parsed, { ...options, mode: '', storeSlug })
-      : null;
-    if (!normalized && parsed && !modeAgnosticSnapshot) {
-      window.localStorage.removeItem(key);
+    const candidateKeys = [key];
+    if (legacyKey !== key) candidateKeys.push(legacyKey);
+
+    for (const candidateKey of candidateKeys) {
+      const parsed = JSON.parse(window.localStorage.getItem(candidateKey) || 'null');
+      if (!parsed) continue;
+
+      const parsedMode = normalizeMode(parsed.mode);
+      const isLegacyModeMismatch = candidateKey === legacyKey
+        && Boolean(normalizedMode && parsedMode && parsedMode !== normalizedMode);
+      const normalized = isLegacyModeMismatch
+        ? null
+        : normalizeStorefrontCartSnapshot(parsed, {
+          ...options,
+          mode: normalizedMode,
+          storeSlug
+        });
+
+      if (normalized) {
+        // Migrate a still-valid v1 snapshot into its mode-specific v2 key. A
+        // legacy payload without a mode is safe to claim for the first mode
+        // that reads it; a payload with another mode stays untouched.
+        if (candidateKey === legacyKey && normalizedMode) {
+          window.localStorage.setItem(key, JSON.stringify(normalized));
+          if (!parsedMode || parsedMode === normalizedMode) {
+            window.localStorage.removeItem(legacyKey);
+          }
+        }
+        return normalized;
+      }
+
+      // A legacy snapshot for another mode may still be valid for that mode;
+      // never delete it merely because the current route is different. A
+      // malformed/expired current v2 entry, however, is safe to remove.
+      if (candidateKey === key && !isLegacyModeMismatch) {
+        window.localStorage.removeItem(candidateKey);
+      } else if (candidateKey === legacyKey && !isLegacyModeMismatch) {
+        window.localStorage.removeItem(candidateKey);
+      }
     }
-    return normalized;
+    return null;
   } catch {
     window.localStorage.removeItem(key);
     return null;
@@ -224,10 +271,11 @@ export const writeStorefrontCartSnapshot = ({
   voucherCode = ''
 } = {}) => {
   if (typeof window === 'undefined') return null;
-  const key = buildStorefrontCartStorageKey(storeSlug);
+  const normalizedMode = normalizeMode(mode);
+  const key = buildStorefrontCartStorageKey(storeSlug, { mode: normalizedMode });
+  const legacyKey = buildLegacyStorefrontCartStorageKey(storeSlug);
   if (!key) return null;
   const normalizedStoreSlug = toSlug(storeSlug);
-  const normalizedMode = optionalText(mode).toLowerCase();
   const snapshot = normalizeStorefrontCartSnapshot({
     version: STOREFRONT_CART_STORAGE_VERSION,
     storeSlug: normalizedStoreSlug,
@@ -247,23 +295,35 @@ export const writeStorefrontCartSnapshot = ({
     return null;
   }
   window.localStorage.setItem(key, JSON.stringify(snapshot));
+  if (legacyKey && legacyKey !== key) {
+    try {
+      const legacySnapshot = JSON.parse(window.localStorage.getItem(legacyKey) || 'null');
+      const legacyMode = normalizeMode(legacySnapshot?.mode);
+      if (!legacyMode || legacyMode === normalizedMode) {
+        window.localStorage.removeItem(legacyKey);
+      }
+    } catch {
+      window.localStorage.removeItem(legacyKey);
+    }
+  }
   return snapshot;
 };
 
 export const clearStorefrontCartSnapshot = (storeSlug, options = {}) => {
   if (typeof window === 'undefined') return;
-  const key = buildStorefrontCartStorageKey(storeSlug);
-  if (!key) return;
+  const requestedMode = resolveStorageMode(options);
+  const key = buildStorefrontCartStorageKey(storeSlug, { mode: requestedMode });
+  const legacyKey = buildLegacyStorefrontCartStorageKey(storeSlug);
+  if (!key || !legacyKey) return;
 
-  const requestedMode = optionalText(options.mode).toLowerCase();
-  if (requestedMode) {
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
-      const storedMode = optionalText(parsed?.mode).toLowerCase();
-      if (storedMode && storedMode !== requestedMode) return;
-    } catch {
-      // Invalid storage is safe to remove below.
-    }
-  }
   window.localStorage.removeItem(key);
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(legacyKey) || 'null');
+    const storedMode = normalizeMode(parsed?.mode);
+    if (!requestedMode || !storedMode || storedMode === requestedMode) {
+      window.localStorage.removeItem(legacyKey);
+    }
+  } catch {
+    window.localStorage.removeItem(legacyKey);
+  }
 };

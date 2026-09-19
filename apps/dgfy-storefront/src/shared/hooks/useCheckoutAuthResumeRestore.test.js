@@ -161,6 +161,26 @@ describe('useCheckoutAuthResumeRestore - checkout-entry-to-login-to-resume round
     expect(readCheckoutAuthResumeDraft()).not.toBeNull();
   });
 
+  it('does not resume a draft from a different workflow mode under the same slug', () => {
+    writeCheckoutAuthResumeDraft({
+      routeSlug: 'same-store',
+      workflowMode: 'fnb',
+      returnTo: 'https://dgfy.ph/tenant-store/same-store',
+      checkoutTab: 'cart',
+      cart: CART
+    });
+
+    const props = buildRestoreProps({
+      routeSlug: 'same-store',
+      selectedStore: { slug: 'same-store', workflow_mode: 'retail' }
+    });
+    renderHook(() => useCheckoutAuthResumeRestore(props));
+
+    expect(props.setCart).not.toHaveBeenCalled();
+    expect(props.setIsCheckoutOpen).not.toHaveBeenCalled();
+    expect(readCheckoutAuthResumeDraft()).not.toBeNull();
+  });
+
   it('does not resume before the customer is actually signed in', () => {
     writeCheckoutAuthResumeDraft({
       routeSlug: 'laundry-store',
