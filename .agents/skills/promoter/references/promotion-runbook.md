@@ -626,8 +626,17 @@ git rev-list --count origin/staging..origin/main
 # (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
 # promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
-gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
+# release_revision (#1977, Phase 341) is the candidate-wide rN -- one greater than the latest
+# staging repair revision -- read from the manifest this file writes in "Default: develop ->
+# staging -> main" (release_revision.revision, NOT a Docker build-attempt count):
+RELEASE_REVISION=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').release_revision.revision")
+gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" -f release_revision="$RELEASE_REVISION" --ref staging
 ```
+
+Frontends publish `X.Y.Z-rN-staging` on this dispatch (baked `VITE_*` differ per environment);
+`dgfy-api`/`dgfy-migration-runner` publish the environment-neutral `X.Y.Z-rN` (same digest
+promotes to PROD later -- never rebuilt environment-specific). Builders fail closed here when
+`release_revision` is missing; DEV dispatches omit it (unchanged `X.Y.Z-dev` behavior).
 
 **PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
 source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
@@ -665,8 +674,15 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA_IMS" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
+  -f release_revision="$RELEASE_REVISION" \
   --ref main
 ```
+
+`deploy-main.yml`'s `promote-aliases` job then creates each app's bare `X.Y.Z` floor alias from
+its `X.Y.Z-rN` revision-tag digest (refusing a different digest or revision) and gates `publish`
+-- backend PROD is alias-only (the revision tag already exists from the STAGING dispatch above
+and the build-skip plan skips rebuilding it), frontends build first with production `VITE_*`
+values and alias the fresh digest.
 
 **#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
 `$CANDIDATE_SOURCE_SHA` captured in that section (set equal to `$TARGET_SHA`, the compliance-scanned
@@ -678,8 +694,13 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
+  -f release_revision="$RELEASE_REVISION" \
   --ref main
 ```
+
+On the #1007 path there is no manifest, so `$RELEASE_REVISION` is the revision the release
+itself assigns (a direct production hotfix increments the patch and uses the same paired
+revision/canonical tags without a staging predecessor -- it still threads a revision here).
 
 ```bash
 # Verify health after either dispatch — read-only, unattended
@@ -691,9 +712,13 @@ gh run view <id> --json conclusion
 A `conclusion: failure` here has no rollback to fall back on (#495 open) — report and escalate,
 don't retry blindly.
 
-**Promotion parity gate (ADR 0081 Decision 8, #1588)** — after `deploy-main.yml` has actually built
-and pushed the PROD images (only then does the bare `X.Y.Z` tag exist to compare against), confirm
-every changed app's PROD image traces back to the candidate it should. Read-only (`docker buildx
+**Promotion parity gate (ADR 0081 Decision 8, #1588; revision-aware since #1977, Phase 341)** —
+after `deploy-main.yml` has actually built
+and pushed the PROD images (only then do the `X.Y.Z-rN` revision tags and bare `X.Y.Z` aliases
+exist to compare against), confirm
+every changed app's PROD image traces back to the candidate it should. Frontend STAGING
+`X.Y.Z-rN-staging` is compared to PROD `X.Y.Z-rN`; backend the staging `X.Y.Z-rN` digest is
+reused; each bare alias must reference its revision tag's digest. Read-only (`docker buildx
 imagetools inspect` only), unattended, same tier as `verify-deployment.yml`. Two invocation forms,
 matching whichever flow actually ran (RF-2, PR #1590 review — the CLI itself refuses to run without
 exactly one of these two flags):
@@ -704,8 +729,8 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/$C
 
 # #1007-gated exception instead — no manifest exists; compares PROD's own label directly against
 # the develop SHA release/<label> was cut from (the same $CANDIDATE_SOURCE_SHA captured in that
-# section):
-node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA"
+# section), plus the paired bare alias when a revision was threaded:
+node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$RELEASE_REVISION"
 ```
 
 `PASS` includes both a real label match and a documented "no predecessor"/"no candidate identity"

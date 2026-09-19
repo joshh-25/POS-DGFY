@@ -574,6 +574,49 @@ cutting the release branch.
 candidate identity and per-app provenance semantics are unchanged. No production deploy is
 authorized from a manifest that fails this validation.
 
+### 2026-09-19 — Preserve the release floor and separate staging revisions from production patches (#1977, Phase 341)
+
+Decision 1 applied `-dev`/`-staging`/bare uniformly to all five images, and Decision 8 compared
+`X.Y.Z-staging` with bare `X.Y.Z`. That pairing conflates two things the release process needs
+apart: the per-app production floor (the `X.Y.Z` the version-bump rules in Decision 6 reason
+about) and the identity of the exact artifact that reached production. A frontend STAGING image
+and its PROD image are different digests by construction (baked `VITE_*` values); stamping both
+`1.13.0` pretends otherwise. Backend images bake nothing environment-specific, so rebuilding
+them per environment manufactures a distinction their content does not have.
+
+**Resolution: `X.Y.Z` remains the per-app production floor; candidate revisions identify the
+exact artifact.** `rN` is the candidate-wide `release_revision.revision`
+(`scripts/check-promotion-candidate.js`'s manifest — one greater than the latest staging repair
+revision), not a Docker build-attempt count. The tag matrix:
+
+| Artifact | DEV (unchanged) | STAGING candidate | PROD |
+| --- | --- | --- | --- |
+| Frontend apps | `X.Y.Z-dev` | `X.Y.Z-rN-staging` | `X.Y.Z-rN` plus immutable alias `X.Y.Z` |
+| API and migration runner | `X.Y.Z-dev` | `X.Y.Z-rN` | Reuse the staging `X.Y.Z-rN` digest plus immutable alias `X.Y.Z` |
+
+Docker tags forbid `+`, so the separator is `-rN`, never `+` build metadata. The production
+alias and revision tag reference the same digest. Existing published tags are historical and are
+never rewritten. The immutable revision tag is the artifact identity used for `APP_VERSION` and
+`org.opencontainers.image.version` (Decision 4's "runtime version equals the published image
+tag" now means the revision tag, never the bare alias); `APP_RELEASE_FLOOR`/`APP_RELEASE_REVISION`
+build-args, `org.dgfy-platform.release-floor`/`org.dgfy-platform.release-revision` OCI labels,
+`/health` fields, and frontend `version.json`/build-stamp fields carry the floor and revision
+explicitly so runtime consumers never infer the floor from an alias. Direct production hotfixes
+increment the patch and use the same paired revision/canonical tags without a staging parity
+predecessor. Tag resolution is centralized in `scripts/resolve-release-tags.js` (shared by the
+workflows, the parity gate, and the build-skip plan); backend PROD digest reuse and alias
+creation go through `scripts/promote-image-alias.js`, which refuses an existing target with a
+different digest or revision. Per-service compose `IMAGE_TAG` changes stay #495 scope; image
+naming (ADR 0072), package-version bump ownership (Decision 6), and production deployment
+approval are unchanged.
+
+`[default]` tier — Decisions 1, 3, 4, and 8 are amended in place via ADR 0039's dated-Amendment
+path (`status: amended`, no superseding ADR); Decision 7 (`[binding]`) is untouched — the alias
+promotion's refuse-on-mismatch is a second, narrower guard alongside it, not a restatement of it.
+Full detail: issue #1977, `scripts/resolve-release-tags.js`, `scripts/promote-image-alias.js`,
+`scripts/check-image-version-parity.js`, `scripts/resolve-build-skip-plan.js`,
+`.github/workflows/deploy-main.yml`'s `promote-aliases` job.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
