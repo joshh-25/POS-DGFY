@@ -322,7 +322,6 @@ export const dgfyAffiliateRepository = {
     async generateUniqueShareCode() {
         for (let attempt = 0; attempt < 10; attempt += 1) {
             const shortCode = `AF-${generateCodeSuffix(6)}`;
-            // eslint-disable-next-line no-await-in-loop
             const existing = await DgfyAffiliateEnrollment.findOne({ where: { short_code: shortCode } });
             if (!existing) {
                 return { shortCode, shareCodeHash: hashAffiliateShareCode(shortCode) };
@@ -772,7 +771,6 @@ export const dgfyAffiliateRepository = {
         for (const invite of invites) {
             const plainInvite = toPlain(invite);
             try {
-                // eslint-disable-next-line no-await-in-loop
                 const result = await this.materializeInviteEnrollment(plainInvite, account, { transaction, autoEnroll: true });
                 results.push(result);
             } catch (error) {

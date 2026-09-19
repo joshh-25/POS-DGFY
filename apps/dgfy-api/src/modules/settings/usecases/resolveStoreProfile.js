@@ -35,7 +35,8 @@ const cache = new Map();
 // "diverged" forever. The differ's job is catching drift in the
 // registry-derived content, not in a field no rebuild could ever match.
 const stripProvenanceForComparison = (profile) => {
-    const { provenance, ...rest } = profile || {};
+    const rest = { ...(profile || {}) };
+    delete rest.provenance;
     return rest;
 };
 

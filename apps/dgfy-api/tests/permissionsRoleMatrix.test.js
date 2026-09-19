@@ -31,18 +31,19 @@ describe('role/micro-permission matrix hardening', () => {
     expect(cashier.has(PERMISSIONS.POS.actions.TRANSACT_POS)).toBe(true);
     expect(cashier.has(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS)).toBe(true);
     expect(cashier.has(PERMISSIONS.POS.actions.CLOSE_DAY_POS)).toBe(false);
-    expect(cashier.has(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS)).toBe(true);
+    expect(cashier.has(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS)).toBe(false);
     expect(cashier.has(PERMISSIONS.INVENTORY.actions.DELETE_ITEMS)).toBe(false);
     expect(cashier.has(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS)).toBe(false);
     expect(cashier.has(PERMISSIONS.SYSTEM.actions.MANAGE_USERS)).toBe(false);
     expect(cashier.has(PERMISSIONS.ORDERS.actions.APPROVE_PO)).toBe(false);
   });
 
-  it('enforces cashier item editing without allowing deletion even for stale explicit permissions', () => {
+  it('preserves explicit cashier item editing without allowing deletion', () => {
     const permissions = resolveEffectivePermissions({
       role: 'cashier',
       permissions: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
+        PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
         PERMISSIONS.INVENTORY.actions.DELETE_ITEMS
       ]
     });

@@ -818,7 +818,9 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(posRepository.counters.shiftCloses).toBe(1);
         expect(posRepository.counters.auditLogsCreated).toBe(3);
         expect(posRepository.counters.orderUpdates).toBe(1);
-        expect(sequelize.transaction).toHaveBeenCalledTimes(4);
+        // Operator-authority lifecycle work opens its own transaction in addition to
+        // the four idempotent POS operations exercised above.
+        expect(sequelize.transaction).toHaveBeenCalledTimes(5);
     });
 
     it('blocks shift close while claimed parked sales remain unresolved', async () => {
