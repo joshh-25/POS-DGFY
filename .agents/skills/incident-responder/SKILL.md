@@ -139,11 +139,13 @@ implies a DB-shaped remediation, or to Pat directly otherwise.
 
 ## Manual entry point — `/hotfix`
 
-Added 2026-08-22 (#861). The loop above starts from an automated monitor signal
+Added 2026-08-22 (#861), relaxed 2026-09-19 (#2006). The loop above starts from an automated monitor signal
 (`promoter`/`observer`). `/hotfix` is the second, manual way in — Pat explicitly asking for an
 on-demand fix outside that monitor loop. It is the *same* loop, the *same* guardrails, the *same*
-merge authority — this section changes only how the loop starts and what "done" requires; it grants
-no new capability and no second path to `main`.
+merge authority — this section changes only how the loop starts and what "done" requires. The
+manual path carries its own issue-backed authorization for reaching `main` directly (below); it
+grants no autonomous capability and does not relax the autonomous monitor-triggered loop, which
+remains actively-incident-only.
 
 **Trigger precision (#861 gap 1).** Two distinct paths, not one:
 
@@ -158,19 +160,28 @@ no new capability and no second path to `main`.
 
 **Procedure once triggered:**
 
-1. **Ticket first.** Search for an existing open incident issue (`gh issue list --search`, ≥2
-   framings — `pm`'s own search-before-filing discipline). If none exists, hand off to `pm` to file
-   one now, before any branch is cut — the same "pm files an incident ticket" step the monitor path
-   already does, just manually sourced instead of signal-sourced.
-2. **Choose the base branch — a concrete rule, not a vibe (#861 gap 3):**
-   - `main` — only when the issue is a live production defect that needs a same-day fix and meets
-     this role's own bar for an "actively open incident" — the same bar that gates the `main`-merge
-     override below; don't invent a second definition.
+1. **Ticket first — the manual eligibility test (#2006).** Search for an existing open issue
+   (`gh issue list --search`, ≥2 framings — `pm`'s own search-before-filing discipline). If none
+   exists, hand off to `pm` to file one now, before any branch is cut — the same "pm files an
+   incident ticket" step the monitor path already does, just manually sourced instead of
+   signal-sourced. The open issue must record all four: the affected production or
+   production-relevant behavior; why waiting for the next scheduled promotion is unacceptable;
+   the expected harm or risk from delay; and timing context (when discovered or deployed, when
+   the next promotion is expected). A missing open issue, or a missing explicit `/hotfix`
+   invocation, stops this path — propose only, per the trigger precision above. **No same-day
+   discovery or same-day fix requirement applies** — a defect discovered days after deployment
+   can still qualify when this necessity test is met. #2005 is the calibration reference for
+   this rule and stays on its normal `develop` flow; it is not rerouted here.
+2. **Choose the base branch — a concrete rule, not a vibe (#861 gap 3, relaxed #2006):**
+   - `main` — when the open issue documents that the fix cannot reasonably wait for the next
+     scheduled promotion, and the proposed fix is narrow, reviewable, and suitable for direct
+     release. Explicit `/hotfix` plus that open issue is the manual authorization; no separate
+     autonomous-incident phrase is required for this manual path.
    - `staging` — the fix is real but can safely ride the next ordinary `staging → main` promotion
      instead of jumping the queue.
    - If genuinely unclear which applies, ask — this is a judgment call, not something to guess
      silently.
-3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a same-day
+3. **Hand off to `implement`** to branch off the chosen base (never off `develop` for a direct-main
    prod fix — `develop` doesn't reach `main` on this timeline), fix, commit, and open the PR — same
    as the monitor path. If the base is `main`, this PR also carries the release-note obligation
    stated above ("The loop" section) — not optional, and not something the monitor-triggered path
@@ -226,7 +237,10 @@ no new capability and no second path to `main`.
 
 Every guardrail elsewhere in this file — the bounded retry, the three "cannot do yet" prerequisites,
 the phrase-gated `main` override and its every-single-invocation restatement/logging requirement —
-applies identically here, unchanged and unweakened.
+applies identically here, unchanged and unweakened. A manual direct-`main` merge follows the same
+restate-and-log discipline as the override below (restate the never-merge-`main` rule, log the
+authorization on the issue before merging); only the eligibility bar differs. This relaxation must
+not leak into autonomous monitor-triggered handling, which remains actively-incident-only.
 
 ## Fast-track review, defined precisely
 
@@ -244,7 +258,9 @@ gates too."
 #543's original decision recorded merging `main` as absolute with zero exception. Pat's later
 direction on #546 (2026-08-16) narrows that specifically for this role, and this file is the
 authoritative record of the narrowing — `.agents/skills/pr-reviewer/SKILL.md` and `AGENTS.md` both
-point here rather than restating it:
+point here rather than restating it. This override governs autonomous monitor-triggered handling;
+the manual `/hotfix` path above carries its own issue-backed authorization (#2006) and does not
+relax this section:
 
 - Ordinary promotions, and every other role: unchanged, absolute, no exception. `promoter` still
   never merges `main`.
