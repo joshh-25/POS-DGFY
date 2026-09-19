@@ -1686,3 +1686,34 @@ controls all remain in force; autonomous monitor-triggered handling remains
 actively-incident-only. #2005 is the calibration reference and is not rerouted by this change.
 
 PR: (this PR). Refs #2006.
+
+### 2026-09-19: Preserve the release floor; staging revisions separate from production patches (#1977, Phase 342)
+
+Not rewritten in place, same convention as every amendment above. ADR 0081's matching 2026-09-19
+Amendment carries the full design statement; this entry is the executable consequence for this
+policy document.
+
+**What changed.** `X.Y.Z` remains each app's production floor; the candidate-wide
+`release_revision.revision` (`rN`, one greater than the latest staging repair revision) names the
+exact artifact. Frontends publish `X.Y.Z-rN-staging` (STAGING candidate) and `X.Y.Z-rN` (PROD,
+built with production `VITE_*` values) plus the immutable alias `X.Y.Z` on the same digest;
+`dgfy-api` and `dgfy-migration-runner` publish the environment-neutral `X.Y.Z-rN` once (STAGING
+candidate) and PROD reuses that digest plus the alias — never an environment-specific backend
+rebuild. Tags contain no `+` (Docker forbids it). DEV behavior is unchanged (`X.Y.Z-dev`, no
+revision). A direct production hotfix increments the patch and uses the same paired
+revision/canonical tags with no staging predecessor. Existing published tags are historical and
+are never rewritten.
+
+**Executable consequence.** The promoter threads `-f release_revision=<rN>` through
+`deploy.yml` (STAGING candidate) and `deploy-main.yml` (PROD, including hotfixes) alongside the
+existing per-app-group `candidate_source_sha_*` inputs; builders fail closed on STAGING/PROD
+without it. `deploy-main.yml`'s `promote-aliases` job creates each app's bare floor alias from
+its revision-tag digest (`scripts/promote-image-alias.js` — refuses a different digest or
+revision) and gates `publish`: a failed alias promotion blocks the PROD deploy. The parity gate
+now compares frontend `X.Y.Z-rN-staging` to `X.Y.Z-rN`, the backend digest reused across
+environments, and each bare alias against its revision tag
+(`scripts/check-image-version-parity.js --manifest` reads `rN` from the manifest;
+`--source-sha` accepts an optional `--revision` for the hotfix pairing). Full commands:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
+
+PR: (this PR). Refs #1977.

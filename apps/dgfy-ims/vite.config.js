@@ -6,7 +6,7 @@ import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
-import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
+import { resolveAppVersion, resolveReleaseFloor, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +21,11 @@ const appNodeModules = path.resolve(__dirname, 'node_modules');
 // fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
 // index.html's <meta name="dgfy-version"> and a generated version.json. See
 // docs/deployment/PWA_SURFACE_CONTRACT.md.
+// #1977 (Phase 342): the release floor (bare X.Y.Z) and candidate revision (rN) ride alongside
+// as APP_RELEASE_FLOOR/APP_RELEASE_REVISION (VITE_-prefixed spellings in the builder stage),
+// stamped into version.json/meta tags so runtime consumers never infer the floor from an alias.
 const appVersion = resolveAppVersion(__dirname);
+const releaseInfo = resolveReleaseFloor(__dirname);
 
 // Vitest's SSR module runner needs react-router/react-router-dom pinned explicitly here --
 // resolve.dedupe alone isn't enough for them (unlike bare react/react-dom, which Vite's
@@ -93,7 +97,7 @@ const proxyTargets = {
 };
 
 export default defineConfig({
-  plugins: [react(), esCompatGuardPlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), buildStampPlugin(appVersion, releaseInfo), ...buildSentryVitePlugins(appSurface)],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
   // stops covering any module Worker's bundled output (epic #265, Phase 296).
@@ -102,7 +106,9 @@ export default defineConfig({
   },
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('skupervisor'),
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_APP_RELEASE_FLOOR': JSON.stringify(releaseInfo.floor),
+    'import.meta.env.VITE_APP_RELEASE_REVISION': JSON.stringify(releaseInfo.revision ?? '')
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],

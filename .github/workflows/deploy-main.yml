@@ -85,6 +85,21 @@ on:
         required: false
         type: string
         default: ''
+      release_revision:
+        description: >-
+          Candidate-wide release revision (#1977, Phase 342 -- the candidate manifest's
+          release_revision.revision, e.g. "r16", one greater than the latest staging repair
+          revision). Required for a release/<candidate_id>-rN -> main promotion dispatch AND for
+          a direct production hotfix (which uses the same paired revision/canonical tags without
+          a staging parity predecessor): every PROD builder resolves its revision tag from this
+          (frontend X.Y.Z-rN with production VITE_* values, backend the environment-neutral
+          X.Y.Z-rN) and fails closed without it. The promote-aliases job below then creates each
+          app's bare X.Y.Z floor alias from the same digest via
+          scripts/promote-image-alias.js (backend PROD reuses the staging digest -- it is never
+          rebuilt environment-specific). See .agents/skills/promoter/references/promotion-runbook.md.
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-main-${{ github.ref }}
@@ -357,7 +372,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/resolve-build-skip-plan.js --revision "${{ github.sha }}"
+          # #1977 (Phase 342): --release-revision makes the skip check hit each app's
+          # revision-aware matrix tag (omitted for ad-hoc dispatches -- legacy behavior).
+          # Backend PROD on a promotion dispatch is the mechanism that actually skips the
+          # environment-specific rebuild: the revision tag already exists from the STAGING
+          # candidate dispatch with byte-identical tracked inputs, so the plan resolves
+          # content-equivalent/skip and the promote-aliases job below aliases the reused
+          # staging digest instead of rebuilding it.
+          SKIP_ARGS=(--revision "${{ github.sha }}")
+          if [ -n "${{ inputs.release_revision }}" ]; then
+            SKIP_ARGS+=(--release-revision "${{ inputs.release_revision }}")
+          fi
+          node scripts/resolve-build-skip-plan.js "${SKIP_ARGS[@]}"
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -384,6 +410,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
+      release_revision: ${{ inputs.release_revision }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -408,6 +435,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
+      release_revision: ${{ inputs.release_revision }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -460,6 +488,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
+      release_revision: ${{ inputs.release_revision }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -483,6 +512,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
+      release_revision: ${{ inputs.release_revision }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -506,6 +536,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
+      release_revision: ${{ inputs.release_revision }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -537,8 +568,112 @@ jobs:
   # already transitively skips everything) -- so once both of those explicitly succeeded, the
   # remaining "every build job is skipped" case is always either an unchecked build_* input or a
   # verified-safe #1610 skip, never a silent failure.
-  publish:
+  # #1977 (Phase 342): creates each app's bare `X.Y.Z` production floor alias from the
+  # same digest as its `X.Y.Z-rN` revision tag (`scripts/promote-image-alias.js` -- refuses
+  # an existing alias on a different digest or revision, creates only when absent or
+  # already identical). Backend PROD is alias-only by construction here: the revision tag
+  # is environment-neutral, so the resolve-build-plan job above already skipped rebuilding
+  # it (content-equivalent to the STAGING candidate dispatch's own publish) and this job
+  # aliases that reused staging digest -- never an environment-specific backend rebuild.
+  # Frontend revision tags were just built above with production VITE_* values; the alias
+  # pins the same digest under the floor. A direct production hotfix flows through this
+  # same job (paired revision/canonical tags, no staging predecessor required).
+  #
+  # Skipped entirely when `release_revision` is empty (a legacy no-revision dispatch -- the
+  # builders themselves fail closed on PROD without it, so any build actually attempted
+  # already required it; a builds-unchecked dispatch keeps its historical no-alias behavior).
+  promote-aliases:
     needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
+    if: >-
+      needs.guard-branch.result == 'success' &&
+      needs.resolve-build-plan.result == 'success' &&
+      needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-storefront-prod.result != 'failure' &&
+      inputs.release_revision != ''
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Clear stale sparse-checkout state (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -uo pipefail
+          WS="${GITHUB_WORKSPACE:-}"
+          if [ -z "$WS" ] || [ ! -e "$WS/.git" ]; then
+            echo "[workspace-hygiene] no pre-existing workspace -- nothing to clear."; exit 0
+          fi
+          GIT_DIR="$(git -C "$WS" rev-parse --absolute-git-dir 2>/dev/null || echo "$WS/.git")"
+          git -C "$WS" sparse-checkout disable 2>/dev/null || true
+          for key in core.sparseCheckout core.sparseCheckoutCone index.sparse extensions.worktreeConfig; do
+            git -C "$WS" config --local --unset-all "$key" 2>/dev/null || true
+          done
+          rm -f "$GIT_DIR/info/sparse-checkout" "$GIT_DIR/config.worktree"
+          SKIPPED="$(git -C "$WS" ls-files -v 2>/dev/null | grep -c '^[Sa-z]' || true)"
+          if [ "${SKIPPED:-0}" -gt 0 ]; then
+            echo "[workspace-hygiene] clearing ${SKIPPED} skip-worktree/assume-unchanged bits"
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-skip-worktree || true
+            git -C "$WS" ls-files -z | xargs -0 -n 500 git -C "$WS" update-index --no-assume-unchanged || true
+          fi
+          echo "[workspace-hygiene] OK"
+
+      - uses: actions/checkout@v4
+
+      - name: Assert complete working tree (workspace-hygiene v1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIPPED="$(git ls-files -v | grep -c '^[Sa-z]' || true)"
+          SPARSE="$(git config --get core.sparseCheckout || true)"
+          if [ "${SKIPPED:-0}" -ne 0 ] || [ "${SPARSE:-}" = "true" ]; then
+            echo "::error::Incomplete working tree on runner '${RUNNER_NAME:-unknown}': ${SKIPPED} skip-worktree entries, core.sparseCheckout='${SPARSE:-<unset>}'. This workspace is sparse-poisoned -- git status reports CLEAN while most of the tree is absent. Fix: docs/ops/CI_RUNNER_WORKSPACE_HYGIENE.md (#1528)."
+            exit 1
+          fi
+          echo "[workspace-hygiene] tree complete."
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Promote revision tags to floor aliases
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAILURES=0
+          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
+            FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP}" --version "${FLOOR}" --environment PROD --revision "${{ inputs.release_revision }}")"
+            SOURCE_TAG="$(node -p "JSON.parse(process.argv[1]).productionTag" "${RESOLVED}")"
+            ALIAS_TAG="$(node -p "JSON.parse(process.argv[1]).canonicalAlias" "${RESOLVED}")"
+            IMAGE="ghcr.io/sieitzz/${APP}"
+            echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> ${ALIAS_TAG}"
+            if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${{ inputs.release_revision }}"; then
+              echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
+              FAILURES=$((FAILURES + 1))
+            fi
+          done
+          if [ "${FAILURES}" -ne 0 ]; then
+            echo "::error::${FAILURES} floor-alias promotion(s) failed -- see errors above."
+            exit 1
+          fi
+          echo "[promote-aliases] all five floor aliases verified."
+
+  publish:
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, promote-aliases ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.guard-branch.result == 'success' &&
@@ -547,7 +682,9 @@ jobs:
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-ims-prod.result != 'failure' &&
       needs.frontend-pos-prod.result != 'failure' &&
-      needs.frontend-storefront-prod.result != 'failure'
+      needs.frontend-storefront-prod.result != 'failure' &&
+      needs.promote-aliases.result != 'failure' &&
+      needs.promote-aliases.result != 'cancelled'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
