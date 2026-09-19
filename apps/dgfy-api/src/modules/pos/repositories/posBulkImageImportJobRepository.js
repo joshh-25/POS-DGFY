@@ -18,6 +18,13 @@ const fileField = (fileId) => `file:${fileId}`;
 const chunkField = (index) => `chunk:${index}`;
 const leaseKey = (tenantId, jobId, fileId) => `pos_image_import:lease:${tenantSegment(tenantId)}:${jobId}:${fileId}`;
 const itemLeaseKey = (tenantId, itemId) => `pos_image_import:item_lease:${tenantSegment(tenantId)}:${itemId}`;
+const toPublicFile = (file) => {
+    const publicFile = { ...file };
+    delete publicFile.path;
+    delete publicFile.version;
+    delete publicFile.permissions;
+    return publicFile;
+};
 
 const requireRedis = () => {
     // Production invariant: this must fail closed when durable Redis is absent.
@@ -373,7 +380,7 @@ export const createPosBulkImageImportJobRepository = () => ({
             accepted_at: job.accepted_at || null,
             totals,
             pagination: { page, page_size: pageSize, total: job.files.length, pages: Math.max(1, Math.ceil(job.files.length / pageSize)) },
-            files: job.files.slice(offset, offset + pageSize).map(({ path, version, permissions, ...file }) => file)
+            files: job.files.slice(offset, offset + pageSize).map(toPublicFile)
         };
     }
 });

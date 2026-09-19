@@ -146,10 +146,15 @@ jest.unstable_mockModule('../src/middleware/auth.js', () => ({
     checkAnyPermission: mockCheckAnyPermission,
     checkPermission: mockCheckPermission,
     requirePremium: passThrough,
-    requireTenantCapability: () => passThrough
+    requireTenantCapability: () => passThrough,
+    requireTenantAdminRole: passThrough
 }));
 jest.unstable_mockModule('../src/middleware/workflowModeCapability.js', () => ({
     requireWorkflowCapability: () => passThrough
+}));
+jest.unstable_mockModule('../src/middleware/posDeviceProof.js', () => ({
+    requirePosDeviceProof: passThrough,
+    requirePosDeviceSessionProof: passThrough
 }));
 jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
     posDrawerAuthorizationLimiter: passThrough,
@@ -157,7 +162,7 @@ jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
 }));
 jest.unstable_mockModule('../src/config/uploadConfig.js', () => ({
     posCatalogBulkImageUpload: { array: () => passThrough },
-    posCatalogImageUpload: { single: () => passThrough },
+    posCatalogImageUpload: { single: () => passThrough, fields: () => passThrough },
     posPaymentProofUpload: { single: () => passThrough },
     preserveTenantContext: () => passThrough,
     STOREFRONT_ASSET_SOURCE_MAX_BYTES: 100 * 1024 * 1024
