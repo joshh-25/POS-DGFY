@@ -206,9 +206,11 @@ export default function ItemOptionsDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t border-slate-200 px-5 py-3 sm:justify-end">
-          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={handleSave} disabled={Boolean(modifierError) || saving}>
+        <DialogFooter className="grid w-full grid-cols-2 items-stretch gap-2 border-t border-slate-200 px-5 py-3">
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving} className="h-10 w-full min-w-0 px-2">
+            Cancel
+          </Button>
+          <Button type="button" className="h-10 w-full min-w-0 bg-[#1A4E8D] px-2 text-white hover:bg-[#143F73]" onClick={handleSave} disabled={Boolean(modifierError) || saving}>
             {saving ? 'Saving…' : 'Save changes'}
           </Button>
         </DialogFooter>

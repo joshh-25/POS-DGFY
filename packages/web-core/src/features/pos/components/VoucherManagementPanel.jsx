@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
-  ChevronLeft,
-  ChevronRight,
   Pause,
   Pencil,
   Play,
@@ -12,6 +10,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -147,6 +146,8 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
   const [vouchers, setVouchers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, total_pages: 0 });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const VOUCHER_PAGE_SIZE_OPTIONS = [20, 40, 60];
   const [statusFilter, setStatusFilter] = useState('');
   const [benefitClassFilter, setBenefitClassFilter] = useState('');
   // #1334/Phase 245: a type filter over the SAME Vouchers list, rather than a second nav entry
@@ -199,7 +200,7 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       const isDeliveryCampaignFilter = voucherKindFilter === 'delivery_campaign';
       const params = {
         page,
-        limit: PAGE_SIZE,
+        limit: pageSize,
         sort,
         direction,
         ...(statusFilter ? { status: statusFilter } : {}),
@@ -214,13 +215,13 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
       };
       const result = await listVouchers(params);
       setVouchers(Array.isArray(result?.vouchers) ? result.vouchers : []);
-      setPagination(result?.pagination || { page, limit: PAGE_SIZE, total: 0, total_pages: 0 });
+      setPagination(result?.pagination || { page, limit: pageSize, total: 0, total_pages: 0 });
     } catch (error) {
       setListError(error?.response?.data?.message || 'Failed to load vouchers.');
     } finally {
       if (!silent) setListLoading(false);
     }
-  }, [page, sort, direction, statusFilter, benefitClassFilter, voucherKindFilter, autoApplyFilter, appliedSearch]);
+  }, [page, pageSize, sort, direction, statusFilter, benefitClassFilter, voucherKindFilter, autoApplyFilter, appliedSearch]);
 
   useEffect(() => {
     if (disabled) return;
@@ -686,18 +687,24 @@ export default function VoucherManagementPanel({ disabled = false, canManage = f
         </div>
       )}
 
-      {!listLoading && !listError && pagination.total_pages > 1 && (
-        <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">
-          <span>Page {pagination.page} of {pagination.total_pages} &middot; {pagination.total} vouchers</span>
-          <div className="flex gap-1.5">
-            <Button type="button" size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button type="button" size="sm" variant="outline" disabled={page >= pagination.total_pages} onClick={() => setPage((current) => current + 1)}>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
+      {!listError && (
+        <GlobalPagination
+          testId="pos-vouchers-pagination"
+          ariaLabel="Voucher pagination"
+          currentPage={page}
+          totalPages={Math.max(1, Number(pagination.total_pages || 1))}
+          totalItems={Number(pagination.total || vouchers.length || 0)}
+          pageSize={pageSize}
+          pageSizeOptions={VOUCHER_PAGE_SIZE_OPTIONS}
+          itemLabel="vouchers"
+          loading={listLoading}
+          onPageChange={setPage}
+          onPageSizeChange={(nextPageSize) => {
+            setPage(1);
+            setPageSize(nextPageSize);
+          }}
+          className="mt-4"
+        />
       )}
     </div>
   );

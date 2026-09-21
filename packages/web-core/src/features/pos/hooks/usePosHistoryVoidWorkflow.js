@@ -16,7 +16,11 @@ import {
     rowMatchesHistoryFilters,
     toArray
 } from '../utils/posCheckoutTerminalUtils.js';
-import { buildPosHistoryQuery } from '../utils/posHistoryQuery.js';
+import {
+    buildPosHistoryQuery,
+    DEFAULT_POS_HISTORY_PAGE_SIZE,
+    normalizePosHistoryPageSize
+} from '../utils/posHistoryQuery.js';
 import { isCheckoutQueueEntry } from '../utils/posCheckoutTerminalQueue.js';
 
 /**
@@ -51,6 +55,7 @@ export const usePosHistoryVoidWorkflow = ({
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
     const [historyPagination, setHistoryPagination] = useState(null);
+    const [historyPageSize, setHistoryPageSizeState] = useState(DEFAULT_POS_HISTORY_PAGE_SIZE);
     const [historySearch, setHistorySearch] = useState('');
     const [historyStatus, setHistoryStatus] = useState('all');
     const [historyPaymentType, setHistoryPaymentType] = useState('all');
@@ -61,6 +66,7 @@ export const usePosHistoryVoidWorkflow = ({
     const [historyDateTo, setHistoryDateTo] = useState('');
     const historyRequestSequenceRef = useRef(0);
     const historyAutoLoadTimeoutRef = useRef(null);
+    const historyPageSizeRef = useRef(DEFAULT_POS_HISTORY_PAGE_SIZE);
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [voidingTransactionId, setVoidingTransactionId] = useState(null);
     const [refundWorkflowTransaction, setRefundWorkflowTransaction] = useState(null);
@@ -120,7 +126,8 @@ export const usePosHistoryVoidWorkflow = ({
             : safeHistoryRows
     ), [historyPage, offlineHistoryRows, safeHistoryRows]);
     const visibleHistoryPagination = useMemo(() => {
-        const baseLimit = Number(historyPagination?.limit || safeHistoryRows.length || 20) || 20;
+        const baseLimit = Number(historyPagination?.limit || historyPageSize || safeHistoryRows.length || DEFAULT_POS_HISTORY_PAGE_SIZE)
+            || DEFAULT_POS_HISTORY_PAGE_SIZE;
         const baseTotal = Number(historyPagination?.total || safeHistoryRows.length || 0);
         const offlineCount = historyPage === 1 ? offlineHistoryRows.length : 0;
         const total = baseTotal + offlineCount;
@@ -131,9 +138,18 @@ export const usePosHistoryVoidWorkflow = ({
             total,
             totalPages: Math.max(1, Math.ceil(total / baseLimit))
         };
-    }, [historyPage, historyPagination, offlineHistoryRows.length, safeHistoryRows.length]);
+    }, [historyPage, historyPageSize, historyPagination, offlineHistoryRows.length, safeHistoryRows.length]);
 
-    const loadHistory = useCallback(async (page = 1) => {
+    const setHistoryPageSize = useCallback((value) => {
+        const nextPageSize = normalizePosHistoryPageSize(value);
+        historyPageSizeRef.current = nextPageSize;
+        setHistoryPageSizeState(nextPageSize);
+        return nextPageSize;
+    }, []);
+
+    const loadHistory = useCallback(async (page = 1, requestedPageSize = historyPageSizeRef.current) => {
+        const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+        const limit = setHistoryPageSize(requestedPageSize);
         if (historyAutoLoadTimeoutRef.current !== null) {
             window.clearTimeout(historyAutoLoadTimeoutRef.current);
             historyAutoLoadTimeoutRef.current = null;
@@ -152,8 +168,8 @@ export const usePosHistoryVoidWorkflow = ({
         try {
             const historyQuery = buildPosHistoryQuery({
                 historyStatus,
-                page,
-                limit: 20,
+                page: normalizedPage,
+                limit,
                 search: historySearch || undefined,
                 paymentType: historyPaymentType === 'all' ? undefined : historyPaymentType,
                 orderMethod: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
@@ -166,8 +182,8 @@ export const usePosHistoryVoidWorkflow = ({
             if (!historyQuery) {
                 if (!isCurrentRequest()) return;
                 setHistoryRows([]);
-                setHistoryPagination({ page, limit: 20, total: 0, totalPages: 1 });
-                setHistoryPage(page);
+                setHistoryPagination({ page: normalizedPage, limit, total: 0, totalPages: 1 });
+                setHistoryPage(normalizedPage);
                 return;
             }
             const result = await fetchPosTransactions(historyQuery);
@@ -175,13 +191,13 @@ export const usePosHistoryVoidWorkflow = ({
             const rows = Array.isArray(result?.transactions) ? result.transactions : [];
             setHistoryRows(rows);
             setHistoryPagination(result?.pagination || null);
-            setHistoryPage(page);
+            setHistoryPage(normalizedPage);
         } catch (error) {
             if (!isCurrentRequest()) return;
             if (!error?.response) {
                 setHistoryRows([]);
-                setHistoryPagination({ page, limit: 20, total: 0, totalPages: 1 });
-                setHistoryPage(page);
+                setHistoryPagination({ page: normalizedPage, limit, total: 0, totalPages: 1 });
+                setHistoryPage(normalizedPage);
             }
             toast.error(error?.response?.data?.message || 'Failed to load POS transaction history');
         } finally {
@@ -198,7 +214,8 @@ export const usePosHistoryVoidWorkflow = ({
         historySearch,
         historyStatus,
         selectedLocationId,
-        sessionLocked
+        sessionLocked,
+        setHistoryPageSize
     ]);
 
     const openHistoryDetail = useCallback(async (historyRowOrId, { switchToReceipt = false, openModal = true } = {}) => {
@@ -428,6 +445,8 @@ export const usePosHistoryVoidWorkflow = ({
         historyRows: visibleHistoryRows,
         historyLoading,
         historyPage,
+        historyPageSize,
+        setHistoryPageSize,
         historyPagination: visibleHistoryPagination,
         historySearch,
         setHistorySearch,

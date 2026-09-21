@@ -583,11 +583,15 @@ describe('POS terminal view-mode contracts', () => {
   it('adds keyboard and semantic accessibility affordances in POS history table', () => {
     expect(posCheckoutTerminalContent).toContain('POSTransactionHistoryPanel');
     expect(posHistoryPanelContent).toContain('aria-label="POS transaction history table"');
-    expect(posHistoryPanelContent).toContain('All Sources');
+    expect(posHistoryPanelContent).toContain("orderSource: [");
+    expect(posHistoryPanelContent).toContain("{ value: 'all', label: 'All' }");
+    expect(posHistoryPanelContent).toContain('Transaction sources');
+    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-source-tab-${sourceTab.value}`}');
+    expect(posHistoryPanelContent).not.toContain('testId="pos-history-filter-source"');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
     expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment and transaction status plus separate receipt actions</caption>');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment and transaction status; mobile rows open details and actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
@@ -623,8 +627,8 @@ describe('POS terminal view-mode contracts', () => {
     // Phase 229 (#1289), §2.7: the empty-queue lifecycle copy moved into
     // IncomingQueueOrderList.jsx's pure extraction.
     expect(incomingQueueOrderListContent).toContain('Completed paid sales move to Sales History.');
-    expect(terminalOperationsPanelsContent).toContain('Previous order history page');
-    expect(terminalOperationsPanelsContent).toContain('Next order history page');
+    expect(terminalOperationsPanelsContent).toContain('<GlobalPagination');
+    expect(terminalOperationsPanelsContent).toContain('testId="online-order-history-pagination"');
     expect(terminalOperationsPanelsContent).toContain("if (activeView !== 'history') return;");
     expect(terminalOperationsPanelsContent).not.toContain("if (activeView !== 'history' || orderHistoryState?.accessState !== 'idle') return;");
     expect(posServiceContent).toContain("api.get('/pos/order-history'");
@@ -738,7 +742,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutWorkflowContent).toContain('enqueueTerminalOperationIntent');
     expect(posCheckoutWorkflowContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
     expect(terminalPageContent).toContain(".filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout')");
-    expect(posHistoryPanelContent).toContain('Sync All Pending Records');
+    expect(posHistoryPanelContent).toContain('data-testid="pos-history-sync-button"');
+    expect(posHistoryPanelContent).toContain('pendingSyncLabel');
     expect(posHistoryPanelContent).toContain('universalPendingSyncCount');
     expect(terminalPageContent).toContain('consumeManualPosSyncAttempt');
     expect(terminalPageContent).not.toContain('requestBackgroundQueueReplay');
@@ -827,8 +832,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).not.toContain("../utils/skupervisorHandoff.js");
     expect(posHistoryPanelContent).not.toContain('data-testid="pos-history-open-sales-report"');
     expect(posHistoryPanelContent).not.toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<span>View</span>');
-    expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
+    expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('title="View receipt"');
+    expect(posHistoryPanelContent).not.toContain('<span>View</span>');
+    expect(posHistoryPanelContent).not.toContain('<span>Receipt</span>');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-view-receipt"');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print"');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print-order"');

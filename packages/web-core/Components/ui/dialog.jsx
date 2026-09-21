@@ -33,7 +33,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(',')
 
-const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
+const Dialog = ({ open, onOpenChange, overlayClassName, mobileSheet = false, children }) => {
   const rootRef = useRef(null)
   const restoreFocusRef = useRef(null)
 
@@ -58,7 +58,12 @@ const Dialog = ({ open, onOpenChange, overlayClassName, children }) => {
 
   const dialog = (
     <DialogContext.Provider value={{ onOpenChange, rootRef }}>
-      <div ref={rootRef} data-dialog-root="true" className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div
+        ref={rootRef}
+        data-dialog-root="true"
+        data-dialog-mobile-sheet={mobileSheet ? 'true' : undefined}
+        className={cn('fixed inset-0 z-[100] flex items-center justify-center', mobileSheet ? 'max-md:items-end' : '')}
+      >
         <div
           data-dialog-overlay="true"
           className={cn('fixed inset-0 bg-black/50 backdrop-blur-none', overlayClassName)}

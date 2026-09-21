@@ -4,8 +4,11 @@ import {
     buildCatalogRequestParams,
     CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX,
     CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX,
+    CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX,
+    CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS,
     CATALOG_DGFY_TABLET_DEFAULT_COLUMNS,
     CATALOG_GRID_GAP_PX,
+    MIN_CATALOG_PAGE_SIZE,
     filterAvailableCatalog,
     filterAvailableCatalogFolders,
     filterCatalogByFolder,
@@ -53,7 +56,9 @@ describe('POS catalog workflow utilities', () => {
         ];
         expect(filterCatalogByFolder(catalog, 20)).toEqual([{ item_id: 2, folder_id: 20 }]);
         expect(filterCatalogByFolder(catalog, null)).toEqual(catalog);
-        expect(getCatalogPageSize(4)).toBe(8);
+        expect(MIN_CATALOG_PAGE_SIZE).toBe(4);
+        expect(getCatalogPageSize(3)).toBe(4);
+        expect(getCatalogPageSize(4)).toBe(4);
         expect(getTotalCatalogPages(17, 8)).toBe(3);
         expect(getVisibleCatalogItems(catalog, 2, 2)).toEqual([
             { item_id: 3, folder_id: 10 },
@@ -137,17 +142,38 @@ describe('POS catalog workflow utilities', () => {
             height: 400,
             isMobileViewport: false,
             isTabletViewport: true,
+            isTabletLandscapeViewport: true,
             isDgfyPosSurface: true,
             textSizeScale: 1.1
-        })).toMatchObject({ minimumCardWidth: 194, cardHeight: 194, textSizeScale: 1.1 });
+        })).toMatchObject({ columns: 4, minimumCardWidth: 194, cardHeight: 194, textSizeScale: 1.1 });
         expect(getCatalogGridMeasurement({
             width: 650,
             height: 400,
             isMobileViewport: false,
             isTabletViewport: true,
+            isTabletLandscapeViewport: true,
             isDgfyPosSurface: true,
             textSizeScale: 1
         })).toMatchObject({ columns: 4, minimumCardWidth: 156, cardHeight: 176 });
+        expect(getCatalogGridMeasurement({
+            width: 400,
+            height: 400,
+            isMobileViewport: false,
+            isTabletViewport: true,
+            isTabletLandscapeViewport: false,
+            isDgfyPosSurface: true,
+            textSizeScale: 1
+        })).toMatchObject({ columns: 2, rows: 2, pageSize: 4, minimumCardWidth: 160, cardHeight: 144 });
+        expect(getCatalogGridMeasurement({
+            width: 768,
+            height: 900,
+            isMobileViewport: false,
+            isTabletViewport: true,
+            isTabletPortraitViewport: true,
+            isTabletLandscapeViewport: false,
+            isDgfyPosSurface: true,
+            textSizeScale: 1
+        })).toMatchObject({ columns: 2, rows: 5, pageSize: 10, minimumCardWidth: 160, cardHeight: 144 });
         expect(getCatalogGridMeasurement({
             width: 320,
             height: 400,
@@ -156,9 +182,20 @@ describe('POS catalog workflow utilities', () => {
             isDgfyPosSurface: true,
             textSizeScale: 1
         })).toMatchObject({ columns: 1, rows: 3, pageSize: 3, minimumCardWidth: 320, cardHeight: 120 });
+        expect(getCatalogGridMeasurement({
+            width: 700,
+            height: 260,
+            isMobileViewport: true,
+            isMobileLandscapeViewport: true,
+            isTabletViewport: false,
+            isDgfyPosSurface: true,
+            textSizeScale: 1
+        })).toMatchObject({ columns: 3, minimumCardWidth: 176, cardHeight: 120 });
         expect(CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX).toBe(176);
         expect(CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX).toBe(176);
         expect(CATALOG_DGFY_TABLET_DEFAULT_COLUMNS).toBe(4);
+        expect(CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS).toBe(2);
+        expect(CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX).toBe(144);
         expect(CATALOG_GRID_GAP_PX).toBe(8);
     });
 });

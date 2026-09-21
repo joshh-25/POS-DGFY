@@ -110,6 +110,12 @@ export default defineConfig({
     host: true,
     port: 5174,
     allowedHosts,
+    // POS imports the shared frontend trunk through relative paths. Keep that
+    // source tree available in dev so a clean Vite restart serves the same
+    // modules that the production build consumes.
+    fs: {
+      allow: [__dirname, webCoreRoot]
+    },
     headers: devSecurityHeaders,
     proxy: proxyTargets
   },

@@ -1,14 +1,9 @@
 /** @vitest-environment jsdom */
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { POSCheckoutConfirmDialog } from '../components/POSCheckoutConfirmDialog.jsx';
-import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';
-
-vi.mock('../../../utils/iminRuntimeFeedback.js', () => ({
-    isIminWrapperRuntime: vi.fn(() => false)
-}));
 
 vi.mock('@/components/ui/dialog', () => ({
     Dialog: ({ open, overlayClassName, children }) => (open ? <div data-testid="checkout-dialog-root" data-overlay-class={overlayClassName || ''}>{children}</div> : null),
@@ -20,7 +15,6 @@ vi.mock('@/components/ui/dialog', () => ({
 
 beforeEach(() => {
     vi.clearAllMocks();
-    isIminWrapperRuntime.mockReturnValue(false);
 });
 
 afterEach(cleanup);
@@ -174,18 +168,41 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(paymentPanel.getAttribute('data-prefill-blocked-reason')).toContain('Different employees');
     });
 
-    it('disables backdrop blur only inside the iMin wrapper', () => {
-        const { unmount } = render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
-
-        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('');
-        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
-
-        unmount();
-        isIminWrapperRuntime.mockReturnValue(true);
+    it('keeps the checkout backdrop clear while retaining the dark overlay', () => {
         render(<POSCheckoutConfirmDialog viewModel={createViewModel()} />);
 
-        expect(screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class')).toBe('backdrop-blur-none');
-        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(2);
+        const overlayClass = screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class');
+        expect(overlayClass).toContain('pos-checkout-mobile-overlay');
+        expect(overlayClass).toContain('bg-slate-950/70');
+        expect(overlayClass).toContain('backdrop-blur-none');
+    });
+
+    it('keeps the current-sale handoff on the shared mobile motion hooks', () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({ checkoutOpenedFromCurrentSale: true })} />);
+
+        const checkoutSheet = screen.getByTestId('checkout-dialog-root').querySelector('.pos-checkout-mobile-sheet');
+        const overlayClass = screen.getByTestId('checkout-dialog-root').getAttribute('data-overlay-class');
+
+        expect(checkoutSheet.className).toContain('pos-checkout-mobile-sheet-handoff');
+        expect(overlayClass).toContain('pos-checkout-mobile-overlay-handoff');
+    });
+
+    it('reveals the tablet portrait checkout sheet after its hidden mount frame', async () => {
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            isTabletViewport: true,
+            isTabletPortraitViewport: true
+        })} />);
+
+        const checkoutRoot = screen.getByTestId('checkout-dialog-root');
+        const checkoutSheet = checkoutRoot.querySelector('.pos-checkout-mobile-sheet');
+
+        expect(checkoutSheet.className).not.toContain('pos-checkout-mobile-sheet-visible');
+        expect(checkoutRoot.getAttribute('data-overlay-class')).not.toContain('pos-checkout-mobile-overlay-visible');
+
+        await waitFor(() => {
+            expect(checkoutSheet.className).toContain('pos-checkout-mobile-sheet-visible');
+            expect(checkoutRoot.getAttribute('data-overlay-class')).toContain('pos-checkout-mobile-overlay-visible');
+        });
     });
 
     it('keeps keystrokes local and confirms with the validated payment snapshot', async () => {
@@ -212,13 +229,11 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         expect(terminalRender).toHaveBeenCalledTimes(1);
         expect(viewModel.setCustomerPaymentAmountInput).not.toHaveBeenCalled();
         expect(viewModel.setCustomerPaymentAmountAutoFilled).not.toHaveBeenCalled();
-        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.change(paymentInput, { target: { value: '150' } });
         expect(confirmButton.disabled).toBe(false);
         expect(within(paymentSummary).getByText('₱50.00').textContent).toBe('₱50.00');
         expect(terminalRender).toHaveBeenCalledTimes(1);
-        expect(isIminWrapperRuntime).toHaveBeenCalledTimes(1);
 
         fireEvent.click(confirmButton);
 
@@ -351,6 +366,9 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         const suggestionButtons = within(paymentRow).getAllByRole('button');
 
         expect(paymentRow.contains(paymentInput)).toBe(true);
+        expect(paymentRow.className).toContain('grid-cols-6');
+        expect(paymentRow.className).toContain('min-w-[768px]');
+        expect(paymentRow.className).not.toContain('1.5fr');
         expect(suggestionButtons).toHaveLength(5);
         expect(screen.queryByTestId('pos-cash-payment-exact')).toBeNull();
         expect(screen.queryByTestId('pos-cash-payment-suggestion-2000')).toBeNull();
@@ -436,7 +454,10 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         const discountButtons = screen.getByTestId('pos-checkout-discount-type-buttons');
         expect(discountButtons.querySelectorAll('button')).toHaveLength(6);
         expect(discountButtons.className).toContain('grid-cols-6');
-        expect(discountButtons.className).toContain('min-w-[720px]');
+        expect(discountButtons.className).toContain('min-w-[768px]');
+        expect(discountButtons.className).toContain('shrink-0');
+        expect(discountButtons.className).toContain('gap-1.5');
+        expect(discountButtons.querySelector('button').className).toContain('whitespace-nowrap');
         fireEvent.click(screen.getByTestId('pos-checkout-discount-type-pwd'));
 
         expect(viewModel.openDiscountModal).toHaveBeenCalledWith({
@@ -450,10 +471,44 @@ describe('POSCheckoutConfirmDialog payment draft', () => {
         render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
 
         expect(await screen.findByTestId('mock-inline-discount')).toBeDefined();
+        const workspace = screen.getByTestId('mock-inline-discount').parentElement;
+        expect(workspace.className).toContain('pos-checkout-discount-workspace');
+        await waitFor(() => expect(workspace.className).toContain('pos-checkout-discount-workspace-open'));
         expect(screen.getByRole('button', { name: 'Confirm' }).disabled).toBe(true);
 
         fireEvent.click(screen.getByRole('button', { name: 'Cancel discount' }));
         expect(viewModel.closeDiscountModal).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the mobile discount workspace mounted while it collapses', async () => {
+        const openViewModel = createViewModel({
+            discountModalOpen: true,
+            isMobileViewport: true,
+            isMobileLandscapeViewport: false
+        });
+        const { rerender } = render(<POSCheckoutConfirmDialog viewModel={openViewModel} />);
+
+        expect(await screen.findByTestId('mock-inline-discount')).toBeDefined();
+        vi.useFakeTimers();
+
+        try {
+            rerender(<POSCheckoutConfirmDialog viewModel={{ ...openViewModel, discountModalOpen: false }} />);
+
+            const workspace = screen.getByTestId('mock-inline-discount').parentElement;
+            expect(workspace.className).not.toContain('pos-checkout-discount-workspace-open');
+
+            act(() => {
+                vi.advanceTimersByTime(359);
+            });
+            expect(screen.getByTestId('mock-inline-discount')).toBeDefined();
+
+            act(() => {
+                vi.advanceTimersByTime(1);
+            });
+            expect(screen.queryByTestId('mock-inline-discount')).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('opens the order summary as a popup and closes it without leaving checkout', () => {
