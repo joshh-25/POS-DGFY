@@ -3,16 +3,12 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-17
 declaration_id: 2026-09-17-quadruper-geocoder-swap
-classification: regulatory
-surfaces: settings,tenant_locations,storefront,onboarding,pos,inventory,terminal,payments,compliance
+classification: minor
+surfaces: settings,tenant_locations,storefront,onboarding
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.17
 verification_evidence: npm --prefix apps/dgfy-api test -- tests/geoFallbackPolicy.test.js,npm run build:skupervisor,npm run build:pos,npm run build:store,npm run lint:docs
 rollback_note: Set GEOCODE_QUADRUPER_ENABLED=false. This restores the bundled PH-local dataset as the sole geocoding source with no code change and no redeploy of a prior image.
-preflight_result: no_breach
-preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-18T00:00:00+08:00
-preflight_request_ref: BRANCH-SYNC-2026-09-18-QUADRUPER-GEOCODER-SWAP
 ---
 
 # Quadruper Geocoder Swap

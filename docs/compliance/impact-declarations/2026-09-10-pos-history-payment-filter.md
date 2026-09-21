@@ -5,8 +5,8 @@ owner: engineering
 last_reviewed: 2026-09-10
 related_adr: docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md
 declaration_id: 2026-09-10-pos-history-payment-filter
-classification: regulatory
-surfaces: pos,terminal,payments,inventory,settings,compliance
+classification: major
+surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.10
 verification_evidence: POS transaction-history repository query tests,POS payment-method tests,changed-file API lint,compliance check,git diff check

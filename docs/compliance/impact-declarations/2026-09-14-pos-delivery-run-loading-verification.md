@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-14
 declaration_id: 2026-09-14-pos-delivery-run-loading-verification
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: DELIVERY_RUN_LOADING_REASON_REQUIRED
 policy_version: 2026.09.03
 verification_evidence: apps/dgfy-api/tests/deliveryRunLoading.usecase.test.js,apps/dgfy-api/tests/addDeliveryRunLoadingVerification.migration.test.js,apps/dgfy-api/tests/posValidator.deliveryRun.test.js,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js,packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx,node --check on changed JavaScript and migration files

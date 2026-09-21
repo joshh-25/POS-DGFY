@@ -3,8 +3,8 @@ status: draft_pr
 owner: engineering
 last_reviewed: 2026-09-17
 declaration_id: 2026-09-17-delivery-run-dispatch-warnings
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.17
 verification_evidence: apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js,apps/dgfy-api/tests/deliveryRunRoutes.transport.test.js,packages/web-core/src/features/pos/__tests__/deliveryRunLoading.behavior.test.jsx,packages/web-core/src/features/pos/__tests__/deliveryRunDispatch.behavior.test.jsx,npm run check:architecture,npm run lint:docs,npm run check:compliance,npm run build:pos,npm run build:skupervisor,git diff --check

@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-09-13
 related_adr: docs/architecture/adr/0034-manual-delivery-job-foundation.md
 declaration_id: 2026-09-13-pos-delivery-completion-evidence
-classification: regulatory
-surfaces: pos,terminal,settings,inventory,payments,compliance
+classification: major
+surfaces: pos,terminal,settings
 reason_codes_impacted: DELIVERY_EVIDENCE_IMAGE_REJECTED,DELIVERY_EVIDENCE_IMAGE_TOO_LARGE,DELIVERY_EVIDENCE_IMAGE_COUNT,DELIVERY_EVIDENCE_SIGNATURE_COUNT,DELIVERY_EVIDENCE_ALREADY_ATTACHED,DELIVERY_JOB_NOT_ATTESTABLE
 policy_version: 2026.09.13
 verification_evidence: apps/dgfy-api/tests/posDeliveryCompletionEvidence.usecase.test.js,apps/dgfy-api/tests/createDeliveryCompletionEvidence.migration.test.js,apps/dgfy-api/tests/deliveryCompletionEvidenceStorage.test.js,node --check on every changed apps/dgfy-api and migration-runner JavaScript file,npm run check:architecture-guardrails,npm run check:controller-boundaries

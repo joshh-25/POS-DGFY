@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-08
 declaration_id: 2026-09-08-pos-items-hd-image-viewer
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: focused POS image viewer behavior tests,focused POS catalog image resolver tests,POS production build,architecture check,compliance check,git diff --check

@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-09
 declaration_id: 2026-09-08-pos-items-image-viewer-pr-readiness
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: focused POS image resolver tests including regenerated-gallery deduplication,POS image viewer behavior tests including resize remeasurement,POS production build,architecture check,compliance check,app-version check,git diff --check

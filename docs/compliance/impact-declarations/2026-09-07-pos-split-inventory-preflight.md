@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-07
 declaration_id: 2026-09-07-pos-split-inventory-preflight
-classification: regulatory
-surfaces: pos,terminal,payments,inventory,settings,compliance
+classification: major
+surfaces: pos,terminal,payments,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.07
 verification_evidence: 31 focused split-payment unit tests; targeted migrated-database FIFO preflight and final-checkout tests; architecture, ADR, and compliance checks

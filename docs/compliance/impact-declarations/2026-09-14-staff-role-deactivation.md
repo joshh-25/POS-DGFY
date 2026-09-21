@@ -4,8 +4,8 @@ owner: DGFY identity/POS
 last_reviewed: 2026-09-14
 related_adr: docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md
 declaration_id: 2026-09-14-staff-role-deactivation
-classification: regulatory
-surfaces: pos,settings,inventory,terminal,payments,compliance
+classification: major
+surfaces: pos,settings
 reason_codes_impacted: ALLOWED,AUTHORIZATION_FAILED,NOT_PERMITTED
 policy_version: 2026.09.14
 verification_evidence: node --check changed JavaScript files,npm test --prefix apps/dgfy-api -- --runTestsByPath tests/staffCapabilityContract.test.js,npm run check:architecture,npm run lint:docs,npm run check:compliance,git diff --check

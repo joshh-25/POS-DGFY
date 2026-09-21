@@ -3,7 +3,7 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-06
 declaration_id: 2026-09-06-pos-development-integration
-classification: regulatory
+classification: major
 surfaces: pos,terminal,payments,settings,compliance,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.06

@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-10
 declaration_id: 2026-09-10-admin-tenant-approval-action-guard
 classification: regulatory
-surfaces: admin,tenant-registration,settings,compliance,pos,inventory,terminal,payments
+surfaces: admin,tenant-registration,settings,compliance
 reason_codes_impacted: VALIDATION_FAILED,ALLOWED
 policy_version: 2026.09.10
 verification_evidence: list-tenants lifecycle-policy tests, TenantManager registration-action integration tests, IMS lint, IMS production build, git diff --check

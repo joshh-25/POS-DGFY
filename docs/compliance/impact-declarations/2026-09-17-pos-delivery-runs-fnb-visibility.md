@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-17
 declaration_id: 2026-09-17-pos-delivery-runs-fnb-visibility
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: DELIVERY_RUN_UNPACKED_MEMBERS,DELIVERY_RUN_ACCOUNTABLE_REQUIRED,DELIVERY_RUN_LOCKED,DELIVERY_RUN_LOCATION_MISMATCH,DELIVERY_JOB_ALREADY_IN_RUN,DELIVERY_ASSIGNMENT_NOT_RUN_OWNED,DELIVERY_RUN_NOT_FOUND,DELIVERY_RUN_MEMBER_NOT_FOUND,DELIVERY_JOB_ASSIGNMENT_LOCKED,DELIVERY_PERSONNEL_NOT_AVAILABLE,POS_LOCATION_ACCESS_DENIED
 policy_version: 2026.09.17
 verification_evidence: npm run build:pos -- real Vite build, OK,npm run build:skupervisor -- real Vite build, OK (apps/dgfy-ims consumes the same shared TerminalOperationsPanels tree via packages/web-core),focused Vitest suites run from apps/dgfy-ims -- 82/82 passing across deliveryRunsWorkspace, deliveryRunSplitViewDnd, deliveryRunBulkAssign, deliveryRunQueueFilter, deliveryRunLoading, deliveryRunDispatch -- plus 113/113 across 7 adjacent suites (incomingQueueRunMemberFulfillmentGate, terminalViewModeContracts, terminalBalanceSettlement, terminalDownpaymentVisibility, incomingQueueViewMode, webViewStringCompat, orderFulfillmentUi),npm run check:architecture -- OK (55 modules, 588 files; controller boundaries OK),npm run lint:docs -- OK (30 governed docs, 90 ADRs),production-build preview smoke -- vite preview serves HTTP 200 app shell,npm run check:compliance -- confirmed to fail first (listing every touched file below), then pass once this declaration was added,RF-1/RF-2 review follow-up -- dgfy-pos + dgfy-ims 1.18.0 -> 1.19.0 minor bumps per propose-version-level, QueueOrderTableView conditional indentation fix, 151/151 focused + adjacent tests re-run green

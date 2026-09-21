@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-10
 declaration_id: 2026-09-10-pos-bulk-image-import-lint-fix
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.10
 verification_evidence: npx eslint (0 errors on both touched files), npm run lint (0 errors repo-wide), node scripts/audit-dependencies.js --omit-dev (PASS), node scripts/check-architecture-guardrails.js, node scripts/check-controller-boundaries.js

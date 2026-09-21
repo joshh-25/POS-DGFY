@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-09-11
 related_adr: 0053-pluggable-pos-hardware-device-drivers.md
 declaration_id: 2026-09-11-imin-thermal-receipt-currency
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.11
 verification_evidence: targeted iMin receipt Vitest suite (31 tests),dgfy-pos production build,npm run check:architecture,npm run lint:docs,npm run check:compliance

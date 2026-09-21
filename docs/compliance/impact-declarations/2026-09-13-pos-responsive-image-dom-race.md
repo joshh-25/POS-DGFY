@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-09-13
 related_adr: docs/architecture/adr/0071-frontend-split-into-three-apps.md
 declaration_id: 2026-09-13-pos-responsive-image-dom-race
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.13
 verification_evidence: focused ResponsiveImage and POS contract tests, shared frontend builds, compliance and version gates (see section below)

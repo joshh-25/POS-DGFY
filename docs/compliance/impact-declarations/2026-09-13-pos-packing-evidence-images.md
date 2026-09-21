@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-13
 declaration_id: 2026-09-13-pos-packing-evidence-images
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: ORDER_NOT_PACKED,PACKING_EVIDENCE_LIMIT_EXCEEDED,PACKING_EVIDENCE_IMAGE_REJECTED,NOT_YOUR_PACKING,NOT_PERMITTED
 policy_version: 2026.09.13
 verification_evidence: focused backend 9/9; focused UI 3/3; route transport 9/9; existing POS packed/balance regressions 31/31; API lint; architecture/compliance gates; POS/IMS/Storefront builds

@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-14
 declaration_id: 2026-09-14-assigned-delivery-job-status
-classification: regulatory
-surfaces: pos,terminal,settings,rbac,inventory,payments,compliance
+classification: major
+surfaces: pos,terminal,settings,rbac
 reason_codes_impacted: NOT_PERMITTED,NO_LONGER_ASSIGNED,LOCATION_NOT_GRANTED
 policy_version: 2026.09.03
 verification_evidence: apps/dgfy-api/tests/posDeliveryJobStatus.usecase.test.js,apps/dgfy-api/tests/staffAssignments.usecase.test.js,apps/dgfy-api/tests/rbacRouteCoverage.contract.test.js,node --check on changed JavaScript files

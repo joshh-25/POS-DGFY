@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-05
 declaration_id: 2026-09-05-pos-items-modal-viewport-hardening
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.05
 verification_evidence: Focused POS Items modal component and contract tests; desktop, mobile, and reduced-height Playwright checks; POS, IMS, and Storefront production builds; Chrome 80 compatibility build guard

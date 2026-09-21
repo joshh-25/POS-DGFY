@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-16
 declaration_id: 2026-09-16-retail-acceptance-inventory-timing
-classification: regulatory
-surfaces: pos,terminal,payments,inventory,store,settings,compliance
+classification: major
+surfaces: pos,terminal,payments,inventory,store
 reason_codes_impacted: INVENTORY_REVERSAL_UNAVAILABLE
 policy_version: 2026.09.16
 verification_evidence: apps/dgfy-api/tests/posOnlineInventoryReservationLifecycle.unit.test.js -- actually executed (Jest): Retail accept issues once at placed -> confirmed (ASAP and scheduled-for-later), non-Retail accept issues nothing, completion skips when evidence set and still deducts for legacy orders without it, retry with a different idempotency key issues exactly once,apps/dgfy-api/tests/storeCancelInventoryReversal.unit.test.js -- actually executed (Jest): post-acceptance customer cancel reverses once with inventory_reversed_at, pre-acceptance cancel/non-Retail/already-reversed never reverse, reversal failure rolls back the whole cancel,apps/dgfy-api/tests/addRetailAcceptanceInventoryEvidence.migration.test.js -- actually executed (Jest): tenant fan-out adds both columns once per DB, idempotent, down drops exactly both,node --check on every changed apps/dgfy-api file and the new migration file,npm run build:store (real Vite build, succeeded),npm run build:pos (real Vite build, succeeded -- packages/web-core is the shared trunk),npm run check:architecture (guardrails + controller boundaries, passed),npm run lint:docs (passed),npm run check:compliance (confirmed to fail first, then pass once this declaration was added)

@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-13
 declaration_id: 2026-09-13-pos-delivery-run-transportation-label
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.09.03
 verification_evidence: apps/dgfy-api/tests/deliveryRunTransportationLabel.migration.test.js -- actually executed (Jest),apps/dgfy-api/tests/posValidator.deliveryRun.test.js -- actually executed (Jest),apps/dgfy-api/tests/deliveryRun.usecase.test.js -- actually executed (Jest),apps/dgfy-api/tests/deliveryRunSerializer.test.js -- actually executed (Jest),apps/dgfy-api/tests/deliveryRunDispatch.usecase.test.js -- actually executed (Jest),apps/dgfy-api/tests/deliveryRunWriteThrough.usecase.test.js -- actually executed (Jest),node --check on all changed/new JavaScript files,npm run check:tenant-schema-coverage,npm run check:architecture,npm run check:compliance,npm run lint:docs,node scripts/check-app-version-bump.js

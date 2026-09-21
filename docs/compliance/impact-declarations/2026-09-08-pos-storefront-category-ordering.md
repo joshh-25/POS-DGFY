@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-09
 declaration_id: 2026-09-08-pos-storefront-category-ordering
-classification: regulatory
-surfaces: api,pos,storefront,database,inventory,payments,terminal,settings,compliance
+classification: major
+surfaces: api,pos,storefront,database,inventory,payments,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: inventory repository tests,tenant schema sync regression tests and 15-tenant repair report,public catalog serialization test and live 118-item Masu Cafe payload,legacy and unassigned category exclusion tests,active-folder status projection and modifier/voucher input regression tests,storefront category view-model tests,POS and Storefront production builds,architecture check,compliance check,app-version check,migration syntax check

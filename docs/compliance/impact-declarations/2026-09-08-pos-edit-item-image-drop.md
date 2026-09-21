@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-08
 declaration_id: 2026-09-08-pos-edit-item-image-drop
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.08
 verification_evidence: focused POS edit-item image contract tests,POS production build,git diff --check

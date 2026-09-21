@@ -3,8 +3,8 @@ status: draft_pr
 owner: engineering
 last_reviewed: 2026-09-17
 declaration_id: 2026-09-17-pos-stock-invalidation-composition-clear
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.17
 verification_evidence: npm --prefix apps/dgfy-api test -- --runTestsByPath tests/inventoryItemRepository.test.js (79 passed),npm --prefix apps/dgfy-api test -- --runTestsByPath tests/posCheckoutFnbContracts.usecase.test.js (40 passed),npm --prefix apps/dgfy-api test -- --runTestsByPath tests/catalogChangeEventBus.test.js tests/posHandlers.transport.test.js tests/posVoid.route.transport.test.js (43 passed),128 pos/inventory/composition/fnb suites (127 passed, 1003 tests; 1 pre-existing env failure unrelated),node --check on every changed apps/dgfy-api file,npm run check:architecture (guardrails + controller boundaries, passed),web-core posCatalogRealtime contract test (2 passed; no frontend source changed),npm run check:compliance (confirmed to fail first, then pass once this declaration was added)

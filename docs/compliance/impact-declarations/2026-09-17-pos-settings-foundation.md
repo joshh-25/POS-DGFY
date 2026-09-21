@@ -4,8 +4,8 @@ owner: DGFY POS/settings
 last_reviewed: 2026-09-18
 related_adr: docs/architecture/adr/0071-frontend-split-into-three-apps.md
 declaration_id: 2026-09-17-pos-settings-foundation
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.17
 verification_evidence: npm run check:compliance,npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .,targeted POS lint,focused Vitest Delivery Runs suites (84 tests),npm run build:pos,npm run build:store,npm run build:ims -- --outDir .tmp-review-build,git diff --check

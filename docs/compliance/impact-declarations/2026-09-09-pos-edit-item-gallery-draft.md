@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-09
 declaration_id: 2026-09-09-pos-edit-item-gallery-draft
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.09
 verification_evidence: focused POS edit-gallery helper and save-contract tests,focused API gallery and worker tests,POS production build,changed-file lint,architecture check,compliance check,documentation check,git diff --check

@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-11
 declaration_id: 2026-09-11-pos-phase-322-a-contract-coverage
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.09.11
 verification_evidence: focused POS/web-core contract suites,POS lint,POS production build,docs and compliance checks,git diff check

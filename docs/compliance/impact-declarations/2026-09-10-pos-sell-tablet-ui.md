@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-11
 declaration_id: 2026-09-10-pos-sell-tablet-ui
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal
 reason_codes_impacted: NONE
 policy_version: 2026.09.10
 verification_evidence: focused POS tablet-sell contract suite (including optional-details collapse regression),POS lint,POS production build,tablet shell smoke at 1024x600,docs and ADR lint,git diff check

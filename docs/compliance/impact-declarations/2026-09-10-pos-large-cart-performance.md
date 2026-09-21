@@ -5,8 +5,8 @@ owner: engineering
 last_reviewed: 2026-09-10
 related_adr: docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md,docs/architecture/adr/0053-pluggable-pos-hardware-device-drivers.md,docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md
 declaration_id: 2026-09-10-pos-large-cart-performance
-classification: regulatory
-surfaces: pos,terminal,payments,inventory,settings,compliance
+classification: major
+surfaces: pos,terminal,payments
 reason_codes_impacted: ALLOWED,CONFLICT
 policy_version: 2026.09.10
 verification_evidence: shared POS performance contract tests,client-delegated receipt unit tests,POS production build,changed-file frontend/API lint,git diff check

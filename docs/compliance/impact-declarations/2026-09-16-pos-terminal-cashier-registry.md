@@ -4,8 +4,8 @@ owner: DGFY POS/settings
 last_reviewed: 2026-09-16
 related_adr: docs/architecture/adr/0020-mode-aware-rbac-and-role-presets.md
 declaration_id: 2026-09-16-pos-terminal-cashier-registry
-classification: regulatory
-surfaces: pos,terminal,settings,inventory,payments,compliance
+classification: major
+surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED,AUTHORIZATION_FAILED,VALIDATION_FAILED,LOCATION_NOT_GRANTED
 policy_version: 2026.09.16
 verification_evidence: node --check API source files,npm test terminal registry suites 9/9,npm test POS terminal regression 132/132,npm run build:pos,npm run lint POS,npm run lint API,git diff --check

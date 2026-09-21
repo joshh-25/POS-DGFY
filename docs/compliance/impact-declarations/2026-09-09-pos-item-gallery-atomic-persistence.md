@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-09
 declaration_id: 2026-09-09-pos-item-gallery-atomic-persistence
-classification: regulatory
-surfaces: pos,terminal,inventory,payments,settings,compliance
+classification: major
+surfaces: pos,terminal,inventory,payments
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.09
 verification_evidence: focused API gallery/use-case/repository/worker tests,storefront image persistence integration test,focused POS editor contract tests,changed-file ESLint,architecture checks,documentation checks,git diff --check

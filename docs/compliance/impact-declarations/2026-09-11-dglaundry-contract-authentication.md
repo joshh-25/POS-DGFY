@@ -4,8 +4,8 @@ owner: DGFY identity/integration
 last_reviewed: 2026-09-11
 related_adr: docs/architecture/adr/0079-dglaundry-external-runtime-and-provider-contract.md
 declaration_id: 2026-09-11-dglaundry-contract-authentication
-classification: regulatory
-surfaces: dgfy-laundry,identity,security,integrations,pos,settings,inventory,terminal,payments,compliance
+classification: major
+surfaces: dgfy-laundry,identity,security,integrations
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,SERVICE_UNAVAILABLE,INTEGRATION_SIGNATURE_REPLAY
 policy_version: 2026.09.11
 verification_evidence: node --check changed provider files,npm test --prefix apps/dgfy-api -- --runInBand tests/dgfyLaundryProviderUseCases.test.js tests/dglaundryEventSignature.test.js tests/dglaundryPartnerClient.test.js,git diff --check
@@ -25,13 +25,6 @@ Major. This change makes the DGLaundry provider contract use separate
 authentication with one-time assertion replay protection, and fixes the
 Surebizcorp staff origin. It does not change DGFY's ordinary tenant services or
 payment authority.
-
-## Affected Surfaces
-
-- DGLaundry provider contract authentication and integration runtime.
-- The aggregate synchronization bundle also contains POS, settings, inventory,
-  terminal, payments, and compliance-sensitive files; those surfaces are listed
-  in front matter so the staged merge is evaluated consistently.
 
 ## Compliance Preconditions
 

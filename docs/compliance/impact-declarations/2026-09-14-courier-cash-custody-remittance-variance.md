@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-09-14
 declaration_id: 2026-09-14-courier-cash-custody-remittance-variance
-classification: regulatory
-surfaces: pos,terminal,settings,inventory,payments,compliance
+classification: major
+surfaces: pos,terminal,settings
 reason_codes_impacted: DELIVERY_RUN_REMITTANCE_ALREADY_EXISTS,DELIVERY_RUN_REMITTANCE_MEMBER_NOT_DELIVERED,DELIVERY_RUN_REMITTANCE_NOTHING_TO_COLLECT,DELIVERY_RUN_VARIANCE_REASON_REQUIRED,DELIVERY_RUN_VARIANCE_RESOLUTION_PERMISSION_REQUIRED
 policy_version: 2026.09.03
 verification_evidence: apps/dgfy-api/tests/deliveryRunRemittance.usecase.test.js,apps/dgfy-api/tests/createDeliveryRunRemittances.migration.test.js,apps/dgfy-api/tests/deliveryRunRemittance.transport.test.js,node --check on changed JavaScript and migration files

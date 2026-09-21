@@ -4,7 +4,7 @@ owner: engineering
 last_reviewed: 2026-09-17
 declaration_id: 2026-09-17-tenant-capability-write-verification
 classification: regulatory
-surfaces: settings,compliance,pos,inventory,terminal,payments
+surfaces: settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.14
 verification_evidence: packages/web-core/src/pages/__tests__/TenantManager.capabilities.integration.test.jsx,apps/dgfy-api/tests/tenantCapabilitiesWriteReadback.test.js,npm run check:architecture,npm run lint:docs,npm run build:skupervisor
