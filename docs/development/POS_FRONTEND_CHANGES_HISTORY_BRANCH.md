@@ -1,10 +1,8 @@
 # POS Frontend Changes — History Branch
 
-Status: complete, committed, and pushed; ready for pull request
 Branch: `codex/pos-frontend-changes-history`
 Comparison base: `origin/develop` (`ea06c1a56`)
-Audit date: 2026-09-19
-Push status: pushed at `edfa8f8232f0f09534b9249d46542c276225a3f7`
+Audit date: 2026-09-21
 
 ## Executive Summary
 
@@ -14,15 +12,17 @@ atomic POS-focused commits. It covers responsive behavior for desktop, tablet po
 landscape, and mobile layouts; stable dialog and sheet presentation; transaction-history controls;
 shared pagination; terminal controls; and the no-hardware cash-drawer fallback.
 
-The implementation/compliance delta from the current PR comparison base is 105 files, with 6,234
-insertions and 1,141 deletions. This document is included in the pushed branch and records the final
-handoff inventory.
+The implementation/compliance delta from the current PR comparison base is recorded in the complete
+push inventory below. This document records the durable scope, rollback boundary, and audit evidence
+for the branch.
 The unrelated backend file `apps/dgfy-api/src/services/csvExportService.js` is intentionally outside
 this branch's scope and is not present in the pushed branch diff.
 
 ## Commit Inventory
 
-The branch currently contains these nine commits after the comparison base:
+The branch contains the implementation commits listed below after the comparison base, followed by
+review-remediation commits that remove unrelated compliance drift, bump the POS app version, and
+refresh this documentation.
 
 | Commit | Subject | Scope |
 | --- | --- | --- |
@@ -36,8 +36,7 @@ The branch currently contains these nine commits after the comparison base:
 | `5e390ff4b` | `fix(pos): stabilize availability badge in tablet portrait` | Keeps the tablet-portrait availability state readable without changing other viewports. |
 | `edfa8f823` | `fix(pos): refine tablet portrait catalog badges` | Enlarges tablet-portrait catalog cards/images and keeps availability badges on one line. |
 
-No commit was created for the excluded API file. The complete POS change set and this documentation
-are present on the remote branch at `edfa8f823`.
+No commit was created for the excluded API file. It remains outside the POS branch scope.
 
 ## Functional Changes
 
@@ -104,12 +103,10 @@ are present on the remote branch at `edfa8f823`.
 - Refined the shared dialog component used by POS responsive surfaces.
 - Added the POS Vite configuration needed for the shared source-tree integration.
 - Updated the POS E2E login fixture for the current company-selection flow.
-- Bumped `dgfy-ims` and `dgfy-pos` from `1.9.3` to `1.9.4` and `dgfy-storefront` from `1.10.3`
-  to `1.10.4`, including their lockfiles. This is release metadata only: no Storefront source
-  behavior changed. The repository's blocking `check-app-version-bump.js` treats `packages/web-core`
-  as a declared file dependency of all frontend apps, so all three consumers require a SemVer
-  increase even though the reachability shadow audit found the changed POS modules are not reachable
-  from Storefront.
+- The POS follow-up review remediation raises `dgfy-pos` from `1.20.0` to `1.21.0`, including its
+  lockfile. This is release metadata only and does not change backend behavior. IMS and Storefront
+  remain at their comparison-base versions because the shared-source reachability audit found no
+  changed consumer path requiring a version increase for those apps.
 
 ## Responsive Behavior Matrix
 
@@ -123,7 +120,8 @@ are present on the remote branch at `edfa8f823`.
 ## Compliance and Safety
 
 - Added [`2026-09-18-pos-frontend-history-responsive.md`](../compliance/impact-declarations/2026-09-18-pos-frontend-history-responsive.md).
-- Updated the existing [`2026-09-09-pos-frontend-terminal-followup.md`](../compliance/impact-declarations/2026-09-09-pos-frontend-terminal-followup.md) evidence on the branch.
+- Kept pre-existing compliance declarations unchanged; only the new POS frontend declaration belongs
+  to this branch's compliance footprint.
 - The declaration classifies this as a major POS/terminal frontend change because it touches
   checkout, transaction evidence, operator controls, and responsive terminal behavior.
 - No backend routes, fiscal calculations, payment settlement, tax rules, receipt persistence, tenant
@@ -140,9 +138,9 @@ are present on the remote branch at `edfa8f823`.
 | `npm run build` in `apps/dgfy-pos` | PASS |
 | `npm run build` in `apps/dgfy-ims` | PASS |
 | `npm run smoke:pos-terminal-ui` | PASS — desktop 1440×960, tablet 820×1180, mobile 390×844; no terminal console or HTTP errors |
-| `npm run check:compliance` | PASS |
+| `npm run check:compliance` | PASS after review remediation |
 | `npm run check:compliance -- --staged` during sensitive commits | PASS |
-| `node scripts/check-app-version-bump.js --staged` | PASS — all changed app consumers had a SemVer increase |
+| `node scripts/check-app-version-bump.js --staged` | PASS — `dgfy-pos` 1.20.0 → 1.21.0 |
 | `git diff --check` | PASS |
 | `npm run lint:docs` and strict ADR check through pre-commit | PASS |
 
@@ -273,9 +271,9 @@ compliance declaration and this documentation as appropriate. Do not revert the 
 
 Before opening or updating the PR, confirm:
 
-1. The current branch is `codex/pos-frontend-changes-history`.
-2. The nine commits listed above are present locally and remotely.
+1. The branch is `codex/pos-frontend-changes-history`.
+2. The implementation and review-remediation commits are present locally and remotely.
 3. The excluded API file is not in the branch diff.
-4. The local audit commands in this document still pass if any additional edits are made.
+4. The local audit commands in this document still pass after review remediation.
 5. The PR targets `develop` and uses `Refs #1798` for the related POS tablet verification issue;
    the issue remains open because deployed QA evidence is outside this implementation PR.
