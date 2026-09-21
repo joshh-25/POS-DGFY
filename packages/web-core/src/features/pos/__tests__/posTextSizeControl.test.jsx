@@ -15,9 +15,9 @@ describe('POS text-size control', () => {
         const control = screen.getByRole('button', { name: 'POS text size: Large (115%)' });
         expect(control.getAttribute('aria-expanded')).toBe('false');
         fireEvent.click(control);
-        expect(screen.getByRole('option', { name: 'Normal (100%)' })).toBeTruthy();
-        expect(screen.getByRole('option', { name: 'Large (115%)' })).toBeTruthy();
-        expect(screen.getByRole('option', { name: 'Extra large (130%)' })).toBeTruthy();
+        expect(screen.getByRole('option', { name: 'Normal (100%)' }).className).toContain('pos-text-size-control__option');
+        expect(screen.getByRole('option', { name: 'Large (115%)' }).className).toContain('pos-text-size-control__option');
+        expect(screen.getByRole('option', { name: 'Extra large (130%)' }).className).toContain('pos-text-size-control__option');
         expect(control.getAttribute('title')).toBe('Text size: Large (115%)');
     });
 

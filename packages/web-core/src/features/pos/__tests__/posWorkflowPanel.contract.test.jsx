@@ -42,6 +42,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Delivery')).toBeDefined();
     expect(screen.getByText('Table # (Optional)')).toBeDefined();
     expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)').closest('label').className).not.toContain('col-span-full');
     expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
     expect(screen.getByText('Payment Type')).toBeDefined();
@@ -81,6 +82,19 @@ describe('POS Workflow Panels Contract', () => {
     expect(textContent).not.toContain('Table #');
     expect(textContent).not.toContain('Guest Count');
     expect(textContent).not.toContain('Kitchen Notes');
+  });
+
+  it('expands global order notes only for Takeout', () => {
+    render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes="No spice"
+        setKitchenNotes={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Order Notes (Global)').closest('label').className).toContain('col-span-full');
   });
 
   it('uses direct order-method buttons in the wide checkout presentation', () => {

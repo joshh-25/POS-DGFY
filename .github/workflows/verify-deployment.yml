@@ -121,11 +121,12 @@ jobs:
 
           # Written to a file rather than inlined into the ssh command: this loop is long enough
           # that a single-quoted heredoc (no local expansion) reads far more clearly than an
-          # escaped one-liner. DOCKER_DIR/POLL_MINUTES cross the SSH boundary as remote env vars
-          # in the command line below, not by local expansion into this heredoc.
+          # escaped one-liner. DOCKER_DIR/POLL_MINUTES/RUN_ID cross the SSH boundary as remote
+          # env vars in the command line below, not by local expansion into this heredoc.
           cat > /tmp/remote-verify.sh <<'REMOTE_SCRIPT'
           set -uo pipefail
           cd "$DOCKER_DIR" || exit 1
+          RESULT_FILE="/tmp/dgfy-verify-result-${RUN_ID}.txt"
 
           # SERVICES was previously a hardcoded "mysql redis dgfy-api frontend nginx" -- stale
           # after ADR 0071 (#322/#915) retired `frontend` in favor of dgfy-ims/dgfy-pos/dgfy-
@@ -195,15 +196,41 @@ jobs:
 
           echo "--- final ---"
           docker compose ps
+          echo "$FAIL" > "$RESULT_FILE"
           exit "$FAIL"
           REMOTE_SCRIPT
 
-          if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-               "DOCKER_DIR='$DOCKER_DIR' POLL_MINUTES='$POLL_MINUTES' bash -s" \
+          if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+               -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=15 \
+               "$SSH_TARGET" \
+               "RUN_ID='${{ github.run_id }}' DOCKER_DIR='$DOCKER_DIR' POLL_MINUTES='$POLL_MINUTES' bash -s" \
                < /tmp/remote-verify.sh > /tmp/verify-output.log 2>&1; then
+            echo "(long poll session's SSH connection returned success)" >> /tmp/verify-output.log
+          else
+            echo "(long poll session's SSH connection returned nonzero -- not authoritative by itself, see result-file fetch below)" >> /tmp/verify-output.log
+          fi
+
+          RESULT_FILE="/tmp/dgfy-verify-result-${{ github.run_id }}.txt"
+          REMOTE_RESULT=""
+          for attempt in 1 2 3; do
+            if REMOTE_RESULT="$(ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes \
+                 -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -o ConnectTimeout=15 \
+                 "$SSH_TARGET" "cat '$RESULT_FILE' 2>/dev/null && rm -f '$RESULT_FILE'" 2>>/tmp/verify-output.log)"; then
+              [ -n "$REMOTE_RESULT" ] && break
+            fi
+            REMOTE_RESULT=""
+            [ "$attempt" -lt 3 ] && sleep 5
+          done
+
+          if [ -z "$REMOTE_RESULT" ]; then
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+            echo "detail=INCONCLUSIVE: no result file recovered from the remote host after 3 attempts -- verification may have been interrupted before it finished (e.g. connection dropped mid-poll), not necessarily a real health failure. Treated as FAIL per this workflow's fail-closed default; check the raw transcript below for how far the poll actually got." >> "$GITHUB_OUTPUT"
+          elif [ "$REMOTE_RESULT" = "0" ]; then
             echo "result=PASS" >> "$GITHUB_OUTPUT"
+            echo "detail=Confirmed via the remote result file (the long poll session's own SSH exit status was not used for this decision)." >> "$GITHUB_OUTPUT"
           else
             echo "result=FAIL" >> "$GITHUB_OUTPUT"
+            echo "detail=Remote script recorded a real failure (exit $REMOTE_RESULT) -- see the raw transcript below." >> "$GITHUB_OUTPUT"
           fi
           cat /tmp/verify-output.log
 
@@ -214,6 +241,7 @@ jobs:
             echo "### Deploy verification -- ${{ inputs.environment }}"
             echo ""
             echo "**Result: ${{ steps.poll.outputs.result || 'FAIL (no result recorded -- workflow error before the poll step completed)' }}**"
+            echo "${{ steps.poll.outputs.detail || '' }}"
             echo ""
             echo "<details><summary>Raw poll transcript</summary>"
             echo ""

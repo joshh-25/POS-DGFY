@@ -26,8 +26,8 @@ describe('hosted POS catalog performance contracts', () => {
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
     expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
-    expect(checkoutSource).toContain("loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}");
-    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain("loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}");
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');
@@ -107,10 +107,10 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('max-sm:h-full');
     expect(checkoutSource).toContain('max-sm:aspect-square');
     expect(checkoutSource).toContain('max-sm:w-auto');
-    expect(checkoutSource).toContain('max-sm:self-start');
+    expect(checkoutSource).toContain('max-sm:self-stretch');
     expect(checkoutSource).toContain('pendingItemImagePreviews[String(item.item_id)]?.url');
     expect(checkoutSource).toContain('<PosItemImage');
-    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('max-w-full line-clamp-2 text-[13px] font-black leading-tight');
     expect(checkoutSource).not.toContain('truncate text-center text-[14px] font-black leading-tight text-white');
     expect(checkoutSource).not.toContain('No POS Image');
@@ -127,10 +127,12 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('data-testid="pos-catalog-controls"');
     expect(checkoutSource).toContain('<span>All Items</span>');
     expect(checkoutSource).toContain('<POSBarcodeScanner');
-    expect(checkoutSource).toContain("isTabletViewport ? 'flex-row items-center'");
-    expect(checkoutSource).toContain('className="flex h-11 min-w-0 flex-1 items-center');
+    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex-wrap items-center' : isTabletViewport ? 'flex-row items-center'");
+    expect(checkoutSource).toContain("isTabletViewport ? 'lg:flex-row lg:items-start' : 'xl:flex-row xl:items-start'");
+    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
+    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex h-10 min-w-0 flex-1 items-center gap-2");
     expect(checkoutSource).toContain('<div className="flex shrink-0">');
-    expect(checkoutSource).toContain('className="w-auto"');
+    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
     expect(checkoutSource).not.toContain('title="Show or hide catalog filters"');
     expect(checkoutSource).not.toContain('<Filter size={18} />');
   });

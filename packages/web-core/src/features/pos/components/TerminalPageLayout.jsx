@@ -473,8 +473,9 @@ export default function TerminalPageLayout({
         <Bell size={size} />
         {notificationCount > 0 && (
           <span className={size === 20
-            ? 'absolute -right-1.5 -top-1.5 grid h-4.5 w-4.5 place-items-center rounded-full bg-red-500 text-[9px] font-black text-white'
+            ? 'absolute right-0.5 top-0.5 z-10 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 px-0 text-[9px] font-black leading-none text-white'
             : 'absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full bg-red-500 text-[10px] font-black text-white'}
+            data-testid="pos-notification-badge"
           >
             {notificationCount}
           </span>
@@ -623,7 +624,10 @@ export default function TerminalPageLayout({
   );
 
   return (
-    <div className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}>
+    <div
+      className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}
+      data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}
+    >
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
         <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
@@ -738,7 +742,9 @@ export default function TerminalPageLayout({
             />
             <div
               data-testid="pos-header-park-slot"
-              className="relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5"
+              className={posViewMode === 'history'
+                ? 'hidden'
+                : 'relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'}
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}

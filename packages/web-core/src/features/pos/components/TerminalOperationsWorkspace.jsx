@@ -45,6 +45,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
 import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
@@ -137,6 +138,7 @@ import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const POS_ITEMS_PAGE_SIZE = 15;
+const POS_ITEMS_PAGE_SIZE_OPTIONS = [15, 30, 60];
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const SETTINGS_VIEW_MODES = new Set([
   'location_scope',
@@ -1868,6 +1870,7 @@ function ItemsWorkspace({
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
   const [itemsPage, setItemsPage] = useState(1);
+  const [itemsPageSize, setItemsPageSize] = useState(POS_ITEMS_PAGE_SIZE);
   const deferredItemsSearch = React.useDeferredValue(searchQuery);
   const [editingItemSnapshot, setEditingItemSnapshot] = useState(null);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
@@ -1956,7 +1959,7 @@ function ItemsWorkspace({
       const data = await fetchPosCatalogPage({
         search: deferredItemsSearch,
         page: itemsPage,
-        page_size: POS_ITEMS_PAGE_SIZE,
+        page_size: itemsPageSize,
         category_filter: categoryFilter,
         stock_filter: stockFilter,
         ...(operatingLocationId ? { location_id: operatingLocationId } : {})
@@ -1973,7 +1976,7 @@ function ItemsWorkspace({
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
+  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (
@@ -2096,7 +2099,7 @@ function ItemsWorkspace({
     setItemsPage(1);
   }, [categoryFilter, searchQuery, stockFilter]);
 
-  const totalItemsPages = Math.max(1, Math.ceil(itemsTotal / POS_ITEMS_PAGE_SIZE));
+  const totalItemsPages = Math.max(1, Math.ceil(itemsTotal / itemsPageSize));
   const currentItemsPage = Math.min(itemsPage, totalItemsPages);
   const paginatedItems = filteredItems;
 
@@ -3565,34 +3568,23 @@ function ItemsWorkspace({
             );
           })}
 
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm shadow-slate-200/60 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm font-medium text-[#64748B]">
-              Showing {itemsTotal === 0 ? 0 : ((currentItemsPage - 1) * POS_ITEMS_PAGE_SIZE) + 1}–{Math.min(currentItemsPage * POS_ITEMS_PAGE_SIZE, itemsTotal)} of {itemsTotal} items
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setItemsPage((page) => Math.max(1, page - 1))}
-                disabled={currentItemsPage === 1}
-                aria-label="Previous items page"
-              >
-                Previous
-              </Button>
-              <span className="min-w-[5.5rem] text-center text-sm font-semibold text-[#0F172A]">
-                Page {currentItemsPage} of {totalItemsPages}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setItemsPage((page) => Math.min(totalItemsPages, page + 1))}
-                disabled={currentItemsPage === totalItemsPages}
-                aria-label="Next items page"
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <GlobalPagination
+            testId="pos-items-pagination"
+            ariaLabel="POS item catalog pagination"
+            currentPage={currentItemsPage}
+            totalPages={totalItemsPages}
+            totalItems={itemsTotal}
+            pageSize={itemsPageSize}
+            pageSizeOptions={POS_ITEMS_PAGE_SIZE_OPTIONS}
+            loading={loading}
+            onPageChange={setItemsPage}
+            onPageSizeChange={(nextPageSize) => {
+              if (!Number.isInteger(nextPageSize) || nextPageSize <= 0) return;
+              setItemsPageSize(nextPageSize);
+              setItemsPage(1);
+            }}
+            accentColor="#1A4E8D"
+          />
         </div>
       )}
 

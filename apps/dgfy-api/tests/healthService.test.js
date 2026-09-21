@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildHealthResponse, resolveRuntimeShaInfo, resolveAppVersionInfo } from '../src/services/healthService.js';
+import { buildHealthResponse, resolveRuntimeShaInfo, resolveAppVersionInfo, resolveReleaseFloorInfo } from '../src/services/healthService.js';
 
 const originalEnv = { ...process.env };
 
@@ -634,6 +634,41 @@ describe('healthService', () => {
             }));
         });
 
+        it('reports release floor/revision metadata alongside the version in /health (#1977 Phase 342)', async () => {
+            process.env = {
+                ...originalEnv,
+                HOSTING_PROFILE: 'shared',
+                REDIS_URL: '',
+                AUTH_BLACKLIST_FAILURE_MODE: 'fail_open',
+                TEMP_FILE_STORAGE: 'local',
+                APP_VERSION: '1.13.0-r16',
+                APP_RELEASE_FLOOR: '1.13.0',
+                APP_RELEASE_REVISION: 'r16'
+            };
+
+            const { health, statusCode } = await buildHealthResponse({
+                testConnectionFn: async () => true,
+                isRedisConnectedFn: () => false,
+                getTenantPoolStatsFn: () => ({
+                    total: 1,
+                    pending: 0,
+                    capacity: 20,
+                    utilizationPercent: 5
+                }),
+                getRateLimiterStoreModeFn: () => 'memory',
+                environment: 'test'
+            });
+
+            expect(statusCode).toBe(200);
+            expect(health.services.observability).toEqual(expect.objectContaining({
+                version: '1.13.0-r16',
+                release_floor: '1.13.0',
+                release_floor_source: 'env:APP_RELEASE_FLOOR',
+                release_revision: 'r16',
+                release_revision_source: 'env:APP_RELEASE_REVISION'
+            }));
+        });
+
         it('reports version_source: argument when buildHealthResponse is given an explicit appVersion (RF-2, PR #1582)', async () => {
             process.env = {
                 ...originalEnv,
@@ -664,5 +699,43 @@ describe('healthService', () => {
                 version_source: 'argument'
             }));
         });
+    });
+});
+
+describe('resolveReleaseFloorInfo (#1977 Phase 342)', () => {
+    it('prefers explicit arguments over env vars', () => {
+        expect(resolveReleaseFloorInfo({
+            explicitFloor: '1.13.0',
+            explicitRevision: 'r16',
+            env: { APP_RELEASE_FLOOR: '9.9.9-should-not-win', APP_RELEASE_REVISION: 'r9-should-not-win' },
+            packageJsonPath: path.join(os.tmpdir(), 'sku-health-floor-unused.json')
+        })).toEqual({ floor: '1.13.0', floorSource: 'argument', revision: 'r16', revisionSource: 'argument' });
+    });
+
+    it('prefers APP_RELEASE_FLOOR/APP_RELEASE_REVISION over the package.json fallback', () => {
+        expect(resolveReleaseFloorInfo({
+            env: { APP_RELEASE_FLOOR: '1.13.0', APP_RELEASE_REVISION: 'r16' },
+            packageJsonPath: path.join(os.tmpdir(), 'sku-health-floor-unused.json')
+        })).toEqual({ floor: '1.13.0', floorSource: 'env:APP_RELEASE_FLOOR', revision: 'r16', revisionSource: 'env:APP_RELEASE_REVISION' });
+    });
+
+    it('falls back to the package.json floor with a null revision on ordinary DEV runs', () => {
+        const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sku-health-floor-'));
+        const packageJsonPath = path.join(rootDir, 'package.json');
+        fs.writeFileSync(packageJsonPath, JSON.stringify({ version: '1.13.0' }));
+
+        expect(resolveReleaseFloorInfo({ env: {}, packageJsonPath })).toEqual({
+            floor: '1.13.0',
+            floorSource: 'package_json',
+            revision: null,
+            revisionSource: null
+        });
+    });
+
+    it('returns a null floor only when no explicit, env, or package.json source exists', () => {
+        expect(resolveReleaseFloorInfo({
+            env: {},
+            packageJsonPath: path.join(os.tmpdir(), 'sku-health-floor-missing.json')
+        })).toEqual({ floor: null, floorSource: null, revision: null, revisionSource: null });
     });
 });

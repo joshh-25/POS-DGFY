@@ -3,15 +3,21 @@ const assert = require('node:assert/strict');
 
 const {
   checkVersionTagComputation,
+  checkReleaseRevisionInput,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
+  checkBuildStepFloorBuildArgs,
   checkMetaStepStampsCandidateLabel,
+  checkMetaStepStampsFloorRevisionLabels,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
+  checkDockerfileAcceptsReleaseFloorRevision,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkOrchestratorReleaseRevisionWiring,
   checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
@@ -27,24 +33,26 @@ const {
 // check-pr-quality-workflow.test.js's own pattern) rather than depending on the real files' exact
 // text, so a valid unrelated edit to deploy-api.yml/etc. can't spuriously break these.
 
+// #1977 (Phase 342): the meta step resolves tags via the central resolver -- no inline
+// channel-suffix derivation anymore. Fixtures below mirror the real builder shape.
 const VALID_META_STEP = `
       - name: Compute image tags
         id: meta
         shell: bash
         env:
           ENVIRONMENT: \${{ inputs.environment }}
+          RELEASE_REVISION: \${{ inputs.release_revision }}
         run: |
           set -euo pipefail
           SHA_TAG="sha-\${GITHUB_SHA::7}"
           echo "sha_tag=\${SHA_TAG}" >> "$GITHUB_OUTPUT"
-          case "$ENVIRONMENT" in
-            DEV) CHANNEL_SUFFIX="-dev" ;;
-            STAGING) CHANNEL_SUFFIX="-staging" ;;
-            PROD) CHANNEL_SUFFIX="" ;;
-            *) echo "::error::Unknown environment '$ENVIRONMENT' -- expected DEV, STAGING, or PROD." >&2; exit 1 ;;
-          esac
           APP_PKG_VERSION="$(node -p "require('./apps/dgfy-api/package.json').version")"
-          VERSION_TAG="\${APP_PKG_VERSION}\${CHANNEL_SUFFIX}"
+          RESOLVER_ARGS=(--app dgfy-api --version "\${APP_PKG_VERSION}" --environment "\${ENVIRONMENT}")
+          if [ -n "\${RELEASE_REVISION:-}" ]; then
+            RESOLVER_ARGS+=(--revision "\${RELEASE_REVISION}")
+          fi
+          RESOLVED="$(node scripts/resolve-release-tags.js "\${RESOLVER_ARGS[@]}")"
+          VERSION_TAG="$(node -p "JSON.parse(process.argv[1]).tag" "\${RESOLVED}")"
           echo "version_tag=\${VERSION_TAG}" >> "$GITHUB_OUTPUT"
 `;
 
@@ -60,23 +68,23 @@ test('checkVersionTagComputation: missing "id: meta" entirely is caught', () => 
   assert.match(problems[0], /no "id: meta" step found/);
 });
 
-test('checkVersionTagComputation: a missing channel branch (e.g. PROD) is caught', () => {
-  const text = VALID_META_STEP.replace('PROD) CHANNEL_SUFFIX="" ;;\n            ', '');
+test('checkVersionTagComputation: a meta step that never calls the central resolver is caught', () => {
+  const text = VALID_META_STEP.replace('node scripts/resolve-release-tags.js', 'node scripts/some-inline-derivation.js');
   const problems = checkVersionTagComputation(text, FIXTURE);
-  assert.equal(problems.filter((p) => /PROD -> "" \(bare\)/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /must be resolved centrally/.test(p)).length, 1);
 });
 
-test('checkVersionTagComputation: a missing DEV/STAGING branch is caught independently', () => {
-  const text = VALID_META_STEP.replace('DEV) CHANNEL_SUFFIX="-dev" ;;\n            ', '');
+test('checkVersionTagComputation: a resolver call missing --app/--environment is caught', () => {
+  const text = VALID_META_STEP.replace('--app dgfy-api --version "${APP_PKG_VERSION}" --environment "${ENVIRONMENT}"', '--version "${APP_PKG_VERSION}"');
   const problems = checkVersionTagComputation(text, FIXTURE);
-  assert.equal(problems.filter((p) => /DEV -> "-dev"/.test(p)).length, 1);
-  assert.equal(problems.filter((p) => /STAGING -> "-staging"/.test(p)).length, 0);
+  assert.equal(problems.filter((p) => /no "--app" argument/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /no "--environment" argument/.test(p)).length, 1);
 });
 
-test('checkVersionTagComputation: no fallback branch for an unknown environment is caught', () => {
-  const text = VALID_META_STEP.replace(/\*\) echo "::error::Unknown environment.*\n/, '');
+test('checkVersionTagComputation: an inline CHANNEL_SUFFIX derivation is caught (mapping lives in the resolver)', () => {
+  const text = `${VALID_META_STEP}\n          CHANNEL_SUFFIX="-dev"`;
   const problems = checkVersionTagComputation(text, FIXTURE);
-  assert.equal(problems.filter((p) => /no fallback branch/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /still derives a CHANNEL_SUFFIX inline/.test(p)).length, 1);
 });
 
 test('checkVersionTagComputation: the version is not read from the expected package.json path is caught', () => {
@@ -89,6 +97,60 @@ test('checkVersionTagComputation: version_tag never written to $GITHUB_OUTPUT is
   const text = VALID_META_STEP.replace('echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"\n', '');
   const problems = checkVersionTagComputation(text, FIXTURE);
   assert.equal(problems.filter((p) => /never writes "version_tag"/.test(p)).length, 1);
+});
+
+test('checkReleaseRevisionInput: declares the input, maps the env, and exposes floor/revision outputs', () => {
+  const text = `
+      release_revision:
+        description: candidate revision
+        required: false
+        type: string
+        default: ''
+          RELEASE_REVISION: \${{ inputs.release_revision }}
+      outputs:
+        release_floor: \${{ steps.meta.outputs.release_floor }}
+        release_revision: \${{ steps.meta.outputs.release_revision }}
+  `;
+  assert.deepEqual(checkReleaseRevisionInput(text, { label: 'fixture.yml' }), []);
+});
+
+test('checkReleaseRevisionInput: missing input/env/outputs are each caught', () => {
+  const problems = checkReleaseRevisionInput('nothing here', { label: 'fixture.yml' });
+  assert.equal(problems.filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /missing "RELEASE_REVISION/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /release_floor/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /release_revision:.*steps\.meta/.test(p)).length, 1);
+});
+
+test('checkMetaStepStampsFloorRevisionLabels: floor unconditional, revision conditional', () => {
+  const text = `
+            echo "org.dgfy-platform.release-floor=\${RELEASE_FLOOR}"
+            if [ -n "\${RELEASE_REVISION_OUT:-}" ]; then
+              echo "org.dgfy-platform.release-revision=\${RELEASE_REVISION_OUT}"
+            fi
+  `;
+  assert.deepEqual(checkMetaStepStampsFloorRevisionLabels(text, { label: 'fixture.yml' }), []);
+  const problems = checkMetaStepStampsFloorRevisionLabels('no labels here', { label: 'fixture.yml' });
+  assert.equal(problems.length, 2);
+});
+
+test('checkBuildStepFloorBuildArgs: both floor build-args required', () => {
+  const text = `
+          build-args: |
+            APP_VERSION=\${{ steps.meta.outputs.version_tag }}
+            APP_RELEASE_FLOOR=\${{ steps.meta.outputs.release_floor }}
+            APP_RELEASE_REVISION=\${{ steps.meta.outputs.release_revision }}
+  `;
+  assert.deepEqual(checkBuildStepFloorBuildArgs(text, { label: 'fixture.yml' }), []);
+  const problems = checkBuildStepFloorBuildArgs('no build args', { label: 'fixture.yml' });
+  assert.equal(problems.length, 2);
+});
+
+test('checkDockerfileAcceptsReleaseFloorRevision: ARG+ENV for floor and revision required', () => {
+  const text = 'ARG APP_RELEASE_FLOOR=""\nENV APP_RELEASE_FLOOR=${APP_RELEASE_FLOOR}\nARG APP_RELEASE_REVISION=""\nENV APP_RELEASE_REVISION=${APP_RELEASE_REVISION}\n';
+  assert.deepEqual(checkDockerfileAcceptsReleaseFloorRevision(text, { label: 'Dockerfile' }), []);
+  const problems = checkDockerfileAcceptsReleaseFloorRevision('FROM node:22-alpine\n', { label: 'Dockerfile' });
+  assert.equal(problems.length, 4);
 });
 
 test('checkVersionTagComputation: the ${APP} frontend variant of the package.json path is also matched', () => {
@@ -264,8 +326,8 @@ function deployMainBuildSkipFixture({
   missingResolveJob = false,
   jobNeedsOverrides = {},
   jobOutputOverrides = {},
-  publishNeeds = '[ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]',
-  publishIf = "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure'",
+  publishNeeds = '[ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, promote-aliases ]',
+  publishIf = "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure' &&\n      needs.promote-aliases.result != 'failure'",
 } = {}) {
   const resolveJobBlock = missingResolveJob ? '' : '  resolve-build-plan:\n    needs: guard-branch\n    if: needs.guard-branch.result == \'success\'\n    runs-on: ubuntu-latest\n\n';
 
@@ -344,6 +406,81 @@ test('checkDeployMainPublishGate: real deploy-main.yml passes', () => {
   const path = require('node:path');
   const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
   assert.deepEqual(checkDeployMainPublishGate(text), []);
+});
+
+test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a refused alias must block PROD)', () => {
+  const problems = checkDeployMainPublishGate(deployMainBuildSkipFixture({
+    publishNeeds: '[ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]',
+    publishIf: "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure'",
+  }));
+  assert.equal(problems.filter((p) => /promote-aliases/.test(p)).length, 1);
+});
+
+// checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #1977
+// (Phase 342): the candidate-wide release_revision is threaded deploy.yml ->
+// deployment-orchestrator.yml -> builders, and declared + forwarded per job on deploy-main.yml
+// (plus --release-revision into resolve-build-plan and the promote-aliases job).
+
+function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS } = {}) {
+  const inputBlock = withInput
+    ? "on:\n  workflow_call:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
+    : '';
+  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`).join('\n');
+  return `${inputBlock}jobs:\n${jobBlocks}`;
+}
+
+test('checkOrchestratorReleaseRevisionWiring: every builder job wired -> no problems', () => {
+  assert.deepEqual(checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture()), []);
+});
+
+test('checkOrchestratorReleaseRevisionWiring: missing input and missing per-job forwarding are each caught', () => {
+  const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ withInput: false }));
+  assert.equal(problems.filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
+  const text = orchestratorRevisionFixture().replace(
+    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: ${{ inputs.release_revision }}\n    secrets: inherit\n',
+    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n    secrets: inherit\n',
+  );
+  const jobProblems = checkOrchestratorReleaseRevisionWiring(text);
+  assert.equal(jobProblems.length, 1);
+  assert.match(jobProblems[0], /job "dgfy-api" does not forward/);
+});
+
+test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deployment-orchestrator.yml'), 'utf8');
+  assert.deepEqual(checkOrchestratorReleaseRevisionWiring(text), []);
+});
+
+function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, withAliasJob = true } = {}) {
+  const inputBlock = withInput
+    ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
+    : '';
+  const jobBlocks = DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES
+    .map(([jobName]) => `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`)
+    .join('\n');
+  const skipStep = skipPlanRevision
+    ? '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --release-revision r16\n'
+    : '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc\n';
+  const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n' : '';
+  return `${inputBlock}jobs:\n${jobBlocks}\n${skipStep}${aliasJob}`;
+}
+
+test('checkDeployMainReleaseRevisionWiring: fully-wired fixture reports no problems', () => {
+  assert.deepEqual(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture()), []);
+});
+
+test('checkDeployMainReleaseRevisionWiring: missing input, missing skip-plan flag, and missing alias job are each caught', () => {
+  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withInput: false })).filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
+  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanRevision: false })).filter((p) => /does not pass "--release-revision"/.test(p)).length, 1);
+  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withAliasJob: false })).filter((p) => /no "promote-aliases" job found/.test(p)).length, 1);
+});
+
+test('checkDeployMainReleaseRevisionWiring: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainReleaseRevisionWiring(text), []);
 });
 
 // #1588 (epic #1548 Wave 4, Phase 279): labels moved from a literal `|` block inline in the

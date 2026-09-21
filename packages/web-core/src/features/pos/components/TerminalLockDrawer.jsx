@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Building2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Building2, Check, ChevronDown, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { Input } from '../../../../Components/ui/input.jsx';
 import { Label } from '../../../../Components/ui/label.jsx';
@@ -31,6 +31,67 @@ export default function TerminalLockDrawer({
   const lookupStatus = String(emailCompanyLookup?.status || 'idle').trim();
   const lookupCompanies = Array.isArray(emailCompanyLookup?.companies) ? emailCompanyLookup.companies : [];
   const lookupMessage = String(emailCompanyLookup?.message || '').trim();
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false);
+  const companyDropdownRef = useRef(null);
+  const companyOptions = [
+    {
+      value: '',
+      label: dgfyPosState?.loadingCompanies ? 'Loading companies...' : 'Select accessible company'
+    },
+    ...dgfyCompanies.map((company) => ({
+      value: String(cashierCompanySelection ? company.company_token : company.tenant_id),
+      label: company.company_name || company.name
+    }))
+  ];
+  const selectedCompanyValue = String(formData.dgfyTenantId || '');
+  const selectedCompanyOption = companyOptions.find((option) => option.value === selectedCompanyValue) || companyOptions[0];
+
+  useEffect(() => {
+    if (!companyDropdownOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!companyDropdownRef.current?.contains(event.target)) setCompanyDropdownOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setCompanyDropdownOpen(false);
+        companyDropdownRef.current?.querySelector('button')?.focus();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [companyDropdownOpen]);
+
+  const handleCompanySelection = (value) => {
+    setFormData((prev) => ({ ...prev, dgfyTenantId: String(value) }));
+    setCompanyDropdownOpen(false);
+    companyDropdownRef.current?.querySelector('button')?.focus();
+  };
+
+  const handleCompanyTriggerKeyDown = (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setCompanyDropdownOpen((open) => !open);
+      return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+
+    event.preventDefault();
+    if (!companyDropdownOpen) {
+      setCompanyDropdownOpen(true);
+      return;
+    }
+    const selectedIndex = companyOptions.findIndex((option) => option.value === selectedCompanyValue);
+    const startIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    const direction = event.key === 'ArrowDown' ? 1 : -1;
+    const nextIndex = (startIndex + direction + companyOptions.length) % companyOptions.length;
+    handleCompanySelection(companyOptions[nextIndex].value);
+  };
 
   return (
     <div
@@ -168,25 +229,56 @@ export default function TerminalLockDrawer({
           {companySelectionActive ? (
             <div className="space-y-1.5">
               <Label htmlFor="dgfy-pos-company" className="text-[13px] font-bold text-[#0F172A]">Company</Label>
-              <select
-                id="dgfy-pos-company"
-                value={formData.dgfyTenantId || ''}
-                onChange={(event) => setFormData((prev) => ({ ...prev, dgfyTenantId: event.target.value }))}
-                disabled={dgfyPosState?.loadingCompanies}
-                className="h-12 w-full rounded-2xl border border-blue-200 bg-[#f2f7ff] px-3 py-2 text-sm text-[#0F172A] shadow-none focus:border-[#93C5FD] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:ring-offset-0 disabled:bg-slate-100 disabled:text-[#94A3B8]"
-              >
-                <option value="">
-                  {dgfyPosState?.loadingCompanies ? 'Loading companies...' : 'Select accessible company'}
-                </option>
-                {dgfyCompanies.map((company) => (
-                  <option
-                    key={cashierCompanySelection ? company.company_token : company.tenant_id}
-                    value={cashierCompanySelection ? company.company_token : company.tenant_id}
+              <div ref={companyDropdownRef} className="relative">
+                <button
+                  id="dgfy-pos-company"
+                  type="button"
+                  aria-label="Company"
+                  aria-haspopup="listbox"
+                  aria-expanded={companyDropdownOpen}
+                  aria-controls="dgfy-pos-company-options"
+                  disabled={dgfyPosState?.loadingCompanies}
+                  data-company-value={selectedCompanyValue}
+                  onClick={() => setCompanyDropdownOpen((open) => !open)}
+                  onKeyDown={handleCompanyTriggerKeyDown}
+                  className="dgfy-pos-company-select flex h-12 w-full items-center justify-between rounded-2xl border border-blue-200 bg-[#f2f7ff] px-4 py-2 text-left text-sm font-semibold text-[#0F172A] shadow-none transition-[border-color,background-color,box-shadow] hover:border-blue-300 hover:bg-[#f7faff] focus:border-[#93C5FD] focus:outline-none focus:ring-2 focus:ring-[#93C5FD] focus:ring-offset-0 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-[#94A3B8]"
+                >
+                  <span className={!selectedCompanyValue ? 'text-slate-500' : 'text-[#0F172A]'}>
+                    {selectedCompanyOption.label}
+                  </span>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={`h-4 w-4 shrink-0 text-[#1A4E8D] transition-transform ${companyDropdownOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {companyDropdownOpen && (
+                  <div
+                    id="dgfy-pos-company-options"
+                    role="listbox"
+                    aria-label="Accessible companies"
+                    className="dgfy-pos-company-select-menu absolute inset-x-0 top-full z-50 mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5"
                   >
-                    {company.company_name || company.name}
-                  </option>
-                ))}
-              </select>
+                    {companyOptions.map((option) => {
+                      const isSelected = option.value === selectedCompanyValue;
+                      return (
+                        <button
+                          key={option.value || 'empty-company'}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => handleCompanySelection(option.value)}
+                          className={`dgfy-pos-company-select-option flex min-h-10 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${isSelected
+                            ? 'bg-blue-50 text-[#1A4E8D]'
+                            : 'text-[#0F172A] hover:bg-slate-50 hover:text-[#1A4E8D]'}`}
+                        >
+                          <span className="min-w-0 truncate">{option.label}</span>
+                          {isSelected ? <Check className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
               <p className="text-[11px] leading-5 text-[#64748B]">
                 {cashierCompanySelection
                   ? 'Choose the company where this cashier will open a shift.'

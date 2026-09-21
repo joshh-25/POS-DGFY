@@ -12,7 +12,7 @@ verification_evidence: node --check (focused JavaScript contract tests),git diff
 rollback_note: Revert the test-only contract alignment and this declaration; no runtime application or tenant data changes are involved.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-18T17:33:45.046Z
+preflight_run_at: 2026-09-18T17:41:42.590Z
 preflight_request_ref: PREFLIGHT-35375287730-2026-09-19-IMS-QUALITY-CONTRACT-REPAIR
 ---
 
@@ -43,7 +43,12 @@ data.
 
 - The failed CI run established the incident: run `35365557710`, job `105667100664`, with setup,
   installation, and lint passing before 18 contract/integration failures.
-- Focused JavaScript contract assertions pass locally.
+- Focused JavaScript contract tests pass `node --check` locally.
 - `git diff --check` passes.
 - Full Vitest execution is deferred to CI because this worktree does not contain the required Vite,
   Vitest, and React Vite-plugin dependencies.
+- Reviewer follow-up adds the three omitted shared POS contract-test alignment hunks from PR #1993:
+  `editItemImageSave.contract.test.js`, `posCatalogPerformance.contract.test.js`, and
+  `posGenerateItemImage.contract.test.js`.
+- The develop backport preserves the same test-only contract alignment and does not change runtime
+  application behavior, backend authorization, persistence, or tenant data.
