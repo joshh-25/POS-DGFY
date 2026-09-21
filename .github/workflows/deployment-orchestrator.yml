@@ -56,6 +56,15 @@ on:
         required: false
         type: string
         default: ''
+      release_revision:
+        description: >-
+          Candidate-wide release revision (#1977, Phase 342), threaded straight through to each
+          builder workflow's own input of the same name -- see deploy-frontend.yml's input
+          description for the full contract. Required on a STAGING candidate dispatch (builders
+          fail closed without it); ignored on DEV.
+        required: false
+        type: string
+        default: ''
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
@@ -184,6 +193,7 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read
@@ -205,6 +215,7 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read
@@ -224,6 +235,7 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read
@@ -241,6 +253,7 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read
@@ -258,6 +271,7 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
     secrets: inherit
     permissions:
       contents: read

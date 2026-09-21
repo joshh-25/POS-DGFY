@@ -61,7 +61,12 @@
  *
  * CLI:
  *   node scripts/resolve-build-skip-plan.js --revision <github.sha> [--apps app1,app2,...]
- *     [--project-root <path>]
+ *     [--project-root <path>] [--environment <DEV|STAGING|PROD>] [--release-revision <rN>]
+ *
+ *   `--release-revision` (#1977, Phase 342) is the candidate-wide release revision; when set,
+ *   each app's checked tag is its revision-aware matrix tag (frontend `X.Y.Z-rN-staging`,
+ *   backend `X.Y.Z-rN`, PROD `X.Y.Z-rN`) instead of the legacy uniform `X.Y.Z[-channel]` tag.
+ *   Omit it for DEV/ad-hoc dispatches (unchanged legacy behavior).
  *
  *   Prints one JSON blob on its own stdout line (mirrors `check-promotion-candidate.js
  *   --resolve-app-shas`'s own "machine-readable, on its own stdout line" convention):
@@ -78,6 +83,9 @@ const path = require('node:path');
 const { decideImmutability, runInspect } = require('./check-tag-immutability');
 const { APPS, resolveFileDependencyPackages, readVersionAt } = require('./check-app-version-bump');
 const { IMAGE_NAME_BY_APP } = require('./check-image-version-parity');
+// #1977 (Phase 342): revision-aware tag derivation -- a candidate dispatch checks the
+// revision tag (X.Y.Z-rN[-staging]), not the legacy uniform X.Y.Z[-channel] tag.
+const { resolveReleaseTags } = require('./resolve-release-tags');
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -242,8 +250,22 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
  * exception escaping resolveBuildSkipPlan() itself (e.g. a bug in this loop, not in one app's
  * resolution) is still allowed to propagate out of the CLI and fail the calling CI job, per §2/§7.
  */
-function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
-  const channelSuffix = deriveChannelSuffix(environment);
+/**
+ * #1977 (Phase 342): resolves the tag a dispatch would publish for one app. With a
+ * candidate `revision`, this is the revision-aware matrix tag
+ * (`scripts/resolve-release-tags.js` -- frontend `X.Y.Z-rN-staging`, backend
+ * environment-neutral `X.Y.Z-rN`, PROD `X.Y.Z-rN`); without one, the legacy uniform
+ * `X.Y.Z[-channel]` derivation applies unchanged (DEV dispatches and any ad-hoc dispatch
+ * outside a tracked candidate never set a revision).
+ */
+function deriveVersionTag({ version, environment, app, revision }) {
+  if (revision === undefined || revision === null || String(revision).trim() === '') {
+    return `${version}${deriveChannelSuffix(environment)}`;
+  }
+  return resolveReleaseTags({ app, version, environment, revision }).tag;
+}
+
+function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
   const plan = {};
   for (const app of apps) {
     try {
@@ -257,7 +279,7 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, repoR
         };
         continue;
       }
-      const versionTag = `${rawVersion}${channelSuffix}`;
+      const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision });
       plan[app] = decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot, inspectFn, diffFn });
     } catch (error) {
       plan[app] = {
@@ -273,11 +295,15 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, repoR
 // --- CLI ---------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const options = { revision: '', apps: null, projectRoot: REPO_ROOT, environment: undefined };
+  // Note: `--revision` here is github.sha for this build (pre-existing); the #1977 candidate
+  // revision rides on the separate, optional `--release-revision` (rN).
+  const options = { revision: '', releaseRevision: '', apps: null, projectRoot: REPO_ROOT, environment: undefined };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--revision') {
       options.revision = argv[++index] || '';
+    } else if (arg === '--release-revision') {
+      options.releaseRevision = argv[++index] || '';
     } else if (arg === '--apps') {
       const raw = argv[++index] || '';
       options.apps = raw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -323,6 +349,7 @@ function main() {
     apps: options.apps || undefined,
     currentRevision: options.revision,
     environment: options.environment,
+    revision: options.releaseRevision === '' ? undefined : options.releaseRevision,
     repoRoot: options.projectRoot,
   });
   printPlan(plan);
@@ -335,6 +362,7 @@ if (require.main === module) {
 
 module.exports = {
   deriveChannelSuffix,
+  deriveVersionTag,
   buildInputPathsForApp,
   gitDiffChangedFiles,
   decideBuildSkip,

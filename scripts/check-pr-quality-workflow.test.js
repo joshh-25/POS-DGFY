@@ -6,6 +6,7 @@ const {
   checkStagingLegSkipShape,
   checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,
+  checkBlockingStepNamesInSync,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,
@@ -740,4 +741,107 @@ test('checkCiEnforcedGatesAreBlocking: a non-exempt gate lacking blocking covera
   ]));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /"some_not_yet_blocking_step"/);
+});
+
+// #1557: BLOCKING_STEP_IDS (id-keyed, this file) and the reporter's BLOCKING_STEP_NAMES
+// (name-keyed, workflow-embedded JS) are hand-synced with no shared source. Fixtures are built
+// from the real BLOCKING_STEP_IDS so they track future blocking flips; labels are deliberately
+// `Label for <id>` (label !== id), mirroring the real file where STEP_OUTCOMES labels -- what
+// real_failures actually contains -- can differ from step `name:` fields.
+function blockingLabelFor(id) {
+  return `Label for ${id}`;
+}
+
+function buildBlockingSyncWorkflow({
+  dropReporterLabelFor = null,
+  extraReporterNames = [],
+  reporterCommentLines = [],
+  omitStepOutcomesRowFor = null,
+  relabelRowFor = null
+} = {}) {
+  const jobBlocks = Object.entries(BLOCKING_STEP_IDS).map(([job, ids]) => {
+    const rows = ids
+      .filter((id) => !(omitStepOutcomesRowFor && omitStepOutcomesRowFor.job === job && omitStepOutcomesRowFor.id === id))
+      .map((id) => {
+        const label = (relabelRowFor && relabelRowFor.job === job && relabelRowFor.id === id)
+          ? relabelRowFor.label
+          : blockingLabelFor(id);
+        return `            ${label}|\${{ steps.${id}.outcome }}`;
+      });
+    return [
+      `  ${job}:`,
+      '    needs: gate',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - name: Record real per-step outcomes for advisory-failure reporting',
+      '        id: record_outcomes',
+      '        env:',
+      '          STEP_OUTCOMES: |',
+      ...rows,
+      '        run: |',
+      '          echo noop'
+    ].join('\n');
+  });
+  const expectedLabels = Object.values(BLOCKING_STEP_IDS)
+    .flat()
+    .map((id) => blockingLabelFor(id))
+    .filter((label) => !(dropReporterLabelFor && label === blockingLabelFor(dropReporterLabelFor.id)));
+  const reporterLines = [
+    `  ${REPORTER_JOB_NAME}:`,
+    '    steps:',
+    '      - uses: actions/github-script@v7',
+    '        with:',
+    '          script: |',
+    '            const BLOCKING_STEP_NAMES = new Set([',
+    ...reporterCommentLines.map((line) => `              ${line}`),
+    ...expectedLabels.map((label) => `              '${label}',`),
+    ...extraReporterNames.map((name) => `              '${name}',`),
+    '            ]);'
+  ];
+  return `\n${[...jobBlocks, reporterLines.join('\n')].join('\n\n')}\n`;
+}
+
+test('checkBlockingStepNamesInSync: in-sync fixture reports no problems', () => {
+  assert.deepEqual(checkBlockingStepNamesInSync(buildBlockingSyncWorkflow()), []);
+});
+
+test('checkBlockingStepNamesInSync: a blocking label missing from the reporter Set is caught (mislabeled advisory)', () => {
+  const [job, [id]] = Object.entries(BLOCKING_STEP_IDS)[0];
+  const problems = checkBlockingStepNamesInSync(buildBlockingSyncWorkflow({ dropReporterLabelFor: { job, id } }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], new RegExp(`"${job}".*"${id}"`));
+  assert.match(problems[0], new RegExp(blockingLabelFor(id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(problems[0], /mislabels it `advisory`/);
+});
+
+test('checkBlockingStepNamesInSync: a stale reporter entry with no blocking id behind it is caught', () => {
+  const problems = checkBlockingStepNamesInSync(buildBlockingSyncWorkflow({ extraReporterNames: ['Stale Renamed Step'] }));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /BLOCKING_STEP_NAMES has "Stale Renamed Step"/);
+  assert.match(problems[0], /stale name/);
+});
+
+test('checkBlockingStepNamesInSync: a blocking id whose STEP_OUTCOMES label changed (rename) fails both directions', () => {
+  const [job, [id]] = Object.entries(BLOCKING_STEP_IDS)[0];
+  const problems = checkBlockingStepNamesInSync(buildBlockingSyncWorkflow({
+    relabelRowFor: { job, id, label: 'Renamed Label' }
+  }));
+  assert.equal(problems.length, 2);
+  assert.ok(problems.some((p) => /mislabels it `advisory`/.test(p) && p.includes('"Renamed Label"')), 'expected the new label reported missing from the Set');
+  assert.ok(problems.some((p) => /stale name/.test(p) && p.includes(blockingLabelFor(id))), 'expected the old label reported stale');
+});
+
+test('checkBlockingStepNamesInSync: comment-quoted names inside the Set literal do not false-positive', () => {
+  const text = buildBlockingSyncWorkflow({
+    reporterCommentLines: ["// 'Run full dependency audit' is deliberately NOT here -- settled permanently advisory."]
+  });
+  assert.deepEqual(checkBlockingStepNamesInSync(text), []);
+});
+
+test('checkBlockingStepNamesInSync: a blocking id with no STEP_OUTCOMES row is caught', () => {
+  const [job, [id]] = Object.entries(BLOCKING_STEP_IDS)[0];
+  const problems = checkBlockingStepNamesInSync(buildBlockingSyncWorkflow({ omitStepOutcomesRowFor: { job, id } }));
+  assert.equal(problems.length, 2);
+  assert.ok(problems.some((p) => /has no STEP_OUTCOMES row/.test(p) && p.includes(`"${id}"`)), 'expected the missing-row problem');
+  assert.ok(problems.some((p) => /stale name/.test(p) && p.includes(blockingLabelFor(id))), 'expected the now-unmapped reporter entry reported stale');
 });

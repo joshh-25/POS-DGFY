@@ -23,6 +23,10 @@ const terminalPageSource = fs.readFileSync(
   path.resolve(testDirectory, '../pages/TerminalPage.jsx'),
   'utf8'
 );
+const settingsSource = [
+  fs.readFileSync(path.resolve(testDirectory, '../settings/PosSettingsWorkspace.jsx'), 'utf8'),
+  fs.readFileSync(path.resolve(testDirectory, '../settings/PosStorefrontSettingsPane.jsx'), 'utf8')
+].join('\n');
 const qrCardSource = fs.readFileSync(
   path.resolve(testDirectory, '../../../../Components/items/StorefrontItemQrCard.jsx'),
   'utf8'
@@ -40,8 +44,8 @@ describe('POS customer-facing item QR contract', () => {
     expect(workspaceSource).toContain('compact');
     expect(workspaceSource).toContain('helperText=""');
     expect(workspaceSource).toContain('qrSize={104}');
-    expect(workspaceSource).toContain('Generate Storefront ID');
-    expect(workspaceSource).toContain('generateStorefrontSlug');
+    expect(settingsSource).toContain('Generate Storefront ID');
+    expect(settingsSource).toContain('generateStorefrontSlug');
     expect(terminalPageSource).toContain('hydrateTerminalMeta({ suppressGlobalErrors: true })');
   });
 
