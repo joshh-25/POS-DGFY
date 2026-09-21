@@ -1,7 +1,7 @@
 # POS Frontend Changes — History Branch
 
 Branch: `codex/pos-frontend-changes-history`
-Comparison base: `origin/develop` (`ea06c1a56`)
+Comparison base: `origin/develop` (`16bf60350`)
 Audit date: 2026-09-21
 
 ## Executive Summary
@@ -21,8 +21,8 @@ this branch's scope and is not present in the pushed branch diff.
 ## Commit Inventory
 
 The branch contains the implementation commits listed below after the comparison base, followed by
-review-remediation commits that remove unrelated compliance drift, bump the POS app version, and
-refresh this documentation.
+review-remediation commits that remove unrelated compliance drift, align the reachable app versions,
+correct the tablet accessibility label, and refresh this documentation.
 
 | Commit | Subject | Scope |
 | --- | --- | --- |
@@ -35,6 +35,14 @@ refresh this documentation.
 | `72a5858a3` | `chore(sync): synchronize POS branch with develop` | Synchronizes the branch with the current develop baseline before the final POS push. |
 | `5e390ff4b` | `fix(pos): stabilize availability badge in tablet portrait` | Keeps the tablet-portrait availability state readable without changing other viewports. |
 | `edfa8f823` | `fix(pos): refine tablet portrait catalog badges` | Enlarges tablet-portrait catalog cards/images and keeps availability badges on one line. |
+| `3c0a317bc` | `docs(pos): refresh history branch PR handoff` | Refreshes the PR-facing branch summary before review remediation. |
+| `7aa9ca73b` | `chore(compliance): remove historical declarations from POS PR` | Removes unrelated pre-existing declaration changes from the branch diff. |
+| `a1e75845d` | `chore(pos): bump POS frontend minor version` | Raises the directly changed POS app version to satisfy the review-requested minor floor. |
+| `79e673241` | `docs(pos): clarify responsive branch audit handoff` | Records the durable audit and handoff details for the responsive branch. |
+| `abcd22235` | `fix(pos): align tablet drawer accessibility label` | Aligns the tablet cash-drawer accessible label with its visible action text and adds evidence. |
+| `b9aca21d9` | `chore(frontend): bump reachable web-core consumer version` | Raises the other reachable shared-web-core consumer, IMS, to the same minor version. |
+| `c4310fe05` | `docs(pos): record shared consumer version remediation` | Documents the shared-consumer version remediation and its audit boundary. |
+| `40a20540c` | `Merge remote-tracking branch 'origin/develop' into codex/pos-frontend-changes-history` | Synchronizes the branch with the current develop baseline before the final push. |
 
 No commit was created for the excluded API file. It remains outside the POS branch scope.
 
@@ -104,9 +112,10 @@ No commit was created for the excluded API file. It remains outside the POS bran
 - Added the POS Vite configuration needed for the shared source-tree integration.
 - Updated the POS E2E login fixture for the current company-selection flow.
 - The follow-up version remediation raises both reachable shared-web-core consumers, `dgfy-ims` and
-  `dgfy-pos`, from `1.20.0` to `1.21.0`, including their lockfiles. This is release metadata only
-  and does not change backend behavior. Storefront remains at its comparison-base version because
-  the shared-source reachability audit found no changed consumer path requiring a version increase.
+  `dgfy-pos`, to `1.21.0`, including their lockfiles. Against the current comparison base, this is
+  `dgfy-ims` `1.20.4` → `1.21.0` and `dgfy-pos` `1.20.3` → `1.21.0`. This is release metadata only
+  and does not change backend behavior. Storefront remains unchanged because the shared-source
+  reachability audit found no changed consumer path requiring a version increase.
 
 ## Responsive Behavior Matrix
 
@@ -126,21 +135,25 @@ No commit was created for the excluded API file. It remains outside the POS bran
   checkout, transaction evidence, operator controls, and responsive terminal behavior.
 - No backend routes, fiscal calculations, payment settlement, tax rules, receipt persistence, tenant
   schemas, permissions, authentication, or migrations were changed by this branch delta.
-- The pre-commit compliance hook passed for every sensitive commit after the declaration was added.
+- Pre-commit compliance checks passed for the sensitive implementation/remediation commits. The
+  synchronization merge used the explicitly authorized `--no-verify` path because the hook also
+  evaluated unrelated pre-existing declarations arriving from `origin/develop`; the independent
+  post-merge compliance audit passed.
 - The prohibited-commit-marker audit returned no markers in the POS files staged for this branch.
 
 ## Local Audit Evidence
 
 | Check | Result |
 | --- | --- |
-| POS subtree plus pagination tests | PASS — 201 test files, 1,304 tests |
+| Focused POS responsive/contract suite | PASS — 15 test files, 200 tests |
 | `npm run lint` in `apps/dgfy-pos` | PASS |
 | `npm run build` in `apps/dgfy-pos` | PASS |
 | `npm run build` in `apps/dgfy-ims` | PASS |
 | `npm run smoke:pos-terminal-ui` | PASS — desktop 1440×960, tablet 820×1180, mobile 390×844; no terminal console or HTTP errors |
 | `npm run check:compliance` | PASS after review remediation |
 | `npm run check:compliance -- --staged` during sensitive commits | PASS |
-| `node scripts/check-app-version-bump.js --staged` | PASS — `dgfy-ims` and `dgfy-pos` 1.20.0 → 1.21.0 |
+| `node scripts/check-app-version-bump.js` in PR mode | PASS — `dgfy-ims` 1.20.4 → 1.21.0; `dgfy-pos` 1.20.3 → 1.21.0 |
+| `node scripts/check-app-version-bump.js --floor --base origin/develop --head HEAD` | PASS — all changed apps meet the minor floor |
 | `git diff --check` | PASS |
 | `npm run lint:docs` and strict ADR check through pre-commit | PASS |
 
@@ -169,12 +182,9 @@ The following files are included in the branch delta and are the files to push w
 - `apps/dgfy-pos/package-lock.json`
 - `apps/dgfy-pos/tests/e2e/fixtures/login.js`
 - `apps/dgfy-pos/vite.config.js`
-- `apps/dgfy-storefront/package.json` — version metadata required by the shared dependency gate only
-- `apps/dgfy-storefront/package-lock.json` — version metadata required by the shared dependency gate only
 
 ### Compliance documentation
 
-- `docs/compliance/impact-declarations/2026-09-09-pos-frontend-terminal-followup.md`
 - `docs/compliance/impact-declarations/2026-09-18-pos-frontend-history-responsive.md`
 - `docs/development/POS_FRONTEND_CHANGES_HISTORY_BRANCH.md` — this document
 
