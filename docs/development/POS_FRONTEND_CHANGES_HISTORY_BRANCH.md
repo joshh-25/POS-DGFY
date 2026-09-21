@@ -103,10 +103,10 @@ No commit was created for the excluded API file. It remains outside the POS bran
 - Refined the shared dialog component used by POS responsive surfaces.
 - Added the POS Vite configuration needed for the shared source-tree integration.
 - Updated the POS E2E login fixture for the current company-selection flow.
-- The POS follow-up review remediation raises `dgfy-pos` from `1.20.0` to `1.21.0`, including its
-  lockfile. This is release metadata only and does not change backend behavior. IMS and Storefront
-  remain at their comparison-base versions because the shared-source reachability audit found no
-  changed consumer path requiring a version increase for those apps.
+- The follow-up version remediation raises both reachable shared-web-core consumers, `dgfy-ims` and
+  `dgfy-pos`, from `1.20.0` to `1.21.0`, including their lockfiles. This is release metadata only
+  and does not change backend behavior. Storefront remains at its comparison-base version because
+  the shared-source reachability audit found no changed consumer path requiring a version increase.
 
 ## Responsive Behavior Matrix
 
@@ -140,7 +140,7 @@ No commit was created for the excluded API file. It remains outside the POS bran
 | `npm run smoke:pos-terminal-ui` | PASS — desktop 1440×960, tablet 820×1180, mobile 390×844; no terminal console or HTTP errors |
 | `npm run check:compliance` | PASS after review remediation |
 | `npm run check:compliance -- --staged` during sensitive commits | PASS |
-| `node scripts/check-app-version-bump.js --staged` | PASS — `dgfy-pos` 1.20.0 → 1.21.0 |
+| `node scripts/check-app-version-bump.js --staged` | PASS — `dgfy-ims` and `dgfy-pos` 1.20.0 → 1.21.0 |
 | `git diff --check` | PASS |
 | `npm run lint:docs` and strict ADR check through pre-commit | PASS |
 
