@@ -103,7 +103,7 @@ export function PosCurrentSaleActions({
       <Button
         type="button"
         data-testid="pos-open-cash-drawer-button"
-        aria-label={tabletLayout ? cashDrawerLabel : undefined}
+        aria-label={tabletLayout ? cashDrawerTabletLabel : undefined}
         variant="outline"
         onClick={onOpenCashDrawer}
         disabled={cashDrawerDisabled}

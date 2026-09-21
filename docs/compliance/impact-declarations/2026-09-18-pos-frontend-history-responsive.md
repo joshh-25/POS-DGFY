@@ -2,14 +2,14 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-09-18
+last_reviewed: 2026-09-21
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md,docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md
 declaration_id: 2026-09-18-pos-frontend-history-responsive
 classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,VALIDATION_FAILED,CONFLICT
 policy_version: 2026.09.18
-verification_evidence: npm --prefix apps/dgfy-pos run lint,npm --prefix apps/dgfy-pos run build,npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos ../../packages/web-core/Components/ui/__tests__/pagination.test.jsx,npm run smoke:pos-terminal-ui,node scripts/check-app-version-bump.js,npm run check:compliance,git diff --check
+verification_evidence: npm --prefix apps/dgfy-pos run lint,npm --prefix apps/dgfy-pos run build,npx vitest run --maxWorkers=1 ../../packages/web-core/src/features/pos ../../packages/web-core/Components/ui/__tests__/pagination.test.jsx,npm --prefix apps/dgfy-ims test -- ../../packages/web-core/src/features/pos/__tests__/posCurrentSaleActions.behavior.test.jsx --maxWorkers=1 --fileParallelism=false,npm run smoke:pos-terminal-ui,node scripts/check-app-version-bump.js,npm run check:compliance,git diff --check
 rollback_note: Revert the POS-only frontend commits and this declaration together if responsive checkout, catalog, terminal operations, transaction history, receipt actions, or pagination regress. Leave the unrelated apps/dgfy-api/src/services/csvExportService.js change untouched because it is outside this POS branch scope.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -73,11 +73,13 @@ POS backend contracts and fail-closed validation remain authoritative.
 3. `npm run build` passed in `apps/dgfy-pos`.
 4. `npm run smoke:pos-terminal-ui` passed for desktop, tablet, and mobile viewport scenarios with no
    console or HTTP errors in the captured terminal evidence.
-5. `node scripts/check-app-version-bump.js` passed with no required app version bump.
-6. `git diff --check` passed.
-7. `npm run check:compliance` is required again after this declaration is staged and after the final
+5. The focused POS action test passed after aligning the tablet cash-drawer accessible name with its
+   visible label (`9` tests passed).
+6. `node scripts/check-app-version-bump.js` passed with `dgfy-pos` version `1.20.0` → `1.21.0`.
+7. `git diff --check` passed.
+8. `npm run check:compliance` is required again after this declaration is staged and after the final
    commits are created.
-8. A full IMS test run is not the branch gate because IMS is outside the requested POS push scope; its
+9. A full IMS test run is not the branch gate because IMS is outside the requested POS push scope; its
    remaining inventory contract failure is documented separately as an out-of-scope baseline issue.
 
 ## Rollback Boundary
