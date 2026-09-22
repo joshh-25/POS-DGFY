@@ -1,18 +1,27 @@
 name: PR Frontend Lint Check
 
 # #1712: closes the develop-PR half of the gap this ADR (0067) and #1698 both name -- an ordinary
-# `develop`-base PR that breaks `apps/dgfy-ims`/`packages/web-core` ESLint (a `no-undef`-class
-# defect, exactly what #1698 was) had no gate capable of catching it before this file, only
-# `promotion-quality-gate.yml`'s advisory `run_web_core_lint` step, which only runs on a promotion
-# leg. Deliberately narrow: lint only, no Docker build, no vite build -- the cheapest possible
-# check, not a return of the old multi-concern `code-quality` job `pr-checks.yml`'s own header
-# comment records removing (#416) and re-removing after PR #1003's revert. `apps/dgfy-pos`/
-# `apps/dgfy-storefront` lint stays promotion-leg-only -- named residual gap, follow-up filed
-# alongside this PR, not fixed here.
+# `develop`-base PR that breaks frontend ESLint (a `no-undef`-class defect, exactly what #1698
+# was) had no gate capable of catching it before this file, only `promotion-quality-gate.yml`'s
+# advisory lint steps, which only run on a promotion leg. Deliberately narrow: lint only, no
+# Docker build, no vite build -- the cheapest possible check, not a return of the old
+# multi-concern `code-quality` job `pr-checks.yml`'s own header comment records removing (#416)
+# and re-removing after PR #1003's revert.
+#
+# #1748: the residual gap #1712 deliberately left (`apps/dgfy-pos`/`apps/dgfy-storefront` lint
+# staying promotion-leg-only) is closed here -- this workflow now takes an explicit `app` input
+# (`dgfy-ims`/`dgfy-pos`/`dgfy-storefront`, no default) and `pr-checks.yml` calls it once per app
+# behind that app's own changed-path gate. The `packages/web-core` lint step stays IMS-only: that
+# package has no own dependencies/script (ADR 0071 Decision 4 [binding]), so coverage runs from
+# the calling app's already-installed ESLint, and the issue keeps POS/Storefront checks app-local.
 
 on:
   workflow_call:
     inputs:
+      app:
+        description: Which frontend app to lint (dgfy-ims, dgfy-pos, or dgfy-storefront)
+        required: true
+        type: string
       runner_labels_json:
         description: JSON array passed to runs-on for this job
         required: false
@@ -69,22 +78,24 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: apps/dgfy-ims/package-lock.json
+          cache-dependency-path: apps/${{ inputs.app }}/package-lock.json
 
-      - name: Install dgfy-ims dependencies
-        working-directory: apps/dgfy-ims
+      - name: Install app dependencies
+        working-directory: apps/${{ inputs.app }}
         run: npm ci
 
-      - name: Run dgfy-ims lint
-        working-directory: apps/dgfy-ims
+      - name: Run app lint
+        working-directory: apps/${{ inputs.app }}
         run: npm run lint
 
       # Same --resolve-plugins-relative-to pattern as promotion-quality-gate.yml's own
       # "Run web-core lint" step (#918) -- packages/web-core has no lint script/devDependencies
-      # of its own (ADR 0071 Decision 4 [binding]), so coverage runs from dgfy-ims's already-
-      # installed ESLint. Both lint steps in this job are blocking by default -- no
+      # of its own (ADR 0071 Decision 4 [binding]), so coverage runs from the calling app's
+      # already-installed ESLint. IMS-only (#1748): POS/Storefront checks stay app-local, running
+      # only their own `npm run lint`. Both lint steps in this job are blocking by default -- no
       # continue-on-error -- this is a brand-new job, not subject to promotion-quality-gate.yml's
       # #1063 advisory regime.
       - name: Run web-core lint
-        working-directory: apps/dgfy-ims
+        if: inputs.app == 'dgfy-ims'
+        working-directory: apps/${{ inputs.app }}
         run: npx eslint ../../packages/web-core --ext .js,.jsx --resolve-plugins-relative-to .
