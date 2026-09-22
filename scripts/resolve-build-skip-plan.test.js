@@ -1,5 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const {
   deriveChannelSuffix,
@@ -40,8 +44,38 @@ function neverCalled(name) {
   return () => { throw new Error(`${name} must not be called for this case`); };
 }
 
-test('decideBuildSkip: tag not published yet -> build normally, no diff call', () => {
-  const result = decideBuildSkip({
+function writeFixtureFiles(root, files) {
+  for (const [relativePath, contents] of Object.entries(files)) {
+    const target = path.join(root, relativePath);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, contents);
+  }
+}
+
+function commitFixture(root, message) {
+  execFileSync('git', ['add', '.'], { cwd: root });
+  execFileSync('git', ['-c', 'user.name=Test User', '-c', 'user.email=test@example.com', 'commit', '-m', message], { cwd: root });
+  return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+}
+
+function makeReachabilityFixture() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-build-skip-plan-'));
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  writeFixtureFiles(root, {
+    'apps/dgfy-storefront/package.json': JSON.stringify({
+      name: 'fixture-storefront',
+      version: '1.0.0',
+      dependencies: { '@sieitzz/web-core': 'file:../../packages/web-core' },
+    }),
+    'apps/dgfy-storefront/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\n",
+    'packages/web-core/package.json': JSON.stringify({ name: '@sieitzz/web-core', version: '1.0.0' }),
+    'packages/web-core/src/reachable.js': 'export default {};\n',
+  });
+  return { root, baseRevision: commitFixture(root, 'fixture base') };
+}
+
+test('decideBuildSkip: tag not published yet -> build normally, no diff call', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: inspectNotFound, diffFn: neverCalled('diffFn'),
   });
@@ -49,8 +83,8 @@ test('decideBuildSkip: tag not published yet -> build normally, no diff call', (
   assert.equal(result.code, 'not-published');
 });
 
-test('decideBuildSkip: idempotent same-revision republish -> skip, diffFn never invoked', () => {
-  const result = decideBuildSkip({
+test('decideBuildSkip: idempotent same-revision republish -> skip, diffFn never invoked', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(CURRENT), diffFn: neverCalled('diffFn'),
   });
@@ -58,9 +92,9 @@ test('decideBuildSkip: idempotent same-revision republish -> skip, diffFn never 
   assert.equal(result.code, 'idempotent-same-revision');
 });
 
-test('decideBuildSkip: different revision, content genuinely equivalent -> skip', () => {
+test('decideBuildSkip: different revision, content genuinely equivalent -> skip', async () => {
   let diffCallArgs = null;
-  const result = decideBuildSkip({
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(EXISTING),
     diffFn: (args) => { diffCallArgs = args; return []; },
@@ -71,21 +105,19 @@ test('decideBuildSkip: different revision, content genuinely equivalent -> skip'
   assert.equal(diffCallArgs.toRevision, CURRENT);
 });
 
-test('decideBuildSkip: different revision, content genuinely differs -> do not skip, not a thrown error', () => {
-  assert.doesNotThrow(() => {
-    const result = decideBuildSkip({
-      app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
-      inspectFn: () => inspectPublishedAt(EXISTING),
-      diffFn: () => ['apps/dgfy-api/src/index.js'],
-    });
-    assert.equal(result.skip, false);
-    assert.equal(result.code, 'content-changed');
-    assert.match(result.detail, /apps\/dgfy-api\/src\/index\.js/);
+test('decideBuildSkip: different revision, content genuinely differs -> do not skip, not a thrown error', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['apps/dgfy-api/src/index.js'],
   });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'content-changed');
+  assert.match(result.detail, /apps\/dgfy-api\/src\/index\.js/);
 });
 
-test('decideBuildSkip: GHCR inspect error (unclassified) -> fail-closed, do not skip', () => {
-  const result = decideBuildSkip({
+test('decideBuildSkip: GHCR inspect error (unclassified) -> fail-closed, do not skip', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: inspectUnclassifiedError, diffFn: neverCalled('diffFn'),
   });
@@ -93,8 +125,8 @@ test('decideBuildSkip: GHCR inspect error (unclassified) -> fail-closed, do not 
   assert.equal(result.code, 'unreadable-fail-closed');
 });
 
-test('decideBuildSkip: no currentRevision supplied -> fail-closed via decideImmutability\'s own guard', () => {
-  const result = decideBuildSkip({
+test('decideBuildSkip: no currentRevision supplied -> fail-closed via decideImmutability\'s own guard', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: '',
     inspectFn: inspectNotFound, diffFn: neverCalled('diffFn'),
   });
@@ -102,8 +134,8 @@ test('decideBuildSkip: no currentRevision supplied -> fail-closed via decideImmu
   assert.equal(result.code, 'unreadable-fail-closed');
 });
 
-test('decideBuildSkip: existing revision unreadable/disagreeing (existingRevision: null) -> fail-closed, no diff attempted', () => {
-  const result = decideBuildSkip({
+test('decideBuildSkip: existing revision unreadable/disagreeing (existingRevision: null) -> fail-closed, no diff attempted', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => ({ status: 0, stdout: JSON.stringify({ Image: { Config: { Labels: {} } } }), stderr: '' }),
     diffFn: neverCalled('diffFn'),
@@ -112,8 +144,8 @@ test('decideBuildSkip: existing revision unreadable/disagreeing (existingRevisio
   assert.equal(result.code, 'unreadable-fail-closed');
 });
 
-test('decideBuildSkip: diff itself unavailable (unresolvable SHA / shallow history) -> fail-closed', () => {
-  const result = decideBuildSkip({
+test('decideBuildSkip: diff itself unavailable (unresolvable SHA / shallow history) -> fail-closed', async () => {
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(EXISTING),
     diffFn: () => null,
@@ -125,9 +157,9 @@ test('decideBuildSkip: diff itself unavailable (unresolvable SHA / shallow histo
 // The load-bearing test for §7's scope-widening finding: infrastructure/docker/<app>/ must be part
 // of the diffed path set (wider than check-app-version-bump.js's own detectChangedApps scope), and
 // a Dockerfile-only change alone must produce { skip: false }.
-test('decideBuildSkip: Dockerfile-only change (infrastructure/docker/<app>/) is in scope and is never skipped', () => {
+test('decideBuildSkip: Dockerfile-only change (infrastructure/docker/<app>/) is in scope and is never skipped', async () => {
   let diffCallArgs = null;
-  const result = decideBuildSkip({
+  const result = await decideBuildSkip({
     app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(EXISTING),
     diffFn: (args) => { diffCallArgs = args; return ['infrastructure/docker/dgfy-api/Dockerfile']; },
@@ -136,6 +168,88 @@ test('decideBuildSkip: Dockerfile-only change (infrastructure/docker/<app>/) is 
   assert.ok(diffCallArgs.paths.includes('apps/dgfy-api'), `expected apps/dgfy-api in ${JSON.stringify(diffCallArgs.paths)}`);
   assert.equal(result.skip, false);
   assert.equal(result.code, 'content-changed');
+});
+
+test('decideBuildSkip: unreachable web-core change narrows to a skippable result', async () => {
+  let reachabilityCalls = 0;
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront', versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['packages/web-core/src/features/pos-only.js'],
+    reachabilityFn: async () => {
+      reachabilityCalls += 1;
+      return { applicable: true, changed: false };
+    },
+  });
+  assert.equal(result.skip, true);
+  assert.equal(result.code, 'content-equivalent-narrowed');
+  assert.equal(reachabilityCalls, 1);
+});
+
+test('decideBuildSkip: reachable web-core change remains content-changed', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront', versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['packages/web-core/src/reachable.js'],
+    reachabilityFn: async () => ({ applicable: true, changed: true }),
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'content-changed');
+});
+
+test('decideBuildSkip: mixed direct and web-core changes do not consult reachability', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront', versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['apps/dgfy-storefront/src/main.jsx', 'packages/web-core/src/reachable.js'],
+    reachabilityFn: neverCalled('reachabilityFn'),
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'content-changed');
+});
+
+test('decideBuildSkip: backend oracle not applicable preserves content-changed behavior', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-api', image: IMAGE, versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['packages/shared-constants/index.js'],
+    reachabilityFn: async () => ({ applicable: false, changed: true }),
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'content-changed');
+});
+
+test('decideBuildSkip: narrowing toggle off preserves the old directory-containment result', async () => {
+  const result = await decideBuildSkip({
+    app: 'dgfy-storefront', image: 'ghcr.io/sieitzz/dgfy-storefront', versionTag: '1.0.0', currentRevision: CURRENT,
+    inspectFn: () => inspectPublishedAt(EXISTING),
+    diffFn: () => ['packages/web-core/src/features/pos-only.js'],
+    reachabilityFn: neverCalled('reachabilityFn'),
+    narrowingEnabledFn: () => false,
+  });
+  assert.equal(result.skip, false);
+  assert.equal(result.code, 'content-changed');
+});
+
+test('decideBuildSkip: real fixture narrows a web-core __tests__-only change', async () => {
+  const { root, baseRevision } = makeReachabilityFixture();
+  try {
+    writeFixtureFiles(root, { 'packages/web-core/src/__tests__/unreachable.test.js': 'export default {};\n' });
+    const currentRevision = commitFixture(root, 'add web-core test-only file');
+    const result = await decideBuildSkip({
+      app: 'dgfy-storefront',
+      image: 'ghcr.io/sieitzz/dgfy-storefront',
+      versionTag: '1.0.0',
+      currentRevision,
+      repoRoot: root,
+      inspectFn: () => inspectPublishedAt(baseRevision),
+      diffFn: () => ['packages/web-core/src/__tests__/unreachable.test.js'],
+    });
+    assert.equal(result.skip, true);
+    assert.equal(result.code, 'content-equivalent-narrowed');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('buildInputPathsForApp: includes app dir, infrastructure/docker/<app>, and resolved file: deps', () => {
@@ -151,13 +265,13 @@ test('buildInputPathsForApp: includes app dir, infrastructure/docker/<app>, and 
 // dgfy-api / dgfy-migration-runner independence (plan §4): two separate decideBuildSkip calls with
 // divergent fixtures must resolve independently -- one skip-eligible, one not, with neither leaking
 // into the other.
-test('decideBuildSkip: dgfy-api and dgfy-migration-runner resolve independently', () => {
-  const apiResult = decideBuildSkip({
+test('decideBuildSkip: dgfy-api and dgfy-migration-runner resolve independently', async () => {
+  const apiResult = await decideBuildSkip({
     app: 'dgfy-api', image: 'ghcr.io/sieitzz/dgfy-api', versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(EXISTING),
     diffFn: () => [],
   });
-  const migrationResult = decideBuildSkip({
+  const migrationResult = await decideBuildSkip({
     app: 'dgfy-migration-runner', image: 'ghcr.io/sieitzz/dgfy-migration-runner', versionTag: '1.0.0', currentRevision: CURRENT,
     inspectFn: () => inspectPublishedAt(EXISTING),
     diffFn: () => ['apps/dgfy-migration-runner/src/migrate.js'],
@@ -168,11 +282,11 @@ test('decideBuildSkip: dgfy-api and dgfy-migration-runner resolve independently'
   assert.equal(migrationResult.code, 'content-changed');
 });
 
-test('resolveBuildSkipPlan: resolves a plan across multiple apps, keyed by app name, each independently', () => {
+test('resolveBuildSkipPlan: resolves a plan across multiple apps, keyed by app name, each independently', async () => {
   // repoRoot deliberately NOT overridden -- readVersionAt() shells out to `git show <ref>:<path>`
   // against a real repo, and this repo's own working tree is a valid, cheap target for it (no
   // network, no docker). currentRevision=HEAD is always resolvable here.
-  const plan = resolveBuildSkipPlan({
+  const plan = await resolveBuildSkipPlan({
     apps: ['dgfy-ims', 'dgfy-pos'],
     currentRevision: 'HEAD',
     inspectFn: inspectNotFound, // every tag "not found" -> push/build, no diff needed either way
@@ -185,8 +299,8 @@ test('resolveBuildSkipPlan: resolves a plan across multiple apps, keyed by app n
   }
 });
 
-test('resolveBuildSkipPlan: an app whose version cannot be read fails closed instead of throwing', () => {
-  const plan = resolveBuildSkipPlan({
+test('resolveBuildSkipPlan: an app whose version cannot be read fails closed instead of throwing', async () => {
+  const plan = await resolveBuildSkipPlan({
     apps: ['dgfy-ims'],
     currentRevision: 'sha-with-no-such-tree-entry-in-this-fake-repo',
     repoRoot: '/does-not-matter-and-git-show-will-fail-here',
@@ -259,9 +373,9 @@ test('deriveChannelSuffix: an unrecognized environment throws rather than silent
   assert.throws(() => deriveChannelSuffix('QA'), /Unknown environment 'QA'/);
 });
 
-test('resolveBuildSkipPlan: environment STAGING checks the -staging-suffixed tag, not the bare one', () => {
+test('resolveBuildSkipPlan: environment STAGING checks the -staging-suffixed tag, not the bare one', async () => {
   const inspectedRefs = [];
-  const plan = resolveBuildSkipPlan({
+  const plan = await resolveBuildSkipPlan({
     apps: ['dgfy-ims'],
     currentRevision: 'HEAD',
     environment: 'STAGING',
@@ -274,9 +388,9 @@ test('resolveBuildSkipPlan: environment STAGING checks the -staging-suffixed tag
   assert.doesNotMatch(inspectedRefs[0], /-staging-staging$/);
 });
 
-test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main.yml/PROD unchanged)', () => {
+test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main.yml/PROD unchanged)', async () => {
   const inspectedRefs = [];
-  resolveBuildSkipPlan({
+  await resolveBuildSkipPlan({
     apps: ['dgfy-ims'],
     currentRevision: 'HEAD',
     inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
