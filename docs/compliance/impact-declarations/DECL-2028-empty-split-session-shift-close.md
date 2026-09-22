@@ -12,8 +12,8 @@ verification_evidence: focused POS split-payment tests,focused API repository/us
 rollback_note: Revert the empty split-session lifecycle correction, its regression tests, the regenerated backend test inventory/audit, and this declaration together. No database migration or payment-ledger schema change is included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-22T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-2028-01
+preflight_run_at: 2026-09-22T17:04:03.706Z
+preflight_request_ref: PREFLIGHT-35757505429-2026-09-22-DGFY-2028-EMPTY-SPLIT-SESSION-SHIFT-CLOSE
 ---
 
 # Empty Split-Payment Session Shift-Close Correction
