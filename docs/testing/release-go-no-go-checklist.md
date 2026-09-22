@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-04
+last_reviewed: 2026-09-22
 applies_to: pre_promotion_quality_gate
 topic: pre_promotion_local_gate
 ---
@@ -27,6 +27,12 @@ This document stays as **a runbook for what the 17 gates mean and how to run one
 `--only <name>`/`--include-ci-enforced` (see "How to run it" below) — for local debugging of a
 specific check, not as a mandatory promotion step. #372 (a testing agent/skill), if built, should
 still prefer invoking a gate's own command over reimplementing it.
+
+The reusable wrapper for this Docker/scratch-copy procedure is the canonical
+`.agents/skills/testing-agent/SKILL.md` (`node scripts/run-testing-agent.js`). Its default full run
+uses `--include-ci-enforced`, preserves the underlying exit status, and copies SHA-bound evidence
+back before cleanup. Focused runs remain partial/advisory. The checklist below remains the manual
+debugging reference and source of truth for the gate meanings and service shape.
 
 This gate is one rung of a larger verification ladder — the compliance preflight sweep and the
 live-credential-dependent payment checks are separate rungs with their own placement and are not

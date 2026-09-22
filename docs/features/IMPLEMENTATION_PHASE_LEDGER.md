@@ -23744,3 +23744,59 @@ Not yet merged — set at merge time.
 
 344 after Phase 343's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 344 - Reusable Linux real-DB testing agent for local release evidence (#372)
+
+### Initiative and release
+
+Local release-quality verification and evidence, current release.
+
+### Objective and scope
+
+Provide a canonical `testing-agent` skill and thin tested wrapper for running the existing
+`gate:release:local` command in a disposable Linux Docker checkout against verified MySQL 8 and
+Redis 7 test services. The wrapper performs resource/service/database preflight, preserves gate
+exit status, copies only SHA-bound release evidence back, renders a concise summary, and cleans up
+the scratch checkout. Focused runs are explicitly partial/advisory. No new test runner, CI change,
+merge authority, deployment, VM lifecycle manager, migration, or runtime/API change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #372; #331 Worker caller; #366 PR Reviewer caller; #375 existing release gate; authoritative
+`docs/testing/release-go-no-go-checklist.md`; Phase 343 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:testing-agent` passes, including argument, resource, test-DB, cleanup, artifact,
+      exit-status, scope-label, and summary coverage.
+- [ ] `npm run check:agent-surfaces`, `npm run lint:docs`, `npm run check:architecture`, and
+      `npm run check:compliance` pass; `node --check scripts/run-testing-agent.js` and
+      `git diff --check` are clean.
+- [ ] Real Linux execution against MySQL 8 and Redis 7 reaches the existing gate/matrix, produces
+      SHA-bound artifacts/counts, and leaves no scratch checkout or host dependency mutation.
+- [ ] Resource/service failure produces an actionable non-green report and never claims a full pass.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #372 (`Closes`).
+- Handoff: `.tmp/plan-372.md` (planning head `a01ae36ad57d99707069a57157d2becd86a61017`).
+- Implementation: `.agents/skills/testing-agent/SKILL.md`, `scripts/run-testing-agent.js` (+ test),
+  `docs/testing/release-go-no-go-checklist.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; within existing tooling boundary).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+345 after Phase 344's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
