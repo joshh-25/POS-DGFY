@@ -49,6 +49,18 @@ describe('Business Admin settings navigation model', () => {
             activeSection: 'settings',
             settingsSection: 'team'
         });
+        expect(parseBusinessAdminPath('/backoffice/locations/registers', '/backoffice')).toMatchObject({
+            activeSection: 'locations',
+            locationView: 'registers'
+        });
+        expect(parseBusinessAdminPath('/backoffice/branches', '/backoffice')).toMatchObject({
+            activeSection: 'locations',
+            locationView: 'branches'
+        });
+        expect(parseBusinessAdminPath('/backoffice/registers', '/backoffice')).toMatchObject({
+            activeSection: 'locations',
+            locationView: 'registers'
+        });
         expect(buildBusinessAdminSettingsPath('/business-admin', 'payments')).toBe('/business-admin/settings/payments');
         expect(buildPosSettingsOwnerPath('settings_pos')).toBe('/terminal?view=settings_pos');
         expect(buildPosSettingsOwnerPath('terminal_setup')).toBe('/terminal?view=terminal_setup');
