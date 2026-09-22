@@ -41,17 +41,21 @@ different account.
 
 ## Required configuration
 
-Mount `DGLAUNDRY_PARTNER_BASE_URL`, `DGLAUNDRY_INTEGRATION_SECRET` and
-`DGLAUNDRY_INTEGRATION_KEY_ID` only for local/sandbox HMAC fixtures. Production
-must set `DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1`, mount the
-DGLaundry Ed25519 event-verification public key, the distinct DGLaundry
-partner-request P-256 public key (`DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE`
-and exact `DGLAUNDRY_PARTNER_REQUEST_KEY_ID`), and DGFY's P-256 signing private
-key from the secret manager, and provide the short-lived DGLaundry partner
-access token through `DGLAUNDRY_PARTNER_ACCESS_TOKEN` (or its secret-file
-equivalent). DGFY verifies DGLaundry requests as raw 64-byte IEEE P1363
-signatures; DER signatures are rejected. Never
-place these values in source, browser storage, or a shared database.
+Mount `DGLAUNDRY_INTEGRATION_SECRET` and `DGLAUNDRY_INTEGRATION_KEY_ID` only
+for local/sandbox HMAC fixtures. Production must set
+`DGLAUNDRY_SIGNATURE_PROFILE=http-message-signatures-v1`, the explicit
+staging/production integration environment, the HTTPS DGLaundry base origin
+and matching audience, and a separately registered
+`DGFY_DGLAUNDRY_SERVICE_CLIENT_ID`. For DGFY-to-DGLaundry quote, booking
+preparation, and order-resolution calls, DGFY mints a five-minute RS256 JWT
+from its OIDC signing key. Each token carries one exact operation scope and
+the explicitly mapped DGFY company/location; the same request is separately
+signed with P-256 IEEE P1363. Static bearer values are not accepted for this
+hosted profile. DGLaundry events remain Ed25519-signed and use a separate key
+registry. In the opposite direction, DGLaundry retains its existing opaque
+machine-token flow to DGFY and its own P-256 request-signing identity. Local
+HMAC/static-token fixtures are not production evidence. Never place private
+keys or bearer tokens in source, browser storage, a PR, or a shared database.
 
 ## Qualification still required
 

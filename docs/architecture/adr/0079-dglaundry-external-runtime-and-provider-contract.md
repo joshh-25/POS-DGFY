@@ -47,10 +47,25 @@ or signing private keys.
    failed branch readiness or security/payment gate keeps the integration
    dark; enablement is an all-approved-branches operation against a frozen
    allowlist.
+7. Token direction and request-signature direction are separate credentials.
+   For DGLaundry-to-DGFY calls, DGLaundry uses its registered machine-client
+   assertion to obtain the existing short-lived opaque DGFY partner token and
+   signs the request with its own P-256 key. For DGFY-to-DGLaundry quote,
+   booking-preparation, and order-resolution calls, DGFY signs a five-minute
+   RS256 JWT with its OIDC signing key. That JWT has the exact DGLaundry API
+   origin as `aud`, the separately registered DGFY service client as both
+   `sub` and `client_id`, one exact operation scope (`dglaundry:quotes:create`,
+   `dglaundry:bookings:prepare`, or `dglaundry:orders:read`), a unique `jti`,
+   and the active mapped `dgfy_company_id` and `dgfy_location_id`. The request
+   is independently signed using DGFY's P-256 key; a valid bearer does not
+   replace the HTTP Message Signature, nor does a valid signature replace the
+   bearer authorization. DGFY-origin events use a separate Ed25519 key and
+   trust registry. Hosted static bearer values are not supported.
 
 ## Consequences
 
-DGFY must maintain provider-owned mapping, OIDC key, event, and payment
+DGFY must maintain provider-owned mapping, separate browser/machine/service
+client registrations, OIDC key, request/event key registries, and payment
 evidence before production authorization. Same-host deployment is operational
 co-location only. A global kill switch and per-branch kill switch are required
 for rollback. Local or mock evidence qualifies implementation for provider

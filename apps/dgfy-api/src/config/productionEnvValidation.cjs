@@ -237,17 +237,25 @@ const validatePayPalConfig = (env, errors) => {
 
 const validateDglaundryProviderConfig = (env, errors) => {
   if (!isTruthy(env.DGLAUNDRY_INTEGRATION_ENABLED)) return;
+  if (String(env.DGLAUNDRY_SIGNATURE_PROFILE || '').trim() !== 'http-message-signatures-v1') {
+    errors.push('DGLAUNDRY_SIGNATURE_PROFILE must be http-message-signatures-v1 when the hosted integration is enabled');
+  }
   if (!hasValue(env, 'REDIS_URL')) errors.push('DGLAUNDRY_INTEGRATION_ENABLED requires REDIS_URL for durable partner-request replay protection');
-  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID']) {
+  for (const key of ['DGFY_OIDC_PRIVATE_KEY_FILE', 'DGFY_OIDC_PUBLIC_KEY_FILE', 'DGFY_OIDC_KEY_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_ID', 'DGFY_DGLAUNDRY_MACHINE_CLIENT_PUBLIC_KEY_FILE', 'DGFY_DGLAUNDRY_SERVICE_CLIENT_ID', 'DGFY_DGLAUNDRY_EVENT_SIGNING_KEY_ID', 'DGLAUNDRY_PARTNER_BASE_URL', 'DGLAUNDRY_PARTNER_AUDIENCE']) {
     if (!hasValue(env, key)) addMissing(errors, key);
   }
   if (!hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY') && !hasValue(env, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE')) addMissing(errors, 'DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY_FILE (or DGFY_DGLAUNDRY_EVENT_SIGNING_PRIVATE_KEY)');
   if (!hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_INTEGRATION_PUBLIC_KEY_FILE (or DGLAUNDRY_INTEGRATION_PUBLIC_KEY)');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_KEY_ID');
   if (!hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY_FILE (or DGLAUNDRY_PARTNER_REQUEST_PUBLIC_KEY)');
+  if (!hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID')) addMissing(errors, 'DGLAUNDRY_PARTNER_SIGNING_KEY_ID');
+  if (!hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY') && !hasValue(env, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE')) addMissing(errors, 'DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY_FILE (or DGLAUNDRY_PARTNER_SIGNING_PRIVATE_KEY)');
   const integrationEnvironment = String(env.DGLAUNDRY_INTEGRATION_ENVIRONMENT || '').trim().toLowerCase();
   if (!['staging', 'production'].includes(integrationEnvironment)) {
     errors.push('DGLAUNDRY_INTEGRATION_ENVIRONMENT must be explicitly staging or production');
+  }
+  if (integrationEnvironment === 'staging' && String(env.PAYMONGO_MODE || 'test').trim().toLowerCase() !== 'test') {
+    errors.push('DGLaundry staging integration requires PAYMONGO_MODE=test; live PayMongo is forbidden in staging');
   }
   const redirect = String(env.DGFY_DGLAUNDRY_REDIRECT_URI || '').trim();
   if (redirect !== 'https://laundry.surebizcorp.com/api/v1/session/dgfy/callback') {
@@ -257,6 +265,18 @@ const validateDglaundryProviderConfig = (env, errors) => {
   const expectedIssuer = integrationEnvironment === 'staging' ? 'https://api.stage.dgfy.ph/oidc' : 'https://api.dgfy.ph/oidc';
   if (integrationEnvironment && String(env.DGFY_OIDC_ISSUER || '').trim() !== expectedIssuer) {
     errors.push(`DGFY_OIDC_ISSUER must be ${expectedIssuer} for ${integrationEnvironment}`);
+  }
+  const partnerBaseUrl = String(env.DGLAUNDRY_PARTNER_BASE_URL || '').trim();
+  const partnerAudience = String(env.DGLAUNDRY_PARTNER_AUDIENCE || '').trim();
+  try {
+    const parsedBaseUrl = new URL(partnerBaseUrl);
+    if (parsedBaseUrl.protocol !== 'https:' || parsedBaseUrl.username || parsedBaseUrl.password || parsedBaseUrl.pathname !== '/' || parsedBaseUrl.search || parsedBaseUrl.hash) {
+      errors.push('DGLAUNDRY_PARTNER_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment');
+    } else if (partnerAudience && partnerAudience !== parsedBaseUrl.origin) {
+      errors.push('DGLAUNDRY_PARTNER_AUDIENCE must exactly match the DGLAUNDRY_PARTNER_BASE_URL origin');
+    }
+  } catch {
+    if (partnerBaseUrl) errors.push('DGLAUNDRY_PARTNER_BASE_URL must be a valid HTTPS origin');
   }
 };
 
