@@ -23,6 +23,17 @@ const requireScope = (payload) => {
   return { companyId, locationId };
 };
 
+const requireActiveMapping = async (repository, scope) => {
+  if (typeof repository.findActiveMapping !== 'function') {
+    throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Laundry company/location mapping lookup is unavailable.', { statusCode: 503 });
+  }
+  const mapping = await repository.findActiveMapping(scope);
+  if (!mapping) {
+    throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The DGFY company/location is not actively mapped to DGLaundry.', { statusCode: 403 });
+  }
+  return mapping;
+};
+
 const requireAccountId = (accountId) => {
   const normalized = toTrimmed(accountId, 160);
   if (!normalized) fail('An authenticated DGFY account is required.', 401, DomainErrorCode.AUTHENTICATION_FAILED);
@@ -182,6 +193,7 @@ export const buildDgfyLaundryOrderUseCases = ({ repository, partnerClient }) => 
 
   async quote({ payload, idempotencyKey }) {
     const scope = requireScope(payload);
+    await requireActiveMapping(repository, scope);
     if (!Array.isArray(payload?.lines) || payload.lines.length < 1) fail('At least one quote line is required.');
     const key = toTrimmed(idempotencyKey || payload.idempotencyKey || payload.idempotency_key, 160);
     if (!key) fail('A bounded idempotency key is required.', 400);

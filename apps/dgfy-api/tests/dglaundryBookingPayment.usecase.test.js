@@ -26,6 +26,7 @@ const repository = () => {
     updateSessionById: jest.fn(async (_id, patch) => { session = { ...session, ...patch }; return session; })
   };
 };
+const mappingRepository = () => ({ findActiveMapping: jest.fn(async () => ({ id: 'mapping-1', status: 'active' })) });
 
 describe('DGLaundry booking payment session', () => {
   const previous = process.env.DGLAUNDRY_BOOKING_PAYMENTS_ENABLED;
@@ -36,11 +37,13 @@ describe('DGLaundry booking payment session', () => {
     const commercePaymentRepository = repository();
     const partnerClient = { prepareBookingGroup: jest.fn(async (request) => ({ reservation: { id: `booking-${request.mode}`, quotedAmountCentavos: request.mode === 'fixed' ? 12500 : null, inventoryReservationIds: [`reservation-${request.mode}`] } })) };
     const paymongoService = { createQrphPaymentIntent: jest.fn(async () => ({ paymentIntent: { id: 'pi_1' }, paymentMethod: { id: 'pm_1' }, qrCodeImageUrl: 'https://paymongo.test/qr', expiresAt: new Date(Date.now() + 60000).toISOString() })) };
-    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService, partnerClient });
+    const activeMappings = mappingRepository();
+    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService, partnerClient, mappingRepository: activeMappings });
     const result = await useCase({ payload: payload() });
     expect(result.success).toBe(true);
     expect(result.data.payment_required).toBe(true);
     expect(partnerClient.prepareBookingGroup).toHaveBeenCalledTimes(2);
+    expect(activeMappings.findActiveMapping).toHaveBeenCalledWith({ companyId: 'company-a', locationId: 'location-a' });
     expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalledWith(expect.objectContaining({ amount: 12500, splitPayment: null }));
     expect(commercePaymentRepository.createSession).toHaveBeenCalledWith(expect.objectContaining({ target_type: 'dglaundry_booking', platform_fee_centavos: 0 }));
   });
@@ -48,7 +51,7 @@ describe('DGLaundry booking payment session', () => {
   it('returns a reservation-only result for per-kilo and stays dark when the kill switch is on', async () => {
     const commercePaymentRepository = repository();
     const partnerClient = { prepareBookingGroup: jest.fn(async () => ({ reservation: { id: 'booking-kilo', quotedAmountCentavos: null, inventoryReservationIds: ['reservation-kilo'] } })) };
-    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService: {}, partnerClient });
+    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService: {}, partnerClient, mappingRepository: mappingRepository() });
     const result = await useCase({ payload: payload({ mode: 'per_kilo', lines: [{ variantId: 'kilo-1', quantity: 1, externalLineReference: 'line-kilo' }] }) });
     expect(result.success).toBe(true);
     expect(result.data.payment_required).toBe(false);
@@ -57,5 +60,19 @@ describe('DGLaundry booking payment session', () => {
     const disabled = await useCase({ payload: payload({ idempotency_key: 'booking-key-2' }) });
     expect(disabled.success).toBe(false);
     expect(disabled.error.code).toBe('SERVICE_UNAVAILABLE');
+  });
+
+  it('does not create a reservation or payment for a company/location without an active mapping', async () => {
+    const commercePaymentRepository = repository();
+    const partnerClient = { prepareBookingGroup: jest.fn() };
+    const paymongoService = { createQrphPaymentIntent: jest.fn() };
+    const mappings = { findActiveMapping: jest.fn(async () => null) };
+    const useCase = buildCreateDglaundryBookingPaymentSessionUseCase({ commercePaymentRepository, paymongoService, partnerClient, mappingRepository: mappings });
+    const result = await useCase({ payload: payload() });
+    expect(result.success).toBe(false);
+    expect(result.error).toMatchObject({ code: 'AUTHORIZATION_FAILED', statusCode: 403 });
+    expect(commercePaymentRepository.findSessionByIdempotency).not.toHaveBeenCalled();
+    expect(partnerClient.prepareBookingGroup).not.toHaveBeenCalled();
+    expect(paymongoService.createQrphPaymentIntent).not.toHaveBeenCalled();
   });
 });

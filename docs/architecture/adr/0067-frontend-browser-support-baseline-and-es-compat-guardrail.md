@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: pos
 date: 2026-08-18
-last_reviewed: 2026-09-08
+last_reviewed: 2026-09-22
 review_by: 2027-02-18
 applies_to: architecture_decision
 topic: frontend_browser_support_baseline_and_es_compat_guardrail
@@ -324,3 +324,38 @@ undetected — root-caused in #1712, fixed separately by #1702/PR #1709):
   a freshly migrated DB, and even once provisioned (`scripts/register_original_tenant.js`, already
   documented, not new tooling) its registration payload is missing a `phone_number` field
   `apps/dgfy-api/src/validators/authValidator.js` now requires unconditionally.
+
+### 2026-09-22 — `apps/dgfy-pos`/`apps/dgfy-storefront` lint gains blocking develop-PR coverage (#1748)
+
+Closes the residual gap the 2026-09-08 amendment above left open ("extending develop-PR coverage
+to those two is tracked as a follow-up, not done here" — this is that follow-up):
+
+- **`pr-frontend-lint-checks.yml` now takes an explicit `app` input** (`dgfy-ims`/`dgfy-pos`/
+  `dgfy-storefront`, required, no default), and `pr-checks.yml` calls it once per app
+  (`frontend-ims-lint-check`, `frontend-pos-lint-check`, `frontend-storefront-lint-check`), each
+  gated on its own `changes.outputs.frontend_*` output via the same `needs: [changes,
+  route-build-checks]` shape, on the light runner. A lint failure in any one fails only its own
+  check. No `--max-warnings`, no `continue-on-error`, no rule changes — warnings stay non-failing.
+- **Command scopes are each app's own existing lint script, unchanged**: `apps/dgfy-pos` runs
+  `eslint src vitePosOfflinePrecachePlugin.js --ext .js,.jsx`; `apps/dgfy-storefront` runs
+  `eslint src --ext .js,.jsx`. The `packages/web-core` lint step stays IMS-only (ADR 0071 Decision
+  4 `[binding]` — no own script/devDependencies there), so this does not broaden POS/Storefront
+  scope into the shared trunk.
+- **Live baseline evidence (already-installed locked dependencies, 2026-09-22)**: POS `npm run
+  lint` exits 0 with no reported problems; Storefront exits 0 with 135 warnings / 0 errors. The
+  warning-tolerant contract is load-bearing here — Storefront's 135 warnings stay visible but
+  non-blocking, and fixing them is explicitly out of scope.
+- **Trigger parity**: `pr-frontend-lint-checks.yml` joins the POS/Storefront unconditional
+  workflow-trigger patterns in both `shared-changed-paths.yml` and
+  `scripts/resolve-frontend-build-triggers.js` (IMS already listed it), reusing the existing
+  `frontend_pos`/`frontend_storefront` outputs — no new output, no duplicate filter system. A PR
+  touching only the shared lint workflow now triggers all three callers instead of silently
+  skipping two (fail-open trigger gap, covered by a new regression test).
+- **Contract**: `scripts/check-pr-quality-workflow.js` now asserts all three caller jobs and their
+  app mappings structurally (job-name substrings alone can't prove the mapping — the build-check
+  jobs carry the same `app:` values), with focused regression tests for missing/incorrect
+  mappings.
+
+The 2026-09-08 sentence "`apps/dgfy-pos`/`apps/dgfy-storefront` lint remains promotion-leg-only"
+is superseded for develop-PR purposes; the promotion-leg `run_pos_lint`/`run_storefront_lint`
+steps are unchanged.

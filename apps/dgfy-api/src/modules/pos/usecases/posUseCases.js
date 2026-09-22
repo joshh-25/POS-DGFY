@@ -7926,6 +7926,28 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 user
             });
 
+            await assertNoUnresolvedParkedSalesForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightOperatorMutationForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoInFlightPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction,
+                cancelledBy: normalizedUserId
+            });
+            await assertNoUnresolvedFundedPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+
             const closedShift = await posRepository.closeTerminalShift(normalizedShiftId, {
                 status: 'closed',
                 closed_at: new Date(),
@@ -8447,22 +8469,36 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+const assertNoInFlightPaymentSessionsForShift = async ({
+    posRepository,
+    shiftId,
+    transaction,
+    cancelledBy = null
+}) => {
+    if (typeof posRepository.cancelEmptyInFlightPaymentSessionsForShift === 'function') {
+        await posRepository.cancelEmptyInFlightPaymentSessionsForShift(shiftId, {
+            transaction,
+            lock: true,
+            cancelledBy
+        });
+    }
+
     const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
         ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
         : [];
-    if (sessions.length === 0) return;
+    const unfundedSessions = sessions.filter((session) => Number(session.paid_amount || 0) <= 0);
+    if (unfundedSessions.length === 0) return;
 
     throw new DomainError(
         DomainErrorCode.CONFLICT,
-        `Complete or cancel ${sessions.length} in-flight payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        `Complete or cancel ${unfundedSessions.length} in-flight payment session${unfundedSessions.length === 1 ? '' : 's'} before closing this shift.`,
         {
             statusCode: 409,
             details: {
                 reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
-                active_payment_session_count: sessions.length,
+                active_payment_session_count: unfundedSessions.length,
                 shift_id: Number(shiftId),
-                sessions: sessions.map((session) => ({
+                sessions: unfundedSessions.map((session) => ({
                     pos_payment_session_id: Number(session.pos_payment_session_id),
                     session_reference: session.session_reference,
                     status: session.status
@@ -8586,7 +8622,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
             await assertNoInFlightPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
-                transaction
+                transaction,
+                cancelledBy: normalizedUserId
             });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
@@ -8817,7 +8854,8 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             await assertNoInFlightPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
-                transaction
+                transaction,
+                cancelledBy: normalizedUserId
             });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,
