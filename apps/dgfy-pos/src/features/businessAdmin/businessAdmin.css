@@ -26,6 +26,14 @@
   transition: width .18s ease, flex-basis .18s ease, padding .18s ease, transform .2s ease;
 }
 
+.business-admin-sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.business-admin-sidebar-header .business-admin-brand { min-width: 0; flex: 1 1 auto; }
+
 .business-admin-brand {
   display: flex;
   flex-direction: column;
@@ -48,6 +56,8 @@
 .business-admin-brand-subtitle { font-size: 11px; color: #64748b; margin-top: 3px; }
 
 .business-admin-nav-group { margin-top: 19px; }
+.business-admin-nav-group.is-standalone { margin-top: 10px; }
+.business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
 .business-admin-nav-label {
   padding: 0 10px 7px;
   color: #64748b;
@@ -122,6 +132,8 @@
     font-size: 9px;
     line-height: 1;
   }
+  .business-admin-sidebar.is-collapsed .business-admin-sidebar-header { display: block; }
+  .business-admin-sidebar.is-collapsed .business-admin-sidebar-toggle { margin: 10px auto 0; }
 }
 
 .business-admin-main { min-width: 0; flex: 1; padding: 26px 30px 42px; }
@@ -278,8 +290,8 @@
   box-shadow: 0 7px 22px rgba(23, 50, 77, .05);
 }
 @keyframes business-admin-workspace-enter {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 1; transform: translate3d(12px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 .business-admin-alert {
@@ -309,6 +321,16 @@
 .business-admin-card-subtitle { color: #64748b; font-size: 11px; margin-top: 3px; }
 .business-admin-card-body { padding: 15px 16px; }
 .business-admin-card-body.flush { padding: 0; }
+.business-admin-overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; min-width: 0; }
+.business-admin-overview-chart-card { min-width: 0; overflow: hidden; }
+.business-admin-overview-sales-card { grid-column: 1 / -1; }
+.business-admin-overview-chart-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid #e2e8f0; }
+.business-admin-overview-chart-header h2 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 900; }
+.business-admin-overview-chart-header p { margin: 4px 0 0; color: #64748b; font-size: 11px; }
+.business-admin-overview-chart-control { flex: 0 0 auto; min-width: 142px; border: 0; border-bottom: 1px solid #cbd5e1; padding: 4px 22px 6px 2px; background: #fff; color: #64748b; font-family: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-overview-chart-body { min-width: 0; padding: 10px 12px 14px; }
+.business-admin-overview-chart-plot { width: 100%; height: 280px; min-width: 0; }
+.business-admin-overview-chart-empty { display: flex; align-items: center; justify-content: center; min-height: 240px; border: 1px dashed #d6e1e8; border-radius: 12px; color: #64748b; background: #fbfdfe; font-size: 12px; font-weight: 700; text-align: center; }
 
 .business-admin-table-wrap { width: 100%; overflow-x: auto; }
 .business-admin-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 12px; }
@@ -323,6 +345,17 @@
 .business-admin-status.online, .business-admin-status.completed, .business-admin-status.closed, .business-admin-status.available { background: #e8f8f3; color: #1d7d64; }
 .business-admin-status.warning, .business-admin-status.open, .business-admin-status.preparing { background: #fff4dc; color: #926b22; }
 .business-admin-status.critical, .business-admin-status.failed, .business-admin-status.voided { background: #fff0ee; color: #a8453c; }
+.business-admin-locations-workspace { display: grid; gap: 16px; }
+.business-admin-locations-results { position: relative; min-width: 0; min-height: 220px; scroll-margin-top: 16px; }
+.business-admin-locations-results-content { min-height: 220px; transition: transform .2s cubic-bezier(.2, .65, .3, 1); will-change: transform; }
+.business-admin-locations-results.is-refreshing .business-admin-locations-results-content { transform: translate3d(8px, 0, 0); }
+.business-admin-locations-refreshing { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .76); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-locations-panel-error { margin-top: 12px; }
+.business-admin-locations-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px; border: 1px solid #dce8ef; border-radius: 14px; background: #f7fbfd; }
+.business-admin-locations-tab { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 10px; padding: 8px 14px; background: transparent; color: #5f7485; font-size: 12px; font-weight: 900; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease; }
+.business-admin-locations-tab:hover { border-color: #cce9e6; background: #fff; color: #1a4e8d; }
+.business-admin-locations-tab.active { border-color: #1a4e8d; background: #1a4e8d; color: #fff; box-shadow: 0 4px 10px rgba(26, 78, 141, .16); }
+.business-admin-locations-tab:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
 .business-admin-branches-workspace { display: grid; gap: 16px; }
 .business-admin-branches-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .business-admin-branches-metric { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px; }
@@ -392,66 +425,32 @@
 .business-admin-team-actions .business-admin-button { white-space: nowrap; }
 .business-admin-workforce-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .business-admin-workforce-header-actions .business-admin-button { white-space: nowrap; }
-.business-admin-branch-editor-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  width: 100vw;
-  height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(15, 23, 42, .58);
-  backdrop-filter: blur(4px);
+.business-admin-workforce-workspace { display: grid; gap: 16px; }
+.business-admin-workforce-contract,
+.business-admin-customer-contract,
+.business-admin-customer-loyalty-contract { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #bfdfed; border-radius: 12px; padding: 11px 13px; background: #f1faff; color: #205b78; }
+.business-admin-workforce-contract > svg,
+.business-admin-customer-contract > svg,
+.business-admin-customer-loyalty-contract > svg { flex: 0 0 auto; margin-top: 1px; color: #0d8d87; }
+.business-admin-workforce-contract-copy,
+.business-admin-customer-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-workforce-contract-copy strong,
+.business-admin-customer-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-workforce-contract-copy span,
+.business-admin-customer-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-customer-loyalty-contract { border-color: #e6d5b0; background: #fffaf0; color: #8c6a2e; }
+.business-admin-customer-loyalty-contract > svg { color: #b27c1f; }
+.business-admin-customer-loyalty-contract .business-admin-customer-contract-copy strong { color: #8c651d; }
+.business-admin-customer-loyalty-contract .business-admin-customer-contract-copy span { color: #987a43; }
+.business-admin-customer-form-card { min-width: 0; }
+.business-admin-customer-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.business-admin-customer-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.business-admin-customer-form .business-admin-field { min-width: 0; }
+@media (max-width: 760px) {
+  .business-admin-customer-form { grid-template-columns: 1fr; }
+  .business-admin-customer-form-actions { justify-content: stretch; }
+  .business-admin-customer-form-actions .business-admin-button { width: 100%; }
 }
-.business-admin-branch-editor-modal {
-  display: flex;
-  width: min(1180px, calc(100vw - 48px));
-  max-height: calc(100vh - 48px);
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid #cfe0e8;
-  border-radius: 20px;
-  background: #f7fbfd;
-  box-shadow: 0 24px 70px rgba(15, 23, 42, .28);
-}
-.business-admin-branch-editor-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 20px 24px;
-  border-bottom: 1px solid #dce8ef;
-  background: #fff;
-}
-.business-admin-branch-editor-heading { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
-.business-admin-branch-editor-icon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #cce9e6; border-radius: 13px; background: #effcfb; color: #0d8d87; }
-.business-admin-branch-editor-heading h2 { margin: 2px 0 0; color: #123e57; font-size: 22px; font-weight: 900; letter-spacing: -.03em; }
-.business-admin-branch-editor-heading p { margin: 4px 0 0; color: #64748b; font-size: 12px; line-height: 1.5; }
-.business-admin-branch-editor-close { display: grid; width: 36px; height: 36px; flex: 0 0 auto; place-items: center; border: 1px solid #cbd5e1; border-radius: 10px; background: #fff; color: #475569; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease; }
-.business-admin-branch-editor-close:hover { border-color: #2563eb; background: #eff7ff; color: #1a4e8d; }
-.business-admin-branch-editor-close:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
-.business-admin-branch-editor-notice { display: flex; align-items: flex-start; gap: 9px; margin: 16px 24px 0; padding: 11px 13px; border: 1px solid #bfdfed; border-radius: 11px; background: #f1faff; color: #205b78; font-size: 12px; line-height: 1.45; }
-.business-admin-branch-editor-notice svg { flex: 0 0 auto; margin-top: 1px; color: #1a4e8d; }
-.business-admin-branch-editor-body { min-height: 0; overflow-y: auto; padding: 16px 24px 24px; }
-.business-admin-branch-editor-modal .business-admin-settings-editor { min-width: 0; }
-.business-admin-branch-editor-modal .business-admin-settings-terminal-link { display: none; }
-.business-admin-branch-editor-modal .business-admin-storefront-locations-panel { margin-top: 0; }
-.business-admin-branch-editor-modal .business-admin-storefront-location-actions { position: static; }
-.business-admin-branch-editor-modal .business-admin-location-editor-only {
-  margin: 0;
-  border: 0;
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-}
-.business-admin-branch-editor-modal .business-admin-location-editor-only .business-admin-storefront-locations-header,
-.business-admin-branch-editor-modal .business-admin-location-editor-only .business-admin-storefront-location-list { display: none; }
-.business-admin-branch-editor-modal .business-admin-location-editor-only .business-admin-storefront-locations-grid {
-  grid-template-columns: minmax(0, 1fr);
-  margin-top: 0;
-}
-.business-admin-branch-editor-modal .business-admin-location-editor-only .business-admin-storefront-location-editor { min-width: 0; }
 .business-admin-company-card { border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: #fbfefe; }
 .business-admin-company-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .business-admin-company-card-heading strong { display: block; color: #173e58; font-size: 13px; }
@@ -602,6 +601,52 @@
 .business-admin-shifts-table-view { display: block; }
 .business-admin-shifts-mobile-view { display: none; }
 .business-admin-shifts-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-cash-summary-section-card { min-width: 0; overflow: hidden; }
+.business-admin-cash-summary-table-wrap { width: 100%; overflow-x: auto; }
+.business-admin-cash-summary-table { min-width: 900px; table-layout: fixed; }
+.business-admin-cash-summary-table th,
+.business-admin-cash-summary-table td { overflow-wrap: anywhere; }
+.business-admin-cash-summary-table th:nth-child(1),
+.business-admin-cash-summary-table td:nth-child(1) { width: 11%; }
+.business-admin-cash-summary-table th:nth-child(2),
+.business-admin-cash-summary-table td:nth-child(2),
+.business-admin-cash-summary-table th:nth-child(3),
+.business-admin-cash-summary-table td:nth-child(3) { width: 16%; }
+.business-admin-cash-summary-table th:nth-child(4),
+.business-admin-cash-summary-table td:nth-child(4) { width: 16%; }
+.business-admin-cash-summary-table th:nth-child(5),
+.business-admin-cash-summary-table td:nth-child(5),
+.business-admin-cash-summary-table th:nth-child(6),
+.business-admin-cash-summary-table td:nth-child(6),
+.business-admin-cash-summary-table th:nth-child(7),
+.business-admin-cash-summary-table td:nth-child(7) { width: 14.33%; text-align: right; }
+.business-admin-cash-summary-table th:nth-child(2),
+.business-admin-cash-summary-table td:nth-child(2) { width: 14%; }
+.business-admin-cash-summary-table th:nth-child(3),
+.business-admin-cash-summary-table td:nth-child(3),
+.business-admin-cash-summary-table th:nth-child(4),
+.business-admin-cash-summary-table td:nth-child(4),
+.business-admin-cash-summary-table th:nth-child(5),
+.business-admin-cash-summary-table td:nth-child(5),
+.business-admin-cash-summary-table th:nth-child(6),
+.business-admin-cash-summary-table td:nth-child(6),
+.business-admin-cash-summary-table th:nth-child(7),
+.business-admin-cash-summary-table td:nth-child(7) { white-space: nowrap; }
+.business-admin-cash-summary-empty { display: flex; min-height: 260px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; padding: 28px 16px; color: #5d7485; text-align: center; }
+.business-admin-cash-summary-empty-icon { display: grid; width: 80px; height: 80px; place-items: center; margin-bottom: 4px; border-radius: 50%; background: #f4f5f6; color: #a3a3a3; }
+.business-admin-cash-summary-empty strong { color: #5d7485; font-size: 24px; font-weight: 500; }
+.business-admin-cash-summary-empty span { color: #6e7f8d; font-size: 14px; }
+.business-admin-cash-summary-pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; border-top: 1px solid #edf2f6; padding: 12px 16px; background: #fff; color: #5d7485; font-size: 12px; }
+.business-admin-cash-summary-pagination-actions { display: flex; align-items: center; }
+.business-admin-cash-summary-pagination-button { display: inline-grid; width: 42px; height: 36px; place-items: center; border: 1px solid #dce5ea; background: #fff; color: #456273; cursor: pointer; }
+.business-admin-cash-summary-pagination-button:first-child { border-radius: 4px 0 0 4px; }
+.business-admin-cash-summary-pagination-button + .business-admin-cash-summary-pagination-button { margin-left: -1px; border-radius: 0 4px 4px 0; }
+.business-admin-cash-summary-pagination-button:hover:not(:disabled) { background: #f5fafb; color: #0d7773; }
+.business-admin-cash-summary-pagination-button:disabled { color: #b7c1c7; cursor: not-allowed; }
+.business-admin-cash-summary-pagination-page { justify-self: center; white-space: nowrap; }
+.business-admin-cash-summary-pagination-page strong,
+.business-admin-cash-summary-pagination-limit strong { color: #234b64; font-weight: 800; }
+.business-admin-cash-summary-pagination-limit { display: inline-flex; align-items: center; justify-self: end; gap: 4px; white-space: nowrap; }
 .business-admin-shift-card {
   min-width: 0;
   border: 1px solid #dce8ef;
@@ -939,10 +984,33 @@
 .business-admin-inventory-context div { display: grid; gap: 2px; min-width: 0; }
 .business-admin-inventory-context strong { color: #205b78; font-size: 12px; }
 .business-admin-inventory-context span { color: #66879a; font-size: 11px; line-height: 1.35; }
+.business-admin-inventory-workflows { min-width: 0; }
+.business-admin-inventory-workflows .business-admin-card-body { display: grid; gap: 13px; }
+.business-admin-inventory-workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.business-admin-inventory-workflow-link { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid #d9e7ed; border-radius: 12px; padding: 11px 12px; background: #fbfefe; color: #234b64; text-decoration: none; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.business-admin-inventory-workflow-link:hover { border-color: #78cfc9; background: #f4fffd; transform: translateY(-1px); }
+.business-admin-inventory-workflow-link:focus-visible { outline: 3px solid rgba(21, 152, 145, .22); outline-offset: 2px; }
+.business-admin-inventory-workflow-icon { display: grid; flex: 0 0 auto; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: #e7f8f5; color: #0b817b; }
+.business-admin-inventory-workflow-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-inventory-workflow-copy strong { color: #234b64; font-size: 12px; line-height: 1.25; }
+.business-admin-inventory-workflow-copy span { color: #71879a; font-size: 10px; line-height: 1.35; }
+.business-admin-inventory-workflow-arrow { flex: 0 0 auto; margin-left: auto; color: #7391a1; }
+.business-admin-inventory-follow-up { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #f0dfb4; border-radius: 11px; padding: 10px 12px; background: #fffaf0; color: #8c6a2e; }
+.business-admin-inventory-follow-up > svg { flex: 0 0 auto; margin-top: 1px; color: #b27c1f; }
+.business-admin-inventory-follow-up div { display: grid; gap: 2px; min-width: 0; }
+.business-admin-inventory-follow-up strong { color: #8c651d; font-size: 11px; }
+.business-admin-inventory-follow-up span { color: #987a43; font-size: 10px; line-height: 1.4; }
 .business-admin-inventory-grid { margin-bottom: 0; }
 .business-admin-inventory-section { min-width: 0; overflow: hidden; }
 .business-admin-inventory-section .business-admin-card-body { padding: 0; }
 .business-admin-inventory-count { color: #71879a; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.business-admin-inventory-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 16px; border-top: 1px solid #e7eff3; padding: 12px; }
+.business-admin-inventory-pagination-summary { display: flex; align-items: baseline; gap: 5px; color: #7890a1; font-size: 11px; }
+.business-admin-inventory-pagination-summary strong { color: #234b64; font-size: 12px; }
+.business-admin-inventory-pagination-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.business-admin-inventory-pagination-actions .business-admin-button { min-height: 34px; padding: 7px 10px; }
+.business-admin-inventory-pagination-actions .business-admin-button:disabled { cursor: not-allowed; }
+.business-admin-inventory-pagination-page { min-width: 92px; color: #5d7f91; font-size: 11px; font-weight: 800; text-align: center; }
 .business-admin-inventory-table-view .business-admin-table { min-width: 0; table-layout: fixed; }
 .business-admin-inventory-table-view .business-admin-table th,
 .business-admin-inventory-table-view .business-admin-table td { padding: 10px 11px; overflow-wrap: anywhere; }
@@ -963,6 +1031,7 @@
 .business-admin-inventory-record-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .business-admin-inventory-record-tag { flex: 0 0 auto; border: 1px solid #cce9e6; border-radius: 99px; padding: 4px 7px; color: #0b7772; background: #effbf9; font-size: 9px; font-weight: 900; white-space: nowrap; }
 .business-admin-inventory-record-tag.warning { border-color: #f0dcae; color: #9a6d1f; background: #fff8e8; }
+.business-admin-inventory-record-tag.critical { border-color: #f0b9b9; color: #a53d3d; background: #fff0f0; }
 .business-admin-inventory-record-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
 .business-admin-inventory-record-facts div { display: grid; min-width: 0; gap: 4px; }
 .business-admin-inventory-record-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
@@ -1063,6 +1132,9 @@
 .business-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 .business-admin-toolbar .business-admin-search { flex: 1; min-width: 180px; }
 .business-admin-detail-panel { border: 1px solid #cfe3e5; border-radius: 12px; background: #f6fffe; padding: 14px; margin-top: 13px; }
+.business-admin-customer-detail-contract { display: grid; gap: 3px; margin-top: 13px; border: 1px solid #e6d5b0; border-radius: 10px; padding: 9px 11px; background: #fffaf0; }
+.business-admin-customer-detail-contract strong { color: #8c651d; font-size: 11px; }
+.business-admin-customer-detail-contract span { color: #987a43; font-size: 10px; line-height: 1.4; }
 .business-admin-detail-panel pre { max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #416579; font-size: 11px; }
 .business-admin-kicker { color: #1a4e8d; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .business-admin-feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
@@ -1073,8 +1145,27 @@
 .business-admin-settings-nav { min-width: 0; }
 .business-admin-settings-nav-body { padding: 10px 12px; }
 .business-admin-settings-nav-strip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
-.business-admin-settings-section-list { display: flex; min-width: 0; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 2px; scroll-behavior: smooth; scrollbar-width: none; }
-.business-admin-settings-section-list::-webkit-scrollbar { display: none; }
+.business-admin-settings-section-list {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 2px;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+.business-admin-settings-section-list::-webkit-scrollbar { width: 8px; height: 8px; }
+.business-admin-settings-section-list::-webkit-scrollbar-track { background: transparent; }
+.business-admin-settings-section-list::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: transparent; background-clip: padding-box; }
+.business-admin-settings-section-list:hover,
+.business-admin-settings-section-list:focus-within,
+.business-admin-settings-section-list:active { scrollbar-color: #94a3b8 transparent; }
+.business-admin-settings-section-list:hover::-webkit-scrollbar-thumb,
+.business-admin-settings-section-list:focus-within::-webkit-scrollbar-thumb,
+.business-admin-settings-section-list:active::-webkit-scrollbar-thumb { background: #94a3b8; background-clip: padding-box; }
 .business-admin-settings-nav-control {
   width: 34px;
   height: 34px;
@@ -1181,6 +1272,8 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-sidebar { width: 220px; flex-basis: 220px; }
   .business-admin-main { padding: 22px 18px 36px; }
   .business-admin-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-overview-chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-overview-sales-card { grid-column: auto; }
   .business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .business-admin-settings-nav .business-admin-card-body { padding: 10px 12px 12px; }
   .business-admin-settings-section-list {
@@ -1224,6 +1317,8 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-brand { padding-bottom: 12px; }
   .business-admin-nav-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; margin-top: 11px; }
   .business-admin-nav-group .business-admin-nav-label { grid-column: 1 / -1; }
+  .business-admin-nav-group.is-standalone { display: block; margin-top: 8px; }
+  .business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
   .business-admin-main { padding: 18px 12px 30px; }
   .business-admin-settings-nav-body { padding: 8px 10px; }
   .business-admin-settings-nav-strip { gap: 5px; }
@@ -1237,6 +1332,10 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .business-admin-metric { min-height: 88px; padding: 12px; }
   .business-admin-metric-value { font-size: 20px; }
+  .business-admin-overview-chart-header { display: block; }
+  .business-admin-overview-chart-header .business-admin-link,
+  .business-admin-overview-chart-control { display: inline-flex; margin-top: 8px; }
+  .business-admin-overview-chart-plot { height: 240px; }
   .business-admin-notifications-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .business-admin-notifications-attention { align-items: flex-start; flex-direction: column; gap: 14px; padding: 15px; }
   .business-admin-notifications-attention-copy { align-items: flex-start; }
@@ -1271,12 +1370,17 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-notification-actions { justify-content: stretch; }
   .business-admin-notification-action { flex: 1 1 auto; }
   .business-admin-inventory-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-inventory-workflow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .business-admin-inventory-metric { gap: 9px; padding: 13px; }
   .business-admin-inventory-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
   .business-admin-inventory-metric-copy strong { font-size: 16px; }
   .business-admin-inventory-context { align-items: flex-start; }
   .business-admin-inventory-table-view { display: none; }
   .business-admin-inventory-mobile-view { display: block; }
+  .business-admin-inventory-pagination { flex-direction: column; gap: 8px; }
+  .business-admin-inventory-pagination-actions { width: 100%; }
+  .business-admin-inventory-pagination-actions .business-admin-button { flex: 1 1 0; justify-content: center; }
+  .business-admin-inventory-pagination-page { flex: 1 1 0; }
   .business-admin-inventory-record-list { padding: 12px; }
   .business-admin-inventory-record { padding: 13px; }
   .business-admin-inventory-record-heading { align-items: flex-start; }
@@ -1333,6 +1437,13 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-shifts-pagination-actions .business-admin-button { flex: 1 1 0; justify-content: center; }
   .business-admin-shifts-pagination-page { flex: 1 1 0; }
   .business-admin-shifts-panel-error { margin: 12px; }
+  .business-admin-cash-summary-table { min-width: 680px; }
+  .business-admin-cash-summary-empty { min-height: 220px; padding: 24px 12px; }
+  .business-admin-cash-summary-empty strong { font-size: 20px; }
+  .business-admin-cash-summary-empty span { font-size: 12px; }
+  .business-admin-cash-summary-pagination { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 10px; padding: 12px; }
+  .business-admin-cash-summary-pagination-page,
+  .business-admin-cash-summary-pagination-limit { justify-self: center; }
   .business-admin-orders-contract { align-items: flex-start; padding: 10px 12px; }
   .business-admin-orders-table-view { display: none; }
   .business-admin-orders-mobile-view { display: block; }
@@ -1377,17 +1488,11 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-branch-card { padding: 14px; }
   .business-admin-branches-header-actions { align-items: stretch; justify-content: stretch; width: 100%; }
   .business-admin-branches-header-actions .business-admin-button { flex: 1 1 auto; justify-content: center; }
+  .business-admin-locations-tab { flex: 1 1 140px; }
   .business-admin-team-actions { align-items: stretch; justify-content: stretch; width: 100%; }
   .business-admin-team-actions .business-admin-button { flex: 1 1 auto; justify-content: center; }
   .business-admin-workforce-header-actions { align-items: stretch; justify-content: stretch; width: 100%; }
   .business-admin-workforce-header-actions .business-admin-button { width: 100%; justify-content: center; }
-  .business-admin-branch-editor-backdrop { place-items: stretch; padding: 0; }
-  .business-admin-branch-editor-modal { width: 100%; max-height: 100vh; border-radius: 0; }
-  .business-admin-branch-editor-header { padding: 16px; }
-  .business-admin-branch-editor-heading h2 { font-size: 19px; }
-  .business-admin-branch-editor-heading p { max-width: 250px; }
-  .business-admin-branch-editor-notice { margin: 12px 16px 0; }
-  .business-admin-branch-editor-body { padding: 12px 16px 18px; }
   .business-admin-branches-company-table { display: none; }
   .business-admin-branches-company-cards { display: grid; gap: 8px; padding: 12px; }
   .business-admin-branches-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
@@ -1405,6 +1510,7 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
 
 @media (prefers-reduced-motion: reduce) {
   .business-admin-workspace,
+  .business-admin-locations-results-content,
   .business-admin-nav-item,
   .business-admin-button,
   .business-admin-sidebar-toggle,
@@ -1750,6 +1856,11 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
 .business-admin-reports-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
 .business-admin-reports-action { border-color: #cbd5e1 !important; color: #334155 !important; }
 .business-admin-reports-action:hover { border-color: #93c5fd !important; background: #eff7ff !important; color: #1a4e8d !important; }
+.business-admin-reports-investigation-handoff { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #cfe3ed; border-radius: 16px; padding: 14px 16px; background: #f7fcff; }
+.business-admin-reports-investigation-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-reports-investigation-copy strong { color: #1e3a5f; font-size: 13px; }
+.business-admin-reports-investigation-copy p { margin: 1px 0 0; color: #647b8c; font-size: 11px; line-height: 1.45; }
+.business-admin-reports-investigation-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
 .business-admin-reports-action-primary,
 .business-admin-reports-action-primary:hover {
   border-color: #1a4e8d !important;
@@ -1860,8 +1971,12 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
 .business-admin-report-panel-error { margin: 0 auto 16px; }
 
 @media (max-width: 767px) {
+  .business-admin-inventory-workflow-grid { grid-template-columns: minmax(0, 1fr); }
   .business-admin-reports-hero-heading { flex-direction: column; }
   .business-admin-reports-hero-status { justify-content: flex-start; }
+  .business-admin-reports-investigation-handoff { align-items: stretch; flex-direction: column; }
+  .business-admin-reports-investigation-actions { justify-content: stretch; }
+  .business-admin-reports-investigation-actions .business-admin-reports-action { flex: 1 1 150px; justify-content: center; }
   .business-admin-reports-filter-grid { grid-template-columns: minmax(0, 1fr); }
   .business-admin-reports-actions { justify-content: stretch; }
   .business-admin-reports-action,
@@ -1878,6 +1993,7 @@ html.business-admin-page {
   scrollbar-color: transparent transparent !important;
 }
 html.business-admin-page body {
+  scrollbar-gutter: stable;
   scrollbar-width: thin !important;
   scrollbar-color: transparent transparent !important;
 }
@@ -1891,20 +2007,30 @@ html.business-admin-page body::-webkit-scrollbar {
   width: 9px !important;
   height: 9px !important;
 }
+html.business-admin-page::-webkit-scrollbar-track,
+html.business-admin-page body::-webkit-scrollbar-track {
+  background: transparent !important;
+}
 html.business-admin-page::-webkit-scrollbar-thumb,
 html.business-admin-page body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
   border-radius: 99px;
   background: transparent;
+  background-clip: padding-box;
 }
 html.business-admin-page.business-admin-scrollbar-active::-webkit-scrollbar-thumb,
 html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar-thumb {
   border-radius: 99px;
   background: #94a3b8;
+  background-clip: padding-box;
 }
 
 .business-admin-shell,
 .business-admin-shell * {
-  scrollbar-width: none !important;
+  /* Keep the native lane stable; only the thumb changes visibility. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
 }
 .business-admin-shell:hover,
 .business-admin-shell *:hover,
@@ -1914,27 +2040,34 @@ html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar
 }
 .business-admin-shell::-webkit-scrollbar,
 .business-admin-shell *::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-}
-.business-admin-shell:hover::-webkit-scrollbar,
-.business-admin-shell *:hover::-webkit-scrollbar,
-.business-admin-shell *:focus-within::-webkit-scrollbar {
   width: 8px !important;
   height: 8px !important;
+}
+.business-admin-shell::-webkit-scrollbar-track,
+.business-admin-shell *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.business-admin-shell::-webkit-scrollbar-thumb,
+.business-admin-shell *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: transparent;
+  background-clip: padding-box;
 }
 .business-admin-shell:hover::-webkit-scrollbar-thumb,
 .business-admin-shell *:hover::-webkit-scrollbar-thumb,
 .business-admin-shell *:focus-within::-webkit-scrollbar-thumb {
-  border-radius: 99px;
   background: #94a3b8;
+  background-clip: padding-box;
 }
 
 /* A mouse click can leave a nav control focused after the pointer leaves.
    Keep the sidebar scrollbar hover-driven while preserving keyboard focus visibility. */
 .business-admin-shell > .business-admin-sidebar,
 .business-admin-shell > .business-admin-sidebar * {
-  scrollbar-width: none !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+  scrollbar-gutter: stable;
 }
 .business-admin-shell > .business-admin-sidebar {
   /* Keep the navigation content width stable while the scrollbar is revealed. */
@@ -1954,19 +2087,18 @@ html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar
   height: 8px !important;
 }
 .business-admin-shell > .business-admin-sidebar *::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-}
-.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar-thumb {
-  border-radius: 99px;
-  background: transparent;
-}
-.business-admin-shell > .business-admin-sidebar:hover::-webkit-scrollbar,
-.business-admin-shell > .business-admin-sidebar *:hover::-webkit-scrollbar,
-.business-admin-shell > .business-admin-sidebar:has(:focus-visible)::-webkit-scrollbar,
-.business-admin-shell > .business-admin-sidebar *:focus-visible::-webkit-scrollbar {
   width: 8px !important;
   height: 8px !important;
+}
+.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar-track,
+.business-admin-shell > .business-admin-sidebar *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: transparent;
+  background-clip: padding-box;
 }
 .business-admin-shell > .business-admin-sidebar:hover::-webkit-scrollbar-thumb,
 .business-admin-shell > .business-admin-sidebar *:hover::-webkit-scrollbar-thumb,
@@ -1974,4 +2106,5 @@ html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar
 .business-admin-shell > .business-admin-sidebar *:focus-visible::-webkit-scrollbar-thumb {
   border-radius: 99px;
   background: #94a3b8;
+  background-clip: padding-box;
 }

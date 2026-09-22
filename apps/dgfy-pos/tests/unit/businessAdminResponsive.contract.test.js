@@ -14,7 +14,7 @@ describe('Business Admin responsive layout contract', () => {
   it('keeps the settings editor usable through tablet and mobile breakpoints', () => {
     expect(businessAdminCss).toContain('@media (max-width: 900px)');
     expect(businessAdminCss).toContain('.business-admin-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr);');
-    expect(businessAdminCss).toContain('.business-admin-settings-section-list { display: flex;');
+    expect(businessAdminCss).toMatch(/\.business-admin-settings-section-list\s*\{[\s\S]*?display: flex;/);
     expect(businessAdminCss).toContain('.business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }');
     expect(businessAdminCss).toContain('overflow-x: auto;');
     expect(businessAdminCss).toContain('scroll-snap-type: x proximity;');

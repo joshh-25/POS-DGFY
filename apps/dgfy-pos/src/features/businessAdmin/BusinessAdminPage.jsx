@@ -1,25 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
     AlertTriangle,
     BarChart3,
     Bell,
-    BookOpen,
     Building2,
     CalendarDays,
     CheckCircle2,
     ChefHat,
-    ClipboardList,
     Clock3,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Database,
     Download,
     ExternalLink,
-    Factory,
-    Hotel,
-    LayoutDashboard,
     Lock,
     MapPin,
     Menu,
@@ -29,22 +24,29 @@ import {
     Receipt,
     RefreshCw,
     Search,
-    Send,
     Settings,
     ShoppingBag,
     ShieldCheck,
     Store,
-    ScrollText,
-    Sparkles,
-    Truck,
     UserRound,
     Users,
-    UserPlus,
     Utensils,
     Wallet,
-    Wrench,
     X
 } from 'lucide-react';
+import {
+    Area,
+    AreaChart,
+    Bar,
+    BarChart,
+    CartesianGrid,
+    Cell,
+    Legend,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis
+} from 'recharts';
 import { businessAdminApi, getBusinessAdminErrorMessage } from './businessAdminService.js';
 import {
     buildBusinessAdminSettingsPath,
@@ -64,9 +66,22 @@ import { resolveAppAssetUrl } from '../../../../../packages/web-core/src/utils/a
 import { publishBusinessAdminSettingsUpdated } from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
 import { useWorkflowMode } from '../../../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import UserManagementModal from '../../../../../packages/web-core/Components/users/UserManagementModal.jsx';
-import UserInvitationModal from '../../../../../packages/web-core/Components/users/UserInvitationModal.jsx';
-import { getRoleCatalog } from '../../../../../packages/web-core/src/services/userService.js';
-import MigratedBackOfficeModule, { MERCHANT_BACKOFFICE_MODULE_META } from './MigratedBackOfficeModule.jsx';
+import {
+    BackOfficeDataTable as DataTable,
+    BackOfficeEmptyState as Empty,
+    BackOfficeMetric as Metric,
+    BackOfficeSectionCard as SectionCard,
+    BackOfficeStatusPill as StatusPill
+} from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
+import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
+import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
+import {
+    BACKOFFICE_NAV_GROUPS,
+    BACKOFFICE_SECTION_META,
+    buildBackOfficeLocationsPath,
+    buildBackOfficeModulePath,
+    MERCHANT_BACKOFFICE_MODULE_META
+} from './businessAdminManifest.js';
 import {
     getBusinessAdminWorkflowPageName,
     isBusinessAdminWorkflowSectionVisible
@@ -81,104 +96,6 @@ import {
 } from './businessAdminDateRange.js';
 import './businessAdmin.css';
 
-const NAV_GROUPS = [
-    {
-        label: 'Workspace',
-        items: [
-            { key: 'overview', label: 'Overview', icon: LayoutDashboard },
-            { key: 'branches', label: 'Branches', icon: Building2 },
-            { key: 'team', label: 'Team & access', icon: Users },
-            { key: 'attendance', label: 'Attendance', icon: CalendarDays },
-            { key: 'registers', label: 'Registers', icon: Monitor }
-        ]
-    },
-    {
-        label: 'Operations',
-        items: [
-            { key: 'shifts', label: 'Shifts & cash', icon: Clock3 },
-            { key: 'orders', label: 'Orders', icon: ShoppingBag },
-            { key: 'customers', label: 'Customers', icon: UserRound },
-            { key: 'payments', label: 'Payments', icon: Wallet },
-            { key: 'expenses', label: 'Expenses', icon: Receipt },
-            { key: 'notifications', label: 'Notifications', icon: Bell }
-        ]
-    },
-    {
-        label: 'Catalog & F&B',
-        items: [
-            { key: 'catalog', label: 'Catalog editor', icon: Package },
-            { key: 'inventory', label: 'Inventory insights', icon: Database },
-            { key: 'suppliers', label: 'Suppliers', icon: Truck },
-            { key: 'purchase-orders', label: 'Purchase orders', icon: ClipboardList },
-            { key: 'stock-movements', label: 'Stock movements', icon: RefreshCw },
-            { key: 'recipes', label: 'Ingredients & recipes', icon: BookOpen },
-            { key: 'fnb', label: 'F&B Setup', icon: Utensils },
-            { key: 'services', label: 'Services', icon: Wrench },
-            { key: 'hospitality', label: 'Hospitality', icon: Hotel }
-        ]
-    },
-    {
-        label: 'Production & delivery',
-        items: [
-            { key: 'job-orders', label: 'Job orders', icon: Factory },
-            { key: 'dispatch-orders', label: 'Dispatch orders', icon: Send }
-        ]
-    },
-    {
-        label: 'Governance',
-        items: [
-            { key: 'sales', label: 'Sales timeline', icon: ShoppingBag },
-            { key: 'reports', label: 'Reports & analytics', icon: BarChart3 },
-            { key: 'fiscal', label: 'Fiscal & BIR', icon: Receipt },
-            { key: 'audit', label: 'Audit logs', icon: ScrollText },
-            { key: 'approvals', label: 'Approvals', icon: ShieldCheck }
-        ]
-    },
-    {
-        label: 'Configuration',
-        items: [
-            { key: 'onboarding', label: 'POS onboarding', icon: CheckCircle2 },
-            { key: 'storefront', label: 'Storefront', icon: Store },
-            { key: 'settings', label: 'Settings', icon: Settings },
-            { key: 'ai-chat', label: 'Business assistant', icon: Sparkles }
-        ]
-    }
-];
-
-const SECTION_META = {
-    overview: { title: 'Business overview', description: 'A clear view of sales, branches, registers, shifts, and exceptions for this business.' },
-    branches: { title: 'Branches', description: 'Compare active locations and review branch-level operating activity.' },
-    team: { title: 'Team & access', description: 'Review workforce activity and branch assignments without duplicating the User owner.' },
-    attendance: { title: 'Attendance', description: 'Review read-only POS attendance and operator sessions while keeping biometric attendance and payroll outside the approved contract.' },
-    registers: { title: 'Registers', description: 'See configured terminals, current shifts, sync state, and printer telemetry when available.' },
-    shifts: { title: 'Shifts & cash', description: 'Inspect immutable POS shifts, drawer events, variances, and activity totals.' },
-    orders: { title: 'Orders', description: 'Search completed, voided, and storefront orders with receipt-safe detail history.' },
-    customers: { title: 'Customers', description: 'Review customer links and transaction history for this business.' },
-    payments: { title: 'Payments', description: 'Review this business’s online payments, refunds, and payment account status.' },
-    expenses: { title: 'Expenses', description: 'Record and review operating expenses by branch while keeping cash drawer activity in Shifts & cash.' },
-    catalog: MERCHANT_BACKOFFICE_MODULE_META.catalog,
-    inventory: { title: 'Inventory insights', description: 'Read the canonical branch stock ledger and FIFO valuation where cost access is granted.' },
-    suppliers: MERCHANT_BACKOFFICE_MODULE_META.suppliers,
-    'purchase-orders': MERCHANT_BACKOFFICE_MODULE_META['purchase-orders'],
-    'job-orders': MERCHANT_BACKOFFICE_MODULE_META['job-orders'],
-    'stock-movements': MERCHANT_BACKOFFICE_MODULE_META['stock-movements'],
-    'dispatch-orders': MERCHANT_BACKOFFICE_MODULE_META['dispatch-orders'],
-    recipes: { title: 'Ingredients & recipes', description: 'Review product compositions, recipe cost, unit-of-measure review, and branch availability.' },
-    fnb: MERCHANT_BACKOFFICE_MODULE_META.fnb,
-    services: MERCHANT_BACKOFFICE_MODULE_META.services,
-    hospitality: MERCHANT_BACKOFFICE_MODULE_META.hospitality,
-    sales: MERCHANT_BACKOFFICE_MODULE_META.sales,
-    reports: MERCHANT_BACKOFFICE_MODULE_META.reports,
-    fiscal: { title: 'Fiscal & BIR', description: 'Inspect immutable Z-reading and eSales evidence. Accreditation remains an external gate.' },
-    notifications: { title: 'Notifications', description: 'Triage inventory, terminal, payment, fulfillment, and governance conditions.' },
-    audit: { title: 'Audit logs', description: 'Review activity across this business with sensitive values protected.' },
-    approvals: { title: 'Approvals', description: 'Review high-risk requests. Execution stays with the canonical POS command owner.' },
-    onboarding: { title: 'POS onboarding', description: 'Track the current business, branch, and workflow readiness contract.' },
-    storefront: { title: 'Storefront', description: 'Review storefront-facing readiness while keeping public commerce ownership in Storefront.' },
-    settings: { title: 'Settings', description: 'Back Office owns business and branch configuration; terminal-only controls remain in POS.' },
-    'ai-chat': MERCHANT_BACKOFFICE_MODULE_META['ai-chat']
-};
-
 const MIGRATED_BACKOFFICE_MODULE_KEYS = new Set(Object.keys(MERCHANT_BACKOFFICE_MODULE_META));
 const DGFY_BUSINESS_ADMIN_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const BUSINESS_ADMIN_SIDEBAR_COLLAPSED_STORAGE_KEY = 'dgfy.businessAdmin.sidebarCollapsed';
@@ -186,7 +103,55 @@ const BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE = 'Your session is missing or expi
 const BUSINESS_ADMIN_COMPANY_SWITCHED_MESSAGE = 'The company changed in another window. Return to POS and open Back Office again for the selected company.';
 const BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE = 'Your account is authenticated but is not authorized to open Back Office.';
 const BUSINESS_ADMIN_ORDERS_PAGE_SIZE = 20;
-const BUSINESS_ADMIN_SHIFTS_PAGE_SIZE = 20;
+const BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE = 10;
+const BUSINESS_ADMIN_CASH_SUMMARY_EXPORT_PAGE_SIZE = 100;
+const BUSINESS_ADMIN_INVENTORY_PAGE_SIZE = 10;
+const BUSINESS_ADMIN_OVERVIEW_PAGE_SIZE = 10;
+const BUSINESS_ADMIN_RECEIPT_TYPE_OPTIONS = Object.freeze([
+    { value: '', label: 'All receipts' },
+    { value: 'sales', label: 'Sales receipts' },
+    { value: 'refund', label: 'Refund receipts' },
+    { value: 'voided', label: 'Voided receipts' }
+]);
+
+const INVENTORY_WORKFLOW_LINKS = Object.freeze([
+    {
+        moduleId: 'catalog',
+        title: 'Catalog editor',
+        description: 'Items, categories, variants, pricing, import/export, packaging, and labels.',
+        icon: Package
+    },
+    {
+        moduleId: 'stock-movements',
+        title: 'Stock movements',
+        description: 'Audited receipts, adjustments, transfers, history, export, and voids.',
+        icon: RefreshCw
+    },
+    {
+        moduleId: 'suppliers',
+        title: 'Suppliers',
+        description: 'Maintain supplier records and the items they cover.',
+        icon: Store
+    },
+    {
+        moduleId: 'purchase-orders',
+        title: 'Purchase orders',
+        description: 'Create, receive, archive, and review procurement orders.',
+        icon: Receipt
+    },
+    {
+        moduleId: 'recipes',
+        title: 'Ingredients & recipes',
+        description: 'Review compositions, recipe cost, units, and branch availability.',
+        icon: ChefHat
+    },
+    {
+        moduleId: 'job-orders',
+        title: 'Production',
+        description: 'Use the canonical job-order workflow when production is enabled.',
+        icon: Utensils
+    }
+]);
 
 const readBusinessAdminSidebarCollapsed = () => {
     if (typeof window === 'undefined') return false;
@@ -208,7 +173,38 @@ const number = (value) => new Intl.NumberFormat('en-PH', { maximumFractionDigits
 const dateTime = (value) => {
     if (!value) return '—';
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila' });
+};
+
+const escapeCsvCell = (value) => {
+    const normalized = value == null ? '' : String(value);
+    return /[",\r\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized;
+};
+
+const buildCashSummaryCsv = (rows = []) => {
+    const headers = ['POS', 'Cashier', 'Opening time', 'Closing time', 'Expected cash amount', 'Actual cash amount', 'Difference'];
+    const values = rows.map((row) => [
+        row.terminal_id || '',
+        row.cashier_name || '',
+        row.opened_at ? dateTime(row.opened_at) : '',
+        row.closed_at ? dateTime(row.closed_at) : '',
+        row.expected_cash_amount == null ? '' : Number(row.expected_cash_amount).toFixed(2),
+        row.closing_cash_amount == null ? '' : Number(row.closing_cash_amount).toFixed(2),
+        row.cash_variance_amount == null ? '' : Number(row.cash_variance_amount).toFixed(2)
+    ]);
+    return [headers, ...values].map((row) => row.map(escapeCsvCell).join(',')).join('\r\n');
+};
+
+const downloadCsv = (filename, content) => {
+    const blob = new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 };
 
 const humanize = (value) => String(value || '—').replace(/_/g, ' ');
@@ -241,10 +237,6 @@ const createExpenseIdempotencyKey = () => {
 };
 
 const statusClass = (value) => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-const StatusPill = ({ value, fallback = 'unknown' }) => (
-    <span className={`business-admin-status ${statusClass(value)}`}>{humanize(value || fallback)}</span>
-);
 
 const NOTIFICATION_FILTERS = [
     { key: 'all', label: 'All open' },
@@ -303,31 +295,6 @@ const GuardedLink = ({ to, isDirty = false, onLeave, children, ...props }) => {
     return <Link {...props} to={to} onClick={handleClick}>{children}</Link>;
 };
 
-const Metric = ({ label, value, hint, tone = '' }) => (
-    <div className={`business-admin-card business-admin-metric ${tone}`}>
-        <div className="business-admin-metric-label">{label}</div>
-        <div className="business-admin-metric-value">{value}</div>
-        {hint ? <div className="business-admin-metric-hint">{hint}</div> : null}
-    </div>
-);
-
-const SectionCard = ({ title, subtitle, children, action, className = '' }) => (
-    <section className={`business-admin-card ${className}`}>
-        <div className="business-admin-card-header">
-            <div>
-                <div className="business-admin-card-title">{title}</div>
-                {subtitle ? <div className="business-admin-card-subtitle">{subtitle}</div> : null}
-            </div>
-            {action || null}
-        </div>
-        <div className="business-admin-card-body flush">{children}</div>
-    </section>
-);
-
-const Empty = ({ message = 'No records match the current filters.' }) => (
-    <div className="business-admin-empty">{message}</div>
-);
-
 const Loading = () => (
     <div className="business-admin-loading"><span className="business-admin-spinner" /> Loading Back Office data…</div>
 );
@@ -338,24 +305,6 @@ const WorkspaceLoading = ({ label = 'Loading Back Office data…' }) => (
         <span>{label}</span>
     </div>
 );
-
-const DataTable = ({ columns, rows = [], rowKey, onRowClick, emptyMessage }) => {
-    if (!rows.length) return <Empty message={emptyMessage} />;
-    return (
-        <div className="business-admin-table-wrap">
-            <table className="business-admin-table">
-                <thead><tr>{columns.map((column) => <th key={column.key}>{column.label}</th>)}</tr></thead>
-                <tbody>
-                    {rows.map((row, index) => (
-                        <tr key={rowKey ? rowKey(row, index) : index} onClick={onRowClick ? () => onRowClick(row) : undefined} style={onRowClick ? { cursor: 'pointer' } : undefined}>
-                            {columns.map((column) => <td key={column.key}>{column.render ? column.render(row) : (row[column.key] ?? '—')}</td>)}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-};
 
 const useBusinessAdminPaginatedPanelTransition = ({ page, refreshing }) => {
     const recordRootRef = useRef(null);
@@ -408,29 +357,12 @@ const extractId = (row, keys) => {
     return null;
 };
 
-const formatCell = (value, key = '') => {
-    if (value === null || value === undefined || value === '') return '—';
-    if (/(amount|sales|spend|price|cost|value|discount|refund|cogs|profit|fee|tax|total)/i.test(key)) return money(value);
-    if (/(count|quantity|qty|visits|orders|units|shortage)/i.test(key) && Number.isFinite(Number(value))) return number(value);
-    if (/(created|updated|date|time|at)$/i.test(key) && (typeof value === 'string' || value instanceof Date)) return dateTime(value);
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-};
-
-const dynamicColumns = (rows = [], preferred = []) => {
-    const keys = [...new Set(rows.flatMap((row) => Object.keys(row || {})))];
-    const ordered = [...preferred.filter((key) => keys.includes(key)), ...keys.filter((key) => !preferred.includes(key))];
-    return ordered.filter((key) => !['payload', 'metadata', 'filters'].includes(key)).slice(0, 10).map((key) => ({
-        key,
-        label: humanize(key),
-        render: (row) => formatCell(row[key], key)
-    }));
-};
-
-const buildQuery = ({ dateFrom, dateTo, branchId, search }) => ({
+const buildQuery = ({ dateFrom, dateTo, branchId, search, itemId, receiptType }) => ({
     date_from: dateFrom,
     date_to: dateTo,
     ...(branchId ? { branch_id: branchId } : {}),
+    ...(itemId ? { item_id: itemId } : {}),
+    ...(receiptType ? { receipt_type: receiptType } : {}),
     ...(search ? { search } : {})
 });
 
@@ -438,81 +370,256 @@ const historicalEmptyMessage = (message, dateFrom, dateTo) => (
     `${message} Date range: ${formatDateRangeLabel(dateFrom, dateTo)}. Choose a wider date range to view older records.`
 );
 
-function OverviewWorkspace({ data, onOrderClick }) {
-    const summary = data?.summary || {};
+const formatOverviewDateLabel = (dateKey) => {
+    const parsed = new Date(`${dateKey}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return dateKey;
+    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(parsed);
+};
+
+const formatOverviewHourLabel = (periodKey) => {
+    const parsed = new Date(`${String(periodKey).replace(' ', 'T')}:00Z`);
+    if (Number.isNaN(parsed.getTime())) return periodKey;
+    return new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: true, timeZone: 'UTC' }).format(parsed);
+};
+
+const buildOverviewDateKeys = (dateFrom, dateTo) => {
+    const start = new Date(`${dateFrom}T00:00:00Z`);
+    const end = new Date(`${dateTo}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return [];
+
+    const keys = [];
+    for (const cursor = new Date(start); cursor <= end && keys.length < 366; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        keys.push(cursor.toISOString().slice(0, 10));
+    }
+    return keys;
+};
+
+const buildOverviewHourKeys = (dateKey) => Array.from({ length: 24 }, (_, hour) => (
+    `${dateKey} ${String(hour).padStart(2, '0')}:00`
+));
+
+const OVERVIEW_SALES_METRICS = [
+    { key: 'gross_sales', label: 'Gross Sales', color: '#2563eb' },
+    { key: 'refunds', label: 'Refunds', color: '#dc2626' },
+    { key: 'discounts', label: 'Discounts', color: '#d97706' },
+    { key: 'net_sales', label: 'Net Sales', color: '#159891' },
+    { key: 'gross_profit', label: 'Gross Profit', color: '#7c3aed' }
+];
+
+const OverviewChartCard = ({ title, subtitle, action, children, className = '' }) => (
+    <section className={`business-admin-card business-admin-overview-chart-card ${className}`.trim()}>
+        <div className="business-admin-overview-chart-header">
+            <div>
+                <h2>{title}</h2>
+                {subtitle ? <p>{subtitle}</p> : null}
+            </div>
+            {action || null}
+        </div>
+        <div className="business-admin-overview-chart-body">{children}</div>
+    </section>
+);
+
+const OverviewChartEmpty = ({ message }) => (
+    <div className="business-admin-overview-chart-empty">{message}</div>
+);
+
+function OverviewWorkspace({ data, onOrderClick, locationsPath, ordersPath }) {
+    const [salesMetric, setSalesMetric] = useState('gross_sales');
+    const branches = Array.isArray(data?.branches) ? data.branches.slice(0, BUSINESS_ADMIN_OVERVIEW_PAGE_SIZE) : [];
+    const registers = Array.isArray(data?.registers) ? data.registers.slice(0, BUSINESS_ADMIN_OVERVIEW_PAGE_SIZE) : [];
+    const recentTransactions = Array.isArray(data?.recent_transactions) ? data.recent_transactions.slice(0, BUSINESS_ADMIN_OVERVIEW_PAGE_SIZE) : [];
+    const paymentSummary = Array.isArray(data?.payment_summary) ? data.payment_summary : [];
+    const dateKeys = buildOverviewDateKeys(data?.filters?.date_from, data?.filters?.date_to);
+    const isSingleDate = Boolean(data?.filters?.date_from && data?.filters?.date_from === data?.filters?.date_to);
+    const periodKeys = isSingleDate ? buildOverviewHourKeys(data.filters.date_from) : dateKeys;
+    const trendByDate = new Map(
+        (Array.isArray(data?.sales_trend) ? data.sales_trend : []).map((row) => [String(row?.period || '').slice(0, isSingleDate ? 16 : 10), row])
+    );
+    const salesTrend = (periodKeys.length ? periodKeys : [...trendByDate.keys()]).map((period) => ({
+        period,
+        label: isSingleDate ? formatOverviewHourLabel(period) : formatOverviewDateLabel(period),
+        gross_sales: Number(trendByDate.get(period)?.gross_sales) || 0,
+        refunds: Number(trendByDate.get(period)?.refunds) || 0,
+        discounts: Number(trendByDate.get(period)?.discounts) || 0,
+        net_sales: Number(trendByDate.get(period)?.net_sales) || 0,
+        gross_profit: Number(trendByDate.get(period)?.gross_profit) || 0,
+        vat: Number(trendByDate.get(period)?.vat) || 0,
+        transaction_count: Number(trendByDate.get(period)?.transaction_count) || 0
+    }));
+    const overviewFinancialTotals = salesTrend.reduce((totals, row) => ({
+        gross_sales: totals.gross_sales + row.gross_sales,
+        refunds: totals.refunds + row.refunds,
+        discounts: totals.discounts + row.discounts,
+        net_sales: totals.net_sales + row.net_sales,
+        gross_profit: totals.gross_profit + row.gross_profit,
+        vat: totals.vat + row.vat
+    }), { gross_sales: 0, refunds: 0, discounts: 0, net_sales: 0, gross_profit: 0, vat: 0 });
+    const selectedSalesMetric = OVERVIEW_SALES_METRICS.find((metric) => metric.key === salesMetric) || OVERVIEW_SALES_METRICS[0];
+    const salesChartSeries = salesMetric === 'all' ? OVERVIEW_SALES_METRICS : [selectedSalesMetric];
+    const salesXAxisInterval = salesTrend.length > 12 ? Math.ceil(salesTrend.length / 8) - 1 : 0;
+
+    const branchSales = branches.map((branch) => ({
+        label: branch.name || `Branch ${branch.branch_id}`,
+        sales: Number(branch.sales) || 0
+    }));
+    const paymentTotals = new Map();
+    paymentSummary.forEach((row) => {
+        const label = humanize(row.payment_type || 'other');
+        paymentTotals.set(label, (paymentTotals.get(label) || 0) + (Number(row.amount) || 0));
+    });
+    const paymentMix = [...paymentTotals.entries()].map(([label, amount]) => ({ label, amount }));
+    const registerStatusOrder = [
+        ['Online', '#159891'],
+        ['Offline', '#dc2626'],
+        ['Not reported', '#94a3b8']
+    ];
+    const registerStatusCounts = new Map(registerStatusOrder.map(([label]) => [label, 0]));
+    registers.forEach((register) => {
+        const status = String(register.terminal_status || 'not_reported').toLowerCase();
+        const label = status === 'online' ? 'Online' : status === 'offline' ? 'Offline' : 'Not reported';
+        registerStatusCounts.set(label, registerStatusCounts.get(label) + 1);
+    });
+    const registerHealth = registerStatusOrder.map(([label, fill]) => ({ label, count: registerStatusCounts.get(label), fill }));
+    const recentOrderActivity = recentTransactions.map((transaction) => ({
+        label: transaction.invoice_number || `#${transaction.transaction_id}`,
+        amount: Number(transaction.total_amount) || 0,
+        sourceRow: transaction
+    }));
+
     return (
         <>
-            <div className="business-admin-metric-grid">
-                <Metric label="Sales in range" value={money(summary.total_sales)} hint={`${number(summary.today_transactions)} transactions`} />
-                <Metric label="Active branches" value={number(summary.branch_count)} hint={`${number(summary.active_registers)} active registers`} />
-                <Metric label="Open shifts" value={number(summary.open_shifts)} hint={`${number(summary.overdue_shifts)} over 12 hours`} />
-                <Metric label="Active cashiers" value={number(summary.active_cashiers)} hint="Open POS shifts" />
-                <Metric label="Low stock" value={summary.low_stock_items == null ? '—' : number(summary.low_stock_items)} hint="At or below threshold" />
-                <Metric label="Cash difference" value={money(summary.cash_difference_amount)} hint={summary.pending_approvals == null ? 'Closed shift variance' : `${number(summary.pending_approvals)} pending approvals`} />
+            <div className="business-admin-metric-grid business-admin-overview-metrics">
+                <Metric label="Gross sales" value={money(overviewFinancialTotals.gross_sales)} hint="Selected date range" />
+                <Metric label="Refunds" value={money(overviewFinancialTotals.refunds)} hint="Selected date range" />
+                <Metric label="Discounts" value={money(overviewFinancialTotals.discounts)} hint="Selected date range" />
+                <Metric label="Net sales" value={money(overviewFinancialTotals.net_sales)} hint="Selected date range" />
+                <Metric label="Gross profit" value={money(overviewFinancialTotals.gross_profit)} hint="Selected date range" />
+                <Metric label="VAT" value={money(overviewFinancialTotals.vat)} hint="Selected date range" />
             </div>
-            <div className="business-admin-grid">
-                <SectionCard title="Branch performance" subtitle="Canonical POS transaction totals">
-                    <DataTable
-                        rows={data?.branches || []}
-                        rowKey={(row) => row.branch_id}
-                        emptyMessage="No active branches are configured."
-                        columns={[
-                            { key: 'name', label: 'Branch', render: (row) => <strong>{row.name}</strong> },
-                            { key: 'sales', label: 'Sales', render: (row) => money(row.sales) },
-                            { key: 'transaction_count', label: 'Transactions', render: (row) => number(row.transaction_count) },
-                            { key: 'active_cashiers', label: 'Cashiers', render: (row) => number(row.active_cashiers) },
-                            { key: 'active_registers', label: 'Registers', render: (row) => number(row.active_registers) }
-                        ]}
-                    />
-                </SectionCard>
-                <SectionCard title="Operational alerts" subtitle="Conditions requiring attention">
-                    <div className="business-admin-card-body">
-                        {(data?.alerts || []).length === 0 && (data?.scheduled_alerts || []).length === 0 ? <Empty message="No active operational alerts." /> : (
-                            <div className="business-admin-list">
-                                {[...(data?.alerts || []), ...(data?.scheduled_alerts || [])].slice(0, 8).map((alert, index) => (
-                                    <div className="business-admin-list-item" key={alert.alert_key || alert.code || index}>
-                                        <div>
-                                            <div className="business-admin-list-title">{alert.message}</div>
-                                            <div className="business-admin-list-detail">{humanize(alert.alert_type || alert.code)} · {alert.target_route || alert.target?.type || 'operations'}</div>
-                                        </div>
-                                        <StatusPill value={alert.severity} />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
+            <div className="business-admin-overview-chart-grid">
+                <OverviewChartCard
+                    title={salesMetric === 'all' ? 'Sales overview' : selectedSalesMetric.label}
+                    action={(
+                        <select
+                            aria-label="Sales chart metric"
+                            className="business-admin-overview-chart-control"
+                            value={salesMetric}
+                            onChange={(event) => setSalesMetric(event.target.value)}
+                        >
+                            {OVERVIEW_SALES_METRICS.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}
+                            <option value="all">All</option>
+                        </select>
+                    )}
+                    className="business-admin-overview-sales-card"
+                >
+                    <div className="business-admin-overview-chart-plot" data-testid="business-admin-overview-sales-chart">
+                        {salesTrend.length ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <AreaChart data={salesTrend} margin={{ top: 12, right: 18, left: 0, bottom: 18 }}>
+                                    <defs>
+                                        <linearGradient id="businessAdminSalesTrendFill" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#2563eb" stopOpacity={0.28} />
+                                            <stop offset="95%" stopColor="#2563eb" stopOpacity={0.04} />
+                                        </linearGradient>
+                                    </defs>
+                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey="label" stroke="#64748b" fontSize={11} minTickGap={24} interval={salesXAxisInterval} />
+                                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(value) => money(value)} width={76} />
+                                    <Tooltip labelFormatter={(label) => label} formatter={(value, name) => [money(value), name]} />
+                                    {salesMetric === 'all' ? <Legend /> : null}
+                                    {salesChartSeries.map((series) => (
+                                        <Area
+                                            key={series.key}
+                                            type="monotone"
+                                            dataKey={series.key}
+                                            name={series.label}
+                                            stroke={series.color}
+                                            fill={series.key === 'gross_sales' && salesMetric !== 'all' ? 'url(#businessAdminSalesTrendFill)' : series.color}
+                                            fillOpacity={salesMetric === 'all' ? 0.06 : 0.18}
+                                            strokeWidth={2.5}
+                                            dot={{ r: 3, fill: '#fff', stroke: series.color, strokeWidth: 2 }}
+                                            activeDot={{ r: 5 }}
+                                        />
+                                    ))}
+                                </AreaChart>
+                            </ResponsiveContainer>
+                        ) : <OverviewChartEmpty message="No sales data is available for this date range." />}
                     </div>
-                </SectionCard>
-            </div>
-            <div className="business-admin-grid">
-                <SectionCard title="Registers" subtitle="Terminal registry and optional heartbeat state">
-                    <DataTable
-                        rows={data?.registers || []}
-                        rowKey={(row) => row.terminal_id}
-                        emptyMessage="No POS registers are configured."
-                        columns={[
-                            { key: 'terminal_id', label: 'Register', render: (row) => <strong>{row.label || row.terminal_id}</strong> },
-                            { key: 'branch_name', label: 'Branch' },
-                            { key: 'terminal_status', label: 'Status', render: (row) => <StatusPill value={row.terminal_status} /> },
-                            { key: 'current_cashier', label: 'Cashier' },
-                            { key: 'offline_queue_count', label: 'Offline queue', render: (row) => row.offline_queue_count == null ? '—' : number(row.offline_queue_count) }
-                        ]}
-                    />
-                </SectionCard>
-                <SectionCard title="Recent orders" subtitle="Click an order to inspect its receipt-safe timeline">
-                    <DataTable
-                        rows={data?.recent_transactions || []}
-                        rowKey={(row) => row.transaction_id}
-                        onRowClick={onOrderClick}
-                        emptyMessage="No completed or voided orders in this range."
-                        columns={[
-                            { key: 'invoice_number', label: 'Invoice', render: (row) => <button className="business-admin-link" type="button">{row.invoice_number || `#${row.transaction_id}`}</button> },
-                            { key: 'branch_name', label: 'Branch' },
-                            { key: 'order_source', label: 'Source', render: (row) => humanize(row.order_source) },
-                            { key: 'transaction_status', label: 'Status', render: (row) => <StatusPill value={row.transaction_status} /> },
-                            { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount) }
-                        ]}
-                    />
-                </SectionCard>
+                </OverviewChartCard>
+
+                <OverviewChartCard
+                    title="Branch sales"
+                    subtitle="Gross sales by visible branch"
+                    action={locationsPath ? <GuardedLink to={locationsPath} className="business-admin-link">Manage locations</GuardedLink> : null}
+                >
+                    <div className="business-admin-overview-chart-plot" data-testid="business-admin-overview-branch-chart">
+                        {branchSales.length ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={branchSales} margin={{ top: 12, right: 18, left: 0, bottom: 28 }}>
+                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey="label" stroke="#64748b" fontSize={10} angle={-20} textAnchor="end" interval={0} height={52} />
+                                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(value) => money(value)} width={76} />
+                                    <Tooltip formatter={(value) => [money(value), 'Gross sales']} />
+                                    <Bar dataKey="sales" fill="#2563eb" radius={[6, 6, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <OverviewChartEmpty message="No branch sales data is available." />}
+                    </div>
+                </OverviewChartCard>
+
+                <OverviewChartCard title="Payment mix" subtitle="Recorded sales by payment method">
+                    <div className="business-admin-overview-chart-plot" data-testid="business-admin-overview-payment-chart">
+                        {paymentMix.length ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={paymentMix} margin={{ top: 12, right: 18, left: 0, bottom: 28 }}>
+                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey="label" stroke="#64748b" fontSize={10} angle={-20} textAnchor="end" interval={0} height={52} />
+                                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(value) => money(value)} width={76} />
+                                    <Tooltip formatter={(value) => [money(value), 'Amount']} />
+                                    <Bar dataKey="amount" fill="#159891" radius={[6, 6, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <OverviewChartEmpty message="No payment data is available." />}
+                    </div>
+                </OverviewChartCard>
+
+                <OverviewChartCard title="Register health" subtitle="Current terminal heartbeat status" action={locationsPath ? <GuardedLink to={locationsPath} className="business-admin-link">View registers</GuardedLink> : null}>
+                    <div className="business-admin-overview-chart-plot" data-testid="business-admin-overview-register-chart">
+                        {registers.length ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={registerHealth} margin={{ top: 12, right: 18, left: 0, bottom: 28 }}>
+                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey="label" stroke="#64748b" fontSize={10} interval={0} />
+                                    <YAxis allowDecimals={false} stroke="#64748b" fontSize={11} />
+                                    <Tooltip formatter={(value) => [number(value), 'Registers']} />
+                                    <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                                        {registerHealth.map((entry) => <Cell key={entry.label} fill={entry.fill} />)}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <OverviewChartEmpty message="No registers are configured." />}
+                    </div>
+                </OverviewChartCard>
+
+                <OverviewChartCard title="Recent order activity" subtitle="Latest completed and voided orders" action={ordersPath ? <GuardedLink to={ordersPath} className="business-admin-link">View orders</GuardedLink> : null}>
+                    <div className="business-admin-overview-chart-plot" data-testid="business-admin-overview-orders-chart">
+                        {recentOrderActivity.length ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart
+                                    data={recentOrderActivity}
+                                    margin={{ top: 12, right: 18, left: 0, bottom: 34 }}
+                                    onClick={(state) => onOrderClick?.(state?.activePayload?.[0]?.payload?.sourceRow)}
+                                >
+                                    <CartesianGrid vertical={false} stroke="#e2e8f0" />
+                                    <XAxis dataKey="label" stroke="#64748b" fontSize={9} angle={-28} textAnchor="end" interval={0} height={58} />
+                                    <YAxis stroke="#64748b" fontSize={11} tickFormatter={(value) => money(value)} width={76} />
+                                    <Tooltip formatter={(value) => [money(value), 'Order total']} />
+                                    <Bar dataKey="amount" fill="#7c3aed" radius={[6, 6, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : <OverviewChartEmpty message="No completed or voided orders in this range." />}
+                    </div>
+                </OverviewChartCard>
             </div>
         </>
     );
@@ -529,179 +636,155 @@ const BranchSummaryMetric = ({ icon: Icon, label, value, detail }) => (
     </div>
 );
 
-function BranchLocationEditorModal({ bootstrap, onClose, onSaved }) {
-    const [settingsDirty, setSettingsDirty] = useState(false);
-    const rawCapabilities = bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections;
-    const canEditBranches = bootstrap?.user?.is_master_admin === true
-        || canAccessBusinessAdminSettingsSection(rawCapabilities, 'branches', 'edit');
-    const terminalUser = useMemo(() => buildBusinessAdminSettingsEditorUser({
-        baseUser: bootstrap?.user || {},
-        sectionKey: 'branches',
-        rawCapabilities
-    }), [bootstrap?.user, rawCapabilities]);
-    const requestClose = useCallback(() => {
-        if (settingsDirty && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-            if (!window.confirm('You have unsaved branch changes. Close and discard them?')) return;
-        }
-        onClose?.();
-    }, [onClose, settingsDirty]);
+const LocationsRefreshSurface = ({ children, refreshing = false, refreshError = '', label = 'Updating location data…' }) => (
+    <div
+        className={`business-admin-locations-results ${refreshing ? 'is-refreshing' : ''}`}
+        data-testid="business-admin-locations-results"
+        aria-busy={refreshing ? 'true' : 'false'}
+    >
+        <div className="business-admin-locations-results-content">{children}</div>
+        {refreshing ? (
+            <div className="business-admin-locations-refreshing" role="status" aria-live="polite">
+                <span className="business-admin-spinner" aria-hidden="true" /> {label}
+            </div>
+        ) : null}
+        {refreshError ? (
+            <div className="business-admin-alert error business-admin-locations-panel-error" role="alert">
+                <AlertTriangle size={17} />
+                <div><strong>Location data could not be refreshed.</strong><div>{refreshError}</div></div>
+            </div>
+        ) : null}
+    </div>
+);
 
-    useEffect(() => {
-        const handleKeyDown = (event) => {
-            if (event.key === 'Escape') requestClose();
-        };
-        const previousOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        document.addEventListener('keydown', handleKeyDown);
-        return () => {
-            document.body.style.overflow = previousOverflow;
-            document.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [requestClose]);
-
-    const modal = (
-        <div className="business-admin-branch-editor-backdrop">
-            <section
-                className="business-admin-branch-editor-modal"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="business-admin-branch-editor-title"
-            >
-                <header className="business-admin-branch-editor-header">
-                    <div className="business-admin-branch-editor-heading">
-                        <div className="business-admin-branch-editor-icon"><Building2 size={19} aria-hidden="true" /></div>
-                        <div>
-                            <div className="business-admin-kicker">Branch setup</div>
-                            <h2 id="business-admin-branch-editor-title">Add a branch</h2>
-                            <p>Create a business location and configure the settings used by Storefront and POS.</p>
-                        </div>
-                    </div>
-                    <button type="button" className="business-admin-branch-editor-close" onClick={requestClose} aria-label="Close branch editor" title="Close branch editor">
-                        <X size={18} aria-hidden="true" />
-                    </button>
-                </header>
-                <div className="business-admin-branch-editor-notice">
-                    <MapPin size={16} aria-hidden="true" />
-                    <span>Save the branch identity and map pin first. You can assign terminals, cashiers, and branch-specific settings afterward.</span>
-                </div>
-                <div className="business-admin-branch-editor-body">
-                    <SettingsWorkspace
-                        terminalUser={terminalUser}
-                        terminalMeta={{ pettyCashAmount: 0, pettyCashSymbol: 'PHP', locationBindingReadiness: null }}
-                        locationsState={{ loading: false, locations: bootstrap?.business?.branches || [] }}
-                        queueLocationScopeId={null}
-                        incomingOrdersState={{ loading: false, orders: [] }}
-                        locked={false}
-                        sectionId="business-admin-branch-editor"
-                        initialTab="storefront"
-                        allowedTabIds={['storefront']}
-                        readOnly={!canEditBranches}
-                        showTerminalOnlyControls={false}
-                        settingsSurface="business-admin"
-                        editorSection="branches"
-                        startWithNewLocation
-                        locationEditorOnly
-                        onSettingsSaved={onSaved}
-                        onDirtyChange={setSettingsDirty}
-                    />
-                </div>
-            </section>
-        </div>
-    );
-    return typeof document === 'undefined' ? modal : createPortal(modal, document.body);
-}
-
-function BranchWorkspace({ data, bootstrap, onSaved }) {
-    const [branchEditorOpen, setBranchEditorOpen] = useState(false);
+function BranchWorkspace({ data, onManageBranches, canViewBranchSettings = false, refreshing = false, refreshError = '' }) {
     const branches = Array.isArray(data?.branches) ? data.branches : [];
-    const rawCapabilities = bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections;
-    const canEditBranches = bootstrap?.user?.is_master_admin === true
-        || canAccessBusinessAdminSettingsSection(rawCapabilities, 'branches', 'edit');
     const totals = branches.reduce((summary, branch) => ({
         sales: summary.sales + (Number(branch.sales) || 0),
         cashiers: summary.cashiers + (Number(branch.active_cashiers) || 0),
         registers: summary.registers + (Number(branch.active_registers) || 0)
     }), { sales: 0, cashiers: 0, registers: 0 });
-    const handleBranchSaved = useCallback((details) => {
-        setBranchEditorOpen(false);
-        onSaved?.(details);
-    }, [onSaved]);
 
     return (
-        <div className="business-admin-branches-workspace">
-            <div className="business-admin-branches-summary" aria-label="Branch summary">
-                <BranchSummaryMetric icon={Building2} label="Visible branches" value={number(branches.length)} detail="Active locations in scope" />
-                <BranchSummaryMetric icon={BarChart3} label="Sales in range" value={money(totals.sales)} detail="Across visible locations" />
-                <BranchSummaryMetric icon={Users} label="Active cashiers" value={number(totals.cashiers)} detail="Open POS shifts" />
-                <BranchSummaryMetric icon={Monitor} label="Active registers" value={number(totals.registers)} detail="Registered terminals" />
-            </div>
+        <LocationsRefreshSurface refreshing={refreshing} refreshError={refreshError} label="Updating branch metrics…">
+            <div className="business-admin-branches-workspace">
+                <div className="business-admin-branches-summary" aria-label="Branch summary">
+                    <BranchSummaryMetric icon={Building2} label="Visible branches" value={number(branches.length)} detail="Active locations in scope" />
+                    <BranchSummaryMetric icon={BarChart3} label="Sales in range" value={money(totals.sales)} detail="Across visible locations" />
+                    <BranchSummaryMetric icon={Users} label="Active cashiers" value={number(totals.cashiers)} detail="Open POS shifts" />
+                    <BranchSummaryMetric icon={Monitor} label="Active registers" value={number(totals.registers)} detail="Registered terminals" />
+                </div>
 
-            <SectionCard
-                className="business-admin-branches-primary-card"
-                title="Active branches"
-                subtitle="Branch-level operating metrics for the selected period"
-                action={(
-                    <div className="business-admin-branches-header-actions">
-                        <span className="business-admin-branches-count">{number(branches.length)} visible</span>
-                        {canEditBranches ? (
-                            <button type="button" className="business-admin-button primary" onClick={() => setBranchEditorOpen(true)}>
-                                <Plus size={14} aria-hidden="true" /> Add branch
-                            </button>
-                        ) : null}
-                    </div>
-                )}
-            >
-                {branches.length ? (
-                    <div className="business-admin-branch-grid">
-                        {branches.map((branch) => (
-                            <article className="business-admin-branch-card" key={branch.branch_id}>
-                                <div className="business-admin-branch-card-heading">
-                                    <div className="business-admin-branch-icon"><Building2 size={18} /></div>
-                                    <div className="business-admin-branch-name-block">
-                                        <strong>{branch.name}</strong>
-                                        <span className="business-admin-branch-status"><span className="business-admin-branch-status-dot" /> Active location</span>
+                <SectionCard
+                    className="business-admin-branches-primary-card"
+                    title="Active branches"
+                    subtitle="Branch-level operating metrics for the selected period"
+                    action={(
+                        <div className="business-admin-branches-header-actions">
+                            <span className="business-admin-branches-count">{number(branches.length)} visible</span>
+                            {canViewBranchSettings ? (
+                                <button type="button" className="business-admin-button primary" onClick={onManageBranches}>
+                                    <Settings size={14} aria-hidden="true" /> Manage branches
+                                </button>
+                            ) : null}
+                        </div>
+                    )}
+                >
+                    {branches.length ? (
+                        <div className="business-admin-branch-grid">
+                            {branches.map((branch) => (
+                                <article className="business-admin-branch-card" key={branch.branch_id}>
+                                    <div className="business-admin-branch-card-heading">
+                                        <div className="business-admin-branch-icon"><Building2 size={18} /></div>
+                                        <div className="business-admin-branch-name-block">
+                                            <strong>{branch.name}</strong>
+                                            <span className="business-admin-branch-status"><span className="business-admin-branch-status-dot" /> Active location</span>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="business-admin-branch-card-metrics">
-                                    <div><span>Sales</span><strong>{money(branch.sales)}</strong></div>
-                                    <div><span>Transactions</span><strong>{number(branch.transaction_count)}</strong></div>
-                                    <div><span>Cashiers</span><strong>{number(branch.active_cashiers)}</strong></div>
-                                    <div><span>Registers</span><strong>{number(branch.active_registers)}</strong></div>
-                                </div>
-                            </article>
-                        ))}
-                    </div>
-                ) : <Empty message="No active branches are available in your scope." />}
-            </SectionCard>
-
-            {branchEditorOpen ? (
-                <BranchLocationEditorModal
-                    bootstrap={bootstrap}
-                    onClose={() => setBranchEditorOpen(false)}
-                    onSaved={handleBranchSaved}
-                />
-            ) : null}
-        </div>
+                                    <div className="business-admin-branch-card-metrics">
+                                        <div><span>Sales</span><strong>{money(branch.sales)}</strong></div>
+                                        <div><span>Transactions</span><strong>{number(branch.transaction_count)}</strong></div>
+                                        <div><span>Cashiers</span><strong>{number(branch.active_cashiers)}</strong></div>
+                                        <div><span>Registers</span><strong>{number(branch.active_registers)}</strong></div>
+                                    </div>
+                                </article>
+                            ))}
+                        </div>
+                    ) : <Empty message="No active branches are available in your scope." />}
+                </SectionCard>
+            </div>
+        </LocationsRefreshSurface>
     );
 }
 
-function RegistersWorkspace({ data }) {
+function RegistersWorkspace({ data, onManageRegisters, canViewRegisterSettings = false, refreshing = false, refreshError = '' }) {
     return (
-        <SectionCard title="Register health" subtitle="Terminal registry is authoritative; heartbeat is optional telemetry">
-            <DataTable
-                rows={data?.registers || []}
-                rowKey={(row) => row.terminal_id}
-                emptyMessage="No register registry entries match this scope."
-                columns={[
-                    { key: 'label', label: 'Register', render: (row) => <strong>{row.label || row.terminal_id}</strong> },
-                    { key: 'branch_name', label: 'Branch' },
-                    { key: 'terminal_status', label: 'Status', render: (row) => <StatusPill value={row.terminal_status} /> },
-                    { key: 'sync_state', label: 'Sync', render: (row) => <StatusPill value={row.sync_state} /> },
-                    { key: 'printer_status', label: 'Printer', render: (row) => <StatusPill value={row.printer_status} /> },
-                    { key: 'has_open_shift', label: 'Shift', render: (row) => row.has_open_shift ? <StatusPill value="open" /> : <StatusPill value="closed" /> }
-                ]}
-            />
-        </SectionCard>
+        <LocationsRefreshSurface refreshing={refreshing} refreshError={refreshError} label="Updating register data…">
+            <SectionCard
+                title="Register health"
+                subtitle="Terminal registry is authoritative; heartbeat is optional telemetry"
+                action={canViewRegisterSettings ? (
+                    <button type="button" className="business-admin-button primary" onClick={onManageRegisters}>
+                        <Settings size={14} aria-hidden="true" /> Manage registers
+                    </button>
+                ) : null}
+            >
+                <DataTable
+                    rows={data?.registers || []}
+                    rowKey={(row) => row.terminal_id}
+                    emptyMessage="No register registry entries match this scope."
+                    columns={[
+                        { key: 'label', label: 'Register', render: (row) => <strong>{row.label || row.terminal_id}</strong> },
+                        { key: 'branch_name', label: 'Branch' },
+                        { key: 'terminal_status', label: 'Status', render: (row) => <StatusPill value={row.terminal_status} /> },
+                        { key: 'sync_state', label: 'Sync', render: (row) => <StatusPill value={row.sync_state} /> },
+                        { key: 'printer_status', label: 'Printer', render: (row) => <StatusPill value={row.printer_status} /> },
+                        { key: 'has_open_shift', label: 'Shift', render: (row) => row.has_open_shift ? <StatusPill value="open" /> : <StatusPill value="closed" /> }
+                    ]}
+                />
+            </SectionCard>
+        </LocationsRefreshSurface>
+    );
+}
+
+function LocationsWorkspace({
+    data,
+    activeView = 'branches',
+    onViewChange,
+    onManageBranches,
+    onManageRegisters,
+    canViewBranchSettings = false,
+    canViewRegisterSettings = false,
+    refreshing = false,
+    refreshError = ''
+}) {
+    const normalizedView = activeView === 'registers' ? 'registers' : 'branches';
+    return (
+        <div className="business-admin-locations-workspace">
+            <div className="business-admin-locations-tabs" role="tablist" aria-label="Locations sections">
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={normalizedView === 'branches'}
+                    className={`business-admin-locations-tab ${normalizedView === 'branches' ? 'active' : ''}`}
+                    onClick={() => onViewChange?.('branches')}
+                >
+                    <Building2 size={15} aria-hidden="true" /> Branches
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={normalizedView === 'registers'}
+                    className={`business-admin-locations-tab ${normalizedView === 'registers' ? 'active' : ''}`}
+                    onClick={() => onViewChange?.('registers')}
+                >
+                    <Monitor size={15} aria-hidden="true" /> Registers
+                </button>
+            </div>
+            {normalizedView === 'registers'
+                ? <RegistersWorkspace data={data} onManageRegisters={onManageRegisters} canViewRegisterSettings={canViewRegisterSettings} refreshing={refreshing} refreshError={refreshError} />
+                : <BranchWorkspace data={data} onManageBranches={onManageBranches} canViewBranchSettings={canViewBranchSettings} refreshing={refreshing} refreshError={refreshError} />}
+        </div>
     );
 }
 
@@ -796,7 +879,7 @@ function OrdersWorkspace({ data, onSelect, selected, onClose, dateFrom, dateTo, 
                 <ShieldCheck size={17} />
                 <div className="business-admin-orders-contract-copy">
                     <strong>Read-only order history</strong>
-                    <span>Completed, voided, and storefront orders are shown from canonical POS records. Select an order for receipt-safe detail.</span>
+                    <span>Completed, voided, and storefront orders are shown from canonical POS records. Select an order to view the original POS receipt in a read-only popup.</span>
                 </div>
             </div>
             <SectionCard
@@ -839,38 +922,90 @@ function OrdersWorkspace({ data, onSelect, selected, onClose, dateFrom, dateTo, 
                 ) : null}
                 <OrdersPagination page={pagination.page || page} totalPages={totalPages} total={total} onPageChange={onPageChange} refreshing={refreshing} />
             </SectionCard>
-            {selected ? <OrderDetailPanel order={selected} onClose={onClose} /> : null}
+            {selected ? <BusinessAdminReceiptModal order={selected} onClose={onClose} /> : null}
         </div>
     );
 }
 
-function OrderDetailPanel({ order, onClose }) {
-    return (
-        <div className="business-admin-detail-panel">
-            <div className="flex items-start justify-between gap-3">
-                <div>
-                    <div className="business-admin-kicker">Order detail</div>
-                    <h2 className="mt-1 text-lg font-black text-[#173e58]">{order.invoice_number || `Transaction #${order.transaction_id}`}</h2>
-                    <p className="mt-1 text-xs text-slate-500">{dateTime(order.created_at)} · {order.branch?.name || order.branch_name || 'Branch not recorded'}</p>
-                </div>
-                <button type="button" className="business-admin-button" onClick={onClose}>Close</button>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-                <div><div className="business-admin-kicker">Customer</div><div className="mt-1 text-sm text-slate-700">{order.customer?.name || order.customer_name || 'Walk-in'}</div></div>
-                <div><div className="business-admin-kicker">Payment</div><div className="mt-1 text-sm text-slate-700">{humanize(order.payment?.method || order.payment_type)} · {humanize(order.payment?.status || order.payment_status)}</div></div>
-                <div><div className="business-admin-kicker">Total</div><div className="mt-1 text-sm font-black text-slate-800">{money(order.totals?.total ?? order.total_amount)}</div></div>
-            </div>
-            {(order.lines || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Lines</div><DataTable rows={order.lines} columns={[{ key: 'item_name', label: 'Item' }, { key: 'quantity', label: 'Qty', render: (row) => number(row.quantity) }, { key: 'unit_price', label: 'Unit', render: (row) => money(row.unit_price) }, { key: 'subtotal', label: 'Subtotal', render: (row) => money(row.subtotal) }]} /></div> : null}
-            {(order.status_history || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Timeline</div><DataTable rows={order.status_history} columns={[{ key: 'event', label: 'Event', render: (row) => humanize(row.event) }, { key: 'occurred_at', label: 'When', render: (row) => dateTime(row.occurred_at) }, { key: 'actor_name', label: 'Actor' }]} /></div> : null}
-            {(order.refunds || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Refund adjustments</div><DataTable rows={order.refunds} columns={[{ key: 'refund_id', label: 'Adjustment' }, { key: 'amount', label: 'Amount', render: (row) => money(row.amount) }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'reason', label: 'Reason' }]} /></div> : null}
-        </div>
-    );
-}
+function CustomersWorkspace({ data, onSelect, selected, onClose, onOrderSelect, selectedOrder, onOrderClose, onCreate, creating = false }) {
+    const [isAdding, setIsAdding] = useState(false);
+    const [form, setForm] = useState({ name: '', email: '', phone: '' });
+    const [formError, setFormError] = useState('');
+    const [successMessage, setSuccessMessage] = useState('');
 
-function CustomersWorkspace({ data, onSelect, selected, onClose }) {
+    const closeForm = () => {
+        if (creating) return;
+        setIsAdding(false);
+        setFormError('');
+        setForm({ name: '', email: '', phone: '' });
+    };
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        setFormError('');
+        setSuccessMessage('');
+        try {
+            const result = await onCreate(form);
+            setSuccessMessage(result?.message || 'Customer profile created.');
+            closeForm();
+        } catch (error) {
+            setFormError(getBusinessAdminErrorMessage(error));
+        }
+    };
+
     return (
         <>
-            <SectionCard title="Customer analytics" subtitle={`${number(data?.pagination?.total)} customer profiles`}>
+            <div className="business-admin-customer-contract" role="note">
+                <UserRound size={17} aria-hidden="true" />
+                <div className="business-admin-customer-contract-copy">
+                    <strong>Tenant-scoped customer workspace</strong>
+                    <span>Customer details and purchase history are limited to this business and the selected branch/date scope. DGFY global identity is not inferred from guest contact snapshots.</span>
+                </div>
+            </div>
+            <div className="business-admin-customer-loyalty-contract" role="note">
+                <ShieldCheck size={17} aria-hidden="true" />
+                <div className="business-admin-customer-contract-copy">
+                    <strong>Loyalty is read-only here</strong>
+                    <span>Earning, redemption, refunds, adjustments, ownership, and accounting treatment are not a merchant Back Office write contract yet. No loyalty mutation controls are exposed.</span>
+                </div>
+            </div>
+            {successMessage ? <div className="business-admin-alert success" role="status"><CheckCircle2 size={17} /><div>{successMessage}</div></div> : null}
+            {isAdding ? (
+                <section className="business-admin-card business-admin-customer-form-card" aria-labelledby="business-admin-add-customer-title">
+                    <div className="business-admin-card-header">
+                        <div>
+                            <div id="business-admin-add-customer-title" className="business-admin-card-title">Add customer</div>
+                            <div className="business-admin-card-subtitle">Create a tenant-scoped customer profile for POS and customer history.</div>
+                        </div>
+                        <button type="button" className="business-admin-button" onClick={closeForm} disabled={creating}><X size={14} /> Cancel</button>
+                    </div>
+                    <div className="business-admin-card-body">
+                        <form className="business-admin-customer-form" onSubmit={handleSubmit}>
+                            <div className="business-admin-field">
+                                <label htmlFor="business-admin-customer-name">Name</label>
+                                <input id="business-admin-customer-name" type="text" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} maxLength={255} required autoFocus />
+                            </div>
+                            <div className="business-admin-field">
+                                <label htmlFor="business-admin-customer-email">Email</label>
+                                <input id="business-admin-customer-email" type="email" value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} maxLength={255} required />
+                            </div>
+                            <div className="business-admin-field">
+                                <label htmlFor="business-admin-customer-phone">Phone <span className="business-admin-muted">(optional)</span></label>
+                                <input id="business-admin-customer-phone" type="tel" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} maxLength={50} />
+                            </div>
+                            <div className="business-admin-customer-form-actions">
+                                <button type="submit" className="business-admin-button primary" disabled={creating}>{creating ? 'Saving…' : 'Save customer'}</button>
+                            </div>
+                        </form>
+                        {formError ? <div className="business-admin-alert error mb-0" role="alert"><AlertTriangle size={17} /><div>{formError}</div></div> : null}
+                    </div>
+                </section>
+            ) : null}
+            <SectionCard
+                title="Customer analytics"
+                subtitle={`${number(data?.pagination?.total)} customer profiles`}
+                action={<button type="button" className="business-admin-button primary" onClick={() => { setSuccessMessage(''); setFormError(''); setIsAdding(true); }} disabled={creating}><Plus size={14} /> Add customer</button>}
+            >
                 <DataTable
                     rows={data?.rows || []}
                     rowKey={(row) => row.profile_ref}
@@ -886,21 +1021,26 @@ function CustomersWorkspace({ data, onSelect, selected, onClose }) {
                     ]}
                 />
             </SectionCard>
-            {selected ? <CustomerDetailPanel customer={selected} onClose={onClose} /> : null}
+            {selected ? <CustomerDetailPanel customer={selected} onClose={onClose} onOrderSelect={onOrderSelect} /> : null}
+            {selectedOrder ? <BusinessAdminReceiptModal order={selectedOrder} onClose={onOrderClose} /> : null}
         </>
     );
 }
 
-function CustomerDetailPanel({ customer, onClose }) {
+function CustomerDetailPanel({ customer, onClose, onOrderSelect }) {
     return (
         <div className="business-admin-detail-panel">
             <div className="flex items-start justify-between gap-3">
                 <div><div className="business-admin-kicker">Customer profile</div><h2 className="mt-1 text-lg font-black text-[#173e58]">{customer.name}</h2><p className="mt-1 text-xs text-slate-500">{customer.email || customer.phone || 'No contact snapshot'} · {humanize(customer.identity_source)}</p></div>
                 <button type="button" className="business-admin-button" onClick={onClose}>Close</button>
             </div>
+            <div className="business-admin-customer-detail-contract" role="note">
+                <strong>Read-only tenant history</strong>
+                <span>This profile uses the selected business scope. Loyalty earning, redemption, refunds, and adjustments are not editable from this screen.</span>
+            </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3"><div><div className="business-admin-kicker">Visits</div><div className="mt-1 text-sm font-black text-slate-800">{number(customer.visit_count)}</div></div><div><div className="business-admin-kicker">Spend</div><div className="mt-1 text-sm font-black text-slate-800">{money(customer.total_spend)}</div></div><div><div className="business-admin-kicker">Frequency</div><div className="mt-1 text-sm text-slate-700">{customer.purchase_frequency_days == null ? 'Not enough history' : `${number(customer.purchase_frequency_days)} days`}</div></div></div>
             {(customer.favorite_products || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Favorite products</div><DataTable rows={customer.favorite_products} columns={[{ key: 'item_name', label: 'Item' }, { key: 'quantity', label: 'Quantity', render: (row) => number(row.quantity) }, { key: 'net_spend', label: 'Spend', render: (row) => money(row.net_spend) }]} /></div> : null}
-            {(customer.orders || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Recent orders</div><DataTable rows={customer.orders} columns={[{ key: 'invoice_number', label: 'Invoice' }, { key: 'created_at', label: 'When', render: (row) => dateTime(row.created_at) }, { key: 'payment_type', label: 'Payment', render: (row) => humanize(row.payment_type) }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount) }]} /></div> : null}
+            {(customer.orders || []).length ? <div className="mt-4"><div className="business-admin-kicker mb-1">Recent transactions</div><p className="mb-2 text-xs text-slate-500">Select a transaction to open the original POS receipt popup.</p><DataTable rows={customer.orders} rowKey={(row) => row.transaction_id} onRowClick={onOrderSelect} columns={[{ key: 'invoice_number', label: 'Invoice' }, { key: 'created_at', label: 'When', render: (row) => dateTime(row.created_at) }, { key: 'source', label: 'Source', render: (row) => humanize(row.source) }, { key: 'payment_type', label: 'Payment', render: (row) => humanize(row.payment_type) }, { key: 'total_amount', label: 'Total', render: (row) => money(row.total_amount) }]} /></div> : null}
         </div>
     );
 }
@@ -946,7 +1086,9 @@ const InventoryLowStockCard = ({ row }) => (
                     <span>{row.branch || 'Unassigned branch'}</span>
                 </div>
             </div>
-            <span className="business-admin-inventory-record-tag warning">Below threshold</span>
+            <span className={`business-admin-inventory-record-tag ${row.stock_status === 'out_of_stock' ? 'critical' : 'warning'}`}>
+                {row.stock_status === 'out_of_stock' ? 'Out of stock' : 'Below threshold'}
+            </span>
         </div>
         <div className="business-admin-inventory-record-facts">
             <div><span>On hand</span><strong>{number(row.quantity_on_hand)}</strong></div>
@@ -956,12 +1098,57 @@ const InventoryLowStockCard = ({ row }) => (
     </article>
 );
 
-function InventoryWorkspace({ data }) {
+const InventoryPagination = ({ pagination = {}, onPageChange, refreshing = false }) => {
+    const total = Math.max(Number(pagination.total) || 0, 0);
+    const totalPages = Math.max(Number(pagination.total_pages) || Math.ceil(total / BUSINESS_ADMIN_INVENTORY_PAGE_SIZE), 1);
+    const page = Math.min(Math.max(Number(pagination.page) || 1, 1), totalPages);
+    if (!total) return null;
+    const start = ((page - 1) * BUSINESS_ADMIN_INVENTORY_PAGE_SIZE) + 1;
+    const end = Math.min(page * BUSINESS_ADMIN_INVENTORY_PAGE_SIZE, total);
+
+    return (
+        <nav className="business-admin-inventory-pagination" aria-label="Stock-health pagination">
+            <div className="business-admin-inventory-pagination-summary">
+                <strong>{number(start)}–{number(end)}</strong>
+                <span>of {number(total)} items</span>
+            </div>
+            <div className="business-admin-inventory-pagination-actions">
+                <button type="button" className="business-admin-button" onClick={() => onPageChange(page - 1)} disabled={refreshing || page <= 1} aria-label="Previous stock-health page">
+                    <ChevronLeft size={14} /> Previous
+                </button>
+                <span className="business-admin-inventory-pagination-page">Page {number(page)} of {number(totalPages)}</span>
+                <button type="button" className="business-admin-button" onClick={() => onPageChange(page + 1)} disabled={refreshing || page >= totalPages} aria-label="Next stock-health page">
+                    Next <ChevronRight size={14} />
+                </button>
+            </div>
+        </nav>
+    );
+};
+
+const InventoryWorkflowLink = ({ rootPath, moduleId, title, description, icon: Icon, settingsDirty = false, onLeaveSettings }) => (
+    <GuardedLink
+        to={buildBackOfficeModulePath(rootPath, moduleId)}
+        className="business-admin-inventory-workflow-link"
+        isDirty={settingsDirty}
+        onLeave={onLeaveSettings}
+        aria-label={`Open ${title}`}
+    >
+        <span className="business-admin-inventory-workflow-icon"><Icon size={16} aria-hidden="true" /></span>
+        <span className="business-admin-inventory-workflow-copy">
+            <strong>{title}</strong>
+            <span>{description}</span>
+        </span>
+        <ExternalLink className="business-admin-inventory-workflow-arrow" size={14} aria-hidden="true" />
+    </GuardedLink>
+);
+
+function InventoryWorkspace({ data, onPageChange, refreshing = false, rootPath = '/business-admin', settingsDirty = false, onLeaveSettings }) {
     const valuation = data?.valuation?.valuation || data?.valuation || {};
     const locations = Array.isArray(valuation.locations) ? valuation.locations : [];
-    const lowStock = Array.isArray(data?.lowStock?.rows) ? data.lowStock.rows : [];
+    const lowStock = Array.isArray(data?.lowStock?.rows) ? data.lowStock.rows.slice(0, BUSINESS_ADMIN_INVENTORY_PAGE_SIZE) : [];
     const costHidden = data?.valuation?.meta?.cost_visibility === false;
-    const lowStockTotal = data?.lowStock?.pagination?.total ?? lowStock.length;
+    const lowStockPagination = data?.lowStock?.pagination || { page: 1, total: lowStock.length };
+    const lowStockTotal = lowStockPagination.total ?? lowStock.length;
     const fifoDriftTotal = locations.reduce((total, row) => total + (Number(row.drift_item_count) || 0), 0);
     const valuationColumns = [
         { key: 'location_name', label: 'Branch', render: (row) => <strong>{row.location_name}</strong> },
@@ -982,7 +1169,7 @@ function InventoryWorkspace({ data }) {
             <div className="business-admin-inventory-summary" aria-label="Inventory summary">
                 <InventorySummaryMetric icon={Package} label="Available quantity" value={number(valuation.weighted_total_available_qty)} detail="FIFO or ledger scoped" />
                 <InventorySummaryMetric icon={Wallet} label="Inventory value" value={costHidden ? 'Hidden' : money(valuation.weighted_total_inventory_value)} detail={costHidden ? 'Cost permission required' : 'Weighted FIFO value'} tone={costHidden ? 'muted' : 'teal'} />
-                <InventorySummaryMetric icon={AlertTriangle} label="Low-stock items" value={number(lowStockTotal)} detail="Current branch thresholds" tone={lowStockTotal ? 'warning' : 'teal'} />
+                <InventorySummaryMetric icon={AlertTriangle} label="Stock attention" value={number(lowStockTotal)} detail="Low or out of stock" tone={lowStockTotal ? 'warning' : 'teal'} />
                 <InventorySummaryMetric icon={RefreshCw} label="FIFO drift" value={number(fifoDriftTotal)} detail="Items needing review" tone={fifoDriftTotal ? 'critical' : 'teal'} />
             </div>
 
@@ -990,6 +1177,31 @@ function InventoryWorkspace({ data }) {
                 <Database size={16} />
                 <div><strong>Read-only inventory view</strong><span>Use Catalog Editor and Stock movements for inventory changes.</span></div>
             </div>
+
+            <SectionCard
+                className="business-admin-inventory-workflows"
+                title="Inventory workflows"
+                subtitle="One entry point per canonical workflow; commands remain with their existing owner."
+            >
+                <div className="business-admin-inventory-workflow-grid">
+                    {INVENTORY_WORKFLOW_LINKS.map((workflow) => (
+                        <InventoryWorkflowLink
+                            key={workflow.moduleId}
+                            rootPath={rootPath}
+                            {...workflow}
+                            settingsDirty={settingsDirty}
+                            onLeaveSettings={onLeaveSettings}
+                        />
+                    ))}
+                </div>
+                <div className="business-admin-inventory-follow-up" role="note">
+                    <AlertTriangle size={15} aria-hidden="true" />
+                    <div>
+                        <strong>Stock counts need a separate command-owner decision.</strong>
+                        <span>No dedicated count workflow is exposed by the current canonical inventory owner, so this surface does not create a second adjustment form.</span>
+                    </div>
+                </div>
+            </SectionCard>
 
             <div className="business-admin-grid business-admin-inventory-grid">
                 <SectionCard
@@ -1008,88 +1220,68 @@ function InventoryWorkspace({ data }) {
 
                 <SectionCard
                     className="business-admin-inventory-section"
-                    title="Low-stock queue"
-                    subtitle="Items at or below their branch threshold"
+                    title="Stock-health queue"
+                    subtitle="Low-stock and out-of-stock items in this branch"
                     action={<span className="business-admin-inventory-count">{number(lowStockTotal)} items</span>}
                 >
                     <div className="business-admin-inventory-table-view">
-                        <DataTable rows={lowStock} rowKey={(row, index) => `${row.sku_code || row.item}-${index}`} emptyMessage="No low-stock items in this scope." columns={lowStockColumns} />
+                        <DataTable rows={lowStock} rowKey={(row, index) => `${row.sku_code || row.item}-${index}`} emptyMessage="No stock-health alerts in this scope." columns={lowStockColumns} />
                     </div>
                     <div className="business-admin-inventory-mobile-view">
-                        {lowStock.length ? <div className="business-admin-inventory-record-list">{lowStock.map((row, index) => <InventoryLowStockCard key={`${row.sku_code || row.item}-${index}`} row={row} />)}</div> : <Empty message="No low-stock items in this scope." />}
+                        {lowStock.length ? <div className="business-admin-inventory-record-list">{lowStock.map((row, index) => <InventoryLowStockCard key={`${row.sku_code || row.item}-${index}`} row={row} />)}</div> : <Empty message="No stock-health alerts in this scope." />}
                     </div>
+                    <InventoryPagination pagination={lowStockPagination} onPageChange={onPageChange} refreshing={refreshing} />
                 </SectionCard>
             </div>
         </div>
     );
 }
 
-function ReportsWorkspace({ data, selectedReport, onReportChange, onExport }) {
-    const definitions = data?.definitions || [];
-    const dataset = data?.dataset || {};
-    const rows = dataset.rows || [];
-    return (
-        <>
-            <div className="business-admin-toolbar">
-                <select className="business-admin-search" value={selectedReport} onChange={(event) => onReportChange(event.target.value)} aria-label="Report">
-                    {definitions.map((definition) => <option key={definition.key} value={definition.key}>{definition.label}</option>)}
-                </select>
-                <button type="button" className="business-admin-button" onClick={() => onExport('csv')} disabled={!selectedReport}><Download size={14} /> Export CSV</button>
-                <button type="button" className="business-admin-button" onClick={() => onExport('xls')} disabled={!selectedReport}><Download size={14} /> Export XLS</button>
-            </div>
-            <SectionCard title={dataset.definition?.label || 'Report dataset'} subtitle={`${number(dataset.pagination?.total)} rows · ${dataset.meta?.source || 'read model'}`}>
-                <DataTable rows={rows} columns={dynamicColumns(rows, ['period', 'branch', 'employee', 'item_name', 'category', 'net_sales', 'transaction_count', 'refunds_voids'])} emptyMessage="No finalized rows match the report filters." />
-            </SectionCard>
-        </>
-    );
-}
-
-function WorkforceWorkspace({ data, bootstrap, teamCapability, onInviteSaved }) {
-    const [memberInviteOpen, setMemberInviteOpen] = useState(false);
+function WorkforceWorkspace({ data, bootstrap, teamCapability, onManageTeam }) {
     const employees = data?.employees || [];
     const canEditUsers = bootstrap?.user?.is_master_admin === true || teamCapability?.user_edit === true;
-    const branchId = data?.filters?.branch_id || '';
-    const handleMemberSaved = useCallback((details = {}) => {
-        setMemberInviteOpen(false);
-        onInviteSaved?.(details);
-    }, [onInviteSaved]);
+    const canViewUsers = canEditUsers || teamCapability?.user_view === true;
 
     return (
-        <SectionCard
-            title="Workforce activity"
-            subtitle={`${number(employees.length)} employees in the selected scope`}
-            action={canEditUsers ? (
-                <div className="business-admin-workforce-header-actions">
-                    <button type="button" className="business-admin-button primary" onClick={() => setMemberInviteOpen(true)}>
-                        <UserPlus size={14} aria-hidden="true" /> Add member
-                    </button>
+        <div className="business-admin-workforce-workspace">
+            <div className="business-admin-workforce-contract" role="note">
+                <ShieldCheck size={17} aria-hidden="true" />
+                <div className="business-admin-workforce-contract-copy">
+                    <strong>Team &amp; Access model</strong>
+                    <span>Employee records describe the person and operational activity. Login accounts control authentication. Effective permissions and branch grants are managed in the canonical users-and-roles workflow; terminal permissions and Back Office permissions remain separate.</span>
                 </div>
-            ) : null}
-        >
-            <DataTable
-                rows={employees}
-                rowKey={(row) => row.user_id}
-                emptyMessage="No employees match this branch scope."
-                columns={[
-                    { key: 'username', label: 'Employee', render: (row) => <strong>{row.username}</strong> },
-                    { key: 'role', label: 'Role', render: (row) => humanize(row.role) },
-                    { key: 'is_active', label: 'Account', render: (row) => <StatusPill value={row.is_active ? 'active' : 'inactive'} /> },
-                    { key: 'orders_processed', label: 'Orders', render: (row) => number(row.performance?.orders_processed) },
-                    { key: 'completed_sales_amount', label: 'Sales', render: (row) => money(row.performance?.completed_sales_amount) },
-                    { key: 'void_count', label: 'Voids', render: (row) => number(row.performance?.void_count) },
-                    { key: 'cash_difference_amount', label: 'Cash variance', render: (row) => money(row.performance?.cash_difference_amount) }
-                ]}
-            />
-            {canEditUsers ? (
-                <BusinessAdminMemberInviteModal
-                    bootstrap={bootstrap}
-                    branchId={branchId}
-                    open={memberInviteOpen}
-                    onOpenChange={setMemberInviteOpen}
-                    onSuccess={handleMemberSaved}
+            </div>
+            <SectionCard
+                title="Workforce activity"
+                subtitle={`${number(employees.length)} employees in the selected scope`}
+                action={canViewUsers ? (
+                    <div className="business-admin-workforce-header-actions">
+                        <button type="button" className="business-admin-button primary" onClick={onManageTeam}>
+                            <Users size={14} aria-hidden="true" /> Manage team
+                        </button>
+                    </div>
+                ) : null}
+            >
+                <DataTable
+                    rows={employees}
+                    rowKey={(row) => row.user_id}
+                    emptyMessage="No employees match this branch scope."
+                    columns={[
+                        { key: 'username', label: 'Employee record', render: (row) => <strong>{row.username}</strong> },
+                        { key: 'role', label: 'Role', render: (row) => <span>{row.role_preset_key ? humanize(row.role_preset_key) : humanize(row.role)}</span> },
+                        { key: 'branch_assignments', label: 'Branch access', render: (row) => {
+                            const assignments = Array.isArray(row.branch_assignments) ? row.branch_assignments : [];
+                            return assignments.length ? assignments.map((assignment) => assignment.name || `Branch #${assignment.location_id}`).join(', ') : 'No branch grant';
+                        } },
+                        { key: 'is_active', label: 'Login account', render: (row) => <StatusPill value={row.is_active ? 'active' : 'inactive'} /> },
+                        { key: 'orders_processed', label: 'Orders', render: (row) => number(row.performance?.orders_processed) },
+                        { key: 'completed_sales_amount', label: 'Sales', render: (row) => money(row.performance?.completed_sales_amount) },
+                        { key: 'void_count', label: 'Voids', render: (row) => number(row.performance?.void_count) },
+                        { key: 'cash_difference_amount', label: 'Cash variance', render: (row) => money(row.performance?.cash_difference_amount) }
+                    ]}
                 />
-            ) : null}
-        </SectionCard>
+            </SectionCard>
+        </div>
     );
 }
 
@@ -1215,83 +1407,75 @@ const ShiftSummaryMetric = ({ icon: Icon, label, value, detail }) => (
     </div>
 );
 
-const ShiftHistoryCard = ({ row }) => (
-    <article className="business-admin-shift-card">
-        <div className="business-admin-shift-card-heading">
-            <div className="business-admin-shift-card-identity">
-                <div className="business-admin-shift-card-icon"><Clock3 size={16} /></div>
-                <div className="business-admin-shift-card-copy">
-                    <strong>Shift #{row.shift_id ?? '—'}</strong>
-                    <span>{row.branch_name || 'Branch not recorded'} · {row.cashier_name || 'Cashier not recorded'}</span>
-                </div>
-            </div>
-            <StatusPill value={row.status} />
-        </div>
-        <div className="business-admin-shift-card-facts">
-            <div><span>Register</span><strong>{row.terminal_id || '—'}</strong></div>
-            <div><span>Branch</span><strong>{row.branch_name || '—'}</strong></div>
-            <div><span>Cashier</span><strong>{row.cashier_name || '—'}</strong></div>
-            <div><span>Opened</span><strong>{dateTime(row.opened_at)}</strong></div>
-            <div><span>Orders</span><strong>{number(row.orders_processed)}</strong></div>
-            <div><span>Variance</span><strong>{money(row.cash_variance_amount)}</strong></div>
-        </div>
-    </article>
+const CashSummaryTable = ({ rows = [] }) => (
+    <div className="business-admin-cash-summary-table-wrap">
+        <table className="business-admin-table business-admin-cash-summary-table">
+            <thead>
+                <tr>
+                    <th>POS</th>
+                    <th>Cashier</th>
+                    <th>Opening time</th>
+                    <th>Closing time</th>
+                    <th>Expected cash amount</th>
+                    <th>Actual cash amount</th>
+                    <th>Difference</th>
+                </tr>
+            </thead>
+            <tbody>
+                {rows.length ? rows.map((row) => (
+                    <tr key={row.shift_id}>
+                        <td><strong>{row.terminal_id || '—'}</strong></td>
+                        <td>{row.cashier_name || '—'}</td>
+                        <td>{dateTime(row.opened_at)}</td>
+                        <td>{row.closed_at ? dateTime(row.closed_at) : '—'}</td>
+                        <td>{money(row.expected_cash_amount)}</td>
+                        <td>{row.closing_cash_amount == null ? '—' : money(row.closing_cash_amount)}</td>
+                        <td>{row.cash_variance_amount == null ? '—' : money(row.cash_variance_amount)}</td>
+                    </tr>
+                )) : (
+                    <tr>
+                        <td colSpan={7}>
+                            <div className="business-admin-cash-summary-empty">
+                                <div className="business-admin-cash-summary-empty-icon" aria-hidden="true"><Clock3 size={42} /></div>
+                                <strong>No data to display</strong>
+                                <span>There are no closed shifts in the selected time period</span>
+                            </div>
+                        </td>
+                    </tr>
+                )}
+            </tbody>
+        </table>
+    </div>
 );
 
-const ShiftsPagination = ({ pagination = {}, onPageChange, refreshing = false }) => {
+const CashSummaryPagination = ({ pagination = {}, onPageChange, refreshing = false }) => {
     const total = Math.max(Number(pagination.total) || 0, 0);
-    const limit = Math.max(Number(pagination.limit) || BUSINESS_ADMIN_SHIFTS_PAGE_SIZE, 1);
+    const limit = Math.max(Number(pagination.limit) || BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE, 1);
     const totalPages = Math.max(Number(pagination.total_pages) || Math.ceil(total / limit), 1);
     const page = Math.min(Math.max(Number(pagination.page) || 1, 1), totalPages);
-    if (!total) return null;
-    const start = ((page - 1) * limit) + 1;
-    const end = Math.min(page * limit, total);
-
     return (
-        <nav className="business-admin-shifts-pagination" aria-label="Shifts pagination">
-            <div className="business-admin-shifts-pagination-summary">
-                <strong>{number(start)}–{number(end)}</strong>
-                <span>of {number(total)} shifts</span>
-            </div>
-            <div className="business-admin-shifts-pagination-actions">
-                <button type="button" className="business-admin-button" onClick={() => onPageChange(page - 1)} disabled={refreshing || page <= 1} aria-label="Previous shifts page">
-                    <ChevronLeft size={14} /> Previous
+        <nav className="business-admin-cash-summary-pagination" aria-label="Shift history pagination">
+            <div className="business-admin-cash-summary-pagination-actions">
+                <button type="button" className="business-admin-cash-summary-pagination-button" onClick={() => onPageChange(page - 1)} disabled={refreshing || page <= 1} aria-label="Previous shift history page">
+                    <ChevronLeft size={17} />
                 </button>
-                <span className="business-admin-shifts-pagination-page">Page {number(page)} of {number(totalPages)}</span>
-                <button type="button" className="business-admin-button" onClick={() => onPageChange(page + 1)} disabled={refreshing || page >= totalPages} aria-label="Next shifts page">
-                    Next <ChevronRight size={14} />
+                <button type="button" className="business-admin-cash-summary-pagination-button" onClick={() => onPageChange(page + 1)} disabled={refreshing || page >= totalPages} aria-label="Next shift history page">
+                    <ChevronRight size={17} />
                 </button>
             </div>
+            <span className="business-admin-cash-summary-pagination-page">Page: <strong>{number(page)}</strong> of {number(totalPages)}</span>
+            <span className="business-admin-cash-summary-pagination-limit">Rows per page: <strong>{number(limit)}</strong> <ChevronDown size={14} aria-hidden="true" /></span>
         </nav>
     );
 };
 
-function ShiftsWorkspace({ data, dateFrom, dateTo, onPageChange, refreshing = false, refreshError = '' }) {
+function ShiftsWorkspace({ data, onCashSummaryPageChange = () => {}, onExportCashSummary = () => {}, exportingCashSummary = false, refreshing = false }) {
     const summary = data?.summary || {};
-    const shifts = Array.isArray(data?.shifts) ? data.shifts.slice(0, BUSINESS_ADMIN_SHIFTS_PAGE_SIZE) : [];
-    const pagination = data?.pagination || {};
-    const shiftsRecordsRef = useBusinessAdminPaginatedPanelTransition({ page: pagination.page, refreshing });
-    const emptyMessage = historicalEmptyMessage('No shifts match the selected filters.', dateFrom, dateTo);
-    const columns = [
-        { key: 'shift_id', label: 'Shift' },
-        { key: 'terminal_id', label: 'Register' },
-        { key: 'branch_name', label: 'Branch' },
-        { key: 'cashier_name', label: 'Cashier' },
-        { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> },
-        { key: 'opened_at', label: 'Opened', render: (row) => dateTime(row.opened_at) },
-        { key: 'orders_processed', label: 'Orders', render: (row) => number(row.orders_processed) },
-        { key: 'cash_variance_amount', label: 'Variance', render: (row) => money(row.cash_variance_amount) }
-    ];
+    const cashSummary = Array.isArray(data?.cashSummary) ? data.cashSummary : [];
+    const cashSummaryPagination = data?.cashSummaryPagination || {};
 
     return (
         <div className="business-admin-shifts-workspace">
-            <div className="business-admin-shifts-contract" role="note">
-                <ShieldCheck size={17} />
-                <div className="business-admin-shifts-contract-copy">
-                    <strong>Read-only POS shift history</strong>
-                    <span>Canonical drawer and variance records only. Shift open, close, and force-close actions remain in the POS terminal.</span>
-                </div>
-            </div>
             <div className="business-admin-shifts-summary" aria-label="Shift summary">
                 <ShiftSummaryMetric icon={Clock3} label="Total shifts" value={number(summary.total_shifts)} detail="POS shift records" />
                 <ShiftSummaryMetric icon={CheckCircle2} label="Closed" value={number(summary.closed_shifts)} detail="Finalized drawer records" />
@@ -1300,44 +1484,23 @@ function ShiftsWorkspace({ data, dateFrom, dateTo, onPageChange, refreshing = fa
                 <ShiftSummaryMetric icon={ShieldCheck} label="Force-close requests" value={number(summary.force_close_requests)} detail="Canonical POS command pending" />
             </div>
             <SectionCard
-                className="business-admin-shifts-section-card"
+                className="business-admin-cash-summary-section-card"
                 title="Shift history"
-                subtitle="Drawer events and finalized variance values"
-                action={<span className="business-admin-shifts-count">{number(shifts.length)} visible</span>}
+                action={(
+                    <button
+                        type="button"
+                        className="business-admin-button"
+                        onClick={onExportCashSummary}
+                        disabled={exportingCashSummary || refreshing}
+                        aria-label="Export shift history as CSV"
+                    >
+                        <Download size={14} aria-hidden="true" />
+                        {exportingCashSummary ? 'Exporting…' : 'Export CSV'}
+                    </button>
+                )}
             >
-                <div
-                    ref={shiftsRecordsRef}
-                    className={`business-admin-shifts-results ${refreshing ? 'is-refreshing' : ''}`}
-                    data-testid="business-admin-shifts-results"
-                    aria-busy={refreshing ? 'true' : 'false'}
-                >
-                    <div className="business-admin-shifts-results-content">
-                        {shifts.length ? (
-                            <>
-                                <div className="business-admin-shifts-table-view">
-                                    <DataTable rows={shifts} rowKey={(row) => row.shift_id} columns={columns} />
-                                </div>
-                                <div className="business-admin-shifts-mobile-view">
-                                    <div className="business-admin-shifts-card-list">
-                                        {shifts.map((row) => <ShiftHistoryCard key={row.shift_id} row={row} />)}
-                                    </div>
-                                </div>
-                            </>
-                        ) : <Empty message={emptyMessage} />}
-                    </div>
-                    {refreshing ? (
-                        <div className="business-admin-shifts-refreshing" role="status" aria-live="polite">
-                            <span className="business-admin-spinner" aria-hidden="true" /> Updating shift history…
-                        </div>
-                    ) : null}
-                </div>
-                {refreshError ? (
-                    <div className="business-admin-alert error business-admin-shifts-panel-error">
-                        <AlertTriangle size={17} />
-                        <div><strong>Shift history could not be refreshed.</strong><div>{refreshError}</div></div>
-                    </div>
-                ) : null}
-                <ShiftsPagination pagination={pagination} onPageChange={onPageChange} refreshing={refreshing} />
+                <CashSummaryTable rows={cashSummary} />
+                <CashSummaryPagination pagination={cashSummaryPagination} onPageChange={onCashSummaryPageChange} refreshing={refreshing} />
             </SectionCard>
         </div>
     );
@@ -1493,13 +1656,37 @@ function ApprovalsWorkspace({ data, onDecision, actionLoading }) {
     return <SectionCard title="Approval queue" subtitle="High-risk requests are visible here; mutation remains with POS"><DataTable rows={data?.approvals || []} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={[{ key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) }, { key: 'entity_id', label: 'Entity' }, { key: 'requested_by', label: 'Requested by' }, { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'actions', label: 'Decision', render: (row) => row.status === 'pending' ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div> : <span className="business-admin-muted">No action</span> }]} /></SectionCard>;
 }
 
-function AuditWorkspace({ data, activity = false, dateFrom, dateTo }) {
-    const rows = activity ? (data?.activities || []) : (data?.logs || []);
-    return <SectionCard title={activity ? 'Business activity' : 'Audit log'} subtitle="Sensitive values are redacted at the API boundary"><DataTable rows={rows} rowKey={(row, index) => row.audit_log_id || `${row.activity_type}-${row.occurred_at}-${index}`} emptyMessage={activity ? 'No audit activity is available for this scope.' : historicalEmptyMessage('No audit activity is available for this scope.', dateFrom, dateTo)} columns={activity ? [{ key: 'occurred_at', label: 'When', render: (row) => dateTime(row.occurred_at) }, { key: 'title', label: 'Activity', render: (row) => <strong>{row.title}</strong> }, { key: 'detail', label: 'Detail' }, { key: 'actor_name', label: 'Actor' }] : [{ key: 'timestamp', label: 'When', render: (row) => dateTime(row.timestamp) }, { key: 'action', label: 'Action' }, { key: 'entity_type', label: 'Entity' }, { key: 'entity_id', label: 'ID' }, { key: 'actor_name', label: 'Actor' }, { key: 'outcome', label: 'Outcome', render: (row) => <StatusPill value={row.outcome} /> }]} /></SectionCard>;
+function AuditWorkspace({ data, dateFrom, dateTo }) {
+    const rows = data?.logs || [];
+    return <SectionCard title="Audit log" subtitle="Immutable historical events with sensitive values redacted at the API boundary"><DataTable rows={rows} rowKey={(row, index) => row.audit_log_id || `${row.timestamp}-${row.entity_type}-${row.entity_id}-${index}`} emptyMessage={historicalEmptyMessage('No audit history is available for this scope.', dateFrom, dateTo)} columns={[{ key: 'timestamp', label: 'When', render: (row) => dateTime(row.timestamp) }, { key: 'action', label: 'Action' }, { key: 'entity_type', label: 'Entity' }, { key: 'entity_id', label: 'ID' }, { key: 'actor_name', label: 'Actor' }, { key: 'outcome', label: 'Outcome', render: (row) => <StatusPill value={row.outcome} /> }]} /></SectionCard>;
 }
 
 function FiscalWorkspace({ data }) {
-    return <><div className="business-admin-alert info"><Database size={17} /><div><strong>Immutable fiscal read model.</strong><div>Z-readings and eSales evidence are shown from POS records. BIR accreditation, CAS/POS registration, and legal filing remain external owner gates.</div></div></div><div className="business-admin-grid"><SectionCard title="X readings" subtitle="Current, non-persisted read summaries"><DataTable rows={data?.current_x_readings || []} columns={[{ key: 'business_date', label: 'Business date' }, { key: 'location_name', label: 'Branch' }, { key: 'terminal_id', label: 'Register' }, { key: 'reading_identifier', label: 'Reading' }, { key: 'source', label: 'Source' }]} emptyMessage="No X-reading summary is available." /></SectionCard><SectionCard title="Z readings & eSales" subtitle="Persisted evidence snapshots"><DataTable rows={[...(data?.z_readings || []), ...(data?.esales_reports || [])]} columns={dynamicColumns([...(data?.z_readings || []), ...(data?.esales_reports || [])], ['business_date', 'report_month', 'status', 'reading_identifier', 'evidence_ref'])} emptyMessage="No fiscal evidence is recorded for this period." /></SectionCard></div></>;
+    const fiscalEvidenceRows = [...(data?.z_readings || []), ...(data?.esales_reports || [])];
+    const fiscalEvidenceColumns = [
+        { key: 'record_type', label: 'Record', render: (row) => row.reading_identifier ? 'Z reading' : 'eSales' },
+        { key: 'business_date', label: 'Business date', render: (row) => row.business_date || '—' },
+        { key: 'report_month', label: 'Report month', render: (row) => row.report_month || '—' },
+        { key: 'location_name', label: 'Branch', render: (row) => row.location_name || '—' },
+        { key: 'reading_identifier', label: 'Reading', render: (row) => row.reading_identifier || '—' },
+        { key: 'generated_at', label: 'Generated', render: (row) => dateTime(row.generated_at) },
+        { key: 'z_total_amount', label: 'Z total', render: (row) => row.summary?.total_amount == null ? '—' : money(row.summary.total_amount) },
+        { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status || (row.immutable ? 'persisted' : '—')} /> },
+        { key: 'evidence_ref', label: 'Evidence', render: (row) => row.evidence_ref || '—' },
+        { key: 'source', label: 'Source', render: (row) => row.source || '—' }
+    ];
+
+    return <>
+        <div className="business-admin-alert info"><Database size={17} /><div><strong>Immutable fiscal read model.</strong><div>Z-readings and eSales evidence are shown from POS records. BIR accreditation, CAS/POS registration, and legal filing remain external owner gates.</div></div></div>
+        <div className="business-admin-grid">
+            <SectionCard title="X readings" subtitle="Current, non-persisted read summaries">
+                <DataTable rows={data?.current_x_readings || []} columns={[{ key: 'business_date', label: 'Business date' }, { key: 'location_name', label: 'Branch' }, { key: 'terminal_id', label: 'Register' }, { key: 'reading_identifier', label: 'Reading' }, { key: 'source', label: 'Source' }]} emptyMessage="No X-reading summary is available." />
+            </SectionCard>
+            <SectionCard title="Z readings & eSales" subtitle="Persisted evidence snapshots with generated time and Z total">
+                <DataTable rows={fiscalEvidenceRows} columns={fiscalEvidenceColumns} emptyMessage="No fiscal evidence is recorded for this period." />
+            </SectionCard>
+        </div>
+    </>;
 }
 
 function RecipesWorkspace({ data }) {
@@ -1629,53 +1816,6 @@ const BUSINESS_ADMIN_EDITOR_TABS = Object.freeze({
     registers: ['pos_setup']
 });
 
-function BusinessAdminMemberInviteModal({ bootstrap, branchId = '', open, onOpenChange, onSuccess }) {
-    const [roleCatalog, setRoleCatalog] = useState(null);
-    const branchLocations = (
-        (Array.isArray(bootstrap?.business?.branches) ? bootstrap.business.branches : []).map((branch) => ({
-            location_id: Number(branch?.branch_id),
-            name: branch?.name || `Branch ${branch?.branch_id}`
-        }))
-    );
-    const invitationLocations = (() => {
-        const normalizedBranchId = Number(branchId);
-        if (Number.isInteger(normalizedBranchId) && normalizedBranchId > 0) {
-            const scopedLocations = branchLocations.filter((branch) => Number(branch.location_id) === normalizedBranchId);
-            if (scopedLocations.length) return scopedLocations;
-        }
-        return branchLocations;
-    })();
-
-    useEffect(() => {
-        if (!open) return undefined;
-        let active = true;
-        getRoleCatalog()
-            .then((catalog) => {
-                if (active) setRoleCatalog(catalog || null);
-            })
-            .catch(() => {
-                // UserInvitationModal has a safe legacy-role fallback when the catalog is unavailable.
-                if (active) setRoleCatalog(null);
-            });
-
-        return () => {
-            active = false;
-        };
-    }, [open]);
-
-    return (
-        <UserInvitationModal
-            open={open}
-            onOpenChange={onOpenChange}
-            roleCatalog={roleCatalog}
-            locationOptions={invitationLocations}
-            title="Add team member"
-            submitLabel="Send invitation"
-            onSuccess={() => onSuccess?.({ action: 'member_invited', branchId: branchId || '' })}
-        />
-    );
-}
-
 function BusinessAdminSettingsEditor({
     bootstrap,
     definition,
@@ -1684,15 +1824,23 @@ function BusinessAdminSettingsEditor({
     onDirtyChange,
     onReload,
     onSettingsSaved,
+    onOpenActivity = () => {},
     settingsRefreshKey = 0
 }) {
     const [userManagementOpen, setUserManagementOpen] = useState(false);
-    const [memberInviteOpen, setMemberInviteOpen] = useState(false);
     const rawCapabilities = bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections;
     const branchLocations = (Array.isArray(bootstrap?.business?.branches) ? bootstrap.business.branches : []).map((branch) => ({
         location_id: Number(branch?.branch_id),
         name: branch?.name || `Branch ${branch?.branch_id}`
     }));
+    const invitationLocations = (() => {
+        const normalizedBranchId = Number(settingsBranchId);
+        if (Number.isInteger(normalizedBranchId) && normalizedBranchId > 0) {
+            const scopedLocations = branchLocations.filter((branch) => Number(branch.location_id) === normalizedBranchId);
+            if (scopedLocations.length) return scopedLocations;
+        }
+        return branchLocations;
+    })();
     const editorUser = useMemo(() => buildBusinessAdminSettingsEditorUser({
         baseUser: bootstrap?.user || {},
         sectionKey: definition?.key,
@@ -1704,8 +1852,7 @@ function BusinessAdminSettingsEditor({
     const canEditUsers = isMasterAdmin || sectionCapability?.user_edit === true;
     const hasEmployeeEditor = sectionCapability?.employee_edit === true
         || sectionCapability?.employee_credit_edit === true;
-    const hasTeamAccessEditor = canEditUsers;
-    const teamEditorTabs = hasTeamAccessEditor ? ['pos_setup', 'employees'] : ['employees'];
+    const canViewActivity = bootstrap?.access?.capabilities?.view_audit === true;
     const handleReload = useCallback(async () => {
         await onReload?.();
     }, [onReload]);
@@ -1734,29 +1881,35 @@ function BusinessAdminSettingsEditor({
                         </div>
                         {canViewUsers ? (
                             <div className="business-admin-team-actions">
-                                {canEditUsers ? (
-                                    <button
-                                        type="button"
-                                        className="business-admin-button primary"
-                                        onClick={() => setMemberInviteOpen(true)}
-                                    >
-                                        <UserPlus size={14} /> Add member
-                                    </button>
-                                ) : null}
                                 <button
                                     type="button"
-                                    className="business-admin-button"
+                                    className="business-admin-button primary"
                                     onClick={() => setUserManagementOpen(true)}
                                 >
                                     <Users size={14} /> Manage users &amp; roles
                                 </button>
+                                {canViewActivity ? (
+                                    <button
+                                        type="button"
+                                        className="business-admin-button"
+                                        onClick={onOpenActivity}
+                                    >
+                                        <ExternalLink size={14} /> View activity
+                                    </button>
+                                ) : null}
                             </div>
                         ) : (
                             <span className="business-admin-muted shrink-0">User access is not assigned.</span>
                         )}
                     </div>
+                    {canViewUsers ? (
+                        <p className="mt-3 text-[11px] leading-5 text-slate-600">
+                            Employees, invitations, account status, roles, permissions and branch grants use this canonical Team &amp; Access workflow.
+                            {canViewActivity ? ' Account and access changes are recorded in Audit logs.' : ''}
+                        </p>
+                    ) : null}
                 </div>
-                {hasEmployeeEditor || hasTeamAccessEditor ? (
+                {hasEmployeeEditor ? (
                     <SettingsWorkspace
                         terminalUser={editorUser}
                         terminalMeta={{ pettyCashAmount: 0, pettyCashSymbol: 'PHP', locationBindingReadiness: null }}
@@ -1765,8 +1918,8 @@ function BusinessAdminSettingsEditor({
                         incomingOrdersState={{ loading: false, orders: [] }}
                         locked={false}
                         sectionId="business-admin-settings-team-employees"
-                        initialTab={hasTeamAccessEditor ? 'pos_setup' : 'employees'}
-                        allowedTabIds={teamEditorTabs}
+                        initialTab="employees"
+                        allowedTabIds={['employees']}
                         readOnly={sectionCapability?.edit !== true}
                         showTerminalOnlyControls={false}
                         settingsSurface="business-admin"
@@ -1786,18 +1939,9 @@ function BusinessAdminSettingsEditor({
                         onOpenChange={setUserManagementOpen}
                         readOnly={!canEditUsers}
                         onSettingsSaved={notifySettingsSaved}
-                    />
-                ) : null}
-                {canEditUsers ? (
-                    <BusinessAdminMemberInviteModal
-                        bootstrap={bootstrap}
-                        branchId={settingsBranchId}
-                        open={memberInviteOpen}
-                        onOpenChange={setMemberInviteOpen}
-                        onSuccess={async (details) => {
-                            notifySettingsSaved(details);
-                            await handleReload();
-                        }}
+                        locationOptions={invitationLocations}
+                        invitationTitle="Add team member"
+                        invitationSubmitLabel="Send invitation"
                     />
                 ) : null}
             </div>
@@ -1844,6 +1988,7 @@ function BusinessAdminSettingsWorkspace({
     onDirtyChange = () => {},
     onReload = async () => {},
     onSettingsSaved = () => {},
+    onOpenActivity = () => {},
     settingsRefreshKey = 0
 }) {
     const access = bootstrap?.access || {};
@@ -2032,6 +2177,7 @@ function BusinessAdminSettingsWorkspace({
                                         onDirtyChange={onDirtyChange}
                                         onReload={onReload}
                                         onSettingsSaved={onSettingsSaved}
+                                        onOpenActivity={onOpenActivity}
                                         settingsRefreshKey={settingsRefreshKey}
                                     />
                                 </div>
@@ -2310,9 +2456,10 @@ export default function BusinessAdminPage() {
     const rootPath = location.pathname.startsWith('/backoffice') ? '/backoffice' : '/business-admin';
     const pathInfo = useMemo(() => parseBusinessAdminPath(location.pathname, rootPath), [location.pathname, rootPath]);
     const pathSegment = pathInfo.activeSection;
-    const knownSections = useMemo(() => new Set(Object.keys(SECTION_META)), []);
+    const knownSections = useMemo(() => new Set(Object.keys(BACKOFFICE_SECTION_META)), []);
     const activeSection = knownSections.has(pathSegment) ? pathSegment : 'overview';
     const settingsSection = activeSection === 'settings' ? pathInfo.settingsSection : '';
+    const locationView = activeSection === 'locations' ? pathInfo.locationView : '';
     const [bootstrap, setBootstrap] = useState(null);
     const [bootstrapLoading, setBootstrapLoading] = useState(true);
     const [bootstrapError, setBootstrapError] = useState('');
@@ -2330,14 +2477,16 @@ export default function BusinessAdminPage() {
     const [dateTo, setDateTo] = useState(initialDateRange.dateTo);
     const [branchId, setBranchId] = useState('');
     const [search, setSearch] = useState('');
+    const [receiptType, setReceiptType] = useState('');
     const [ordersPage, setOrdersPage] = useState(1);
     const [expensesPage, setExpensesPage] = useState(1);
-    const [shiftsPage, setShiftsPage] = useState(1);
-    const [selectedReport, setSelectedReport] = useState('sales_by_branch');
+    const [cashSummaryPage, setCashSummaryPage] = useState(1);
+    const [inventoryPage, setInventoryPage] = useState(1);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [actionLoading, setActionLoading] = useState(null);
     const [actionError, setActionError] = useState('');
+    const [cashSummaryExporting, setCashSummaryExporting] = useState(false);
     const [reloadNonce, setReloadNonce] = useState(0);
     const [mobileNavOpen, setMobileNavOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(readBusinessAdminSidebarCollapsed);
@@ -2441,8 +2590,9 @@ export default function BusinessAdminPage() {
     useEffect(() => {
         if (activeSection === 'orders') setOrdersPage(1);
         if (activeSection === 'expenses') setExpensesPage(1);
-        if (activeSection === 'shifts') setShiftsPage(1);
-    }, [activeSection, activeDateRange.dateFrom, activeDateRange.dateTo, branchId, search]);
+        if (activeSection === 'shifts') setCashSummaryPage(1);
+        if (activeSection === 'inventory') setInventoryPage(1);
+    }, [activeSection, activeDateRange.dateFrom, activeDateRange.dateTo, branchId, receiptType, search]);
 
     const settingsCapabilities = useMemo(() => normalizeBusinessAdminSettingsCapabilities(
         bootstrap?.access?.settings_sections || bootstrap?.access?.capabilities?.settings_sections
@@ -2466,6 +2616,25 @@ export default function BusinessAdminPage() {
         navigate(target, options);
         return true;
     }, [navigate, settingsDirty]);
+
+    const handleOrderDetailClose = useCallback(() => {
+        setSelectedOrder(null);
+        const searchParams = new URLSearchParams(location.search);
+        if (!searchParams.has('transaction_id')) return;
+        searchParams.delete('transaction_id');
+        const nextSearch = searchParams.toString();
+        navigate({
+            pathname: location.pathname,
+            search: nextSearch ? `?${nextSearch}` : ''
+        }, { replace: true });
+    }, [location.pathname, location.search, navigate]);
+
+    const handleOverviewOrderClick = useCallback((order) => {
+        const id = extractId(order, ['transaction_id', 'pos_transaction_id']);
+        if (!id) return;
+        const ordersPath = buildBackOfficeModulePath(rootPath, 'orders');
+        navigateBusinessAdmin(`${ordersPath}?transaction_id=${encodeURIComponent(id)}`);
+    }, [navigateBusinessAdmin, rootPath]);
 
     const handleSettingsBranchChange = useCallback((nextBranchId) => {
         const normalizedBranchId = String(nextBranchId || '').trim();
@@ -2589,18 +2758,6 @@ export default function BusinessAdminPage() {
         });
     }, [bootstrap?.business?.tenant_id, bootstrap?.user?.company?.id]);
 
-    const handleBranchEditorSaved = useCallback((details = {}) => {
-        handleSettingsSaved({ section: 'branches', ...details });
-        setReloadNonce((value) => value + 1);
-        void loadBootstrap();
-    }, [handleSettingsSaved, loadBootstrap]);
-
-    const handleWorkforceMemberSaved = useCallback((details = {}) => {
-        handleSettingsSaved({ section: 'team', ...details });
-        setReloadNonce((value) => value + 1);
-        void loadBootstrap();
-    }, [handleSettingsSaved, loadBootstrap]);
-
     const handleDateRangePresetChange = useCallback((event) => {
         const nextPreset = event.target.value;
         setDateRangePreset(nextPreset);
@@ -2622,12 +2779,20 @@ export default function BusinessAdminPage() {
 
     useEffect(() => { loadBootstrap(); }, [loadBootstrap]);
 
+    const requestedItemId = useMemo(() => {
+        if (activeSection !== 'orders') return '';
+        const value = String(new URLSearchParams(location.search).get('item_id') || '').trim();
+        return /^\d+$/.test(value) && Number(value) > 0 ? value : '';
+    }, [activeSection, location.search]);
+
     const params = useMemo(() => buildQuery({
         dateFrom: activeDateRange.dateFrom,
         dateTo: activeDateRange.dateTo,
         branchId: activeSection === 'audit' ? '' : branchId,
-        search
-    }), [activeDateRange.dateFrom, activeDateRange.dateTo, activeSection, branchId, search]);
+        search,
+        itemId: requestedItemId,
+        receiptType: activeSection === 'orders' ? receiptType : ''
+    }), [activeDateRange.dateFrom, activeDateRange.dateTo, activeSection, branchId, receiptType, requestedItemId, search]);
 
     const loadSection = useCallback(async () => {
         if (!bootstrap) return;
@@ -2653,34 +2818,35 @@ export default function BusinessAdminPage() {
         setActionError('');
         try {
             let payload;
-            if (activeSection === 'branches') {
-                payload = { overview: await businessAdminApi.overview(params) };
-            } else if (['overview', 'registers'].includes(activeSection)) payload = { overview: await businessAdminApi.overview(params) };
+            if (['overview', 'locations'].includes(activeSection)) payload = { overview: await businessAdminApi.overview(params) };
             else if (activeSection === 'orders') payload = await businessAdminApi.orders({ ...params, page: ordersPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE });
             else if (activeSection === 'expenses') payload = await businessAdminApi.expenses({ ...params, page: expensesPage, limit: BUSINESS_ADMIN_ORDERS_PAGE_SIZE });
             else if (activeSection === 'customers') payload = await businessAdminApi.customers({ ...params, page: 1, limit: 50 });
             else if (activeSection === 'team') payload = await businessAdminApi.workforce(params);
             else if (activeSection === 'attendance') payload = await businessAdminApi.attendance({ ...params, page: 1, limit: 100 });
-            else if (activeSection === 'shifts') payload = await businessAdminApi.shifts({ ...params, page: shiftsPage, limit: BUSINESS_ADMIN_SHIFTS_PAGE_SIZE });
+            else if (activeSection === 'shifts') {
+                const [shiftHistory, cashSummary] = await Promise.all([
+                    businessAdminApi.shifts({ ...params, page: 1, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE }),
+                    businessAdminApi.shifts({ ...params, status: 'closed', page: cashSummaryPage, limit: BUSINESS_ADMIN_CASH_SUMMARY_PAGE_SIZE })
+                ]);
+                payload = {
+                    summary: shiftHistory?.summary || {},
+                    cashSummary: cashSummary?.shifts || [],
+                    cashSummaryPagination: cashSummary?.pagination || {}
+                };
+            }
             else if (activeSection === 'inventory') {
                 const [valuation, lowStock] = await Promise.all([
                     businessAdminApi.inventoryValuation(branchId ? { branch_id: branchId } : {}),
-                    businessAdminApi.reportDataset('low_stock', { ...params, page: 1, limit: 50 })
+                    businessAdminApi.reportDataset('low_stock', { ...params, page: inventoryPage, limit: BUSINESS_ADMIN_INVENTORY_PAGE_SIZE })
                 ]);
                 payload = { valuation, lowStock };
             } else if (activeSection === 'recipes') payload = await businessAdminApi.recipes({ ...params, page: 1, limit: 50 });
-            else if (activeSection === 'reports') {
-                const definitionResult = await businessAdminApi.reportDefinitions();
-                const definitions = definitionResult.reports || [];
-                const key = definitions.some((definition) => definition.key === selectedReport) ? selectedReport : (definitions[0]?.key || 'sales_by_branch');
-                if (key !== selectedReport) setSelectedReport(key);
-                payload = { definitions, dataset: await businessAdminApi.reportDataset(key, { ...params, page: 1, limit: 50 }) };
-            } else if (activeSection === 'fiscal') payload = await businessAdminApi.fiscal(params);
+            else if (activeSection === 'fiscal') payload = await businessAdminApi.fiscal(params);
             else if (activeSection === 'notifications') payload = await businessAdminApi.notifications({ ...(branchId ? { branch_id: branchId } : {}), status: 'open', limit: 100 });
             else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 });
             else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
             else if (activeSection === 'payments') payload = await businessAdminApi.payments(params);
-            else if (activeSection === 'activity') payload = await businessAdminApi.activity({ limit: 100 });
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
                 setSectionData(payload);
@@ -2695,7 +2861,7 @@ export default function BusinessAdminPage() {
         } finally {
             if (requestRef.current === requestId) setSectionLoading(false);
         }
-    }, [activeSection, bootstrap, expensesPage, ordersPage, params, selectedReport, shiftsPage, branchId]);
+    }, [activeSection, bootstrap, cashSummaryPage, expensesPage, inventoryPage, ordersPage, params, branchId]);
 
     useEffect(() => {
         setSelectedOrder(null);
@@ -2715,6 +2881,60 @@ export default function BusinessAdminPage() {
         setActionError('');
         try { setSelectedCustomer(await businessAdminApi.customerDetail(customer.profile_ref, params)); } catch (error) { setActionError(getBusinessAdminErrorMessage(error)); }
     }, [params]);
+
+    const handleCashSummaryExport = useCallback(async () => {
+        if (cashSummaryExporting) return;
+        setCashSummaryExporting(true);
+        setActionError('');
+        try {
+            const rows = [];
+            let page = 1;
+            let totalPages = 1;
+            do {
+                const result = await businessAdminApi.shifts({
+                    ...params,
+                    status: 'closed',
+                    page,
+                    limit: BUSINESS_ADMIN_CASH_SUMMARY_EXPORT_PAGE_SIZE
+                });
+                if (Array.isArray(result?.shifts)) rows.push(...result.shifts);
+                const reportedTotalPages = Number(result?.pagination?.total_pages);
+                totalPages = Math.max(reportedTotalPages || Math.ceil((Number(result?.pagination?.total) || rows.length) / BUSINESS_ADMIN_CASH_SUMMARY_EXPORT_PAGE_SIZE), 1);
+                page += 1;
+            } while (page <= totalPages);
+
+            const dateFromPart = String(params.date_from || 'all').replace(/[^a-z0-9-]/gi, '-');
+            const dateToPart = String(params.date_to || 'dates').replace(/[^a-z0-9-]/gi, '-');
+            downloadCsv(`shift-history-${dateFromPart}-${dateToPart}.csv`, buildCashSummaryCsv(rows));
+        } catch (error) {
+            setActionError(getBusinessAdminErrorMessage(error));
+        } finally {
+            setCashSummaryExporting(false);
+        }
+    }, [cashSummaryExporting, params]);
+
+    const requestedOrderId = useMemo(() => {
+        if (activeSection !== 'orders') return '';
+        const value = String(new URLSearchParams(location.search).get('transaction_id') || '').trim();
+        return /^\d+$/.test(value) && Number(value) > 0 ? value : '';
+    }, [activeSection, location.search]);
+
+    useEffect(() => {
+        if (activeSection !== 'orders' || !requestedOrderId) return undefined;
+        if (Number(selectedOrder?.transaction_id) === Number(requestedOrderId)) return undefined;
+        let cancelled = false;
+        setActionError('');
+        businessAdminApi.orderDetail(requestedOrderId)
+            .then((order) => {
+                if (!cancelled) setSelectedOrder(order);
+            })
+            .catch((error) => {
+                if (!cancelled) setActionError(getBusinessAdminErrorMessage(error));
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSection, requestedOrderId, selectedOrder?.transaction_id]);
 
     const handleNotificationAction = useCallback(async (action, id) => {
         if (!id) return;
@@ -2767,26 +2987,23 @@ export default function BusinessAdminPage() {
         }
     }, []);
 
-    const handleReportExport = useCallback(async (format) => {
-        if (!selectedReport) return;
-        setActionLoading(`export-${format}`);
+    const handleCustomerCreate = useCallback(async (payload) => {
+        setActionLoading('customer-create');
         setActionError('');
         try {
-            const response = await businessAdminApi.exportReport(selectedReport, { ...params, format });
-            const blob = response.data instanceof Blob ? response.data : new Blob([response.data], { type: format === 'xls' ? 'application/vnd.ms-excel' : 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = url;
-            anchor.download = `business-admin-${selectedReport}.${format === 'xls' ? 'xls' : 'csv'}`;
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            URL.revokeObjectURL(url);
-        } catch (error) { setActionError(getBusinessAdminErrorMessage(error)); } finally { setActionLoading(null); }
-    }, [params, selectedReport]);
+            const result = await businessAdminApi.createCustomer(payload);
+            setReloadNonce((value) => value + 1);
+            return result;
+        } catch (error) {
+            setActionError(getBusinessAdminErrorMessage(error));
+            throw error;
+        } finally {
+            setActionLoading(null);
+        }
+    }, []);
 
     const showDateFilters = [
-        'overview', 'branches', 'registers', 'orders', 'customers', 'team',
+        'overview', 'locations', 'orders', 'customers', 'team',
         'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit'
     ].includes(activeSection);
     const showHistoricalRangePreset = isHistoricalBusinessAdminSection(activeSection);
@@ -2799,7 +3016,7 @@ export default function BusinessAdminPage() {
 
     const meta = activeSection === 'settings' && settingsDefinition
         ? { title: settingsDefinition.label, description: settingsDefinition.description }
-        : (SECTION_META[activeSection] || SECTION_META.overview);
+        : (BACKOFFICE_SECTION_META[activeSection] || BACKOFFICE_SECTION_META.overview);
     const overviewData = sectionData?.overview || (activeSection === 'overview' ? sectionData : null);
     const workflowPageName = getBusinessAdminWorkflowPageName(activeSection);
     const workflowVisibilityReady = workflowModeResolved && !workflowModeLoading;
@@ -2813,6 +3030,8 @@ export default function BusinessAdminPage() {
         && Array.isArray(sectionData?.notifications);
     const workspaceTransitionKey = activeSection === 'settings'
         ? `${activeSection}:${settingsSection || 'profile'}`
+        : activeSection === 'locations'
+            ? `${activeSection}:${locationView || 'branches'}`
         : activeSection;
     const workspaceBusy = Boolean(
         (workflowPageName && workflowModeLoading)
@@ -2820,8 +3039,11 @@ export default function BusinessAdminPage() {
         || loadedSection !== activeSection
     );
     const renderWorkspace = () => {
-        const canKeepPaginatedWorkspace = ['orders', 'expenses', 'shifts'].includes(activeSection)
+        const canKeepPaginatedWorkspace = ['orders', 'expenses', 'shifts', 'inventory'].includes(activeSection)
             && Boolean(sectionData)
+            && loadedSection === activeSection;
+        const canKeepLocationsWorkspace = activeSection === 'locations'
+            && Boolean(sectionData?.overview)
             && loadedSection === activeSection;
         if (workflowPageName && workflowModeLoading) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;
         if (workflowPageName && !workflowModeResolved) {
@@ -2844,12 +3066,30 @@ export default function BusinessAdminPage() {
         if (loadedSection !== activeSection) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;
         if (canKeepPaginatedWorkspace) {
             if (activeSection === 'orders') {
-                return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={() => setSelectedOrder(null)} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} refreshing={sectionLoading} refreshError={sectionError} />;
+                return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={handleOrderDetailClose} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} refreshing={sectionLoading} refreshError={sectionError} />;
             }
             if (activeSection === 'expenses') {
                 return <ExpensesWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} accessScope={bootstrap.access?.scope} onCreate={handleExpenseCreate} onVoid={handleExpenseVoid} actionLoading={actionLoading} onPageChange={setExpensesPage} refreshing={sectionLoading} refreshError={sectionError} />;
             }
-            return <ShiftsWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} onPageChange={setShiftsPage} refreshing={sectionLoading} refreshError={sectionError} />;
+            if (activeSection === 'inventory') {
+                return <InventoryWorkspace data={sectionData} onPageChange={setInventoryPage} refreshing={sectionLoading} rootPath={rootPath} settingsDirty={settingsDirty} onLeaveSettings={() => setSettingsDirty(false)} />;
+            }
+            return <ShiftsWorkspace data={sectionData} onCashSummaryPageChange={setCashSummaryPage} onExportCashSummary={handleCashSummaryExport} exportingCashSummary={cashSummaryExporting} refreshing={sectionLoading} />;
+        }
+        if (canKeepLocationsWorkspace) {
+            return (
+                <LocationsWorkspace
+                    data={sectionData.overview}
+                    activeView={locationView}
+                    onViewChange={(nextView) => navigateBusinessAdmin(buildBackOfficeLocationsPath(rootPath, nextView))}
+                    onManageBranches={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'branches'))}
+                    onManageRegisters={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'registers'))}
+                    canViewBranchSettings={bootstrap.user?.is_master_admin === true || settingsCapabilities.branches?.view === true}
+                    canViewRegisterSettings={bootstrap.user?.is_master_admin === true || settingsCapabilities.registers?.view === true}
+                    refreshing={sectionLoading}
+                    refreshError={sectionError}
+                />
+            );
         }
         if (sectionLoading) return <WorkspaceLoading label={`Refreshing ${meta.title}…`} />;
         if (sectionError) return <div className="business-admin-alert error" data-testid={sectionAccessDenied ? 'business-admin-section-access-denied' : 'business-admin-section-error'}><AlertTriangle size={17} /><div><strong>{sectionAccessDenied ? 'Back Office access denied.' : 'Back Office data unavailable.'}</strong><div>{sectionError}</div></div></div>;
@@ -2867,24 +3107,37 @@ export default function BusinessAdminPage() {
                     settingsRefreshKey={reloadNonce}
                     onReload={loadBootstrap}
                     onSettingsSaved={handleSettingsSaved}
+                    onOpenActivity={() => navigateBusinessAdmin(buildBackOfficeModulePath(rootPath, 'audit'))}
                 />
             );
         }
         if (MIGRATED_BACKOFFICE_MODULE_KEYS.has(activeSection)) {
             return <MigratedBackOfficeModule section={activeSection} />;
         }
-        if (activeSection === 'overview') return <OverviewWorkspace data={overviewData} onOrderClick={handleOrderSelect} />;
-        if (activeSection === 'branches') return <BranchWorkspace data={sectionData?.overview} bootstrap={bootstrap} onSaved={handleBranchEditorSaved} />;
-        if (activeSection === 'registers') return <RegistersWorkspace data={sectionData?.overview} />;
-        if (activeSection === 'orders') return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={() => setSelectedOrder(null)} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} />;
+        if (activeSection === 'overview') return <OverviewWorkspace data={overviewData} onOrderClick={handleOverviewOrderClick} locationsPath={buildBackOfficeLocationsPath(rootPath, 'branches')} ordersPath={buildBackOfficeModulePath(rootPath, 'orders')} />;
+        if (activeSection === 'locations') {
+            return (
+                <LocationsWorkspace
+                    data={sectionData?.overview}
+                    activeView={locationView}
+                    onViewChange={(nextView) => navigateBusinessAdmin(buildBackOfficeLocationsPath(rootPath, nextView))}
+                    onManageBranches={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'branches'))}
+                    onManageRegisters={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'registers'))}
+                    canViewBranchSettings={bootstrap.user?.is_master_admin === true || settingsCapabilities.branches?.view === true}
+                    canViewRegisterSettings={bootstrap.user?.is_master_admin === true || settingsCapabilities.registers?.view === true}
+                    refreshing={sectionLoading}
+                    refreshError={sectionError}
+                />
+            );
+        }
+        if (activeSection === 'orders') return <OrdersWorkspace data={sectionData} selected={selectedOrder} onSelect={handleOrderSelect} onClose={handleOrderDetailClose} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} page={ordersPage} onPageChange={setOrdersPage} />;
         if (activeSection === 'expenses') return <ExpensesWorkspace data={sectionData} branches={branches} capabilities={bootstrap.access?.capabilities || {}} accessScope={bootstrap.access?.scope} onCreate={handleExpenseCreate} onVoid={handleExpenseVoid} actionLoading={actionLoading} onPageChange={setExpensesPage} />;
-        if (activeSection === 'customers') return <CustomersWorkspace data={sectionData} selected={selectedCustomer} onSelect={handleCustomerSelect} onClose={() => setSelectedCustomer(null)} />;
-        if (activeSection === 'team') return <WorkforceWorkspace data={sectionData} bootstrap={bootstrap} teamCapability={settingsCapabilities.team} onInviteSaved={handleWorkforceMemberSaved} />;
+        if (activeSection === 'customers') return <CustomersWorkspace data={sectionData} selected={selectedCustomer} onSelect={handleCustomerSelect} onClose={() => setSelectedCustomer(null)} onOrderSelect={handleOrderSelect} selectedOrder={selectedOrder} onOrderClose={handleOrderDetailClose} onCreate={handleCustomerCreate} creating={actionLoading === 'customer-create'} />;
+        if (activeSection === 'team') return <WorkforceWorkspace data={sectionData} bootstrap={bootstrap} teamCapability={settingsCapabilities.team} onManageTeam={() => navigateBusinessAdmin(buildBusinessAdminSettingsPath(rootPath, 'team'))} />;
         if (activeSection === 'attendance') return <AttendanceWorkspace data={sectionData} branches={branches} />;
-        if (activeSection === 'shifts') return <ShiftsWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} onPageChange={setShiftsPage} />;
-        if (activeSection === 'inventory') return <InventoryWorkspace data={sectionData} />;
+        if (activeSection === 'shifts') return <ShiftsWorkspace data={sectionData} onCashSummaryPageChange={setCashSummaryPage} onExportCashSummary={handleCashSummaryExport} exportingCashSummary={cashSummaryExporting} />;
+        if (activeSection === 'inventory') return <InventoryWorkspace data={sectionData} onPageChange={setInventoryPage} rootPath={rootPath} settingsDirty={settingsDirty} onLeaveSettings={() => setSettingsDirty(false)} />;
         if (activeSection === 'recipes') return <RecipesWorkspace data={sectionData} />;
-        if (activeSection === 'reports') return <ReportsWorkspace data={sectionData} selectedReport={selectedReport} onReportChange={setSelectedReport} onExport={handleReportExport} />;
         if (activeSection === 'fiscal') return <FiscalWorkspace data={sectionData} />;
         if (activeSection === 'notifications') return <NotificationsWorkspace data={sectionData} onAction={handleNotificationAction} actionLoading={actionLoading} />;
         if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} />;
@@ -2900,15 +3153,29 @@ export default function BusinessAdminPage() {
                 data-testid="business-admin-sidebar"
                 className={`business-admin-sidebar ${mobileNavOpen ? 'is-open' : ''} ${sidebarCollapsed ? 'is-collapsed' : ''}`.trim()}
             >
-                <div className="business-admin-brand">
-                    <img className="business-admin-brand-logo" src={DGFY_BUSINESS_ADMIN_LOGO} alt="DGFY" />
-                    <div>
-                        <div className="business-admin-brand-title">{bootstrap.business?.name || 'Your business'}</div>
-                        <div className="business-admin-brand-subtitle">Business back office</div>
+                <div className="business-admin-sidebar-header">
+                    <div className="business-admin-brand">
+                        <img className="business-admin-brand-logo" src={DGFY_BUSINESS_ADMIN_LOGO} alt="DGFY" />
+                        <div>
+                            <div className="business-admin-brand-title">{bootstrap.business?.name || 'Your business'}</div>
+                            <div className="business-admin-brand-subtitle">Business back office</div>
+                        </div>
                     </div>
+                    <button
+                        type="button"
+                        className="business-admin-sidebar-toggle"
+                        data-testid="business-admin-sidebar-toggle"
+                        aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                        aria-expanded={!sidebarCollapsed}
+                        aria-controls="business-admin-sidebar"
+                        title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
+                        onClick={handleSidebarToggle}
+                    >
+                        {sidebarCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
+                    </button>
                 </div>
                 {mobileNavOpen ? <button type="button" className="business-admin-mobile-sidebar-close" data-testid="business-admin-mobile-sidebar-close" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)}><X size={16} /> Close menu</button> : null}
-                {NAV_GROUPS.map((group) => {
+                {BACKOFFICE_NAV_GROUPS.map((group) => {
                     const items = group.items.filter((item) => {
                         if (item.key === 'settings' && visibleSettingsSections.length === 0) return false;
                         if (!getBusinessAdminWorkflowPageName(item.key)) return true;
@@ -2921,7 +3188,7 @@ export default function BusinessAdminPage() {
                         );
                     });
                     if (!items.length) return null;
-                    return <div className="business-admin-nav-group" key={group.label}><div className="business-admin-nav-label">{group.label}</div>{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : `${rootPath}/${item.key}`)}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
+                    return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : buildBackOfficeModulePath(rootPath, item.key))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
                 })}
                 <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink to="/terminal" isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
             </aside>
@@ -2947,28 +3214,16 @@ export default function BusinessAdminPage() {
                 </div>
                 <div className="business-admin-topbar">
                     <div className="business-admin-topbar-leading">
-                        <button
-                            type="button"
-                            className="business-admin-sidebar-toggle"
-                            data-testid="business-admin-sidebar-toggle"
-                            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-                            aria-expanded={!sidebarCollapsed}
-                            aria-controls="business-admin-sidebar"
-                            title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-                            onClick={handleSidebarToggle}
-                        >
-                            {sidebarCollapsed ? <ChevronRight size={17} /> : <ChevronLeft size={17} />}
-                        </button>
                         <div>
                             <div className="business-admin-eyebrow">{bootstrap.business?.name || 'Business'} · {humanize(bootstrap.access?.scope)} scope</div>
                             <h1 className="business-admin-heading">{meta.title}</h1>
-                            {activeSection !== 'settings' ? <p className="business-admin-description">{meta.description}</p> : null}
+                            {activeSection !== 'settings' && meta.description ? <p className="business-admin-description">{meta.description}</p> : null}
                         </div>
                     </div>
                     <div className="business-admin-top-actions"><span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink to="/terminal" isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
                 </div>
                 {showDateFilters ? (
-                    <div className={`business-admin-filter-card ${activeSection === 'branches' ? 'business-admin-branches-filter-card' : ''}`}>
+                    <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>
                         {showHistoricalRangePreset ? (
                             <div className="business-admin-field">
                                 <label htmlFor="ba-date-range"><CalendarDays size={12} className="inline mr-1" /> Date range</label>
@@ -2991,6 +3246,14 @@ export default function BusinessAdminPage() {
                                 <select id="ba-branch" value={branchId} onChange={(event) => setBranchId(event.target.value)}>
                                     <option value="">All visible branches</option>
                                     {branches.map((branch) => <option value={branch.branch_id} key={branch.branch_id}>{branch.name}</option>)}
+                                </select>
+                            </div>
+                        ) : null}
+                        {activeSection === 'orders' ? (
+                            <div className="business-admin-field">
+                                <label htmlFor="ba-receipt-type"><Receipt size={12} className="inline mr-1" /> Receipt type</label>
+                                <select id="ba-receipt-type" value={receiptType} onChange={(event) => setReceiptType(event.target.value)}>
+                                    {BUSINESS_ADMIN_RECEIPT_TYPE_OPTIONS.map((option) => <option value={option.value} key={option.value || 'all'}>{option.label}</option>)}
                                 </select>
                             </div>
                         ) : null}

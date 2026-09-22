@@ -1,79 +1,8 @@
+import { BACKOFFICE_SETTINGS_SECTION_MANIFEST } from './businessAdminManifest.js';
+
 const normalizeKey = (value) => String(value || '').trim().toLowerCase();
 
-export const BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS = Object.freeze([
-    {
-        key: 'profile',
-        label: 'Business & receipts',
-        description: 'Business identity, receipt details, and business-wide profile values.',
-        scope: 'tenant',
-        ownerViewMode: 'settings_profile',
-        ownerLabel: 'Open business settings'
-    },
-    {
-        key: 'pos',
-        label: 'POS configuration',
-        description: 'POS preferences, discount rules, and operational defaults.',
-        scope: 'tenant',
-        ownerViewMode: 'settings_pos',
-        ownerLabel: 'Open POS settings'
-    },
-    {
-        key: 'storefront',
-        label: 'Storefront settings',
-        description: 'Storefront identity, visibility, presentation, and public access policy.',
-        scope: 'tenant',
-        ownerViewMode: 'settings_storefront',
-        ownerLabel: 'Open Storefront settings'
-    },
-    {
-        key: 'delivery',
-        label: 'Delivery pricing',
-        description: 'Business-wide delivery fee policy used by Storefront checkout.',
-        scope: 'tenant',
-        ownerViewMode: 'settings_storefront',
-        ownerLabel: 'Open delivery settings'
-    },
-    {
-        key: 'branches',
-        label: 'Branches & locations',
-        description: 'Branch address, hours, fulfillment, and location-specific operating values.',
-        scope: 'branch',
-        ownerViewMode: 'settings_storefront',
-        ownerLabel: 'Open branch settings'
-    },
-    {
-        key: 'team',
-        label: 'Team & access',
-        description: 'User access, cashier administration, branch grants, and employee ownership.',
-        scope: 'branch',
-        ownerViewMode: 'settings_pos',
-        ownerLabel: 'Open team settings'
-    },
-    {
-        key: 'attendance',
-        label: 'Attendance settings',
-        description: 'Cashier attendance configuration scoped to the selected branch set.',
-        scope: 'branch',
-        ownerViewMode: 'settings_pos',
-        ownerLabel: 'Open attendance settings'
-    },
-    {
-        key: 'payments',
-        label: 'Payment policies',
-        description: 'Downpayment and partial-payment policy for this business.',
-        scope: 'tenant',
-        ownerViewMode: 'settings_pos',
-        ownerLabel: 'Open payment settings'
-    },
-    {
-        key: 'registers',
-        label: 'Registers & terminal policy',
-        description: 'Terminal registry and branch binding policy. Device enrollment remains POS-owned.',
-        scope: 'branch',
-        ownerViewMode: 'settings_pos',
-        ownerLabel: 'Open register settings'
-    }
-]);
+export const BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS = BACKOFFICE_SETTINGS_SECTION_MANIFEST;
 
 const definitionsByKey = new Map(
     BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => [definition.key, definition])
@@ -172,10 +101,18 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
             ? normalizedPath.slice(normalizedRoot.length + 1)
             : '';
     const segments = suffix.split('/').map((segment) => normalizeKey(segment)).filter(Boolean);
-    const activeSection = segments[0] || 'overview';
+    const requestedSection = segments[0] || 'overview';
+    const legacyLocationView = requestedSection === 'registers' ? 'registers' : requestedSection === 'branches' ? 'branches' : '';
+    const legacyActivity = requestedSection === 'activity';
+    const activeSection = legacyLocationView ? 'locations' : (legacyActivity ? 'audit' : requestedSection);
+    const locationView = activeSection === 'locations'
+        ? (legacyLocationView || (segments[1] === 'registers' ? 'registers' : 'branches'))
+        : '';
     return {
         activeSection,
         settingsSection: activeSection === 'settings' ? (segments[1] || 'profile') : '',
+        locationView,
+        legacyActivity,
         segments
     };
 };
