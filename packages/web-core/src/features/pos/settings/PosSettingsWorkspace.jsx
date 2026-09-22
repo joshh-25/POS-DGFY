@@ -36,6 +36,7 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
@@ -1654,7 +1655,7 @@ export default function PosSettingsWorkspace({
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open !== false,
       is_active: locationForm.is_active !== false,
