@@ -10,6 +10,10 @@ const frameSource = readSource('../shared/components/StorefrontCheckoutDrawerFra
 const footerSource = readSource('../shared/components/StorefrontMobileCheckoutFooter.jsx');
 const footerHookSource = readSource('../shared/hooks/useStorefrontMobileCheckoutFooter.js');
 const deliveryMapSource = readSource('../features/locations/components/DeliveryPinMap.jsx');
+const fnbCheckoutSource = readSource('../modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
+const retailCheckoutSource = readSource('../modes/retail/checkout/components/RetailOrderFulfillmentStep.jsx');
+const simpleCheckoutSource = readSource('../modes/simple/checkout/components/SimpleCheckoutFulfillmentStep.jsx');
+const servicesBookingSource = readSource('../modes/services/booking/components/ServiceBookingLocationSection.jsx');
 const retailPanelSource = readSource('../modes/retail/checkout/components/RetailOrderMobileSummaryPanel.jsx');
 const simplePanelSource = readSource('../modes/simple/checkout/components/SimpleCheckoutMobileSummaryPanel.jsx');
 const fnbPanelSource = readSource('../modes/fnb/checkout/components/FnbCheckoutMobileSummaryPanel.jsx');
@@ -43,5 +47,13 @@ describe('mobile checkout scroll layout contract', () => {
       expect(source).toContain('var(--storefront-mobile-checkout-footer-reserve, 196px)');
     });
     expect(deliveryMapSource).toContain("scrollMarginBottom: 'var(--storefront-mobile-checkout-footer-reserve, 196px)'");
+  });
+
+  it('lets expanded delivery-map modals consume wheel scroll instead of zooming the map', () => {
+    expect(deliveryMapSource).toContain('scrollZoom = true');
+    expect(deliveryMapSource).toMatch(/attributionControl: showAttributionControl,\s*scrollZoom\s*}/);
+    [fnbCheckoutSource, retailCheckoutSource, simpleCheckoutSource, servicesBookingSource].forEach((source) => {
+      expect(source).toContain('scrollZoom={false}');
+    });
   });
 });

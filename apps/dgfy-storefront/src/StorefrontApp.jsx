@@ -2270,6 +2270,7 @@ export default function StorefrontApp() {
   const {
     buildPayload: checkoutPayload,
     handlePromoCardApply,
+    handlePromoCardRemove,
     handleVoucherCardApply,
     handleVoucherCardRemove,
     requestQuote,
@@ -2616,6 +2617,7 @@ export default function StorefrontApp() {
     checkoutPromoCode,
     checkoutVoucherCode,
     handlePromoCardApply,
+    handlePromoCardRemove,
     handleVoucherCardApply,
     handleVoucherCardRemove,
     promoSectionModel,

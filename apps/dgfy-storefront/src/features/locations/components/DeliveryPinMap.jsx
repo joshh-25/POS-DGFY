@@ -27,6 +27,7 @@ export function DeliveryPinMap({
   highlightColor = '#f97316',
   highlightGlow = 'rgba(249,115,22,0.14)',
   showAttributionControl = true,
+  scrollZoom = true,
   pinInstruction = '',
   overlayControls = null
 }) {
@@ -92,7 +93,8 @@ export function DeliveryPinMap({
         transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: 13,
-        attributionControl: showAttributionControl
+        attributionControl: showAttributionControl,
+        scrollZoom
       });
     } catch (error) {
       console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
@@ -134,7 +136,7 @@ export function DeliveryPinMap({
       mapRef.current = null;
       setCanvasContainerEl(null);
     };
-  }, [scheduleMapResize, showAttributionControl]);
+  }, [scheduleMapResize, showAttributionControl, scrollZoom]);
 
   useEffect(() => {
     const map = mapRef.current;

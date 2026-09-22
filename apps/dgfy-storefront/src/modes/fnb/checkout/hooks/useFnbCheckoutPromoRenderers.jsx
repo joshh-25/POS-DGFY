@@ -8,6 +8,7 @@ export function useFnbCheckoutPromoRenderers({
   checkoutPromoCode,
   checkoutVoucherCode,
   handlePromoCardApply,
+  handlePromoCardRemove,
   handleVoucherCardApply,
   handleVoucherCardRemove,
   promoSectionModel,
@@ -28,14 +29,10 @@ export function useFnbCheckoutPromoRenderers({
   // Pat's call to defer the legacy promo engine's actual removal until the voucher-based system is
   // prod-proven -- but its "Available Promos" listing has been ported into VoucherCodePanel
   // (availableOffers, fed from promoSectionModel below) so nothing customer-visible is lost. Every
-  // "Use" click on a listed offer now applies through handleVoucherCardApply -- see
-  // VoucherCodePanel.jsx's own file header for why that's safe: every real promo this codebase had
-  // was already converted into a voucher by the #695 migration, and the merchant-facing "Add Promo"
-  // authoring field is frozen in the same change. promoStatusMessage/promoStatusTone/
-  // appliedPromoDiscountText/handlePromoCardApply/checkoutPromoCode/setCheckoutPromoCode are left
-  // fully wired in this hook's signature even though nothing renders them anymore -- unwinding them
-  // would ripple into the same ~11 call sites the original comment above was written to avoid
-  // touching, for a change that's supposed to be UI-only.
+  // Each listed offer now carries its redemption type. VoucherCodePanel dispatches promo offers to
+  // handlePromoCardApply and voucher offers to handleVoucherCardApply, while manual entry remains
+  // voucher-first. Keep the legacy promo props wired because the shared renderer is used by the
+  // existing checkout call sites and still owns the promo state transition.
   const renderPromoCodePanel = useCallback(({
     compact = false,
     variant = 'default',
@@ -45,9 +42,11 @@ export function useFnbCheckoutPromoRenderers({
   } = {}) => (
     <div style={{ display: 'grid', gap: 8 }}>
       <VoucherCodePanel
-        code={checkoutVoucherCode}
+        code={checkoutPromoCode || checkoutVoucherCode}
+        activeCodeType={checkoutPromoCode ? 'promo' : 'voucher'}
         onChange={setCheckoutVoucherCode}
-        onClear={handleVoucherCardRemove}
+        onClear={checkoutPromoCode ? handlePromoCardRemove : handleVoucherCardRemove}
+        onApplyPromo={handlePromoCardApply}
         onApplyVoucher={handleVoucherCardApply}
         statusMessage={voucherStatusMessage}
         statusTone={voucherStatusTone}
@@ -65,6 +64,7 @@ export function useFnbCheckoutPromoRenderers({
     checkoutPromoCode,
     checkoutVoucherCode,
     handlePromoCardApply,
+    handlePromoCardRemove,
     handleVoucherCardApply,
     handleVoucherCardRemove,
     promoSectionModel,
