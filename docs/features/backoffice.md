@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-15
-last_reviewed: 2026-09-15
+last_reviewed: 2026-09-22
 review_by: 2027-03-14
 applies_to: apps/dgfy-pos, apps/dgfy-api
 topic: business_admin_backoffice_parity
@@ -55,15 +55,15 @@ repositories -> models` boundary from
 
 | Slice | UTAK benchmark area | Present implementation | Status and remaining gate |
 | --- | --- | --- | --- |
-| BO-01 | Dashboard and real-time business overview | `GET /api/v1/business-admin/bootstrap` and `/overview`; POS Overview workspace with sales, branches, registers, shifts, alerts, and recent orders. | `implemented`; real-time means the latest server read model, with alert reconciliation scheduled by the API. |
-| BO-02 | Transactions and transaction details | `/orders` and `/orders/:id`; searchable order center, receipt-safe lines, payment state, refunds, and status timeline. The existing POS terminal also owns park/resume-sale flow, linked from the workspace rather than duplicated here. | `implemented`; mutations stay in POS. |
+| BO-01 | Dashboard and real-time business overview | `GET /api/v1/business-admin/bootstrap` and `/overview`; POS Overview workspace with date/branch-scoped Gross Sales, Refunds, Discounts, Net Sales, Gross Profit, and VAT KPI totals, sales, branches, registers, shifts, canonical operational notifications, and recent orders. | `implemented`; real-time means the latest server read model, with notification reconciliation scheduled by the API. |
+| BO-02 | Transactions and transaction details | `/orders` and `/orders/:id`; searchable order center with date/branch/receipt-type filters for sales, finalized refunds, and voided receipts. Selecting a row opens an accessible read-only popup that renders the original shared POS receipt from canonical transaction fields and saved fiscal snapshots, with refund/void evidence. The existing POS terminal also owns park/resume-sale flow, linked from the workspace rather than duplicated here. | `implemented`; mutations stay in POS. |
 | BO-03 | Sales reports and analytics | Report catalog, paginated datasets, CSV/XLS export, date/branch scope, and cost redaction. | `implemented`; formulas are delegated to finalized POS snapshots. |
 | BO-04 | Z-reading and BIR reporting | Fiscal workspace reads X-reading summaries, persisted Z-reading records, and eSales evidence. | `partial`; BIR accreditation, CAS/POS registration, and legal filing are external gates. |
 | BO-05 | Product Mix | `sales_by_item` and `sales_by_category` report datasets with quantity, net sales, and transaction counts. | `implemented`; no second sales calculation is introduced. |
 | BO-06 | Products and menu configuration | POS-native catalog/inventory entry point, recipe visibility, and report links; catalog identity and mutations remain in the POS/catalog owner. | `partial by design`; category/item authoring must use the canonical POS catalog workflow. |
 | BO-07 | Inventory, ingredients, movement, and low stock | FIFO valuation projection, branch stock read model, low-stock dataset, recipe visibility, alert snapshots, and additive indexes. | `implemented` for read/monitoring; stock mutations remain inventory-owned. |
 | BO-08 | Expenses and profit after expenses | POS Business Admin now provides a tenant-local operational expense ledger with branch scope, PHP totals, idempotent create, audit-backed void, and search/date/branch filters. Cash movement remains in Shifts & cash. | `partial`; operational expense capture is enabled for authorized admin/manager users, while statutory accounting, tax treatment, retention mapping, and profit-after-expenses remain deferred. |
-| BO-09 | Cash drawer monitoring | Shifts & cash workspace reads shift totals, drawer variance, open/overdue shifts, and handoff/refund activity. | `implemented` read-only; force-close remains a canonical POS command. |
+| BO-09 | Cash drawer monitoring | Shifts & cash workspace reads shift totals, drawer variance, open/overdue shifts, and handoff/refund activity. Overview and Shift History consume the shared `businessAdminShiftActivityRepository` projection for per-shift orders, discounts, refunds, and voids. | `implemented` read-only; force-close remains a canonical POS command. |
 | BO-10 | Customers and purchase behavior | Tenant-scoped customer list/detail, purchase frequency, spend, favorite products, and recent orders. | `implemented`; global identity remains separate. |
 | BO-11 | Staff and attendance | Team & access/workforce read model plus a read-only Attendance workspace for canonical POS attendance and operator sessions. | `implemented` for POS attendance/operator-session reads; selfie time-in/time-out remains an explicit ADR 0073 non-goal until privacy, consent, retention, and owner approval exist. Payroll is also out of scope. |
 | BO-12 | Audit trail | Tenant-wide audit endpoint with actor/entity/outcome fields and sensitive-value redaction. | `implemented`; audit writes remain at the owning command boundary. |
@@ -98,6 +98,71 @@ snapshots, report indexes, notification lifecycle, and approval requests).
 The API module is under `apps/dgfy-api/src/modules/businessAdmin`, mounted at
 `/api/v1/business-admin`, and the POS client is under
 `apps/dgfy-pos/src/features/businessAdmin`.
+
+The read-only shift activity projection is implemented by
+`businessAdminShiftActivityRepository.js`. It owns the shared shift-grain
+aggregation used by Overview and Shift History, while the canonical POS report
+read models remain responsible for gross/net sales, payment totals, and broader
+financial reporting semantics. This phase introduces no new accounting
+calculation or storage owner.
+
+The Sales & Orders consolidation is implemented in the POS Back Office. Overview
+stays summary-only; Sales timeline is the chronological unified POS/Dispatch
+analysis surface; Order center owns original receipt investigation through the shared POS renderer; and Customers
+reuses Order Center summaries for related transaction history. Shared Order
+Center detail preserves customer, item, discount, payment, refund, and audit
+evidence. Provider refund monitoring remains under Payments, and no standalone
+refund mutation or duplicate refund owner is introduced. The sidebar keeps
+Customers separate from Sales and groups governance, fiscal, notification,
+onboarding, storefront, assistant, and business configuration destinations under
+Settings without changing their route or canonical owner.
+
+### Phases 455–459 workflow consolidation
+
+The approved follow-up is recorded in the [Phase 455–459 workflow contract](backoffice-phase-455-459-contract.md).
+Inventory insights now links to the existing Catalog editor, Stock Movements,
+Suppliers, Purchase Orders, Recipes, and Production owners without adding a
+second stock command surface. Packaging and labels remain Catalog-editor
+workflow steps; physical stock counts remain an explicit owner decision rather
+than an invented adjustment form. Reports preserve summary/read-model totals,
+provide applicable report sorting and pagination, and hand transaction analysis
+to Sales timeline and original receipt detail to Order Center. Workforce activity
+distinguishes employee records, login accounts, roles, and branch grants while
+Users & Roles remains the only permission-management workflow. Customer reads
+remain tenant-scoped and loyalty is explicitly read-only until the earning,
+redemption, refund, adjustment, ownership, and accounting contract is approved.
+
+### Phase 442 reporting architecture consolidation
+
+Reporting now has one canonical metadata registry at
+`apps/dgfy-api/src/modules/reports/domain/reportRegistry.js`. It describes
+definitions, filters, aggregation/read-model ownership, permissions, export
+formats, pagination, formatting, and compatibility endpoints for the existing
+Business Admin, legacy `/reports/*`, and terminal report families.
+
+Business Admin dataset definitions and the financial/inventory repository sort
+contracts consume that registry, removing the previous duplicated field lists.
+Legacy report routes remain compatibility seams, and terminal reporting stays
+POS-owned so active-shift, register, operational-state, and offline/local
+reporting continue using the existing terminal read model. Individual report
+migrations must still compare the existing result before switching a consumer;
+this phase does not retire an endpoint or duplicate a financial calculation.
+
+### Phase 443 inventory health consolidation
+
+Inventory Health is now the shared read-only contract for stock status and
+expiry classification. Dashboard, alerts, AI context/tools, the legacy
+executive report, and Business Admin's branch low-stock dataset consume the
+inventory-owned classification instead of carrying separate threshold logic.
+Weighted inventory totals and branch projections are owned by the inventory
+cost valuation service; Business Admin no longer contains a second branch
+valuation loop.
+
+The Back Office inventory workspace remains read-only. Catalog still owns item
+identity and authoring, Stock Movements still owns inventory mutations and
+history, and Recipes still owns composition. The health projection adds
+out-of-stock visibility without creating a new mutation endpoint or removing
+the existing compatibility routes.
 
 No destructive migration or historical data rewrite is required. The local
 development landlord/tenant schemas were migrated and the read models reuse

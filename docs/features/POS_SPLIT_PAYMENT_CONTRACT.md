@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-13
-review_by: 2027-02-13
+last_reviewed: 2026-09-22
+review_by: 2027-03-22
 applies_to: pos_split_tender_v1
 topic: pos_split_tender_contract
 ---
@@ -22,9 +22,19 @@ serialization correction, and the Phase 69 automatic-finalization cashier
 flow simplification, the Phase 74 silent recovery and explicit-resume
 correction, the Phase 82 sequential cashier-flow simplification, and the Phase
 83 Cash-and-GCash two-field cashier flow, and the Phase 84 configurable
-payment-row cashier flow.
+payment-row cashier flow, and Phase 444 Employee Credit mixed tender.
 The governing architecture decision is
 [ADR 0063](../architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md).
+
+## Current client-session lifecycle (2026-09-22)
+
+The POS does not persist split-payment sessions in browser storage and does not
+show a saved-payment or resume card. The server session is used only to protect
+the active collection and preserve payment audit records. Closing or cancelling
+an unpaid split-payment checkout cancels that session automatically. If an
+allocation was already recorded, the POS requires the allocation to be reversed
+before cancelling the session. Completed and cancelled session rows remain as
+terminal audit records; they are not resumable saved payments.
 
 ## Goal
 
@@ -45,7 +55,10 @@ rows in the server-owned collection record.
 
 Included:
 
-- Cash, GCash, Maya, Card, and Bank Transfer.
+- Cash, GCash, Maya, Card, Bank Transfer, and Employee Credit.
+- Employee Credit is shown in split-payment method selectors only when the
+  signed-in operator has `pos:employee_credit:use` (or master-admin authority)
+  and the active location has at least one active, configured, eligible account.
 - Configurable Method of Payment plus Amount rows, with GCash and Cash visible
   by default and additional unused methods available on demand.
 - One completion action for all active rows, with non-cash persisted before
@@ -55,15 +68,18 @@ Included:
   transfers.
 - Explicit cashier confirmation that a manual digital payment was received.
 - Explicit accept and cancel actions, plus automatic completion at zero balance.
-- Refresh recovery of the active collection session.
+- Server-side protection against duplicate active collection sessions without
+  browser-persistent split-payment recovery.
 - One sale, one inventory posting, one receipt/fiscal result, and one audit
   trail after successful completion.
+- Employee Credit may be combined with other tenders. The cashier must select
+  and verify one eligible Employee Credit account, and only the Employee
+  Credit allocation amount is charged to that employee account.
 
 Deferred:
 
 - Equal split by two, three, or more customers.
 - Split by person, item, table, or guest.
-- Employee Credit combined with another tender.
 - Offline split payment or offline digital confirmation.
 - New provider checkout integrations and automatic provider refunds.
 
@@ -71,16 +87,19 @@ Deferred:
 
 1. Cashier builds or resumes one active cart and selects Pay.
 2. Cashier chooses Split Payment.
-3. The server creates or resumes a scoped payment session from the checkout
-   inputs and authoritative total.
+3. The server creates or returns the scoped payment session for the current
+   checkout from the checkout inputs and authoritative total. The browser does
+   not save a payment-session pointer.
 4. The UI displays Total, Paid, Remaining, and successful/pending allocations.
 5. The UI shows two configurable Method of Payment plus Amount rows, defaulted
    to GCash and Cash. The cashier may change either dropdown or add an unused
-   third or later payment method.
+   third or later payment method. Employee Credit is not offered unless the
+   operator and active-location eligibility gate passes.
 6. Every active merchant-owned non-cash row requires explicit receipt
-   confirmation. The UI previews non-cash applied, cash applied, cash change,
-   and amount still due. Complete Payment is enabled only when the entered
-   values cover Remaining without duplicate methods.
+   confirmation. An Employee Credit row requires a selected and server-verified
+   eligible account. The UI previews non-cash applied, cash applied, cash
+   change, and amount still due. Complete Payment is enabled only when the
+   entered values cover Remaining without duplicate methods.
 7. The server validates the allocation and returns the updated session. The UI
    never increments Paid from local state alone.
 8. The UI submits active non-cash rows first and cash last as separate
@@ -98,9 +117,9 @@ The operations and semantics below are fixed for this implementation:
 | --- | --- |
 | Create or resume session | `POST /pos/payment-sessions`; require authenticated POS operator, `pos:transact`, selected terminal/location, and open shift. Repeated idempotency key returns the original session. |
 | Read session | `GET /pos/payment-sessions/:id`; return only the active tenant/location/terminal/cashier/shift scope. Include server total, paid, remaining, state, and allocation statuses. |
-| Add allocation | `POST /pos/payment-sessions/:id/allocations`; validate method, amount, cash tendered/change, optional reference, and session state under a lock. Store-owned digital tender requires `manual_payment_received=true`, is saved as `payment_provider=merchant_owned`, and becomes successful from that authenticated cashier attestation. Explicit provider-owned attempts remain pending. |
-| Confirm digital allocation | `POST /pos/payment-sessions/:id/allocations/:allocation_id/confirm`; accept only a pending non-cash allocation, require the configured server-side HMAC provider verifier to validate the provider event, persist the event identity, and then recalculate Paid under the session lock. Cash cannot use this operation. |
-| Reconcile PayMongo allocation | `POST /pos/payment-sessions/:id/allocations/:allocation_id/reconcile`; retrieve the PayMongo Payment server-to-server and accept only exact paid-status, PHP currency, amount, method, payment identity, and POS session/allocation metadata matches. Stable payment/refund identities make retries safe. |
+| Add allocation | `POST /pos/payment-sessions/:id/allocations`; validate method, amount, cash tendered/change, optional reference, and session state under a lock. Store-owned digital tender requires `manual_payment_received=true`, is saved as `payment_provider=merchant_owned`, and becomes successful from that authenticated cashier attestation. Employee Credit requires a verified account code, is saved as an internal successful allocation, rejects provider-owned fields, and is charged only during final checkout completion. Explicit provider-owned attempts remain pending. |
+| Confirm digital allocation | `POST /pos/payment-sessions/:id/allocations/:allocation_id/confirm`; accept only a pending non-cash, non-Employee-Credit allocation, require the configured server-side HMAC provider verifier to validate the provider event, persist the event identity, and then recalculate Paid under the session lock. Cash and Employee Credit cannot use this operation. |
+| Reconcile PayMongo allocation | `POST /pos/payment-sessions/:id/allocations/:allocation_id/reconcile`; retrieve the PayMongo Payment server-to-server and accept only exact paid-status, PHP currency, amount, method, payment identity, and POS session/allocation metadata matches. Employee Credit is rejected before any provider call. Stable payment/refund identities make retries safe. |
 | Cancel allocation/session | `POST /pos/payment-sessions/:id/allocations/:allocation_id/cancel` or `POST /pos/payment-sessions/:id/cancel`; require an allowed actor and reason. Pending/failed attempts may be cancelled; successful cash or merchant-owned tender becomes an auditable reversal; PayMongo-confirmed money requires provider refund evidence. |
 | Complete sale | Accept no client authority for totals or paid amounts. Require remaining zero, revalidate checkout inputs, and atomically create one POS transaction. |
 
@@ -120,6 +139,10 @@ cash, create a second transaction, or create a second inventory movement.
 - Pending or failed provider-owned payment is excluded from Paid.
 - Merchant-owned digital payment is included in Paid only after explicit
   authenticated cashier confirmation; it carries no provider event identity.
+- Employee Credit is included in Paid only after the allocation is accepted;
+  the employee account is revalidated and debited for the successful
+  allocation amount during atomic completion. Employee Credit is excluded from
+  cash received and cash-change calculations.
 - Completion is disabled unless remaining is exactly zero at the canonical POS
   precision.
 - Client-supplied totals, balances, stock, selling prices, discount values,
@@ -138,8 +161,8 @@ cash, create a second transaction, or create a second inventory movement.
 - The existing `pos_transactions.payment_type` snapshot remains readable for
   historical and single-tender rows. A future mixed-payment summary must not
   replace allocation rows as the financial source of truth.
-- `employee_credit` remains governed by ADR 0051 and is not accepted as one
-  leg of a V1 split session.
+- `employee_credit` remains governed by ADR 0051 and may be one leg of a split
+  session under the mixed-tender extension in ADR 0085.
 - Parked carts remain non-financial snapshots under ADR 0061. Resuming a
   parked cart into split collection is explicit and must not merge carts.
 - Split collection is online-only until a separate offline contract is
