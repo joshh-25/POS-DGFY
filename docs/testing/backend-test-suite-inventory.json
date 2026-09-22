@@ -1,27 +1,27 @@
 {
-  "generatedAt": "2026-09-17T02:47:46.248Z",
-  "totalFiles": 690,
+  "generatedAt": "2026-09-22T10:18:54.067Z",
+  "totalFiles": 740,
   "byClassification": {
-    "keep": 636,
-    "delete": 16,
-    "consolidate": 30,
+    "keep": 683,
+    "delete": 17,
+    "consolidate": 32,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
-    "migration": 37,
-    "(none)": 238,
-    "middleware": 13,
+    "migration": 38,
+    "(none)": 257,
+    "middleware": 14,
     "handler": 1,
-    "transport": 40,
+    "transport": 41,
     "integration": 13,
-    "unit": 65,
+    "unit": 66,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
     "storeTemplateKey": 1,
-    "usecase": 59,
-    "contract": 32,
+    "usecase": 61,
+    "contract": 47,
     "ratelimit.e2e": 1,
     "hardening": 1,
     "phoneCompletionGate.middleware": 1,
@@ -29,8 +29,10 @@
     "db.integration": 4,
     "idempotency": 1,
     "util": 4,
+    "audit": 1,
     "routeContracts": 1,
-    "usecases": 31,
+    "api": 1,
+    "usecases": 32,
     "e2e.transport": 1,
     "documentaryReadiness": 1,
     "profileMerge": 1,
@@ -42,6 +44,8 @@
     "parity.unit": 1,
     "invitationSchema": 1,
     "slotEnforcement.unit": 1,
+    "historyScope": 1,
+    "phase355": 1,
     "redis": 1,
     "deliveryLog": 1,
     "deliveryProvider": 1,
@@ -67,6 +71,7 @@
     "config": 1,
     "utils": 1,
     "route.contract": 5,
+    "phase357.db.integration": 1,
     "phase296": 1,
     "security.contract": 2,
     "schema.contract": 2,
@@ -75,6 +80,7 @@
     "catalogPagination": 1,
     "locationStockFallback": 2,
     "transactionInclude.contract": 1,
+    "service": 1,
     "foundation": 1,
     "validation": 1,
     "affiliateCode": 1,
@@ -92,9 +98,11 @@
     "registrationIndustry": 1,
     "poAnalysis": 1,
     "companyInfo": 1,
+    "optimisticConcurrency.unit": 1,
     "terminalCashierAssignments": 1,
     "customerAccessModes": 1,
     "deliveryFeeMode": 1,
+    "optimisticConcurrency": 1,
     "orderMethodFees": 1,
     "posHardwareProfile": 1,
     "posSoftwareIdentity": 1,
@@ -108,6 +116,7 @@
     "equivalence.contract": 1,
     "fnbModifiers": 1,
     "follow": 1,
+    "orderHistory": 1,
     "disabled": 1,
     "catalogVisibility": 1,
     "controllerAuth": 1,
@@ -135,7 +144,7 @@
     "supertest": 1,
     "enforcement.contract": 1
   },
-  "dbManifestCount": 30,
+  "dbManifestCount": 31,
   "findingsCount": 4,
   "files": [
     {
@@ -1109,14 +1118,14 @@
     },
     {
       "path": "tests/adminTenantHandlers.transport.test.js",
-      "lines": 403,
-      "caseCount": 10,
+      "lines": 459,
+      "caseCount": 12,
       "describeTitles": [
         "adminTenantHandlers transport contracts"
       ],
-      "expectCount": 31,
-      "expectResCount": 17,
-      "toHaveBeenCalledCount": 31,
+      "expectCount": 36,
+      "expectResCount": 20,
+      "toHaveBeenCalledCount": 36,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -2299,6 +2308,41 @@
       "findings": []
     },
     {
+      "path": "tests/auditPosCashierLocationAccessPhase357.test.js",
+      "lines": 87,
+      "caseCount": 2,
+      "describeTitles": [
+        "Phase 357 cashier location audit report"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/auditRepository.test.js",
       "lines": 107,
       "caseCount": 4,
@@ -2720,14 +2764,14 @@
     },
     {
       "path": "tests/authenticate.subscriptionGate.middleware.test.js",
-      "lines": 147,
-      "caseCount": 2,
+      "lines": 163,
+      "caseCount": 3,
       "describeTitles": [
         "authenticate middleware subscription gate behavior"
       ],
-      "expectCount": 5,
+      "expectCount": 8,
       "expectResCount": 3,
-      "toHaveBeenCalledCount": 5,
+      "toHaveBeenCalledCount": 7,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -3120,6 +3164,484 @@
       "findings": []
     },
     {
+      "path": "tests/businessAdmin.contract.test.js",
+      "lines": 190,
+      "caseCount": 7,
+      "describeTitles": [
+        "Business Admin contracts"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 5,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminAlertSnapshotService.contract.test.js",
+      "lines": 63,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin alert snapshot ownership contract"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminAttendance.contract.test.js",
+      "lines": 102,
+      "caseCount": 4,
+      "describeTitles": [
+        "Business Admin attendance read model"
+      ],
+      "expectCount": 13,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCustomerHistory.contract.test.js",
+      "lines": 94,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin customer history canonical source"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCustomerWrite.usecase.test.js",
+      "lines": 88,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin customer creation"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminExpenses.contract.test.js",
+      "lines": 184,
+      "caseCount": 5,
+      "describeTitles": [
+        "Business Admin operational expense ledger"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminNotifications.contract.test.js",
+      "lines": 78,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin notifications and audit ownership contracts"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 3,
+      "textRatio": 0.55,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "consolidate",
+      "reason": "source-text-mixed (text_ratio=0.55)",
+      "rule": "R4-source-text-mixed",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterCustomerHistory.contract.test.js",
+      "lines": 132,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin Order Center customer-history source"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterReceiptFilter.contract.test.js",
+      "lines": 57,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin Order Center receipt-type filter"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterReceiptView.contract.test.js",
+      "lines": 52,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin original receipt view contract"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOverviewRepository.audit.test.js",
+      "lines": 40,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin audit repository date boundaries"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "audit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: audit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOverviewSalesTrend.contract.test.js",
+      "lines": 35,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin overview sales trend contract"
+      ],
+      "expectCount": 14,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 2,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "delete",
+      "reason": "source-text-only (text_ratio=1)",
+      "rule": "R3-source-text-only",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminSalesStockReport.contract.test.js",
+      "lines": 36,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin sales and stock report contract"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminShiftActivityRepository.contract.test.js",
+      "lines": 75,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin shared shift activity projection"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/cachePolicy.middleware.test.js",
       "lines": 103,
       "caseCount": 5,
@@ -3240,8 +3762,76 @@
       "findings": []
     },
     {
+      "path": "tests/cashierLocationPermissions.api.test.js",
+      "lines": 24,
+      "caseCount": 1,
+      "describeTitles": [
+        "Phase 355 item-update HTTP authorization"
+      ],
+      "expectCount": 2,
+      "expectResCount": 2,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": true,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "api",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md"
+        ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: api)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/cashierLocationPermissions.test.js",
+      "lines": 27,
+      "caseCount": 4,
+      "describeTitles": [
+        "Phase 355 cashier catalog authority"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/cashierPosPermissions.test.js",
-      "lines": 32,
+      "lines": 31,
       "caseCount": 1,
       "describeTitles": [
         "cashier POS least-privilege defaults"
@@ -3300,7 +3890,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -4698,12 +5290,12 @@
     },
     {
       "path": "tests/costValuationService.test.js",
-      "lines": 259,
-      "caseCount": 7,
+      "lines": 297,
+      "caseCount": 8,
       "describeTitles": [
         "costValuationService"
       ],
-      "expectCount": 11,
+      "expectCount": 12,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
@@ -4723,7 +5315,8 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-05-07-mode-price-cost-catalog-contract.md",
-          "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md"
+          "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
@@ -5240,7 +5833,7 @@
     },
     {
       "path": "tests/dashboardAndInsightsToolRegistry.test.js",
-      "lines": 151,
+      "lines": 152,
       "caseCount": 5,
       "describeTitles": [
         "dashboardAndInsightsToolRegistry"
@@ -5375,14 +5968,14 @@
     },
     {
       "path": "tests/deleteTenantUseCase.test.js",
-      "lines": 137,
-      "caseCount": 6,
+      "lines": 264,
+      "caseCount": 11,
       "describeTitles": [
         "deleteTenantUseCase"
       ],
-      "expectCount": 35,
+      "expectCount": 73,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 21,
+      "toHaveBeenCalledCount": 39,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5410,7 +6003,7 @@
     },
     {
       "path": "tests/deliveryCompletionEvidenceStorage.test.js",
-      "lines": 49,
+      "lines": 51,
       "caseCount": 1,
       "describeTitles": [
         "delivery completion evidence private storage"
@@ -5446,13 +6039,13 @@
     },
     {
       "path": "tests/deliveryFeeConfig.unit.test.js",
-      "lines": 166,
-      "caseCount": 16,
+      "lines": 177,
+      "caseCount": 17,
       "describeTitles": [
         "DELIVERY_FEE_MODES",
         "resolveDeliveryFeeConfig"
       ],
-      "expectCount": 22,
+      "expectCount": 23,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5559,15 +6152,15 @@
     },
     {
       "path": "tests/deliveryFeePolicy.unit.test.js",
-      "lines": 116,
-      "caseCount": 9,
+      "lines": 177,
+      "caseCount": 13,
       "describeTitles": [
         "DELIVERY_FEE_CALC_VERSION",
         "computeCalculatedDeliveryFeeCentavos — fixture cases",
         "computeCalculatedDeliveryFeeCentavos — invariants over every fixture case",
         "computeCalculatedDeliveryFeeCentavos — edge behavior not covered by fixtures"
       ],
-      "expectCount": 21,
+      "expectCount": 32,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5750,10 +6343,11 @@
     },
     {
       "path": "tests/deliveryRunDispatch.usecase.test.js",
-      "lines": 511,
-      "caseCount": 20,
+      "lines": 665,
+      "caseCount": 24,
       "describeTitles": [
         "buildDispatchDeliveryRunUseCase -- run-level preconditions",
+        "buildDispatchDeliveryRunUseCase -- canonical dispatch warnings (Phase 337, #1927)",
         "buildDispatchDeliveryRunUseCase -- #1272 packing gate",
         "buildDispatchDeliveryRunUseCase -- fan-out taxonomy",
         "buildDispatchDeliveryRunUseCase -- per-member write-failure isolation (RF-1, PR #1280 review)",
@@ -5762,7 +6356,7 @@
         "buildDispatchDeliveryRunUseCase -- durable replay (D-4 layer 1)",
         "buildDispatchDeliveryRunUseCase -- validation"
       ],
-      "expectCount": 70,
+      "expectCount": 89,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5785,6 +6379,7 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
+          "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5905,7 +6500,7 @@
     },
     {
       "path": "tests/deliveryRunRoutes.transport.test.js",
-      "lines": 303,
+      "lines": 311,
       "caseCount": 11,
       "describeTitles": [
         "deliveryRunHandlers transport contracts",
@@ -5935,6 +6530,7 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
+          "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6535,14 +7131,14 @@
     },
     {
       "path": "tests/dgfyAuthUseCases.test.js",
-      "lines": 2470,
-      "caseCount": 61,
+      "lines": 2519,
+      "caseCount": 62,
       "describeTitles": [
         "dgfyAuthUseCases"
       ],
-      "expectCount": 269,
+      "expectCount": 272,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 104,
+      "toHaveBeenCalledCount": 105,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6631,15 +7227,48 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyCustomerRepository.historyScope.test.js",
+      "lines": 51,
+      "caseCount": 1,
+      "describeTitles": [
+        "dgfy customer repository history scope"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "historyScope",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: historyScope)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dgfyCustomerUseCases.test.js",
-      "lines": 1001,
-      "caseCount": 34,
+      "lines": 1047,
+      "caseCount": 37,
       "describeTitles": [
         "dgfyCustomerUseCases"
       ],
-      "expectCount": 133,
+      "expectCount": 142,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 38,
+      "toHaveBeenCalledCount": 41,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6666,6 +7295,39 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyCustomerValidator.test.js",
+      "lines": 50,
+      "caseCount": 3,
+      "describeTitles": [
+        "dgfy customer activity query validator"
+      ],
+      "expectCount": 6,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6708,14 +7370,14 @@
     },
     {
       "path": "tests/dgfyLaundryOrderUseCases.test.js",
-      "lines": 168,
-      "caseCount": 6,
+      "lines": 181,
+      "caseCount": 7,
       "describeTitles": [
         "DGFY DGLaundry storefront/order projections"
       ],
-      "expectCount": 25,
+      "expectCount": 28,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 10,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6731,7 +7393,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6848,15 +7512,83 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyPosDeviceUseCases.test.js",
+      "lines": 108,
+      "caseCount": 3,
+      "describeTitles": [
+        "DGFY POS device session challenge use case"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/dgfyPosTerminalPolicy.phase355.test.js",
+      "lines": 31,
+      "caseCount": 3,
+      "describeTitles": [
+        "Phase 355 SSO location grants"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "phase355",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: phase355)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dgfyPosTerminalPolicyService.test.js",
-      "lines": 128,
-      "caseCount": 4,
+      "lines": 152,
+      "caseCount": 5,
       "describeTitles": [
         "DGFY POS terminal cashier assignment policy"
       ],
-      "expectCount": 7,
+      "expectCount": 9,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6872,7 +7604,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6962,15 +7696,50 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyTenantSessionService.test.js",
+      "lines": 98,
+      "caseCount": 1,
+      "describeTitles": [
+        "DGFY tenant session authority normalization"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dglaundryBookingPayment.usecase.test.js",
-      "lines": 62,
-      "caseCount": 2,
+      "lines": 79,
+      "caseCount": 3,
       "describeTitles": [
         "DGLaundry booking payment session"
       ],
-      "expectCount": 10,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 4,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6986,7 +7755,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6996,12 +7767,12 @@
     },
     {
       "path": "tests/dglaundryEventSignature.test.js",
-      "lines": 118,
-      "caseCount": 4,
+      "lines": 131,
+      "caseCount": 5,
       "describeTitles": [
         "DGLaundry event signature verification"
       ],
-      "expectCount": 6,
+      "expectCount": 8,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -7100,12 +7871,12 @@
     },
     {
       "path": "tests/dglaundryPartnerClient.test.js",
-      "lines": 41,
-      "caseCount": 1,
+      "lines": 127,
+      "caseCount": 4,
       "describeTitles": [
         "DGLaundry partner request profile"
       ],
-      "expectCount": 6,
+      "expectCount": 19,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -7115,7 +7886,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 1,
+      "srcImportCount": 2,
       "deadImportCount": 0,
       "suffix": "(none)",
       "conditionalSkip": false,
@@ -7125,6 +7896,7 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-11-dglaundry-contract-authentication.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7320,14 +8092,14 @@
     },
     {
       "path": "tests/downpaymentSettingsRepository.unit.test.js",
-      "lines": 75,
-      "caseCount": 3,
+      "lines": 116,
+      "caseCount": 4,
       "describeTitles": [
         "downpaymentSettingsRepository"
       ],
-      "expectCount": 6,
+      "expectCount": 8,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7356,15 +8128,15 @@
     },
     {
       "path": "tests/downpaymentSettingsUseCases.unit.test.js",
-      "lines": 212,
-      "caseCount": 15,
+      "lines": 239,
+      "caseCount": 16,
       "describeTitles": [
         "buildGetDownpaymentSettingsUseCase",
         "buildUpdateDownpaymentSettingsUseCase"
       ],
-      "expectCount": 30,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 0,
+      "toHaveBeenCalledCount": 1,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7396,14 +8168,14 @@
     },
     {
       "path": "tests/downpaymentSettingsValidator.unit.test.js",
-      "lines": 83,
-      "caseCount": 6,
+      "lines": 99,
+      "caseCount": 7,
       "describeTitles": [
         "downpaymentSettingsValidator"
       ],
-      "expectCount": 14,
+      "expectCount": 16,
       "expectResCount": 5,
-      "toHaveBeenCalledCount": 11,
+      "toHaveBeenCalledCount": 12,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -8434,14 +9206,14 @@
     },
     {
       "path": "tests/finalizePaidCommerceSession.usecase.test.js",
-      "lines": 816,
-      "caseCount": 13,
+      "lines": 865,
+      "caseCount": 14,
       "describeTitles": [
         "finalizePaidCommerceSession",
         "PayMongo paid webhook replay",
         "PayMongo webhook unknown session escalation (#476)"
       ],
-      "expectCount": 30,
+      "expectCount": 32,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 18,
       "readFileSyncCount": 0,
@@ -8940,12 +9712,12 @@
     },
     {
       "path": "tests/frontend.imsPosSalesJourney.e2e.test.js",
-      "lines": 2617,
+      "lines": 2854,
       "caseCount": 8,
       "describeTitles": [
         "Frontend Real Browser E2E - IMS -> POS -> Sales Journey"
       ],
-      "expectCount": 32,
+      "expectCount": 44,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -9167,6 +9939,78 @@
       "findings": []
     },
     {
+      "path": "tests/geoAddressSearchValidator.test.js",
+      "lines": 50,
+      "caseCount": 5,
+      "describeTitles": [
+        "validateAddressSearchQuery"
+      ],
+      "expectCount": 11,
+      "expectResCount": 4,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoCache.test.js",
+      "lines": 167,
+      "caseCount": 12,
+      "describeTitles": [
+        "readCache",
+        "writeCache",
+        "resolveImportDate"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/geoCatalogSyncService.test.js",
       "lines": 149,
       "caseCount": 8,
@@ -9192,6 +10036,83 @@
       "citations": {
         "live": [],
         "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoCircuitBreaker.test.js",
+      "lines": 98,
+      "caseCount": 10,
+      "describeTitles": [
+        "createCircuitBreaker",
+        "cache keys"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoFallbackPolicy.test.js",
+      "lines": 163,
+      "caseCount": 9,
+      "describeTitles": [
+        "reverse geocode fallback policy",
+        "address search fallback policy"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -9266,6 +10187,161 @@
       "findings": []
     },
     {
+      "path": "tests/geoLandmarkClassifier.test.js",
+      "lines": 62,
+      "caseCount": 9,
+      "describeTitles": [
+        "geoDistance",
+        "landmarkClassifier"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoLocalProvider.test.js",
+      "lines": 54,
+      "caseCount": 6,
+      "describeTitles": [
+        "localGeocodeProvider.reverseGeocode",
+        "localGeocodeProvider.searchAddresses"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoPhotonFeatureMapper.test.js",
+      "lines": 203,
+      "caseCount": 19,
+      "describeTitles": [
+        "composeAddressLine",
+        "mapPrecision",
+        "mapComponents",
+        "mapLandmarks",
+        "mapReverseGeocodeResponse",
+        "mapForwardSearchResponse"
+      ],
+      "expectCount": 47,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoQuadruperProvider.test.js",
+      "lines": 144,
+      "caseCount": 11,
+      "describeTitles": [
+        "quadruperGeocodeProvider"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/geoSearchRepository.tenantCompanyToken.test.js",
       "lines": 99,
       "caseCount": 1,
@@ -9300,7 +10376,7 @@
     },
     {
       "path": "tests/geoSearchReverseGeocode.usecase.test.js",
-      "lines": 101,
+      "lines": 112,
       "caseCount": 6,
       "describeTitles": [
         "reverse geocode use case"
@@ -9315,14 +10391,17 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 2,
+      "srcImportCount": 4,
       "deadImportCount": 0,
       "suffix": "usecase",
       "conditionalSkip": false,
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md",
+          "docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9540,12 +10619,13 @@
     },
     {
       "path": "tests/healthService.test.js",
-      "lines": 669,
-      "caseCount": 17,
+      "lines": 742,
+      "caseCount": 22,
       "describeTitles": [
-        "healthService"
+        "healthService",
+        "resolveReleaseFloorInfo (#1977 Phase 342)"
       ],
-      "expectCount": 41,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -9696,12 +10776,12 @@
     },
     {
       "path": "tests/imageAssetStorage.util.test.js",
-      "lines": 542,
-      "caseCount": 23,
+      "lines": 588,
+      "caseCount": 25,
       "describeTitles": [
         "imageAssetStorage utility"
       ],
-      "expectCount": 86,
+      "expectCount": 95,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -10125,15 +11205,50 @@
       "findings": []
     },
     {
+      "path": "tests/inventoryHealthService.contract.test.js",
+      "lines": 90,
+      "caseCount": 5,
+      "describeTitles": [
+        "inventory health contract"
+      ],
+      "expectCount": 17,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/inventoryItemRepository.test.js",
-      "lines": 3299,
-      "caseCount": 75,
+      "lines": 3437,
+      "caseCount": 79,
       "describeTitles": [
         "inventory itemRepository"
       ],
-      "expectCount": 260,
+      "expectCount": 283,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 118,
+      "toHaveBeenCalledCount": 140,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -10166,6 +11281,7 @@
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
           "docs/compliance/impact-declarations/2026-09-05-pos-catalog-image-reliability-and-bulk-import.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json"
@@ -10777,14 +11893,14 @@
     },
     {
       "path": "tests/jobOrderUsecases.applicationResult.test.js",
-      "lines": 96,
-      "caseCount": 5,
+      "lines": 117,
+      "caseCount": 6,
       "describeTitles": [
         "jobOrder use-cases application result contract"
       ],
-      "expectCount": 15,
+      "expectCount": 18,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -11662,6 +12778,39 @@
       "findings": []
     },
     {
+      "path": "tests/mobilePosOperatingScope.test.js",
+      "lines": 85,
+      "caseCount": 4,
+      "describeTitles": [
+        "Phase 355 mobile operating scope"
+      ],
+      "expectCount": 14,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/mobilePosReplayGuard.test.js",
       "lines": 38,
       "caseCount": 2,
@@ -11921,6 +13070,41 @@
       "findings": []
     },
     {
+      "path": "tests/multiLocationInventoryReadiness.test.js",
+      "lines": 96,
+      "caseCount": 4,
+      "describeTitles": [
+        "multi-location inventory readiness contract"
+      ],
+      "expectCount": 20,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-14-multi-location-inventory-readiness-phase-338.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/nestedTenancy.test.js",
       "lines": 72,
       "caseCount": 3,
@@ -12067,14 +13251,14 @@
     },
     {
       "path": "tests/onboardingRepository.schemaCompatibility.test.js",
-      "lines": 171,
-      "caseCount": 3,
+      "lines": 246,
+      "caseCount": 5,
       "describeTitles": [
         "onboardingRepository schema compatibility"
       ],
-      "expectCount": 5,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -12752,7 +13936,7 @@
     },
     {
       "path": "tests/permissionsRoleMatrix.test.js",
-      "lines": 117,
+      "lines": 118,
       "caseCount": 7,
       "describeTitles": [
         "role/micro-permission matrix hardening"
@@ -12817,6 +14001,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/phase340BranchIsolation.contract.test.js",
+      "lines": 162,
+      "caseCount": 3,
+      "describeTitles": [
+        "Phase 340 branch isolation acceptance contracts"
+      ],
+      "expectCount": 12,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 3,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
       "rule": "R5-default",
       "findings": []
     },
@@ -13554,12 +14771,12 @@
     },
     {
       "path": "tests/posCashierLifecycle.usecases.test.js",
-      "lines": 391,
-      "caseCount": 9,
+      "lines": 434,
+      "caseCount": 11,
       "describeTitles": [
         "POS automatic cashier shift lifecycle"
       ],
-      "expectCount": 36,
+      "expectCount": 43,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -13576,7 +14793,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-26-pos-attendance-permission-gate.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -13586,6 +14805,45 @@
       "classification": "keep",
       "reason": "default keep (suffix: usecases)",
       "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posCashierLocationAccess.phase357.db.integration.test.js",
+      "lines": 446,
+      "caseCount": 3,
+      "describeTitles": [
+        "Phase 357 cashier location access acceptance on a disposable migrated tenant"
+      ],
+      "expectCount": 36,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": true,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 8,
+      "deadImportCount": 0,
+      "suffix": "phase357.db.integration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": [
+          "scripts/backend-db-dependent-tests.js"
+        ]
+      },
+      "classification": "keep",
+      "reason": "hardcoded reference: scripts/backend-db-dependent-tests.js",
+      "rule": "R1-pin",
       "findings": []
     },
     {
@@ -13766,12 +15024,12 @@
     },
     {
       "path": "tests/posCheckout.db.integration.test.js",
-      "lines": 938,
-      "caseCount": 13,
+      "lines": 1268,
+      "caseCount": 16,
       "describeTitles": [
         "POS checkout DB integration (migrations + transactional stock writes)"
       ],
-      "expectCount": 89,
+      "expectCount": 125,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -13781,7 +15039,7 @@
       "isSnapshot": false,
       "onDbManifest": true,
       "usesCreateTestTenant": false,
-      "srcImportCount": 7,
+      "srcImportCount": 10,
       "deadImportCount": 0,
       "suffix": "db.integration",
       "conditionalSkip": false,
@@ -13802,6 +15060,7 @@
           "docs/compliance/impact-declarations/2026-04-06-dual-mode-pos-compliance-program.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
@@ -13859,14 +15118,14 @@
     },
     {
       "path": "tests/posCheckoutFnbContracts.usecase.test.js",
-      "lines": 2254,
-      "caseCount": 30,
+      "lines": 3103,
+      "caseCount": 46,
       "describeTitles": [
         "POS checkout F&B contracts"
       ],
-      "expectCount": 153,
+      "expectCount": 220,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 48,
+      "toHaveBeenCalledCount": 85,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 5,
@@ -13902,6 +15161,7 @@
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md",
           "docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md",
           "docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
@@ -14356,7 +15616,7 @@
     },
     {
       "path": "tests/posDevicePrintReceipt.unit.test.js",
-      "lines": 381,
+      "lines": 401,
       "caseCount": 10,
       "describeTitles": [
         "buildPrintPosReceiptUseCase — client-delegated printing",
@@ -14364,9 +15624,9 @@
         "buildPrintPosShiftSummaryUseCase",
         "buildPrintPosZReadingUseCase"
       ],
-      "expectCount": 33,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 15,
+      "toHaveBeenCalledCount": 16,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14382,11 +15642,46 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
       "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posDeviceProof.middleware.test.js",
+      "lines": 167,
+      "caseCount": 6,
+      "describeTitles": [
+        "POS strict device proof middleware"
+      ],
+      "expectCount": 22,
+      "expectResCount": 6,
+      "toHaveBeenCalledCount": 21,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "middleware",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: middleware)",
       "rule": "R5-default",
       "findings": []
     },
@@ -14455,6 +15750,39 @@
         "live": [
           "scripts/backend-test-audit-overrides.js"
         ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posDeviceTestPrint.unit.test.js",
+      "lines": 103,
+      "caseCount": 3,
+      "describeTitles": [
+        "buildTestPosPrinterUseCase"
+      ],
+      "expectCount": 12,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
         "historical": [],
         "hardcoded": []
       },
@@ -14713,14 +16041,14 @@
     },
     {
       "path": "tests/posHandlers.transport.test.js",
-      "lines": 1490,
-      "caseCount": 32,
+      "lines": 1539,
+      "caseCount": 33,
       "describeTitles": [
         "posHandlers transport contracts"
       ],
-      "expectCount": 119,
-      "expectResCount": 66,
-      "toHaveBeenCalledCount": 119,
+      "expectCount": 121,
+      "expectResCount": 67,
+      "toHaveBeenCalledCount": 121,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -14762,6 +16090,7 @@
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
           "docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md",
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
@@ -14958,14 +16287,14 @@
     },
     {
       "path": "tests/posOperationReplayParity.usecase.test.js",
-      "lines": 977,
-      "caseCount": 13,
+      "lines": 1242,
+      "caseCount": 17,
       "describeTitles": [
         "NVP-01 operation replay parity across terminal flows"
       ],
-      "expectCount": 95,
+      "expectCount": 123,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -15072,14 +16401,15 @@
     },
     {
       "path": "tests/posOperatorAuthority.usecases.test.js",
-      "lines": 428,
-      "caseCount": 19,
+      "lines": 463,
+      "caseCount": 23,
       "describeTitles": [
+        "Phase 355 protected operator permissions",
         "Phase 159 POS operator authority use cases"
       ],
-      "expectCount": 55,
+      "expectCount": 64,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 2,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -15094,7 +16424,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-26-pos-attendance-permission-gate.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -15577,12 +16909,12 @@
     },
     {
       "path": "tests/posPaymentBreakdown.test.js",
-      "lines": 111,
+      "lines": 128,
       "caseCount": 5,
       "describeTitles": [
         "POS close-report payment breakdown"
       ],
-      "expectCount": 29,
+      "expectCount": 36,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -15716,7 +17048,7 @@
     },
     {
       "path": "tests/posReadings.usecase.test.js",
-      "lines": 438,
+      "lines": 484,
       "caseCount": 9,
       "describeTitles": [
         "POS readings usecases"
@@ -15753,14 +17085,14 @@
     },
     {
       "path": "tests/posReports.repository.test.js",
-      "lines": 857,
-      "caseCount": 12,
+      "lines": 1054,
+      "caseCount": 17,
       "describeTitles": [
         "posRepository reports analytics"
       ],
-      "expectCount": 55,
+      "expectCount": 64,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -15793,14 +17125,14 @@
     },
     {
       "path": "tests/posReports.usecase.test.js",
-      "lines": 252,
-      "caseCount": 13,
+      "lines": 306,
+      "caseCount": 14,
       "describeTitles": [
         "POS reports usecases"
       ],
-      "expectCount": 43,
+      "expectCount": 48,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 7,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -15830,12 +17162,12 @@
     },
     {
       "path": "tests/posRepository.catalogFolderWidening.test.js",
-      "lines": 278,
-      "caseCount": 10,
+      "lines": 302,
+      "caseCount": 11,
       "describeTitles": [
         "posRepository.listCatalog — ADR 0080 Amendment secondary-category widening"
       ],
-      "expectCount": 19,
+      "expectCount": 26,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -15866,12 +17198,12 @@
     },
     {
       "path": "tests/posRepository.catalogImages.test.js",
-      "lines": 363,
-      "caseCount": 5,
+      "lines": 421,
+      "caseCount": 6,
       "describeTitles": [
         "posRepository catalog image mapping"
       ],
-      "expectCount": 10,
+      "expectCount": 12,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -15910,14 +17242,14 @@
     },
     {
       "path": "tests/posRepository.catalogPagination.test.js",
-      "lines": 75,
-      "caseCount": 2,
+      "lines": 108,
+      "caseCount": 4,
       "describeTitles": [
         "POS Items management catalog pagination"
       ],
-      "expectCount": 6,
+      "expectCount": 11,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -15933,7 +17265,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -16063,6 +17397,7 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-06-28-pos-optional-compliance-operation.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json"
@@ -16391,16 +17726,16 @@
     },
     {
       "path": "tests/posSplitPayment.route.contract.test.js",
-      "lines": 93,
-      "caseCount": 2,
+      "lines": 121,
+      "caseCount": 3,
       "describeTitles": [
         "POS split-payment route contract"
       ],
-      "expectCount": 27,
+      "expectCount": 30,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
-      "textRatio": 0.33,
+      "textRatio": 0.3,
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
@@ -16426,16 +17761,16 @@
     },
     {
       "path": "tests/posSplitPayment.schema.contract.test.js",
-      "lines": 148,
-      "caseCount": 6,
+      "lines": 163,
+      "caseCount": 7,
       "describeTitles": [
         "split payment schema contract"
       ],
-      "expectCount": 62,
+      "expectCount": 70,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 5,
-      "textRatio": 0.66,
+      "readFileSyncCount": 6,
+      "textRatio": 0.69,
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
@@ -16466,14 +17801,14 @@
     },
     {
       "path": "tests/posSplitPayment.usecases.test.js",
-      "lines": 1138,
-      "caseCount": 31,
+      "lines": 1416,
+      "caseCount": 38,
       "describeTitles": [
         "POS split-payment engine"
       ],
-      "expectCount": 130,
+      "expectCount": 167,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 24,
+      "toHaveBeenCalledCount": 32,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -16532,6 +17867,138 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posTerminalDeviceEnrollment.migration.test.js",
+      "lines": 97,
+      "caseCount": 5,
+      "describeTitles": [
+        "20260914000004 POS terminal device enrollment migration"
+      ],
+      "expectCount": 20,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "migration",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: migration)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posTerminalDeviceEnrollment.service.test.js",
+      "lines": 396,
+      "caseCount": 9,
+      "describeTitles": [
+        "POS terminal device enrollment service"
+      ],
+      "expectCount": 34,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "service",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: service)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posTerminalDeviceRoute.transport.test.js",
+      "lines": 17,
+      "caseCount": 1,
+      "describeTitles": [
+        "POS terminal device bootstrap route"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 0.5,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "transport",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "consolidate",
+      "reason": "source-text-mixed (text_ratio=0.5)",
+      "rule": "R4-source-text-mixed",
+      "findings": []
+    },
+    {
+      "path": "tests/posTerminalDeviceUseCases.test.js",
+      "lines": 90,
+      "caseCount": 3,
+      "describeTitles": [
+        "POS terminal device administration use cases"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 10,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -16703,12 +18170,12 @@
     },
     {
       "path": "tests/posTerminalRegistrySecrets.test.js",
-      "lines": 45,
-      "caseCount": 1,
+      "lines": 59,
+      "caseCount": 2,
       "describeTitles": [
         "POS terminal registry pairing versions"
       ],
-      "expectCount": 8,
+      "expectCount": 10,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -16872,14 +18339,14 @@
     },
     {
       "path": "tests/posUsecases.applicationResult.test.js",
-      "lines": 2241,
-      "caseCount": 58,
+      "lines": 2281,
+      "caseCount": 59,
       "describeTitles": [
         "pos use-cases application result contract"
       ],
-      "expectCount": 203,
+      "expectCount": 207,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 70,
+      "toHaveBeenCalledCount": 72,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -16930,6 +18397,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: applicationResult)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/posUserOperatingScope.test.js",
+      "lines": 50,
+      "caseCount": 8,
+      "describeTitles": [
+        "Phase 355 tenant-user operating scope"
+      ],
+      "expectCount": 10,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -17197,14 +18697,14 @@
     },
     {
       "path": "tests/posValidator.terminalShiftIdentity.test.js",
-      "lines": 100,
-      "caseCount": 6,
+      "lines": 121,
+      "caseCount": 7,
       "describeTitles": [
         "POS open shift validator terminal identity"
       ],
-      "expectCount": 14,
-      "expectResCount": 5,
-      "toHaveBeenCalledCount": 11,
+      "expectCount": 17,
+      "expectResCount": 6,
+      "toHaveBeenCalledCount": 13,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17271,7 +18771,7 @@
     },
     {
       "path": "tests/posVoid.route.transport.test.js",
-      "lines": 441,
+      "lines": 446,
       "caseCount": 9,
       "describeTitles": [
         "POS transaction void route transport contract"
@@ -17296,6 +18796,7 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17775,12 +19276,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 372,
-      "caseCount": 15,
+      "lines": 478,
+      "caseCount": 20,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 45,
+      "expectCount": 55,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -17807,7 +19308,8 @@
         ],
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
-          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md"
+          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
         ],
         "hardcoded": []
       },
@@ -18580,12 +20082,12 @@
     },
     {
       "path": "tests/reportHandlers.transport.test.js",
-      "lines": 490,
+      "lines": 491,
       "caseCount": 10,
       "describeTitles": [
         "reportHandlers transport contracts"
       ],
-      "expectCount": 41,
+      "expectCount": 42,
       "expectResCount": 17,
       "toHaveBeenCalledCount": 35,
       "readFileSyncCount": 0,
@@ -18614,6 +20116,41 @@
       "classification": "keep",
       "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md",
       "rule": "R1-pin",
+      "findings": []
+    },
+    {
+      "path": "tests/reportRegistry.contract.test.js",
+      "lines": 101,
+      "caseCount": 4,
+      "describeTitles": [
+        "canonical report registry contract"
+      ],
+      "expectCount": 26,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 0.35,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -18646,6 +20183,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: poAnalysis)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/reportTimezone.test.js",
+      "lines": 17,
+      "caseCount": 2,
+      "describeTitles": [
+        "report timezone formatting"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -18974,14 +20544,14 @@
     },
     {
       "path": "tests/roadDistanceProvider.test.js",
-      "lines": 121,
-      "caseCount": 8,
+      "lines": 182,
+      "caseCount": 12,
       "describeTitles": [
         "buildRoadDistanceProvider"
       ],
-      "expectCount": 15,
+      "expectCount": 27,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 5,
+      "toHaveBeenCalledCount": 9,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -19200,7 +20770,7 @@
     },
     {
       "path": "tests/runtimeSchemaAuditService.test.js",
-      "lines": 948,
+      "lines": 1018,
       "caseCount": 11,
       "describeTitles": [
         "runtimeSchemaAuditService"
@@ -19289,10 +20859,10 @@
     },
     {
       "path": "tests/salesRepositoryPromoReadModel.test.js",
-      "lines": 66,
+      "lines": 75,
       "caseCount": 1,
       "describeTitles": [],
-      "expectCount": 1,
+      "expectCount": 2,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -19322,12 +20892,12 @@
     },
     {
       "path": "tests/salesValidator.transactionsQuery.test.js",
-      "lines": 48,
+      "lines": 50,
       "caseCount": 2,
       "describeTitles": [
         "Sales transactions query validator"
       ],
-      "expectCount": 8,
+      "expectCount": 9,
       "expectResCount": 3,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -20044,6 +21614,39 @@
       "findings": []
     },
     {
+      "path": "tests/settingsRepository.optimisticConcurrency.unit.test.js",
+      "lines": 89,
+      "caseCount": 2,
+      "describeTitles": [
+        "settingsRepository optimistic concurrency"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "optimisticConcurrency.unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: optimisticConcurrency.unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/settingsRepository.terminalCashierAssignments.test.js",
       "lines": 67,
       "caseCount": 3,
@@ -20114,14 +21717,14 @@
     },
     {
       "path": "tests/settingsUsecases.applicationResult.test.js",
-      "lines": 1502,
-      "caseCount": 63,
+      "lines": 1548,
+      "caseCount": 65,
       "describeTitles": [
         "settings use-cases application result contract"
       ],
-      "expectCount": 205,
+      "expectCount": 213,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 61,
+      "toHaveBeenCalledCount": 63,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20207,14 +21810,14 @@
     },
     {
       "path": "tests/settingsValidator.deliveryFeeMode.test.js",
-      "lines": 137,
-      "caseCount": 9,
+      "lines": 155,
+      "caseCount": 10,
       "describeTitles": [
         "settings validator store_delivery_fee_mode / store_delivery_fee_calc contract"
       ],
-      "expectCount": 20,
-      "expectResCount": 8,
-      "toHaveBeenCalledCount": 17,
+      "expectCount": 23,
+      "expectResCount": 9,
+      "toHaveBeenCalledCount": 19,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -20237,6 +21840,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: deliveryFeeMode)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/settingsValidator.optimisticConcurrency.test.js",
+      "lines": 75,
+      "caseCount": 3,
+      "describeTitles": [
+        "settings optimistic-concurrency validation"
+      ],
+      "expectCount": 6,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "optimisticConcurrency",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: optimisticConcurrency)",
       "rule": "R5-default",
       "findings": []
     },
@@ -21158,14 +22794,14 @@
     },
     {
       "path": "tests/storeCheckoutCalculatedDeliveryFee.unit.test.js",
-      "lines": 380,
-      "caseCount": 10,
+      "lines": 396,
+      "caseCount": 11,
       "describeTitles": [
         "resolveStoreDeliveryFee calculated mode -- fail-open-to-fixed (ADR 0078 Decision 2 [binding])",
         "resolveStoreDeliveryFee calculated mode -- happy path and in-range boundary",
         "ADR 0078 Decision 2 [binding] / D6 -- out-of-range hard block"
       ],
-      "expectCount": 39,
+      "expectCount": 41,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
@@ -21834,6 +23470,39 @@
       "findings": []
     },
     {
+      "path": "tests/storeOrderHistory.usecase.test.js",
+      "lines": 21,
+      "caseCount": 1,
+      "describeTitles": [
+        "store customer order history use-case"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/storeOutsideRadiusFlagRetirement.unit.test.js",
       "lines": 218,
       "caseCount": 7,
@@ -22291,6 +23960,39 @@
       "findings": []
     },
     {
+      "path": "tests/storeValidator.orderHistory.test.js",
+      "lines": 34,
+      "caseCount": 2,
+      "describeTitles": [
+        "store order history query validator"
+      ],
+      "expectCount": 4,
+      "expectResCount": 1,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "orderHistory",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: orderHistory)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/storefrontBusinessHours.test.js",
       "lines": 103,
       "caseCount": 7,
@@ -22437,14 +24139,14 @@
     },
     {
       "path": "tests/storefrontCatalogUseCases.test.js",
-      "lines": 1874,
-      "caseCount": 41,
+      "lines": 1904,
+      "caseCount": 42,
       "describeTitles": [
         "storefront catalog use cases"
       ],
-      "expectCount": 117,
+      "expectCount": 120,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 61,
+      "toHaveBeenCalledCount": 63,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -23380,15 +25082,15 @@
     },
     {
       "path": "tests/tenantAdminAuditLogActions.contract.test.js",
-      "lines": 28,
+      "lines": 31,
       "caseCount": 1,
       "describeTitles": [
         "tenant admin audit log action contract"
       ],
-      "expectCount": 9,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 4,
+      "readFileSyncCount": 5,
       "textRatio": 1,
       "maxMockStubCount": 0,
       "isSupertest": false,
@@ -23516,6 +25218,41 @@
       "citations": {
         "live": [],
         "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/tenantCapabilitiesWriteReadback.test.js",
+      "lines": 227,
+      "caseCount": 3,
+      "describeTitles": [
+        "tenant capability write durability and read-back (#1923)"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-tenant-capability-write-verification.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -23829,6 +25566,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/tenantLocationDeliveryRadiusPhase329.usecases.test.js",
+      "lines": 153,
+      "caseCount": 3,
+      "describeTitles": [
+        "Phase 329 tenant-location delivery radius persistence"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "usecases",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecases)",
       "rule": "R5-default",
       "findings": []
     },
@@ -24648,12 +26418,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 622,
-      "caseCount": 31,
+      "lines": 705,
+      "caseCount": 34,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 140,
+      "expectCount": 166,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -25020,14 +26790,14 @@
     },
     {
       "path": "tests/userSoftDeletePolicy.test.js",
-      "lines": 217,
-      "caseCount": 7,
+      "lines": 259,
+      "caseCount": 8,
       "describeTitles": [
         "userService soft-delete policy"
       ],
-      "expectCount": 14,
+      "expectCount": 17,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -25044,7 +26814,8 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/archive/system-audit-2026-03/11.3-Inconsistent_soft_deletes.md"
+          "docs/archive/system-audit-2026-03/11.3-Inconsistent_soft_deletes.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
