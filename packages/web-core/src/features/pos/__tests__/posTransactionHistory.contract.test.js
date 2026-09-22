@@ -258,11 +258,10 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('>Total</th>');
         expect(panelContent).toContain('dgfy-pos-history-header-cell');
         expect(panelContent).toContain('Fee</span>');
-        expect(panelContent).toContain('text-left text-[13px] font-black text-[#1A4E8D]">Total</th>');
+        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>');
         expect(panelContent).not.toContain('>Fee (PHP)</th>');
         expect(panelContent).not.toContain('>Total (PHP)</th>');
         expect(panelContent).toContain('text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.service_fee_amount)}</div></td>');
-        expect(panelContent).not.toContain('text-right');
         expect(panelContent).toContain('pos-history-date-time-${row.pos_transaction_id}');
         expect(panelContent).toContain('pos-history-payment-${row.pos_transaction_id}');
         expect(panelContent).toContain('pos-history-row-content pos-history-row-content--column min-w-0 leading-tight');

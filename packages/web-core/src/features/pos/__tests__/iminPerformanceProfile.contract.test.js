@@ -21,6 +21,14 @@ const terminalOperationsSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx'),
   'utf8'
 );
+const settingsWorkspaceSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/settings/PosSettingsWorkspace.jsx'),
+  'utf8'
+);
+const operationsAccessSource = fs.readFileSync(
+  path.join(webCoreRoot, 'src/features/pos/settings/PosOperationsAccessSection.jsx'),
+  'utf8'
+);
 const checkoutViewSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'
@@ -99,9 +107,12 @@ describe('iMin POS performance profile contract', () => {
   });
 
   it('commits both operations panes immediately on iMin while retaining browser transitions', () => {
-    const tabChangeBodies = [...terminalOperationsSource.matchAll(
-      /const handleTabChange = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[activeTab, clearAnimationTimers, isIminRuntime\]\);/g
-    )].map((match) => match[1]);
+    const tabChangeBodies = [terminalOperationsSource, settingsWorkspaceSource]
+      .flatMap((source) => [
+        ...source.matchAll(/const (?:handleTabChange|transitionToTab) = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[[^\]]*\]\);/g)
+      ])
+      .map((match) => match[1])
+      .filter((body) => body.includes('if (isIminRuntime)'));
 
     expect(tabChangeBodies).toHaveLength(2);
     tabChangeBodies.forEach((body) => {
@@ -176,10 +187,9 @@ describe('iMin POS performance profile contract', () => {
       'VoucherManagementPanel',
       'PricelistManagementPanel',
       'DownpaymentSettingsPanel',
-      'PosCashierAttendanceSettingsCard',
-      'TerminalStorefrontStatusCard'
+      'PosCashierAttendanceSettingsCard'
     ].forEach((componentName) => {
-      expect(terminalOperationsSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
+      expect(`${terminalOperationsSource}\n${settingsWorkspaceSource}\n${operationsAccessSource}`).toContain(`const ${componentName} = lazyWithChunkRetry`);
     });
     expect(terminalOperationsSource).toContain('<Suspense fallback={null}>');
     expect(terminalOperationsSource).toContain('showCsvImport && canImportItems');

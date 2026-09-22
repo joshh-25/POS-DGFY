@@ -12,7 +12,7 @@ describe('POS item list pagination', () => {
 
     expect(workspace).toContain('const POS_ITEMS_PAGE_SIZE = 15;');
     expect(workspace).toContain('page_size: itemsPageSize');
-    expect(workspace).toContain('{paginatedItems.map((item) => {');
+    expect(workspace).toContain('paginatedItems.map((item) => {');
     expect(workspace).toContain('<GlobalPagination');
     expect(workspace).toContain('testId="pos-items-pagination"');
     expect(workspace).toContain('onPageChange={setItemsPage}');

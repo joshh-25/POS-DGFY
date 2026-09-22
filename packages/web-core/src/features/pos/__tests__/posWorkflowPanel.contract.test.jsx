@@ -91,6 +91,7 @@ describe('POS Workflow Panels Contract', () => {
         setOrderMethod={vi.fn()}
         kitchenNotes="No spice"
         setKitchenNotes={vi.fn()}
+        isTabletViewport
       />
     );
 

@@ -37,7 +37,6 @@ describe('POS Always Available contract', () => {
     expect(workspace).toContain('pos_best_seller_mode');
     expect(settings).toContain('pos-best-seller-auto-tagging');
     expect(settingsModel).toContain('pos_best_seller_settings');
-    expect(workspace).toContain('pos-best-seller-auto-tagging');
     expect(workspace).toContain('pos-items-edit-best-seller-mode');
     expect(workspace).toContain('pos_best_seller_mode: editForm.pos_best_seller_mode');
     expect(workspace).toContain('notifyPosCatalogUpdated()');

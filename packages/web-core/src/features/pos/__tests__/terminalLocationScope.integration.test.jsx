@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe('POS terminal location UX integration', () => {
-  it('renders the incoming queue scope without exposing the operating-location selector', () => {
+  it('renders the incoming queue scope without exposing the operating-location selector', async () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -101,14 +101,14 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Location scope:')).toBeTruthy();
-    expect(screen.getByText('East Branch')).toBeTruthy();
+    expect(await screen.findByText('Location scope:')).toBeTruthy();
+    expect(await screen.findByText('East Branch')).toBeTruthy();
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
   });
 
-  it('hides incoming orders until the terminal has an active shift', () => {
+  it('hides incoming orders until the terminal has an active shift', async () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -125,11 +125,11 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
+    expect(await screen.findByText('Open a shift to view orders for this branch.')).toBeTruthy();
     expect(screen.queryByText('Main Branch Buyer')).toBeNull();
   });
 
-  it('renders no-shift admin Orders as read-only branch monitoring', () => {
+  it('renders no-shift admin Orders as read-only branch monitoring', async () => {
     const refreshAdminLocationMonitor = vi.fn();
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
@@ -155,9 +155,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByTestId('admin-branch-orders')).toBeTruthy();
-    expect(screen.getByText('East Branch Buyer')).toBeTruthy();
-    expect(screen.getByText(/Read-only admin view/i)).toBeTruthy();
+    expect(await screen.findByTestId('admin-branch-orders')).toBeTruthy();
+    expect(await screen.findByText('East Branch Buyer')).toBeTruthy();
+    expect(await screen.findByText(/Read-only admin view/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Accept|Reject|Process/i })).toBeNull();
   });
 

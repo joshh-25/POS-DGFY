@@ -525,7 +525,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(dateTimeCell.querySelectorAll('span')).toHaveLength(2);
         expect(paymentCell.className).toContain('pos-history-row-content--column');
         expect(paymentCell.querySelectorAll('span')).toHaveLength(2);
-        expect(totalValue.closest('td')?.className).toContain('text-left');
+        expect(totalValue.closest('td')?.className).toContain('text-right');
         expect(scrollRegion.className).toContain('flex-1');
         expect(paginationFooter.className).toContain('shrink-0');
         expect(paginationFooter.className).toContain('py-2.5');
