@@ -120,7 +120,7 @@ the db manifest does, for delete/consolidate entries once the cut is actually ap
 
 ### Summary
 
-Total active test files: **690** | db-manifest members: **30** | findings: **4**
+Total active test files: **699** | db-manifest members: **30** | findings: **4**
 
 ### By classification
 
@@ -129,14 +129,14 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | consolidate | 30 |
 | delete | 16 |
 | demote | 5 |
-| keep | 636 |
+| keep | 645 |
 | trim | 3 |
 
 ### By suffix
 
 | Suffix | Count |
 | --- | --- |
-| (none) | 238 |
+| (none) | 247 |
 | unit | 65 |
 | usecase | 59 |
 | transport | 40 |
@@ -301,7 +301,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/adminTemplates.transport.test.js | 239 | 15 | keep | R5-default | default keep (suffix: transport) |
 | tests/adminTenantCapabilities.transport.test.js | 231 | 7 | keep | R5-default | default keep (suffix: transport) |
 | tests/adminTenantCapabilityValidator.test.js | 50 | 2 | keep | R5-default | default keep (suffix: (none)) |
-| tests/adminTenantHandlers.transport.test.js | 403 | 10 | keep | R5-default | default keep (suffix: transport) |
+| tests/adminTenantHandlers.transport.test.js | 459 | 12 | keep | R5-default | default keep (suffix: transport) |
 | tests/adminTenantLifecycle.integration.test.js | 478 | 9 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/adminTenantRegistrationValidation.test.js | 83 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/adr0080PrimaryOnlyReadersGuard.test.js | 50 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
@@ -417,7 +417,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/dashboardHandlers.transport.test.js | 114 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/dashboardUsecases.applicationResult.test.js | 55 | 3 | keep | R5-default | default keep (suffix: applicationResult) |
 | tests/delegatedInventoryLookup.test.js | 160 | 10 | keep | R5-default | default keep (suffix: (none)) |
-| tests/deleteTenantUseCase.test.js | 137 | 6 | keep | R5-default | default keep (suffix: (none)) |
+| tests/deleteTenantUseCase.test.js | 264 | 11 | keep | R5-default | default keep (suffix: (none)) |
 | tests/deliveryCompletionEvidenceStorage.test.js | 49 | 1 | keep | R5-default | default keep (suffix: (none)) |
 | tests/deliveryFeeConfig.unit.test.js | 166 | 16 | keep | R5-default | default keep (suffix: unit) |
 | tests/deliveryFeeModeConfig.checkoutFallback.unit.test.js | 170 | 5 | keep | R5-default | default keep (suffix: checkoutFallback.unit) |
@@ -427,11 +427,11 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/deliveryFromPrice.unit.test.js | 140 | 14 | keep | R5-default | default keep (suffix: unit) |
 | tests/deliveryPersonnelRegistry.usecase.test.js | 224 | 9 | keep | R5-default | default keep (suffix: usecase) |
 | tests/deliveryRun.usecase.test.js | 508 | 21 | keep | R5-default | default keep (suffix: usecase) |
-| tests/deliveryRunDispatch.usecase.test.js | 511 | 20 | keep | R5-default | default keep (suffix: usecase) |
+| tests/deliveryRunDispatch.usecase.test.js | 665 | 24 | keep | R5-default | default keep (suffix: usecase) |
 | tests/deliveryRunLoading.usecase.test.js | 201 | 6 | keep | R5-default | default keep (suffix: usecase) |
 | tests/deliveryRunRemittance.transport.test.js | 144 | 5 | keep | R5-default | default keep (suffix: transport) |
 | tests/deliveryRunRemittance.usecase.test.js | 383 | 7 | keep | R5-default | default keep (suffix: usecase) |
-| tests/deliveryRunRoutes.transport.test.js | 303 | 11 | keep | R5-default | default keep (suffix: transport) |
+| tests/deliveryRunRoutes.transport.test.js | 311 | 11 | keep | R5-default | default keep (suffix: transport) |
 | tests/deliveryRunScheduledDateEnd.migration.test.js | 120 | 4 | keep | R5-default | default keep (suffix: migration) |
 | tests/deliveryRunSerializer.test.js | 170 | 9 | keep | R5-default | default keep (suffix: (none)) |
 | tests/deliveryRunTransportationLabel.migration.test.js | 75 | 4 | keep | R5-default | default keep (suffix: migration) |
@@ -449,20 +449,20 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/dgfyAuthMiddleware.test.js | 196 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyAuthUseCases.test.js | 2470 | 61 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyCustomerHandlers.transport.test.js | 144 | 3 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
-| tests/dgfyCustomerUseCases.test.js | 1001 | 34 | keep | R5-default | default keep (suffix: (none)) |
+| tests/dgfyCustomerUseCases.test.js | 1045 | 37 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyInvitationCompanyRole.test.js | 114 | 3 | keep | R5-default | default keep (suffix: (none)) |
-| tests/dgfyLaundryOrderUseCases.test.js | 168 | 6 | keep | R5-default | default keep (suffix: (none)) |
+| tests/dgfyLaundryOrderUseCases.test.js | 181 | 7 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyLaundryProviderUseCases.test.js | 60 | 6 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyLegacyLinkService.test.js | 192 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyLegalUseCases.test.js | 26 | 1 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyPosTerminalPolicyService.test.js | 128 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dgfyRegisterPreflight.transport.test.js | 116 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/dgfyTenantSession.transport.test.js | 439 | 6 | keep | R5-default | default keep (suffix: transport) |
-| tests/dglaundryBookingPayment.usecase.test.js | 62 | 2 | keep | R5-default | default keep (suffix: usecase) |
-| tests/dglaundryEventSignature.test.js | 118 | 4 | keep | R5-default | default keep (suffix: (none)) |
+| tests/dglaundryBookingPayment.usecase.test.js | 79 | 3 | keep | R5-default | default keep (suffix: usecase) |
+| tests/dglaundryEventSignature.test.js | 131 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dglaundryPartnerAuth.middleware.test.js | 39 | 1 | keep | R5-default | default keep (suffix: middleware) |
 | tests/dglaundryPartnerAuth.test.js | 135 | 6 | keep | R5-default | default keep (suffix: (none)) |
-| tests/dglaundryPartnerClient.test.js | 41 | 1 | keep | R5-default | default keep (suffix: (none)) |
+| tests/dglaundryPartnerClient.test.js | 127 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dispatchOrderHandlers.transport.test.js | 223 | 5 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/dispatchOrderToolRegistry.test.js | 143 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/dispatchOrderUsecases.applicationResult.test.js | 85 | 5 | keep | R5-default | default keep (suffix: applicationResult) |
@@ -513,24 +513,32 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/forecastHandlers.transport.test.js | 98 | 2 | consolidate | R4-transport-responder-only | transport-responder-only (>=90% call/res assertions, <=6 cases) |
 | tests/forecastUsecases.applicationResult.test.js | 35 | 2 | keep | R5-default | default keep (suffix: applicationResult) |
 | tests/frontend.complianceActivationReadiness.e2e.test.js | 840 | 2 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
-| tests/frontend.imsPosSalesJourney.e2e.test.js | 2617 | 8 | keep | R1-pin | hardcoded reference: .github/workflows/promotion-quality-gate.yml, apps/dgfy-api/package.json |
+| tests/frontend.imsPosSalesJourney.e2e.test.js | 2854 | 8 | keep | R1-pin | hardcoded reference: .github/workflows/promotion-quality-gate.yml, apps/dgfy-api/package.json |
 | tests/frontend.sessionIsolation.e2e.test.js | 332 | 1 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
 | tests/fulfillmentProfiles.contract.test.js | 295 | 25 | keep | R5-default | default keep (suffix: contract) |
 | tests/generateConfirmationUseCase.test.js | 73 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/generateStorefrontSlug.usecase.test.js | 120 | 4 | keep | R5-default | default keep (suffix: usecase) |
 | tests/geoAddressSearchUseCase.test.js | 27 | 2 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoAddressSearchValidator.test.js | 50 | 5 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoCache.test.js | 167 | 12 | keep | R5-default | default keep (suffix: (none)) |
 | tests/geoCatalogSyncService.test.js | 149 | 8 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoCircuitBreaker.test.js | 98 | 10 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoFallbackPolicy.test.js | 163 | 9 | keep | R5-default | default keep (suffix: (none)) |
 | tests/geoInventoryWorkerSku.contract.test.js | 21 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
 | tests/geoInventoryWorkerStartup.contract.test.js | 18 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
+| tests/geoLandmarkClassifier.test.js | 62 | 9 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoLocalProvider.test.js | 54 | 6 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoPhotonFeatureMapper.test.js | 203 | 19 | keep | R5-default | default keep (suffix: (none)) |
+| tests/geoQuadruperProvider.test.js | 144 | 11 | keep | R5-default | default keep (suffix: (none)) |
 | tests/geoSearchRepository.tenantCompanyToken.test.js | 99 | 1 | keep | R5-default | default keep (suffix: tenantCompanyToken) |
-| tests/geoSearchReverseGeocode.usecase.test.js | 101 | 6 | keep | R5-default | default keep (suffix: usecase) |
+| tests/geoSearchReverseGeocode.usecase.test.js | 112 | 6 | keep | R5-default | default keep (suffix: usecase) |
 | tests/grandMatadorCatalogAudit.test.js | 36 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/grandMatadorCatalogImport.test.js | 101 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/guestCheckoutDisabledEnforcement.usecase.test.js | 506 | 8 | keep | R5-default | default keep (suffix: usecase) |
 | tests/handleSpecialQueriesUseCase.test.js | 33 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/handleToolCallsUseCase.test.js | 190 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/healthSchemaIndexAudit.test.js | 39 | 2 | keep | R5-default | default keep (suffix: (none)) |
-| tests/healthService.test.js | 669 | 17 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
+| tests/healthService.test.js | 742 | 22 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
 | tests/hospitalityFolioTotals.contract.test.js | 63 | 3 | keep | R5-default | default keep (suffix: contract) |
 | tests/hospitalityUseCases.test.js | 671 | 20 | keep | R5-default | default keep (suffix: (none)) |
 | tests/hostingProfilePreflight.test.js | 101 | 4 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
@@ -546,7 +554,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/inventoryAuthorityGate.test.js | 97 | 5 | keep | R5-default | default keep (suffix: (none)) |
 | tests/inventoryGetItemByIdUseCase.test.js | 38 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/inventoryGetItemsUseCase.test.js | 84 | 7 | keep | R5-default | default keep (suffix: (none)) |
-| tests/inventoryItemRepository.test.js | 3299 | 75 | keep | R5-default | default keep (suffix: (none)) |
+| tests/inventoryItemRepository.test.js | 3437 | 79 | keep | R5-default | default keep (suffix: (none)) |
 | tests/inventoryReservationService.unit.test.js | 116 | 3 | keep | R5-default | default keep (suffix: unit) |
 | tests/inventoryReservations.migration.test.js | 47 | 1 | keep | R5-default | default keep (suffix: migration) |
 | tests/itemFinancialPolicy.test.js | 84 | 4 | keep | R5-default | default keep (suffix: (none)) |
@@ -649,7 +657,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/posCatalogSearchGap.phase296.test.js | 66 | 2 | keep | R5-default | default keep (suffix: phase296) |
 | tests/posCheckout.db.integration.test.js | 938 | 13 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
 | tests/posCheckoutAffiliateAttribution.unit.test.js | 492 | 8 | keep | R5-default | default keep (suffix: unit) |
-| tests/posCheckoutFnbContracts.usecase.test.js | 2254 | 30 | keep | R1-pin | hardcoded reference: .github/workflows/promotion-quality-gate.yml, scripts/run-fnb-readiness-gate.js |
+| tests/posCheckoutFnbContracts.usecase.test.js | 2785 | 39 | keep | R1-pin | hardcoded reference: .github/workflows/promotion-quality-gate.yml, scripts/run-fnb-readiness-gate.js |
 | tests/posDayClosePinPolicy.test.js | 36 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posDayClosePinSelfService.contract.test.js | 63 | 5 | keep | R0-override | merge target for dgfyTenantSessionService.contract; encodes a real incident |
 | tests/posDeliveryAssignment.usecase.test.js | 302 | 8 | keep | R5-default | default keep (suffix: usecase) |
@@ -678,7 +686,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/posMerchantTenderReconciliation.usecases.test.js | 127 | 4 | keep | R5-default | default keep (suffix: usecases) |
 | tests/posOnlineInventoryReservationLifecycle.unit.test.js | 402 | 11 | keep | R5-default | default keep (suffix: unit) |
 | tests/posOnlineOrderCompletionBalanceGate.usecase.test.js | 202 | 6 | keep | R5-default | default keep (suffix: usecase) |
-| tests/posOperationReplayParity.usecase.test.js | 977 | 13 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
+| tests/posOperationReplayParity.usecase.test.js | 1036 | 14 | keep | R1-pin | compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md, docs/compliance/evidence/residual-risk-closure-matrix.md |
 | tests/posOperatorAuthority.migration.test.js | 128 | 3 | keep | R5-default | default keep (suffix: migration) |
 | tests/posOperatorAuthority.security.contract.test.js | 92 | 4 | keep | R5-default | default keep (suffix: security.contract) |
 | tests/posOperatorAuthority.usecases.test.js | 428 | 19 | keep | R5-default | default keep (suffix: usecases) |
@@ -716,7 +724,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/posShiftOperatorUniqueness.migration.test.js | 128 | 5 | keep | R5-default | default keep (suffix: migration) |
 | tests/posShiftRecoveryPolicy.test.js | 88 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/posSplitAllocationReversal.usecase.test.js | 393 | 8 | keep | R5-default | default keep (suffix: usecase) |
-| tests/posSplitPayment.repository.test.js | 74 | 2 | keep | R5-default | default keep (suffix: repository) |
+| tests/posSplitPayment.repository.test.js | 135 | 3 | keep | R5-default | default keep (suffix: repository) |
 | tests/posSplitPayment.route.contract.test.js | 93 | 2 | keep | R5-default | default keep (suffix: route.contract) |
 | tests/posSplitPayment.schema.contract.test.js | 148 | 6 | demote | R0-override | import-only; no real query issued |
 | tests/posSplitPayment.usecases.test.js | 1138 | 31 | keep | R5-default | default keep (suffix: usecases) |
@@ -754,7 +762,7 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/productUsageTelemetryService.test.js | 143 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/productionEcosystemConfig.test.js | 29 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/productionEnvGuard.test.js | 120 | 5 | keep | R5-default | default keep (suffix: (none)) |
-| tests/productionEnvValidation.test.js | 372 | 15 | keep | R5-default | default keep (suffix: (none)) |
+| tests/productionEnvValidation.test.js | 478 | 20 | keep | R5-default | default keep (suffix: (none)) |
 | tests/promoteLegacyPosGeneratedBarcodes.migration.test.js | 98 | 3 | keep | R5-default | default keep (suffix: migration) |
 | tests/publicSearchAliasPolicy.test.js | 52 | 9 | keep | R5-default | default keep (suffix: (none)) |
 | tests/purchaseOrder.test.js | 184 | 4 | keep | R1-pin | hardcoded reference: scripts/backend-db-dependent-tests.js |
@@ -901,10 +909,11 @@ Total active test files: **690** | db-manifest members: **30** | findings: **4**
 | tests/supplierToolRegistry.test.js | 94 | 4 | keep | R5-default | default keep (suffix: (none)) |
 | tests/supplierUsecases.applicationResult.test.js | 78 | 4 | keep | R5-default | default keep (suffix: applicationResult) |
 | tests/tempFileService.local.test.js | 71 | 2 | keep | R1-pin | hardcoded reference: apps/dgfy-api/package.json |
-| tests/tenantAdminAuditLogActions.contract.test.js | 28 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
+| tests/tenantAdminAuditLogActions.contract.test.js | 31 | 1 | delete | R3-source-text-only | source-text-only (text_ratio=1) |
 | tests/tenantAffiliateSlotsAdminUseCase.unit.test.js | 208 | 10 | keep | R5-default | default keep (suffix: unit) |
 | tests/tenantAffiliateSlotsValidator.test.js | 50 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantBootstrapManifest.test.js | 60 | 2 | keep | R5-default | default keep (suffix: (none)) |
+| tests/tenantCapabilitiesWriteReadback.test.js | 227 | 3 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantCapabilityReadiness.schemaCompatibility.test.js | 84 | 1 | keep | R5-default | default keep (suffix: schemaCompatibility) |
 | tests/tenantCapabilityRouteGates.test.js | 74 | 2 | keep | R5-default | default keep (suffix: (none)) |
 | tests/tenantCapabilitySettings.test.js | 136 | 8 | keep | R5-default | default keep (suffix: (none)) |

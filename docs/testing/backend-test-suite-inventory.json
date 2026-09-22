@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-09-17T02:47:46.248Z",
-  "totalFiles": 690,
+  "generatedAt": "2026-09-22T15:56:40.373Z",
+  "totalFiles": 699,
   "byClassification": {
-    "keep": 636,
+    "keep": 645,
     "delete": 16,
     "consolidate": 30,
     "trim": 3,
@@ -10,7 +10,7 @@
   },
   "bySuffix": {
     "migration": 37,
-    "(none)": 238,
+    "(none)": 247,
     "middleware": 13,
     "handler": 1,
     "transport": 40,
@@ -1109,14 +1109,14 @@
     },
     {
       "path": "tests/adminTenantHandlers.transport.test.js",
-      "lines": 403,
-      "caseCount": 10,
+      "lines": 459,
+      "caseCount": 12,
       "describeTitles": [
         "adminTenantHandlers transport contracts"
       ],
-      "expectCount": 31,
-      "expectResCount": 17,
-      "toHaveBeenCalledCount": 31,
+      "expectCount": 36,
+      "expectResCount": 20,
+      "toHaveBeenCalledCount": 36,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -3300,7 +3300,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -5375,14 +5377,14 @@
     },
     {
       "path": "tests/deleteTenantUseCase.test.js",
-      "lines": 137,
-      "caseCount": 6,
+      "lines": 264,
+      "caseCount": 11,
       "describeTitles": [
         "deleteTenantUseCase"
       ],
-      "expectCount": 35,
+      "expectCount": 73,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 21,
+      "toHaveBeenCalledCount": 39,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5750,10 +5752,11 @@
     },
     {
       "path": "tests/deliveryRunDispatch.usecase.test.js",
-      "lines": 511,
-      "caseCount": 20,
+      "lines": 665,
+      "caseCount": 24,
       "describeTitles": [
         "buildDispatchDeliveryRunUseCase -- run-level preconditions",
+        "buildDispatchDeliveryRunUseCase -- canonical dispatch warnings (Phase 337, #1927)",
         "buildDispatchDeliveryRunUseCase -- #1272 packing gate",
         "buildDispatchDeliveryRunUseCase -- fan-out taxonomy",
         "buildDispatchDeliveryRunUseCase -- per-member write-failure isolation (RF-1, PR #1280 review)",
@@ -5762,7 +5765,7 @@
         "buildDispatchDeliveryRunUseCase -- durable replay (D-4 layer 1)",
         "buildDispatchDeliveryRunUseCase -- validation"
       ],
-      "expectCount": 70,
+      "expectCount": 89,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -5785,6 +5788,7 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
+          "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5905,7 +5909,7 @@
     },
     {
       "path": "tests/deliveryRunRoutes.transport.test.js",
-      "lines": 303,
+      "lines": 311,
       "caseCount": 11,
       "describeTitles": [
         "deliveryRunHandlers transport contracts",
@@ -5935,6 +5939,7 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
+          "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6632,14 +6637,14 @@
     },
     {
       "path": "tests/dgfyCustomerUseCases.test.js",
-      "lines": 1001,
-      "caseCount": 34,
+      "lines": 1045,
+      "caseCount": 37,
       "describeTitles": [
         "dgfyCustomerUseCases"
       ],
-      "expectCount": 133,
+      "expectCount": 142,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 38,
+      "toHaveBeenCalledCount": 41,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6708,14 +6713,14 @@
     },
     {
       "path": "tests/dgfyLaundryOrderUseCases.test.js",
-      "lines": 168,
-      "caseCount": 6,
+      "lines": 181,
+      "caseCount": 7,
       "describeTitles": [
         "DGFY DGLaundry storefront/order projections"
       ],
-      "expectCount": 25,
+      "expectCount": 28,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 10,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6731,7 +6736,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6963,14 +6970,14 @@
     },
     {
       "path": "tests/dglaundryBookingPayment.usecase.test.js",
-      "lines": 62,
-      "caseCount": 2,
+      "lines": 79,
+      "caseCount": 3,
       "describeTitles": [
         "DGLaundry booking payment session"
       ],
-      "expectCount": 10,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 4,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6986,7 +6993,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -6996,12 +7005,12 @@
     },
     {
       "path": "tests/dglaundryEventSignature.test.js",
-      "lines": 118,
-      "caseCount": 4,
+      "lines": 131,
+      "caseCount": 5,
       "describeTitles": [
         "DGLaundry event signature verification"
       ],
-      "expectCount": 6,
+      "expectCount": 8,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -7100,12 +7109,12 @@
     },
     {
       "path": "tests/dglaundryPartnerClient.test.js",
-      "lines": 41,
-      "caseCount": 1,
+      "lines": 127,
+      "caseCount": 4,
       "describeTitles": [
         "DGLaundry partner request profile"
       ],
-      "expectCount": 6,
+      "expectCount": 19,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -7115,7 +7124,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 1,
+      "srcImportCount": 2,
       "deadImportCount": 0,
       "suffix": "(none)",
       "conditionalSkip": false,
@@ -7125,6 +7134,7 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-11-dglaundry-contract-authentication.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -8940,12 +8950,12 @@
     },
     {
       "path": "tests/frontend.imsPosSalesJourney.e2e.test.js",
-      "lines": 2617,
+      "lines": 2854,
       "caseCount": 8,
       "describeTitles": [
         "Frontend Real Browser E2E - IMS -> POS -> Sales Journey"
       ],
-      "expectCount": 32,
+      "expectCount": 44,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -8963,6 +8973,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          ".agents/skills/verifier/SKILL.md",
           "scripts/check-pr-quality-workflow.js"
         ],
         "historical": [
@@ -9167,6 +9178,78 @@
       "findings": []
     },
     {
+      "path": "tests/geoAddressSearchValidator.test.js",
+      "lines": 50,
+      "caseCount": 5,
+      "describeTitles": [
+        "validateAddressSearchQuery"
+      ],
+      "expectCount": 11,
+      "expectResCount": 4,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoCache.test.js",
+      "lines": 167,
+      "caseCount": 12,
+      "describeTitles": [
+        "readCache",
+        "writeCache",
+        "resolveImportDate"
+      ],
+      "expectCount": 18,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 7,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/geoCatalogSyncService.test.js",
       "lines": 149,
       "caseCount": 8,
@@ -9192,6 +9275,83 @@
       "citations": {
         "live": [],
         "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoCircuitBreaker.test.js",
+      "lines": 98,
+      "caseCount": 10,
+      "describeTitles": [
+        "createCircuitBreaker",
+        "cache keys"
+      ],
+      "expectCount": 16,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoFallbackPolicy.test.js",
+      "lines": 163,
+      "caseCount": 9,
+      "describeTitles": [
+        "reverse geocode fallback policy",
+        "address search fallback policy"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 3,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md",
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -9266,6 +9426,161 @@
       "findings": []
     },
     {
+      "path": "tests/geoLandmarkClassifier.test.js",
+      "lines": 62,
+      "caseCount": 9,
+      "describeTitles": [
+        "geoDistance",
+        "landmarkClassifier"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoLocalProvider.test.js",
+      "lines": 54,
+      "caseCount": 6,
+      "describeTitles": [
+        "localGeocodeProvider.reverseGeocode",
+        "localGeocodeProvider.searchAddresses"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoPhotonFeatureMapper.test.js",
+      "lines": 203,
+      "caseCount": 19,
+      "describeTitles": [
+        "composeAddressLine",
+        "mapPrecision",
+        "mapComponents",
+        "mapLandmarks",
+        "mapReverseGeocodeResponse",
+        "mapForwardSearchResponse"
+      ],
+      "expectCount": 47,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/geoQuadruperProvider.test.js",
+      "lines": 144,
+      "caseCount": 11,
+      "describeTitles": [
+        "quadruperGeocodeProvider"
+      ],
+      "expectCount": 21,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
+        ],
+        "historical": [
+          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        ],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/geoSearchRepository.tenantCompanyToken.test.js",
       "lines": 99,
       "caseCount": 1,
@@ -9300,7 +9615,7 @@
     },
     {
       "path": "tests/geoSearchReverseGeocode.usecase.test.js",
-      "lines": 101,
+      "lines": 112,
       "caseCount": 6,
       "describeTitles": [
         "reverse geocode use case"
@@ -9315,14 +9630,17 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 2,
+      "srcImportCount": 4,
       "deadImportCount": 0,
       "suffix": "usecase",
       "conditionalSkip": false,
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md",
+          "docs/superpowers/specs/2026-09-17-quadruper-geocoder-swap-design.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -9540,12 +9858,13 @@
     },
     {
       "path": "tests/healthService.test.js",
-      "lines": 669,
-      "caseCount": 17,
+      "lines": 742,
+      "caseCount": 22,
       "describeTitles": [
-        "healthService"
+        "healthService",
+        "resolveReleaseFloorInfo (#1977 Phase 342)"
       ],
-      "expectCount": 41,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -10126,14 +10445,14 @@
     },
     {
       "path": "tests/inventoryItemRepository.test.js",
-      "lines": 3299,
-      "caseCount": 75,
+      "lines": 3437,
+      "caseCount": 79,
       "describeTitles": [
         "inventory itemRepository"
       ],
-      "expectCount": 260,
+      "expectCount": 283,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 118,
+      "toHaveBeenCalledCount": 140,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -10166,6 +10485,7 @@
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
           "docs/compliance/impact-declarations/2026-09-05-pos-catalog-image-reliability-and-bulk-import.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json"
@@ -13802,6 +14122,7 @@
           "docs/compliance/impact-declarations/2026-04-06-dual-mode-pos-compliance-program.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
@@ -13859,14 +14180,14 @@
     },
     {
       "path": "tests/posCheckoutFnbContracts.usecase.test.js",
-      "lines": 2254,
-      "caseCount": 30,
+      "lines": 2785,
+      "caseCount": 39,
       "describeTitles": [
         "POS checkout F&B contracts"
       ],
-      "expectCount": 153,
+      "expectCount": 187,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 48,
+      "toHaveBeenCalledCount": 69,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 5,
@@ -13902,6 +14223,7 @@
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md",
           "docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md",
           "docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
@@ -14762,6 +15084,7 @@
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
           "docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md",
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
@@ -14958,12 +15281,12 @@
     },
     {
       "path": "tests/posOperationReplayParity.usecase.test.js",
-      "lines": 977,
-      "caseCount": 13,
+      "lines": 1036,
+      "caseCount": 14,
       "describeTitles": [
         "NVP-01 operation replay parity across terminal flows"
       ],
-      "expectCount": 95,
+      "expectCount": 99,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -16063,6 +16386,7 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-06-28-pos-optional-compliance-operation.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json"
@@ -16356,14 +16680,14 @@
     },
     {
       "path": "tests/posSplitPayment.repository.test.js",
-      "lines": 74,
-      "caseCount": 2,
+      "lines": 135,
+      "caseCount": 3,
       "describeTitles": [
         "POS split-payment repository contract"
       ],
-      "expectCount": 8,
+      "expectCount": 12,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17296,6 +17620,7 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
+          "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17775,12 +18100,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 372,
-      "caseCount": 15,
+      "lines": 478,
+      "caseCount": 20,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 45,
+      "expectCount": 55,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -17807,7 +18132,8 @@
         ],
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
-          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md"
+          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
         ],
         "hardcoded": []
       },
@@ -23380,15 +23706,15 @@
     },
     {
       "path": "tests/tenantAdminAuditLogActions.contract.test.js",
-      "lines": 28,
+      "lines": 31,
       "caseCount": 1,
       "describeTitles": [
         "tenant admin audit log action contract"
       ],
-      "expectCount": 9,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 4,
+      "readFileSyncCount": 5,
       "textRatio": 1,
       "maxMockStubCount": 0,
       "isSupertest": false,
@@ -23516,6 +23842,41 @@
       "citations": {
         "live": [],
         "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/tenantCapabilitiesWriteReadback.test.js",
+      "lines": 227,
+      "caseCount": 3,
+      "describeTitles": [
+        "tenant capability write durability and read-back (#1923)"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-17-tenant-capability-write-verification.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
