@@ -287,3 +287,25 @@ profiles inside the selected tenant, not a separate credential authority.
   refresh does not overwrite a dirty draft. This final acceptance adds no
   storage owner, credential broadcast, migration, cross-device sync guarantee,
   or authorization bypass.
+
+### 2026-09-19: Tenant-owner POS Unlock Authority and Admin-Flag Normalization (Phase 431)
+
+- An accepted DGFY membership for the current tenant owner may establish a POS
+  session without a per-branch location grant when the linked tenant user has
+  the authoritative `admin` role and an effective POS permission. The server
+  derives owner status from the accepted membership and tenant ownership record;
+  the client cannot submit or elevate this authority.
+- This owner/admin authority is limited to the existing tenant-wide exception
+  for branch grants and explicit terminal cashier assignments. Terminal
+  registry membership, terminal location binding, POS permissions, strict
+  device proof, and all operator/shift controls remain enforced.
+- Ordinary admins, managers, cashiers, and users who only have location-switch
+  permission remain subject to explicit location grants and terminal assignment.
+  A database boolean represented as `0`/`1` or a boolean-like string is
+  normalized before the POS role and terminal policy decisions are made.
+- This amendment closes the tenant-owner unlock path and introduces no new
+  schema, data, migration, credential, or cross-tenant authorization contract.
+  The existing additive `staff_roles` migration was rerun as a local
+  tenant-schema drift repair so the session query's optional role association
+  exists for every active local tenant; no existing user or business row was
+  rewritten.
