@@ -224,11 +224,8 @@ const normalizeTerminalRegistry = (rawValue) => {
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: locationId,
-<<<<<<< HEAD
-            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
-=======
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
             device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
->>>>>>> c6c90d317 (feat(platform): preserve location-scoped POS controls)
         });
     });
     return normalized;
