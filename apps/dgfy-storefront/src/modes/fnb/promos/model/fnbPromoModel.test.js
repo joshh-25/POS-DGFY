@@ -42,6 +42,8 @@ describe('buildFnbPromoSectionModel', () => {
     expect(promos[0]).toEqual(expect.objectContaining({
       promoCode: 'PICKY',
       promo_code: 'PICKY',
+      redemptionType: 'promo',
+      redemption_type: 'promo',
       discountPercent: 20,
       discountLabel: '20% OFF',
       subtitle: 'All Dish'
@@ -92,6 +94,7 @@ describe('buildFnbPromoSectionModel', () => {
     expect(promos).toHaveLength(1);
     expect(promos[0]).toEqual(expect.objectContaining({
       promoCode: 'TELLME',
+      redemptionType: 'promo',
       discountLabel: '20% OFF',
       validityText: 'Valid until July 31'
     }));
@@ -123,6 +126,7 @@ describe('buildFnbPromoSectionModel', () => {
       expect(promos).toHaveLength(1);
       expect(promos[0]).toEqual(expect.objectContaining({
         promoCode: 'GRACEOFFER',
+        redemptionType: 'voucher',
         title: 'Grace Offer',
         subtitle: '10% off your order',
         discountPercent: 10,
@@ -153,6 +157,7 @@ describe('buildFnbPromoSectionModel', () => {
       expect(promos).toHaveLength(1);
       expect(promos[0]).toEqual(expect.objectContaining({
         promoCode: 'PHARMA50',
+        redemptionType: 'voucher',
         title: 'Pharmacy Fixed Price',
         badge: 'B2B',
         discountPercent: null

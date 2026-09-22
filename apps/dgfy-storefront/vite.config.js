@@ -129,7 +129,10 @@ export default defineConfig(async () => {
     alias: sharedAliases
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router', 'react-router-dom', 'sonner']
+    include: ['react', 'react-dom', 'react-router', 'react-router-dom', 'sonner'],
+    // MapLibre resolves its worker relative to the package module. Keep it out of
+    // Vite's dependency optimizer so the explicit worker asset URL remains served.
+    exclude: ['maplibre-gl']
   },
   server: {
     host: true,
