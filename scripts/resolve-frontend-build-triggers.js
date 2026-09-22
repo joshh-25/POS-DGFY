@@ -68,8 +68,8 @@ const splitLines = (raw) => (
 // the other's comment pointing back here.
 const UNCONDITIONAL_TRIGGER_PATTERNS = Object.freeze({
     'dgfy-ims': /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
-    'dgfy-pos': /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
-    'dgfy-storefront': /^(apps\/dgfy-storefront\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
+    'dgfy-pos': /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+    'dgfy-storefront': /^(apps\/dgfy-storefront\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
 });
 
 /**

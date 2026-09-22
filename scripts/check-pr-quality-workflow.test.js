@@ -11,6 +11,8 @@ const {
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,
   checkCiEnforcedGatesAreBlocking,
+  checkDevelopPrLintJobMapping,
+  DEVELOP_PR_LINT_JOB_BY_APP,
   BLOCKING_STEP_IDS,
   SANCTIONED_SKIP_STAGING_IF,
   SANCTIONED_CONTINUE_ON_ERROR,
@@ -844,4 +846,89 @@ test('checkBlockingStepNamesInSync: a blocking id with no STEP_OUTCOMES row is c
   assert.equal(problems.length, 2);
   assert.ok(problems.some((p) => /has no STEP_OUTCOMES row/.test(p) && p.includes(`"${id}"`)), 'expected the missing-row problem');
   assert.ok(problems.some((p) => /stale name/.test(p) && p.includes(blockingLabelFor(id))), 'expected the now-unmapped reporter entry reported stale');
+});
+
+// #1748: checkDevelopPrLintJobMapping guards the three develop-PR lint caller jobs' app-to-check
+// mapping in pr-checks.yml. Fixtures mirror the real jobs' shape (needs/if/uses/with) closely
+// enough for the block-scoped regexes to exercise the same logic the real file does.
+
+function buildDevelopPrLintJobBlock(app, job, changedOutput, overrides = {}) {
+  const {
+    usesLine = '    uses: ./.github/workflows/pr-frontend-lint-checks.yml',
+    appLine = `      app: ${app}`,
+    ifLine = `    if: always() && needs.changes.result == 'success' && needs.changes.outputs.${changedOutput} == 'true'`,
+    runnerLine = `      runner_labels_json: \${{ needs.route-build-checks.outputs.light != '' && needs.route-build-checks.outputs.light || '["sieitz-runner"]' }}`,
+    extraLines = []
+  } = overrides;
+  return [
+    `  ${job}:`,
+    '    needs: [changes, route-build-checks]',
+    ifLine,
+    usesLine,
+    '    with:',
+    appLine,
+    runnerLine,
+    ...extraLines
+  ].join('\n');
+}
+
+function buildDevelopPrLintWorkflow(overridesByApp = {}) {
+  const jobs = Object.entries(DEVELOP_PR_LINT_JOB_BY_APP).map(([app, { job, changedOutput }]) => (
+    buildDevelopPrLintJobBlock(app, job, changedOutput, overridesByApp[app] || {})
+  ));
+  return `\n${jobs.join('\n\n')}\n\n  unrelated-job:\n    runs-on: ubuntu-latest\n`;
+}
+
+test('checkDevelopPrLintJobMapping: all three correctly-mapped lint callers report no problems', () => {
+  assert.deepEqual(checkDevelopPrLintJobMapping(buildDevelopPrLintWorkflow()), []);
+});
+
+test('checkDevelopPrLintJobMapping: a removed lint job block is caught rather than silently skipped', () => {
+  const text = buildDevelopPrLintWorkflow();
+  const withoutPos = text.replace(/\n  frontend-pos-lint-check:\n[\s\S]*?(?=\n  [a-zA-Z][\w-]*:\n)/, '\n');
+  const problems = checkDevelopPrLintJobMapping(withoutPos);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /could not find the "frontend-pos-lint-check:" job block/);
+});
+
+test('checkDevelopPrLintJobMapping: a drifted app input (pos job passing dgfy-ims) is caught', () => {
+  const text = buildDevelopPrLintWorkflow({ 'dgfy-pos': { appLine: '      app: dgfy-ims' } });
+  const problems = checkDevelopPrLintJobMapping(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-pos-lint-check" must pass exactly `app: dgfy-pos`/);
+});
+
+test('checkDevelopPrLintJobMapping: a missing app input is caught', () => {
+  const text = buildDevelopPrLintWorkflow({ 'dgfy-storefront': { appLine: null } });
+  const withoutAppLine = text.split('\n').filter((line) => line !== '      app: dgfy-storefront').join('\n');
+  const problems = checkDevelopPrLintJobMapping(withoutAppLine);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-storefront-lint-check" must pass exactly `app: dgfy-storefront`.*found: none/);
+});
+
+test('checkDevelopPrLintJobMapping: calling the wrong reusable workflow (a build check) is caught', () => {
+  const text = buildDevelopPrLintWorkflow({
+    'dgfy-ims': { usesLine: '    uses: ./.github/workflows/pr-frontend-build-checks.yml' }
+  });
+  const problems = checkDevelopPrLintJobMapping(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-ims-lint-check" must call `uses: \.\/\.\github\/workflows\/pr-frontend-lint-checks\.yml`/);
+});
+
+test('checkDevelopPrLintJobMapping: gating on another app\'s changed output is caught', () => {
+  const text = buildDevelopPrLintWorkflow({
+    'dgfy-pos': { ifLine: "    if: always() && needs.changes.result == 'success' && needs.changes.outputs.frontend_ims == 'true'" }
+  });
+  const problems = checkDevelopPrLintJobMapping(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-pos-lint-check" must gate on `needs\.changes\.outputs\.frontend_pos == 'true'`/);
+});
+
+test('checkDevelopPrLintJobMapping: a continue-on-error (advisory drift) is caught', () => {
+  const text = buildDevelopPrLintWorkflow({
+    'dgfy-storefront': { extraLines: ['    continue-on-error: true'] }
+  });
+  const problems = checkDevelopPrLintJobMapping(text);
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /"frontend-storefront-lint-check" must stay blocking/);
 });
