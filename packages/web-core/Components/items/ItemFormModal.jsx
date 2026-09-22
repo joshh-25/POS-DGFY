@@ -219,7 +219,8 @@ export default function ItemFormModal({
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
-  onGenerateStorefrontImage
+  onGenerateStorefrontImage,
+  onOpenBulkPosSetup
 }) {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [formData, setFormData] = useState({
@@ -2000,6 +2001,16 @@ export default function ItemFormModal({
                       disabled={!onTogglePosAlwaysAvailable}
                     >
                       {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
+                    </Button>
+                  )}
+                  {item && !isFnbMode && onOpenBulkPosSetup && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onOpenBulkPosSetup}
+                    >
+                      Open Bulk POS Setup
                     </Button>
                   )}
                 </div>

@@ -1376,6 +1376,19 @@ export default function Items({ embedded = false }) {
     setShowPosChecklistModal(true);
   }, []);
 
+  const openBulkPosSetupFromItemWizard = useCallback((item = null) => {
+    setShowFormModal(false);
+    setEditingItem(null);
+
+    if (item) {
+      launchPosReadinessFlow(item);
+      return;
+    }
+
+    setGuidedPosReadyItemId(null);
+    setShowPosChecklistModal(true);
+  }, [launchPosReadinessFlow]);
+
   const openBulkPosSetupFromProductWizard = useCallback((product = null) => {
     setShowProductWizard(false);
     setEditingProduct(null);
@@ -2999,6 +3012,9 @@ export default function Items({ embedded = false }) {
           onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
           onGenerateStorefrontImage={handleGenerateStorefrontImage}
+          onOpenBulkPosSetup={() => {
+            openBulkPosSetupFromItemWizard(editingItem);
+          }}
         />
         <MoveToFolderModal
           open={showMoveModal}
