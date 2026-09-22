@@ -100,7 +100,9 @@ describe('cart drawer voucher/promo total', () => {
     expect(quoteSource).toMatch(/setCheckoutVoucherCode\(''\)/);
     expect(quoteSource).toMatch(/setQuoteResult\(null\)/);
     expect(quoteSource).toMatch(/requestQuote\(\{ voucherCodeOverride: '', silent: true \}\)/);
-    expect(rendererSource).toMatch(/onClear=\{handleVoucherCardRemove\}/);
+    expect(rendererSource).toMatch(
+      /onClear=\{checkoutPromoCode \? handlePromoCardRemove : handleVoucherCardRemove\}/
+    );
   });
 
   // #746: live-verified 2026-08-20 -- a signed-in DGFY customer applied a voucher and it still
