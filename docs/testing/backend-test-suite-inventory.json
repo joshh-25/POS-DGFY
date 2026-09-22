@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-22T15:56:40.373Z",
+  "generatedAt": "2026-09-22T16:04:17.591Z",
   "totalFiles": 699,
   "byClassification": {
     "keep": 645,
@@ -24937,12 +24937,12 @@
     },
     {
       "path": "tests/tenantSchemaBootstrap.integration.test.js",
-      "lines": 80,
-      "caseCount": 2,
+      "lines": 126,
+      "caseCount": 3,
       "describeTitles": [
         "tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)"
       ],
-      "expectCount": 4,
+      "expectCount": 9,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -24960,7 +24960,8 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/ops/RELEASE_CANDIDATE_POLICY.md"
+          "docs/ops/RELEASE_CANDIDATE_POLICY.md",
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md"
         ],
         "historical": [
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
@@ -25009,12 +25010,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 622,
-      "caseCount": 31,
+      "lines": 692,
+      "caseCount": 36,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 140,
+      "expectCount": 151,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -25031,7 +25032,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
           "docs/compliance/impact-declarations/2026-07-06-pos-services-mode-starter-item-fix.md",
