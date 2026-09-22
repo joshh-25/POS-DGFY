@@ -1474,12 +1474,12 @@ export default function POSTransactionHistoryPanel({
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Source</th>
                                     {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Payment</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Cashier</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Discount</th>}
+                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell w-[8rem] min-w-[8rem] max-w-[8rem] px-2 py-4 text-left text-[13px] font-black">Discount</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Fee</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell dgfy-pos-history-header--wrap px-2.5 py-4 text-left text-[13px] font-black">Rest. charge</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">VAT</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Vatable</th>}
-                                    {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black text-[#1A4E8D]">Total</th>}
+                                    {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>}
                                     {!isMobileViewport && <th scope="col" className={`${historyActionColumnClassName} dgfy-pos-history-header-cell px-2.5 py-4 text-center text-[13px] font-black`}>Action</th>}
                                 </tr>
                             </thead>
@@ -1579,7 +1579,7 @@ export default function POSTransactionHistoryPanel({
                                                 </td>}
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-[#334155]"><div className="pos-history-row-content">{row.cashier?.username || row.acceptedByUser?.username || '-'}</div></td>}
                                                 {isDesktopHistoryViewport && (
-                                                    <td className="px-2.5 py-4 text-[#334155]">
+                                                    <td className="w-[8rem] min-w-[8rem] max-w-[8rem] break-words px-2 py-4 text-[#334155]">
                                                         <div className="pos-history-row-content">
                                                             {row.discount ? (
                                                                 <div>
@@ -1611,7 +1611,7 @@ export default function POSTransactionHistoryPanel({
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.restaurant_service_charge_amount)}</div></td>}
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.vat_amount)}</div></td>}
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.vatable_sales)}</div></td>}
-                                                {!isMobileViewport && <td className="px-2.5 py-4 text-left font-black text-[#1A4E8D]"><div className="pos-history-row-content">₱{money(row.total_amount)}</div></td>}
+                                                {!isMobileViewport && <td className="w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right font-black tabular-nums text-[#1A4E8D]"><div className="pos-history-row-content">₱{money(row.total_amount)}</div></td>}
                                                 {!isMobileViewport && <td className={`${historyActionColumnClassName} px-2.5 py-4 text-center`}>
                                                     <div className={`pos-history-row-content flex-nowrap ${isTabletViewport && !isMobileViewport ? 'justify-start' : 'justify-center'} ${isMobileViewport ? 'gap-1' : 'gap-2'}`}>
                                                         <Button

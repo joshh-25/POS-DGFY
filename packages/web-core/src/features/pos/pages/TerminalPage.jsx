@@ -1117,7 +1117,7 @@ export default function TerminalPage() {
   ].some(Boolean);
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
-  const canEditItems = hasPermission('items:edit');
+  const canEditItems = isCashierRole || hasPermission('items:edit');
   const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
 

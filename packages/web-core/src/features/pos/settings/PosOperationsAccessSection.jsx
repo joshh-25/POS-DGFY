@@ -1,8 +1,11 @@
-import PosCashierAttendanceSettingsCard from '../components/PosCashierAttendanceSettingsCard.jsx';
+import { Suspense } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import PosOperationsDefaultsSection from './PosOperationsDefaultsSection.jsx';
 import PosAccountPermissionsSection from './PosAccountPermissionsSection.jsx';
 import TerminalLocalControlsSection from './TerminalLocalControlsSection.jsx';
 import usePosOperationsAccessController from './usePosOperationsAccessController.js';
+
+const PosCashierAttendanceSettingsCard = lazyWithChunkRetry(() => import('../components/PosCashierAttendanceSettingsCard.jsx'));
 
 export default function PosOperationsAccessSection({
   terminalUser, locked, canEditSettings, loading, savingTab, handlePosSave, posForm, setPosForm, locations, incomingOrders,
@@ -78,7 +81,9 @@ export default function PosOperationsAccessSection({
 
       {showAttendanceEditor ? (
         <section aria-label="Attendance and breaks">
-          <PosCashierAttendanceSettingsCard locked={locked} canEdit={canEditSettings} />
+          <Suspense fallback={null}>
+            <PosCashierAttendanceSettingsCard locked={locked} canEdit={canEditSettings} />
+          </Suspense>
         </section>
       ) : null}
 

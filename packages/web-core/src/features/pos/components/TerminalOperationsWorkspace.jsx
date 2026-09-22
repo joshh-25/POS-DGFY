@@ -1,8 +1,10 @@
 import SettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
 import { createPortal } from 'react-dom';
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import {
   AlertCircle,
   AlertTriangle,
@@ -14,6 +16,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   ClipboardList,
+  GripVertical,
   Barcode,
   History,
   ImagePlus,
@@ -47,7 +50,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
-import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -73,6 +75,7 @@ import {
   listItemFolders,
   lookupExternalProduct,
   replaceItemFolders,
+  reorderFolders,
   updateItemBarcode,
   updateFolder
 } from '@/services/itemService.js';
@@ -82,7 +85,6 @@ import {
   normalizeBarcodeEntry,
   resolveProductBarcodeInput
 } from '@/src/utils/barcodePolicy.js';
-import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import {
   notifyPosCatalogUpdated,
   subscribeToPosCatalogUpdates,
@@ -110,32 +112,37 @@ import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
-import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
 
-import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
-import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
 import { isMenuImportBatchEnabled } from '@/services/menuImportService.js';
-import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
-import PosServicesOperationsWorkspace from './PosServicesOperationsWorkspace.jsx';
-import PosFnbModifiersWorkspace from './PosFnbModifiersWorkspace.jsx';
+import WorkspaceShell from './TerminalWorkspaceShell.jsx';
+import { loadIncomingQueueWorkspace } from './terminalWorkspaceChunks.js';
 import {
   fetchPosCatalogPage,
   fetchMerchantTenderReconciliation,
   reviewMerchantTenderReconciliation
 } from '../services/posService.js';
-import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 
-import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
-import VoucherManagementPanel from './VoucherManagementPanel.jsx';
-import PricelistManagementPanel from './PricelistManagementPanel.jsx';
-
-import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
-import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
-import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+
+const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));
+const PdfMenuImportModal = lazyWithChunkRetry(() => import('@/components/items/PdfMenuImportModal.jsx'));
+const MenuImportBatchModal = lazyWithChunkRetry(() => import('@/components/items/MenuImportBatchModal.jsx'));
+const ProductQrScannerModal = lazyWithChunkRetry(() => import('@/src/features/inventory/components/ProductQrScannerModal.jsx'));
+const PosItemImageViewer = lazyWithChunkRetry(() => import('./PosItemImageViewer.jsx'));
+const PosServiceCatalogCreateModal = lazyWithChunkRetry(() => import('./PosServiceCatalogCreateModal.jsx'));
+const PosServiceCatalogEditModal = lazyWithChunkRetry(() => import('./PosServiceCatalogEditModal.jsx'));
+const PosReportsAnalyticsWorkspace = lazyWithChunkRetry(() => import('./PosReportsAnalyticsWorkspace.jsx'));
+const PosServicesOperationsWorkspace = lazyWithChunkRetry(() => import('./PosServicesOperationsWorkspace.jsx'));
+const PosFnbModifiersWorkspace = lazyWithChunkRetry(() => import('./PosFnbModifiersWorkspace.jsx'));
+const PosServiceOptionsWorkspace = lazyWithChunkRetry(() => import('./PosServiceOptionsWorkspace.jsx'));
+const AffiliatesWorkspacePanel = lazyWithChunkRetry(() => import('./AffiliatesWorkspacePanel.jsx'));
+const VoucherManagementPanel = lazyWithChunkRetry(() => import('./VoucherManagementPanel.jsx'));
+const PricelistManagementPanel = lazyWithChunkRetry(() => import('./PricelistManagementPanel.jsx'));
+const IncomingQueueWorkspace = lazyWithChunkRetry(loadIncomingQueueWorkspace);
 
 const POS_ITEMS_PAGE_SIZE = 15;
 const POS_ITEMS_PAGE_SIZE_OPTIONS = [15, 30, 60];
@@ -490,6 +497,7 @@ function ShiftControlsWorkspace({
   });
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
+  const isIminRuntime = isIminWrapperRuntime();
   const [paneInlineStyle, setPaneInlineStyle] = useState({
     transform: 'translateX(0)',
     opacity: 1,
@@ -610,6 +618,17 @@ function ShiftControlsWorkspace({
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
 
+    if (isIminRuntime) {
+      setActiveTab(nextTab);
+      setRenderedTab(nextTab);
+      setPaneInlineStyle({
+        transform: 'translateX(0)',
+        opacity: 1,
+        transition: 'none'
+      });
+      return;
+    }
+
     const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
     const enterOffset = movingForward ? 28 : -28;
@@ -641,7 +660,7 @@ function ShiftControlsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers]);
+  }, [activeTab, clearAnimationTimers, isIminRuntime]);
 
   const summaryRows = activeShift ? [
     {
@@ -1958,6 +1977,123 @@ const resolveItemWorkspacePresentation = (workflowMode = '') => {
   };
 };
 
+const currencyLabel = (value) => String(value || 'PHP').trim().toUpperCase() === 'PHP'
+  ? '₱'
+  : String(value || 'PHP').trim().toUpperCase();
+
+function PosItemsTable({
+  items,
+  primaryBarcodes,
+  itemDisplayCurrency,
+  canEditItems,
+  canDeleteItems,
+  canManageServiceCatalog,
+  locked,
+  savingItem,
+  deletingItem,
+  creatingItem,
+  onOpenImage,
+  onEdit,
+  onDelete
+}) {
+  return (
+    <div data-pos-items-table="true" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_10px_28px_-22px_rgba(15,23,42,0.7)]">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[1060px] border-collapse text-left">
+          <thead className="bg-slate-50/80">
+            <tr className="border-b border-slate-200">
+              {['Item', 'Details & Identification', 'Category', 'Stock Status', 'Profit Margin', 'Price', 'Cost', 'Actions'].map((heading) => {
+                const isMoneyColumn = heading === 'Price' || heading === 'Cost';
+                return (
+                  <th key={heading} scope="col" className={`px-3 py-3 text-[10px] font-bold uppercase tracking-[0.12em] text-[#1A4E8D] ${isMoneyColumn ? 'text-right' : ''}`}>
+                    {heading}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => {
+              const isServiceItem = isServiceCatalogItem(item);
+              const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
+              const imageSources = resolvePosCatalogImageSources(item);
+              const previewSources = resolvePosCatalogPreviewGallery(item);
+              const stockQuantity = Number(item?.current_stock || 0);
+              const isAlwaysAvailable = item?.pos_always_available === true;
+              const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
+              const profitMargin = Number(item?.default_sale_price || 0) > 0
+                ? (profit / Number(item.default_sale_price)) * 100
+                : 0;
+              const threshold = Number(item?.min_threshold);
+              const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
+              const almostOutOfStock = !isAlwaysAvailable && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+              const stockStatusLabel = isServiceItem
+                ? 'Stock Exempt'
+                : isAlwaysAvailable
+                  ? 'Always Available'
+                  : stockQuantity <= 0 ? 'Out of Stock' : almostOutOfStock ? 'Almost Out of Stock' : 'In Stock';
+              const stockStatusClassName = isServiceItem
+                ? 'border-teal-200 bg-teal-50 text-teal-700'
+                : isAlwaysAvailable
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
+                  : stockQuantity <= 0
+                    ? 'border-rose-200 bg-rose-50 text-rose-600'
+                    : almostOutOfStock
+                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+
+              return (
+                <tr key={item.item_id} data-pos-items-row="true" className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/60">
+                  <td className="px-3 py-3 align-middle">
+                    <button
+                      type="button"
+                      disabled={previewSources.gallery.length === 0}
+                      aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
+                      onClick={() => onOpenImage({ itemName: item.name, sellingPrice: item.default_sale_price, gallery: previewSources.gallery })}
+                      className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-inner focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 enabled:cursor-zoom-in"
+                    >
+                      <ImagePlus className="h-4 w-4 text-slate-300" />
+                      {imageSources.src ? (
+                        <ResponsiveImage sources={imageSources} alt={item?.name || 'Item image'} sizes="36px" width={144} height={144} className="absolute h-full w-full object-cover" />
+                      ) : null}
+                    </button>
+                  </td>
+                  <td className="px-3 py-3 align-middle">
+                    <p className="max-w-[20rem] truncate text-sm font-extrabold leading-5 text-[#0F172A]">{item.name || 'Unnamed item'}</p>
+                    <div className="mt-2 space-y-1 text-[10px] text-[#64748B]">
+                      <p className="truncate"><span className="font-semibold text-[#1A4E8D]">SKU</span> {item.sku_code || 'Not set'}</p>
+                      <p className="truncate"><span className="font-semibold text-[#1A4E8D]">Barcode</span> {barcode || 'Not generated yet'}</p>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 align-middle"><span className="inline-flex max-w-[7rem] truncate rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-[10px] font-bold text-[#334155]">{isServiceItem ? 'Service' : (item.folder?.name || item.product_folder || 'Uncategorized')}</span></td>
+                  <td className="px-3 py-3 align-middle">
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-[#0F172A]">{isServiceItem ? '—' : stockQuantity}</p>
+                      <span className={`inline-flex max-w-[8.5rem] items-start gap-1 rounded-full border px-2 py-1 text-[10px] font-bold leading-3 ${stockStatusClassName}`}><span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />{stockStatusLabel}</span>
+                    </div>
+                  </td>
+                  <td className="px-3 py-3 align-middle">
+                    <p className="text-xs font-bold text-[#0F172A]">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : <>Profit {itemDisplayCurrency}{money(profit)}</>}</p>
+                    {!(isServiceItem && item.cost_per_unit == null) ? <p className="mt-0.5 text-[10px] font-bold text-[#1A4E8D]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</p> : null}
+                  </td>
+                  <td className="px-3 py-3 text-right align-middle"><p className="text-sm font-black tabular-nums text-[#0F172A]">{itemDisplayCurrency}{money(item.default_sale_price)}</p></td>
+                  <td className="px-3 py-3 text-right align-middle"><p className="text-sm font-bold tabular-nums text-[#0F172A]">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : `${itemDisplayCurrency}${money(item.cost_per_unit)}`}</p></td>
+                  <td className="px-3 py-3 align-middle">
+                    <div data-pos-items-actions="true" className="flex items-center gap-1.5">
+                      {(isServiceItem ? canManageServiceCatalog : canEditItems) ? <Button type="button" variant="outline" onClick={() => onEdit(item)} disabled={locked || savingItem || deletingItem || creatingItem} className="h-7 rounded-md border-blue-200 bg-blue-50/30 px-2 text-[10px] font-bold text-[#2563EB] hover:bg-blue-50" title={`Edit ${item.name || 'item'}`}><Pencil className="mr-1 h-3 w-3" />Edit</Button> : null}
+                      {canDeleteItems ? <Button type="button" variant="outline" onClick={() => onDelete(item)} disabled={locked || savingItem || deletingItem || creatingItem} className="h-7 rounded-md border-rose-200 bg-rose-50/30 px-2 text-[10px] font-bold text-rose-600 hover:bg-rose-50" title={`Delete ${item.name || 'item'}`}><Trash2 className="mr-1 h-3 w-3" />Delete</Button> : null}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function ItemsWorkspace({
   canViewPos,
   canCreateItems = false,
@@ -1972,8 +2108,10 @@ function ItemsWorkspace({
   locked,
   isOnline = true,
   onQueueOfflineItemDraft = async () => '',
+  refreshTerminalUser = async () => {},
   operatingLocationId = null,
   storefrontSlug = '',
+  currencySymbol = 'PHP',
   sectionId
 }) {
   const [items, setItems] = useState([]);
@@ -2034,6 +2172,7 @@ function ItemsWorkspace({
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
   const [deleteConfirmItem, setDeleteConfirmItem] = useState(null);
+  const [itemImagePreview, setItemImagePreview] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState('all');
@@ -2041,6 +2180,7 @@ function ItemsWorkspace({
   const [itemsPageSize, setItemsPageSize] = useState(POS_ITEMS_PAGE_SIZE);
   const deferredItemsSearch = React.useDeferredValue(searchQuery);
   const [editingItemSnapshot, setEditingItemSnapshot] = useState(null);
+  const [editPermissionDenied, setEditPermissionDenied] = useState(false);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateServiceModal, setShowCreateServiceModal] = useState(false);
@@ -2075,6 +2215,7 @@ function ItemsWorkspace({
 
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
   const isServicesMode = normalizeWorkflowMode(workflowMode) === 'services';
+  const itemDisplayCurrency = currencyLabel(currencySymbol);
   const itemWorkspacePresentation = useMemo(
     () => resolveItemWorkspacePresentation(workflowMode),
     [workflowMode]
@@ -2232,7 +2373,16 @@ function ItemsWorkspace({
   }, [createForm.name, showCreateModal, skuSeedItems]);
 
   const sortedItems = useMemo(
-    () => [...(Array.isArray(items) ? items : [])].sort((left, right) => String(left?.name || '').localeCompare(String(right?.name || ''))),
+    () => [...(Array.isArray(items) ? items : [])].sort((left, right) => {
+      const leftCategoryOrder = Number(left?.folder?.sort_order ?? left?.folder_sort_order);
+      const rightCategoryOrder = Number(right?.folder?.sort_order ?? right?.folder_sort_order);
+      const hasLeftCategoryOrder = Number.isFinite(leftCategoryOrder);
+      const hasRightCategoryOrder = Number.isFinite(rightCategoryOrder);
+      if (hasLeftCategoryOrder && hasRightCategoryOrder && leftCategoryOrder !== rightCategoryOrder) {
+        return leftCategoryOrder - rightCategoryOrder;
+      }
+      return String(left?.name || '').localeCompare(String(right?.name || ''));
+    }),
     [items]
   );
 
@@ -2500,6 +2650,7 @@ function ItemsWorkspace({
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setEditingItemSnapshot(item || null);
+    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     const savedBarcode = primaryBarcodes[String(item?.item_id)] || item?.primary_barcode || null;
     const savedBarcodeCode = String(savedBarcode?.code || '').trim();
@@ -2535,6 +2686,7 @@ function ItemsWorkspace({
     cancelImageGenerationPoll();
     setEditingItemId(null);
     setEditingItemSnapshot(null);
+    setEditPermissionDenied(false);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFiles([]);
@@ -2714,6 +2866,14 @@ function ItemsWorkspace({
         action: 'updated'
       });
     } catch (updateError) {
+      if (updateError?.response?.status === 403 && editSaveStage === 'item_details') {
+        setEditPermissionDenied(true);
+        try {
+          await refreshTerminalUser({ suppressGlobalErrors: true });
+        } catch {
+          // The original permission failure remains the actionable result.
+        }
+      }
       toast.error(resolveEditItemSaveError(updateError, editSaveStage).message);
     } finally {
       setPersistingEditAssets(false);
@@ -3260,7 +3420,11 @@ function ItemsWorkspace({
 
   return (
     <div id={sectionId} className="min-w-0 max-w-full space-y-4">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70">
+      <div
+        data-pos-items-toolbar={IS_DGFY_POS_SURFACE ? 'true' : undefined}
+        data-pos-items-search-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}
+        className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/70"
+      >
         <div className="hidden w-full gap-3 sm:grid xl:w-auto xl:grid-cols-[minmax(18rem,24rem)_12rem_13rem_auto]">
             <div>
               <Label htmlFor="pos-items-search" className="text-xs font-semibold uppercase tracking-[0.18em] text-[#64748B]">Search</Label>
@@ -3459,13 +3623,13 @@ function ItemsWorkspace({
         </div>
       </div>
 
-      {canCreateItems && menuImportBatchEnabled ? (
+      {showPdfMenuImport && canCreateItems && menuImportBatchEnabled ? (
         <MenuImportBatchModal
           open={showPdfMenuImport}
           onClose={() => setShowPdfMenuImport(false)}
           onSuccess={() => { loadItems(); }}
         />
-      ) : canCreateItems && pdfMenuImportEnabled ? (
+      ) : showPdfMenuImport && canCreateItems && pdfMenuImportEnabled ? (
         <PdfMenuImportModal
           open={showPdfMenuImport}
           onClose={() => setShowPdfMenuImport(false)}
@@ -3473,7 +3637,7 @@ function ItemsWorkspace({
         />
       ) : null}
 
-      {canImportItems ? (
+      {showCsvImport && canImportItems ? (
         <CSVImportModal
           open={showCsvImport}
           onClose={() => setShowCsvImport(false)}
@@ -3484,32 +3648,36 @@ function ItemsWorkspace({
         />
       ) : null}
 
-      <PosServiceCatalogCreateModal
-        open={showCreateServiceModal}
-        isOnline={isOnline}
-        onClose={() => setShowCreateServiceModal(false)}
-        onCreated={async () => {
-          await loadItems();
-          notifyPosCatalogUpdated();
-        }}
-      />
+      {showCreateServiceModal ? (
+        <PosServiceCatalogCreateModal
+          open
+          isOnline={isOnline}
+          onClose={() => setShowCreateServiceModal(false)}
+          onCreated={async () => {
+            await loadItems();
+            notifyPosCatalogUpdated();
+          }}
+        />
+      ) : null}
 
-      <PosServiceCatalogEditModal
-        open={Boolean(editingServiceItem)}
-        serviceItem={editingServiceItem}
-        isOnline={isOnline}
-        onClose={() => setEditingServiceItem(null)}
-        onUpdated={async (updatedService) => {
-          setEditingServiceItem(null);
-          await loadItems();
-          notifyPosCatalogUpdated();
-          setSavedMessage({
-            name: updatedService?.service?.name || updatedService?.name || editingServiceItem?.name || 'Service',
-            barcode: '',
-            action: 'updated'
-          });
-        }}
-      />
+      {editingServiceItem ? (
+        <PosServiceCatalogEditModal
+          open
+          serviceItem={editingServiceItem}
+          isOnline={isOnline}
+          onClose={() => setEditingServiceItem(null)}
+          onUpdated={async (updatedService) => {
+            setEditingServiceItem(null);
+            await loadItems();
+            notifyPosCatalogUpdated();
+            setSavedMessage({
+              name: updatedService?.service?.name || updatedService?.name || editingServiceItem?.name || 'Service',
+              barcode: '',
+              action: 'updated'
+            });
+          }}
+        />
+      ) : null}
 
       {error ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -3544,7 +3712,24 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="space-y-4">
-          {paginatedItems.map((item) => {
+          {IS_DGFY_POS_SURFACE ? (
+            <PosItemsTable
+              items={paginatedItems}
+              primaryBarcodes={primaryBarcodes}
+              itemDisplayCurrency={itemDisplayCurrency}
+              canEditItems={canEditItems}
+              canDeleteItems={canDeleteItems}
+              canManageServiceCatalog={canManageServiceCatalog}
+              locked={locked}
+              savingItem={savingItem}
+              deletingItem={deletingItem}
+              creatingItem={creatingItem}
+              onOpenImage={setItemImagePreview}
+              onEdit={openEdit}
+              onDelete={setDeleteConfirmItem}
+            />
+          ) : null}
+          {!IS_DGFY_POS_SURFACE && paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageSources = resolvePosCatalogImageSources(item);
@@ -3575,6 +3760,7 @@ function ItemsWorkspace({
             return (
               <div
                 key={item.item_id}
+                data-pos-items-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}
                 className="rounded-[18px] border border-slate-100 bg-white p-2.5 shadow-[0_8px_20px_rgba(148,163,184,0.08)] transition-shadow hover:shadow-[0_12px_24px_rgba(148,163,184,0.12)] sm:p-3"
               >
                 <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.18fr)_minmax(18.5rem,0.96fr)] xl:items-center">
@@ -3661,7 +3847,7 @@ function ItemsWorkspace({
                             <p className="mt-0.5 text-xs font-bold text-[#0F172A]">
                               {isServiceItem && item.cost_per_unit == null
                                 ? 'Not tracked'
-                                : <>PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
+                                : <>{itemDisplayCurrency} {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
                             </p>
                           </div>
                         </div>
@@ -3679,8 +3865,8 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Price</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-[#1A4E8D]">PHP</p>
-                                  <p className="text-[0.95rem] font-black tracking-tight text-[#1A4E8D]">{money(item.default_sale_price)}</p>
+                                   <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-[#1A4E8D]">{itemDisplayCurrency}</p>
+                                   <p className="text-[0.95rem] font-black tracking-tight text-[#1A4E8D]">{itemDisplayCurrency}{money(item.default_sale_price)}</p>
                                 </div>
                               </div>
                             </div>
@@ -3693,15 +3879,15 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Cost</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : 'PHP'}</p>
-                                  <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : money(item.cost_per_unit)}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : itemDisplayCurrency}</p>
+                                  <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : `${itemDisplayCurrency}${money(item.cost_per_unit)}`}</p>
                                 </div>
                               </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2 sm:items-stretch">
+                       <div data-pos-items-actions={IS_DGFY_POS_SURFACE ? 'true' : undefined} className="grid gap-2 sm:grid-cols-2 sm:items-stretch">
                         {(isServiceItem ? canManageServiceCatalog : canEditItems) && (
                           <Button
                             type="button"
@@ -3755,6 +3941,12 @@ function ItemsWorkspace({
           />
         </div>
       )}
+
+      {itemImagePreview ? (
+        <Suspense fallback={null}>
+          <PosItemImageViewer preview={itemImagePreview} onClose={() => setItemImagePreview(null)} />
+        </Suspense>
+      ) : null}
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
@@ -4233,11 +4425,15 @@ function ItemsWorkspace({
         </div>
       ), document.body)}
 
-      <ProductQrScannerModal
-        open={externalQrScannerOpen}
-        onOpenChange={setExternalQrScannerOpen}
-        onDetected={handleExternalQrDetected}
-      />
+      {externalQrScannerOpen ? (
+        <Suspense fallback={null}>
+          <ProductQrScannerModal
+            open
+            onOpenChange={setExternalQrScannerOpen}
+            onDetected={handleExternalQrDetected}
+          />
+        </Suspense>
+      ) : null}
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
@@ -4274,6 +4470,23 @@ function ItemsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
+              <div
+                data-testid="pos-edit-item-shared-catalog-notice"
+                className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-3 text-xs leading-5 text-blue-900"
+              >
+                <p className="font-bold">Item name and selling price are shared across this tenant.</p>
+                <p>Stock and POS availability apply to the selected branch.</p>
+              </div>
+              {editPermissionDenied ? (
+                <div
+                  data-testid="pos-edit-item-permission-denied"
+                  role="alert"
+                  className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-3 text-xs leading-5 text-rose-900"
+                >
+                  Your current session no longer has permission to edit this item. The draft is still open; refresh your permissions before trying again.
+                </div>
+              ) : null}
+
               {/* Top Horizontal Row: 3 Toggle Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
                 {/* Toggle Card 1: Always Available */}
@@ -4741,7 +4954,7 @@ function ItemsWorkspace({
                 <Button
                   type="button"
                   onClick={handleSave}
-                  disabled={savingItem || persistingEditAssets}
+                  disabled={savingItem || persistingEditAssets || editPermissionDenied}
                   className="h-11 rounded-xl bg-blue-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Save className="h-4 w-4" />
@@ -4961,6 +5174,39 @@ function ItemsWorkspace({
   );
 }
 
+function DraggableCategoryCard({ folder, disabled, children }) {
+  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
+    id: folder.folder_id,
+    disabled
+  });
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: folder.folder_id,
+    disabled
+  });
+  const setNodeRef = useCallback((node) => {
+    setDragRef(node);
+    setDropRef(node);
+  }, [setDragRef, setDropRef]);
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`pos-category-card-${folder.folder_id}`}
+      role="group"
+      aria-label={`Reorder ${folder.name}`}
+      aria-roledescription="sortable category"
+      aria-disabled={disabled ? 'true' : undefined}
+      tabIndex={disabled ? -1 : 0}
+      className={`cursor-default ${isDragging ? 'relative z-10 opacity-70 shadow-lg' : ''} ${isOver && !isDragging ? 'bg-blue-50' : 'bg-white'}`}
+      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+      {...attributes}
+      {...(!disabled ? listeners : {})}
+    >
+      {children}
+    </div>
+  );
+}
+
 function CategoryManagementWorkspace() {
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -4970,6 +5216,10 @@ function CategoryManagementWorkspace() {
   const [editor, setEditor] = useState(null);
   const [form, setForm] = useState({ name: '', description: '' });
   const [pendingAction, setPendingAction] = useState(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor)
+  );
 
   const loadFolders = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -4978,7 +5228,7 @@ function CategoryManagementWorkspace() {
       const response = await getFolders();
       setFolders(
         (Array.isArray(response) ? response : [])
-          .map((folder) => ({
+          .map((folder, index) => ({
             ...folder,
             folder_id: Number(folder?.folder_id),
             name: String(folder?.name || '').trim(),
@@ -4987,13 +5237,17 @@ function CategoryManagementWorkspace() {
             // #1318 follow-up (ADR 0080 Consequences item 4) — items that list this
             // folder only as a secondary category, invisible to item_count above.
             secondary_item_count: Number(folder?.secondary_item_count || 0),
-            is_active: folder?.is_active !== false
+            is_active: folder?.is_active !== false,
+            sort_order: Number.isFinite(Number(folder?.sort_order)) ? Number(folder.sort_order) : index,
+            response_index: index
           }))
           .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
       );
+      return true;
     } catch (loadError) {
-      setFolders([]);
+      if (!silent) setFolders([]);
       setError(loadError?.response?.data?.message || 'Failed to load categories.');
+      return false;
     } finally {
       if (!silent) setLoading(false);
     }
@@ -5007,11 +5261,34 @@ function CategoryManagementWorkspace() {
     const normalizedQuery = String(query || '').trim().toLowerCase();
     return [...folders]
       .filter((folder) => !normalizedQuery || `${folder.name} ${folder.description}`.toLowerCase().includes(normalizedQuery))
-      .sort((left, right) => {
-        if (left.is_active !== right.is_active) return left.is_active ? -1 : 1;
-        return left.name.localeCompare(right.name);
-      });
+      .sort((left, right) => left.sort_order - right.sort_order || left.response_index - right.response_index || left.name.localeCompare(right.name));
   }, [folders, query]);
+
+  const handleCategoryDragEnd = async ({ active, over }) => {
+    if (!over || active.id === over.id || query.trim() || busy) return;
+    const previous = folders;
+    const fromIndex = folders.findIndex((folder) => folder.folder_id === Number(active.id));
+    const toIndex = folders.findIndex((folder) => folder.folder_id === Number(over.id));
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const next = [...folders];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    const normalized = next.map((folder, index) => ({ ...folder, sort_order: index, response_index: index }));
+    setFolders(normalized);
+    setBusy(true);
+    try {
+      await reorderFolders(normalized.map((folder) => folder.folder_id));
+      notifyPosCatalogUpdated({ reason: 'category_order_updated' });
+      toast.success('Category order updated.');
+    } catch (reorderError) {
+      const refreshed = await loadFolders({ silent: true });
+      if (!refreshed) setFolders(previous);
+      toast.error(reorderError?.response?.data?.message || 'Unable to save category order.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
@@ -5116,6 +5393,7 @@ function CategoryManagementWorkspace() {
             Refresh
           </Button>
         </div>
+        <p className="border-b border-slate-100 px-4 py-2 text-xs text-slate-500">Drag a category card to rearrange categories. Clear search before rearranging.</p>
 
         {error ? (
           <div className="m-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
@@ -5128,25 +5406,34 @@ function CategoryManagementWorkspace() {
             <p className="mt-1 text-sm text-slate-500">Create a category before adding POS items.</p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {filteredFolders.map((folder) => (
-              <div key={folder.folder_id} className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
-                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-500">{folder.description || 'No description provided.'}</p>
-                  <p className="mt-2 text-xs font-semibold text-slate-500">{folder.item_count} assigned item{folder.item_count === 1 ? '' : 's'}</p>
-                </div>
-                <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                  <Button type="button" variant="outline" onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
-                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
-                  <Button type="button" variant="outline" onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
-                </div>
-              </div>
-            ))}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleCategoryDragEnd}>
+            <div className="divide-y divide-slate-100">
+              {filteredFolders.map((folder) => {
+                const reorderDisabled = Boolean(query.trim()) || busy;
+                const stopDragPropagation = (event) => event.stopPropagation();
+                return (
+                  <DraggableCategoryCard key={folder.folder_id} folder={folder} disabled={reorderDisabled}>
+                    <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <GripVertical className="h-5 w-5 shrink-0 text-slate-400" aria-hidden="true" />
+                          <p className="font-extrabold text-[#0F172A]">{folder.name}</p>
+                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${folder.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'}`}>{folder.is_active ? 'Active' : 'Inactive'}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">{folder.description || 'No description provided.'}</p>
+                        <p className="mt-2 text-xs font-semibold text-slate-500">{folder.item_count} assigned item{folder.item_count === 1 ? '' : 's'}</p>
+                      </div>
+                      <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                        <Button type="button" variant="outline" onPointerDown={stopDragPropagation} onKeyDown={stopDragPropagation} onClick={() => openEdit(folder)} disabled={busy} className="h-9 rounded-lg"><Pencil className="mr-1.5 h-3.5 w-3.5" />Edit</Button>
+                        <Button type="button" variant="outline" onPointerDown={stopDragPropagation} onKeyDown={stopDragPropagation} onClick={() => setPendingAction({ type: folder.is_active ? 'deactivate' : 'activate', folder })} disabled={busy} className="h-9 rounded-lg">{folder.is_active ? 'Deactivate' : 'Activate'}</Button>
+                        <Button type="button" variant="outline" onPointerDown={stopDragPropagation} onKeyDown={stopDragPropagation} onClick={() => setPendingAction({ type: 'delete', folder, replacementFolderId: '' })} disabled={busy} title={folder.item_count > 0 ? 'Delete and reassign assigned items.' : 'Delete category'} className="h-9 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed"><Trash2 className="mr-1.5 h-3.5 w-3.5" />Delete</Button>
+                      </div>
+                    </div>
+                  </DraggableCategoryCard>
+                );
+              })}
+            </div>
+          </DndContext>
         )}
       </div>
 
@@ -5248,6 +5535,7 @@ function ItemsCatalogWorkspace({
   serviceOperationsPermissions = {},
   shiftState,
   activeTerminalId = '',
+  terminalMeta = null,
   operatingLocationId = null,
   isOnline = true,
   sectionId,
@@ -5281,9 +5569,10 @@ function ItemsCatalogWorkspace({
   }
 
   return (
-    <div id={sectionId} className="min-w-0 max-w-full space-y-4">
+    <div id={sectionId} data-pos-items-design={IS_DGFY_POS_SURFACE ? 'apex' : undefined} className="min-w-0 max-w-full space-y-4">
       {availableTabs.length > 1 ? (
           <div
+            data-testid="pos-items-design-tabs"
             role="tablist"
             aria-label="Items workspace navigation"
             className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70 sm:grid-cols-2 lg:grid-cols-3"
@@ -5352,6 +5641,7 @@ function ItemsCatalogWorkspace({
             canViewPos={canViewPos}
             canManageCategories={canManageCategories}
             canManageServiceCatalog={canManageServiceCatalog}
+            currencySymbol={terminalMeta?.pettyCashSymbol || 'PHP'}
             operatingLocationId={operatingLocationId}
             isOnline={isOnline}
           />
@@ -5762,12 +6052,14 @@ export default function TerminalOperationsWorkspace({
           serviceOperationsPermissions={serviceOperationsPermissions}
           shiftState={shiftState}
           activeTerminalId={activeTerminalId}
+          terminalMeta={terminalMeta}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
           locked={locked}
           isOnline={isOnline}
           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+          refreshTerminalUser={refreshTerminalUser}
           operatingLocationId={operatingLocationId}
           storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
@@ -5929,7 +6221,9 @@ export default function TerminalOperationsWorkspace({
       className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
       <div key={effectiveViewMode} className="catalog-slide-enter">
-        {content}
+        <Suspense fallback={null}>
+          {content}
+        </Suspense>
       </div>
       {locked && !isIncomingQueueView && (
         <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
