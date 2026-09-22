@@ -10,7 +10,7 @@ const DEFAULT_IMAGE = 'node:22-alpine';
 const DEFAULT_NETWORK = 'dgfy-local-test';
 const DEFAULT_MYSQL = 'dgfy-mysql-test';
 const DEFAULT_REDIS = 'dgfy-redis-test';
-const PRELIGHT_REFUSAL_EXIT = 3;
+const PREFLIGHT_REFUSAL_EXIT = 3;
 
 class ArgumentError extends Error {}
 class PreflightError extends Error {}
@@ -140,7 +140,9 @@ function copyRepo(repoRoot, scratch, runner = run) {
 function copyEvidence(scratch, repoRoot, runner = run) {
   const target = path.join(repoRoot, '.tmp', 'release-gates');
   fs.mkdirSync(target, { recursive: true });
-  const result = runner('rsync', ['-a', `${scratch}/.tmp/release-gates/`, `${target}/`]);
+  const source = path.join(scratch, '.tmp', 'release-gates');
+  if (!fs.existsSync(source)) return target;
+  const result = runner('rsync', ['-a', `${source}/`, `${target}/`]);
   if (result.status !== 0 && result.status !== 24) throw new Error(`evidence copy failed: ${(result.stderr || '').trim()}`);
   return target;
 }
@@ -212,7 +214,7 @@ function execute(options, dependencies = {}) {
   const repoRoot = options.repoRoot || REPO_ROOT;
   const runner = dependencies.runner || run;
   let scratch;
-  let childResult = { status: PRELIGHT_REFUSAL_EXIT, stdout: '', stderr: '' };
+  let childResult = { status: PREFLIGHT_REFUSAL_EXIT, stdout: '', stderr: '' };
   let artifact = { target_sha: options.targetSha || 'unknown', verdict: 'unrunnable', gates: [] };
   let targetSha = options.targetSha || 'unknown';
   try {
@@ -237,9 +239,9 @@ function execute(options, dependencies = {}) {
     return childResult.status == null ? 1 : childResult.status;
   } catch (error) {
     console.error(`[testing-agent] ${error.message}`);
-    const summary = renderSummary({ targetSha, options, result: { status: PRELIGHT_REFUSAL_EXIT }, artifact });
+    const summary = renderSummary({ targetSha, options, result: { status: PREFLIGHT_REFUSAL_EXIT }, artifact });
     try { writeSummary(repoRoot, targetSha, summary, artifact); } catch (summaryError) { console.error(`[testing-agent] could not write refusal summary: ${summaryError.message}`); }
-    return error instanceof PreflightError ? PRELIGHT_REFUSAL_EXIT : 1;
+    return error instanceof PreflightError ? PREFLIGHT_REFUSAL_EXIT : 1;
   } finally {
     removeScratch(scratch, dependencies.removeScratch);
   }
@@ -250,7 +252,7 @@ function main() {
     process.exitCode = execute(parseArgs(process.argv.slice(2)));
   } catch (error) {
     console.error(`[testing-agent] ${error.message}`);
-    process.exitCode = error instanceof ArgumentError ? 1 : PRELIGHT_REFUSAL_EXIT;
+    process.exitCode = error instanceof ArgumentError ? 1 : PREFLIGHT_REFUSAL_EXIT;
   }
 }
 
@@ -259,7 +261,7 @@ if (require.main === module) main();
 module.exports = {
   ArgumentError,
   PreflightError,
-  PRELIGHT_REFUSAL_EXIT,
+  PREFLIGHT_REFUSAL_EXIT,
   parseArgs,
   assertTestDatabase,
   checkResources,

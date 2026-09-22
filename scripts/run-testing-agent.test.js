@@ -53,6 +53,20 @@ test('copies only evidence and renders SHA-bound summary', () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test('does not mask a failed child when scratch evidence was never created', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'testing-agent-test-'));
+  const scratch = path.join(root, 'scratch');
+  fs.mkdirSync(scratch);
+  const calls = [];
+  const evidenceRoot = agent.copyEvidence(scratch, root, (command, args) => {
+    calls.push([command, args]);
+    return { status: 23, stderr: 'missing source' };
+  });
+  assert.equal(calls.length, 0);
+  assert.equal(evidenceRoot, path.join(root, '.tmp', 'release-gates'));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test('container environment is test-only and SHA-bound', () => {
   const env = agent.containerEnvironment(agent.parseArgs([]), 'a'.repeat(40));
   assert.equal(env.NODE_ENV, 'test');
