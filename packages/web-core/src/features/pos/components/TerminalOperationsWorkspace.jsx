@@ -220,8 +220,8 @@ const MODE_META = {
   },
   terminal_setup: {
     icon: Settings2,
-    title: 'Settings',
-    subtitle: 'Manage shared profile, POS setup, and storefront settings inside the POS surface.'
+    title: 'Terminal Setup',
+    subtitle: 'Manage terminal registry, branch binding, queue scope, and local device preferences.'
   },
 };
 
@@ -437,6 +437,9 @@ function ShiftControlsWorkspace({
   dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
   refreshDayCloseReadiness = async () => null,
   canAdminBypassShiftPrompt = false,
+  canViewAdminLocationMonitor = false,
+  viewingLocationId = null,
+  setViewingLocationId = () => {},
   closeShiftForm,
   setCloseShiftForm,
   handleCloseShift,
@@ -462,7 +465,20 @@ function ShiftControlsWorkspace({
   initialTab = 'shift_location'
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
+  const activeLocations = useMemo(
+    () => locations.filter((location) => location?.is_active !== false),
+    [locations]
+  );
+  const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
+  const activeShift = shiftState?.shift || null;
   const [switchReason, setSwitchReason] = useState('');
+  const [switchTargetLocationId, setSwitchTargetLocationId] = useState(
+    shiftLocationId ? String(shiftLocationId) : ''
+  );
+  const [switchTargetTerminalId, setSwitchTargetTerminalId] = useState('');
+  const [switchClosingCashAmount, setSwitchClosingCashAmount] = useState('');
+  const [switchOpeningFloatAmount, setSwitchOpeningFloatAmount] = useState('');
+  const [switchConflict, setSwitchConflict] = useState(null);
   const [requestedAdminTerminalId, setRequestedAdminTerminalId] = useState('');
   const [pendingAdminTerminalId, setPendingAdminTerminalId] = useState('');
   const [staleRecoveryShift, setStaleRecoveryShift] = useState(null);
@@ -479,8 +495,6 @@ function ShiftControlsWorkspace({
   });
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
-  const shiftLocationId = Number(shiftState?.shift?.location_id || 0) || null;
-  const activeShift = shiftState?.shift || null;
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
   const shiftCashierLabel = activeShift?.cashier?.username
@@ -497,6 +511,12 @@ function ShiftControlsWorkspace({
       (entry) => Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
     ),
     [activeTerminals, operatingLocationId]
+  );
+  const switchLocationTerminals = useMemo(
+    () => activeTerminals.filter(
+      (entry) => Number(entry?.location_id || 0) === Number(switchTargetLocationId || 0)
+    ),
+    [activeTerminals, switchTargetLocationId]
   );
   const openTerminalShiftById = useMemo(() => {
     const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
@@ -527,11 +547,19 @@ function ShiftControlsWorkspace({
     operatorUserId
   );
   const branchMonitorOrders = Array.isArray(adminLocationMonitorState?.orders)
+    && Number(adminLocationMonitorState?.locationId || 0) === Number(viewingLocationId || operatingLocationId || 0)
     ? adminLocationMonitorState.orders
     : [];
   const branchTerminalShifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
+    && Number(adminLocationMonitorState?.locationId || 0) === Number(viewingLocationId || operatingLocationId || 0)
     ? adminLocationMonitorState.terminalShifts
     : [];
+  const switchTargetLocation = activeLocations.find(
+    (location) => Number(location?.location_id || 0) === Number(switchTargetLocationId || 0)
+  );
+  const switchTargetTerminal = switchLocationTerminals.find(
+    (entry) => String(entry?.terminal_id || '').trim() === String(switchTargetTerminalId || '').trim()
+  );
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
     { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
@@ -566,6 +594,15 @@ function ShiftControlsWorkspace({
     }, 0);
     animationTimersRef.current.push(resetTimerId);
   }, [clearAnimationTimers, initialTab]);
+
+  useEffect(() => {
+    setSwitchTargetLocationId(shiftLocationId ? String(shiftLocationId) : '');
+    setSwitchTargetTerminalId('');
+    setSwitchClosingCashAmount('');
+    setSwitchOpeningFloatAmount('');
+    setSwitchConflict(null);
+    setSwitchReason('');
+  }, [shiftLocationId, activeShift?.pos_terminal_shift_id]);
 
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
@@ -701,10 +738,11 @@ function ShiftControlsWorkspace({
       <>
         <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
           <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
-            Operating Location
+            Register Branch
           </Label>
           <select
             id="admin-operating-location"
+            aria-label="Register Branch"
             className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
             value={operatingLocationId || ''}
             onChange={(event) => {
@@ -714,7 +752,7 @@ function ShiftControlsWorkspace({
               setOperatingLocationId(nextValue);
             }}
           >
-            {locations.map((location) => (
+            {activeLocations.map((location) => (
               <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
                 {location.name}
               </option>
@@ -761,6 +799,29 @@ function ShiftControlsWorkspace({
                 );
               })}
             </select>
+          {canViewAdminLocationMonitor ? (
+            <div className="mt-4 border-t border-blue-100 pt-3">
+              <Label htmlFor="admin-viewing-location" className="block text-[12px] font-black text-[#0F172A]">
+                Viewing Branch
+              </Label>
+              <select
+                id="admin-viewing-location"
+                aria-label="Viewing Branch"
+                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                value={viewingLocationId || operatingLocationId || ''}
+                onChange={(event) => setViewingLocationId(event.target.value ? Number(event.target.value) : null)}
+              >
+                {activeLocations.map((location) => (
+                  <option key={`admin-viewing-location-${location.location_id}`} value={location.location_id}>
+                    {location.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
+                Read-only orders and shift monitoring for the selected branch. This does not change the register branch.
+              </p>
+            </div>
+          ) : null}
             {locationTerminals.length === 0 ? (
               <p className="mt-2 text-[11px] text-amber-700">
                 No active terminal is assigned to this branch. Configure one in POS Setup.
@@ -1042,44 +1103,151 @@ function ShiftControlsWorkspace({
             <div className="mt-4 border-t border-slate-200 pt-4">
               <p className="text-[12px] font-black text-[#0F172A]">Change Active Shift Location</p>
               <p className="mt-1 text-[12px] leading-5 text-[#475569]">
-                Reassign the active shift to another location. This requires a reason and permission.
+                Close this drawer with a counted cash amount, then open the replacement shift at an authorized terminal with an explicit opening float.
               </p>
               {canSwitchPosLocation ? (
                 <>
-                  <Label className="mt-3 block text-[12px] font-black text-[#0F172A]">New Shift Location</Label>
+                  <Label htmlFor="pos-switch-target-location" className="mt-3 block text-[12px] font-black text-[#0F172A]">New Shift Location</Label>
                   <select
+                    id="pos-switch-target-location"
                     className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                    value={operatingLocationId || ''}
+                    aria-label="New Shift Location"
+                    value={switchTargetLocationId}
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
                     onChange={(event) => {
-                      const nextValue = event.target.value ? Number(event.target.value) : null;
-                      setOperatingLocationId(nextValue);
+                      setSwitchTargetLocationId(event.target.value || '');
+                      setSwitchTargetTerminalId('');
+                      setSwitchOpeningFloatAmount('');
+                      setSwitchConflict(null);
                     }}
                   >
-                    {locations.map((location) => (
+                    <option value="">Select a target location</option>
+                    {activeLocations.map((location) => (
                       <option key={`switch-location-${location.location_id}`} value={location.location_id}>
                         {location.name}
                       </option>
                     ))}
                   </select>
+                  <Label htmlFor="pos-switch-target-terminal" className="mt-3 block text-[12px] font-black text-[#0F172A]">Destination Terminal</Label>
+                  <select
+                    id="pos-switch-target-terminal"
+                    aria-label="Destination Terminal"
+                    className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                    value={switchTargetTerminalId}
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation || !switchTargetLocationId}
+                    onChange={(event) => {
+                      setSwitchTargetTerminalId(event.target.value);
+                      setSwitchConflict(null);
+                    }}
+                  >
+                    <option value="">Select an active destination terminal</option>
+                    {switchLocationTerminals.map((entry) => {
+                      const terminalId = String(entry?.terminal_id || '').trim();
+                      return (
+                        <option key={`switch-terminal-${terminalId}`} value={terminalId}>
+                          {entry?.label ? `${entry.label} (${terminalId})` : terminalId}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  {switchTargetLocationId && switchLocationTerminals.length === 0 ? (
+                    <p className="mt-2 text-[11px] text-amber-700">
+                      No active terminal is registered at this location.
+                    </p>
+                  ) : null}
+                  <Label htmlFor="pos-switch-closing-cash" className="mt-3 block text-[12px] font-black text-[#0F172A]">Counted Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
+                  <Input
+                    id="pos-switch-closing-cash"
+                    aria-label="Counted Closing Cash"
+                    type="text"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    className="mt-2 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                    value={switchClosingCashAmount}
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
+                    onChange={(event) => setSwitchClosingCashAmount(event.target.value)}
+                    placeholder="0.00"
+                  />
+                  <Label htmlFor="pos-switch-opening-float" className="mt-3 block text-[12px] font-black text-[#0F172A]">Destination Opening Float ({terminalMeta.pettyCashSymbol})</Label>
+                  <Input
+                    id="pos-switch-opening-float"
+                    aria-label="Destination Opening Float"
+                    type="text"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    className="mt-2 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+                    value={switchOpeningFloatAmount}
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
+                    onChange={(event) => setSwitchOpeningFloatAmount(event.target.value)}
+                    placeholder="0.00"
+                  />
                   <Input
                     className="mt-3 h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
                     value={switchReason}
                     onChange={(event) => setSwitchReason(event.target.value)}
                     placeholder="Reason for shift location change"
+                    disabled={locked || !isOnline || shiftState.loading || shiftActionLoading.switchLocation}
                   />
                   <Button
                     type="button"
                     variant="outline"
                     className="mt-3 h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-                    disabled={shiftActionLoading.switchLocation || !operatingLocationId || Number(operatingLocationId) === Number(shiftLocationId)}
-                    onClick={() => handleSwitchShiftLocation?.({
-                      targetLocationId: operatingLocationId,
-                      reason: switchReason
-                    })}
+                    disabled={
+                      locked
+                      || !isOnline
+                      || shiftState.loading
+                      || shiftActionLoading.switchLocation
+                      || !switchTargetLocationId
+                      || Number(switchTargetLocationId) === Number(shiftLocationId)
+                      || !switchTargetTerminalId
+                      || String(switchClosingCashAmount).trim() === ''
+                      || String(switchOpeningFloatAmount).trim() === ''
+                      || String(switchReason || '').trim().length < 8
+                    }
+                    onClick={async () => {
+                      const result = await handleSwitchShiftLocation?.({
+                        targetLocationId: Number(switchTargetLocationId),
+                        terminalId: switchTargetTerminalId,
+                        closingCashAmount: switchClosingCashAmount,
+                        openingFloatAmount: switchOpeningFloatAmount,
+                        closingNote: '',
+                        openingNote: '',
+                        reason: switchReason
+                      });
+                      setSwitchConflict(result?.ok === false ? (result.conflict || null) : null);
+                    }}
                   >
                     <RefreshCcw className="mr-2 h-4 w-4" />
                     {shiftActionLoading.switchLocation ? 'Switching...' : 'Change Shift Location'}
                   </Button>
+                  {switchConflict ? (
+                    <div
+                      data-testid="pos-shift-location-conflict"
+                      className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-[11px] leading-5 text-amber-900"
+                    >
+                      <p className="font-black">Shift location switch was not completed.</p>
+                      <p className="mt-1">{switchConflict.message || 'The requested destination is not available.'}</p>
+                      <p className="mt-2">Current register: {shiftLocationLabel}</p>
+                      <p>
+                        Requested: {switchTargetTerminal?.label || switchConflict.targetTerminalId || 'Destination terminal'} · {switchTargetLocation?.name || 'Destination branch'}
+                      </p>
+                      <p className="mt-2 font-semibold">No takeover, cash transfer, or automatic close was performed.</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3 h-9 rounded-lg border-amber-300 bg-white px-3 text-[11px] font-extrabold text-amber-900 hover:bg-amber-100"
+                        onClick={async () => {
+                          await refreshOperationalContext?.();
+                          await refreshAdminLocationMonitor?.();
+                        }}
+                        disabled={shiftActionLoading.switchLocation || !isOnline}
+                      >
+                        Refresh shift and terminal availability
+                      </Button>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <p className="mt-3 text-[11px] text-slate-500">
@@ -5216,12 +5384,23 @@ export default function TerminalOperationsWorkspace({
   shiftState,
   todayDashboard,
   reportRefreshKey = 0,
+  settingsRefreshKey = 0,
   employeeCreditReportRefreshKey = 0,
   isOnline = true,
   offlineSnapshotScope = {},
   onQueueOfflineItemDraft = async () => '',
   activeTerminalId = '',
+  terminalIdOptions = [],
   terminalRegistry = [],
+  registryEnforced = false,
+  activeShiftId = null,
+  hardwareDriverLabel = '',
+  hardwareStatus = null,
+  hardwareLoading = false,
+  isPrinterAvailable = false,
+  printersDetected = 0,
+  onTestPrinter = async () => false,
+  onSelectTerminal = async () => false,
   canViewPos,
   canCreateItems = false,
   canManageServiceCatalog = false,
@@ -5240,6 +5419,7 @@ export default function TerminalOperationsWorkspace({
   canOpenShift = false,
   canCloseShift,
   canAdminBypassShiftPrompt = false,
+  canViewAdminLocationMonitor = false,
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
@@ -5265,6 +5445,8 @@ export default function TerminalOperationsWorkspace({
   locationsState = { loading: false, locations: [] },
   operatingLocationId = null,
   setOperatingLocationId = () => {},
+  viewingLocationId = null,
+  setViewingLocationId = () => {},
   queueLocationScopeId = null,
   incomingOrdersState = { loading: false, orders: [] },
   orderHistoryState = { loading: false, orders: [], pagination: null },
@@ -5311,6 +5493,8 @@ export default function TerminalOperationsWorkspace({
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
+  const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
+  const showTerminalOnlyControlsPane = showTerminalOnlyControls;
   const canImportItems = IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
@@ -5324,6 +5508,38 @@ export default function TerminalOperationsWorkspace({
   }, [onSelectViewMode]);
 
   const content = useMemo(() => {
+    const settingsWorkspaceProps = {
+      terminalUser,
+      terminalMeta,
+      locationsState,
+      queueLocationScopeId,
+      incomingOrdersState,
+      locked,
+      sectionId: sectionIds.terminalSetup,
+      onRefreshTerminalUser: refreshTerminalUser,
+      onRefreshTerminalMeta: refreshTerminalMeta,
+      onPosSetupSaved,
+      onStorefrontSetupSaved,
+      onStorefrontContentStateChange,
+      settingsRefreshKey,
+      onlineOrderSoundEnabled,
+      setOnlineOrderSoundEnabled,
+      terminalIdOptions,
+      activeTerminalId,
+      registryEnforced,
+      activeShiftId,
+      hardwareDriverLabel,
+      hardwareStatus,
+      hardwareLoading,
+      isPrinterAvailable,
+      printersDetected,
+      onTestPrinter,
+      onSelectTerminal,
+      onDeliveryPersonnelChanged,
+      onNavigateToOrders: handleNavigateToOrders,
+      workspacePaneRef
+    };
+
     switch (effectiveViewMode) {
     case 'incoming_queue':
       return (
@@ -5347,6 +5563,10 @@ export default function TerminalOperationsWorkspace({
           refreshOrderHistory={refreshOrderHistory}
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
+          viewingLocationId={viewingLocationId}
+          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
+          adminLocationMonitorState={adminLocationMonitorState}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
           locked={locked}
           isOnline={isOnline}
           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
@@ -5358,32 +5578,25 @@ export default function TerminalOperationsWorkspace({
     case 'settings_profile':
     case 'settings_pos':
     case 'settings_storefront':
-    case 'terminal_setup':
       return (
         <SettingsWorkspace
-          terminalUser={terminalUser}
-          terminalMeta={terminalMeta}
-          locationsState={locationsState}
-          queueLocationScopeId={queueLocationScopeId}
-          incomingOrdersState={incomingOrdersState}
-          locked={locked}
-          sectionId={sectionIds.terminalSetup}
+          {...settingsWorkspaceProps}
           initialTab={
             effectiveViewMode === 'settings_profile'
               ? 'profile'
               : (effectiveViewMode === 'settings_storefront' ? 'storefront' : 'pos_setup')
           }
-          onRefreshTerminalUser={refreshTerminalUser}
-          onRefreshTerminalMeta={refreshTerminalMeta}
-          onPosSetupSaved={onPosSetupSaved}
-          onStorefrontSetupSaved={onStorefrontSetupSaved}
-          onStorefrontContentStateChange={onStorefrontContentStateChange}
-           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
-           setOnlineOrderSoundEnabled={setOnlineOrderSoundEnabled}
-            onDeliveryPersonnelChanged={onDeliveryPersonnelChanged}
-            onNavigateToOrders={handleNavigateToOrders}
-            workspacePaneRef={workspacePaneRef}
-         />
+        />
+      );
+    case 'terminal_setup':
+      return (
+        <SettingsWorkspace
+          {...settingsWorkspaceProps}
+          initialTab="pos_setup"
+          allowedTabIds={['pos_setup']}
+          editorSection="terminal_setup"
+          showTerminalOnlyControls={showTerminalOnlyControlsPane}
+        />
       );
     case 'shift_controls':
     case 'close_shift':
@@ -5409,6 +5622,9 @@ export default function TerminalOperationsWorkspace({
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
+          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
+          viewingLocationId={viewingLocationId}
+          setViewingLocationId={setViewingLocationId}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -5457,6 +5673,9 @@ export default function TerminalOperationsWorkspace({
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
+          canViewAdminLocationMonitor={canViewAdminLocationMonitor}
+          viewingLocationId={viewingLocationId}
+          setViewingLocationId={setViewingLocationId}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
@@ -5581,6 +5800,7 @@ export default function TerminalOperationsWorkspace({
   }, [
     canAdjustCashDrawer,
     canAdminBypassShiftPrompt,
+    canViewAdminLocationMonitor,
     canOpenShift,
     canCloseShift,
     canCloseDay,
@@ -5592,6 +5812,7 @@ export default function TerminalOperationsWorkspace({
     canManageCategories,
     canManageVouchers,
     canManagePricelists,
+    ensureDeliveryPersonnelLoaded,
     handleNavigateToOrders,
     onSelectViewMode,
     canManageServiceCatalog,
@@ -5640,12 +5861,14 @@ export default function TerminalOperationsWorkspace({
     handleRetryQueuedOperation,
     handleResolveQueuedOperation,
     onItemsStockFilterPresetApplied,
+    onDeliveryPersonnelChanged,
     onPosSetupSaved,
     onSelectAdminTerminal,
     onStorefrontSetupSaved,
     onStorefrontContentStateChange,
     onlineOrderSoundEnabled,
     operatingLocationId,
+    viewingLocationId,
     openShiftForm,
     queueLocationScopeId,
     refreshIncomingOrders,
@@ -5654,6 +5877,7 @@ export default function TerminalOperationsWorkspace({
     refreshOperationalContext,
     refreshDayCloseReadiness,
     reportRefreshKey,
+    settingsRefreshKey,
     employeeCreditReportRefreshKey,
     isOnline,
     offlineSnapshotScope,
@@ -5671,10 +5895,22 @@ export default function TerminalOperationsWorkspace({
     sectionIds.services,
     sectionIds.terminalSetup,
     sectionIds.vouchers,
+    showTerminalOnlyControlsPane,
     activeTerminalId,
+    terminalIdOptions,
     refreshTerminalMeta,
     refreshTerminalUser,
+    registryEnforced,
+    activeShiftId,
+    hardwareDriverLabel,
+    hardwareStatus,
+    hardwareLoading,
+    isPrinterAvailable,
+    printersDetected,
+    onTestPrinter,
+    onSelectTerminal,
     setOperatingLocationId,
+    setViewingLocationId,
     setCashEventForm,
     setCloseShiftForm,
     setOpenShiftForm,

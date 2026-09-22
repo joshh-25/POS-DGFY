@@ -58,11 +58,39 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
     return () => clearTimeout(timer);
   }, [failed, target]);
 
-  const unavailable = failed === target || (failures.get(target) || 0) > 3;
+  const imageFailed = failed === target;
+  const unavailable = (failures.get(target) || 0) > 3;
   const displayed = (loadedScope.current === scope ? loaded : '') || (pending?.readyUrl ? pending?.url : '') || '';
-  return <>
+  const showFallback = Boolean(target && (imageFailed || unavailable) && !displayed);
+  const fallbackLabel = String(item?.name || 'Item').trim() || 'Item';
+  return (
+    <>
     {displayed && displayed !== target ? <img {...imageAttributes} src={displayed} className={className} style={style} width={144} height={144} decoding="async" /> : null}
-    {target && !unavailable ? <ResponsiveImage
+    {showFallback ? (
+      <div
+        data-pos-item-image-fallback="true"
+        aria-label={`${fallbackLabel} image unavailable`}
+        className={className}
+        style={{
+          ...style,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 12,
+          boxSizing: 'border-box',
+          color: '#1A4E8D',
+          backgroundColor: '#EAF2FB',
+          backgroundImage: sources.placeholderSrc ? `url(${sources.placeholderSrc})` : undefined,
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
+          textAlign: 'center'
+        }}
+      >
+        <span className="line-clamp-3 text-xs font-black leading-tight">{fallbackLabel}</span>
+      </div>
+    ) : null}
+    {target && !imageFailed && !unavailable ? <ResponsiveImage
       {...imageProps}
       key={`${target}:${retry}`}
       sources={targetSources}
@@ -98,5 +126,6 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
     {pending?.status === 'failed' ? <span className="absolute bottom-0 right-0 z-10 rounded bg-white/95 px-1 text-[10px] text-slate-700" role="status">
       Upload failed; edit to retry
     </span> : null}
-  </>;
+    </>
+  );
 });

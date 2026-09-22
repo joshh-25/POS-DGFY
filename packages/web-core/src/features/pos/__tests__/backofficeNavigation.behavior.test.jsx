@@ -16,6 +16,8 @@ const terminalPageDialogLayerSource = readSource('../components/TerminalPageDial
 const terminalLockDrawerSource = readSource('../components/TerminalLockDrawer.jsx');
 const terminalWorkspaceSidebarSource = readSource('../components/TerminalWorkspaceSidebar.jsx');
 const terminalOperationsWorkspaceSource = readSource('../components/TerminalOperationsWorkspace.jsx');
+const settingsWorkspaceSource = readSource('../settings/PosSettingsWorkspace.jsx');
+const terminalLocalControlsSource = readSource('../settings/TerminalLocalControlsSection.jsx');
 const businessAdminPageSource = readSource('../../../../../../apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
 const posRouteSource = readSource('../../../../../../apps/dgfy-pos/src/main.jsx');
 
@@ -213,11 +215,11 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageLayoutSource.match(/canAccessBusinessAdmin=\{canAccessBusinessAdmin\}/g)).toHaveLength(3);
     expect(terminalPageLayoutSource.match(/onOpenBackOffice=\{onOpenBackOffice\}/g)).toHaveLength(3);
     expect(terminalOperationsWorkspaceSource).toContain("allowedTabIds={['pos_setup']}");
-    expect(terminalOperationsWorkspaceSource).toContain('const showSettingsTabNavigation = visibleSettingsTabs.length > 1;');
-    expect(terminalOperationsWorkspaceSource).toContain('{showSettingsTabNavigation ? (');
+    expect(settingsWorkspaceSource).toContain('const showSettingsTabNavigation = visibleSettingsTabs.length > 1;');
+    expect(settingsWorkspaceSource).toContain('{showSettingsTabNavigation ? (');
     expect(terminalOperationsWorkspaceSource).toContain("editorSection=\"terminal_setup\"");
     expect(terminalOperationsWorkspaceSource).toContain('const showTerminalOnlyControlsPane = showTerminalOnlyControls');
-    expect(terminalOperationsWorkspaceSource).toContain("(editorSection === 'terminal_setup' || editorSection === 'registers')");
+    expect(settingsWorkspaceSource).toContain("(editorSection === 'terminal_setup' || editorSection === 'registers')");
     const terminalSetupStart = terminalOperationsWorkspaceSource.indexOf("case 'terminal_setup':");
     const shiftControlsStart = terminalOperationsWorkspaceSource.indexOf("case 'shift_controls':", terminalSetupStart);
     const terminalSetupSection = terminalOperationsWorkspaceSource.slice(terminalSetupStart, shiftControlsStart);
@@ -225,9 +227,9 @@ describe('POS Back Office navigation', () => {
     expect(shiftControlsStart).toBeGreaterThan(terminalSetupStart);
     expect(terminalSetupSection).toContain("editorSection=\"terminal_setup\"");
     expect(terminalSetupSection).not.toContain("editorSection=\"registers\"");
-    expect(terminalOperationsWorkspaceSource).toContain("editorSection === 'registers'");
-    expect(terminalOperationsWorkspaceSource).toContain('TerminalQueueScopeField');
-    expect(terminalOperationsWorkspaceSource).toContain('TerminalSoundField');
+    expect(settingsWorkspaceSource).toContain("editorSection === 'registers'");
+    expect(terminalLocalControlsSource).toContain('TerminalQueueScopeField');
+    expect(terminalLocalControlsSource).toContain('TerminalSoundField');
     expect(terminalOperationsWorkspaceSource).toContain('Manage terminal registry, branch binding, queue scope, and local device preferences.');
     expect(terminalOperationsWorkspaceSource).toContain("title: 'Terminal Setup'");
     expect(terminalWorkspaceSidebarSource).toContain('Queue scope and local sound; device, printer, and terminal controls');
@@ -251,15 +253,15 @@ describe('POS Back Office navigation', () => {
     expect(businessAdminPageSource).toContain("window.addEventListener('auth:session-cleared', handleSessionInvalidation)");
     expect(businessAdminPageSource).toContain("window.addEventListener('auth:logout', handleSessionInvalidation)");
     expect(businessAdminPageSource).toContain("window.addEventListener('auth:tenant-switched', handleTenantSwitch)");
-    expect(businessAdminPageSource).toContain('Business Admin sign-in required');
-    expect(businessAdminPageSource).toContain('Business Admin access denied');
+    expect(businessAdminPageSource).toContain('Back Office sign-in required');
+    expect(businessAdminPageSource).toContain('Back Office access denied');
     expect(businessAdminPageSource).toContain("bootstrapAuthRequired ? 'business-admin-session-required'");
     expect(businessAdminPageSource).toContain("bootstrapAccessDenied ? 'business-admin-access-denied'");
     expect(businessAdminPageSource).toContain('Open POS sign-in');
     expect(businessAdminPageSource).toContain('const handleBusinessAdminRefresh = useCallback');
     expect(businessAdminPageSource).toContain("window.confirm('You have unsaved settings changes. Refresh and discard them?')");
     expect(businessAdminPageSource).toContain("onSettingsSaved={notifySettingsSaved}");
-    expect(businessAdminPageSource).toContain('Manage Users &amp; Roles');
+    expect(businessAdminPageSource).toContain('Manage users &amp; roles');
     expect(businessAdminPageSource).toContain('F&amp;B Admin');
     expect(businessAdminPageSource).toContain('Restaurant Manager');
     expect(businessAdminPageSource).toContain('getBusinessAdminWorkflowPageName');

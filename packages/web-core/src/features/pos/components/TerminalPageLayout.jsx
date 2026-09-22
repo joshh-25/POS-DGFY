@@ -245,6 +245,7 @@ export default function TerminalPageLayout({
     handleRetryQueuedOperation = () => {},
     handleResolveQueuedOperation = () => {},
     handleCheckoutCompleted,
+    onCheckoutAuthorityInvalid = null,
     onCheckoutLifecycleChange = null,
     setPosViewMode = () => {},
     modeChangeNotice = null,
@@ -803,7 +804,7 @@ export default function TerminalPageLayout({
             />
             <div
               data-testid="pos-header-park-slot"
-              className="relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5"
+              className="dgfy-pos-header-park-slot relative h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5"
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
@@ -1017,6 +1018,7 @@ export default function TerminalPageLayout({
                   setFnbCheckoutContext(null);
                   return handleCheckoutCompleted?.(...args);
                 }}
+                onCheckoutAuthorityInvalid={onCheckoutAuthorityInvalid}
                 viewMode={posViewMode}
                 onViewModeChange={setPosViewMode}
                 onCheckoutLifecycleChange={onCheckoutLifecycleChange}
@@ -1056,6 +1058,7 @@ export default function TerminalPageLayout({
                     <FnbDiningPanel
                       onSelectCheckoutContext={handleFnbCheckoutContext}
                       canTransact={canTransactPos}
+                      locationId={operatingLocationId}
                     />
                   </Suspense>
                 )}
@@ -1099,6 +1102,7 @@ export default function TerminalPageLayout({
                 canOpenShift={canOpenShift}
                 canCloseShift={canCloseShift}
                 canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
+                canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
                 dayCloseReadinessState={dayCloseReadinessState}

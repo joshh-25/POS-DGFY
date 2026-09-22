@@ -24,7 +24,8 @@ export default function EmployeeCreditPaymentPanel({
     preferredEmployeeId = null,
     prefillEnabled = true,
     prefillLocked = false,
-    prefillBlockedReason = ''
+    prefillBlockedReason = '',
+    showAccountSummary = true
 }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -281,23 +282,27 @@ export default function EmployeeCreditPaymentPanel({
                             <span className="font-semibold text-slate-600">Employee ID</span>
                             <span className="font-extrabold text-slate-900">{selectedEmployee.employee_code}</span>
                         </div>
-                        <div className="flex justify-between gap-3">
-                            <span className="font-semibold text-slate-600">Branch</span>
-                            <span className="text-right font-extrabold text-slate-900">{selectedEmployee.branch_name}</span>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                            <span className="font-semibold text-slate-600">Current outstanding</span>
-                            <span className="font-extrabold text-slate-900">₱{money(currentOutstanding)}</span>
-                        </div>
-                        <div className="flex justify-between gap-3">
-                            <span className="font-semibold text-slate-600">Charge amount</span>
-                            <span className="font-extrabold text-slate-900">₱{money(totalDue)}</span>
-                        </div>
-                        {isVerified ? (
-                            <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
-                                <span className="font-semibold text-slate-600">Outstanding after sale</span>
-                                <span className="font-extrabold text-slate-900">₱{money(outstandingAfterSale)}</span>
-                            </div>
+                        {showAccountSummary ? (
+                            <>
+                                <div className="flex justify-between gap-3">
+                                    <span className="font-semibold text-slate-600">Branch</span>
+                                    <span className="text-right font-extrabold text-slate-900">{selectedEmployee.branch_name}</span>
+                                </div>
+                                <div className="flex justify-between gap-3">
+                                    <span className="font-semibold text-slate-600">Current outstanding</span>
+                                    <span className="font-extrabold text-slate-900">₱{money(currentOutstanding)}</span>
+                                </div>
+                                <div className="flex justify-between gap-3">
+                                    <span className="font-semibold text-slate-600">Charge amount</span>
+                                    <span className="font-extrabold text-slate-900">₱{money(totalDue)}</span>
+                                </div>
+                                {isVerified ? (
+                                    <div className="flex justify-between gap-3 border-t border-slate-100 pt-2">
+                                        <span className="font-semibold text-slate-600">Outstanding after sale</span>
+                                        <span className="font-extrabold text-slate-900">₱{money(outstandingAfterSale)}</span>
+                                    </div>
+                                ) : null}
+                            </>
                         ) : null}
                     </div>
                 ) : null}

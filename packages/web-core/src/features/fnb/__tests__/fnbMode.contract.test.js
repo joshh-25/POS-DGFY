@@ -11,10 +11,14 @@ describe('Food & Beverage frontend contract', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
     const posMain = read('apps/dgfy-pos/src/main.jsx');
     const businessAdmin = read('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
+    const businessAdminManifest = read('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(main).toContain('<Route path="/fnb" element={<LegacyMerchantRoute target="/backoffice/fnb" title="Food-and-beverage workspace moved" />} />');
     expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
-    expect(businessAdmin).toContain('fnb: MERCHANT_BACKOFFICE_MODULE_META.fnb');
+    expect(businessAdmin).toContain('MIGRATED_BACKOFFICE_MODULE_KEYS');
+    expect(businessAdmin).toContain('MigratedBackOfficeModule');
+    expect(businessAdminManifest).toContain("fnb: module('Operations', 'fnb', 'F&B Setup'");
+    expect(businessAdminManifest).toContain('MERCHANT_BACKOFFICE_MODULE_META');
   });
 
   it('exposes F&B APIs for menu, tables, checks, kitchen, reservations, and service charge settings', () => {
@@ -52,6 +56,7 @@ describe('Food & Beverage frontend contract', () => {
     const terminalLayout = read('packages/web-core/src/features/pos/components/TerminalPageLayout.jsx');
     const terminalSidebar = read('packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx');
     const wrapper = read('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const businessAdminManifest = read('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(backOfficePage).toContain('Setup &amp; monitoring only');
     expect(backOfficePage).toContain('data-testid="fnb-checks-read-only"');
@@ -74,7 +79,7 @@ describe('Food & Beverage frontend contract', () => {
     expect(terminalLayout).toContain('data-testid="pos-fnb-service-workspace"');
     expect(terminalLayout).toContain('fnbContext={fnbCheckoutContext}');
     expect(terminalSidebar).toContain('pos-nav-fnb-service');
-    expect(wrapper).toContain("title: 'F&B Setup'");
+    expect(businessAdminManifest).toContain("fnb: module('Operations', 'fnb', 'F&B Setup'");
   });
 
   it('keeps the embedded F&B workspace concise and scannable', () => {
@@ -92,7 +97,7 @@ describe('Food & Beverage frontend contract', () => {
     expect(page).toContain('Tables</h2>');
     expect(wrapper).toContain("const isFnb = section === 'fnb';");
     expect(wrapper).toContain('!isCatalog && !isFnb');
-    expect(wrapper).toContain('isFnb ? <Module embedded />');
+    expect(wrapper).toContain('isCatalog || isFnb || isSales ? <Module embedded />');
     expect(businessAdminCss).toContain('.business-admin-fnb-overview');
     expect(businessAdminCss).toContain('.business-admin-fnb-summary');
     expect(businessAdminCss).toContain('.business-admin-fnb-tab {');
@@ -114,13 +119,18 @@ describe('Food & Beverage frontend contract', () => {
     const diningPanel = read('packages/web-core/src/features/fnb/components/FnbDiningPanel.jsx');
     const checkoutWorkflow = read('packages/web-core/src/features/pos/hooks/usePosCheckoutWorkflow.js');
     const cartWorkflow = read('packages/web-core/src/features/pos/hooks/usePosCartWorkflow.js');
+    const fnbCheckoutCart = read('packages/web-core/src/features/pos/utils/fnbCheckoutCart.js');
     const modifierUtils = read('packages/web-core/src/features/pos/utils/posCheckoutTerminalModifiers.js');
     const checkoutSurfaceContract = read('packages/web-core/src/features/pos/utils/checkoutSurfaceContract.js');
     const receipt = read('packages/web-core/src/features/pos/components/ReceiptPrintView.jsx');
 
     expect(posPageShell).toContain('FnbDiningPanel');
     expect(diningPanel).toContain('restaurant_service_charge: serviceCharge');
+    expect(diningPanel).toContain('fnb_check_lines: Array.isArray(check.lines) ? check.lines : []');
+    expect(diningPanel).toContain('fnb_checkout_request_id');
+    expect(diningPanel).toContain('has no active items. Add an item before checkout.');
     expect(checkoutWorkflow).toContain('fnbContext: normalizedFnbContext');
+    expect(fnbCheckoutCart).toContain('export const buildFnbCheckCartLines');
     expect(checkoutSurfaceContract).toContain('fnb_check_id');
     expect(checkoutWorkflow).toContain('restaurant_service_charge');
     expect(cartWorkflow).toContain('buildKitchenStationSnapshot');

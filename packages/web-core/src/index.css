@@ -503,6 +503,17 @@ body.dgfy-pos-document-scroll-lock {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
+/* The parked-sales shortcut is portaled into this host only for workflows
+ * that support it. Keep the empty host out of the header layout so unsupported
+ * workflows do not show a blank button-sized gap. */
+.dgfy-pos-header-park-slot {
+  display: none;
+}
+
+.dgfy-pos-header-park-slot:not(:empty) {
+  display: flex;
+}
+
 .dgfy-pos-terminal-badge {
   border: 1px solid rgba(26, 78, 141, 0.14);
   background: linear-gradient(135deg, #f8fbff 0%, #e8f0fb 100%);

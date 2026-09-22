@@ -8,14 +8,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import SalesDateRangePicker from '../components/SalesDateRangePicker.jsx';
 import {
-  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
   Eye,
-  Filter,
   Search,
   TrendingUp,
   X
@@ -122,11 +121,12 @@ const TransactionCard = ({ row, selected, onSelect }) => {
           <p className="mt-2 truncate text-sm font-black text-slate-900">{reference}</p>
           <p className="mt-1 text-xs text-slate-500">{formatSalesDate(row.occurred_at)}</p>
         </div>
-        <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusTone(row.status)}`}>
-          {formatSalesLabel(row.status)}
-        </span>
       </div>
-      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">VAT</p>
+          <p className="mt-1 text-sm font-semibold text-slate-700">{money(row.vat_amount)}</p>
+        </div>
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Gross</p>
           <p className="mt-1 text-sm font-bold text-slate-900">{money(row.gross_sales)}</p>
@@ -140,9 +140,8 @@ const TransactionCard = ({ row, selected, onSelect }) => {
           <p className="mt-1 text-sm font-bold text-emerald-700">{money(row.gross_profit)}</p>
         </div>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="min-w-0 truncate text-xs text-slate-500">{row.customer_or_recipient || 'No customer recorded'}</p>
-        <Button type="button" size="sm" variant={isSelected ? 'secondary' : 'outline'} onClick={() => onSelect(row)} aria-label={`View transaction ${reference}`}>
+      <div className="mt-4 flex items-center justify-end gap-3">
+        <Button type="button" size="sm" variant="outline" onClick={() => onSelect(row)} aria-label={`View transaction ${reference}`}>
           <Eye size={14} /> View
         </Button>
       </div>
@@ -160,6 +159,7 @@ export default function SalesPage({ embedded = false }) {
   const hydratedFromQueryRef = useRef(false);
   const msmeDefaultsAppliedRef = useRef(false);
   const [search, setSearch] = useState('');
+  const [itemId, setItemId] = useState('');
   const [source, setSource] = useState('ALL');
   const [sourceId, setSourceId] = useState('');
   const [status, setStatus] = useState('all');
@@ -180,7 +180,6 @@ export default function SalesPage({ embedded = false }) {
   const [sourceContext, setSourceContext] = useState('');
   const [showExportPrecheck, setShowExportPrecheck] = useState(false);
   const [lastExportMeta, setLastExportMeta] = useState(null);
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   useEffect(() => {
     if (hydratedFromQueryRef.current) return;
@@ -190,6 +189,7 @@ export default function SalesPage({ embedded = false }) {
       setSource(sourceParam);
     }
     setSearch(params.get('search') || '');
+    setItemId(params.get('item_id') || '');
     setStatus(params.get('status') || 'all');
     setPaymentType(params.get('payment_type') || 'all');
     setOrderMethod(params.get('order_method') || 'all');
@@ -209,6 +209,7 @@ export default function SalesPage({ embedded = false }) {
     if (!hydratedFromQueryRef.current) return;
     const params = new URLSearchParams();
     if (search) params.set('search', search);
+    if (itemId) params.set('item_id', itemId);
     if (source && source !== 'ALL') params.set('source', source);
     if (sourceId) params.set('source_id', sourceId);
     if (status !== 'all') params.set('status', status);
@@ -230,6 +231,7 @@ export default function SalesPage({ embedded = false }) {
     dateTo,
     location.pathname,
     location.search,
+    itemId,
     navigate,
     orderMethod,
     paymentType,
@@ -250,6 +252,7 @@ export default function SalesPage({ embedded = false }) {
         page,
         limit: 20,
         search: search || undefined,
+        item_id: itemId || undefined,
         source: source === 'ALL' ? undefined : source,
         source_id: sourceId || undefined,
         status: status === 'all' ? undefined : status,
@@ -269,14 +272,20 @@ export default function SalesPage({ embedded = false }) {
         const sourceIdMatch = Number.isInteger(sourceIdNumeric)
           ? result.transactions.find((row) => Number(row?.source_id) === sourceIdNumeric)
           : null;
-        setSelected((prev) => sourceIdMatch || prev || result.transactions[0]);
+        setSelected((prev) => {
+          if (sourceIdMatch) return sourceIdMatch;
+          if (!prev) return null;
+          return result.transactions.some((row) => row.source === prev.source && row.source_id === prev.source_id)
+            ? prev
+            : null;
+        });
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to load unified sales');
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, orderMethod, paymentType, search, sortBy, sortOrder, source, sourceId, status, posOrderSource]);
+  }, [dateFrom, dateTo, itemId, orderMethod, paymentType, search, sortBy, sortOrder, source, sourceId, status, posOrderSource]);
 
   useEffect(() => {
     const timer = setTimeout(() => loadSales(1), 250);
@@ -303,6 +312,7 @@ export default function SalesPage({ embedded = false }) {
   const activeFilterSummary = useMemo(() => {
     const parts = [];
     parts.push(`source=${source}`);
+    if (itemId) parts.push(`item_id=${itemId}`);
     if (sourceId) parts.push(`source_id=${sourceId}`);
     if (status !== 'all') parts.push(`status=${status}`);
     if (paymentType !== 'all') parts.push(`payment=${paymentType}`);
@@ -312,7 +322,7 @@ export default function SalesPage({ embedded = false }) {
     if (dateTo) parts.push(`date_to=${dateTo}`);
     if (search) parts.push(`search="${search}"`);
     return parts.join(', ');
-  }, [dateFrom, dateTo, orderMethod, paymentType, search, source, sourceId, status, posOrderSource]);
+  }, [dateFrom, dateTo, itemId, orderMethod, paymentType, search, source, sourceId, status, posOrderSource]);
 
   const msmeDailySnapshot = useMemo(() => {
     if (!isMsmeMode) return null;
@@ -327,20 +337,6 @@ export default function SalesPage({ embedded = false }) {
   }, [isMsmeMode, pagination?.total, rows.length, summary?.gross_sales]);
 
   const resultCount = Number(pagination?.total ?? rows.length ?? 0);
-  const activeFilterCount = [
-    search.trim(),
-    source !== 'ALL' ? source : '',
-    status !== 'all' ? status : '',
-    paymentType !== 'all' ? paymentType : '',
-    orderMethod !== 'all' ? orderMethod : '',
-    posOrderSource !== 'all' ? posOrderSource : '',
-    sourceId.trim(),
-    dateFrom,
-    dateTo,
-    sortBy !== 'occurred_at' ? sortBy : '',
-    sortOrder !== 'desc' ? sortOrder : ''
-  ].filter(Boolean).length;
-  const hasActiveFilters = activeFilterCount > 0;
 
   const handleSelectTransaction = (row) => {
     setSelected(row);
@@ -354,6 +350,7 @@ export default function SalesPage({ embedded = false }) {
       const filename = `sales_timeline_${exportDate}.csv`;
       const blob = await exportUnifiedSalesTransactionsCsv({
         search: search || undefined,
+        item_id: itemId || undefined,
         source: source === 'ALL' ? undefined : source,
         source_id: sourceId || undefined,
         status: status === 'all' ? undefined : status,
@@ -417,7 +414,7 @@ export default function SalesPage({ embedded = false }) {
           <TrendingUp size={17} className="mt-0.5 shrink-0 text-teal-700" aria-hidden="true" />
           <div>
             <p className="font-bold">MSME Daily Snapshot</p>
-            <p className="mt-0.5 text-xs text-teal-800">Today&apos;s cash POS sales are shown by default. Use Advanced Filters when you need the full reporting view.</p>
+            <p className="mt-0.5 text-xs text-teal-800">Today&apos;s cash POS sales are shown by default.</p>
           </div>
         </div>
       )}
@@ -455,51 +452,21 @@ export default function SalesPage({ embedded = false }) {
                 <TrendingUp size={19} aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-teal-700">Transaction activity</p>
                 <h2 className="mt-1 text-xl font-black tracking-tight text-slate-900">Sales overview</h2>
-                <p className="mt-1 text-sm text-slate-500"><span className="font-semibold text-slate-700">{resultCount} transactions</span> · {source === 'ALL' ? 'All sources' : source === 'POS' ? 'POS sales' : 'Dispatch sales'}</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-              {hasActiveFilters && (
-                <Button type="button" variant="ghost" aria-label="Clear sales filters" onClick={() => {
-                setSearch('');
-                setSource(isMsmeMode ? 'POS' : 'ALL');
-                setSourceId('');
-                setStatus(isMsmeMode ? 'completed' : 'all');
-                setPaymentType(isMsmeMode ? 'cash' : 'all');
-                setOrderMethod('all');
-                setPosOrderSource('all');
-                if (isMsmeMode) {
-                  const today = new Date().toISOString().slice(0, 10);
-                  setDateFrom(today);
-                  setDateTo(today);
-                } else {
-                  setDateFrom('');
-                  setDateTo('');
-                }
-                setSortBy('occurred_at');
-                setSortOrder('desc');
-                setSourceContext('');
-                }}>
-                  <X size={14} /> Clear filters
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                aria-expanded={showAdvancedFilters}
-                aria-controls="sales-advanced-filters"
-                onClick={() => setShowAdvancedFilters((prev) => !prev)}
+              <select
+                aria-label="Sales source"
+                value={isMsmeMode ? 'POS' : source}
+                onChange={(event) => setSource(event.target.value)}
+                disabled={isMsmeMode}
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
               >
-                <Filter size={14} />
-                {showAdvancedFilters ? 'Hide filters' : 'Filters'}
-                {hasActiveFilters && (
-                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-teal-100 px-1.5 py-0.5 text-[11px] font-bold leading-none text-teal-800" aria-label={`${activeFilterCount} active filters`}>
-                    {activeFilterCount}
-                  </span>
-                )}
-              </Button>
+                <option value="ALL">All sources</option>
+                <option value="POS">POS</option>
+                <option value="DISPATCH">Dispatch</option>
+              </select>
               <Button type="button" onClick={handleExportCsv} disabled={exporting}>
                 <Download size={14} /> {exporting ? 'Exporting...' : 'Export CSV'}
               </Button>
@@ -507,50 +474,29 @@ export default function SalesPage({ embedded = false }) {
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/65 p-3">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
-              <div className="shrink-0" role="group" aria-label="Sales source">
-                <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-slate-500">View</p>
-                <div className="flex flex-wrap items-center gap-2">
-                {!isMsmeMode && (
-                  <>
-                    <Button type="button" variant={source === 'ALL' ? 'default' : 'outline'} onClick={() => setSource('ALL')}>All</Button>
-                    <Button type="button" variant={source === 'POS' ? 'default' : 'outline'} onClick={() => setSource('POS')}>POS</Button>
-                    <Button type="button" variant={source === 'DISPATCH' ? 'default' : 'outline'} onClick={() => setSource('DISPATCH')}>Dispatch</Button>
-                  </>
-                )}
-                {isMsmeMode && (
-                  <span className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
-                    POS sales
-                  </span>
-                )}
-                </div>
-              </div>
-              <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-3">
-                <FilterField label="Status" className="min-w-0">
-                  <select aria-label="Filter by status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-                    <option value="all">All statuses</option>
-                    <option value="completed">Completed</option>
-                    <option value="voided">Voided</option>
-                    <option value="draft">Draft</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="partial">Partial</option>
-                    <option value="dispatched">Dispatched</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </FilterField>
-                <FilterField label="From" className="min-w-0">
-                  <div className="relative">
-                    <CalendarDays size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <Input aria-label="Sales date from" type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="h-10 w-full rounded-xl pl-9" />
-                  </div>
-                </FilterField>
-                <FilterField label="To" className="min-w-0">
-                  <div className="relative">
-                    <CalendarDays size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                    <Input aria-label="Sales date to" type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="h-10 w-full rounded-xl pl-9" />
-                  </div>
-                </FilterField>
-              </div>
+            <div className="grid min-w-0 gap-3 sm:grid-cols-3">
+              <FilterField label="Status" className="min-w-0">
+                <select aria-label="Filter by status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
+                  <option value="all">All statuses</option>
+                  <option value="completed">Completed</option>
+                  <option value="voided">Voided</option>
+                  <option value="draft">Draft</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="partial">Partial</option>
+                  <option value="dispatched">Dispatched</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </FilterField>
+              <FilterField label="Date range" className="min-w-0 sm:col-span-2">
+                <SalesDateRangePicker
+                  dateFrom={dateFrom}
+                  dateTo={dateTo}
+                  onApply={({ dateFrom: nextDateFrom, dateTo: nextDateTo }) => {
+                    setDateFrom(nextDateFrom);
+                    setDateTo(nextDateTo);
+                  }}
+                />
+              </FilterField>
             </div>
 
             <div className="mt-3 flex flex-col gap-2 border-t border-slate-200/80 pt-3 sm:flex-row sm:items-center">
@@ -558,62 +504,9 @@ export default function SalesPage({ embedded = false }) {
                 <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                 <Input aria-label="Search sales" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoice, delivery order, or customer" className="h-10 w-full rounded-xl pl-9" />
               </div>
-              <p className="shrink-0 text-xs text-slate-500"><span className="font-semibold text-slate-700">{rows.length}</span> shown on this page</p>
             </div>
           </div>
         </div>
-
-        {showAdvancedFilters && (
-          <div id="sales-advanced-filters" className="border-b border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-5">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <FilterField label="Payment">
-                <select aria-label="Filter by payment" value={paymentType} onChange={(event) => setPaymentType(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-                  <option value="all">All payments</option>
-                  <option value="cash">Cash</option>
-                  <option value="gcash">GCash</option>
-                  <option value="maya">Maya</option>
-                  <option value="card">Card</option>
-                  <option value="bank_transfer">Bank transfer</option>
-                </select>
-              </FilterField>
-              <FilterField label="Order method">
-                <select aria-label="Filter by order method" value={orderMethod} onChange={(event) => setOrderMethod(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-                  <option value="all">All methods</option>
-                  <option value="dine_in">Dine in</option>
-                  <option value="takeout">Takeout</option>
-                  <option value="pickup">Pickup</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="appointment">Appointment</option>
-                  <option value="walk_in">Walk-in</option>
-                </select>
-              </FilterField>
-              <FilterField label="POS channel">
-                <select aria-label="Filter by POS channel" value={posOrderSource} onChange={(event) => setPosOrderSource(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-                  <option value="all">All POS channels</option>
-                  <option value="in_store">POS in-store</option>
-                  <option value="online_store">POS online store</option>
-                </select>
-              </FilterField>
-              <FilterField label="Sort by">
-                <select aria-label="Sort sales by" value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100">
-                  <option value="occurred_at">Date</option>
-                  <option value="gross_sales">Gross sales</option>
-                  <option value="cogs">COGS</option>
-                  <option value="gross_profit">Profit</option>
-                  <option value="reference_no">Reference</option>
-                </select>
-              </FilterField>
-              <FilterField label="Transaction ID">
-                <Input aria-label="Transaction ID" value={sourceId} onChange={(event) => setSourceId(event.target.value)} placeholder="Optional ID" className="h-10 w-full rounded-xl" inputMode="numeric" />
-              </FilterField>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">Sort direction</span>
-              <Button type="button" size="sm" variant={sortOrder === 'desc' ? 'secondary' : 'outline'} onClick={() => setSortOrder('desc')}>Newest first</Button>
-              <Button type="button" size="sm" variant={sortOrder === 'asc' ? 'secondary' : 'outline'} onClick={() => setSortOrder('asc')}>Oldest first</Button>
-            </div>
-          </div>
-        )}
 
         <div className="p-4 sm:p-5">
 
@@ -626,11 +519,12 @@ export default function SalesPage({ embedded = false }) {
               </div>
               <span className="text-xs font-semibold text-slate-500">{resultCount} total record(s)</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <SummaryMetric label="Gross sales" value={money(summary.gross_sales)} detail={`Includes ${money(summary.service_fee_total)} service fees`} accent="teal" />
-              <SummaryMetric label="Transactions" value={resultCount} detail="Matching the current filters" accent="indigo" />
-              <SummaryMetric label="COGS" value={money(summary.cogs)} detail="Cost of goods sold" />
-              <SummaryMetric label="Gross profit" value={money(summary.gross_profit)} detail="Gross sales less COGS" tone="text-emerald-700" accent="emerald" />
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <SummaryMetric label="Gross sales" value={money(summary.gross_sales)} detail="Matching the current filters" accent="teal" />
+              <SummaryMetric label="Discount" value={money(summary.discounts)} detail="Total discounts applied" />
+              <SummaryMetric label="VAT sales" value={money(summary.vatable_sales)} detail="Vatable sales" />
+              <SummaryMetric label="VAT" value={money(summary.vat)} detail="VAT collected" />
+              <SummaryMetric label="Net sales" value={money(summary.net_sales)} detail="After discounts" tone="text-emerald-700" accent="emerald" />
             </div>
           </div>
         )}
@@ -661,18 +555,17 @@ export default function SalesPage({ embedded = false }) {
             ) : (
               <>
                 <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block" aria-busy={loading}>
-                  <table className="w-full min-w-[900px] text-sm" aria-label="Unified sales transactions table">
+                  <table className="w-full min-w-[820px] text-sm" aria-label="Unified sales transactions table">
                     <caption className="sr-only">Unified sales transactions with POS and dispatch sources</caption>
                     <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                       <tr className="border-b border-slate-200">
                         <th scope="col" className="px-3 py-3 text-left">Source</th>
                         <th scope="col" className="px-3 py-3 text-left">Reference</th>
                         <th scope="col" className="px-3 py-3 text-left">Date</th>
-                        <th scope="col" className="px-3 py-3 text-left">Party</th>
+                        <th scope="col" className="px-3 py-3 text-right">VAT</th>
                         <th scope="col" className="px-3 py-3 text-right">Gross</th>
                         <th scope="col" className="px-3 py-3 text-right">COGS</th>
                         <th scope="col" className="px-3 py-3 text-right">Profit</th>
-                        <th scope="col" className="px-3 py-3 text-left">Status</th>
                         <th scope="col" className="px-3 py-3 text-right">Action</th>
                       </tr>
                     </thead>
@@ -684,13 +577,12 @@ export default function SalesPage({ embedded = false }) {
                             <td className="px-3 py-3"><SalesSourceBadges row={row} /></td>
                             <td className="px-3 py-3 font-bold text-slate-900">{row.reference_no || `#${row.source_id || '—'}`}</td>
                             <td className="whitespace-nowrap px-3 py-3 text-slate-600">{formatSalesDate(row.occurred_at)}</td>
-                            <td className="max-w-[180px] truncate px-3 py-3 text-slate-600">{row.customer_or_recipient || '—'}</td>
+                            <td className="px-3 py-3 text-right text-slate-600">{money(row.vat_amount)}</td>
                             <td className="px-3 py-3 text-right font-semibold text-slate-800">{money(row.gross_sales)}</td>
                             <td className="px-3 py-3 text-right text-slate-600">{money(row.cogs)}</td>
                             <td className="px-3 py-3 text-right font-bold text-emerald-700">{money(row.gross_profit)}</td>
-                            <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-[11px] font-bold ring-1 ${statusTone(row.status)}`}>{formatSalesLabel(row.status)}</span></td>
                             <td className="px-3 py-3 text-right">
-                              <Button type="button" size="sm" variant={isSelected ? 'secondary' : 'outline'} onClick={() => handleSelectTransaction(row)} aria-label={`View transaction ${row.reference_no || row.source_id}`}>
+                              <Button type="button" size="sm" variant="outline" onClick={() => handleSelectTransaction(row)} aria-label={`View transaction ${row.reference_no || row.source_id}`}>
                                 <Eye size={14} /> View
                               </Button>
                             </td>
@@ -699,7 +591,7 @@ export default function SalesPage({ embedded = false }) {
                       })}
                       {!loading && rows.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                          <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
                             No sales transactions found for the current filters. Try changing the date, source, or search.
                           </td>
                         </tr>
@@ -767,8 +659,28 @@ export default function SalesPage({ embedded = false }) {
                   <TransactionMetric
                     label="Fulfillment"
                     value={<span className={`inline-flex max-w-full rounded-full px-2 py-1 text-sm ring-1 ${statusTone(selected.fulfillment_status || selected.status)}`}>{formatSalesLabel(selected.fulfillment_status || selected.status || '—')}</span>}
-                  />
-                </div>
+                    />
+                  </div>
+
+                {selected.source === 'POS' && selected.source_id ? (
+                  <div className="flex flex-col gap-2 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-black text-indigo-950">Need receipt-safe investigation?</p>
+                      <p className="mt-1 text-xs text-indigo-800">Open the canonical Orders detail for payment, refund, item, and audit history.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="shrink-0 border-indigo-200 bg-white text-indigo-800 hover:bg-indigo-100"
+                      onClick={() => {
+                        setDetailOpen(false);
+                        navigate(`/backoffice/orders?transaction_id=${encodeURIComponent(selected.source_id)}`);
+                      }}
+                    >
+                      Open order detail
+                    </Button>
+                  </div>
+                ) : null}
 
                 <div className="space-y-3">
                   <TransactionDetailSection title="Order overview" description="The essential record and channel information.">

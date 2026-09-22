@@ -16,9 +16,18 @@ import {
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { saveOnboardingStep } from '@/services/onboardingService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
+import {
+  createHospitalityRoom,
+  createHospitalityRoomType
+} from '../../hospitality/api/hospitalityApi.js';
+import {
+  DEFAULT_WORKFLOW_MODE,
+  isHospitalityWorkflowMode,
+  normalizeWorkflowMode
+} from '../../settings/workflowMode.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { createSuggestedTerminalId, normalizeTerminalCashierIds, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
-import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
+import { getTenantSetupOrder, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 import {
   createDefaultStorefrontBusinessHours,
   normalizeStorefrontBusinessHours,

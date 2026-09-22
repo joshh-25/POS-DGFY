@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const settingsPagePath = path.resolve(__dirname, '../../../../../../apps/dgfy-ims/Pages/Settings.jsx');
 const terminalWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
+const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posSetupPanePath = path.resolve(__dirname, '../settings/PosSetupSettingsPane.jsx');
 const posSetupOperationsPanePath = path.resolve(__dirname, '../settings/PosOperationsAccessSection.jsx');
 const posTerminalPanePath = path.resolve(__dirname, '../settings/PosTerminalSettingsSection.jsx');
@@ -15,6 +16,7 @@ const posTerminalAdvancedModalPath = path.resolve(__dirname, '../settings/PosTer
 describe('POS strict location-binding settings visibility contract', () => {
   let settingsPageContent = '';
   let terminalWorkspaceContent = '';
+  let terminalOperationsWorkspaceContent = '';
   let posSetupPaneContent = '';
   let posSetupOperationsPaneContent = '';
   let posTerminalPaneContent = '';
@@ -23,6 +25,7 @@ describe('POS strict location-binding settings visibility contract', () => {
   beforeAll(() => {
     settingsPageContent = fs.readFileSync(settingsPagePath, 'utf8');
     terminalWorkspaceContent = fs.readFileSync(terminalWorkspacePath, 'utf8');
+    terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posSetupPaneContent = fs.readFileSync(posSetupPanePath, 'utf8');
     posSetupOperationsPaneContent = fs.readFileSync(posSetupOperationsPanePath, 'utf8');
     posTerminalPaneContent = fs.readFileSync(posTerminalPanePath, 'utf8');
@@ -40,23 +43,19 @@ describe('POS strict location-binding settings visibility contract', () => {
   });
 
   it('keeps registry policy out of the terminal-only POS setup context', () => {
-    const strictBindingStart = terminalWorkspaceContent.indexOf('/* Strict Shift Location Binding */');
-    const strictBindingSection = terminalWorkspaceContent.slice(strictBindingStart, strictBindingStart + 1800);
-    const terminalSetupStart = terminalWorkspaceContent.indexOf("case 'terminal_setup':");
-    const shiftControlsStart = terminalWorkspaceContent.indexOf("case 'shift_controls':", terminalSetupStart);
-    const terminalSetupSection = terminalWorkspaceContent.slice(terminalSetupStart, shiftControlsStart);
+    const terminalSetupStart = terminalOperationsWorkspaceContent.indexOf("case 'terminal_setup':");
+    const shiftControlsStart = terminalOperationsWorkspaceContent.indexOf("case 'shift_controls':", terminalSetupStart);
+    const terminalSetupSection = terminalOperationsWorkspaceContent.slice(terminalSetupStart, shiftControlsStart);
 
-    expect(strictBindingStart).toBeGreaterThanOrEqual(0);
     expect(terminalSetupStart).toBeGreaterThanOrEqual(0);
     expect(shiftControlsStart).toBeGreaterThan(terminalSetupStart);
-    expect(strictBindingSection).toContain('Strict Shift Location Binding');
-    expect(strictBindingSection).toContain('Require location-bound terminal readiness for shift open, checkout, and terminal switching.');
-    expect(strictBindingSection).toContain("onChange?.('terminalLocationBindingEnforced', enabled === true)");
-    expect(strictBindingSection).not.toContain('readiness?.migration_tag');
     expect(terminalWorkspaceContent).toContain('const showTerminalRegistryEditor = !editorSection || editorSection === \'registers\';');
     expect(terminalWorkspaceContent).toContain('const showTerminalOnlyControlsPane = showTerminalOnlyControls');
     expect(terminalSetupSection).toContain('editorSection="terminal_setup"');
     expect(terminalSetupSection).not.toContain('editorSection="registers"');
+    expect(posSetupPaneContent).toContain('showTerminalOnlyControls');
+    expect(posTerminalPaneContent).toContain('showTerminalRegistryEditor = true');
+    expect(posTerminalPaneContent).toContain("editorSection !== 'registers'");
   });
 
   it('keeps advanced terminal policies inside a modal with explicit save and cancel actions', () => {

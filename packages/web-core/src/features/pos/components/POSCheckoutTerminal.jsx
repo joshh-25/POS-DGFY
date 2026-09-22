@@ -41,6 +41,7 @@ import { flyImageToCheckoutBar } from '../utils/posCatalogAnimations.js';
 import { getPosTerminalLayoutClasses } from '../utils/posTerminalLayout.js';
 import { normalizeAppliedDiscount, normalizePosTerminalDraftState, parseTerminalPermissions } from '../utils/posTerminalDraftState.js';
 import { buildDiscountItemSelection, getDiscountLineRef, isStatutoryBeneficiaryIdentityValid, MAX_STATUTORY_BENEFICIARIES } from '../utils/posDiscountSelection.js';
+import { resolveFnbCheckoutContext, usePosFnbCheckoutState } from '../hooks/usePosFnbCheckoutState.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 
@@ -57,6 +58,7 @@ export default function POSCheckoutTerminal({
     terminalMeta = null,
     offlineSnapshotScope: providedOfflineSnapshotScope = {},
     onCheckoutCompleted = null,
+    onCheckoutAuthorityInvalid = null,
     checkoutBlockedReason = '',
     onManualUniversalSync = async () => ({ allowed: false }),
     onQueueOfflineOperation = async () => null,
@@ -108,11 +110,6 @@ export default function POSCheckoutTerminal({
     const [servicesResource, setServicesResource] = useState('');
     const [servicesNotes, setServicesNotes] = useState('');
 
-    useEffect(() => {
-        if (posWorkflow && !posWorkflow.allowedMethods.includes(orderMethod)) {
-            setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
-        }
-    }, [posWorkflow, orderMethod]);
     const [paymentType, setPaymentType] = useState('cash');
     const {
         employeeCreditAccountCode,
@@ -181,23 +178,6 @@ export default function POSCheckoutTerminal({
         setSplitPaymentSession(nextState?.active && nextState?.session ? nextState.session : null);
     }, []);
 
-    const splitPaymentStorageScopeKey = useMemo(() => (
-        [
-            providedOfflineSnapshotScope?.tenantId || 'tenant',
-            terminalUser?.user_id || terminalUser?.id || terminalUser?.email || 'cashier',
-            terminalId || 'terminal',
-            activeShiftId || 'shift',
-            selectedLocationId || 'location'
-        ].map((value) => String(value)).join(':')
-    ), [
-        activeShiftId,
-        terminalId,
-        providedOfflineSnapshotScope?.tenantId,
-        selectedLocationId,
-        terminalUser?.email,
-        terminalUser?.id,
-        terminalUser?.user_id
-    ]);
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
@@ -282,9 +262,18 @@ export default function POSCheckoutTerminal({
         setReceiptSettings,
         setLowStockDisplayThreshold
     });
-    const normalizedFnbContext = useMemo(() => (
-        fnbContext && typeof fnbContext === 'object' ? fnbContext : null
-    ), [fnbContext]);
+    // F&B service can be enabled as a capability on a counter/retail terminal.
+    // Once a check is attached, checkout must use the F&B line and settlement
+    // contract even when the base terminal workflow is not the fnb preset.
+    const {
+        normalizedFnbContext,
+        hasFnbCheckoutContext,
+        checkoutUsesFnbContract
+    } = resolveFnbCheckoutContext({
+        fnbContext,
+        isFnbWorkflow,
+        allowedMethods: posWorkflow.allowedMethods
+    });
     const parkedSaleEmptyCartHandlerRef = useRef(null);
     const handleCartBecameEmpty = useCallback(() => {
         if (typeof parkedSaleEmptyCartHandlerRef.current === 'function') {
@@ -337,7 +326,7 @@ export default function POSCheckoutTerminal({
         catalog,
         receiptSettings,
         posWorkflow,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         setOrderMethod,
         onCartBecameEmpty: handleCartBecameEmpty,
@@ -377,6 +366,21 @@ export default function POSCheckoutTerminal({
         discountDraft
     });
     const safeDiscountEmployees = toArray(discountEmployees);
+    const { checkoutAllowedOrderMethods } = usePosFnbCheckoutState({
+        normalizedFnbContext,
+        hasFnbCheckoutContext,
+        checkoutUsesFnbContract,
+        workflowMode: posWorkflow.mode,
+        allowedMethods: posWorkflow.allowedMethods,
+        orderMethod,
+        setOrderMethod,
+        catalogLoading,
+        safeCart,
+        safeCatalog,
+        setCart,
+        setTableNumber,
+        setKitchenNotes
+    });
     const checkoutWorkflowValidationMessage = useMemo(() => {
         for (const line of safeCart) {
             const catalogItem = safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id));
@@ -395,7 +399,7 @@ export default function POSCheckoutTerminal({
         }
         return null;
     }, [safeCart, safeCatalog]);
-    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
+    const isCheckoutWorkflowValid = checkoutAllowedOrderMethods.includes(orderMethod)
         && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
         && (orderMethod !== 'appointment' || Boolean(servicesDateTime))
         && !checkoutWorkflowValidationMessage;
@@ -405,6 +409,7 @@ export default function POSCheckoutTerminal({
     );
     const terminalPermissionList = useMemo(() => parseTerminalPermissions(terminalUser?.permissions), [terminalUser?.permissions]);
     const canVoidTransactions = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void');
+    const canUseEmployeeCredit = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:employee_credit:use');
     const isAdminOperator = terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
     const safeAppliedDiscount = useMemo(() => normalizeAppliedDiscount(appliedDiscount), [appliedDiscount]);
     const {
@@ -533,7 +538,7 @@ export default function POSCheckoutTerminal({
         normalizedFnbContext,
         tableNumber,
         kitchenNotes,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         setCheckoutConfirmModalOpen,
         onExternalReceiptClosed
     });
@@ -677,7 +682,6 @@ export default function POSCheckoutTerminal({
         openParkSaleNameDialog,
         openParkedSalesHistory,
         handleCancelCheckout,
-        handleKeepSplitPaymentAndClose,
         handleReverseSplitPaymentAndStartNew,
         handleCompletePreparedSplitPayment,
         splitPaymentCheckoutContext,
@@ -691,7 +695,7 @@ export default function POSCheckoutTerminal({
         normalizedTerminalId,
         offlineSnapshotScope,
         posWorkflow,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         orderMethod,
         tableNumber,
@@ -723,6 +727,7 @@ export default function POSCheckoutTerminal({
         onQueueOfflineOperation,
         onManualUniversalSync,
         onCheckoutCompleted,
+        onCheckoutAuthorityInvalid,
         historyPage,
         loadHistory,
         loadCatalog,
@@ -792,7 +797,6 @@ export default function POSCheckoutTerminal({
         setSplitPaymentSession,
         setSplitPaymentDialogOpen,
         setSplitPaymentWorkflowVersion,
-        splitPaymentStorageScopeKey,
         splitPaymentSuccessfulAllocations,
         setSplitPaymentCancelModalOpen,
         setSplitPaymentCancelLoading
@@ -1219,6 +1223,7 @@ export default function POSCheckoutTerminal({
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
         cartTotal,
@@ -1280,6 +1285,7 @@ export default function POSCheckoutTerminal({
         drawerOpening,
         editingQuantityItemId,
         employeeCreditAccount,
+        employeeCreditAccountCode,
         employeeCreditLookupLoading,
         employeeCreditSelectionSource,
         employeeDiscountRateOptions,
@@ -1308,7 +1314,6 @@ export default function POSCheckoutTerminal({
         handleFolderStripPointerEnd,
         handleFolderStripPointerMove,
         handleFolderStripWheel,
-        handleKeepSplitPaymentAndClose,
         handleManualUniversalSync,
         handleOpenDrawer,
         handleParkAndNewSale,
@@ -1481,7 +1486,6 @@ export default function POSCheckoutTerminal({
         splitPaymentCheckoutContext,
         splitPaymentDialogOpen,
         splitPaymentReady,
-        splitPaymentStorageScopeKey,
         splitPaymentSummaryAllocations,
         splitPaymentSummaryChangeAmount,
         splitPaymentSummaryPaidAmount,

@@ -3,6 +3,7 @@ import {
   buildScopedCashierRequestConfig,
   isPosAttendancePermissionDeniedReason,
   isPosOperatorAuthorityValid,
+  isPosOperatorAuthorityInvalidError,
   isPosOperatorAuthorityUnavailableError,
   isPosOperatorFeatureDisabledReason,
   isPosOperatorPermissionDeniedError,
@@ -283,6 +284,40 @@ describe('POS terminal shift entry decision', () => {
       }
     };
     expect(isPosOperatorPermissionDeniedError(error)).toBe(true);
+  });
+
+  it.each([
+    ['authority reason code', {
+      response: {
+        status: 403,
+        data: {
+          details: { reason_code: 'POS_OPERATOR_AUTHORITY_INVALID' },
+          message: 'Operator authority has expired or been revoked.'
+        }
+      }
+    }],
+    ['checkout authority message', {
+      response: {
+        status: 403,
+        data: { message: 'The active cashier authority is no longer valid for this checkout.' }
+      }
+    }]
+  ])('recognizes an expired checkout authority: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityInvalidError(error)).toBe(true);
+  });
+
+  it.each([
+    ['generic permission denial', {
+      response: { status: 403, data: { error_code: 'PERMISSION_DENIED' } }
+    }],
+    ['scope mismatch', {
+      response: {
+        status: 403,
+        data: { details: { reason_code: 'POS_OPERATOR_SCOPE_MISMATCH' } }
+      }
+    }]
+  ])('does not classify unrelated authorization failures as expired authority: %s', (_label, error) => {
+    expect(isPosOperatorAuthorityInvalidError(error)).toBe(false);
   });
 
   it('restores a missing operator authority session for an authenticated cashier', () => {

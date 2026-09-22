@@ -1,6 +1,6 @@
 import { forwardRef, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
-  CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Eye, Info, List, Mail, MapPin,
+  CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Info, List, Mail, MapPin,
   Maximize2, Minimize2, Move, Phone, Search,
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
@@ -28,6 +28,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   normalizeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
+import { createDefaultLocationForm } from './posSettingsModels.js';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const RequiredMark = () => <span className="ml-1 text-rose-600">*</span>;
@@ -406,27 +407,34 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
   const pinchRef = useRef(null);
   const source = previewUrl || coverSrc;
   const savedTransform = normalizeCoverPhotoTransform(initialTransform);
+  const activeZoom = hasAdjustmentChanges ? zoom : savedTransform.scale;
+  const activePositionX = hasAdjustmentChanges ? positionX : savedTransform.x;
+  const activePositionY = hasAdjustmentChanges ? positionY : savedTransform.y;
+  const previewUrlRef = useRef('');
 
-  useEffect(() => {
-    if (hasAdjustmentChanges) return;
-    setZoom(savedTransform.scale);
-    setPositionX(savedTransform.x);
-    setPositionY(savedTransform.y);
-  }, [hasAdjustmentChanges, savedTransform.scale, savedTransform.x, savedTransform.y]);
-
-  useEffect(() => {
-    if (!selectedFile) {
-      return undefined;
+  useEffect(() => () => {
+    if (previewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = '';
     }
-    const nextUrl = URL.createObjectURL(selectedFile);
+  }, []);
+
+  const replacePreviewUrl = (file) => {
+    if (previewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+    const nextUrl = file && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(file)
+      : '';
+    previewUrlRef.current = nextUrl;
     setPreviewUrl(nextUrl);
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [selectedFile]);
+  };
 
   const handleFileSelection = (file) => {
     if (!file) return;
     setError('');
     setSelectedFile(file);
+    replacePreviewUrl(file);
     setZoom(1);
     setPositionX(0);
     setPositionY(0);
@@ -443,7 +451,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
 
   const updateZoom = (nextZoom, { feedback = false } = {}) => {
     const normalizedZoom = Math.min(2.5, Math.max(1, Number(nextZoom) || 1));
-    if (zoom === normalizedZoom) return;
+    if (activeZoom === normalizedZoom) return;
     if (feedback) triggerCoverHaptic();
     setHasAdjustmentChanges(true);
     setZoom(normalizedZoom);
@@ -451,14 +459,17 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
 
   const handlePreviewPointerDown = (event) => {
     if (disabled || !repositioning || !source || event.target.closest?.('button,label,input')) return;
-    if (zoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
+    if (activeZoom < MIN_REPOSITION_ZOOM) {
+      setHasAdjustmentChanges(true);
+      setZoom(MIN_REPOSITION_ZOOM);
+    }
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (pointersRef.current.size === 2) {
       const [first, second] = Array.from(pointersRef.current.values());
       pinchRef.current = {
         startDistance: Math.hypot(second.x - first.x, second.y - first.y),
-        startZoom: zoom
+        startZoom: activeZoom
       };
       dragRef.current = null;
       return;
@@ -467,8 +478,8 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      positionX,
-      positionY
+      positionX: activePositionX,
+      positionY: activePositionY
     };
   };
 
@@ -514,27 +525,27 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     };
     if (event.key === '+' || event.key === '=') {
       event.preventDefault();
-      updateZoom(zoom + 0.1, { feedback: true });
+      updateZoom(activeZoom + 0.1, { feedback: true });
       return;
     }
     if (event.key === '-' || event.key === '_') {
       event.preventDefault();
-      updateZoom(zoom - 0.1, { feedback: true });
+      updateZoom(activeZoom - 0.1, { feedback: true });
       return;
     }
     const [horizontalDelta, verticalDelta] = updates[event.key] || [];
     if (horizontalDelta == null) return;
     event.preventDefault();
-    if (zoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
+    if (activeZoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
     setHasAdjustmentChanges(true);
-    setPositionX((current) => Math.max(-100, Math.min(100, current + horizontalDelta)));
-    setPositionY((current) => Math.max(-100, Math.min(100, current + verticalDelta)));
+    setPositionX(Math.max(-100, Math.min(100, activePositionX + horizontalDelta)));
+    setPositionY(Math.max(-100, Math.min(100, activePositionY + verticalDelta)));
   };
 
   const handlePreviewWheel = (event) => {
     if (disabled || !repositioning || !source) return;
     event.preventDefault();
-    updateZoom(zoom - (event.deltaY > 0 ? 0.1 : -0.1));
+    updateZoom(activeZoom - (event.deltaY > 0 ? 0.1 : -0.1));
   };
 
   const handleChoosePhoto = () => {
@@ -546,7 +557,10 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
   const handleReposition = () => {
     if (disabled || !source) return;
     setActionMenuOpen(false);
-    setZoom((current) => Math.max(MIN_REPOSITION_ZOOM, current));
+    if (activeZoom < MIN_REPOSITION_ZOOM) {
+      setHasAdjustmentChanges(true);
+      setZoom(MIN_REPOSITION_ZOOM);
+    }
     setRepositioning(true);
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => previewRef.current?.focus());
@@ -566,7 +580,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     setActionMenuOpen(false);
     setRepositioning(false);
     setSelectedFile(null);
-    setPreviewUrl('');
+    replacePreviewUrl(null);
     setZoom(1);
     setPositionX(0);
     setPositionY(0);
@@ -581,7 +595,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     try {
       const saved = await onSave?.({
         file: selectedFile,
-        transform: normalizeCoverPhotoTransform({ x: positionX, y: positionY, scale: zoom })
+        transform: normalizeCoverPhotoTransform({ x: activePositionX, y: activePositionY, scale: activeZoom })
       });
       if (saved === false) return false;
       setHasAdjustmentChanges(false);
@@ -590,7 +604,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
       setError(saveError?.message || 'Unable to save the cover photo adjustment.');
       return false;
     }
-  }, [hasAdjustmentChanges, onSave, positionX, positionY, selectedFile, zoom]);
+  }, [activePositionX, activePositionY, activeZoom, hasAdjustmentChanges, onSave, selectedFile]);
 
   useImperativeHandle(ref, () => ({ save: handleSave }), [handleSave]);
 
@@ -614,9 +628,10 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
           <StorefrontCoverImage
             sources={{ src: source }}
             alt="Cover photo crop preview"
+            hideOnError
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover transition-transform"
             draggable="false"
-            transform={{ x: positionX, y: positionY, scale: zoom }}
+            transform={{ x: activePositionX, y: activePositionY, scale: activeZoom }}
           />
         ) : <div className="flex h-full items-center justify-center text-[11px] font-semibold text-[#64748B]">Choose a cover photo to begin</div>}
         <div className={`pointer-events-none absolute inset-0 transition-colors ${repositioning ? 'bg-slate-950/45' : 'bg-slate-950/20'}`} aria-hidden="true" />
@@ -857,7 +872,7 @@ function StorefrontImageEditor({ storefrontAssets, disabled, assetUploadingType 
         <div className="relative">
           <CoverPhotoAdjustment ref={coverRef} coverSrc={storefrontAssets?.cover ? resolveAssetUrl(storefrontAssets.cover) : ''} initialTransform={storefrontAssets?.coverTransform} disabled={disabled || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onSave={async ({ file, transform }) => onUploadAsset?.('cover', file, transform)} onRemove={() => onDeleteAsset?.('cover')} />
           <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
-            <div className="h-full w-full overflow-hidden rounded-full">{profilePreviewSrc ? <ResponsiveImage sources={{ src: profilePreviewSrc }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>}</div>
+            <div className="h-full w-full overflow-hidden rounded-full">{profilePreviewSrc ? <ResponsiveImage sources={{ src: profilePreviewSrc }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>}</div>
             <input ref={profileUploadInputRef} id="storefront-profile-upload-preview" type="file" accept="image/*" className="sr-only" disabled={disabled || profileBusy} onChange={handleProfileFileChange} />
             <button type="button" aria-haspopup="menu" aria-expanded={profileActionMenuOpen} aria-controls="profile-icon-action-menu" aria-label="Change profile icon" title="Change profile icon" disabled={disabled || profileBusy} onClick={() => setProfileActionMenuOpen((current) => !current)} className="absolute bottom-0 right-0 z-20 grid h-7 w-7 translate-x-1/4 translate-y-1/4 place-items-center rounded-full border-2 border-white bg-white text-[#1A4E8D] shadow-md transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-60"><Camera className="h-3.5 w-3.5" aria-hidden="true" /></button>
             {profileActionMenuOpen ? (
@@ -1099,12 +1114,12 @@ function StoreContentSummary({ storefrontForm, setStorefrontForm, storefrontAsse
             <div className="relative min-w-0">
               <div className="relative h-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 sm:h-48">
                 <h3 id="store-image-summary-heading" className="absolute left-2 top-2 z-10 rounded-md border border-white/80 bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-[#0F172A] shadow-sm">Store Image</h3>
-                {storefrontAssets?.cover ? <StorefrontCoverImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} transform={storefrontAssets?.coverTransform} alt="Storefront cover preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[11px] font-medium text-[#64748B]">No cover photo uploaded</div>}
+                {storefrontAssets?.cover ? <StorefrontCoverImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} transform={storefrontAssets?.coverTransform} alt="Storefront cover preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[11px] font-medium text-[#64748B]">No cover photo uploaded</div>}
               </div>
               {canEditSettings ? <StorefrontEditIconButton ariaLabel="Edit Store Image" title="Edit Store Image" onClick={() => setImageEditorOpen(true)} className="absolute right-2 top-2" /> : null}
               <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow-md sm:h-20 sm:w-20">
                 <div className="h-full w-full overflow-hidden rounded-full">
-                  {storefrontAssets?.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-[#64748B]">No icon</div>}
+                  {storefrontAssets?.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-[#64748B]">No icon</div>}
                 </div>
               </div>
             </div>
@@ -1238,7 +1253,7 @@ function StorefrontGroupEditor({
               />
               <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
                 <div className="h-full w-full overflow-hidden rounded-full">
-                  {storefrontAssets.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>}
+              {storefrontAssets.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>}
                 </div>
                 <input id="storefront-profile-upload-edit" type="file" accept="image/*" className="sr-only" disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onChange={(event) => { const file = event.target.files?.[0] || null; event.target.value = ''; if (file) void handleUploadAsset('profile', file); }} />
                 <label htmlFor="storefront-profile-upload-edit" className="absolute bottom-0 right-0 z-20 grid h-7 w-7 translate-x-1/4 translate-y-1/4 cursor-pointer place-items-center rounded-full border-2 border-white bg-white text-[#1A4E8D] shadow-md transition-colors hover:bg-blue-50" aria-label="Change profile icon"><Camera className="h-3.5 w-3.5" aria-hidden="true" /></label>
@@ -1424,6 +1439,11 @@ export default function PosStorefrontSettingsPane({
   storefrontForm, setStorefrontForm, storefrontAssets, storefrontPublicUrl, storefrontLocationRequired,
   storefrontTenantId = '',
   editingLocationId = null,
+  readOnly = false,
+  settingsSurface = 'pos',
+  editorSection = 'storefront',
+  startWithNewLocation = false,
+  locationEditorOnly = false,
   activeSubtab: controlledActiveSubtab, onActiveSubtabChange, selectedLocationId: controlledSelectedLocationId, onSelectedLocationChange,
   hasActivePrimaryStorefrontLocation, requestedCustomerAccessMode, effectiveCustomerAccessMode, platformMaxCustomerAccessMode,
   customerAccessRollbackActive, customerAccessLimitation, locked, loading, savingTab, canEditSettings,
@@ -1433,7 +1453,7 @@ export default function PosStorefrontSettingsPane({
   loadStorefrontLocations, resetLocationForm, handleEditLocation, handleSetPrimaryLocation, handleDeactivateLocation,
   handleReactivateLocation, handleDeleteLocation, handleLocationPinChange, leadTimeRequiredMissing, leadTimeRangeInverted,
   lastFulfillmentMethodLocked, handleSaveLocation, handleStorefrontBooleanChange, storefrontBooleanState = {},
-  storefrontContentDirty = false, onStorefrontContentNavigationRequest, expansionScrollParentRef = null
+  storefrontContentDirty = false, onStorefrontContentNavigationRequest, onDirtyChange = () => {}, expansionScrollParentRef = null
 }) {
   const [localActiveSubtab, setLocalActiveSubtab] = useState('setup');
   const [isEditing, setIsEditing] = useState(false);
@@ -1448,6 +1468,9 @@ export default function PosStorefrontSettingsPane({
     setLocationForm((current) => ({ ...current, [field]: value !== false }));
   }, [lastFulfillmentMethodLocked, setLocationForm]);
   const [editSnapshot, setEditSnapshot] = useState(null);
+  const [locationEditSnapshot, setLocationEditSnapshot] = useState(() => (
+    startWithNewLocation ? cloneStorefrontForm(createDefaultLocationForm()) : null
+  ));
   const [localSelectedLocationId, setLocalSelectedLocationId] = useState(null);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const coverAdjustmentRef = useRef(null);
@@ -1456,11 +1479,14 @@ export default function PosStorefrontSettingsPane({
   const setActiveSubtab = onActiveSubtabChange || setLocalActiveSubtab;
   const selectedLocationId = controlledSelectedLocationId ?? localSelectedLocationId;
   const setSelectedLocationId = onSelectedLocationChange || setLocalSelectedLocationId;
-  const canEdit = canEditSettings && !locked && !loading;
-  const setupActive = activeSubtab === 'setup';
-  const contentActive = activeSubtab === 'content';
-  const locationsActive = activeSubtab === 'locations';
-  const reviewsActive = activeSubtab === 'reviews';
+  const canEdit = canEditSettings && !readOnly && !locked && !loading;
+  const autoStartLocationEditor = startWithNewLocation && !readOnly && !loading;
+  const viewActiveSubtab = autoStartLocationEditor ? 'locations' : activeSubtab;
+  const viewIsEditing = autoStartLocationEditor || isEditing;
+  const setupActive = viewActiveSubtab === 'setup';
+  const contentActive = viewActiveSubtab === 'content';
+  const locationsActive = viewActiveSubtab === 'locations';
+  const reviewsActive = viewActiveSubtab === 'reviews';
   const categoryCount = normalizeStoreContentStringList(storefrontForm?.storefrontCategories).length;
   const categoriesFitBesideWhy = categoryCount >= 1 && categoryCount <= 5;
   const normalizedLocationSearchTerm = locationSearchTerm.trim().toLowerCase();
@@ -1470,10 +1496,27 @@ export default function PosStorefrontSettingsPane({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedLocationSearchTerm));
   });
+  const locationEditorOnlySurface = settingsSurface !== 'business-admin' || readOnly || startWithNewLocation;
+  const showLocationEditorOnly = locationEditorOnly && locationEditorOnlySurface;
+  const locationPluralLabel = editorSection === 'branches' ? 'Branches' : 'Storefront Locations';
+  const locationEditorTitle = editingLocationId
+    ? STOREFRONT_LOCATION_LABELS.editBranch
+    : STOREFRONT_LOCATION_LABELS.addBranch;
+  const locationDirty = Boolean(
+    locationsActive
+    && viewIsEditing
+    && locationEditSnapshot
+    && JSON.stringify(locationForm) !== JSON.stringify(locationEditSnapshot)
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(storefrontContentDirty || locationDirty));
+  }, [locationDirty, onDirtyChange, storefrontContentDirty]);
 
   const cancelEditing = () => {
     if (editSnapshot) setStorefrontForm(editSnapshot);
     setEditSnapshot(null);
+    setLocationEditSnapshot(null);
     setEditingGroup(null);
     setIsEditing(false);
     if (locationsActive) resetLocationForm();
@@ -1494,6 +1537,7 @@ export default function PosStorefrontSettingsPane({
     setActiveSubtab('locations');
     setIsEditing(true);
     setEditSnapshot(cloneStorefrontForm(storefrontForm));
+    setLocationEditSnapshot(null);
     handleEditLocation(location);
   };
 
@@ -1502,6 +1546,7 @@ export default function PosStorefrontSettingsPane({
     setActiveSubtab('locations');
     setIsEditing(true);
     setEditSnapshot(cloneStorefrontForm(storefrontForm));
+    setLocationEditSnapshot(cloneStorefrontForm(createDefaultLocationForm()));
     resetLocationForm();
   };
 
@@ -1546,6 +1591,7 @@ export default function PosStorefrontSettingsPane({
     const saved = await handleSaveLocation();
     if (saved === true) {
       setEditSnapshot(null);
+      setLocationEditSnapshot(null);
       setEditingGroup(null);
       setIsEditing(false);
     }
@@ -1561,9 +1607,9 @@ export default function PosStorefrontSettingsPane({
     </div>
   );
 
-  return (
-    <div className={`grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
-      <StorefrontSubtabNavigation activeSubtab={activeSubtab} onChange={handleSubtabChange} disabled={isEditing} />
+    return (
+    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${showLocationEditorOnly ? 'business-admin-location-editor-only' : ''} ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
+      {!showLocationEditorOnly ? <StorefrontSubtabNavigation activeSubtab={viewActiveSubtab} onChange={handleSubtabChange} disabled={viewIsEditing} /> : null}
       <p className="sr-only" aria-live="polite">
         {Object.values(storefrontBooleanState).some((status) => status === 'saving')
           ? 'Saving Storefront setting.'
@@ -1574,8 +1620,8 @@ export default function PosStorefrontSettingsPane({
               : ''}
       </p>
 
-      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${activeSubtab}`} className="min-w-0">
-      {!isEditing && setupActive ? (
+      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${viewActiveSubtab}`} className="min-w-0">
+      {!viewIsEditing && setupActive ? (
         <StoreSetupSummary
           storefrontForm={storefrontForm}
           storefrontPublicUrl={storefrontPublicUrl}
@@ -1596,12 +1642,12 @@ export default function PosStorefrontSettingsPane({
           savingTab={savingTab}
         />
       ) : null}
-      {!isEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
-      {!isEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
+      {!viewIsEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
+      {!viewIsEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
         if (typeof handleStorefrontGroupSave !== 'function') return false;
         return handleStorefrontGroupSave('basic', { ...storefrontForm, storefrontHours: nextHours });
       }} /> : null}
-      {!isEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
+      {!viewIsEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
 
       <StorefrontGroupEditor
         group={contentActive && editingGroup && editingGroup !== 'all' ? editingGroup : null}
@@ -1620,10 +1666,10 @@ export default function PosStorefrontSettingsPane({
         onSave={saveContentGroup}
         onCancel={cancelEditing}
         savingTab={savingTab}
-        hidden={!isEditing}
+        hidden={!viewIsEditing}
       />
 
-      <div className={`${setupActive && isEditing ? '' : 'hidden'} space-y-8`}>
+      <div className={`${setupActive && viewIsEditing ? '' : 'hidden'} space-y-8`}>
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="grid gap-3 md:grid-cols-2">
           <StorefrontToggle
@@ -1776,7 +1822,7 @@ export default function PosStorefrontSettingsPane({
       </div>
       {renderEditFooter('Save Store Setup')}
       </div>
-      {contentActive && isEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
+      {contentActive && viewIsEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="relative min-w-0">
@@ -1790,7 +1836,7 @@ export default function PosStorefrontSettingsPane({
             <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
               <div className="h-full w-full overflow-hidden rounded-full">
                 {storefrontAssets.profile ? (
-                  <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" />
+                  <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>
                 )}
@@ -1933,7 +1979,7 @@ export default function PosStorefrontSettingsPane({
       </div>
 
       </div> : null}
-      {locationsActive && isEditing ? (
+      {locationsActive && viewIsEditing && !showLocationEditorOnly ? (
         <StorefrontBusinessHoursSection
           hours={storefrontForm?.storefrontHours}
           canEditSettings={canEdit}
@@ -1944,14 +1990,14 @@ export default function PosStorefrontSettingsPane({
           }}
         />
       ) : null}
-      <div ref={storefrontLocationsBoundaryRef} className={`${locationsActive && isEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
+      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && viewIsEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
           <div>
-            <h2 className="text-[14px] font-extrabold text-[#0F172A]">
-              Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}
+            <h2 className="business-admin-storefront-locations-header text-[14px] font-extrabold text-[#0F172A]">
+              {locationPluralLabel}{storefrontLocationRequired ? <RequiredMark /> : null}
             </h2>
           </div>
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] lg:gap-5">
-            <aside className="hidden min-w-0 rounded-xl border border-[#DDE8F5] bg-white p-3 lg:block lg:p-4" aria-label="Storefront branches list">
+          <div className="business-admin-storefront-locations-grid grid min-w-0 gap-4 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] lg:gap-5">
+            <aside className="business-admin-storefront-location-list hidden min-w-0 rounded-xl border border-[#DDE8F5] bg-white p-3 lg:block lg:p-4" aria-label={`${locationPluralLabel} list`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <h3 className={`truncate ${STOREFRONT_TYPOGRAPHY.itemLabel}`}>Branches</h3>
@@ -1971,7 +2017,7 @@ export default function PosStorefrontSettingsPane({
                 />
               </label>
 
-              <div className="mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
+              <div className="business-admin-storefront-location-list-scroll mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
                 {filteredStorefrontLocations.length > 0 ? filteredStorefrontLocations.map((location) => {
                   const activeEditingId = locationForm?.location_id || locationForm?.id;
                   const isSelected = activeEditingId === location.location_id;
@@ -2010,14 +2056,14 @@ export default function PosStorefrontSettingsPane({
               </Button>
             </aside>
 
-            <section className="relative min-w-0 sm:rounded-xl sm:border sm:border-[#DDE8F5] sm:bg-white sm:p-4" aria-labelledby="location-editor-heading">
+            <section className="business-admin-storefront-location-editor relative min-w-0 sm:rounded-xl sm:border sm:border-[#DDE8F5] sm:bg-white sm:p-4" aria-labelledby="location-editor-heading">
               <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1A4E8D]">
                     <Store className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <h3 id="location-editor-heading" className={STOREFRONT_TYPOGRAPHY.sectionTitle}>{editingLocationId ? STOREFRONT_LOCATION_LABELS.editBranch : STOREFRONT_LOCATION_LABELS.addBranch}</h3>
+                    <h3 id="location-editor-heading" className={STOREFRONT_TYPOGRAPHY.sectionTitle}>{locationEditorTitle}</h3>
                     <p className={`mt-1 ${STOREFRONT_TYPOGRAPHY.sectionDescription}`}>Update your branch details and settings.</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
                       {locationForm.is_primary_storefront === true ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">{STOREFRONT_LOCATION_LABELS.primaryLocation}</span> : null}

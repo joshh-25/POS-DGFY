@@ -37,6 +37,7 @@ export const SPLIT_PAYMENT_METHOD_LABELS = {
     maya: 'Maya',
     card: 'Card',
     bank_transfer: 'Bank Transfer',
+    employee_credit: 'Employee Credit',
     qrph: 'QR Ph'
 };
 

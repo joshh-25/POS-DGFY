@@ -279,6 +279,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
         cartTotal,
@@ -348,7 +349,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleFolderStripPointerEnd,
         handleFolderStripPointerMove,
         handleFolderStripWheel,
-        handleKeepSplitPaymentAndClose,
         handleManualUniversalSync,
         handleOpenDrawer,
         handleParkAndNewSale,
@@ -377,6 +377,11 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historySearch,
         historyStatus,
         imagePreview,
+        employeeCreditAccountCode,
+        employeeCreditAccount,
+        selectedEmployeeCreditOption,
+        employeeCreditLookupLoading,
+        handleSelectEmployeeCredit,
         isEmployeeCreditPayment,
         isMobileViewport,
         isMsmeMode,
@@ -477,7 +482,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         splitPaymentCancelModalOpen,
         splitPaymentCheckoutContext,
         splitPaymentDialogOpen,
-        splitPaymentStorageScopeKey,
         splitPaymentWorkflowVersion,
         submitDrawerAuthorization,
         terminalUser,
@@ -1259,6 +1263,33 @@ return (
                         </div>
                     )}
                 </div>
+                <div data-testid="pos-split-payment-modal-host">
+                    <Suspense fallback={null}>
+                        <POSSplitPaymentWorkflow
+                            key={splitPaymentWorkflowVersion}
+                            open={splitPaymentDialogOpen}
+                            onOpenChange={handleSplitPaymentOpenChange}
+                            cart={safeCart}
+                            catalog={safeCatalog}
+                            subtotalAmount={cartSubtotal}
+                            totalAmount={cartTotal}
+                            shiftId={activeShiftId}
+                            locationId={selectedLocationId}
+                            terminalId={normalizedTerminalId}
+                            parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
+                            isMsmeMode={isMsmeMode}
+                            checkoutContext={splitPaymentCheckoutContext}
+                            employeeCreditAccountCode={employeeCreditAccountCode}
+                            employeeCreditAccount={employeeCreditAccount}
+                            selectedEmployeeCreditOption={selectedEmployeeCreditOption}
+                            employeeCreditLookupLoading={employeeCreditLookupLoading}
+                            canUseEmployeeCredit={canUseEmployeeCredit}
+                            onSelectEmployeeCredit={handleSelectEmployeeCredit}
+                            onSessionStateChange={handleSplitPaymentSessionStateChange}
+                            onReadyToComplete={handleCompletePreparedSplitPayment}
+                        />
+                    </Suspense>
+                </div>
                 <div data-testid="pos-current-sale-scroll" className={currentSaleBodyClassName}>
                 <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
@@ -1755,29 +1786,6 @@ return (
             )}
             </section>
 
-            <div data-testid="pos-split-payment-modal-host">
-                <Suspense fallback={null}>
-                    <POSSplitPaymentWorkflow
-                        key={splitPaymentWorkflowVersion}
-                        open={splitPaymentDialogOpen}
-                        onOpenChange={handleSplitPaymentOpenChange}
-                        cart={safeCart}
-                        catalog={safeCatalog}
-                        subtotalAmount={cartSubtotal}
-                        totalAmount={cartTotal}
-                        shiftId={activeShiftId}
-                        locationId={selectedLocationId}
-                        terminalId={normalizedTerminalId}
-                        parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
-                        storageScopeKey={splitPaymentStorageScopeKey}
-                        isMsmeMode={isMsmeMode}
-                        checkoutContext={splitPaymentCheckoutContext}
-                        onSessionStateChange={handleSplitPaymentSessionStateChange}
-                        onReadyToComplete={handleCompletePreparedSplitPayment}
-                    />
-                </Suspense>
-            </div>
-
             <Dialog
                 open={drawerAuthorizationModalOpen}
                 onOpenChange={(nextOpen) => {
@@ -1883,7 +1891,6 @@ return (
                 splitPaymentCancelModalOpen={splitPaymentCancelModalOpen}
                 splitPaymentCancelLoading={splitPaymentCancelLoading}
                 setSplitPaymentCancelModalOpen={setSplitPaymentCancelModalOpen}
-                handleKeepSplitPaymentAndClose={handleKeepSplitPaymentAndClose}
                 handleReverseSplitPaymentAndStartNew={handleReverseSplitPaymentAndStartNew}
                 receiptPreviewModalOpen={receiptPreviewModalOpen}
                 closeReceiptPreviewModal={closeReceiptPreviewModal}

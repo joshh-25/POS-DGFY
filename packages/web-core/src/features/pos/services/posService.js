@@ -147,14 +147,6 @@ export const createPosPaymentSession = async (payload = {}) => {
     return response.data?.data;
 };
 
-export const fetchActivePosPaymentSession = async (scope = {}) => {
-    const response = await api.get('/pos/payment-sessions/active', {
-        params: scope,
-        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
-    });
-    return response.data?.data || null;
-};
-
 export const fetchPosPaymentSession = async (paymentSessionId, scope = {}) => {
     const response = await api.get(`/pos/payment-sessions/${paymentSessionId}`, {
         params: scope,

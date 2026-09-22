@@ -1,22 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
-import {
-  cancelPosPaymentSession,
-  fetchActivePosPaymentSession,
-  fetchPosPaymentSession
-} from '../services/posService.js';
-import {
-  buildPosSplitPaymentStorageKey,
-  clearPosSplitPaymentSessionPointer,
-  isTerminalPosPaymentSession,
-  persistPosSplitPaymentSessionPointer,
-  readPosSplitPaymentSessionPointer
-} from '../services/posSplitPaymentSessionStore.js';
+import React, { useMemo } from 'react';
 import POSSplitPaymentDialog from './POSSplitPaymentDialog.jsx';
 import { buildFnbGlobalOrderNote } from '../utils/posOrderNotes.js';
-
-const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const buildCheckoutSnapshot = (context = {}) => ({
   schema_version: 1,
@@ -101,190 +85,24 @@ export default function POSSplitPaymentWorkflow({
   locationId,
   terminalId,
   parkedSaleId,
-  storageScopeKey,
   isMsmeMode,
   checkoutContext,
+  employeeCreditAccountCode,
+  employeeCreditAccount,
+  selectedEmployeeCreditOption,
+  employeeCreditLookupLoading,
+  canUseEmployeeCredit,
+  onSelectEmployeeCredit,
   onSessionStateChange,
   onReadyToComplete
 }) {
-  const [sessionState, setSessionState] = useState({
-    active: false,
-    recovered: false,
-    session: null,
-    recoveryError: ''
-  });
-  const [recoveryPending, setRecoveryPending] = useState(false);
-  const [discarding, setDiscarding] = useState(false);
-  const storageKey = useMemo(
-    () => buildPosSplitPaymentStorageKey(storageScopeKey),
-    [storageScopeKey]
-  );
   const checkoutSnapshot = useMemo(
     () => buildCheckoutSnapshot(checkoutContext),
     [checkoutContext]
   );
-  const handleSessionStateChange = useCallback((nextState) => {
-    setSessionState(nextState);
-    onSessionStateChange?.(nextState);
-  }, [onSessionStateChange]);
-
-  useEffect(() => {
-    if (!storageKey) return undefined;
-    let mounted = true;
-
-    const recoverSavedSession = async () => {
-      const stored = readPosSplitPaymentSessionPointer(storageKey);
-      if (!stored?.sessionId) {
-        if (!shiftId || !String(terminalId || '').trim()) {
-          clearPosSplitPaymentSessionPointer(storageKey);
-          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
-          setRecoveryPending(false);
-          return;
-        }
-        try {
-          const activeSession = await fetchActivePosPaymentSession({
-            shift_id: shiftId,
-            terminal_id: String(terminalId || '').trim().toUpperCase(),
-            location_id: locationId || undefined
-          });
-          if (!mounted) return;
-          if (activeSession) {
-            persistPosSplitPaymentSessionPointer(storageKey, {
-              session_id: Number(activeSession.pos_payment_session_id || activeSession.id),
-              idempotency_key: ''
-            });
-            handleSessionStateChange({ active: true, recovered: true, session: activeSession, recoveryError: '' });
-            return;
-          }
-        } catch (requestError) {
-          if (!mounted) return;
-          handleSessionStateChange({
-            active: false,
-            recovered: false,
-            session: null,
-            recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to check for an active split payment.'
-          });
-          return;
-        } finally {
-          if (mounted) setRecoveryPending(false);
-        }
-        clearPosSplitPaymentSessionPointer(storageKey);
-        handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
-        return;
-      }
-
-      setRecoveryPending(true);
-      try {
-        const session = await fetchPosPaymentSession(stored.sessionId, {
-          shift_id: shiftId,
-          terminal_id: String(terminalId || '').trim().toUpperCase(),
-          location_id: locationId || undefined
-        });
-        if (!mounted) return;
-        if (isTerminalPosPaymentSession(session)) {
-          clearPosSplitPaymentSessionPointer(storageKey);
-          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
-          return;
-        }
-        handleSessionStateChange({ active: true, recovered: true, session, recoveryError: '' });
-      } catch (requestError) {
-        if (!mounted) return;
-        if (requestError?.response?.status === 404) {
-          clearPosSplitPaymentSessionPointer(storageKey);
-          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
-          return;
-        }
-        handleSessionStateChange({
-          active: true,
-          recovered: true,
-          session: null,
-          recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to verify the saved payment session.'
-        });
-      } finally {
-        if (mounted) setRecoveryPending(false);
-      }
-    };
-
-    recoverSavedSession();
-    return () => {
-      mounted = false;
-    };
-  }, [handleSessionStateChange, locationId, shiftId, storageKey, terminalId]);
-
-  const session = sessionState.session;
-  const allocations = Array.isArray(session?.allocations) ? session.allocations : [];
-  const canDiscardUnpaid = sessionState.active
-    && Number(session?.paid_amount || 0) === 0
-    && allocations.every((allocation) => (
-      ['failed', 'cancelled', 'reversed'].includes(String(allocation?.status || '').toLowerCase())
-    ));
-
-  const discardUnpaid = useCallback(async () => {
-    const sessionId = Number(session?.pos_payment_session_id || session?.id || 0);
-    if (!sessionId || !canDiscardUnpaid || discarding) return;
-
-    setDiscarding(true);
-    try {
-      await cancelPosPaymentSession(sessionId, {
-        shift_id: shiftId,
-        terminal_id: terminalId,
-        location_id: locationId || undefined,
-        reason: 'Cashier discarded unpaid split-payment draft.'
-      });
-      clearPosSplitPaymentSessionPointer(storageKey);
-      handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
-      toast.message('Unpaid split payment discarded.');
-    } catch (requestError) {
-      toast.error(requestError?.response?.data?.message || requestError?.message || 'Unable to discard the unpaid split payment.');
-    } finally {
-      setDiscarding(false);
-    }
-  }, [canDiscardUnpaid, discarding, handleSessionStateChange, locationId, session, shiftId, storageKey, terminalId]);
 
   return (
     <>
-      {(recoveryPending || sessionState.active) && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm shadow-blue-100/70" data-testid="pos-current-sale-payment-in-progress">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[13px] font-black text-[#0F172A]">
-              {recoveryPending ? 'Checking saved payment…' : 'Saved split payment'}
-            </p>
-            <span className="rounded-md border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-blue-700">
-              {recoveryPending ? 'Checking' : 'Saved'}
-            </span>
-          </div>
-          {!recoveryPending && sessionState.recoveryError ? (
-            <p className="mt-2 text-[12px] font-semibold leading-5 text-rose-700">
-              {sessionState.recoveryError} Resume the payment to try again.
-            </p>
-          ) : !recoveryPending && session ? (
-            <>
-              <p className="mt-2 text-[12px] font-semibold leading-5 text-slate-700">
-                {Number(session.paid_amount || 0) > 0
-                  ? `₱${money(session.paid_amount)} is already recorded. Resume this payment to finish the sale.`
-                  : 'No money is recorded. Resume this payment or discard the unpaid draft.'}
-              </p>
-              <div className="mt-2 flex items-center justify-between gap-2 text-[11px] font-bold text-slate-600">
-                <span>{Number(session?.line_count || session?.snapshot?.lines?.length || 0)} saved item(s)</span>
-                <span className="font-black text-[#1A4E8D]">₱{money(session?.total_amount)}</span>
-              </div>
-            </>
-          ) : null}
-          {!recoveryPending && (
-            <div className={`mt-3 grid gap-2 ${canDiscardUnpaid ? 'grid-cols-2' : 'grid-cols-1'}`}>
-              <Button type="button" onClick={() => onOpenChange(true)} disabled={discarding} className="h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]" data-testid="pos-resume-split-payment">
-                Resume Payment
-              </Button>
-              {canDiscardUnpaid && (
-                <Button type="button" variant="outline" onClick={discardUnpaid} disabled={discarding} className="h-9 text-xs font-extrabold text-rose-700" data-testid="pos-discard-unpaid-split-payment">
-                  {discarding ? 'Discarding…' : 'Discard Unpaid'}
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
       {open && (
         <POSSplitPaymentDialog
           open
@@ -297,10 +115,15 @@ export default function POSSplitPaymentWorkflow({
           locationId={locationId}
           terminalId={terminalId}
           parkedSaleId={parkedSaleId}
-          storageScopeKey={storageScopeKey}
           isMsmeMode={isMsmeMode}
           checkoutSnapshot={checkoutSnapshot}
-          onSessionStateChange={handleSessionStateChange}
+          employeeCreditAccountCode={employeeCreditAccountCode}
+          employeeCreditAccount={employeeCreditAccount}
+          selectedEmployeeCreditOption={selectedEmployeeCreditOption}
+          employeeCreditLookupLoading={employeeCreditLookupLoading}
+          canUseEmployeeCredit={canUseEmployeeCredit}
+          onSelectEmployeeCredit={onSelectEmployeeCredit}
+          onSessionStateChange={onSessionStateChange}
           onReadyToComplete={onReadyToComplete}
         />
       )}
