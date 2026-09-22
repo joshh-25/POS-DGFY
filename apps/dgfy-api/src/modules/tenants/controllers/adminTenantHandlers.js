@@ -560,7 +560,10 @@ export const updateTenantAffiliateSlots = async (req, res) => {
  */
 export const deleteTenant = async (req, res) => {
     const result = await deleteTenantUseCase({
-        id: req.params?.id
+        id: req.params?.id,
+        forceDeleteRegistrationHistory: req.query?.forceDeleteRegistrationHistory === 'true',
+        actor: buildPlatformAdminActor(req),
+        metadata: buildRequestMetadata(req)
     });
     await trackProductUsageFromResult({
         req,

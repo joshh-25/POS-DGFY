@@ -23538,3 +23538,135 @@ and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue 
 ### Next eligible phase
 
 341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).
+
+## Phase 341 - Relax manual `/hotfix` same-day eligibility to an issue-backed necessity test (#2006)
+
+### Initiative and release
+
+Incident-responder process policy, current release.
+
+### Objective and scope
+
+Relax the manual `/hotfix` direct-`main` eligibility rule from the same-day/active-incident gate
+to an issue-backed necessity test: explicit `/hotfix` plus an open issue documenting the affected
+production or production-relevant behavior, why waiting for the next scheduled promotion is
+unacceptable, expected harm/risk from delay, and timing context. No same-day discovery or fix
+requirement applies. Scope: `.agents/skills/incident-responder/SKILL.md` (manual-entry procedure,
+manual/autonomous authorization boundary, restate-and-log discipline), `AGENTS.md`
+(incident-responder role summaries), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-08-18 framing
+correction plus a dated 2026-09-19 amendment; back-port procedure unchanged). No application
+runtime, API, database, frontend, deployment, board, ADR, or compliance-declaration change; no
+change to #2005's issue or board state.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2006 (decision); #861 (manual `/hotfix` entry point); #546 (incident-responder loop);
+#1700 (compliance-preflight reconciliation, unchanged); ADR 0082 (release-note obligation,
+unchanged); #2005 as calibration reference only (not rerouted).
+
+### Acceptance and validation evidence
+
+- [x] A defect discovered days after deployment can qualify for manual direct-`main` hotfix
+      handling when the open issue documents why waiting is unacceptable; no same-day gate
+      remains on the manual path.
+- [x] Missing open issue or missing explicit `/hotfix` still stops the manual path (propose
+      only).
+- [x] Autonomous monitor-triggered handling remains actively-incident-only; the relaxation does
+      not leak into the autonomous loop or its `main`-merge override.
+- [x] Direct-`main` hotfixes still require review, Merge Safety, release notes, compliance
+      reconciliation, and back-porting; #2005 is calibration only and untouched.
+- [x] `npm run lint:docs` passes (30 governed docs; ADR lint 90 ADRs).
+- [x] `npm run check:agent-surfaces` passes (13 canonical roles, 10 shims).
+- [x] `npm run check:architecture` passes (55 modules / 595 code files; 98 controller files).
+- [x] Targeted search confirms no contradictory `same-day` eligibility gate remains on the
+      manual path (remaining mentions are the explicit negation plus unrelated history).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #2006 (`Refs`; calibration reference #2005, not rerouted).
+- Handoff: `.tmp/plan-2006.md` (planning head `1c6bf202da8b41fa47a755d269b0ec37dfe8199b`).
+- Implementation: `.agents/skills/incident-responder/SKILL.md`, `AGENTS.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Completion date: not yet merged — set at merge time.
+
+## Phase 342 - Preserve the release floor and separate staging revisions from production patches (#1977)
+
+### Initiative and release
+
+Release versioning (ADR 0081), current release.
+
+### Objective and scope
+
+Amend the release-version contract so `X.Y.Z` remains the per-app production floor while
+candidate revisions (`rN`, the candidate-wide `release_revision.revision`) identify the exact
+artifact that reached production. Frontends publish `X.Y.Z-rN-staging` (STAGING candidate) and
+`X.Y.Z-rN` plus immutable alias `X.Y.Z` (PROD); `dgfy-api` and `dgfy-migration-runner` publish
+the environment-neutral `X.Y.Z-rN` once and PROD reuses that digest plus the alias. Scope:
+`scripts/resolve-release-tags.js` (+ tests, the central tag resolver),
+`scripts/promote-image-alias.js` (+ tests, digest-based alias promotion with mismatch refusal),
+`scripts/check-image-version-parity.js` (+ tests, revision-aware parity incl. alias equality),
+`scripts/resolve-build-skip-plan.js` (+ tests, `--release-revision` matrix-tag checks),
+`scripts/check-deploy-version-stamping-workflow.js` (+ tests, floor/revision shape checks),
+`.github/workflows/deploy.yml`/`deployment-orchestrator.yml`/`deploy-api.yml`/
+`deploy-migration-runner.yml`/`deploy-frontend.yml`/`deploy-main.yml` (revision threading,
+floor/revision labels and build-args, `promote-aliases` job gating `publish`), the five
+`infrastructure/docker/*` Dockerfiles (`APP_RELEASE_FLOOR`/`APP_RELEASE_REVISION`),
+`apps/dgfy-api/src/services/healthService.js` (+ tests, floor/revision in `/health`),
+`packages/web-core/vite/buildStampPlugin.js` (+ tests) and the three apps' `vite.config.js`
+(floor/revision in `version.json`/meta tags/`VITE_APP_RELEASE_*`), ADR 0081's 2026-09-19
+Amendment, `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `docs/testing/release-go-no-go-checklist.md`,
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/deployment/PWA_SURFACE_CONTRACT.md`, and the
+promoter runbook dispatch commands. No migration, no API boundary change, no #495 compose change,
+no deployment execution.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0081 (Decisions 1, 3, 4, 8 as amended 2026-09-19; Decision 7 `[binding]` unchanged),
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, `scripts/check-promotion-candidate.js` (candidate-wide
+`release_revision.revision` as the authoritative `rN`), Phase 341 (#2006, sequence predecessor;
+Phase 343 becomes eligible only after this phase's implementation, review, merge, and deployed QA).
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:release-tags` passes (tag matrix, revision validation, hotfix tags, no `+`).
+- [x] `npm run test:image-alias` passes (aliasing, mismatch refusal, historical-tag preservation).
+- [x] `npm run test:deploy-version-stamping` passes (workflow-shape incl. revision threading).
+- [x] `npm run test:tag-immutability` passes unchanged (Decision 7 guard untouched).
+- [x] `npm run test:promotion-candidate` passes unchanged (manifest `rN` stays authoritative).
+- [x] `npm run test:app-versions` passes (per-app bumps for the touched apps).
+- [x] `npm run lint:docs` passes (amended ADR/policy/checklist/mapping/runbook/ledger).
+- [x] `npm run check:architecture` passes.
+- [x] `npm run check:compliance` passes (no new declaration required).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1977.
+- Handoff: `.tmp/plan-1977.md` (planning head `1c6bf202da8b41fa47a755d269b0ec37dfe8199b`).
+- Implementation: `scripts/resolve-release-tags.js`, `scripts/promote-image-alias.js`,
+  `scripts/check-image-version-parity.js`, `scripts/resolve-build-skip-plan.js`,
+  `scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy*.yml`,
+  `.github/workflows/deployment-orchestrator.yml`, `infrastructure/docker/*/Dockerfile`,
+  `apps/dgfy-api/src/services/healthService.js`,
+  `packages/web-core/vite/buildStampPlugin.js`.
+- Prior release-versioning work: #1548 (epic), #1559/#1575/#1588/#1590/#1610/#1612 (Waves 3-4).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+343 after Phase 342's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).

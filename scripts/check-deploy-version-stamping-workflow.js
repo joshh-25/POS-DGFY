@@ -50,9 +50,12 @@ const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
 ]);
 
 /**
- * The "Compute image tags" (`id: meta`) step must: derive a channel suffix from the three known
- * environment values (ADR 0081 Decision 1), read the app's package.json version (Decision 6 -- this
- * step only ever reads it), and emit `version_tag` to $GITHUB_OUTPUT.
+ * The "Compute image tags" (`id: meta`) step must: resolve the revision-aware version tag via
+ * the central `scripts/resolve-release-tags.js` (#1977, Phase 342 -- app type and environment
+ * cannot drift between workflows because only the resolver maps them to tags), read the app's
+ * package.json version (Decision 6 -- this step only ever reads it), and emit `version_tag`
+ * (plus `release_floor`/`release_revision`) to $GITHUB_OUTPUT. No channel suffix may be
+ * derived inline here anymore -- that mapping lives in the resolver, not in workflow bash.
  */
 function checkVersionTagComputation(workflowText, { label, appPathExpr }) {
   const problems = [];
@@ -62,19 +65,19 @@ function checkVersionTagComputation(workflowText, { label, appPathExpr }) {
     return problems;
   }
 
-  const requiredChannelLines = [
-    [/DEV\)\s*CHANNEL_SUFFIX="-dev"/, 'DEV -> "-dev"'],
-    [/STAGING\)\s*CHANNEL_SUFFIX="-staging"/, 'STAGING -> "-staging"'],
-    [/PROD\)\s*CHANNEL_SUFFIX=""/, 'PROD -> "" (bare)'],
-  ];
-  for (const [pattern, description] of requiredChannelLines) {
-    if (!pattern.test(workflowText)) {
-      problems.push(`${label}: missing the ADR 0081 Decision 1 channel-suffix case-branch for ${description}.`);
+  if (!/node scripts\/resolve-release-tags\.js/.test(workflowText)) {
+    problems.push(`${label}: the meta step does not call "node scripts/resolve-release-tags.js" -- tags must be resolved centrally (#1977), not derived inline per workflow.`);
+  } else {
+    if (!/--app\s/.test(workflowText)) {
+      problems.push(`${label}: the resolve-release-tags.js call has no "--app" argument -- the resolver must know the app type to select the matrix column (#1977).`);
+    }
+    if (!/--environment\s/.test(workflowText)) {
+      problems.push(`${label}: the resolve-release-tags.js call has no "--environment" argument -- the resolver must know the environment to select the matrix column (#1977).`);
     }
   }
 
-  if (!/environment '\$ENVIRONMENT'/.test(workflowText) && !/expected DEV, STAGING, or PROD/.test(workflowText)) {
-    problems.push(`${label}: the channel case statement has no fallback branch refusing an unknown environment value.`);
+  if (/CHANNEL_SUFFIX="-dev"|CHANNEL_SUFFIX="-staging"|CHANNEL_SUFFIX=""/.test(workflowText)) {
+    problems.push(`${label}: the meta step still derives a CHANNEL_SUFFIX inline -- channel/revision mapping lives in scripts/resolve-release-tags.js now, not in workflow bash (#1977).`);
   }
 
   const versionReadPattern = new RegExp(`node -p "require\\(${appPathExpr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)\\.version"`);
@@ -84,6 +87,71 @@ function checkVersionTagComputation(workflowText, { label, appPathExpr }) {
 
   if (!/echo "version_tag=\$\{VERSION_TAG\}" >> "\$GITHUB_OUTPUT"/.test(workflowText)) {
     problems.push(`${label}: the meta step never writes "version_tag" to $GITHUB_OUTPUT.`);
+  }
+
+  return problems;
+}
+
+/**
+ * #1977 (Phase 342): each builder must declare the optional `release_revision`
+ * workflow_call input and map it into the meta step's env (RELEASE_RELEASE_REVISION flow:
+ * `RELEASE_REVISION: ${{ inputs.release_revision }}`) -- the resolver call consumes it from
+ * there, and STAGING/PROD fail closed when it is missing.
+ */
+function checkReleaseRevisionInput(workflowText, { label }) {
+  const problems = [];
+
+  if (!/release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(workflowText)) {
+    problems.push(`${label}: "on.workflow_call.inputs" is missing a "release_revision" string input (#1977).`);
+  }
+
+  if (!/RELEASE_REVISION:\s*\$\{\{\s*inputs\.release_revision\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the meta step's "env:" is missing "RELEASE_REVISION: \${{ inputs.release_revision }}" (#1977).`);
+  }
+
+  for (const output of ['release_floor', 'release_revision']) {
+    const pattern = new RegExp(`${output}:\\s*\\$\\{\\{\\s*steps\\.meta\\.outputs\\.${output}\\s*\\}\\}`);
+    if (!pattern.test(workflowText)) {
+      problems.push(`${label}: job-level "outputs:" is missing "${output}: \${{ steps.meta.outputs.${output} }}" -- the alias promotion and runtime stamping read these (#1977).`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * #1977 (Phase 342): the labels heredoc must stamp `org.dgfy-platform.release-floor`
+ * unconditionally (runtime consumers must not infer the floor from an alias) and
+ * `org.dgfy-platform.release-revision` conditionally (DEV/ad-hoc builds carry no revision --
+ * same omit-when-empty rule the candidate-source-sha label already follows).
+ */
+function checkMetaStepStampsFloorRevisionLabels(workflowText, { label }) {
+  const problems = [];
+
+  if (!/org\.dgfy-platform\.release-floor=\$\{RELEASE_FLOOR\}/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not stamp "org.dgfy-platform.release-floor=\${RELEASE_FLOOR}" unconditionally (#1977).`);
+  }
+
+  if (!/if \[ -n "\$\{RELEASE_REVISION_OUT:-\}" \]; then\s*\n\s*echo "org\.dgfy-platform\.release-revision=\$\{RELEASE_REVISION_OUT\}"/.test(workflowText)) {
+    problems.push(`${label}: the labels heredoc does not conditionally stamp "org.dgfy-platform.release-revision" only when the build carries a revision (#1977) -- an unconditional stamp would publish an empty label on every DEV/ad-hoc build.`);
+  }
+
+  return problems;
+}
+
+/**
+ * #1977 (Phase 342): the build-push step must bake APP_RELEASE_FLOOR and
+ * APP_RELEASE_REVISION as build-args (alongside the existing APP_VERSION), so the
+ * Dockerfiles can expose them to the running container without re-deriving anything.
+ */
+function checkBuildStepFloorBuildArgs(workflowText, { label }) {
+  const problems = [];
+
+  if (!/APP_RELEASE_FLOOR=\$\{\{\s*steps\.meta\.outputs\.release_floor\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the build-push step's "build-args:" does not bake "APP_RELEASE_FLOOR=\${{ steps.meta.outputs.release_floor }}" (#1977).`);
+  }
+  if (!/APP_RELEASE_REVISION=\$\{\{\s*steps\.meta\.outputs\.release_revision\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the build-push step's "build-args:" does not bake "APP_RELEASE_REVISION=\${{ steps.meta.outputs.release_revision }}" (#1977).`);
   }
 
   return problems;
@@ -166,6 +234,30 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
   return problems;
 }
 
+/**
+ * #1977 (Phase 342): deployment-orchestrator.yml must both declare its own `release_revision`
+ * workflow_call input and forward it, unchanged, into each of the five builder jobs -- checked
+ * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently missing
+ * it isn't masked by another job having it.
+ */
+function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
+  const problems = [];
+
+  if (!/release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: "on.workflow_call.inputs" is missing a "release_revision" string input (#1977).');
+  }
+
+  const jobBlocks = orchestratorText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const jobName of ORCHESTRATOR_BUILDER_JOBS) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block || !/release_revision:\s*\$\{\{\s*inputs\.release_revision\s*\}\}/.test(block)) {
+      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "release_revision: \${{ inputs.release_revision }}" to its called workflow (#1977).`);
+    }
+  }
+
+  return problems;
+}
+
 // #1610 (ADR 0081 Decision 8 amendment): unlike deployment-orchestrator.yml above (STAGING/DEV),
 // deploy-main.yml (PROD) rebuilds every app on every dispatch regardless of what changed -- there
 // is no bare X.Y.Z tag yet to skip rebuilding -- so a single shared candidate_source_sha would
@@ -214,6 +306,50 @@ function checkDeployMainCandidateSourceShaWiring(deployMainText) {
     const forwardPattern = new RegExp(`candidate_source_sha:\\s*\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
     if (!block || !forwardPattern.test(block)) {
       problems.push(`deploy-main.yml: job "${jobName}" does not forward "candidate_source_sha: \${{ inputs.${inputName} }}" to its called workflow.`);
+    }
+  }
+
+  return problems;
+}
+
+/**
+ * #1977 (Phase 342): deploy-main.yml must declare the candidate-wide `release_revision`
+ * workflow_dispatch input, forward it into each of its five builder jobs' `with:` blocks,
+ * thread it into the resolve-build-plan step (`--release-revision`, so the skip check hits
+ * each app's revision-aware matrix tag), and run the `promote-aliases` job that creates each
+ * app's bare floor alias from its revision-tag digest.
+ */
+function checkDeployMainReleaseRevisionWiring(deployMainText) {
+  const problems = [];
+
+  if (!/release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(deployMainText)) {
+    problems.push('deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "release_revision" string input (#1977).');
+  }
+
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName] of DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block || !/release_revision:\s*\$\{\{\s*inputs\.release_revision\s*\}\}/.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not forward "release_revision: \${{ inputs.release_revision }}" to its called workflow (#1977).`);
+    }
+  }
+
+  // The flag is assembled into SKIP_ARGS on its own line (conditional on a non-empty input),
+  // so match within the step region rather than on a single invocation line.
+  const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(deployMainText);
+  if (!skipStepRegion || !/--release-revision/.test(skipStepRegion[0])) {
+    problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--release-revision" -- the skip check would hit legacy tags instead of the revision-aware matrix tags (#1977).');
+  }
+
+  if (!/promote-aliases:\s*\n/.test(deployMainText)) {
+    problems.push('deploy-main.yml: no "promote-aliases" job found -- every PROD revision tag needs its bare floor alias from the same digest (#1977).');
+  } else {
+    const block = jobBlocks.find((chunk) => chunk.startsWith('promote-aliases:\n'));
+    if (!block || !/node scripts\/promote-image-alias\.js/.test(block)) {
+      problems.push('deploy-main.yml: the "promote-aliases" job does not call "node scripts/promote-image-alias.js" -- aliases must be created digest-side with mismatch refusal (#1977).');
+    }
+    if (!block || !/node scripts\/resolve-release-tags\.js/.test(block)) {
+      problems.push('deploy-main.yml: the "promote-aliases" job does not resolve tags via "node scripts/resolve-release-tags.js" -- alias sources/targets must come from the central resolver (#1977).');
     }
   }
 
@@ -356,6 +492,18 @@ function checkDeployMainPublishGate(deployMainText) {
     problems.push('deploy-main.yml: "publish" job\'s "if:" still contains an "at least one build succeeded" OR-clause -- #1610 requires dropping it so a legitimate "every app skip-eligible" dispatch can still publish.');
   }
 
+  // #1977 (Phase 342): publish must wait on the promote-aliases job -- a failed alias
+  // promotion (refused overwrite, missing source) must block the PROD deploy, since the
+  // floor alias is part of the production contract. `!= 'failure'` (not `== 'success'`) so
+  // a legacy no-revision dispatch, where promote-aliases legitimately skips, still publishes.
+  if (!/promote-aliases/.test(block)) {
+    problems.push('deploy-main.yml: "publish" job does not reference the "promote-aliases" job at all -- a failed floor-alias promotion must block the PROD deploy (#1977).');
+  } else {
+    if (!/needs\.promote-aliases\.result != 'failure'/.test(block)) {
+      problems.push('deploy-main.yml: "publish" job\'s "if:" does not require "needs.promote-aliases.result != \'failure\'" -- a refused alias overwrite would otherwise deploy silently (#1977).');
+    }
+  }
+
   return problems;
 }
 
@@ -394,30 +542,61 @@ function checkDockerfileAcceptsAppVersion(dockerfileText, { label }) {
   return problems;
 }
 
+/**
+ * #1977 (Phase 342): every Dockerfile must accept and expose APP_RELEASE_FLOOR and
+ * APP_RELEASE_REVISION (same ARG/ENV shape as APP_VERSION above) -- the release floor and
+ * revision travel as explicit metadata so runtime consumers never infer the floor from an
+ * alias. Frontend Dockerfiles additionally map them into VITE_APP_RELEASE_FLOOR/
+ * VITE_APP_RELEASE_REVISION for the build-stamp plugin; that mapping is covered by the
+ * frontend build, not by this text check.
+ */
+function checkDockerfileAcceptsReleaseFloorRevision(dockerfileText, { label }) {
+  const problems = [];
+  if (!/^ARG APP_RELEASE_FLOOR=/m.test(dockerfileText)) {
+    problems.push(`${label}: no "ARG APP_RELEASE_FLOOR=..." declaration -- the release-floor build-arg is never accepted (#1977).`);
+  }
+  if (!/^ENV APP_RELEASE_FLOOR=\$\{?APP_RELEASE_FLOOR\}?/m.test(dockerfileText)) {
+    problems.push(`${label}: no "ENV APP_RELEASE_FLOOR=\${APP_RELEASE_FLOOR}" -- the floor is accepted but never exposed to the running container (#1977).`);
+  }
+  if (!/^ARG APP_RELEASE_REVISION=/m.test(dockerfileText)) {
+    problems.push(`${label}: no "ARG APP_RELEASE_REVISION=..." declaration -- the release-revision build-arg is never accepted (#1977).`);
+  }
+  if (!/^ENV APP_RELEASE_REVISION=\$\{?APP_RELEASE_REVISION\}?/m.test(dockerfileText)) {
+    problems.push(`${label}: no "ENV APP_RELEASE_REVISION=\${APP_RELEASE_REVISION}" -- the revision is accepted but never exposed to the running container (#1977).`);
+  }
+  return problems;
+}
+
 function runAllChecks({ readFile = read } = {}) {
   const problems = [];
 
   for (const { file, label, appPathExpr } of BUILDER_WORKFLOWS) {
     const text = readFile(file);
     problems.push(...checkVersionTagComputation(text, { label, appPathExpr }));
+    problems.push(...checkReleaseRevisionInput(text, { label }));
     problems.push(...checkJobOutputsVersionTag(text, { label }));
     problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
+    problems.push(...checkBuildStepFloorBuildArgs(text, { label }));
     problems.push(...checkMetaStepStampsCandidateLabel(text, { label }));
+    problems.push(...checkMetaStepStampsFloorRevisionLabels(text, { label }));
     problems.push(...checkImmutabilityGuardStep(text, { label }));
   }
 
   for (const file of DOCKERFILES) {
     const text = readFile(file);
     problems.push(...checkDockerfileAcceptsAppVersion(text, { label: file }));
+    problems.push(...checkDockerfileAcceptsReleaseFloorRevision(text, { label: file }));
   }
 
   const orchestratorText = readFile(ORCHESTRATOR_FILE);
   problems.push(...checkOrchestratorVersionTagMapping(orchestratorText));
   problems.push(...checkOrchestratorCandidateSourceShaWiring(orchestratorText));
+  problems.push(...checkOrchestratorReleaseRevisionWiring(orchestratorText));
 
   const deployMainText = readFile(DEPLOY_MAIN_FILE);
   problems.push(...checkDeployMainCandidateSourceShaWiring(deployMainText));
+  problems.push(...checkDeployMainReleaseRevisionWiring(deployMainText));
   problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
   problems.push(...checkDeployMainPublishGate(deployMainText));
 
@@ -431,7 +610,7 @@ function main() {
     for (const problem of problems) console.error(`  - ${problem}`);
     process.exit(1);
   }
-  console.log('[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and five Dockerfiles carry the ADR 0081 version-stamping shape.');
+  console.log('[check-deploy-version-stamping-workflow] PASS -- all three builder workflows and five Dockerfiles carry the ADR 0081 version-stamping shape (incl. the #1977 release-floor/revision contract).');
 }
 
 if (require.main === module) {
@@ -445,15 +624,21 @@ module.exports = {
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
   checkVersionTagComputation,
+  checkReleaseRevisionInput,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
+  checkBuildStepFloorBuildArgs,
   checkMetaStepStampsCandidateLabel,
+  checkMetaStepStampsFloorRevisionLabels,
   checkImmutabilityGuardStep,
   checkDockerfileAcceptsAppVersion,
+  checkDockerfileAcceptsReleaseFloorRevision,
   checkOrchestratorVersionTagMapping,
   checkOrchestratorCandidateSourceShaWiring,
+  checkOrchestratorReleaseRevisionWiring,
   checkDeployMainCandidateSourceShaWiring,
+  checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
   DEPLOY_MAIN_FILE,

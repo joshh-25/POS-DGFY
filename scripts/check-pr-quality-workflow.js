@@ -641,6 +641,125 @@ function checkStepLevelAdvisory(qualityWorkflowText) {
 }
 
 /**
+ * #1557: BLOCKING_STEP_IDS (this file, keyed by step id) and the reporter's BLOCKING_STEP_NAMES
+ * (promotion-quality-gate.yml's `report-advisory-failures` embedded script, keyed by step name)
+ * name the same "blocking" set for two different consumers with no shared source at runtime --
+ * the workflow's own comment above the Set says so outright. A drift is silent and
+ * low-visibility: the step still reds out the job (enforcement is unaffected), but the automated
+ * #1124 comment mislabels a real blocking failure as `advisory`.
+ *
+ * Derives the expected name set id -> STEP_OUTCOMES label (what `real_failures` actually
+ * contains), not id -> step `name:` -- the two can differ (e.g. `Clear stale sparse-checkout
+ * state (workspace-hygiene v1)` vs label `Clear stale sparse-checkout state`). Both directions
+ * fail: a blocking label missing from the Set (mislabeled `advisory`), and a Set entry with no
+ * blocking id behind it (stale name after a rename/removal -- silently classifies nothing). A
+ * blocking id with no STEP_OUTCOMES row is the same class of problem (its failure could never
+ * be labeled at all).
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when the two lists agree
+ */
+function checkBlockingStepNamesInSync(qualityWorkflowText) {
+  const problems = [];
+
+  const reporterMatch = qualityWorkflowText.match(
+    new RegExp(`\\n  ${REPORTER_JOB_NAME}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+  );
+  if (!reporterMatch) {
+    problems.push(
+      `promotion-quality-gate.yml: could not find the "${REPORTER_JOB_NAME}:" job block -- was it ` +
+      'renamed or restructured? checkBlockingStepNamesInSync needs updating to match.'
+    );
+    return problems;
+  }
+  const reporterBlock = reporterMatch[1];
+  const setMatch = reporterBlock.match(/const BLOCKING_STEP_NAMES = new Set\(\[([\s\S]*?)\]\)/);
+  if (!setMatch) {
+    problems.push(
+      `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" has no ` +
+      '`const BLOCKING_STEP_NAMES = new Set([...])` literal -- was the reporter restructured? ' +
+      'checkBlockingStepNamesInSync needs updating to match.'
+    );
+    return problems;
+  }
+  // Strip `//` comment lines before matching string literals -- comments deliberately quote
+  // excluded names (e.g. `Run full dependency audit`) and must not count as Set entries.
+  const setBody = setMatch[1]
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+  const reporterNames = [...setBody.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const reporterSet = new Set(reporterNames);
+
+  const expectedLabels = new Map();
+  for (const [job, ids] of Object.entries(BLOCKING_STEP_IDS)) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${job}:" job block -- was it renamed or ` +
+        'restructured? checkBlockingStepNamesInSync needs updating to match.'
+      );
+      continue;
+    }
+    const stepsIndex = blockMatch[1].indexOf('\n    steps:\n');
+    if (stepsIndex === -1) {
+      problems.push(`promotion-quality-gate.yml: "${job}" has no \`steps:\` block -- was it restructured?`);
+      continue;
+    }
+    const stepsBlock = blockMatch[1].slice(stepsIndex);
+    const stepOutcomesMatch = stepsBlock.match(/STEP_OUTCOMES: \|\n([\s\S]*?)\n {8}run: \|/);
+    if (!stepOutcomesMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: "${job}" has no \`STEP_OUTCOMES: |\` block on its ` +
+        'record_outcomes step -- checkBlockingStepNamesInSync needs updating to match, or the ' +
+        'step was restructured.'
+      );
+      continue;
+    }
+    const labelById = new Map();
+    for (const m of stepOutcomesMatch[1].matchAll(/^\s*(.+?)\|\$\{\{\s*steps\.([A-Za-z0-9_]+)\.outcome\s*\}\}\s*$/gm)) {
+      labelById.set(m[2], m[1].trim());
+    }
+    for (const id of ids) {
+      if (!labelById.has(id)) {
+        problems.push(
+          `promotion-quality-gate.yml: "${job}"'s "${id}" step is listed in BLOCKING_STEP_IDS ` +
+          'but has no STEP_OUTCOMES row -- a failure there could never reach the ' +
+          `"${REPORTER_JOB_NAME}" comment labeled at all, blocking or otherwise.`
+        );
+        continue;
+      }
+      const label = labelById.get(id);
+      if (!expectedLabels.has(label)) {
+        expectedLabels.set(label, { job, id });
+      }
+    }
+  }
+
+  for (const [label, { job, id }] of expectedLabels) {
+    if (!reporterSet.has(label)) {
+      problems.push(
+        `promotion-quality-gate.yml: "${job}"'s "${id}" step (label "${label}") is blocking per ` +
+        'BLOCKING_STEP_IDS but missing from BLOCKING_STEP_NAMES -- a real failure there reds the ' +
+        'job while the #1124 comment mislabels it `advisory` (#1557).'
+      );
+    }
+  }
+  for (const name of reporterSet) {
+    if (!expectedLabels.has(name)) {
+      problems.push(
+        `promotion-quality-gate.yml: BLOCKING_STEP_NAMES has "${name}" but no BLOCKING_STEP_IDS ` +
+        'entry maps to it via STEP_OUTCOMES -- stale name after a rename/removal, silently ' +
+        'classifies nothing (#1557).'
+      );
+    }
+  }
+  return problems;
+}
+
+/**
  * RF-4 (2026-08-26, pr-reviewer second round, PR #1068 should-fix): checkStepLevelAdvisory above
  * only ever compares *counts* -- a job with N steps and N step-level continue-on-error lines passes
  * even if one step's id was dropped, or STEP_OUTCOMES lists the wrong id, or
@@ -984,6 +1103,7 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
+    ...checkBlockingStepNamesInSync(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
     ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
     ...checkReportingJobsRespectStagingLeg(qualityWorkflowText),
@@ -1022,6 +1142,7 @@ module.exports = {
   checkStagingLegSkipShape,
   checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,
+  checkBlockingStepNamesInSync,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,

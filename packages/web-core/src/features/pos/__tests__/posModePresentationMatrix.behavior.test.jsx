@@ -120,7 +120,7 @@ describe('POS mode presentation matrix', () => {
 
       fireEvent.click(screen.getByText('Checkout'));
       fireEvent.click(screen.getByText('Print Order'));
-      fireEvent.click(screen.getByText('Open Cash Drawer'));
+      fireEvent.click(screen.getByText('Cash Drawer'));
       fireEvent.click(screen.getByText('Split Payment'));
 
       expect(actions.onCheckout).toHaveBeenCalledOnce();

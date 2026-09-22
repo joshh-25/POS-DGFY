@@ -310,10 +310,12 @@ run by `promoter` directly, not by any CI workflow:
    `.agents/skills/promoter/references/promotion-runbook.md`'s "Default: `develop` → `staging` →
    `main`" section; obligation text: `.agents/skills/promoter/SKILL.md`'s "Frozen candidate and
    repair loop" section.
-2. **Promotion parity gate** (ADR 0081 Decision 8). After `deploy-main.yml` publishes the PROD
+2. **Promotion parity gate** (ADR 0081 Decision 8, as amended 2026-09-19 by #1977). After
+   `deploy-main.yml` publishes the PROD
    image, `node scripts/check-image-version-parity.js --manifest <candidate.json>` (default flow) or
-   `--source-sha <develop SHA>` (the #1007-gated exception, which never produces a candidate
-   manifest — RF-2, PR #1590 review) confirms each app's PROD image traces back to the candidate it
+   `--source-sha <develop SHA> [--revision <rN>]` (the #1007-gated exception, which never produces a
+   candidate manifest — RF-2, PR #1590 review; `--revision` additionally verifies the hotfix's paired
+   bare alias) confirms each app's PROD image traces back to the candidate it
    should — the frozen candidate's own tracked SHA, resolved **per app** since #1610 (ADR 0081
    Decision 8 amendment: `scripts/check-promotion-candidate.js`'s `resolveCandidateSourceShaByApp()`
    — an app never touched by a staging repair keeps its earlier identity rather than being compared
@@ -321,8 +323,14 @@ run by `promoter` directly, not by any CI workflow:
    stamped by `deploy-api.yml`/`deploy-migration-runner.yml`/`deploy-frontend.yml` into the
    `org.dgfy-platform.candidate-source-sha` OCI label — not `org.opencontainers.image.revision`,
    which differs across the `to-staging → staging` and `release/* → main` merge commits even for
-   byte-identical candidate content. A PROD image with no matching STAGING predecessor (or, in
-   `--source-sha` mode, no candidate-source-identity label at all) under this identity — a #1007
+   byte-identical candidate content. Since #1977 the gate is revision-aware: frontend STAGING
+   `X.Y.Z-rN-staging` is compared to PROD `X.Y.Z-rN` (backend: the environment-neutral `X.Y.Z-rN`
+   digest reused across environments, `rN` read from the manifest's own `release_revision.revision`),
+   and each bare `X.Y.Z` production alias must reference its revision tag's digest with agreeing
+   `org.dgfy-platform.release-revision` labels (`alias-not-found`, `alias-digest-mismatch`,
+   `alias-revision-mismatch`, and `revision-label-mismatch` fail; a missing alias is never a silent
+   pass). A PROD image with no matching STAGING predecessor (or, in `--source-sha` mode without
+   `--revision`, no candidate-source-identity label at all) under this identity — a #1007
    expedited promotion or a main hotfix — is expected evidence, not a defect. An *existing* STAGING
    image whose label is missing or inconsistent, by contrast, is a real failure (`staging-unreadable`)
    — the normal promotion path always stamps it, so its absence there signals a label-stamping
@@ -334,8 +342,9 @@ run by `promoter` directly, not by any CI workflow:
 **The `IMAGE_TAG` contract #495 must honor** (ADR 0081's own Non-goals, restated here per #1588's
 own acceptance criteria — this document records the contract, it does not implement #495's per-service
 `IMAGE_TAG` compose split): whatever `IMAGE_TAG`-shaped variable(s) #495 introduces per service must
-resolve to a real, pullable version tag of the shape `X.Y.Z[-channel]` (`1.5.2`, `1.5.2-staging`,
-`1.5.2-dev`) — the tags this ADR's builders already publish alongside the pre-existing moving
+resolve to a real, pullable version tag of the shape `X.Y.Z[-rN][-channel]` (`1.13.0`, `1.13.0-r16`,
+`1.13.0-r16-staging`, `1.13.0-dev` since #1977's 2026-09-19 amendment — the tags this ADR's builders
+actually publish alongside the pre-existing moving
 channel tags (`develop`/`staging`/`latest`) and `sha-<7>`, unaffected by this ADR. #495 is free to
 choose which of those tag families a given service pins to; it may not invent a tag shape these
 builders don't actually publish.

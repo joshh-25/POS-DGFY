@@ -9,6 +9,9 @@
  * - listTenants(where)
  * - updateTenant(tenant, payload)
  * - removeTenantDependencies(tenantId)
+ * - findCompanyRegistrationApplicationForTenant(tenantId)
+ * - countPlatformInvoicesForRegistrationApplication(applicationId)
+ * - removeCompanyRegistrationApplicationAndHistory(applicationId)
  * - destroyTenant(tenant)
  * - findSystemSettings(keys)
  * - updateSystemSetting(key, value)
@@ -23,6 +26,9 @@ export const TenantAdminRepositoryContract = Object.freeze([
     'listTenants',
     'updateTenant',
     'removeTenantDependencies',
+    'findCompanyRegistrationApplicationForTenant',
+    'countPlatformInvoicesForRegistrationApplication',
+    'removeCompanyRegistrationApplicationAndHistory',
     'destroyTenant',
     'findSystemSettings',
     'updateSystemSetting',

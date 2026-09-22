@@ -119,6 +119,42 @@ export const resolveAppVersionInfo = ({
     return { version: null, source: null };
 };
 
+// #1977 (Phase 342): explicit release floor (bare X.Y.Z production floor) and candidate
+// revision (rN) metadata, baked in as the APP_RELEASE_FLOOR/APP_RELEASE_REVISION build-arg/env
+// vars. The floor falls back to apps/dgfy-api's own package.json version (which carries the
+// bare floor by definition under ADR 0081 Decision 3); the revision has no file fallback --
+// null means this build carries no candidate revision (ordinary DEV behavior). Runtime
+// consumers must read these fields, never infer the floor from an alias.
+export const resolveReleaseFloorInfo = ({
+    explicitFloor,
+    explicitRevision,
+    packageJsonPath = defaultPackageJsonPath,
+    env = process.env
+} = {}) => {
+    const trimmedExplicitFloor = typeof explicitFloor === 'string' ? explicitFloor.trim() : '';
+    const floor = trimmedExplicitFloor
+        || (typeof env.APP_RELEASE_FLOOR === 'string' && env.APP_RELEASE_FLOOR.trim())
+        || readPackageJsonVersion(packageJsonPath)
+        || null;
+    const floorSource = trimmedExplicitFloor
+        ? 'argument'
+        : (typeof env.APP_RELEASE_FLOOR === 'string' && env.APP_RELEASE_FLOOR.trim())
+            ? 'env:APP_RELEASE_FLOOR'
+            : floor ? 'package_json' : null;
+
+    const trimmedExplicitRevision = typeof explicitRevision === 'string' ? explicitRevision.trim() : '';
+    const revision = trimmedExplicitRevision
+        || (typeof env.APP_RELEASE_REVISION === 'string' && env.APP_RELEASE_REVISION.trim())
+        || null;
+    const revisionSource = trimmedExplicitRevision
+        ? 'argument'
+        : (typeof env.APP_RELEASE_REVISION === 'string' && env.APP_RELEASE_REVISION.trim())
+            ? 'env:APP_RELEASE_REVISION'
+            : null;
+
+    return { floor, floorSource, revision, revisionSource };
+};
+
 export const buildHealthResponse = async ({
     testConnectionFn,
     isRedisConnectedFn,
@@ -132,6 +168,8 @@ export const buildHealthResponse = async ({
     runtimeSha,
     deployStatePath = defaultDeployStatePath,
     appVersion,
+    releaseFloor,
+    releaseRevision,
     packageJsonPath = defaultPackageJsonPath,
     timestamp = new Date().toISOString(),
     uptimeSeconds = process.uptime()
@@ -146,6 +184,11 @@ export const buildHealthResponse = async ({
     });
     const appVersionInfo = resolveAppVersionInfo({
         explicitVersion: appVersion,
+        packageJsonPath
+    });
+    const releaseFloorInfo = resolveReleaseFloorInfo({
+        explicitFloor: releaseFloor,
+        explicitRevision: releaseRevision,
         packageJsonPath
     });
     const runtimeShaMissingInProduction = environment === 'production' && !runtimeShaInfo.present;
@@ -187,6 +230,10 @@ export const buildHealthResponse = async ({
                 runtime_sha_source: runtimeShaInfo.source,
                 version: appVersionInfo.version,
                 version_source: appVersionInfo.source,
+                release_floor: releaseFloorInfo.floor,
+                release_floor_source: releaseFloorInfo.floorSource,
+                release_revision: releaseFloorInfo.revision,
+                release_revision_source: releaseFloorInfo.revisionSource,
                 telemetry_audit_status: billingFunnelAuditState?.status || 'unknown',
                 telemetry_audit_last_checked_at: billingFunnelAuditState?.last_checked_at || null
             }
