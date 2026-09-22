@@ -1,7 +1,15 @@
 import { describe, expect, it, afterEach, jest } from '@jest/globals';
+import mysql from 'mysql2/promise';
 import { Sequelize } from 'sequelize';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 import { applyPostSyncTenantSchema } from '../src/services/tenantSchemaBootstrap.js';
+import {
+    inspectRequiredTenantSchemaTables,
+    inspectRequiredTenantSchemaColumns,
+    inspectRequiredTenantSchemaIndexes,
+    inspectRequiredTenantSchemaSeeds,
+    inspectRequiredTenantSchemaEnumContracts
+} from '../scripts/sync-tenant-schemas.js';
 
 // #1071/#1124: the real, end-to-end coverage this tenant-bootstrap seam actually needs -- against
 // a real MySQL connection, not a mocked queryInterface. `tenantProvisioning.storefrontBootstrap
@@ -76,4 +84,42 @@ describe('tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)', () 
             applyPostSyncTenantSchema(ctx.tenantSeq, Sequelize, { dbName: ctx.dbName })
         ).resolves.toBeUndefined();
     });
+
+    // #2027 regression: a production tenant once reached `active` missing several generated
+    // columns/indexes/seed rows that the canonical registry (REQUIRED_TENANT_SCHEMA_TABLES/
+    // COLUMNS/INDEXES/SEEDS + enum contracts) already covered, because provisioning never ran
+    // that registry at all -- only the Phase 157 migrations this file's other tests already
+    // cover. applyPostSyncTenantSchema now reconciles against that same registry as a hard
+    // precondition (it would already have thrown above if anything were missing); this test
+    // independently re-verifies via the registry's own inspector functions, against a fresh raw
+    // connection, rather than only trusting the gate's own accounting.
+    it('leaves zero missing tables/columns/indexes/seeds/enum values against the canonical schema registry (#2027)', async () => {
+        ctx = await createTestTenant('schema-parity');
+
+        await applyPostSyncTenantSchema(ctx.tenantSeq, Sequelize, { dbName: ctx.dbName });
+
+        const rawConnection = await mysql.createConnection({
+            host: process.env.DB_HOST || 'localhost',
+            user: process.env.DB_USER || 'root',
+            password: process.env.DB_PASSWORD || '',
+            database: ctx.dbName
+        });
+        try {
+            const [missingTables, missingColumns, missingIndexes, missingSeeds, missingEnumEntries] = await Promise.all([
+                inspectRequiredTenantSchemaTables(rawConnection, ctx.dbName),
+                inspectRequiredTenantSchemaColumns(rawConnection, ctx.dbName),
+                inspectRequiredTenantSchemaIndexes(rawConnection, ctx.dbName),
+                inspectRequiredTenantSchemaSeeds(rawConnection, ctx.dbName),
+                inspectRequiredTenantSchemaEnumContracts(rawConnection, ctx.dbName)
+            ]);
+            expect(missingTables).toEqual([]);
+            expect(missingColumns).toEqual([]);
+            expect(missingIndexes).toEqual([]);
+            expect(missingSeeds).toEqual([]);
+            expect(missingEnumEntries).toEqual([]);
+        } finally {
+            await rawConnection.end();
+        }
+    });
+
 });
