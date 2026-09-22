@@ -255,6 +255,11 @@ function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
     }
   }
 
+  const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(orchestratorText);
+  if (!skipStepRegion || !/--release-revision/.test(skipStepRegion[0])) {
+    problems.push('deployment-orchestrator.yml: the resolve-build-plan step does not pass "--release-revision" -- the skip check would inspect legacy tags instead of the revision-aware matrix tags (#1977).');
+  }
+
   return problems;
 }
 
@@ -339,6 +344,9 @@ function checkDeployMainReleaseRevisionWiring(deployMainText) {
   const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(deployMainText);
   if (!skipStepRegion || !/--release-revision/.test(skipStepRegion[0])) {
     problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--release-revision" -- the skip check would hit legacy tags instead of the revision-aware matrix tags (#1977).');
+  }
+  if (!skipStepRegion || !/--environment\s+PROD/.test(skipStepRegion[0])) {
+    problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--environment PROD" -- revision-aware PROD tags cannot be resolved without the explicit environment (#1977).');
   }
 
   if (!/promote-aliases:\s*\n/.test(deployMainText)) {

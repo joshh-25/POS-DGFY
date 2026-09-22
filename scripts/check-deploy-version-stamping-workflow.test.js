@@ -421,12 +421,15 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
 // deployment-orchestrator.yml -> builders, and declared + forwarded per job on deploy-main.yml
 // (plus --release-revision into resolve-build-plan and the promote-aliases job).
 
-function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS } = {}) {
+function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS, skipPlanRevision = true } = {}) {
   const inputBlock = withInput
     ? "on:\n  workflow_call:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
   const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`).join('\n');
-  return `${inputBlock}jobs:\n${jobBlocks}`;
+  const skipPlan = skipPlanRevision
+    ? '  resolve-build-plan:\n    steps:\n      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --environment STAGING --release-revision r16\n'
+    : '  resolve-build-plan:\n    steps:\n      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --environment STAGING\n';
+  return `${inputBlock}jobs:\n${skipPlan}\n${jobBlocks}`;
 }
 
 test('checkOrchestratorReleaseRevisionWiring: every builder job wired -> no problems', () => {
@@ -445,6 +448,11 @@ test('checkOrchestratorReleaseRevisionWiring: missing input and missing per-job 
   assert.match(jobProblems[0], /job "dgfy-api" does not forward/);
 });
 
+test('checkOrchestratorReleaseRevisionWiring: missing resolve-build-plan flag is caught', () => {
+  const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ skipPlanRevision: false }));
+  assert.equal(problems.filter((p) => /resolve-build-plan step does not pass "--release-revision"/.test(p)).length, 1);
+});
+
 test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml passes', () => {
   const fs = require('node:fs');
   const path = require('node:path');
@@ -452,16 +460,17 @@ test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml p
   assert.deepEqual(checkOrchestratorReleaseRevisionWiring(text), []);
 });
 
-function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, withAliasJob = true } = {}) {
+function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, skipPlanEnvironment = true, withAliasJob = true } = {}) {
   const inputBlock = withInput
     ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
   const jobBlocks = DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES
     .map(([jobName]) => `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`)
     .join('\n');
-  const skipStep = skipPlanRevision
-    ? '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --release-revision r16\n'
-    : '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc\n';
+  const skipArgs = [ '--revision abc' ];
+  if (skipPlanEnvironment) skipArgs.push('--environment PROD');
+  if (skipPlanRevision) skipArgs.push('--release-revision r16');
+  const skipStep = `      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js ${skipArgs.join(' ')}\n`;
   const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n' : '';
   return `${inputBlock}jobs:\n${jobBlocks}\n${skipStep}${aliasJob}`;
 }
@@ -474,6 +483,11 @@ test('checkDeployMainReleaseRevisionWiring: missing input, missing skip-plan fla
   assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withInput: false })).filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
   assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanRevision: false })).filter((p) => /does not pass "--release-revision"/.test(p)).length, 1);
   assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withAliasJob: false })).filter((p) => /no "promote-aliases" job found/.test(p)).length, 1);
+});
+
+test('checkDeployMainReleaseRevisionWiring: missing PROD environment on skip plan is caught', () => {
+  const problems = checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanEnvironment: false }));
+  assert.equal(problems.filter((p) => /does not pass "--environment PROD"/.test(p)).length, 1);
 });
 
 test('checkDeployMainReleaseRevisionWiring: real deploy-main.yml passes', () => {

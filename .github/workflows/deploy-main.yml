@@ -379,7 +379,7 @@ jobs:
           # candidate dispatch with byte-identical tracked inputs, so the plan resolves
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
-          SKIP_ARGS=(--revision "${{ github.sha }}")
+          SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
           if [ -n "${{ inputs.release_revision }}" ]; then
             SKIP_ARGS+=(--release-revision "${{ inputs.release_revision }}")
           fi
