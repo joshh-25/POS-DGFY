@@ -20,4 +20,17 @@ describe('POS shift-close parked-sale handoff contract', () => {
     expect(pageSource).toContain('resolutionState.claimedParkedSaleCount');
     expect(pageSource).toContain('Resolve claimed parked sales');
   });
+
+  it('routes payment-session blockers back to the active split-payment checkout', () => {
+    const dialogSource = readSource('components/TerminalPageDialogLayer.jsx');
+    const pageSource = readSource('pages/TerminalPage.jsx');
+    const checkoutSource = readSource('components/POSCheckoutTerminalView.jsx');
+
+    expect(pageSource).toContain('POS_PAYMENT_SESSIONS_IN_FLIGHT');
+    expect(pageSource).toContain('handleResolveCloseShiftPaymentBlocker');
+    expect(dialogSource).toContain('pos-close-shift-resolve-payment');
+    expect(dialogSource).toContain('Return to Checkout');
+    expect(checkoutSource).toContain('pos-split-payment-modal-host');
+    expect(checkoutSource).not.toContain('pos-current-sale-payment-recovery');
+  });
 });

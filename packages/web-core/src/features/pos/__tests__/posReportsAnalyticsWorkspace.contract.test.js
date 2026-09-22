@@ -7,6 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const workspacePath = path.resolve(__dirname, '../components/PosReportsAnalyticsWorkspace.jsx');
 const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
+const primitivesPath = path.resolve(__dirname, '../../../components/backOffice/BackOfficePrimitives.jsx');
+const primitivesSource = fs.readFileSync(primitivesPath, 'utf8');
 
 describe('POS report category filter contract', () => {
   it('separates attendance, cashier sales, register reconciliation, and handoff reporting', () => {
@@ -27,10 +29,10 @@ describe('POS report category filter contract', () => {
   });
 
   it('keeps report cards viewport-safe and renders table rows as mobile cards', () => {
-    expect(workspaceSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
-    expect(workspaceSource).toContain('grid min-w-0 gap-3 sm:hidden');
-    expect(workspaceSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
-    expect(workspaceSource).toContain('min-w-[720px]');
+    expect(primitivesSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
+    expect(primitivesSource).toContain('grid min-w-0 gap-3 sm:hidden');
+    expect(primitivesSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
+    expect(primitivesSource).toContain('min-w-[720px]');
   });
 
   it('stacks report date controls on narrow screens without widening the filter card', () => {
@@ -51,6 +53,17 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('summaryCards.selected_tender');
     expect(workspaceSource).toContain("label={`${selectedTender.payment_label} Collected`}");
     expect(workspaceSource).toContain('formatPosTransactionPaymentMethods(row)');
+  });
+
+  it('discloses the immutable Z-reading reconciliation without mixing net sales metrics', () => {
+    expect(workspaceSource).toContain('z_reading_reconciliation');
+    expect(workspaceSource).toContain('Z-reading reconciliation');
+    expect(workspaceSource).toContain('Report recognized sales');
+    expect(workspaceSource).toContain('Z-reading total');
+    expect(workspaceSource).toContain('Report net sales');
+    expect(workspaceSource).toContain('Report refunds/voids');
+    expect(workspaceSource).toContain('Generated:');
+    expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
   });
 
   // Phase 261 (#1488): pre-run procurement CSV export button, independent of the loaded report.

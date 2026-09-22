@@ -27,6 +27,68 @@ function PolicyToggle({ label, description, checked, onCheckedChange, icon: Icon
   );
 }
 
+export function TerminalPolicyFields({
+  values,
+  locked = false,
+  saving = false,
+  onChange,
+  idPrefix = 'pos-terminal'
+}) {
+  const mode = values?.terminalRegistryMode || 'warn';
+  const isEnforceMode = mode === 'enforce';
+  const registryModeId = `${idPrefix}-registry-mode`;
+
+  return (
+    <>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)] sm:items-end">
+          <div className="grid gap-1.5">
+            <Label htmlFor={registryModeId} className="text-[12px] font-bold text-slate-700">Terminal Registry Mode</Label>
+            <div className="relative flex items-center">
+              <select
+                id={registryModeId}
+                className="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
+                value={mode}
+                onChange={(event) => onChange?.('terminalRegistryMode', event.target.value)}
+                disabled={locked || saving}
+              >
+                <option value="warn">Warn (allow manual IDs)</option>
+                <option value="enforce">Enforce (registry only)</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" aria-hidden="true" />
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[11px] leading-4 text-[#536B8C]">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" />
+            <span>
+              {isEnforceMode
+                ? 'Enforce mode blocks unlock, open-shift, and checkout when the terminal ID is not in the active registry.'
+                : 'Warn mode allows manual or fallback terminal IDs while showing policy warnings.'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <PolicyToggle
+        label="Strict Shift Location Binding"
+        description="Require location-bound terminal readiness for shift open, checkout, and terminal switching."
+        checked={values?.terminalLocationBindingEnforced === true}
+        onCheckedChange={(enabled) => onChange?.('terminalLocationBindingEnforced', enabled === true)}
+        icon={ShieldCheck}
+        disabled={locked || saving}
+      />
+      <PolicyToggle
+        label="Voucher Redemption at POS"
+        description="Allow cashiers to redeem voucher codes at checkout when this tenant feature is ready."
+        checked={values?.voucherPosRedemptionEnabled === true}
+        onCheckedChange={(enabled) => onChange?.('voucherPosRedemptionEnabled', enabled === true)}
+        icon={Percent}
+        disabled={locked || saving}
+      />
+    </>
+  );
+}
+
 export default function PosTerminalAdvancedSettingsModal({
   open,
   values,
@@ -36,9 +98,6 @@ export default function PosTerminalAdvancedSettingsModal({
   onChange,
   onSave
 }) {
-  const mode = values?.terminalRegistryMode || 'warn';
-  const isEnforceMode = mode === 'enforce';
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange} overlayClassName="bg-black/30 backdrop-blur-none">
       <DialogContent className="w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/20 sm:w-full">
@@ -63,51 +122,7 @@ export default function PosTerminalAdvancedSettingsModal({
         </DialogHeader>
 
         <div className="grid gap-4 px-5 py-5 sm:px-6">
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5 sm:p-4">
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)] sm:items-end">
-              <div className="grid gap-1.5">
-                <Label htmlFor="pos-terminal-registry-mode" className="text-[12px] font-bold text-slate-700">Terminal Registry Mode</Label>
-                <div className="relative flex items-center">
-                  <select
-                    id="pos-terminal-registry-mode"
-                    className="h-9 w-full appearance-none rounded-xl border border-slate-200 bg-white pl-3 pr-9 text-[13px] font-semibold text-[#0F172A] outline-none focus:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/20"
-                    value={mode}
-                    onChange={(event) => onChange?.('terminalRegistryMode', event.target.value)}
-                    disabled={locked || saving}
-                  >
-                    <option value="warn">Warn (allow manual IDs)</option>
-                    <option value="enforce">Enforce (registry only)</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 h-4 w-4 text-slate-400" aria-hidden="true" />
-                </div>
-              </div>
-              <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-[11px] leading-4 text-[#536B8C]">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#1A4E8D]" aria-hidden="true" />
-                <span>
-                  {isEnforceMode
-                    ? 'Enforce mode blocks unlock, open-shift, and checkout when the terminal ID is not in the active registry.'
-                    : 'Warn mode allows manual or fallback terminal IDs while showing policy warnings.'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <PolicyToggle
-            label="Strict Shift Location Binding"
-            description="Require location-bound terminal readiness for shift open, checkout, and terminal switching."
-            checked={values?.terminalLocationBindingEnforced === true}
-            onCheckedChange={(enabled) => onChange?.('terminalLocationBindingEnforced', enabled === true)}
-            icon={ShieldCheck}
-            disabled={locked || saving}
-          />
-          <PolicyToggle
-            label="Voucher Redemption at POS"
-            description="Allow cashiers to redeem voucher codes at checkout when this tenant feature is ready."
-            checked={values?.voucherPosRedemptionEnabled === true}
-            onCheckedChange={(enabled) => onChange?.('voucherPosRedemptionEnabled', enabled === true)}
-            icon={Percent}
-            disabled={locked || saving}
-          />
+          <TerminalPolicyFields values={values} locked={locked} saving={saving} onChange={onChange} />
         </div>
 
         <DialogFooter className="border-t border-slate-100 px-5 py-4 sm:px-6 sm:pt-4">

@@ -129,6 +129,12 @@ const getPosFormSnapshot = (form = {}) => ({
   dailyTopBestSellerEnabled: form.dailyTopBestSellerEnabled === true
 });
 
+const getProfileFormSnapshot = (form = {}) => ({
+  username: String(form.username || '').trim(),
+  email: String(form.email || '').trim(),
+  phoneNumber: String(form.phoneNumber || '').trim()
+});
+
 const normalizeStringList = (raw, maxItems = 8, maxLen = 120) => {
   const source = Array.isArray(raw) ? raw : [];
   return source
@@ -291,13 +297,34 @@ export default function PosSettingsWorkspace({
   locked,
   sectionId,
   initialTab = 'pos_setup',
+  allowedTabIds = [],
+  readOnly = false,
+  settingsSurface = 'pos',
+  editorSection = 'settings',
+  showTerminalOnlyControls = true,
+  startWithNewLocation = false,
+  locationEditorOnly = false,
   onRefreshTerminalUser = async () => {},
   onRefreshTerminalMeta = async () => {},
   onPosSetupSaved = async () => {},
   onStorefrontSetupSaved = async () => {},
+  onSettingsSaved = async () => {},
   onStorefrontContentStateChange = () => {},
+  onDirtyChange = () => {},
   onDeliveryPersonnelChanged = () => {},
   onNavigateToOrders = () => {},
+  settingsRefreshKey = 0,
+  terminalIdOptions = [],
+  activeTerminalId = '',
+  registryEnforced = false,
+  activeShiftId = null,
+  hardwareDriverLabel = '',
+  hardwareStatus = null,
+  hardwareLoading = false,
+  isPrinterAvailable = false,
+  printersDetected = 0,
+  onTestPrinter = async () => false,
+  onSelectTerminal = async () => false,
   workspacePaneRef = null
   // #732: canManageVouchers used to gate the Vouchers/Pricelists panes rendered inside this
   // tab strip -- both moved to their own top-level view modes, this prop is no longer consumed
@@ -309,8 +336,8 @@ export default function PosSettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('users:manage');
   const canRemoveCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:delete');
-  const canEditSettings = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('settings:edit');
+  const canEditSettings = !readOnly && (terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('settings:edit'));
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageDayClosePins = terminalUser?.is_master_admin === true;
   const canManageEmployeeCredit = terminalUser?.is_master_admin === true
@@ -341,6 +368,8 @@ export default function PosSettingsWorkspace({
   const [storefrontBooleanState, setStorefrontBooleanState] = useState({});
   const [posFormBaseline, setPosFormBaseline] = useState(null);
   const [storefrontContentBaseline, setStorefrontContentBaseline] = useState(null);
+  const [profileFormBaseline, setProfileFormBaseline] = useState(null);
+  const [externalSettingsRefreshPending, setExternalSettingsRefreshPending] = useState(false);
   const [posSetupDiscarding, setPosSetupDiscarding] = useState(false);
   const [pendingTopLevelTab, setPendingTopLevelTab] = useState(null);
   const [pendingStorefrontNavigation, setPendingStorefrontNavigation] = useState(null);
@@ -448,6 +477,14 @@ export default function PosSettingsWorkspace({
   );
   const storefrontContentDirty = storefrontContentBaseline != null
     && storefrontContentSnapshot !== storefrontContentBaselineSnapshot;
+  const profileFormSnapshot = useMemo(() => getProfileFormSnapshot(profileForm), [profileForm]);
+  const profileFormBaselineSnapshot = useMemo(
+    () => (profileFormBaseline ? JSON.stringify(getProfileFormSnapshot(profileFormBaseline)) : ''),
+    [profileFormBaseline]
+  );
+  const profileFormDirty = profileFormBaseline != null
+    && JSON.stringify(profileFormSnapshot) !== profileFormBaselineSnapshot;
+  const hasUnsavedSettingsChanges = posSetupDirty || storefrontContentDirty || profileFormDirty;
   const discardStorefrontContentChanges = useCallback(() => {
     const baseline = storefrontContentBaselineRef.current;
     if (!baseline) return false;
@@ -461,6 +498,7 @@ export default function PosSettingsWorkspace({
   const [assetDeletingType, setAssetDeletingType] = useState('');
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
+  const previousSettingsRefreshKeyRef = useRef(settingsRefreshKey);
   const readiness = terminalMeta?.locationBindingReadiness || null;
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
   const effectiveCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessEffectiveMode || requestedCustomerAccessMode);
@@ -516,8 +554,32 @@ export default function PosSettingsWorkspace({
     // #732: Vouchers and Pricelists moved out of this tab strip to their own top-level nav modes
     // (settings_vouchers / settings_pricelists) -- see the outer renderWorkspace switch.
   ];
+  const visibleSettingsTabs = Array.isArray(allowedTabIds) && allowedTabIds.length > 0
+    ? SETTINGS_TABS.filter((tab) => allowedTabIds.includes(tab.id))
+    : SETTINGS_TABS;
+  const showSettingsTabNavigation = visibleSettingsTabs.length > 1;
+  const showTerminalRegistryEditor = !editorSection || editorSection === 'registers';
+  const showTerminalRegistrySection = editorSection === 'settings' || showTerminalRegistryEditor;
+  const showTerminalOnlyControlsPane = showTerminalOnlyControls;
+  const isScopedSettingsEditor = ['pos', 'attendance', 'team', 'registers', 'terminal_setup'].includes(editorSection);
+  const visibleSetupSectionIds = {
+    pos: ['operations', 'controls'],
+    attendance: ['operations'],
+    team: ['operations'],
+    registers: ['terminals'],
+    terminal_setup: ['operations']
+  }[editorSection] || null;
+  const showReceiptMetadataEditor = !isScopedSettingsEditor || editorSection === 'profile';
+  const showPosDefaultsEditor = !isScopedSettingsEditor || editorSection === 'pos';
+  const showAttendanceEditor = !isScopedSettingsEditor || editorSection === 'attendance';
+  const showTeamAccessEditor = !isScopedSettingsEditor || editorSection === 'team';
+  const showTerminalOnlyControlsEditor = showTerminalOnlyControlsPane
+    && (editorSection === 'terminal_setup' || editorSection === 'registers');
+  const resolvedInitialTab = visibleSettingsTabs.some((tab) => tab.id === initialTab)
+    ? initialTab
+    : (visibleSettingsTabs[0]?.id || 'pos_setup');
   const resolveTabIndex = (tabId) => {
-    const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
+    const index = visibleSettingsTabs.findIndex((tab) => tab.id === tabId);
     return index >= 0 ? index : 0;
   };
 
@@ -534,23 +596,37 @@ export default function PosSettingsWorkspace({
     previousInitialTabRef.current = initialTab;
     clearAnimationTimers();
     const resetTimerId = window.setTimeout(() => {
-      setActiveTab(initialTab);
-      setRenderedTab(initialTab);
+      setActiveTab(resolvedInitialTab);
+      setRenderedTab(resolvedInitialTab);
       setPaneInlineStyle({
         opacity: 1,
         transition: 'none'
       });
     }, 0);
     animationTimersRef.current.push(resetTimerId);
-  }, [clearAnimationTimers, initialTab]);
+  }, [clearAnimationTimers, initialTab, resolvedInitialTab]);
 
   useEffect(() => {
-    setProfileForm({
+    const nextProfileForm = {
       username: String(terminalUser?.username || ''),
       email: String(terminalUser?.email || ''),
       phoneNumber: String(terminalUser?.phone_number || '')
-    });
-  }, [terminalUser]);
+    };
+    const currentSnapshot = JSON.stringify(getProfileFormSnapshot(profileForm));
+    const baselineSnapshot = profileFormBaseline == null
+      ? null
+      : JSON.stringify(getProfileFormSnapshot(profileFormBaseline));
+    const profileFormDirty = baselineSnapshot != null && currentSnapshot !== baselineSnapshot;
+    if (profileFormDirty) return;
+
+    const nextSnapshot = JSON.stringify(getProfileFormSnapshot(nextProfileForm));
+    if (currentSnapshot !== nextSnapshot) {
+      setProfileForm(nextProfileForm);
+    }
+    if (baselineSnapshot !== nextSnapshot) {
+      setProfileFormBaseline(nextProfileForm);
+    }
+  }, [profileForm, profileFormBaseline, terminalUser]);
 
   const loadStorefrontLocations = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -928,6 +1004,7 @@ export default function PosSettingsWorkspace({
           group: 'content'
         });
       }
+      setExternalSettingsRefreshPending(false);
       return true;
     } catch (error) {
       if (!silent) {
@@ -948,6 +1025,24 @@ export default function PosSettingsWorkspace({
   useEffect(() => {
     loadStorefrontLocations({ silent: true });
   }, [loadStorefrontLocations]);
+
+  useEffect(() => {
+    if (previousSettingsRefreshKeyRef.current === settingsRefreshKey) return;
+    previousSettingsRefreshKeyRef.current = settingsRefreshKey;
+    if (hasUnsavedSettingsChanges) {
+      setExternalSettingsRefreshPending(true);
+      return;
+    }
+    setExternalSettingsRefreshPending(false);
+    void hydrateSettingsWorkspace({ silent: true });
+    void loadStorefrontLocations({ silent: true });
+  }, [hasUnsavedSettingsChanges, hydrateSettingsWorkspace, loadStorefrontLocations, settingsRefreshKey]);
+
+  useEffect(() => {
+    if (!externalSettingsRefreshPending || hasUnsavedSettingsChanges) return;
+    void hydrateSettingsWorkspace({ silent: true });
+    void loadStorefrontLocations({ silent: true });
+  }, [externalSettingsRefreshPending, hasUnsavedSettingsChanges, hydrateSettingsWorkspace, loadStorefrontLocations]);
 
   useEffect(() => {
     loadCashierAccounts({ silent: true });
@@ -1048,11 +1143,14 @@ export default function PosSettingsWorkspace({
   const handleProfileSave = useCallback(async () => {
     setSavingTab('profile');
     try {
+      const savedProfileForm = getProfileFormSnapshot(profileForm);
       await updateProfile({
-        username: String(profileForm.username || '').trim(),
-        email: String(profileForm.email || '').trim(),
-        phone_number: String(profileForm.phoneNumber || '').trim()
+        username: savedProfileForm.username,
+        email: savedProfileForm.email,
+        phone_number: savedProfileForm.phoneNumber
       });
+      setProfileForm(savedProfileForm);
+      setProfileFormBaseline(savedProfileForm);
       await onRefreshTerminalUser?.({ suppressGlobalErrors: true });
       toast.success('Profile settings updated.');
       return true;
@@ -1062,7 +1160,7 @@ export default function PosSettingsWorkspace({
     } finally {
       setSavingTab('');
     }
-  }, [onRefreshTerminalUser, profileForm.email, profileForm.phoneNumber, profileForm.username]);
+  }, [onRefreshTerminalUser, profileForm]);
 
   const handleTerminalRegistrySave = useCallback(async (terminalRegistryOverride, options = {}) => {
     const successMessage = String(options?.successMessage || 'Terminal settings updated.').trim();
@@ -1118,7 +1216,7 @@ export default function PosSettingsWorkspace({
     }
   }, [buildTerminalRegistryPayload, onRefreshTerminalMeta, onRefreshTerminalUser, posForm]);
 
-  const handleTerminalAdvancedSettingsSave = useCallback(async (nextSettings = {}) => {
+  const handleTerminalAdvancedSettingsSave = useCallback(async (nextSettings = {}, { successMessage = 'Advanced terminal settings saved.' } = {}) => {
     const nextMode = ['warn', 'enforce'].includes(String(nextSettings?.terminalRegistryMode || '').trim().toLowerCase())
       ? String(nextSettings.terminalRegistryMode).trim().toLowerCase()
       : 'warn';
@@ -1149,7 +1247,7 @@ export default function PosSettingsWorkspace({
         onRefreshTerminalMeta?.(),
         onRefreshTerminalUser?.({ suppressGlobalErrors: true })
       ]);
-      toast.success('Advanced terminal settings saved.');
+      toast.success(successMessage);
       return true;
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save advanced terminal settings.');
@@ -1600,14 +1698,20 @@ export default function PosSettingsWorkspace({
     }
     setLocationSaving(true);
     try {
+      let savedLocation = null;
       if (editingLocationId) {
-        await tenantLocationService.updateTenantLocation(editingLocationId, payload);
+        savedLocation = await tenantLocationService.updateTenantLocation(editingLocationId, payload);
         toast.success('Branch updated.');
       } else {
-        await tenantLocationService.createTenantLocation(payload);
+        savedLocation = await tenantLocationService.createTenantLocation(payload);
         toast.success('Branch added.');
       }
       await loadStorefrontLocations({ silent: true });
+      void onSettingsSaved?.({
+        section: editorSection,
+        action: editingLocationId ? 'updated' : 'created',
+        locationId: savedLocation?.location_id || editingLocationId || ''
+      });
       resetLocationForm();
       return true;
     } catch (error) {
@@ -1626,7 +1730,7 @@ export default function PosSettingsWorkspace({
     } finally {
       setLocationSaving(false);
     }
-  }, [editingLocationId, loadStorefrontLocations, locationForm, openValidationModal, resetLocationForm]);
+  }, [editingLocationId, editorSection, loadStorefrontLocations, locationForm, onSettingsSaved, openValidationModal, resetLocationForm]);
 
   const handleSetPrimaryLocation = useCallback(async (location) => {
     if (!location?.location_id) return;
@@ -1831,6 +1935,22 @@ export default function PosSettingsWorkspace({
   const posSetupPaneProps = {
     terminalUser, locked, canEditSettings, loading, savingTab, handlePosSave, onCancel: hydrateSettingsWorkspace, posForm, setPosForm, posSetupDirty, locations, incomingOrders,
     queueLocationScopeId,
+    editorSection, visibleSectionIds: visibleSetupSectionIds,
+    showReceiptMetadataEditor,
+    showTerminalRegistryEditor: showTerminalRegistrySection,
+    showTerminalOnlyControls: showTerminalOnlyControlsEditor,
+    terminalIdOptions,
+    activeTerminalId,
+    registryEnforced,
+    activeShiftId,
+    hardwareDriverLabel,
+    hardwareStatus,
+    hardwareLoading,
+    isPrinterAvailable,
+    printersDetected,
+    onTestPrinter,
+    onSelectTerminal,
+    showPosDefaultsEditor, showAttendanceEditor, showTeamAccessEditor,
     onlineOrderSoundEnabled, setOnlineOrderSoundEnabled, handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave, canManageCashiers, cashiersLoading,
     getCashiersForLocation, setCashierInvitationOpen, canRemoveCashiers, setCashierRemoveUser, cashiersLoaded, activeCashierUsers,
     cashierVoidAccessSavingUserId, updateCashierVoidAccess, updateCashierDrawerAccess, loadCashierAccounts,
@@ -1848,7 +1968,8 @@ export default function PosSettingsWorkspace({
     activeSubtab: storefrontSubtab, onActiveSubtabChange: setStorefrontSubtab,
     selectedLocationId: storefrontSelectedLocationId, onSelectedLocationChange: setStorefrontSelectedLocationId,
     hasActivePrimaryStorefrontLocation, requestedCustomerAccessMode, effectiveCustomerAccessMode, platformMaxCustomerAccessMode,
-    customerAccessRollbackActive, customerAccessLimitation, locked, loading, savingTab, canEditSettings,
+    customerAccessRollbackActive, customerAccessLimitation, locked, readOnly, loading, savingTab, canEditSettings,
+    settingsSurface, editorSection, startWithNewLocation, locationEditorOnly,
     handleStorefrontSave, handleStorefrontGroupSave, handleCopyStorefrontUrl, handleGenerateStorefrontSlug, handleCustomerAccessModeChange,
     handleUploadAsset, handleDeleteAsset, handleGalleryAssetUpload, assetUploadingType, assetDeletingType,
     handleStorefrontListChange, addStorefrontListRow, removeStorefrontListRow, handleStorefrontObjectRowChange,
@@ -1857,6 +1978,7 @@ export default function PosSettingsWorkspace({
     handleReactivateLocation, handleDeleteLocation, handleLocationPinChange, leadTimeRequiredMissing, leadTimeRangeInverted,
     lastFulfillmentMethodLocked, handleSaveLocation, handleStorefrontBooleanChange, storefrontBooleanState,
     storefrontContentDirty, onStorefrontContentNavigationRequest: handleStorefrontContentNavigationRequest,
+    onDirtyChange,
     expansionScrollParentRef: workspacePaneRef
   };
 
@@ -1930,11 +2052,13 @@ export default function PosSettingsWorkspace({
 
   return (
     <div id={sectionId} data-pos-settings-workspace="true" className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3">
-      <PosSettingsTabNavigation
-        tabs={SETTINGS_TABS}
-        activeTab={activeTab}
-        onTabChange={handleTabChange}
-      />
+      {showSettingsTabNavigation ? (
+        <PosSettingsTabNavigation
+          tabs={visibleSettingsTabs}
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+        />
+      ) : null}
       <div
         id="pos-settings-panel"
         role="tabpanel"
@@ -1945,6 +2069,19 @@ export default function PosSettingsWorkspace({
       >
         {renderPane()}
       </div>
+      {externalSettingsRefreshPending ? (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="pos-settings-external-refresh-pending"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <p className="font-extrabold">Back Office settings changed</p>
+          <p className="mt-1 text-xs leading-5 text-amber-800">
+            Your unsaved changes are protected. Save or cancel them to load the latest settings.
+          </p>
+        </div>
+      ) : null}
       {renderedTab === 'storefront' && storefrontSubtab === 'content' && storefrontContentDirty ? (
         <StorefrontContentSaveBar
           canEdit={canEditSettings && !locked && !loading}

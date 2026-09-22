@@ -10,14 +10,21 @@ const serviceMocks = vi.hoisted(() => ({
     cancelPosPaymentSession: vi.fn(),
     completePosPaymentSession: vi.fn(),
     createPosPaymentSession: vi.fn(),
-    fetchActivePosPaymentSession: vi.fn().mockResolvedValue(null),
     fetchPosPaymentSession: vi.fn()
+}));
+const employeeCreditServiceMocks = vi.hoisted(() => ({
+    fetchEmployeeCreditCheckoutOptions: vi.fn().mockResolvedValue([]),
+    fetchEmployeeCreditAccount: vi.fn().mockResolvedValue({
+        account_code: 'EC-44',
+        outstanding_balance: 0
+    })
 }));
 
 vi.mock('../services/posService.js', () => serviceMocks);
 vi.mock('@/src/utils/iminRuntimeFeedback.js', () => ({
     posToast: { error: vi.fn(), message: vi.fn(), success: vi.fn() }
 }));
+vi.mock('../services/employeeCreditService.js', () => employeeCreditServiceMocks);
 
 import POSSplitPaymentDialog from '../components/POSSplitPaymentDialog.jsx';
 
@@ -34,151 +41,64 @@ afterEach(() => {
     cleanup();
     window.localStorage.clear();
     vi.clearAllMocks();
-    serviceMocks.fetchActivePosPaymentSession.mockResolvedValue(null);
+    employeeCreditServiceMocks.fetchEmployeeCreditCheckoutOptions.mockResolvedValue([]);
 });
 
 describe('POS manual walk-in tender', () => {
-    it.each(['completed', 'cancelled'])('clears a %s recovery pointer and closes without reopening a terminal session', async (status) => {
-        window.localStorage.setItem('pos_split_payment_session:terminal-recovery', JSON.stringify({
-            session_id: 501,
-            idempotency_key: 'terminal-session-key'
-        }));
-        serviceMocks.fetchPosPaymentSession.mockResolvedValue({
-            ...openSession,
-            status
-        });
+    it('opens a fresh server session without reading or writing a saved split-payment pointer', async () => {
+        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
         const onSessionStateChange = vi.fn();
-        const onOpenChange = vi.fn();
-
-        render(
-            <POSSplitPaymentDialog
-                open
-                onOpenChange={onOpenChange}
-                cart={[]}
-                catalog={[]}
-                subtotalAmount={0}
-                totalAmount={0}
-                shiftId={41}
-                locationId={3}
-                terminalId="COUNTER-01"
-                storageScopeKey="terminal-recovery"
-                onSessionStateChange={onSessionStateChange}
-            />
-        );
-
-        await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
-        expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({ active: false }));
-        expect(window.localStorage.getItem('pos_split_payment_session:terminal-recovery')).toBeNull();
-        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
-    });
-
-    it('releases a stale recovery lock when the saved server session no longer exists', async () => {
-        window.localStorage.setItem('pos_split_payment_session:missing-recovery', JSON.stringify({
-            session_id: 999,
-            idempotency_key: 'missing-session-key'
-        }));
-        serviceMocks.fetchPosPaymentSession.mockRejectedValue({
-            response: { status: 404, data: { message: 'POS payment session not found.' } }
-        });
-        const onSessionStateChange = vi.fn();
-
         render(
             <POSSplitPaymentDialog
                 open
                 onOpenChange={vi.fn()}
                 cart={[]}
-                catalog={[]}
-                subtotalAmount={0}
-                totalAmount={0}
+                totalAmount={1250}
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="missing-recovery"
                 onSessionStateChange={onSessionStateChange}
             />
         );
 
-        expect((await screen.findByRole('alert')).textContent).toContain('POS payment session not found.');
-        expect(onSessionStateChange).toHaveBeenCalledWith({ active: false, recovered: false, session: null });
-        expect(window.localStorage.getItem('pos_split_payment_session:missing-recovery')).toBeNull();
+        await screen.findByText('Payment Methods');
+        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.fetchPosPaymentSession).not.toHaveBeenCalled();
+        expect(window.localStorage.length).toBe(0);
+        expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({ active: true, recovered: false }));
     });
 
-    it.each([
-        ['desktop', 1280],
-        ['mobile', 390]
-    ])('restores a saved split-payment draft with its item summary at %s width', async (_viewport, width) => {
-        Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
-        window.dispatchEvent(new Event('resize'));
-        const recoveredSession = {
-            pos_payment_session_id: 501,
-            session_reference: 'PAY-RECOVERY-501',
+    it('does not auto-complete a ready session returned while opening the checkout', async () => {
+        const readySession = {
+            ...openSession,
             status: 'ready_to_complete',
-            line_count: 1,
-            total_amount: 90,
-            paid_amount: 90,
+            paid_amount: 1250,
             remaining_amount: 0,
-            snapshot: {
-                lines: [{ item_id: 36, quantity: 1, sale_price: 90 }]
-            },
-            allocations: [{
-                pos_payment_allocation_id: 701,
-                payment_method: 'gcash',
-                payment_provider: 'merchant_owned',
-                status: 'successful',
-                applied_amount: 90
-            }]
+            allocations: []
         };
-        window.localStorage.setItem('pos_split_payment_session:refresh-recovery', JSON.stringify({
-            session_id: 501,
-            idempotency_key: 'existing-session-key'
-        }));
-        serviceMocks.fetchPosPaymentSession.mockResolvedValue(recoveredSession);
-        const onSessionStateChange = vi.fn();
-        const onOpenChange = vi.fn();
+        serviceMocks.createPosPaymentSession.mockResolvedValue(readySession);
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
         render(
             <POSSplitPaymentDialog
                 open
-                onOpenChange={onOpenChange}
+                onOpenChange={vi.fn()}
+                onReadyToComplete={onReadyToComplete}
                 cart={[]}
-                catalog={[{ item_id: 36, name: 'Chai Tea (Hot)' }]}
-                subtotalAmount={0}
-                totalAmount={0}
+                totalAmount={1250}
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="refresh-recovery"
-                onSessionStateChange={onSessionStateChange}
             />
         );
 
-        await waitFor(() => expect(screen.queryByTestId('pos-split-payment-saved-sale')).toBeNull());
-        expect(screen.queryByText('Sale awaiting completion')).toBeNull();
-        expect(screen.queryByTestId('pos-split-payment-cancel-session')).toBeNull();
+        await waitFor(() => expect(screen.getByTestId('pos-split-payment-dialog')).toBeTruthy());
+        expect(onReadyToComplete).not.toHaveBeenCalled();
         expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
-        expect(screen.queryByText('Payment recorded')).toBeNull();
-        await waitFor(() => expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({
-            active: true,
-            recovered: true,
-            session: recoveredSession
-        })));
-
-        await userEvent.setup().click(screen.getByRole('button', { name: 'Close split payment' }));
-        expect(onOpenChange).toHaveBeenCalledWith(false);
-        expect(window.localStorage.getItem('pos_split_payment_session:refresh-recovery')).not.toBeNull();
+        expect(screen.queryByTestId('pos-split-payment-saved-sale')).toBeNull();
     });
 
     it('does not restart the session request when the checkout snapshot object changes identity', async () => {
-        const savedSession = {
-            ...openSession,
-            total_amount: 90,
-            remaining_amount: 90
-        };
-        window.localStorage.setItem('pos_split_payment_session:snapshot-rerender', JSON.stringify({
-            session_id: 501,
-            idempotency_key: 'existing-session-key'
-        }));
-        serviceMocks.fetchPosPaymentSession.mockResolvedValue(savedSession);
-
+        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
         const view = render(
             <POSSplitPaymentDialog
                 open
@@ -188,13 +108,12 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="snapshot-rerender"
                 checkoutSnapshot={{ schema_version: 1, lines: [{ item_id: 36, quantity: 1, sale_price: 90 }] }}
             />
         );
 
         await screen.findByText('Payment Methods');
-        await waitFor(() => expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalledTimes(1));
+        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
 
         view.rerender(
             <POSSplitPaymentDialog
@@ -205,13 +124,12 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="snapshot-rerender"
                 checkoutSnapshot={{ schema_version: 1, lines: [{ item_id: 36, quantity: 1, sale_price: 90 }] }}
             />
         );
 
         await new Promise((resolve) => setTimeout(resolve, 25));
-        expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
         expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
     });
 
@@ -290,7 +208,6 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="phase-64-render-test"
             />
         );
 
@@ -346,6 +263,141 @@ describe('POS manual walk-in tender', () => {
         expect(screen.queryByText('Payment recorded')).toBeNull();
     });
 
+    it('does not expose Employee Credit to an unauthorized operator', async () => {
+        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
+
+        render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                cart={[{ item_id: 7, quantity: 1, sale_price: 1250 }]}
+                totalAmount={1250}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        expect(screen.queryByTestId('pos-payment-method-1-employee_credit')).toBeNull();
+        expect(employeeCreditServiceMocks.fetchEmployeeCreditCheckoutOptions).not.toHaveBeenCalled();
+    });
+
+    it('does not expose Employee Credit when the location has no eligible account', async () => {
+        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
+
+        render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                cart={[{ item_id: 7, quantity: 1, sale_price: 1250 }]}
+                totalAmount={1250}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                canUseEmployeeCredit
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        await waitFor(() => expect(employeeCreditServiceMocks.fetchEmployeeCreditCheckoutOptions).toHaveBeenCalledWith({ locationId: 3, limit: 50 }));
+        expect(screen.queryByTestId('pos-payment-method-1-employee_credit')).toBeNull();
+    });
+
+    it('records a verified Employee Credit portion together with cash', async () => {
+        const threeHundredSession = {
+            ...openSession,
+            total_amount: 300,
+            remaining_amount: 300
+        };
+        serviceMocks.createPosPaymentSession.mockResolvedValue(threeHundredSession);
+        const employeeCreditSession = {
+            ...threeHundredSession,
+            status: 'partially_paid',
+            paid_amount: 150,
+            remaining_amount: 150,
+            allocations: [{
+                pos_payment_allocation_id: 701,
+                payment_method: 'employee_credit',
+                status: 'successful',
+                applied_amount: 150
+            }]
+        };
+        const readySession = {
+            ...employeeCreditSession,
+            status: 'ready_to_complete',
+            paid_amount: 300,
+            remaining_amount: 0,
+            allocations: [
+                ...employeeCreditSession.allocations,
+                {
+                    pos_payment_allocation_id: 702,
+                    payment_method: 'cash',
+                    status: 'successful',
+                    applied_amount: 150,
+                    cash_tendered: 200,
+                    change_amount: 50
+                }
+            ]
+        };
+        serviceMocks.addPosPaymentAllocation
+            .mockResolvedValueOnce({ allocation: employeeCreditSession.allocations[0], session: employeeCreditSession })
+            .mockResolvedValueOnce({ allocation: readySession.allocations[1], session: readySession });
+        employeeCreditServiceMocks.fetchEmployeeCreditCheckoutOptions.mockResolvedValue([{
+            account_code: 'EC-44',
+            is_active: true,
+            account_configured: true,
+            is_eligible: true
+        }]);
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
+        const user = userEvent.setup();
+
+        render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                onReadyToComplete={onReadyToComplete}
+                cart={[{ item_id: 7, quantity: 1, sale_price: 300 }]}
+                totalAmount={300}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                employeeCreditAccountCode="EC-44"
+                employeeCreditAccount={{ account_code: 'EC-44', outstanding_balance: 0 }}
+                canUseEmployeeCredit
+                selectedEmployeeCreditOption={{
+                    option_key: 'employee:44',
+                    employee_name: 'Employee 44',
+                    employee_code: 'EMP-44',
+                    branch_name: 'Main',
+                    account_code: 'EC-44',
+                    is_eligible: true
+                }}
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        await user.click(within(screen.getByTestId('pos-payment-method-1')).getByRole('button', { name: 'Employee Credit' }));
+        await user.type(screen.getByRole('spinbutton', { name: 'Amount for Employee Credit' }), '150');
+        await user.type(screen.getByRole('spinbutton', { name: 'Amount for Cash' }), '150');
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
+
+        await waitFor(() => expect(serviceMocks.addPosPaymentAllocation).toHaveBeenCalledTimes(2));
+        expect(serviceMocks.addPosPaymentAllocation).toHaveBeenNthCalledWith(1, 501, expect.objectContaining({
+            payment_method: 'employee_credit',
+            amount: 150,
+            payment_handoff_mode: 'internal',
+            employee_credit: { account_code: 'EC-44' }
+        }));
+        expect(serviceMocks.addPosPaymentAllocation).toHaveBeenNthCalledWith(2, 501, expect.objectContaining({
+            payment_method: 'cash',
+            amount: 150,
+            payment_handoff_mode: 'internal'
+        }));
+        expect(serviceMocks.addPosPaymentAllocation.mock.calls[0][1]).not.toHaveProperty('manual_payment_received');
+        expect(onReadyToComplete).toHaveBeenCalledOnce();
+    });
+
     it('does not show a finish-sale recovery card when automatic sale completion fails', async () => {
         const ninetySession = {
             ...openSession,
@@ -383,7 +435,6 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="completion-retry"
             />
         );
 
@@ -396,46 +447,6 @@ describe('POS manual walk-in tender', () => {
         expect(onReadyToComplete).toHaveBeenCalledTimes(1);
         expect(screen.queryByText('Payment recorded')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Retry Finish Sale' })).toBeNull();
-    });
-
-    it('silently completes a recovered ready payment without showing a recovery card', async () => {
-        const recoveredSession = {
-            pos_payment_session_id: 501,
-            status: 'ready_to_complete',
-            total_amount: 90,
-            paid_amount: 90,
-            remaining_amount: 0,
-            snapshot: { lines: [{ item_id: 36, quantity: 1, sale_price: 90 }] },
-            allocations: []
-        };
-        window.localStorage.setItem('pos_split_payment_session:auto-complete-retry', JSON.stringify({
-            session_id: 501,
-            idempotency_key: 'existing-session-key'
-        }));
-        serviceMocks.fetchPosPaymentSession.mockResolvedValue(recoveredSession);
-        const onOpenChange = vi.fn();
-        const onReadyToComplete = vi.fn().mockResolvedValue(true);
-
-        render(
-            <POSSplitPaymentDialog
-                open
-                onOpenChange={onOpenChange}
-                onReadyToComplete={onReadyToComplete}
-                cart={[]}
-                catalog={[{ item_id: 36, name: 'Chai Tea (Hot)' }]}
-                shiftId={41}
-                locationId={3}
-                terminalId="COUNTER-01"
-                storageScopeKey="auto-complete-retry"
-            />
-        );
-
-        await waitFor(() => expect(serviceMocks.fetchPosPaymentSession).toHaveBeenCalled());
-        expect(screen.queryByText('Payment recorded')).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Retry Finish Sale' })).toBeNull();
-        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
-        await waitFor(() => expect(onReadyToComplete).toHaveBeenCalledWith(recoveredSession));
-        expect(onOpenChange).toHaveBeenCalledWith(false);
     });
 
     it('adds a third payment row and records the selected Card method', async () => {
@@ -474,7 +485,6 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="more-payment-methods"
             />
         );
 
@@ -527,7 +537,6 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="sequential-partial-recovery"
             />
         );
 
@@ -571,7 +580,6 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
-                storageScopeKey="response-loss-recovery"
             />
         );
 

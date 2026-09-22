@@ -136,7 +136,15 @@ const PERMISSION_TEMPLATES = {
   }
 };
 
-export default function UserManagementModal({ open, onOpenChange, readOnly = false, onSettingsSaved = () => {} }) {
+export default function UserManagementModal({
+  open,
+  onOpenChange,
+  readOnly = false,
+  onSettingsSaved = () => {},
+  locationOptions = null,
+  invitationTitle = 'Invite DGFY Account',
+  invitationSubmitLabel = 'Send DGFY Invitation'
+}) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -1216,6 +1224,9 @@ export default function UserManagementModal({ open, onOpenChange, readOnly = fal
           return fetchUsers();
         }}
         roleCatalog={roleCatalog}
+        locationOptions={locationOptions}
+        title={invitationTitle}
+        submitLabel={invitationSubmitLabel}
       />
 
       {/* Ownership Transfer Dialog */}

@@ -101,6 +101,15 @@ describe('shared Items / Sell image renderer', () => {
     expect(container.querySelector('source[type="image/webp"]').getAttribute('srcset')).toContain('thumb.webp 400w');
   });
 
+  it('shows a catalog fallback tile immediately when the persisted image fails', () => {
+    const { container } = render(<PosItemImage item={{ ...item, name: 'Chicken Rice Bowl' }} alt="meal" />);
+
+    fireEvent.error(container.querySelector('img'));
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('[data-pos-item-image-fallback="true"]')?.textContent).toContain('Chicken Rice Bowl');
+  });
+
   it('stops after three automatic retries and a new URL is visible without a hidden DOM flag', () => {
     const { container, rerender } = render(<PosItemImage item={item} alt="meal" />);
     for (const delay of [1000, 2000, 4000]) {

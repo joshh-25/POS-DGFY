@@ -11,6 +11,8 @@ const terminalPageDialogLayerPath = path.resolve(__dirname, '../components/Termi
 const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const posSettingsWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
+const terminalLocalControlsPath = path.resolve(__dirname, '../settings/TerminalLocalControlsSection.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
 // Phase 231 (#1289), §2.7: the split view's order-card grid (payment status, print actions, the
 // empty-queue lifecycle copy) lives in this pure extraction, used only by the split view now that
@@ -50,6 +52,8 @@ describe('POS terminal view-mode contracts', () => {
   let terminalWorkspaceSidebarContent = '';
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
+  let posSettingsWorkspaceContent = '';
+  let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
   let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
@@ -79,6 +83,8 @@ describe('POS terminal view-mode contracts', () => {
     terminalWorkspaceSidebarContent = readSourceForContract(terminalWorkspaceSidebarPath);
     terminalSidebarPanelContent = readSourceForContract(terminalSidebarPanelPath);
     terminalOperationsWorkspaceContent = readSourceForContract(terminalOperationsWorkspacePath);
+    posSettingsWorkspaceContent = readSourceForContract(posSettingsWorkspacePath);
+    terminalLocalControlsContent = readSourceForContract(terminalLocalControlsPath);
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
       .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
@@ -259,18 +265,20 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('setSettingsRefreshKey((previous) => previous + 1);');
     expect(terminalPageContent).toContain('settingsRefreshKey={settingsRefreshKey}');
     expect(terminalPageLayoutContent).toContain('settingsRefreshKey={settingsRefreshKey}');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKeyRef.current === settingsRefreshKey');
-    expect(terminalOperationsWorkspaceContent).toContain('const hasUnsavedChanges = draftBaselineRef.current !== null');
-    expect(terminalOperationsWorkspaceContent).toContain('void hydrateSettingsWorkspace({ silent: true });');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey={settingsRefreshKey}');
+    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey = 0');
+    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey,');
+    expect(posSettingsWorkspaceContent).toContain('previousSettingsRefreshKeyRef.current === settingsRefreshKey');
+    expect(posSettingsWorkspaceContent).toContain('hasUnsavedSettingsChanges');
+    expect(posSettingsWorkspaceContent).toContain('void hydrateSettingsWorkspace({ silent: true });');
+    expect(posSettingsWorkspaceContent).toContain('data-testid="pos-settings-external-refresh-pending"');
   });
 
   it('keeps terminal setup printer actions compact and aligned with terminal selection', () => {
-    expect(terminalOperationsWorkspaceContent).not.toContain('data-testid="pos-terminal-setup-refresh-hardware"');
-    expect(terminalOperationsWorkspaceContent).not.toContain('>Refresh</');
-    expect(terminalOperationsWorkspaceContent).toContain('data-testid="pos-terminal-setup-test-print"');
-    expect(terminalOperationsWorkspaceContent).toContain('md:col-start-2 md:row-start-2 md:self-end');
-    expect(terminalOperationsWorkspaceContent).toContain('className="h-12 bg-[#1A4E8D] hover:bg-[#143E72]"');
+    expect(terminalLocalControlsContent).not.toContain('data-testid="pos-terminal-setup-refresh-hardware"');
+    expect(terminalLocalControlsContent).not.toContain('>Refresh</');
+    expect(terminalLocalControlsContent).toContain('data-testid="pos-terminal-setup-test-print"');
+    expect(terminalLocalControlsContent).toContain('md:col-start-2 md:row-start-2 md:self-end');
+    expect(terminalLocalControlsContent).toContain('className="h-12 bg-[#1A4E8D] hover:bg-[#143E72]"');
   });
 
   it('waits for session and onboarding hydration before rendering the POS workspace', () => {

@@ -80,6 +80,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleCompleteLegacyLink,
     handleCompleteTenantSetup,
     handleConfirmCloseShift,
+    handleResolveCloseShiftPaymentBlocker,
     handleHardwareMessageOpenChange,
     handleIncomingOrderModalOpenChange,
     handleIncomingOrderReceiptOpenChange,
@@ -279,7 +280,9 @@ export default function TerminalPageDialogLayer({ model }) {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierTakeoverUnlock
-                      ? 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
+                      ? cashierResumeContext?.returnToCheckout
+                        ? 'Verify the POS account to continue this checkout. Your cart and payment details will stay open.'
+                        : 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
                       : cashierResumeUnlock
                       ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
                       : signedInShiftResume
@@ -337,18 +340,20 @@ export default function TerminalPageDialogLayer({ model }) {
                       Open shift owned by {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'the current cashier'}
                     </div>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-[#1A4E8D]">
-                      The shift owner resumes automatically. A different cashier enters their PIN and attendance starts automatically.
+                      {cashierResumeContext?.returnToCheckout
+                        ? 'After verification, return to checkout and press Confirm again. The payment is never submitted automatically.'
+                        : 'The shift owner resumes automatically. A different cashier enters their PIN and attendance starts automatically.'}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-identifier" className="text-xs font-extrabold text-[#0F172A]">
-                        Cashier DGFY Email
+                        {cashierResumeContext?.returnToCheckout ? 'DGFY Account Email' : 'Cashier DGFY Email'}
                       </Label>
                       <Input
                         id="cashier-takeover-identifier"
                         type="email"
                         value={cashierTakeoverForm.identifier}
                         onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, identifier: event.target.value }))}
-                        placeholder="cashier@company.com"
+                        placeholder={cashierResumeContext?.returnToCheckout ? 'admin@company.com' : 'cashier@company.com'}
                         autoComplete="username"
                         disabled={submitting}
                         required
@@ -356,14 +361,14 @@ export default function TerminalPageDialogLayer({ model }) {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-password" className="text-xs font-extrabold text-[#0F172A]">
-                        DGFY Password
+                        DGFY Account Password
                       </Label>
                       <Input
                         id="cashier-takeover-password"
                         type="password"
                         value={cashierTakeoverForm.password}
                         onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, password: event.target.value }))}
-                        placeholder="Enter cashier password"
+                        placeholder={cashierResumeContext?.returnToCheckout ? 'Enter account password' : 'Enter cashier password'}
                         autoComplete="current-password"
                         disabled={submitting}
                         required
@@ -617,14 +622,14 @@ export default function TerminalPageDialogLayer({ model }) {
                     ? (adminReauthUnlock
                       ? 'Checking admin...'
                       : cashierTakeoverUnlock
-                        ? 'Signing in cashier...'
+                        ? (cashierResumeContext?.returnToCheckout ? 'Verifying account...' : 'Signing in cashier...')
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resuming shift...'
                         : 'Opening shift...')
                     : (adminReauthUnlock
                       ? 'Unlock as Admin'
                       : cashierTakeoverUnlock
-                        ? 'Continue to POS'
+                        ? (cashierResumeContext?.returnToCheckout ? 'Verify & Return to Checkout' : 'Continue to POS')
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resume Shift'
                         : terminalUnlockMode === 'relock'
@@ -967,15 +972,45 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogHeader>
             {closeShiftBlocker ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
-                <p>Resolve the following before closing this shift:</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5">
-                  {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
-                    <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
-                  )}
-                  {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
-                    <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
-                  )}
-                </ul>
+                {closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_IN_FLIGHT' || closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED' ? (
+                  <>
+                    <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
+                    <p className="mt-1 font-medium">
+                      Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
+                    </p>
+                    {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                        {closeShiftBlocker.sessions.map((session) => (
+                          <li key={session.pos_payment_session_id || session.session_reference}>
+                            {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
+                            {session.status ? ` · ${String(session.status).replaceAll('_', ' ')}` : ''}
+                            {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={handleResolveCloseShiftPaymentBlocker}
+                      className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
+                      data-testid="pos-close-shift-resolve-payment"
+                    >
+                      Return to Checkout
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>Resolve the following before closing this shift:</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
+                        <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
+                      )}
+                      {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
+                        <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
+                      )}
+                    </ul>
+                  </>
+                )}
               </div>
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">

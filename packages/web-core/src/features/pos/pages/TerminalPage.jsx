@@ -474,6 +474,13 @@ const parseUserPermissions = (user) => {
   return [];
 };
 
+const hasPosAttendanceLifecyclePermission = (user) => {
+  if (user?.is_master_admin === true) return true;
+  const permissions = new Set(parseUserPermissions(user));
+  return permissions.has('pos:attendance:view')
+    && permissions.has('pos:attendance:operate');
+};
+
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -2063,6 +2070,7 @@ export default function TerminalPage() {
         location_id: report.location_id,
         reading_identifier: report.reading_identifier || null,
         generated_at: report.generated_at || null,
+        reconciliation: report.z_reading_reconciliation || null,
         summary: report.summary || {},
         z_counter_value: report.counters?.z_counter || 0,
         reset_counter_value: report.counters?.reset_counter || 0,
@@ -3001,7 +3009,7 @@ export default function TerminalPage() {
   ]);
 
   useEffect(() => {
-    if (locked || terminalUser?.is_master_admin !== true) return;
+    if (locked || cashierResumeContext?.returnToCheckout || terminalUser?.is_master_admin !== true) return;
     if (!readStoredTerminalLock()) return;
 
     const storedLockReason = readStoredTerminalLockReason();
@@ -3010,6 +3018,7 @@ export default function TerminalPage() {
     setDrawerOpen(!(storedLockReason === 'terminal_reunlock' || storedLockReason === 'shift_start_required' || storedLockReason === 'admin_reunlock'));
   }, [
     locked,
+    cashierResumeContext?.returnToCheckout,
     resetSettingsAccessPinState,
     terminalUser?.is_master_admin
   ]);
@@ -4294,7 +4303,7 @@ export default function TerminalPage() {
         companyToken: posSession?.company?.token
       });
 
-      if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
+      if (!hasPosAttendanceLifecyclePermission(cashierUser)) {
         clearDgfySession();
         clearClientSession({
           reason: 'logout',
@@ -4302,7 +4311,7 @@ export default function TerminalPage() {
           emitAuthEvents: true,
           redirectTo: null
         });
-        toast.error('This login is not an active cashier account for the selected company.');
+        toast.error('This account is not authorized to operate the selected POS register.');
         return;
       }
 
@@ -4422,7 +4431,7 @@ export default function TerminalPage() {
         companyToken: posSession?.company?.token
       });
 
-      if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
+      if (!hasPosAttendanceLifecyclePermission(cashierUser)) {
         clearDgfySession();
         clearClientSession({
           reason: 'logout',
@@ -4430,7 +4439,7 @@ export default function TerminalPage() {
           emitAuthEvents: true,
           redirectTo: null
         });
-        toast.error('This login is not an active cashier account for the selected company.');
+        toast.error('This account is not authorized to operate the selected POS register.');
         return;
       }
 
@@ -4506,7 +4515,8 @@ export default function TerminalPage() {
     setTerminalUnlockMode('cashier_takeover');
   };
 
-  const handleCashierSignIn = useCallback(() => {
+  const handleCashierSignIn = useCallback((options = {}) => {
+    const preserveCheckout = options?.preserveCheckout === true;
     const terminalId = sanitizeTerminalId(activeTerminalId);
     const locationId = Number(shiftState?.shift?.location_id || operatingLocationId || 0);
     const shiftId = Number(activeShiftId || 0);
@@ -4528,6 +4538,7 @@ export default function TerminalPage() {
       tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
       companyToken: String(getCompanyToken() || '').trim(),
       returnToResumeAllowed: false,
+      returnToCheckout: preserveCheckout,
       shiftSnapshot: {
         shift: shiftState?.shift || null,
         shiftState: {
@@ -4543,12 +4554,19 @@ export default function TerminalPage() {
     });
     setStoredTerminalLock(true);
     setStoredTerminalLockReason('terminal_reunlock');
-    setLocked(true);
+    // Keep the checkout workspace mounted while reauthentication is requested.
+    // The stored lock still protects a full page reload, while the in-memory
+    // cart/payment draft remains available for the explicit retry after login.
+    if (!preserveCheckout) setLocked(true);
     setDrawerOpen(false);
     setTerminalUnlockRequired(false);
     setTerminalUnlockMode('cashier_takeover');
     setTerminalUnlockModalOpen(true);
   }, [activeShiftId, activeTerminalId, cashierUnlockSession?.tenantId, formData.dgfyTenantId, operatingLocationId, operatorAuthorityState.operatorUser, shiftState, terminalUser?.company?.id, todayDashboard]);
+
+  const handleCheckoutAuthorityInvalid = useCallback(() => {
+    handleCashierSignIn({ preserveCheckout: true });
+  }, [handleCashierSignIn]);
 
   const handleBackToCashierResume = () => {
     setUnlockFailure(null);
@@ -5436,6 +5454,13 @@ export default function TerminalPage() {
     setCloseShiftConfirmOpen(true);
   };
 
+  const handleResolveCloseShiftPaymentBlocker = useCallback(() => {
+    setCloseShiftConfirmOpen(false);
+    setCloseShiftBlocker(null);
+    setPosViewMode('checkout');
+    toast.message('Returned to Checkout. Complete or cancel the unresolved payment before closing the shift.');
+  }, []);
+
   const getShiftCloseResolutionState = useCallback(async ({
     shiftId = activeShiftId,
     includeServerParkedSales = true
@@ -5615,6 +5640,16 @@ export default function TerminalPage() {
           pendingParkedSaleCount: 0
         });
         toast.error(error?.response?.data?.message || 'Resolve claimed parked sales before closing this shift.');
+        return;
+      }
+      if (['POS_PAYMENT_SESSIONS_IN_FLIGHT', 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED'].includes(String(errorDetails?.reason_code || '').trim())) {
+        setCloseShiftBlocker({
+          reasonCode: String(errorDetails.reason_code).trim(),
+          activePaymentSessionCount: Number(errorDetails.active_payment_session_count || 0),
+          sessions: Array.isArray(errorDetails.sessions) ? errorDetails.sessions : [],
+          message: error?.response?.data?.message || 'Complete or cancel the unresolved payment before closing this shift.'
+        });
+        toast.error(error?.response?.data?.message || 'Complete or cancel the unresolved payment before closing this shift.');
         return;
       }
       if (isRetryableTerminalOperationError(error)) {
@@ -7014,6 +7049,7 @@ function PosRestorationLoadingScreen() {
               handleCompleteLegacyLink,
               handleCompleteTenantSetup,
               handleConfirmCloseShift,
+              handleResolveCloseShiftPaymentBlocker,
               handleHardwareMessageOpenChange,
               handleIncomingOrderModalOpenChange,
               handleIncomingOrderReceiptOpenChange,
@@ -7201,6 +7237,7 @@ function PosRestorationLoadingScreen() {
           onOpenBackOffice={handleOpenBackOffice}
           handleLock={handleLock}
           handleCashierSignIn={handleCashierSignIn}
+          onCheckoutAuthorityInvalid={handleCheckoutAuthorityInvalid}
           checkoutOperatorLocked={checkoutOperatorLocked}
           checkoutOperatorLoading={operatorAuthorityPending}
           activeShiftOwnerLabel={activeShiftOwnerLabel}

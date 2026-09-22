@@ -3,7 +3,9 @@ import { loadOfflinePosReportSnapshot, saveOfflinePosReportSnapshot } from '../s
 import {
   ArrowDownRight,
   ArrowUpRight,
+  AlertTriangle,
   Calendar,
+  CheckCircle2,
   Download,
   Filter,
   Printer
@@ -29,6 +31,12 @@ import {
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import {
+  BackOfficeReportDataTable as DataTable,
+  BackOfficeReportEmptyState as EmptyState,
+  BackOfficeReportMetric as MetricCard,
+  BackOfficeReportSectionCard as SectionCard
+} from '../../../components/backOffice/BackOfficePrimitives.jsx';
 
 const REPORT_SECTIONS = [
   { id: 'daily', label: 'Daily Report' },
@@ -102,7 +110,13 @@ const escapeHtml = (value) => String(value ?? '')
 const printDateTime = (value) => {
   if (!value) return '-';
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime())
+    ? '-'
+    : parsed.toLocaleString('en-PH', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Manila'
+    });
 };
 
 const toDateInput = (date) => {
@@ -178,93 +192,51 @@ const formatOrderMethod = (value) => ORDER_METHOD_LABELS[String(value || '').tri
   .replace(/_/g, ' ')
   .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const MetricCard = ({ label, value, tone = 'default', hint = '' }) => {
-  const toneClass = tone === 'positive'
-    ? 'border-emerald-200 bg-emerald-50/70'
-    : tone === 'negative'
-      ? 'border-rose-200 bg-rose-50/70'
-      : 'border-slate-200 bg-white';
+const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
+  if (!data) return null;
+
+  const status = String(data.status || 'not_comparable');
+  const statusConfig = status === 'matched'
+    ? { label: 'Matched', Icon: CheckCircle2, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' }
+    : status === 'variance'
+      ? { label: 'Variance found', Icon: AlertTriangle, className: 'border-rose-200 bg-rose-50 text-rose-800' }
+      : { label: status === 'not_generated' ? 'Not generated' : 'Comparison unavailable', Icon: AlertTriangle, className: 'border-amber-200 bg-amber-50 text-amber-800' };
+  const StatusIcon = statusConfig.Icon;
+  const isComparable = status === 'matched' || status === 'variance';
+  const hasReportTotal = data.report_recognized_sales !== null && data.report_recognized_sales !== undefined;
 
   return (
-    <div className={`rounded-2xl border px-4 py-4 shadow-sm shadow-slate-200/70 ${toneClass}`}>
-      <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <p className="mt-2 text-[26px] font-black leading-none text-slate-950">{value}</p>
-      {hint ? <p className="mt-2 text-xs font-medium text-slate-500">{hint}</p> : null}
-    </div>
+    <SectionCard
+      title="Z-reading reconciliation"
+      actions={data.reading_identifier ? <span className="text-xs font-black text-slate-500">{data.reading_identifier}</span> : null}
+    >
+      <div className={`rounded-2xl border px-4 py-3 ${statusConfig.className}`}>
+        <div className="flex items-start gap-3">
+          <StatusIcon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-black">{statusConfig.label}</p>
+            <p className="mt-1 text-xs font-semibold leading-5">{data.message || 'The selected report scope cannot be compared with a Z-reading.'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Report recognized sales" value={hasReportTotal ? money(data.report_recognized_sales, currencySymbol) : '—'} hint="Completed, recognized transaction totals" />
+        <MetricCard label="Z-reading total" value={data.z_total_amount === null || data.z_total_amount === undefined ? '—' : money(data.z_total_amount, currencySymbol)} hint={data.generated_at ? `Generated ${printDateTime(data.generated_at)}` : 'No immutable snapshot yet'} />
+        <MetricCard label="Difference" value={data.variance === null || data.variance === undefined ? '—' : money(data.variance, currencySymbol)} tone={isComparable && Number(data.variance || 0) < 0 ? 'negative' : isComparable ? 'positive' : 'default'} hint={isComparable ? 'Report recognized sales minus Z-reading total' : 'Shown only when both totals are comparable'} />
+        <MetricCard label="Report net sales" value={money(data.report_net_sales, currencySymbol)} hint="Different metric; includes line-level discounts/refunds" />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-500">
+        <span>Z voids: {Number(data.z_void_transaction_count || 0)} · {money(data.z_void_amount, currencySymbol)}</span>
+        <span>Report refunds/voids: {money(data.report_refunds_voids, currencySymbol)}</span>
+        <span>Report adjustments: {money(data.report_adjustment_amount, currencySymbol)}</span>
+        {data.generated_at ? <span>Generated: {printDateTime(data.generated_at)}</span> : null}
+        {data.evaluated_at ? <span>Checked: {printDateTime(data.evaluated_at)}</span> : null}
+      </div>
+    </SectionCard>
   );
 };
-
-const SectionCard = ({ title, actions = null, children, className = '' }) => (
-  <section className={`min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 ${className}`}>
-    <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
-      <h3 className="min-w-0 text-sm font-black text-slate-950">{title}</h3>
-      {actions}
-    </div>
-    {children}
-  </section>
-);
-
-const EmptyState = ({ message }) => (
-  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm font-semibold text-slate-500">
-    {message}
-  </div>
-);
-
-const DataTable = ({ columns = [], rows = [], emptyMessage = 'No rows found.' }) => (
-  <div className="min-w-0 max-w-full">
-    {rows.length > 0 ? (
-      <div className="grid min-w-0 gap-3 sm:hidden">
-        {rows.map((row, index) => (
-          <div key={`mobile-${row.id || row.key || index}`} className="min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            {columns.map((column) => (
-              <div key={`mobile-${column.key}-${index}`} className="flex min-w-0 items-start justify-between gap-4 border-b border-slate-100 py-2 last:border-b-0">
-                <span className="min-w-0 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{column.label}</span>
-                <span className="min-w-0 break-words text-right text-sm font-semibold text-slate-700">
-                  {typeof column.render === 'function' ? column.render(row) : row[column.key]}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="rounded-2xl border border-slate-200 px-4 py-10 text-center text-sm font-semibold text-slate-500 sm:hidden">
-        {emptyMessage}
-      </div>
-    )}
-
-    <div className="hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 sm:block">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead className="bg-slate-50 text-[11px] uppercase tracking-[0.16em] text-slate-500">
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key} className={`px-4 py-3 font-black ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.length > 0 ? rows.map((row, index) => (
-            <tr key={`${row.id || row.key || index}`} className="text-slate-700">
-              {columns.map((column) => (
-                <td key={`${column.key}-${index}`} className={`px-4 py-3 ${column.align === 'right' ? 'text-right' : 'text-left'}`}>
-                  {typeof column.render === 'function' ? column.render(row) : row[column.key]}
-                </td>
-              ))}
-            </tr>
-          )) : (
-            <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
-                {emptyMessage}
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-);
 
 function PosReportsAnalyticsWorkspace({
   terminalMeta,
@@ -367,6 +339,7 @@ function PosReportsAnalyticsWorkspace({
   const comparisonReport = reportData?.sales_comparison || {};
   const profitLoss = reportData?.profit_loss || {};
   const cashierLifecycle = reportData?.cashier_lifecycle || {};
+  const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
   const isLifecycleSection = ['attendance', 'cashiers', 'registers', 'handoffs'].includes(activeSection);
 
   const trendSeries = useMemo(() => {
@@ -468,6 +441,19 @@ function PosReportsAnalyticsWorkspace({
         <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
       </tr>
     `).join('');
+    const zReadingPrint = zReadingReconciliation ? `
+          <div class="section">
+            <h2>Z-reading reconciliation</h2>
+            <p>Status: ${escapeHtml(zReadingReconciliation.status || 'unavailable')}</p>
+            <p>${escapeHtml(zReadingReconciliation.message || '')}</p>
+            <p>Report recognized sales: ${escapeHtml(zReadingReconciliation.report_recognized_sales == null ? '-' : money(zReadingReconciliation.report_recognized_sales, currencySymbol))}</p>
+            <p>Z-reading total: ${escapeHtml(zReadingReconciliation.z_total_amount == null ? '-' : money(zReadingReconciliation.z_total_amount, currencySymbol))}</p>
+            <p>Difference: ${escapeHtml(zReadingReconciliation.variance == null ? '-' : money(zReadingReconciliation.variance, currencySymbol))}</p>
+            <p>Report refunds/voids: ${escapeHtml(money(zReadingReconciliation.report_refunds_voids, currencySymbol))}</p>
+            <p>Report adjustments: ${escapeHtml(money(zReadingReconciliation.report_adjustment_amount, currencySymbol))}</p>
+            <p>Reading: ${escapeHtml(zReadingReconciliation.reading_identifier || '-')} · Generated: ${escapeHtml(zReadingReconciliation.generated_at ? printDateTime(zReadingReconciliation.generated_at) : '-')} · Checked: ${escapeHtml(zReadingReconciliation.evaluated_at ? printDateTime(zReadingReconciliation.evaluated_at) : '-')}</p>
+          </div>
+    ` : '';
 
     printWindow.document.write(`
       <html>
@@ -499,6 +485,7 @@ function PosReportsAnalyticsWorkspace({
             <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${escapeHtml(money(summaryCards.pos_profit_loss, currencySymbol))}</div></div>
             ${selectedTender ? `<div class="card"><div class="label">${escapeHtml(selectedTender.payment_label)} Collected</div><div class="value">${escapeHtml(money(selectedTender.amount, currencySymbol))}</div></div>` : ''}
           </div>
+          ${zReadingPrint}
           <div class="section">
             <h2>Cash Reconciliation</h2>
             <table>
@@ -741,8 +728,9 @@ function PosReportsAnalyticsWorkspace({
           </div> : null}
 
           {activeSection === 'daily' ? (
-            <div className="space-y-4">
-              <SectionCard title="Daily Summary">
+             <div className="space-y-4">
+               <ZReadingReconciliationCard data={zReadingReconciliation} currencySymbol={currencySymbol} />
+               <SectionCard title="Daily Summary">
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                   <MetricCard label="Business Date" value={dateRange.dateFrom === dateRange.dateTo ? dateRange.dateFrom : `${dateRange.dateFrom} to ${dateRange.dateTo}`} hint="Filtered report date" />
                   <MetricCard label="Transactions" value={Number(dailyReport.summary?.total_transactions || 0)} />

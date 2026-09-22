@@ -30,7 +30,7 @@ const kitchenStatusTransitions = Object.freeze({
 
 const statusLabel = (status) => String(status || '').replace(/_/g, ' ');
 
-export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = false }) {
+export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = false, locationId = null }) {
     const [diningAreas, setDiningAreas] = useState([]);
     const [checks, setChecks] = useState([]);
     const [stations, setStations] = useState([]);
@@ -47,7 +47,11 @@ export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = 
         try {
             const [areasData, checksData, stationsData, serviceChargeData] = await Promise.all([
                 listFnbDiningAreas(),
-                listFnbChecks({ statuses: 'open,sent_to_kitchen,partially_paid', limit: 50 }),
+                listFnbChecks({
+                    statuses: 'open,sent_to_kitchen,partially_paid',
+                    limit: 50,
+                    ...(locationId ? { location_id: locationId } : {})
+                }),
                 listFnbKitchenStations(),
                 getFnbServiceChargeSettings()
             ]);
@@ -60,7 +64,7 @@ export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = 
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [locationId]);
 
     useEffect(() => {
         loadQueue();
@@ -73,23 +77,34 @@ export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = 
 
     const selectedTable = tables.find((table) => String(table.table_id) === String(newCheck.table_id));
 
+    const buildCheckoutContext = (check, fallbackTable = null) => ({
+        fnb_check_id: check.check_id,
+        fnb_location_id: check.location_id || locationId || null,
+        fnb_table_id: check.table_id || null,
+        fnb_table_label_snapshot: check.table?.label || check.table?.table_number || fallbackTable?.label || null,
+        fnb_guest_count: check.guest_count || null,
+        fnb_server_id: check.server_id || null,
+        fnb_order_method: check.order_method || null,
+        fnb_notes: check.notes || null,
+        fnb_check_lines: Array.isArray(check.lines) ? check.lines : [],
+        fnb_checkout_request_id: `${check.check_id}:${Date.now()}`,
+        restaurant_service_charge: serviceCharge
+    });
+
     const openCheck = async () => {
         setBusy('open');
         try {
             const data = await createFnbCheck({
                 table_id: newCheck.table_id ? Number(newCheck.table_id) : null,
+                location_id: locationId || undefined,
                 guest_count: Number(newCheck.guest_count || 1),
                 order_method: newCheck.order_method
             });
             const check = data?.check;
             if (check) {
                 onSelectCheckoutContext?.({
-                    fnb_check_id: check.check_id,
-                    fnb_table_id: check.table_id || null,
-                    fnb_table_label_snapshot: check.table?.label || check.table?.table_number || selectedTable?.label || null,
-                    fnb_guest_count: check.guest_count || Number(newCheck.guest_count || 1),
-                    fnb_server_id: check.server_id || null,
-                    restaurant_service_charge: serviceCharge
+                    ...buildCheckoutContext(check, selectedTable),
+                    fnb_guest_count: check.guest_count || Number(newCheck.guest_count || 1)
                 });
             }
             await loadQueue();
@@ -102,14 +117,13 @@ export default function FnbDiningPanel({ onSelectCheckoutContext, canTransact = 
     };
 
     const handleCheckForCheckout = (check) => {
-        onSelectCheckoutContext?.({
-            fnb_check_id: check.check_id,
-            fnb_table_id: check.table_id || null,
-            fnb_table_label_snapshot: check.table?.label || check.table?.table_number || null,
-            fnb_guest_count: check.guest_count || null,
-            fnb_server_id: check.server_id || null,
-            restaurant_service_charge: serviceCharge
-        });
+        const activeLines = (Array.isArray(check.lines) ? check.lines : [])
+            .filter((line) => line?.status !== 'voided');
+        if (activeLines.length === 0) {
+            toast.error(`Check #${check.check_id} has no active items. Add an item before checkout.`);
+            return;
+        }
+        onSelectCheckoutContext?.(buildCheckoutContext(check));
         toast.message(`Attached check #${check.check_id} to checkout.`);
     };
 

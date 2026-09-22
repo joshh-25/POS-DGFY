@@ -803,16 +803,36 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
 };
 
 const formatZReadingValue = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatZReadingGeneratedAt = (value) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-PH', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Manila'
+    });
+};
+const formatZReadingReconciliationStatus = (value) => ({
+    matched: 'MATCHED',
+    variance: 'VARIANCE FOUND',
+    not_generated: 'NOT GENERATED',
+    not_comparable: 'COMPARISON UNAVAILABLE'
+}[safeText(value).toLowerCase()] || 'COMPARISON UNAVAILABLE');
+const formatOptionalZReadingValue = (value) => (
+    value === null || value === undefined ? '-' : formatZReadingValue(value)
+);
 
 export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } = {}) => {
     const reading = zReading?.z_reading || {};
     const summary = reading?.summary || {};
+    const reconciliation = reading?.reconciliation || reading?.z_reading_reconciliation || null;
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
         center('Z-READING / CLOSE DAY'),
         `Business date: ${safeText(reading.business_date)}`,
         `Location: ${safeText(reading.location_id)}`,
         `Reading: ${safeText(reading.reading_identifier)}`,
+        `Generated: ${formatZReadingGeneratedAt(reading.generated_at)}`,
         line(),
         pair('Transactions', summary.transaction_count || 0),
         pair('Subtotal', formatZReadingValue(summary.subtotal_amount)),
@@ -820,6 +840,17 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('VAT', formatZReadingValue(summary.vat_amount)),
         pair('Total sales', formatZReadingValue(summary.total_amount)),
         pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
+        ...(reconciliation ? [
+            line(),
+            center('REPORT RECONCILIATION'),
+            pair('Status', formatZReadingReconciliationStatus(reconciliation.status)),
+            pair('Report recognized', formatOptionalZReadingValue(reconciliation.report_recognized_sales)),
+            pair('Z-reading total', formatOptionalZReadingValue(reconciliation.z_total_amount)),
+            pair('Difference', formatOptionalZReadingValue(reconciliation.variance)),
+            pair('Report refunds/voids', formatOptionalZReadingValue(reconciliation.report_refunds_voids)),
+            pair('Report adjustments', formatOptionalZReadingValue(reconciliation.report_adjustment_amount)),
+            ...(reconciliation.evaluated_at ? [pair('Checked', formatZReadingGeneratedAt(reconciliation.evaluated_at))] : [])
+        ] : []),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
