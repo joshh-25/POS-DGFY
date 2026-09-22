@@ -593,6 +593,7 @@ jobs:
       needs.frontend-pos-prod.result != 'failure' &&
       needs.frontend-storefront-prod.result != 'failure' &&
       inputs.release_revision != ''
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
     permissions:
