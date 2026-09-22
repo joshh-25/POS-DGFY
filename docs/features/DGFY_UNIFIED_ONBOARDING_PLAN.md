@@ -19,7 +19,7 @@ topic: dgfy_unified_onboarding_plan
 
 ### Vision Target
 1. Store owner registers a store.
-2. On first login, a short guided setup appears for brand assets, primary storefront location, and starter items.
+2. On first login, a short guided setup appears for brand assets and primary storefront location. Hospitality also configures its first room type and room; all non-Hospitality modes may proceed directly to POS setup and create catalog items later.
 3. A tenant storefront page in DGFY is automatically available using template-based UI/UX.
 
 ### Current Closeness Score
@@ -95,10 +95,10 @@ topic: dgfy_unified_onboarding_plan
 - At least one active primary storefront location pin
 - Weekly Storefront business hours captured during primary-location setup; these hours are editable later in Settings and gate Storefront checkout availability
 
-3. Mode-aware starter catalog readiness:
-- At least one active starter item with name/title and positive `default_sale_price`
-- Corrected modes require a mode-valid `mode_item_preset`
-- Stock and item image upload are optional and do not block completion
+3. Mode-aware onboarding readiness:
+- Hospitality requires a first active room type with a positive default rate and at least one room.
+- Food & Beverage, Food Manufacturing, MSME, and Services do not require a catalog item during onboarding; their catalogs may be empty until the merchant creates items in catalog management.
+- Stock, item cost, and item image upload are optional and do not block completion.
 
 4. Merchant contact, legal/policy copy, fulfillment toggles, and richer catalog setup remain editable after onboarding through Settings and catalog setup surfaces.
 
@@ -128,7 +128,7 @@ topic: dgfy_unified_onboarding_plan
 - Optional profile picture and cover photo
 - Primary storefront location pin through the shared IMS MapLibre picker, with explicit locked/adjust modes, browser geolocation accuracy feedback, coordinate fields, delivery-radius preview, and first-party PH-local address suggestions. The shared picker is also used by Settings > Storefront location editing, opens over Iloilo City, Philippines when no saved pin exists, and uses the shared Storefront MapLibre basemap style so merchants can see street context while address lookup remains on the first-party reverse-geocode endpoint. Iloilo City is the default camera view only, not a default saved merchant pin; onboarding and Settings reject missing coordinates, `0,0`, and browser geolocation results outside the Philippines before saving a merchant storefront location. Settings opens locked until `Adjust Pin`; onboarding starts in adjust mode only when searchable storefront visibility is enabled and no valid saved pin exists.
 - Storefront business-hours setup in the same primary-location step, persisted to `storefront_hours` with support for multiple ordered intervals per day.
-- Mode-aware bulk starter-item creation, including row-level partial saves, optional post-create storefront image upload retry, and exact generated-SKU replay handling that returns prior rows as idempotent success rather than duplicates
+- Hospitality room-type and room setup remains available in the onboarding flow. Catalog item creation for every non-Hospitality mode remains available through normal POS catalog management after onboarding; onboarding does not create a synthetic starter item.
 3. Persist progress after each step and allow safe resume.
 
 ### Phase 3: Storefront Readiness Binding
@@ -150,7 +150,7 @@ topic: dgfy_unified_onboarding_plan
 1. The earlier MVP advisory questionnaire used `business_classification` and persisted `tenant_onboarding_progress.classification_snapshot`.
 2. That step is no longer part of the current first-login wizard and should not be used for new implementation plans.
 3. Existing legacy payloads remain readable as backward-compatible context only.
-4. Customer Access Mode and Inventory Display are now configured through Settings > Storefront, while onboarding focuses on brand assets, primary location, and starter items.
+4. Customer Access Mode and Inventory Display are now configured through Settings > Storefront, while onboarding focuses on brand assets, primary location, and the Hospitality-only room setup when applicable.
 
 ## Customer Access Mode Evolution
 1. ADR: `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`.

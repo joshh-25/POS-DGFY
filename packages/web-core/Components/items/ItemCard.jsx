@@ -144,17 +144,17 @@ export default function ItemCard({
       {...attributes}
       onClick={handleClick}
       className={cn(
-        "relative group flex h-full select-none touch-none flex-col rounded-2xl border bg-white p-6 transition-all duration-300", // touch-none for better dragging
+        "relative group flex h-full select-none touch-none flex-col rounded-xl border bg-white p-4 transition-all duration-200", // touch-none for better dragging
         isSelected
           ? "border-teal-500 ring-1 ring-teal-500 shadow-md bg-teal-50/30"
           : "border-slate-200 hover:shadow-lg hover:border-slate-300",
         isDragging && "opacity-50 shadow-2xl scale-105 rotate-2 cursor-grabbing z-50 border-teal-400"
       )}
     >
-      <div className="flex items-start justify-between mb-4">
+      <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center", category.color)}>
-            <Icon className="w-6 h-6" />
+          <div className={cn("flex h-10 w-10 items-center justify-center rounded-lg", category.color)}>
+            <Icon className="h-5 w-5" />
           </div>
           <div className="flex min-h-[3.5rem] min-w-0 flex-col justify-center">
             <h3

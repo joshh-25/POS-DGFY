@@ -25,7 +25,8 @@ import {
   DollarSign,
   ClipboardCheck,
   Shield,
-  RotateCcw
+  RotateCcw,
+  X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getStockStatus } from '@/components/data/dummyData';
@@ -141,23 +142,36 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
   if (!isProduct) {
     return (
       <Dialog open={open} onOpenChange={onClose}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto pb-8">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-3">
-              <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", category.color)}>
-                <Icon className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-xl">{item.name}</span>
-                <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
-              </div>
-            </DialogTitle>
+        <DialogContent className="catalog-editor-dialog-content max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+          <DialogHeader className="flex-shrink-0 border-b border-slate-100 p-4 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <DialogTitle className="flex min-w-0 items-center gap-3">
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", category.color)}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-lg">{item.name}</span>
+                  <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
+                </div>
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={onClose}
+                aria-label="Close item details"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="space-y-3 px-4 pb-4">
             {restoreBanner}
             {/* Status and Category */}
-            <div className="flex items-center gap-2 mb-6">
+            <div className="mb-3 flex items-center gap-2">
               {isInactive && (
                 <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-300">
                   Inactive
@@ -177,24 +191,24 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
             )}
 
             {!financialPolicy.is_pure_service && (
-            <div className="bg-slate-50 rounded-lg p-4 space-y-4">
+            <div className="space-y-3 rounded-lg bg-slate-50 p-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-slate-700">Stock Level</span>
                 <span className="text-lg font-bold text-slate-900">
                   {formatQty(item.current_stock)} / {formatQty(item.max_capacity)} {item.unit_of_measure}
                 </span>
               </div>
-              <Progress value={percentage} className="h-3" />
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+              <Progress value={percentage} className="h-2" />
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-lg border border-slate-200 bg-white p-2 text-center">
                   <p className="text-slate-500">Min Threshold</p>
                   <p className="font-semibold text-slate-900">{formatQty(item.min_threshold)} {item.unit_of_measure}</p>
                 </div>
-                <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+                <div className="rounded-lg border border-slate-200 bg-white p-2 text-center">
                   <p className="text-slate-500">Purchase Allowance</p>
                   <p className="font-semibold text-slate-900">{formatQty(item.purchase_allowance)} {item.unit_of_measure}</p>
                 </div>
-                <div className="text-center p-3 bg-white rounded-lg border border-slate-200">
+                <div className="rounded-lg border border-slate-200 bg-white p-2 text-center">
                   <p className="text-slate-500">Total Value</p>
                   <p className="font-semibold text-emerald-600">{formatPeso(totalValue)}</p>
                 </div>
@@ -204,12 +218,12 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
 
             {/* Packaging Specs (for packaging) */}
             {item.category === 'packaging' && packagingSpecs && (
-              <div className="bg-amber-50 rounded-lg p-4 space-y-4">
+              <div className="space-y-3 rounded-lg bg-amber-50 p-3">
                 <h4 className="font-medium text-amber-900 flex items-center gap-2">
                   <Ruler className="w-4 h-4" />
                   Packaging Specifications
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="bg-white rounded-lg p-3 border border-amber-100">
                     <p className="text-xs text-slate-500">Dimensions</p>
                     <p className="font-medium text-slate-900">
@@ -238,12 +252,12 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
 
             {/* Shelf Life Info - only show if shelf_life_days is configured */}
             {!financialPolicy.is_pure_service && item.fifo_enabled && (item.shelf_life_days || item.opened_shelf_life_days) && (
-              <div className="bg-purple-50 rounded-lg p-4 space-y-3">
+              <div className="space-y-3 rounded-lg bg-purple-50 p-3">
                 <h4 className="font-medium text-purple-900 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
                   Shelf Life Information
                 </h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                   <div className="bg-white rounded-lg p-3 border border-purple-100">
                     <p className="text-xs text-slate-500">Unopened Shelf Life</p>
                     <p className="font-medium text-slate-900">
@@ -265,8 +279,8 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
             <BarcodeManager item={item} onRefresh={onRefresh} />
             {/* Cost Info */}
             {(financialPolicy.show_cost || financialPolicy.show_sale_price) && (
-            <div className="space-y-3 p-4 bg-slate-50 rounded-lg">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-3 rounded-lg bg-slate-50 p-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {financialPolicy.show_sale_price && (
                   <div>
                     <p className="text-sm text-slate-500">Selling Price</p>
@@ -324,7 +338,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
             )}
             {/* Actions */}
             {!financialPolicy.is_pure_service && (
-            <div className="flex gap-6 pt-6 pb-4 border-t border-slate-200 mt-4">
+            <div className="mt-3 flex gap-3 border-t border-slate-200 pb-2 pt-4">
               <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
                 <Button variant="outline" className="w-full">
                   <History className="w-4 h-4 mr-2" />
@@ -348,28 +362,41 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
   // Render enhanced accordion view for products
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center gap-3">
-            <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center", category.color)}>
-              <Icon className="w-5 h-5" />
+        <DialogContent className="catalog-editor-dialog-content flex h-[90vh] max-h-[90vh] w-[90vw] max-w-[90vw] flex-col overflow-hidden p-0">
+          <DialogHeader className="flex-shrink-0 border-b border-slate-100 p-4 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <DialogTitle className="flex min-w-0 items-center gap-3">
+                <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", category.color)}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-lg">{item.name}</span>
+                  <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
+                </div>
+                {isInactive && (
+                  <Badge variant="outline" className="shrink-0 bg-slate-100 text-slate-500 border-slate-300">
+                    Inactive
+                  </Badge>
+                )}
+              </DialogTitle>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                onClick={onClose}
+                aria-label="Close item details"
+                title="Close"
+              >
+                <X className="h-5 w-5" />
+              </Button>
             </div>
-            <div>
-              <span className="text-xl">{item.name}</span>
-              <p className="text-sm font-normal text-slate-500">{item.sku_code}</p>
-            </div>
-            {isInactive && (
-              <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-300">
-                Inactive
-              </Badge>
-            )}
-          </DialogTitle>
-        </DialogHeader>
+          </DialogHeader>
 
-        {restoreBanner && <div className="flex-shrink-0 pt-2">{restoreBanner}</div>}
+        {restoreBanner && <div className="flex-shrink-0 px-4 pt-1">{restoreBanner}</div>}
 
         {/* Scrollable Accordion Content */}
-        <div className="flex-1 overflow-y-auto py-2">
+        <div className="flex-1 overflow-y-auto px-4 py-1">
           <Accordion type="multiple" defaultValue={defaultOpenSections} className="w-full">
 
             {/* Basic Information */}
@@ -542,7 +569,7 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
 
         {/* Actions Footer */}
         {!financialPolicy.is_pure_service && (
-        <div className="flex gap-4 pt-4 pb-2 border-t border-slate-200 flex-shrink-0">
+        <div className="flex flex-shrink-0 gap-3 border-t border-slate-200 px-4 pb-2 pt-3">
           <Link to={createPageUrl("StockMovements") + `?item=${item.id}`} className="flex-1">
             <Button variant="outline" className="w-full">
               <History className="w-4 h-4 mr-2" />
@@ -561,4 +588,3 @@ export default function ItemDetailsModal({ item, open, onClose, onRefresh, onRes
     </Dialog>
   );
 }
-

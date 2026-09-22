@@ -39,16 +39,24 @@ describe('POS strict location-binding settings visibility contract', () => {
     expect(settingsPageContent).toContain('pos_terminal_location_binding_enforced: settings.posTerminalLocationBindingEnforced === true');
   });
 
-  it('renders strict binding control without readiness diagnostics in terminal setup context', () => {
-    const setupPaneWithWorkspace = [terminalWorkspaceContent, posSetupPaneContent, posSetupOperationsPaneContent, posTerminalPaneContent, posTerminalAdvancedModalContent].join('\n');
-    const strictBindingStart = setupPaneWithWorkspace.indexOf('label="Strict Shift Location Binding"');
-    const strictBindingSection = setupPaneWithWorkspace.slice(strictBindingStart, strictBindingStart + 1800);
+  it('keeps registry policy out of the terminal-only POS setup context', () => {
+    const strictBindingStart = terminalWorkspaceContent.indexOf('/* Strict Shift Location Binding */');
+    const strictBindingSection = terminalWorkspaceContent.slice(strictBindingStart, strictBindingStart + 1800);
+    const terminalSetupStart = terminalWorkspaceContent.indexOf("case 'terminal_setup':");
+    const shiftControlsStart = terminalWorkspaceContent.indexOf("case 'shift_controls':", terminalSetupStart);
+    const terminalSetupSection = terminalWorkspaceContent.slice(terminalSetupStart, shiftControlsStart);
 
     expect(strictBindingStart).toBeGreaterThanOrEqual(0);
+    expect(terminalSetupStart).toBeGreaterThanOrEqual(0);
+    expect(shiftControlsStart).toBeGreaterThan(terminalSetupStart);
     expect(strictBindingSection).toContain('Strict Shift Location Binding');
     expect(strictBindingSection).toContain('Require location-bound terminal readiness for shift open, checkout, and terminal switching.');
     expect(strictBindingSection).toContain("onChange?.('terminalLocationBindingEnforced', enabled === true)");
     expect(strictBindingSection).not.toContain('readiness?.migration_tag');
+    expect(terminalWorkspaceContent).toContain('const showTerminalRegistryEditor = !editorSection || editorSection === \'registers\';');
+    expect(terminalWorkspaceContent).toContain('const showTerminalOnlyControlsPane = showTerminalOnlyControls');
+    expect(terminalSetupSection).toContain('editorSection="terminal_setup"');
+    expect(terminalSetupSection).not.toContain('editorSection="registers"');
   });
 
   it('keeps advanced terminal policies inside a modal with explicit save and cancel actions', () => {

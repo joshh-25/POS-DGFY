@@ -114,6 +114,7 @@ import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRef
 import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
+    buildTestPosPrinterUseCase,
     buildClaimOnlineOrderReceiptAutoPrintUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
@@ -436,6 +437,10 @@ export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ po
 // setting (POS_DEVICE_DRIVER / DEVICE_BRIDGE_ENABLED), not a per-request choice.
 const posDeviceDriver = resolvePosDeviceDriver();
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
+    posRepository,
+    deviceDriver: posDeviceDriver
+});
+export const testPosPrinterUseCase = buildTestPosPrinterUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });

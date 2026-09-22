@@ -37,7 +37,7 @@ export const runBusinessAdminAlertSnapshotCycle = async () => {
         let failures = 0;
         for (const tenant of tenants) {
             try {
-                await withTenant(tenant, () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository }));
+                await withTenant(tenant, () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository, tenant }));
             } catch (error) {
                 failures += 1;
                 logger.error(`Business Admin alert snapshot failed for tenant ${tenant.id}: ${error.message}`);

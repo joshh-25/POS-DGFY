@@ -18,6 +18,7 @@ import { recordComplianceSecuritySignalUseCase } from '../../compliance/index.js
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { formatReportDate, formatReportDateTime } from '../../shared/utils/reportTimezone.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -420,7 +421,7 @@ export const exportReportCSV = async (req, res, next) => {
     let data;
     let filename;
     let csvContent;
-    const dateSuffix = new Date().toISOString().split('T')[0];
+    const dateSuffix = formatReportDate(new Date());
 
     switch (type) {
       case 'expiry':
@@ -697,7 +698,7 @@ const generateExecutiveSummaryCSV = (data) => {
   const procurementOverview = data?.procurement_overview || {};
 
   rows.push('"EXECUTIVE SUMMARY REPORT"');
-  rows.push(`"Generated At","${data.generated_at}"`);
+  rows.push(`"Generated At (Asia/Manila)","${formatReportDateTime(data.generated_at)}"`);
   rows.push('');
 
   rows.push('"INVENTORY OVERVIEW"');

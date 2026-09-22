@@ -7,6 +7,7 @@ const PAYMENT_TYPES = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer',
 const PAYMENT_STATUSES = new Set(['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']);
 const TRANSACTION_STATUSES = new Set(['completed', 'voided']);
 const FULFILLMENT_STATUSES = new Set(['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected']);
+const RECEIPT_TYPES = new Set(['sales', 'refund', 'voided']);
 
 const fail = (code, message, statusCode = 400, details = null) => ({ success: false, error: new DomainError(code, message, { statusCode, details }) });
 const parsePositiveInt = (value) => { const parsed = Number.parseInt(value, 10); return Number.isInteger(parsed) && parsed > 0 ? parsed : null; };
@@ -33,10 +34,12 @@ const resolveScope = async ({ user, repository, branchId = null }) => {
 export const buildListBusinessAdminOrdersUseCase = ({ businessAdminOrderCenterRepository, businessAdminOverviewRepository }) => async ({ query = {}, user = {} } = {}) => {
     const branchId = query.branch_id ? parsePositiveInt(query.branch_id) : null;
     if (query.branch_id && !branchId) return fail(DomainErrorCode.VALIDATION_FAILED, 'branch_id must be a positive integer.', 422);
+    const itemId = query.item_id ? parsePositiveInt(query.item_id) : null;
+    if (query.item_id && !itemId) return fail(DomainErrorCode.VALIDATION_FAILED, 'item_id must be a positive integer.', 422);
     const scope = await resolveScope({ user, repository: businessAdminOverviewRepository, branchId });
     if (scope.error) return scope.error;
     const enumFilters = [
-        ['source', SOURCES, 'source'], ['payment_type', PAYMENT_TYPES, 'payment_type'], ['payment_status', PAYMENT_STATUSES, 'payment_status'], ['status', TRANSACTION_STATUSES, 'status'], ['fulfillment_status', FULFILLMENT_STATUSES, 'fulfillment_status']
+        ['source', SOURCES, 'source'], ['payment_type', PAYMENT_TYPES, 'payment_type'], ['payment_status', PAYMENT_STATUSES, 'payment_status'], ['status', TRANSACTION_STATUSES, 'status'], ['fulfillment_status', FULFILLMENT_STATUSES, 'fulfillment_status'], ['receipt_type', RECEIPT_TYPES, 'receipt_type']
     ];
     const normalized = {};
     for (const [key, permitted, label] of enumFilters) {
@@ -57,7 +60,7 @@ export const buildListBusinessAdminOrdersUseCase = ({ businessAdminOrderCenterRe
     const { startAt, endAt } = manilaRange({ dateFrom, dateTo });
     const data = await businessAdminOrderCenterRepository.listOrders({
         allowedLocationIds: scope.allowedLocationIds,
-        filters: { page, limit, branchId, terminalId, cashierId, source: normalized.source, paymentType: normalized.payment_type, paymentStatus: normalized.payment_status, transactionStatus: normalized.status, fulfillmentStatus: normalized.fulfillment_status, search, startAt, endAt }
+        filters: { page, limit, branchId, itemId, terminalId, cashierId, source: normalized.source, paymentType: normalized.payment_type, paymentStatus: normalized.payment_status, transactionStatus: normalized.status, fulfillmentStatus: normalized.fulfillment_status, receiptType: normalized.receipt_type, search, startAt, endAt }
     });
     return { success: true, data };
 };

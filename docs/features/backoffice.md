@@ -62,10 +62,10 @@ repositories -> models` boundary from
 | BO-05 | Product Mix | `sales_by_item` and `sales_by_category` report datasets with quantity, net sales, and transaction counts. | `implemented`; no second sales calculation is introduced. |
 | BO-06 | Products and menu configuration | POS-native catalog/inventory entry point, recipe visibility, and report links; catalog identity and mutations remain in the POS/catalog owner. | `partial by design`; category/item authoring must use the canonical POS catalog workflow. |
 | BO-07 | Inventory, ingredients, movement, and low stock | FIFO valuation projection, branch stock read model, low-stock dataset, recipe visibility, alert snapshots, and additive indexes. | `implemented` for read/monitoring; stock mutations remain inventory-owned. |
-| BO-08 | Expenses and profit after expenses | Explicit Expenses workspace explains the missing accounting ledger and links cash movement to POS drawer history. | `blocked`; accounting owner, tax treatment, retention, and an approved expense schema are required before writes or profit-after-expenses are enabled. |
+| BO-08 | Expenses and profit after expenses | POS Business Admin now provides a tenant-local operational expense ledger with branch scope, PHP totals, idempotent create, audit-backed void, and search/date/branch filters. Cash movement remains in Shifts & cash. | `partial`; operational expense capture is enabled for authorized admin/manager users, while statutory accounting, tax treatment, retention mapping, and profit-after-expenses remain deferred. |
 | BO-09 | Cash drawer monitoring | Shifts & cash workspace reads shift totals, drawer variance, open/overdue shifts, and handoff/refund activity. | `implemented` read-only; force-close remains a canonical POS command. |
 | BO-10 | Customers and purchase behavior | Tenant-scoped customer list/detail, purchase frequency, spend, favorite products, and recent orders. | `implemented`; global identity remains separate. |
-| BO-11 | Staff and attendance | Team & access/workforce read model and an Attendance workspace for POS operator sessions. | `partial`; selfie time-in/time-out is an explicit ADR 0073 non-goal until privacy, consent, retention, and owner approval exist. Payroll is also out of scope. |
+| BO-11 | Staff and attendance | Team & access/workforce read model plus a read-only Attendance workspace for canonical POS attendance and operator sessions. | `implemented` for POS attendance/operator-session reads; selfie time-in/time-out remains an explicit ADR 0073 non-goal until privacy, consent, retention, and owner approval exist. Payroll is also out of scope. |
 | BO-12 | Audit trail | Tenant-wide audit endpoint with actor/entity/outcome fields and sensitive-value redaction. | `implemented`; audit writes remain at the owning command boundary. |
 | BO-13 | Multiple stores and centralized monitoring | Branch workspace, branch-scoped filters, and optional all-company overview backed by accepted DGFY memberships. | `implemented` for authorized memberships; unavailable or unauthorized companies are excluded fail-closed. |
 | BO-14 | Online orders | POS order center exposes Storefront source, fulfillment, payment, and lifecycle status. | `implemented`; public ordering remains Storefront-owned and delivery runs remain POS-owned. |
@@ -78,7 +78,7 @@ than being represented by invented tables or unsafe mutations:
 
 | Gate | Current status | Owner / decision date |
 | --- | --- | --- |
-| Expenses and profit-after-expenses | `deferred`; cash added/cash-out remains POS drawer activity, not an expense. | Finance/accounting owner to be assigned; date pending. |
+| Expenses and profit-after-expenses | Operational expense capture is `implemented` for the approved ledger contract; cash added/cash-out remains POS drawer activity, not an expense. Profit-after-expenses, tax mapping, and statutory accounting remain `deferred`. | Finance/accounting owner and follow-up accounting contract required for deferred calculations; date pending. |
 | Selfie attendance | `deferred`; biometric capture is outside the approved POS attendance contract. | Product, privacy/legal, and HR owner to be assigned; date pending. |
 | Refund and force-close approvals | `blocked`; the canonical POS command is not exposed, so the API fails closed with `BUSINESS_ADMIN_APPROVAL_OWNER_UNAVAILABLE`. | POS command owner; date pending. |
 | BIR/CAS accreditation | `deferred`; stored fiscal evidence is not proof of accreditation, registration, or filing. | Compliance/legal owner; date pending. |
@@ -86,7 +86,7 @@ than being represented by invented tables or unsafe mutations:
 | Terminal heartbeat | `deferred`; the terminal registry is authoritative and heartbeat is optional telemetry. | Terminal telemetry owner; date pending. |
 
 `date pending` is an explicit unresolved dependency, not an inferred approval.
-Do not add camera storage, expense writes, payout reconciliation, fiscal filing,
+Do not add camera storage, tax/accounting calculations, payout reconciliation, fiscal filing,
 or duplicate POS command paths until the listed owner makes the corresponding
 contract decision.
 
@@ -118,10 +118,8 @@ Completed evidence for the current implementation:
 - authenticated desktop (1440px) and mobile (390px) renders show the complete
   navigation and a working Orders transition, with no console errors, failed
   Business Admin requests, or horizontal page overflow;
-- the targeted compliance declaration/API-contract check passed for this
-  initiative. The unscoped local compliance command still sees unrelated dirty
-  declarations from other worktree changes and is not used as evidence for
-  this phase;
+- the repository-wide compliance declaration/API-contract check passed for the
+  current worktree, including the Phase 365 declaration;
 - local stack is healthy on SKUpervisor 5173, POS 5174, Storefront 5175, API
   5000, device bridge 5101, and MySQL 3306.
 
@@ -216,7 +214,7 @@ authority.
 | --- | --- |
 | Phase 348 strict device UI/enrollment | Keep enrollment records, pairing challenges, device proof, printer/drawer/sound controls, and shift-safe terminal operations in POS. Back Office may later link to or monitor the registry, but does not create a second device store. |
 | Phase 356 permission UI | Reuse the existing user, permission, role, and location-grant APIs. Do not create a second grant table. Phase 362 must add section-level authorization because the generic `settings:edit` route currently covers the generic settings contract. |
-| Current `BusinessAdminPage` settings/onboarding/storefront/F&B/expenses/attendance workspaces | These are currently policy-gated informational workspaces (`SimpleWorkspace`), not migrated editors. Phase 361+ will embed extracted forms; Phase 360 records this gap without claiming it is fixed. |
+| Current `BusinessAdminPage` settings/onboarding/storefront/F&B/expenses/attendance workspaces | Settings/onboarding/storefront/F&B remain policy-gated or extracted workspaces. Expenses is now the exception: it uses the approved tenant-local operational ledger contract; it does not become a statutory accounting or POS cash-drawer editor. |
 | Park/resume sale | Remains the POS terminal's canonical transaction flow. Business Admin links to it instead of duplicating cart or shift state. |
 | Settings refresh | Keep the existing 30-second tenant/company cache and invalidation after successful writes. Later phases must document whether each value takes effect immediately, on next order, on next shift, or after terminal refresh. |
 
@@ -359,7 +357,7 @@ publication, subscriber deduplication, Team mutation callbacks, and background
 refresh wiring. Final concurrency, offline, cross-company, and responsive
 hardening remains Phase 365.
 
-### Phase 365 implementation progress (in progress 2026-09-15)
+### Phase 365 implementation progress (completed 2026-09-15)
 
 Phase 365 now closes the stale-write and cross-window isolation gaps identified
 by the Phase 360 field inventory while keeping the existing owners. Generic
@@ -388,6 +386,11 @@ their existing tenant scope. The server-projected Business Admin capability
 matrix and canonical route permission gates remain the authorization boundary;
 the new concurrency metadata does not grant access.
 
+After an accepted event, the mounted POS `SettingsWorkspace` refreshes its
+clean editor draft from the canonical settings readback. Dirty local drafts are
+left untouched, so a manager editing in POS is not silently overwritten by a
+remote Business Admin save.
+
 Evidence completed in this pass: API concurrency/validator/use-case tests
 passed (7 suites, 101 tests, including compare-and-set and stale-write cases),
 and the API permission/business-admin contracts passed (2 suites, 10 tests).
@@ -410,13 +413,16 @@ branch 1 (`Tindahan Ko`); Masu Cafe exposed branches 1, 4, and 3 (`Masu Cafe`,
 branch to `Spacebar`. Desktop and mobile captures for both companies, plus
 mobile branch captures, are stored under `.tmp/phase365-browser-evidence/`.
 
+The authenticated `apps/dgfy-pos/tests/e2e/business-admin-pos-settings-sync.spec.js`
+test also passed from Warn → Enforce on Masu Cafe and restored the original
+setting. `npm run check:compliance`, the focused contracts, POS build,
+documentation/ADR, architecture, whitespace, and authenticated sync E2E checks
+all passed.
+
 Rollback is code-only: revert the Phase 365 application changes to restore the
 previous write path and event subscriber. Persisted setting keys and values
 remain valid because no schema/data migration or new owner was added; no data
-rollback is required. The repository-wide compliance impact check is still
-blocked by eight pre-existing unrelated dirty declaration/surface mismatches;
-the Phase 365 scoped impact and API contract checks passed. The phase remains
-in progress only until that repository-wide compliance condition is resolved.
+rollback is required. Phase 365 is complete; the next eligible phase is 366.
 
 ### Implementation phases
 
@@ -477,8 +483,8 @@ scoped compliance checks, plus rollback and settings readback.
 
 Objective: Keep business configuration in Back Office, retain terminal controls
 inside POS, and let authorized managers open Back Office without starting a
-cashier shift. This is a documentation-only plan; phases 366–368 are planned,
-not approved or implemented. Preserve completed phases 360–364.
+cashier shift. Phases 365–368 are completed. Preserve completed phases
+360–370.
 
 ### Critical assessment and boundaries
 
@@ -504,8 +510,22 @@ not approved or implemented. Preserve completed phases 360–364.
 | 367 — Terminal settings ownership | Keep device/printer controls, terminal selection, queue scope and local sound in POS. Make Back Office the primary editor for registry policy, branch bindings, business/receipt metadata, discounts, payments, team and Storefront configuration. Preserve needed onboarding and legacy entry paths. | Each setting has a clear primary destination, with no duplicate business logic; terminal controls still honor permission, device-policy and connectivity requirements. |
 | 368 — Final acceptance | Verify desktop/mobile navigation, fresh-tab authentication, expired sessions, logout, company switching, denied access, branch refresh and unsaved changes. Verify actual window opening and accurate feedback. Run affected builds and architecture/docs checks; record evidence and rollback. | No blank page, unauthorized access, lost cart/shift or wrong-company/branch refresh. All required checks pass before completion. |
 
-Dependencies are sequential: finish 365, then 366, 367 and 368. Current phase:
-365 (`in_progress`); next eligible phase after completion: 366 (`planned`).
+Dependencies are sequential for the settings-access follow-up: Phase 368 is
+complete. Phase 366 remains an isolated manager-entry hardening step and does
+not change the completed Phase 365 settings-sync scope. Phases 369 and 370 are
+separately allocated completed follow-ups; the next eligible repository phase
+is Phase 371.
+
+### Phase 366 implementation result
+
+The POS now keeps Back Office visible only for an authenticated, authorized
+non-cashier manager and permits its separate-window confirmation while checkout
+is locked or no cashier shift is active. The persistent sidebar, mobile lock
+drawer, and unlock modal expose the same guarded entry; locked POS content and
+cashier actions remain disabled. Fresh-tab authentication continues to use the
+existing HttpOnly cookie/session authority, and expired sessions show a direct
+POS sign-in action. Server authentication, tenant membership, branch grants,
+and section permissions remain authoritative.
 
 ### Implementation targets and validation
 
@@ -529,11 +549,305 @@ Follow [Architecture Boundaries](../architecture/ARCHITECTURE_BOUNDARIES.md)
 [ADR 0026](../architecture/adr/0026-browser-session-cookie-authority.md)
 (2026-07-08),
 [ADR 0031](../architecture/adr/0031-pos-terminal-pairing-and-shift-safe-navigation.md)
-(2026-09-14), and
+(2026-09-15), and
 [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md)
 (2026-09-03). Recheck freshness before implementation. Preserve browser-cookie
 session authority, shared-component boundaries and shift/device protections.
-Include a dated ADR 0031 clarification with the manager-entry implementation;
-this plan itself does not amend the ADR. No new storage owner, architecture
-exception or allowlist dependency is proposed. Run applicable architecture
-boundary checks for affected shared POS/authentication changes.
+Phase 366 rechecked document freshness and records a dated ADR 0031 clarification with the manager-entry
+implementation. No new storage owner, architecture exception or allowlist
+dependency is proposed. Run applicable architecture boundary checks for
+affected shared POS/authentication changes.
+
+### Phase 367 implementation result
+
+Business Admin is the primary editor for business and receipt metadata, tenant
+POS configuration and discount presets, Storefront and branch configuration,
+payment policies, team and attendance access, and terminal registry/branch-
+binding policy. These sections continue to use the shared
+`SettingsWorkspace`, existing settings APIs and server-projected tenant/branch
+view/edit permissions.
+
+The POS `terminal_setup` route now passes its own terminal-local editor scope.
+It retains queue scope and local order sound controls, while the Terminal
+Registry, registry mode, strict location binding, voucher policy, and cashier
+assignment policy remain in the Back Office `registers` section. Device/printer
+bridge operations, terminal selection, shifts, cash drawer actions and checkout
+remain in the POS operational surface. `PosTenantSetupModal` onboarding and
+legacy settings URLs remain usable compatibility paths; no duplicate API,
+storage owner or migration was introduced.
+
+Validation completed 2026-09-15: the focused Back Office navigation, strict
+binding ownership, terminal session/view and pairing contracts passed (5 files,
+100 tests), the Business Admin settings ownership model contract passed (1
+file, 7 tests), and the existing Phase 366 navigation/session/API/browser
+evidence remained green. The company-scoped settings ownership E2E passed,
+covering the rendered POS/Back Office split and Back Office save/readback. The
+existing terminal-location integration coverage was inspected and left
+unchanged; the ownership regression is covered by the focused source contracts
+and the production POS build. POS lint/build,
+documentation/ADR lint, architecture, compliance and `git diff --check` are
+required completion gates and are recorded in the phase ledger.
+
+### Phase 368 implementation result
+
+Final acceptance now covers the complete manager settings-access lifecycle.
+Business Admin bootstrap requests are sequence-guarded so an older response
+cannot restore a previous tenant or branch after refresh, and the UI
+distinguishes unavailable, authenticated-but-denied, and missing/expired
+session states. Logout/session-expiry/company-switch events clear the mounted
+Business Admin data and dirty draft state with actionable feedback. Branch
+settings selection is persisted in the hash-route `branch_id` query and
+survives reload; sidebar navigation, POS handoff, refresh, branch changes, and
+browser unload all protect unsaved settings with an explicit discard prompt.
+An accepted refresh remounts and rehydrates the canonical shared settings
+editor, while a cancelled refresh leaves the draft unchanged.
+
+Validation completed 2026-09-15: the focused navigation/session/settings
+contracts passed (9 files, 141 tests), the settings model contract passed (7
+tests), Phase 368 authenticated browser acceptance passed (3 tests) for branch
+refresh, dirty-draft protection, session/logout/company invalidation, and a
+server-returned 403 denial state, and the Phase 366 desktop/mobile independent
+Back Office window checks passed (2 tests). POS lint passed and the production
+build passed with 3,770 modules; existing Vite chunk-size and dynamic-import
+warnings remain non-blocking. The browser acceptance found no blank page,
+unexpected page error, failed request, server error, lost cart/shift state, or
+wrong-company branch refresh. Existing API permission contracts and the
+company-scoped settings save/readback evidence remain the server-side
+authorization and persistence proof. Same-origin popup/session behavior was
+verified; no separate-device synchronization claim is made.
+
+Rollback is code/test/documentation-only: revert the Phase 368 changes to
+restore the previous Business Admin bootstrap/error, branch-route, refresh,
+and acceptance-test behavior. No schema, setting key, session, cart, shift,
+tenant, or branch data rollback is required.
+
+## Phase 369 — Back Office roles and cashier lifecycle
+
+The Team & access section is now the clear Back Office entry point for the
+existing canonical User Management owner. Its action is labeled **Manage Users
+& Roles** and its supporting copy names the available F&B Admin, Restaurant
+Manager, Cashier, and other mode-aware role presets. User Management continues
+to load the server role catalog, granular permissions, invitation state, and
+location grants; Back Office access itself does not grant user-management
+permissions.
+
+The separate **Invite Cashier** action intentionally remains cashier-only. It
+continues to create the existing DGFY invitation/authorization profile and does
+not create a local cashier credential or expose admin/manager roles. Active
+cashiers now also have a `users:delete`-gated **Remove cashier** action in the
+canonical cashier access list. Removal uses the existing tenant-user DELETE
+contract as a soft delete, updates the visible list and sends the established
+settings refresh notification; sales, shifts, and other historical records are
+preserved.
+
+The API now refuses removal while the target owns an open POS shift, active POS
+operator session, or open attendance session. The user must close or hand off
+that operating state first, protecting the attendance/register invariants in
+ADR 0073. Master-admin and hierarchy checks remain server-authoritative.
+
+Validation completed 2026-09-15: the focused cashier contract, API soft-delete
+policy tests, configured POS test suite, POS lint/build, API lint, and
+whitespace checks passed. Authenticated Masu Cafe browser verification showed
+the full role catalog, cashier-only invitation, and cancellation-safe cashier
+removal confirmation without removing any live cashier. No migration or new
+storage owner was required. The next eligible repository phase is 370.
+
+## Phase 370 — POS Back Office merchant-surface consolidation
+
+The POS Back Office is now the single merchant-facing administration surface.
+The Business Admin shell groups the migrated catalog editor, suppliers,
+purchase orders, job orders, stock movements, dispatch orders, services,
+Food & Beverage, hospitality, sales timeline, and tenant-scoped assistant
+without sending the operator to a second merchant application. Reports and
+settings entry points also remain inside the POS route boundary.
+
+The shared `packages/web-core/src/features/merchantBackOffice` boundary now
+owns the migrated IMS-only pages and the phone-first purchase-order/job-order
+receiving flow. It reuses the existing APIs, permission checks, workflow gates,
+inventory ledger, and tenant/branch context; it does not create a second
+catalog, procurement, inventory, or receiving owner. The POS route also maps
+legacy shared page links and `/sales`/`/reports` URLs back to the canonical
+Back Office sections.
+
+Storefront business inventory and company-switch actions now hand off directly
+to POS Back Office through the tenant-session handoff builder. The old
+SKUpervisor handoff builder is removed. Old IMS merchant URLs remain only as
+authenticated compatibility routes that show a retirement handoff to the
+equivalent POS destination. IMS `/admin/*` platform administration, auth,
+invitation, and legal compatibility routes remain available and are not part
+of the merchant-surface retirement.
+
+Phase 370 is completed. The POS migration contract, shared route/handoff
+contracts, POS suite (6 files, 26 tests), Storefront suite (220 files, 1,187
+tests), IMS/shared suite (366 files, 2,383 tests), POS/Storefront/IMS lint and
+builds, authenticated Masu Cafe browser checks for all 12 migrated modules,
+390px overflow checks, the IMS `/items` retirement handoff, compliance,
+architecture, docs/ADR, and whitespace checks are green. The receiving
+route/build contracts passed without mutating a live token. No database
+migration or new data owner is planned. The next eligible repository phase is
+372.
+
+## Phase 371 — Back Office attendance read model
+
+The Back Office Attendance route now renders the canonical POS attendance and
+operator-session read model instead of the previous informational placeholder.
+Authorized managers can filter by date and visible branch, review attendance
+and terminal operator-session tables, and receive explicit loading, empty,
+error, and access-denied states. Branch scope is enforced server-side from the
+existing Business Admin permission and location-grant contracts; client input
+cannot widen an assigned user's locations.
+
+The API is a thin Business Admin adapter over the existing POS lifecycle
+repository. It adds no attendance tables, biometric capture, payroll export,
+schedule management, attendance writes, or duplicate calculations. The
+workspace continues to show biometric attendance and payroll as out of scope
+under ADR 0073.
+
+Validation completed 2026-09-16: the focused Business Admin attendance and POS
+lifecycle repository suites passed (2 suites, 17 tests), the POS attendance
+workspace contract passed (2 tests), and authenticated local Playwright
+acceptance passed against `/?view=reports#/backoffice/attendance` with an HTTP
+200 attendance response, visible date/branch filters, both tables, branch
+filter refresh, no blank page, no page errors, no unexpected console errors,
+and no server errors. Targeted API lint, architecture/controller-boundary
+checks, POS lint, and the POS production build (3,770 modules) passed; the
+existing non-blocking Vite chunk-size/dynamic-import warnings remain.
+
+Implementation targets are `businessAdminAttendanceUseCase.js`, the existing
+POS `loadCashierLifecycleReport`/`posRepository` contract, the Business Admin
+route/controller/client, and `BusinessAdminPage.jsx`. No migration or new data
+owner was introduced. Rollback is code/test/documentation-only; no historical
+attendance or operator-session data rollback is required. Phase 371 is
+completed; the next eligible repository phase is 372.
+
+## Phase 372 — Workflow-aware merchant Back Office navigation
+
+The POS Back Office now applies the shared tenant workflow capability contract
+to migrated merchant modules. For an F&B tenant, Services, Hospitality, Job
+Orders, and Dispatch Orders are hidden from the sidebar while Catalog,
+Inventory, F&B configuration, Orders, Settings, Storefront, Sales, and Reports
+remain available. This is capability-based rather than a hardcoded F&B-only
+allow-list, so a tenant with an explicit composed capability overlay can still
+see an enabled vertical module.
+
+Direct navigation to an unavailable workflow route is protected as well. The
+Back Office resolves workflow visibility before mounting the migrated module;
+unavailable or unresolved sections redirect to Back Office Overview without
+calling the module's denied APIs. Backend workflow capability guards remain
+authoritative and unchanged.
+
+Validation completed 2026-09-16: the focused workflow visibility contract,
+Business Admin migration contract, shared Back Office navigation contract, POS
+test suite (8 files, 31 tests), POS lint, and POS production build (3,771
+modules) passed. Repository documentation/ADR checks, architecture guardrails,
+compliance checks, and `git diff --check` also passed. Authenticated local Masu
+Cafe browser verification confirmed
+that desktop and 390px mobile navigation hide Services, Hospitality, Job
+Orders, and Dispatch Orders, preserve F&B navigation, redirect direct Services
+and Hospitality URLs to Overview, report no console errors, and have no mobile
+horizontal overflow. No API, database, setting key, migration, or data owner
+changed. Rollback is code/test/documentation-only; no tenant or workflow data
+rollback is required. Phase 372 is completed; the next eligible repository
+phase is 373.
+
+## Phase 373 — POS Settings shortcut to Back Office
+
+The POS terminal sidebar now restores a manager-facing **Settings** entry that
+opens the canonical POS Back Office settings workspace at
+`/backoffice/settings/profile`. The existing **Back Office** entry still opens
+the full merchant overview, while **Terminal setup** remains in POS for
+terminal-local queue scope, order sound, device, and printer controls. The
+shortcut reuses the existing authenticated separate-window opener, branch
+context handling, and Back Office authorization checks; it does not create a
+second settings owner or route through the retired IMS/SKUpervisor surface.
+
+Validation completed 2026-09-16: the shared Back Office navigation contract
+passed (9 tests), the POS test suite passed (8 files, 31 tests), POS lint and
+the POS production build (3,771 modules) passed, and authenticated Masu Cafe
+browser verification showed the Settings entry, the canonical Back Office
+settings workspace, and the unchanged terminal-only setup controls. The
+Settings workspace rendered Business & receipts with the expected authorized
+sections and retained the POS terminal-controls handoff. No API, database,
+setting key, migration, or data owner changed. Phase 373 is completed; the
+next eligible repository phase is 374.
+
+### Phase 373 follow-up — simplified terminal entry points
+
+Post-completion navigation refinement completed 2026-09-16: after reviewing
+the terminal workflow against the canonical Back Office split, the direct POS
+Settings shortcut was removed. The final POS sidebar exposes **Back Office**
+for merchant administration and **Terminal setup** for terminal-local
+controls; Settings remains available inside Back Office at
+`/backoffice/settings/profile`. This supersedes the shortcut's presentation
+only. Authorization, branch context, settings ownership, APIs, storage, and
+data owners are unchanged. The shared navigation contract, POS suite, lint,
+build, repository checks, and authenticated Masu Cafe browser verification
+passed for the final flow.
+
+## Phase 375 — Business Admin historical read visibility
+
+The data-backed Shifts, Orders, and Audit tabs now open on the previous 30
+Asia/Manila calendar days through today, so historical tenant records are
+visible without requiring a manual date search. Each route exposes Today, Last
+7 days, Last 30 days, and Custom range controls; changing a preset or date
+reloads the canonical read model. Audit correctly remains tenant-wide and
+does not display a misleading branch filter.
+
+Audit date-only boundaries are converted from Asia/Manila midnight and
+end-of-day to their UTC instants before querying the existing redacted audit
+read model. Empty states identify the selected range and explain how to widen
+it. POS onboarding and Storefront remain their intentional read-model/policy
+gates. Expenses now has an operational ledger path with no tax/profit inference,
+no payroll or biometric behavior, no commerce mutation, and no duplicate POS
+cash-drawer storage.
+
+Validation completed 2026-09-16 under the Phase 375 ledger entry. The focused
+date-range/API boundary contracts, POS suite, authenticated Masu Cafe desktop
+browser acceptance for all three routes and preset switching, POS/API
+lint/build, architecture/documentation/compliance checks, and
+`git diff --check` passed. No database migration, live data mutation, or new
+data owner was introduced. Phase 375 is completed; the next eligible
+repository phase is 376.
+
+## Phase 376 — Tier-aware POS terminal setup
+
+The POS now has a complete local setup path for tenants/operators who do not
+use Business Admin. The existing authorization contract defines the three
+surfaces without introducing a new subscription or database tier field:
+
+- POS-only: `pos:view` without Business Admin access. The operator sees one
+  **POS setup** entry, not Back Office or a duplicate generic Settings entry.
+- POS + Back Office: an authorized non-cashier sees **Back Office** plus the
+  existing **Terminal setup** entry for terminal-local controls.
+- Full admin: the existing admin/master-admin access continues to expose the
+  authorized Back Office surface and its server-projected settings sections.
+
+POS setup contains the controls that must remain available at the counter:
+terminal identity selection, assigned branch/queue visibility, local online
+order sound, printer detection/refresh, and a no-sale test print. Terminal
+registry creation, registry mode, strict branch-binding policy, and cashier
+assignment remain Back Office-owned. Active shifts, cross-branch changes,
+pairing, permission checks, and API authorization continue to use the existing
+POS contracts; no new credential, schema, or storage owner was added.
+
+The printer test reuses the existing iMin and LAN bridge drivers. LAN tests
+use `POST /pos/device/test-print` with bounded message/copy validation and an
+audit row; native iMin tests use the existing local bridge and never create a
+sale. A missing printer disables the action and reports the actual hardware
+state instead of showing a misleading successful control.
+
+Validation completed 2026-09-16: focused shared POS contracts passed (6 files,
+114 tests), backend test-print/device contracts passed (3 suites, 15 tests),
+POS lint passed, POS and IMS production builds passed, and the documentation,
+architecture, compliance/API-contract, and whitespace checks passed. Local
+authenticated Masu Cafe browser verification rendered the terminal setup
+surface at desktop and 390px mobile widths, showed the assigned Masu Cafe
+queue, reported no printer detected honestly, and found no Error Boundary or
+mobile horizontal overflow. The first browser load exposed and fixed a
+declaration-order regression before the clean verification reload. No live
+tenant, branch, shift, sale, printer, or settings data was changed.
+
+Rollback is code/test/documentation-only: revert the Phase 376 POS terminal
+setup, printer diagnostic, and navigation changes. No schema, tenant, branch,
+session, shift, transaction, or hardware-pairing data rollback is required.
+Phase 376 is completed; the next eligible repository phase is 377.

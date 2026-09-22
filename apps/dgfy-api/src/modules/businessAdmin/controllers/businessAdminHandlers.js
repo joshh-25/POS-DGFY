@@ -1,4 +1,4 @@
-import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminActivityUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase } from '../index.js';
+import { acknowledgeBusinessAdminNotificationUseCase, cancelBusinessAdminApprovalUseCase, createBusinessAdminCustomerUseCase, createBusinessAdminExpenseUseCase, createBusinessAdminSavedReportViewUseCase, decideBusinessAdminApprovalUseCase, deleteBusinessAdminSavedReportViewUseCase, dismissBusinessAdminNotificationUseCase, exportBusinessAdminReportUseCase, getBusinessAdminAttendanceUseCase, getBusinessAdminBootstrapUseCase, getBusinessAdminCommerceMonitoringUseCase, getBusinessAdminCustomerDetailUseCase, getBusinessAdminFiscalUseCase, getBusinessAdminInventoryValuationUseCase, getBusinessAdminMultiCompanyOverviewUseCase, getBusinessAdminOrderDetailUseCase, getBusinessAdminOverviewUseCase, getBusinessAdminReportDatasetUseCase, getBusinessAdminReportsUseCase, getBusinessAdminWorkforceUseCase, listBusinessAdminAuditUseCase, listBusinessAdminApprovalsUseCase, listBusinessAdminCustomersUseCase, listBusinessAdminExpensesUseCase, listBusinessAdminInventoryStockUseCase, listBusinessAdminNotificationsUseCase, listBusinessAdminOrdersUseCase, listBusinessAdminRecipesUseCase, listBusinessAdminReportDefinitionsUseCase, listBusinessAdminSavedReportViewsUseCase, listBusinessAdminShiftsUseCase, markBusinessAdminNotificationReadUseCase, voidBusinessAdminExpenseUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 const timestamp = () => new Date().toISOString();
@@ -136,6 +136,17 @@ export const getWorkforce = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+export const getAttendance = async (req, res, next) => {
+    try {
+        const result = await getBusinessAdminAttendanceUseCase({ query: req.query, user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
 export const getFiscal = async (req, res, next) => {
     try {
         const result = await getBusinessAdminFiscalUseCase({ query: req.query, user: req.user });
@@ -169,9 +180,62 @@ export const listCustomers = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+export const createCustomer = async (req, res, next) => {
+    try {
+        const result = await createBusinessAdminCustomerUseCase({ body: req.body, user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
 export const getCustomerDetail = async (req, res, next) => {
     try {
         const result = await getBusinessAdminCustomerDetailUseCase({ profileRef: req.params.profileRef, query: req.query, user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const listExpenses = async (req, res, next) => {
+    try {
+        const result = await listBusinessAdminExpensesUseCase({ query: req.query, user: req.user });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const createExpense = async (req, res, next) => {
+    try {
+        const result = await createBusinessAdminExpenseUseCase({
+            body: req.body,
+            user: req.user,
+            auditContext: auditContext(req, res)
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => result.data?.idempotent ? 200 : 201,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => errorPayload(req, res, failure)
+        });
+    } catch (error) { next(error); }
+};
+
+export const voidExpense = async (req, res, next) => {
+    try {
+        const result = await voidBusinessAdminExpenseUseCase({
+            expenseId: req.params.id,
+            body: req.body,
+            user: req.user,
+            auditContext: auditContext(req, res)
+        });
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
             successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
@@ -347,13 +411,6 @@ export const acknowledgeNotification = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
-export const listActivity = async (req, res, next) => {
-    try {
-        const result = await listBusinessAdminActivityUseCase({ query: req.query, user: req.user });
-        return sendUseCaseResult(res, result, { successStatusCodeResolver: () => 200, successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }), errorPayloadResolver: (failure) => errorPayload(req, res, failure) });
-    } catch (error) { next(error); }
-};
-
 export default {
     getBootstrap,
     getOverview,
@@ -365,15 +422,26 @@ export default {
     getInventoryValuation,
     listInventoryStock,
     getWorkforce,
+    getAttendance,
     getFiscal,
     listOrders,
     getOrderDetail,
+    listCustomers,
+    createCustomer,
+    getCustomerDetail,
+    listExpenses,
+    createExpense,
+    voidExpense,
     getCommerceMonitoring,
     listSavedReportViews,
     createSavedReportView,
     deleteSavedReportView,
     listAudit,
     listApprovals,
-    decideApproval
-    , cancelApproval, listNotifications, markNotificationRead, dismissNotification, acknowledgeNotification, listActivity
+    decideApproval,
+    cancelApproval,
+    listNotifications,
+    markNotificationRead,
+    dismissNotification,
+    acknowledgeNotification
 };

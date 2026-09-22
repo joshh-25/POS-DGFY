@@ -161,6 +161,8 @@ export const salesRepository = {
     const limit = Math.min(Number.parseInt(filters.limit, 10) || 20, 200);
     const source = filters.source ? String(filters.source).toUpperCase() : 'ALL';
     const sourceId = Number.parseInt(filters.source_id, 10);
+    const itemId = Number.parseInt(filters.item_id, 10);
+    const hasItemFilter = Number.isInteger(itemId) && itemId > 0;
     const search = String(filters.search || '').trim();
     const status = filters.status ? String(filters.status).trim() : null;
     const paymentType = filters.payment_type ? String(filters.payment_type).trim() : null;
@@ -199,6 +201,7 @@ export const salesRepository = {
           {
             model: PosTransactionLine,
             as: 'lines',
+            ...(hasItemFilter ? { required: true, where: { item_id: itemId } } : {}),
             include: [{ model: Item, as: 'item', attributes: ['item_id', 'name'] }]
           },
           {
@@ -241,6 +244,7 @@ export const salesRepository = {
           {
             model: DispatchOrderLine,
             as: 'lines',
+            ...(hasItemFilter ? { required: true, where: { item_id: itemId } } : {}),
             include: [{ model: Item, as: 'item', attributes: ['item_id', 'name'] }]
           }
         ],
@@ -270,8 +274,21 @@ export const salesRepository = {
       acc.service_fee_total = round4(acc.service_fee_total + toNum(row.service_fee_amount));
       acc.cogs = round4(acc.cogs + toNum(row.cogs));
       acc.gross_profit = round4(acc.gross_profit + toNum(row.gross_profit));
+      acc.discounts = round4(acc.discounts + toNum(row.discount_amount));
+      acc.vatable_sales = round4(acc.vatable_sales + toNum(row.vatable_sales));
+      acc.vat = round4(acc.vat + toNum(row.vat_amount));
+      acc.net_sales = round4(acc.net_sales + toNum(row.gross_sales) - toNum(row.discount_amount));
       return acc;
-    }, { gross_sales: 0, service_fee_total: 0, cogs: 0, gross_profit: 0 });
+    }, {
+      gross_sales: 0,
+      service_fee_total: 0,
+      cogs: 0,
+      gross_profit: 0,
+      discounts: 0,
+      vatable_sales: 0,
+      vat: 0,
+      net_sales: 0
+    });
 
     return {
       transactions,

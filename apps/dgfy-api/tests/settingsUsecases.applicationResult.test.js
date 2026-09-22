@@ -73,6 +73,31 @@ describe('settings use-cases application result contract', () => {
     }));
   });
 
+  it('omits storefront asset settings when the persisted files are unavailable', async () => {
+    const isAvailable = jest.fn(({ url }) => Promise.resolve(!String(url || '').includes('missing')));
+    const useCase = buildGetAllSettingsUseCase({
+      settingsRepository: {
+        getAllSettings: jest.fn().mockResolvedValue({
+          storefront_cover_image_url: { value: '/uploads/storefront-assets/tenant-a/missing-cover/large.png' },
+          storefront_cover_image_path: { value: 'storefront-assets/tenant-a/missing-cover/large.png' },
+          storefront_profile_image_url: { value: '/uploads/storefront-assets/tenant-a/profile/large.png' },
+          storefront_profile_image_path: { value: 'storefront-assets/tenant-a/profile/large.png' }
+        })
+      },
+      storefrontAssetStorage: { isAvailable },
+      customerAccessModesEnabledProvider: jest.fn().mockReturnValue(true)
+    });
+
+    const result = await useCase();
+
+    expect(result.success).toBe(true);
+    expect(isAvailable).toHaveBeenCalledTimes(2);
+    expect(result.data.storefront_cover_image_url.value).toBe('');
+    expect(result.data.storefront_cover_image_path.value).toBe('');
+    expect(result.data.storefront_profile_image_url.value).toContain('/profile/large.png');
+    expect(result.data.storefront_profile_image_path.value).toContain('/profile/large.png');
+  });
+
   it('getAllSettings exposes backend-computed customer access policy metadata', async () => {
     const useCase = buildGetAllSettingsUseCase({
       settingsRepository: {

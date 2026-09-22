@@ -211,6 +211,26 @@ moves) to preserve `git mv` rename-detection across the split. Graduating IMS-on
   of it.
 - PR: (this PR, issue #1554).
 
+### 2026-09-15 — Merchant administration consolidates in POS Back Office
+
+- Clause amended: **Context** (untagged, `default` tier per ADR 0039), specifically the framing
+  that `apps/dgfy-ims` ships the merchant back-office administration surface.
+- Change: merchant-facing administration is consolidated in `apps/dgfy-pos`'s canonical Back
+  Office route boundary. Catalog, procurement, production, inventory, dispatch, services, F&B,
+  hospitality, sales, assistant, reports/settings entry points, and QR receiving are reachable
+  from POS without a merchant handoff to IMS. Legacy IMS merchant URLs remain authenticated
+  compatibility handoffs only; `/admin/*` platform administration plus auth, invite, and legal
+  compatibility routes remain in IMS.
+- What's unchanged: the three independently deployable apps, `packages/web-core` as the only
+  shared trunk, tenant/session-cookie authority, backend/API data ownership, and POS terminal
+  operational boundaries remain intact. This is not a deletion of the IMS app or a resolution of
+  #358's extract/freeze/deprecate decision; it is the merchant-surface placement needed by the
+  interim POS back-office policy in `AGENTS.md`. The production deployment/hostname retirement
+  decision remains a separate release gate.
+- Evidence: Phase 370 ledger entry and `docs/features/backoffice.md` record the migration scope,
+  compatibility boundary, rollback, and open acceptance gates.
+- PR: (local approved work; no PR or deployment performed).
+
 ## Future Direction
 
 Per-app dependency pruning (removing packages a given app doesn't actually use, rather than

@@ -243,6 +243,64 @@ describe('posRepository catalog image mapping', () => {
       .toBe('/uploads/storefront/new-iced-latte-pos-thumb.webp');
   });
 
+  it('does not advertise a deleted versioned POS image and falls back to the Storefront asset', async () => {
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([{
+        toJSON: () => ({
+          item_id: 404,
+          name: 'Stale Image Item',
+          sku_code: 'IMG-404',
+          category: 'product',
+          product_type: 'finished_goods',
+          unit_of_measure: 'serving',
+          current_stock: 10,
+          cost_per_unit: 0,
+          default_sale_price: 50,
+          vat_type: 'vatable'
+        })
+      }])
+    };
+    const PosCatalogOverride = {
+      findAll: jest.fn().mockResolvedValue([{
+        toJSON: () => ({
+          item_id: 404,
+          pos_visible: true,
+          pos_image_path: 'pos-catalog/tenant-x/item-404-1700000000000-v3-deadbeef/large.webp',
+          pos_image_url: '/uploads/pos-catalog/tenant-x/item-404-1700000000000-v3-deadbeef/large.webp'
+        })
+      }])
+    };
+    const StorefrontCatalogOverride = {
+      findAll: jest.fn().mockResolvedValue([{
+        toJSON: () => ({
+          item_id: 404,
+          storefront_image_path: 'storefront-catalog/tenant-x/item-404.png',
+          storefront_image_url: '/uploads/storefront-catalog/tenant-x/item-404.png',
+          storefront_image_gallery: null
+        })
+      }])
+    };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'PosCatalogOverride') return PosCatalogOverride;
+      if (name === 'StorefrontCatalogOverride') return StorefrontCatalogOverride;
+      if (name === 'ItemLocationStock') return null;
+      if (['ServiceItemDetail', 'FnbModifierGroup', 'FnbModifierOption', 'FnbItemKitchenRoute', 'FnbKitchenStation'].includes(name)) return null;
+      return {};
+    });
+
+    const result = await posRepository.listCatalog({ limit: 10 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual(expect.objectContaining({
+      item_id: 404,
+      pos_image_path: 'storefront-catalog/tenant-x/item-404.png',
+      pos_image_url: '/uploads/storefront-catalog/tenant-x/item-404.png',
+      pos_image_source: 'storefront'
+    }));
+  });
+
   it('prefers a working POS-specific override image over the Storefront fallback in getCatalogReadinessByItemId (#871)', async () => {
     const Item = {
       findOne: jest.fn().mockResolvedValue({

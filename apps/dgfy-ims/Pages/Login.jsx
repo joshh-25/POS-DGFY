@@ -302,7 +302,7 @@ export default function Login() {
                   name="email"
                   type="email"
                   autoComplete="username"
-                  placeholder="admin@test.com"
+                  placeholder="you@example.com"
                   value={formData.email}
                   onChange={(e) => {
                     const nextEmail = e.target.value;
@@ -408,7 +408,7 @@ export default function Login() {
                     name="companyToken"
                     type="text"
                     autoComplete="off"
-                    placeholder="e.g., token-tenant-a"
+                    placeholder="your-company-token"
                     value={formData.companyToken}
                     onChange={(e) => setFormData({ ...formData, companyToken: e.target.value })}
                     disabled={isLoading}
@@ -508,15 +508,6 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Development Credentials Info */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs font-semibold text-blue-900 mb-2">Development Credentials:</p>
-              <p className="text-xs text-blue-700">Email: admin@tenant-a.com</p>
-              <p className="text-xs text-blue-700">Password: Admin123!</p>
-              <p className="text-xs text-blue-700">Token: token-tenant-a</p>
-            </div>
-          )}
         </div>
 
         {/* Footer */}

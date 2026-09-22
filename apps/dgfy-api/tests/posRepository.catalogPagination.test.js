@@ -32,6 +32,25 @@ describe('POS Items management catalog pagination', () => {
         expect(listCatalog).toHaveBeenCalledTimes(1);
     });
 
+    it('uses twenty items as the default page size', async () => {
+        const listCatalog = jest.spyOn(posRepository, 'listCatalog').mockResolvedValueOnce({
+            data: Array.from({ length: 21 }, (_, index) => ({
+                item_id: index + 1,
+                name: `Product ${index + 1}`,
+                current_stock: 10,
+                pos_visible: true,
+                secondary_folder_ids: []
+            })),
+            scanned_count: 21
+        });
+
+        const result = await posRepository.listCatalogPage({ page: 1 });
+
+        expect(result.items).toHaveLength(20);
+        expect(result.pagination).toEqual({ page: 1, page_size: 20, total: 21, total_pages: 2 });
+        expect(listCatalog).toHaveBeenCalledTimes(1);
+    });
+
     it('searches enriched rows beyond 500 and returns a stable page total', async () => {
         const firstBatch = Array.from({ length: 500 }, (_, index) => ({
             item_id: index + 1,

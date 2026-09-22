@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import * as purchaseOrderService from '../services/purchaseOrderService.js';
 
 export const usePurchaseOrders = (params = {}) => {
@@ -6,20 +6,30 @@ export const usePurchaseOrders = (params = {}) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [pagination, setPagination] = useState(null);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const requestIdRef = useRef(0);
   const paramsKey = JSON.stringify(params);
   const fetchPurchaseOrders = useCallback(async () => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
       const data = await purchaseOrderService.getPurchaseOrders(params);
+      if (requestId !== requestIdRef.current) return;
       // Handle both snake_case (purchase_orders) and camelCase (purchaseOrders) responses
       const orders = data.purchase_orders || data.purchaseOrders || (Array.isArray(data) ? data : []);
       setPurchaseOrders(orders);
       setPagination(data.pagination);
+      setHasLoaded(true);
     } catch (err) {
-      setError(err.message || 'Failed to fetch purchase orders');
+      if (requestId === requestIdRef.current) {
+        setError(err.message || 'Failed to fetch purchase orders');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [paramsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -27,7 +37,7 @@ export const usePurchaseOrders = (params = {}) => {
     fetchPurchaseOrders();
   }, [fetchPurchaseOrders]);
 
-  return { purchaseOrders, loading, error, pagination, refetch: fetchPurchaseOrders };
+  return { purchaseOrders, loading, error, pagination, hasLoaded, refetch: fetchPurchaseOrders };
 };
 
 export const usePurchaseOrderById = (poId) => {

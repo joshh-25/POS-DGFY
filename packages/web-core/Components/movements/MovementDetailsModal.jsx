@@ -5,6 +5,7 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
+    DialogDescription,
 } from "../ui/dialog";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -19,7 +20,8 @@ import {
     Clock,
     Layers,
     ExternalLink,
-    Ban
+    Ban,
+    X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { getMovementConfig, isPositiveMovement, lossReasons } from '../utils/movementConfig.js';
@@ -60,52 +62,78 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-lg", config.bg)}>
-                            <Icon className={cn("w-5 h-5", config.color)} />
+            <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden overflow-y-hidden p-0 sm:w-[calc(100vw-2rem)]">
+                <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex min-w-0 items-start gap-3">
+                            <div className={cn("mt-0.5 shrink-0 rounded-xl p-2.5", config.bg)}>
+                                <Icon className={cn("h-5 w-5", config.color)} />
+                            </div>
+                            <div className="min-w-0">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-600">Stock movement</p>
+                                <DialogTitle className="mt-1 truncate text-xl text-slate-950 sm:text-2xl">
+                                    {config.label} <span className="font-mono text-sm font-medium text-slate-500">#{movement.movement_id}</span>
+                                </DialogTitle>
+                                <DialogDescription className="mt-1 text-sm text-slate-500">
+                                    See what changed, where, and when.
+                                </DialogDescription>
+                            </div>
                         </div>
-                        <div>
-                            <span className="text-lg">{config.label}</span>
-                            <span className="text-sm text-slate-500 ml-2">
-                                #{movement.movement_id}
-                            </span>
-                        </div>
-                    </DialogTitle>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={onClose}
+                            aria-label="Close movement details"
+                            title="Close"
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </div>
                 </DialogHeader>
 
-                <div className="space-y-6 py-4">
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+                    <div className="space-y-5">
                     <div className={cn(
-                        "text-center py-6 rounded-xl border-2",
+                        "flex items-center justify-between gap-4 rounded-xl border px-4 py-4 sm:px-5 sm:py-5",
                         isPositive
                             ? "bg-emerald-50 border-emerald-200"
                             : "bg-red-50 border-red-200"
                     )}>
-                        <p className={cn(
-                            "text-4xl font-bold",
-                            isPositive ? "text-emerald-600" : "text-red-500"
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Stock change</p>
+                            <p className={cn(
+                                "mt-1 text-3xl font-bold tracking-tight sm:text-4xl",
+                                isPositive ? "text-emerald-600" : "text-red-500"
+                            )}>
+                                {isPositive ? '+' : '-'}{formatNumber(Math.abs(parseFloat(movement.quantity)), 2)}
+                            </p>
+                        </div>
+                        <Badge className={cn(
+                            "shrink-0 border bg-white/70",
+                            isPositive ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700"
                         )}>
-                            {isPositive ? '+' : '-'}{formatNumber(Math.abs(parseFloat(movement.quantity)), 2)}
-                        </p>
-                        <p className="text-slate-500 text-sm mt-1">{itemUnit}</p>
+                            {itemUnit || 'units'}
+                        </Badge>
                     </div>
 
-                    <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                        <div className="flex items-start justify-between">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-white rounded-lg border border-slate-200">
-                                    <Package className="w-5 h-5 text-slate-600" />
+                                <div className="rounded-lg border border-slate-200 bg-white p-2">
+                                    <Package className="h-5 w-5 text-slate-600" />
                                 </div>
-                                <div>
-                                    <p className="font-semibold text-slate-900">{itemName}</p>
-                                    <p className="text-sm text-slate-500">{itemSku}</p>
+                                <div className="min-w-0">
+                                    <p className="truncate font-semibold text-slate-900">{itemName}</p>
+                                    {itemSku && <p className="text-sm text-slate-500">{itemSku}</p>}
                                 </div>
                             </div>
                             {itemId && (
                                 <Link to={`${createPageUrl("Items")}?item=${itemId}`}>
-                                    <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700">
-                                        <ExternalLink className="w-4 h-4" />
+                                    <Button type="button" variant="outline" size="sm" className="w-full border-slate-300 bg-white text-teal-700 hover:bg-teal-50 hover:text-teal-800 sm:w-auto" aria-label="Open item in Catalog Editor">
+                                        <ExternalLink className="mr-2 h-4 w-4" />
+                                        View item
                                     </Button>
                                 </Link>
                             )}
@@ -114,11 +142,11 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
 
                     <Separator />
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="flex items-start gap-3">
-                            <Calendar className="w-4 h-4 text-slate-400 mt-0.5" />
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                             <div>
-                                <p className="text-xs text-slate-500 uppercase tracking-wide">Date & Time</p>
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Date and time</p>
                                 <p className="text-sm font-medium text-slate-900">
                                     {format(new Date(movement.timestamp || movement.created_at), 'MMM d, yyyy')}
                                 </p>
@@ -128,19 +156,19 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                             </div>
                         </div>
 
-                        <div className="flex items-start gap-3">
-                            <User className="w-4 h-4 text-slate-400 mt-0.5" />
+                        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <User className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                             <div>
-                                <p className="text-xs text-slate-500 uppercase tracking-wide">Recorded By</p>
+                                <p className="text-xs uppercase tracking-wide text-slate-500">Recorded by</p>
                                 <p className="text-sm font-medium text-slate-900">{userName}</p>
                             </div>
                         </div>
 
                         {movement.reference_id && (
-                            <div className="flex items-start gap-3">
-                                <Hash className="w-4 h-4 text-slate-400 mt-0.5" />
+                            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <Hash className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                 <div>
-                                    <p className="text-xs text-slate-500 uppercase tracking-wide">Reference</p>
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">Reference</p>
                                     <div className="flex items-center gap-2">
                                         <Badge variant="outline" className="bg-slate-50 font-mono text-xs">
                                             {movement.reference_id}
@@ -154,10 +182,10 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         )}
 
                         {batchId && (
-                            <div className="flex items-start gap-3">
-                                <Layers className="w-4 h-4 text-slate-400 mt-0.5" />
+                            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <Layers className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                 <div>
-                                    <p className="text-xs text-slate-500 uppercase tracking-wide">FIFO Batch</p>
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">FIFO batch</p>
                                     <p className="text-sm font-medium text-slate-900">Batch #{batchId}</p>
                                     {batchExpiry && (
                                         <p className="text-xs text-slate-500">
@@ -169,10 +197,10 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         )}
 
                         {(movementLocationName || sourceLocationName || destinationLocationName || movementLocationId || sourceLocationId || destinationLocationId) && (
-                            <div className="flex items-start gap-3">
-                                <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
+                            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                 <div>
-                                    <p className="text-xs text-slate-500 uppercase tracking-wide">Location</p>
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
                                     {movement.movement_type === 'transfer' ? (
                                         <p className="text-sm font-medium text-slate-900">
                                             {sourceLocationName || (sourceLocationId ? `#${sourceLocationId}` : 'N/A')} {'->'} {destinationLocationName || (destinationLocationId ? `#${destinationLocationId}` : 'N/A')}
@@ -187,10 +215,10 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         )}
 
                         {lossReasonLabel && (
-                            <div className="flex items-start gap-3">
-                                <Clock className="w-4 h-4 text-red-400 mt-0.5" />
+                            <div className="flex items-start gap-3 rounded-xl border border-red-100 bg-red-50/60 p-3">
+                                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
                                 <div>
-                                    <p className="text-xs text-slate-500 uppercase tracking-wide">Loss Reason</p>
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">Loss reason</p>
                                     <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
                                         {lossReasonLabel}
                                     </Badge>
@@ -203,30 +231,32 @@ export default function MovementDetailsModal({ movement, open, onClose, onVoid }
                         <>
                             <Separator />
                             <div className="flex items-start gap-3">
-                                <FileText className="w-4 h-4 text-slate-400 mt-0.5" />
+                                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                                 <div className="flex-1">
-                                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Notes</p>
-                                    <p className="text-sm text-slate-700 bg-slate-50 rounded-lg p-3 border border-slate-200">
+                                    <p className="mb-2 text-xs uppercase tracking-wide text-slate-500">Notes</p>
+                                    <p className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                                         {movement.notes}
                                     </p>
                                 </div>
                             </div>
                         </>
                     )}
+                    </div>
                 </div>
 
-                <div className="flex justify-end pt-4 border-t gap-2">
+                <div className="flex shrink-0 flex-col-reverse justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:flex-row sm:px-6">
                     {onVoid && movement.reference_type !== 'VOID' && !movement.notes?.includes('Voided by') && (
                         <Button
+                            type="button"
                             variant="destructive"
                             onClick={() => onVoid(movement)}
                             className="bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 border-red-200"
                         >
                             <Ban className="w-4 h-4 mr-2" />
-                            Void Movement
+                            Void stock movement
                         </Button>
                     )}
-                    <Button variant="outline" onClick={onClose}>
+                    <Button type="button" variant="outline" onClick={onClose}>
                         Close
                     </Button>
                 </div>

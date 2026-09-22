@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info, Sparkles } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -129,7 +130,7 @@ const parseStorefrontImageGallery = (value) => {
   }
 };
 
-export default function Items() {
+export default function Items({ embedded = false }) {
   const navigate = useNavigate();
   // #682: branch stock scope. Deliberately NOT persisted to localStorage like the other filters
   // below (categoryFilter etc.) -- always reopening on "All Locations" is what keeps this honest:
@@ -1544,6 +1545,27 @@ export default function Items() {
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
   const [generatingBulkImages, setGeneratingBulkImages] = useState(false);
+  const activeFilterCount = [
+    String(searchQuery || '').trim().length > 0,
+    selectedLocationId !== 'all',
+    categoryFilter !== 'all',
+    statusFilter !== 'all',
+    fifoFilter !== 'all',
+    sortBy !== 'name',
+    folderFilter !== 'all',
+    showInactiveItems
+  ].filter(Boolean).length;
+
+  const resetCatalogFilters = useCallback(() => {
+    setSearchQuery('');
+    setSelectedLocationId('all');
+    setCategoryFilter('all');
+    setStatusFilter('all');
+    setFifoFilter('all');
+    setSortBy('name');
+    setFolderFilter('all');
+    setShowInactiveItems(false);
+  }, []);
 
   // Clear selection when filters or folder changes
   useEffect(() => {
@@ -2021,7 +2043,7 @@ export default function Items() {
       ? Array.from(selectedIds)
       : (itemToMove ? [itemToMove.item_id || itemToMove.id] : []);
 
-    if (itemsToMoveIds.length === 0) return;
+    if (itemsToMoveIds.length === 0) return false;
 
     try {
       const payload = buildFolderAssignmentPayload(targetFolder);
@@ -2038,9 +2060,11 @@ export default function Items() {
       setShowMoveModal(false);
       setItemToMove(null);
       clearSelection();
+      return true;
     } catch (error) {
       console.error('Failed to move items:', error);
       toast.error('Failed to move items');
+      return false;
     }
   };
 
@@ -2120,10 +2144,10 @@ export default function Items() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-6">
+      <div className={cn('catalog-editor-page space-y-4', embedded && 'catalog-editor-page--embedded')}>
         {/* Breadcrumb Navigation - shown when inside a folder */}
         {currentFolder && (
-          <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <Button
               variant="outline"
               size="sm"
@@ -2145,23 +2169,35 @@ export default function Items() {
         )}
 
         {/* Header */}
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {currentFolder || 'Inventory Items'}
-            </h1>
-            <p className="text-slate-500 mt-1">
-              {currentFolder
-                ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
-                : `${filteredItems.length} items found`
-              }
-            </p>
-            {isMsmeMode && (
-              <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
-                MSME mode uses one simple item flow. Choose <span className="font-semibold">Sell in POS (auto-show)</span> to make items available in POS by default, or <span className="font-semibold">Inventory only</span> for stock tracking only.
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          {embedded ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 sm:flex">
+                <Package className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{currentFolder || 'Catalog items'}</p>
+                <p className="text-sm text-slate-500">
+                  {currentFolder
+                    ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
+                    : `${filteredItems.length} items found`
+                  }
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                {currentFolder || 'Inventory Items'}
+              </h1>
+              <p className="mt-1 text-slate-500">
+                {currentFolder
+                  ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
+                  : `${filteredItems.length} items found`
+                }
               </p>
-            )}
-          </div>
+            </div>
+          )}
           <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
             {(canImportPermission('items') || canExportPermission('items')) && (
               <Button variant="outline" className="shrink-0" onClick={() => setShowImportExportModal(true)}>
@@ -2182,16 +2218,6 @@ export default function Items() {
                   <ListChecks className="w-4 h-4 mr-2" />
                   {isMsmeMode ? `POS Setup (${totalPosNeedsAttentionCount})` : `Fix POS Setup (${totalPosNeedsAttentionCount})`}
                 </Button>
-                {!isMsmeMode && (
-                  <button
-                    type="button"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700"
-                    title="Checks POS sell-readiness requirements: POS visibility, menu image, folder assignment/filter visibility, sale price, active status, and stock validity."
-                    aria-label="What Fix POS Setup checks"
-                  >
-                    <Info className="h-4 w-4" />
-                  </button>
-                )}
               </div>
             )}
             {!isMsmeMode && (categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
@@ -2231,10 +2257,10 @@ export default function Items() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <div className="flex flex-col lg:flex-row gap-4 items-end">
-            <div className="relative flex-1 w-full">
-              <span className="text-xs font-medium text-slate-500 mb-1 block">Search</span>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="relative w-full flex-1">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Search</span>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
@@ -2245,9 +2271,9 @@ export default function Items() {
                 />
               </div>
             </div>
-            <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Branch</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Branch</span>
                 <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                   <SelectTrigger className="w-44">
                     <SelectValue placeholder="All Locations" />
@@ -2264,7 +2290,7 @@ export default function Items() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Category</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Category</span>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-40">
                     <Filter className="w-4 h-4 mr-2 text-slate-400" />
@@ -2290,67 +2316,93 @@ export default function Items() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Status</span>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="draft">Drafts</SelectItem>
-                    <SelectItem value="critical">Low Stock</SelectItem>
-                    <SelectItem value="healthy">Healthy</SelectItem>
-                    <SelectItem value="surplus">Surplus</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <div className="relative">
+                <Popover>
+                  <PopoverTrigger aria-label="More catalog filters">
+                    <Button type="button" variant="outline" className="gap-2">
+                      <SlidersHorizontal className="h-4 w-4" />
+                      More filters
+                      {activeFilterCount > 0 && (
+                        <Badge variant="secondary" className="ml-1 h-5 min-w-5 justify-center px-1 text-[11px]">
+                          {activeFilterCount}
+                        </Badge>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="right-0 mt-2 w-[min(22rem,calc(100vw-2rem))] p-3">
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</span>
+                          <Select value={statusFilter} onValueChange={setStatusFilter}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Status</SelectItem>
+                              <SelectItem value="draft">Drafts</SelectItem>
+                              <SelectItem value="critical">Low Stock</SelectItem>
+                              <SelectItem value="healthy">Healthy</SelectItem>
+                              <SelectItem value="surplus">Surplus</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-              {canDeletePermission('items') && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-500">Inactive Items</span>
-                  <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm text-slate-600">
-                    <Checkbox
-                      checked={showInactiveItems}
-                      onCheckedChange={(checked) => setShowInactiveItems(checked === true)}
-                    />
-                    Show inactive
-                  </label>
-                </div>
-              )}
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">FIFO</span>
+                          <Select value={fifoFilter} onValueChange={setFifoFilter}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="FIFO Status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Items</SelectItem>
+                              <SelectItem value="enabled">FIFO Enabled</SelectItem>
+                              <SelectItem value="disabled">FIFO Disabled</SelectItem>
+                              <SelectItem value="expiring">Expiring Soon</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">FIFO</span>
-                <Select value={fifoFilter} onValueChange={setFifoFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="FIFO Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Items</SelectItem>
-                    <SelectItem value="enabled">FIFO Enabled</SelectItem>
-                    <SelectItem value="disabled">FIFO Disabled</SelectItem>
-                    <SelectItem value="expiring">Expiring Soon</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Sort by</span>
+                        <Select value={sortBy} onValueChange={setSortBy}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Sort by" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="name">Name A-Z</SelectItem>
+                            <SelectItem value="stock">Stock (Low to High)</SelectItem>
+                            <SelectItem value="stock_desc">Stock (High to Low)</SelectItem>
+                            <SelectItem value="updated">Last Updated</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Sort By</span>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Name A-Z</SelectItem>
-                    <SelectItem value="stock">Stock (Low to High)</SelectItem>
-                    <SelectItem value="stock_desc">Stock (High to Low)</SelectItem>
-                    <SelectItem value="updated">Last Updated</SelectItem>
-                  </SelectContent>
-                </Select>
+                      {canDeletePermission('items') && (
+                        <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                          <Checkbox
+                            checked={showInactiveItems}
+                            onCheckedChange={(checked) => setShowInactiveItems(checked === true)}
+                          />
+                          Show inactive items
+                        </label>
+                      )}
+
+                      {activeFilterCount > 0 && (
+                        <div className="flex justify-end border-t border-slate-100 pt-3">
+                          <Button type="button" variant="ghost" size="sm" onClick={resetCatalogFilters}>
+                            Clear filters
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <Tabs value={viewMode} onValueChange={setViewMode} className="hidden sm:block">
-                <TabsList>
+                <TabsList aria-label="Catalog view">
                   <TabsTrigger value="grid"><LayoutGrid className="w-4 h-4" /></TabsTrigger>
                   <TabsTrigger value="list"><List className="w-4 h-4" /></TabsTrigger>
                 </TabsList>
@@ -2359,9 +2411,9 @@ export default function Items() {
           </div>
 
           {currentFolder === null && productFolders.length > 0 && (
-            <div className="mt-4 border-t border-slate-100 pt-4">
+            <div className="mt-3 border-t border-slate-100 pt-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-slate-500">Folder Filters</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Folder filters</span>
                 {folderFilter !== 'all' && (
                   <button
                     type="button"
@@ -2381,7 +2433,7 @@ export default function Items() {
                       type="button"
                       onClick={() => handleToggleFolderFilter(folder)}
                       className={cn(
-                        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all",
+                        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-sm font-medium transition-all",
                         active
                           ? "border-teal-300 bg-teal-50 text-teal-700 shadow-sm"
                           : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
@@ -2401,7 +2453,7 @@ export default function Items() {
         {viewMode === 'grid' ? (
           currentFolder === null ? (
             /* Root view - show folders first, then uncategorized items */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {/* Create Folder Card */}
               <CreateFolderCard onCreateFolder={handleCreateFolder} />
 
@@ -2659,15 +2711,13 @@ export default function Items() {
             }
           }}
         >
-          <DialogContent className="sm:max-w-7xl">
-            <DialogHeader>
-              <DialogTitle className="text-xl">Catalog Setup</DialogTitle>
-              <DialogDescription>
-                Resolve POS and Storefront readiness, visibility, and SKU-named image setup from one workflow.
-              </DialogDescription>
+          <DialogContent className="catalog-editor-dialog-content sm:max-w-7xl p-0">
+            <DialogHeader className="border-b border-slate-100 p-4 pb-3">
+              <DialogTitle className="text-lg">Catalog Setup</DialogTitle>
+              <DialogDescription>Review POS and Storefront readiness in one workflow.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 p-6 pt-0">
+            <div className="space-y-4 p-4 pt-3">
               {guidedPosReadyItemId && (
                 <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
                   Guided mode: item #{guidedPosReadyItemId}. Complete missing readiness fields, then preview in terminal.
@@ -3206,6 +3256,8 @@ export default function Items() {
           variant="destructive"
           loading={deleting}
           errors={deleteErrors}
+          className="catalog-editor-dialog-content p-0"
+          compact
         />
         <DeleteConfirmDialog
           open={showFolderDeleteDialog}
@@ -3223,6 +3275,8 @@ export default function Items() {
           confirmText="Delete Folder"
           variant="destructive"
           loading={deletingFolder}
+          className="catalog-editor-dialog-content p-0"
+          compact
         />
         <CSVImportModal
           open={showImportModal}

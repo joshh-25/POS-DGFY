@@ -11,6 +11,7 @@ export const buildDashboardAndInsightsToolRegistry = ({
       return {
         total_items: stats.totalItems,
         low_stock_count: stats.lowStockCount,
+        out_of_stock_count: stats.outOfStockCount || 0,
         healthy_stock_count: stats.healthyCount,
         overstock_count: stats.overStockCount,
         pending_purchase_orders: stats.pending_purchase_orders,

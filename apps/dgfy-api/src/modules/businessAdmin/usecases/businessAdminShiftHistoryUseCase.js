@@ -2,7 +2,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { resolveBusinessAdminAccess } from '../domain/businessAdminAccessPolicy.js';
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const PAGE_SIZES = new Set([20, 50, 100]);
+const PAGE_SIZES = new Set([10, 20, 50, 100]);
 const SHIFT_STATUSES = new Set(['open', 'closed']);
 
 const fail = (code, message, statusCode = 400, details = null) => ({ success: false, error: new DomainError(code, message, { statusCode, details }) });
@@ -28,7 +28,7 @@ export const buildListBusinessAdminShiftsUseCase = ({ businessAdminShiftHistoryR
 
     const page = Math.max(Number.parseInt(query.page, 10) || 1, 1);
     const limit = Number.parseInt(query.limit, 10) || 20;
-    if (!PAGE_SIZES.has(limit)) return fail(DomainErrorCode.VALIDATION_FAILED, 'limit must be one of: 20, 50, or 100.', 422);
+    if (!PAGE_SIZES.has(limit)) return fail(DomainErrorCode.VALIDATION_FAILED, 'limit must be one of: 10, 20, 50, or 100.', 422);
     const status = String(query.status || '').trim().toLowerCase();
     if (status && !SHIFT_STATUSES.has(status)) return fail(DomainErrorCode.VALIDATION_FAILED, 'status must be open or closed.', 422);
     const dateFrom = String(query.date_from || '').trim();

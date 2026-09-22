@@ -158,13 +158,4 @@ export const businessAdminAlertSnapshotRepository = {
         return plain(row);
     },
 
-    async listLifecycle({ branchIds = null, limit = 100 } = {}) {
-        const Alert = dbStore.get('BusinessAdminAlertSnapshot');
-        const rows = await Alert.findAll({
-            where: scopedWhere({ branchIds, status: '' }),
-            order: [['updated_at', 'DESC'], ['business_admin_alert_snapshot_id', 'DESC']],
-            limit: bounded(limit, 100)
-        });
-        return rows.map(plain);
-    }
 };

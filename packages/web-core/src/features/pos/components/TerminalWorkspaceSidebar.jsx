@@ -16,6 +16,7 @@ import {
   Tags,
   Ticket,
   Truck,
+  Utensils,
   UserRound
 } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
@@ -38,6 +39,7 @@ const NavButton = ({
   <button
     type="button"
     onClick={onClick}
+    onPointerDown={onPrefetch}
     onPointerEnter={onPrefetch}
     onFocus={onPrefetch}
     disabled={disabled}
@@ -76,8 +78,10 @@ export default function TerminalWorkspaceSidebar({
   canViewPos = false,
   canViewAudit = false,
   canAccessBusinessAdmin = false,
+  canAccessPosOnlySetup = false,
   canViewVouchers = false,
   canManageCategories = false,
+  showFnbService = false,
   showServiceOperations = false,
   showIncomingQueue = true,
   canAccessServiceOperations = false,
@@ -115,7 +119,8 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
-  const shouldRouteSettingsToBackOffice = shouldShowBusinessAdmin && !onboardingRestricted && !isMsmeMode;
+  const shouldRouteSettingsToBackOffice = shouldShowBusinessAdmin && !onboardingRestricted;
+  const shouldShowPosOnlySetup = canAccessPosOnlySetup && !onboardingRestricted;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
@@ -265,6 +270,19 @@ export default function TerminalWorkspaceSidebar({
             caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
             collapsed={isCollapsed}
           />
+          {showFnbService && (
+            <NavButton
+              label="F&amp;B service"
+              icon={Utensils}
+              active={currentViewMode === 'fnb_service'}
+              onClick={() => onSelectViewMode('fnb_service')}
+              onPrefetch={() => onPrefetchViewMode('fnb_service')}
+              disabled={locked || onboardingRestricted || !navigationShiftReady}
+              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets'))}
+              testId="pos-nav-fnb-service"
+              collapsed={isCollapsed}
+            />
+          )}
           <NavButton
             label="History"
             icon={History}
@@ -382,12 +400,12 @@ export default function TerminalWorkspaceSidebar({
               icon={LayoutDashboard}
               onClick={onOpenBackOffice}
               disabled={!isOnline}
-              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : 'Business overview, settings, reports, and branch operations')}
+              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : 'Business overview, reports, and branch operations')}
               testId="pos-nav-backoffice"
               collapsed={isCollapsed}
             />
           )}
-          {!shouldRouteSettingsToBackOffice && (
+          {onboardingRestricted && (
             <NavButton
               label="Settings"
               icon={Settings2}
@@ -408,8 +426,21 @@ export default function TerminalWorkspaceSidebar({
               onClick={() => onSelectViewMode('terminal_setup')}
               onPrefetch={() => onPrefetchViewMode('terminal_setup')}
               disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Terminal registry, branch binding, queue scope, and local sound')}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Queue scope and local sound; device, printer, and terminal controls')}
               testId="pos-nav-terminal-setup"
+              collapsed={isCollapsed}
+            />
+          )}
+          {shouldShowPosOnlySetup && (
+            <NavButton
+              label="POS setup"
+              icon={Settings2}
+              active={currentViewMode === 'terminal_setup'}
+              onClick={() => onSelectViewMode('terminal_setup')}
+              onPrefetch={() => onPrefetchViewMode('terminal_setup')}
+              disabled={locked || !isOnline}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Terminal identity, branch queue, printer, and order sound')}
+              testId="pos-nav-pos-setup"
               collapsed={isCollapsed}
             />
           )}

@@ -56,6 +56,13 @@ const createDefaultForm = () => ({
   storeDeliveryFeeCalc: { ...DEFAULT_DELIVERY_FEE_CALC }
 });
 
+const DELIVERY_FEE_MODE_HELP = Object.freeze({
+  fixed: 'Customers pay this flat delivery fee at checkout.',
+  calculated: 'Customers pay the minimum fee plus distance increments. If the distance or formula cannot be resolved, the fallback fee below is used.',
+  free: 'Customers pay no delivery fee at checkout. Keep the fallback fee below configured for safe mode changes or invalid calculated settings.'
+});
+const CURRENCY_SYMBOL = String.fromCharCode(0x20b1);
+
 const noop = () => {};
 
 const settingsToForm = (settings) => ({
@@ -109,6 +116,10 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
   };
 
   const isCalculated = form.storeDeliveryFeeMode === 'calculated';
+  const deliveryFeeModeHelp = DELIVERY_FEE_MODE_HELP[form.storeDeliveryFeeMode] || DELIVERY_FEE_MODE_HELP.fixed;
+  const flatFeeLabel = form.storeDeliveryFeeMode === 'fixed'
+    ? `Flat Delivery Fee (${CURRENCY_SYMBOL})`
+    : `Fallback Delivery Fee (${CURRENCY_SYMBOL})`;
   const calcForSave = serializeDeliveryFeeCalcForSave(form.storeDeliveryFeeCalc);
   const calcIncomplete = isCalculated
     && Object.values(form.storeDeliveryFeeCalc || {}).some((value) => String(value ?? '').trim() !== '')
@@ -197,13 +208,12 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
             </SelectContent>
           </Select>
           <p className="text-xs text-slate-500">
-            Calculated and Free modes are configurable here but not yet applied at checkout --
-            every order is still charged the flat fee below until that lands.
+            {deliveryFeeModeHelp}
           </p>
         </div>
 
         <div className="mt-4 space-y-1.5">
-          <Label htmlFor="delivery-fee-flat">Flat Delivery Fee (₱)</Label>
+          <Label htmlFor="delivery-fee-flat">{flatFeeLabel}</Label>
           <Input
             id="delivery-fee-flat"
             type="number"
@@ -215,8 +225,9 @@ export default function PosDeliveryPricingSettingsCard({ terminalUser = null, lo
             placeholder="0.00"
           />
           <p className="text-xs text-slate-500">
-            Charged any time delivery fee mode is Fixed -- also the fallback fee used if
-            Calculated mode can&apos;t resolve a distance.
+            {form.storeDeliveryFeeMode === 'fixed'
+              ? 'This is the amount charged for every delivery order.'
+              : 'This value is required and protects checkout if the selected pricing rule cannot be applied.'}
           </p>
         </div>
 

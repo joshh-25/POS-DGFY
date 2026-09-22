@@ -1625,17 +1625,18 @@ body.pos-receipt-print-mode {
  * their normal blur and motion treatment.
  */
 html.dgfy-imin-performance [data-dialog-overlay="true"],
+html.dgfy-imin-performance [class~="backdrop-blur"],
 html.dgfy-imin-performance [class~="backdrop-blur-sm"],
 html.dgfy-imin-performance [class~="backdrop-blur-md"],
 html.dgfy-imin-performance [class~="backdrop-blur-lg"],
 html.dgfy-imin-performance [class~="backdrop-blur-xl"],
 html.dgfy-imin-performance [class~="backdrop-blur-2xl"],
-html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
+html.dgfy-imin-performance [class~="backdrop-blur-3xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-[1px]"] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
-<<<<<<< HEAD
 /* POS extended views use a solid dimmed backdrop so the underlying checkout
  * surface stays readable and the overlay does not create a frosted-glass
  * effect that varies between desktop, tablet, and mobile browsers. Dialog
@@ -1647,9 +1648,12 @@ body[data-dgfy-pos-surface] [role="dialog"] {
   backdrop-filter: none !important;
 }
 
-/* Locked POS surfaces use a regular CSS filter rather than backdrop-filter.
- * Keep that filter off in the fixed Chrome 80-84 iMin WebView as well. */
-html.dgfy-imin-performance [class~="blur-[2px]"] {
+/* Locked and disabled POS surfaces use a regular CSS filter rather than
+ * backdrop-filter. Keep those filters off in the fixed Chrome 80-84 iMin
+ * WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"],
+html.dgfy-imin-performance [class~="blur-sm"],
+html.dgfy-imin-performance [class~="blur-[0.5px]"] {
   filter: none !important;
 }
 
@@ -2776,4 +2780,65 @@ body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-histo
 
 .animate-pos-illustration-float {
   animation: pos-illustration-float 3.2s ease-in-out infinite;
+}
+
+/* Catalog Editor only: keep the dense authoring surface readable without changing
+   the shared wizard scale used by the rest of the product. */
+.catalog-editor-dialog-content.wizard-core-typography .wizard-title,
+[data-catalog-editor].wizard-core-typography .wizard-title {
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(h3, h4),
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(h3, h4) {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content label,
+[data-catalog-editor].wizard-core-typography .wizard-step-content label {
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(input, textarea, select, button),
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(input, textarea, select, button) {
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content .text-sm,
+[data-catalog-editor].wizard-core-typography .wizard-step-content .text-sm {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content .text-xs,
+[data-catalog-editor].wizard-core-typography .wizard-step-content .text-xs {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-footer,
+[data-catalog-editor].wizard-core-typography .wizard-footer {
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-footer button,
+[data-catalog-editor].wizard-core-typography .wizard-footer button {
+  font-size: 0.875rem;
+}
+
+.catalog-editor-dialog-content > .flex-shrink-0:first-child,
+[data-catalog-editor] > .flex-shrink-0:first-child {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0.75rem 1rem;
+}
+
+[data-catalog-editor] .wizard-step-content {
+  padding: 0.75rem 1rem;
 }

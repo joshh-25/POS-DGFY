@@ -53,7 +53,7 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
-    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
     expect(terminalLayoutContent).not.toContain('min-h-screen');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
@@ -64,6 +64,11 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
+    expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
+    expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
+    expect(terminalLayoutContent).toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'");
+    expect(terminalLayoutContent).not.toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup Context' : 'POS Setup'");
   });
 
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {

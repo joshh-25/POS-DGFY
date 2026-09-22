@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS item list pagination', () => {
-  it('limits the rendered item list to fifteen records and exposes page navigation', () => {
+  it('limits the rendered item list and exposes page navigation', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
 
     expect(workspace).toContain('const POS_ITEMS_PAGE_SIZE = 15;');

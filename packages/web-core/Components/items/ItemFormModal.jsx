@@ -1388,6 +1388,7 @@ export default function ItemFormModal({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent
           className="pos-mobile-no-focus-zoom wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"
+          data-catalog-editor="true"
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => event.preventDefault()}
         >
@@ -1679,9 +1680,6 @@ export default function ItemFormModal({
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">
-                Existing categories are suggested as you type. A new category is saved automatically when you save the item.
-              </p>
             </div>
 
             {Boolean(itemIdForFolders) && (
@@ -1690,9 +1688,7 @@ export default function ItemFormModal({
                   <Tags className="w-4 h-4" />
                   Additional Categories
                 </Label>
-                <p className="text-xs text-slate-500">
-                  Optional. List this item under up to 10 more categories, alongside its primary category above. This does not change the primary category.
-                </p>
+                <p className="text-xs text-slate-500">Optional secondary categories; the primary category stays unchanged.</p>
                 {secondaryFoldersLoading ? (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -2071,9 +2067,7 @@ export default function ItemFormModal({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <Label>Storefront Catalog (Optional)</Label>
-                  <p className="text-xs text-slate-500">
-                    Configure customer-facing catalog visibility separately while sharing item images with POS.
-                  </p>
+                  <p className="text-xs text-slate-500">Customer-facing visibility and shared item images.</p>
                 </div>
                 {item && (
                   <Button
@@ -2214,9 +2208,7 @@ export default function ItemFormModal({
                   }}
                   onDrop={handleStorefrontImageDrop}
                 >
-                  <p className="text-sm text-slate-500">
-                    Drag item images here, or choose them from your device. They will be uploaded after the item is saved.
-                  </p>
+                  <p className="text-sm text-slate-500">Drag item images here, or choose them from your device.</p>
                   <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
                     Choose Item Images
                     <input
@@ -2249,9 +2241,7 @@ export default function ItemFormModal({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <Label>Suppliers (Optional)</Label>
-                    <p className="text-xs text-slate-500">
-                      Add existing suppliers or quickly create one here, then save supplier MOQ and unit cost per item.
-                    </p>
+                    <p className="text-xs text-slate-500">Optional supplier and pricing links.</p>
                   </div>
                   <div className="flex gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => openCreateSupplierDialog(null)}>
@@ -2343,10 +2333,7 @@ export default function ItemFormModal({
                           Enable FIFO Batch Tracking
                         </Label>
                       </div>
-                      <p className="text-sm text-slate-600">
-                        Track inventory in batches with automatic First-In-First-Out consumption.
-                        Useful for cost tracking, lot traceability, and items with expiry dates.
-                      </p>
+                      <p className="text-sm text-slate-600">Track batches using first-in, first-out consumption.</p>
                     </div>
                   </div>
                   <Switch
@@ -2505,11 +2492,11 @@ export default function ItemFormModal({
       />
 
       <Dialog open={showCreateSupplierDialog} onOpenChange={setShowCreateSupplierDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="catalog-editor-dialog-content max-w-md p-0">
+          <DialogHeader className="border-b border-slate-100 p-4 pb-3">
             <DialogTitle>Create Supplier</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 p-4 pt-3">
             <div className="space-y-2">
               <Label htmlFor="inline_supplier_name">Supplier Name</Label>
               <Input
@@ -2538,7 +2525,7 @@ export default function ItemFormModal({
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="p-4 pt-1">
             <Button type="button" variant="outline" onClick={() => setShowCreateSupplierDialog(false)}>
               Cancel
             </Button>
@@ -2560,6 +2547,8 @@ export default function ItemFormModal({
           onClose();
         }}
         onContinueEditing={() => setShowConfirmation(false)}
+        className="catalog-editor-dialog-content p-0 sm:max-w-md"
+        compact
       />
     </>
   );

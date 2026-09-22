@@ -131,10 +131,20 @@ export const buildGetBusinessAdminOverviewUseCase = ({ businessAdminOverviewRepo
         allowedLocationIds: access.scope === 'all' ? null : assignedLocationIds
     });
 
-    // Inventory snapshots are tenant-wide today. Do not disclose them to branch-scoped users
-    // until their source alerts carry a location identifier.
-    const scheduledAlerts = includeScheduledAlerts && access.scope === 'all' && businessAdminAlertSnapshotRepository
-        ? await businessAdminAlertSnapshotRepository.listOpen()
+    // Overview consumes the same user-scoped notification projection as the
+    // Notifications workspace. Keep the legacy `alerts` field as a response
+    // compatibility alias, but do not create a second alert lifecycle here.
+    const notificationBranchIds = branchId
+        ? [branchId]
+        : (access.scope === 'all' ? null : assignedLocationIds);
+    const notifications = includeScheduledAlerts && businessAdminAlertSnapshotRepository
+        ? await businessAdminAlertSnapshotRepository.list({
+            userId: user.user_id,
+            branchIds: notificationBranchIds,
+            status: 'open',
+            includeDismissed: false,
+            limit: 8
+        })
         : [];
-    return ok({ ...overview, scheduled_alerts: scheduledAlerts });
+    return ok({ ...overview, notifications, alerts: notifications });
 };

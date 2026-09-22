@@ -770,6 +770,8 @@ export const removeUserFromCompany = async (adminUserId, targetUserId) => {
     throw error;
   }
 
+  await assertNoOpenOperatingState(targetUser.user_id);
+
   // Perform soft delete
   await targetUser.update({
     deleted_at: new Date(),
@@ -1190,6 +1192,39 @@ const createError = (message, statusCode) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const assertNoOpenOperatingState = async (userId) => {
+  const checks = [
+    {
+      modelName: 'PosTerminalShift',
+      where: { cashier_id: userId, status: 'open' },
+      message: 'Cannot remove this user while they have an open POS shift. Close the shift before removing the account.'
+    },
+    {
+      modelName: 'PosTerminalOperatorSession',
+      where: { user_id: userId, status: 'active' },
+      message: 'Cannot remove this user while they have an active POS operator session. End the session before removing the account.'
+    },
+    {
+      modelName: 'EmployeeAttendanceSession',
+      where: { user_id: userId, status: 'open' },
+      message: 'Cannot remove this user while they have an open attendance session. Close attendance before removing the account.'
+    }
+  ];
+
+  for (const check of checks) {
+    let Model;
+    try {
+      Model = dbStore.get(check.modelName);
+    } catch {
+      Model = null;
+    }
+    if (typeof Model?.findOne !== 'function') continue;
+
+    const activeRecord = await Model.findOne({ where: check.where });
+    if (activeRecord) throw createError(check.message, 409);
+  }
 };
 
 const normalizeLocationIds = (locationIds = []) => {

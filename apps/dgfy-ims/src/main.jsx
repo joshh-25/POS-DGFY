@@ -4,14 +4,12 @@
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
 import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import Layout from '../Layout.jsx'
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import AdminLayout from '../../../packages/web-core/Components/admin/AdminLayout.jsx'
 import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx'
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx'
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx'
-import WorkflowModeRouteGate from '../../../packages/web-core/src/features/settings/components/WorkflowModeRouteGate.jsx'
-import { getPageNameFromPath } from '../utils.js'
+import MerchantSurfaceRetired from './pages/MerchantSurfaceRetired.jsx'
 import { getAccessToken, refreshBrowserSession, setBrowserSession } from '../../../packages/web-core/src/services/browserSession.js'
 import { login as loginTenantSession, getCurrentUser } from '../../../packages/web-core/src/services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from '../../../packages/web-core/src/services/publicRoutePolicy.js'
@@ -36,6 +34,12 @@ const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
+const devAutoLoginEmail = String(import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL || '').trim()
+const devAutoLoginPassword = String(import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD || '').trim()
+const devAutoLoginCompanyToken = String(import.meta.env.VITE_DEV_AUTO_LOGIN_COMPANY_TOKEN || '').trim()
+const hasDevAutoLoginCredentials = Boolean(
+  devAutoLoginEmail && devAutoLoginPassword && devAutoLoginCompanyToken
+)
 
 // backendOrigin is resolved at runtime from the desktop preload bridge, so
 // it is invisible to the build-time-only trace-propagation resolver. Without
@@ -54,6 +58,7 @@ initBrowserAnalytics({ surface: runtimeConfig.appSurface || 'skupervisor' })
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false
   if (!devAutoLoginEnabled) return false
+  if (!hasDevAutoLoginCredentials) return false
   if (typeof window === 'undefined') return false
   const pathname = String(window.location?.pathname || '/')
   if (pathname === '/terminal' || pathname.startsWith('/terminal/')) return false
@@ -99,18 +104,8 @@ const registerAdminServiceWorker = async () => {
   }
 }
 
-// Lazy-loaded pages â€” each page is a separate JS chunk downloaded on first visit
-const Dashboard = lazy(() => import('../Pages/Dashboard.jsx'))
-const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))
-const Suppliers = lazy(() => import('../Pages/Suppliers.jsx'))
-const PurchaseOrders = lazy(() => import('../Pages/PurchaseOrders.jsx'))
-const JobOrders = lazy(() => import('../../../packages/web-core/src/features/jobOrders/pages/JobOrdersPage.jsx'))
-const StockMovements = lazy(() => import('../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'))
-const Services = lazy(() => import('../../../packages/web-core/src/features/services/pages/ServicesPage.jsx'))
-const Fnb = lazy(() => import('../../../packages/web-core/src/features/fnb/pages/FnbPage.jsx'))
-const Hospitality = lazy(() => import('../../../packages/web-core/src/features/hospitality/pages/HospitalityPage.jsx'))
-const Reports = lazy(() => import('../Pages/Reports.jsx'))
-const Settings = lazy(() => import('../Pages/Settings.jsx'))
+// Auth, invite, legal, and platform-admin routes remain as compatibility and
+// internal support surfaces. Merchant operations now belong to POS Back Office.
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'))
@@ -121,12 +116,6 @@ const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
 const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
-const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
-const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
-const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
-const POSPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/SkupervisorPOSPage.jsx'))
-const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))
-const SalesPage = lazy(() => import('../../../packages/web-core/src/features/sales/pages/SalesPage.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
 const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))
@@ -137,9 +126,20 @@ const InvoiceManager = lazy(() => import('../Pages/admin/InvoiceManager.jsx'))
 const PlatformAdminManager = lazy(() => import('../Pages/admin/PlatformAdminManager.jsx'))
 const StoreTemplateManager = lazy(() => import('../Pages/admin/StoreTemplateManager.jsx'))
 
+const LegacyMerchantRoute = ({ target = '/backoffice/overview', title }) => (
+  <ProtectedRoute>
+    <MerchantSurfaceRetired target={target} title={title} />
+  </ProtectedRoute>
+)
+
+function LegacyReceiveRoute() {
+  const { token } = useParams()
+  const safeToken = encodeURIComponent(String(token || '').trim())
+  return <LegacyMerchantRoute target={`/receive/${safeToken}`} title="Receiving workspace moved" />
+}
+
 function App() {
   const location = useLocation()
-  const currentPageName = getPageNameFromPath(location.pathname)
 
   /* 
    * Authentication is handled by ProtectedRoute components. 
@@ -172,136 +172,25 @@ function App() {
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/reactivate" element={<Reactivate />} />
 
-        {/* Protected routes - require authentication */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <Dashboard />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/items" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <Items />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/suppliers" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <Suppliers />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/purchase-orders" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <PurchaseOrders />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/job-orders" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="productionWorkflows" moduleLabel="Job Orders">
-              <Layout currentPageName={currentPageName}>
-                <JobOrders />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        <Route path="/stock-movements" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="inventory" moduleLabel="Stock Movements">
-              <Layout currentPageName={currentPageName}>
-                <StockMovements />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        <Route path="/dispatch-orders" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="productionWorkflows" moduleLabel="Dispatch Orders">
-              <Layout currentPageName={currentPageName}>
-                <DispatchOrders />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        <Route path="/reports" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <Reports />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/ai-chat" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme moduleLabel="AI Chat">
-              <Layout currentPageName={currentPageName}>
-                <AiChat />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        {/* Integrated POS inside the authenticated SKUpervisor application shell. */}
-        <Route path="/pos" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <POSPage />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/services" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="services" moduleLabel="Services">
-              <Layout currentPageName={currentPageName}>
-                <Services />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        <Route path="/fnb" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="fnbDining" moduleLabel="Food & Beverage">
-              <Layout currentPageName={currentPageName}>
-                <Fnb />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        <Route path="/hospitality" element={
-          <ProtectedRoute>
-            <WorkflowModeRouteGate requiredCapability="hospitalityReservations" moduleLabel="Hospitality">
-              <Layout currentPageName={currentPageName}>
-                <Hospitality />
-              </Layout>
-            </WorkflowModeRouteGate>
-          </ProtectedRoute>
-        } />
-        {/* Dedicated POS application surface; intentionally leaves the IMS shell. */}
-        <Route path="/terminal" element={<TerminalPage />} />
-        <Route path="/sales" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <SalesPage />
-            </Layout>
-          </ProtectedRoute>
-        } />
-        <Route path="/settings" element={
-          <ProtectedRoute>
-            <Layout currentPageName={currentPageName}>
-              <Settings />
-            </Layout>
-          </ProtectedRoute>
-        } />
-
-        {/* Mobile receive page - no sidebar layout for phone-first UX */}
-        <Route path="/receive/:token" element={
-          <ProtectedRoute>
-            <MobileReceive />
-          </ProtectedRoute>
-        } />
+        {/* Merchant operations have moved to POS Back Office. Keep these URLs
+            as a safe, authenticated handoff for old bookmarks and QR links. */}
+        <Route path="/" element={<LegacyMerchantRoute />} />
+        <Route path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />} />
+        <Route path="/suppliers" element={<LegacyMerchantRoute target="/backoffice/suppliers" title="Supplier workspace moved" />} />
+        <Route path="/purchase-orders" element={<LegacyMerchantRoute target="/backoffice/purchase-orders" title="Purchase-order workspace moved" />} />
+        <Route path="/job-orders" element={<LegacyMerchantRoute target="/backoffice/job-orders" title="Job-order workspace moved" />} />
+        <Route path="/stock-movements" element={<LegacyMerchantRoute target="/backoffice/stock-movements" title="Inventory workspace moved" />} />
+        <Route path="/dispatch-orders" element={<LegacyMerchantRoute target="/backoffice/dispatch-orders" title="Dispatch workspace moved" />} />
+        <Route path="/reports" element={<LegacyMerchantRoute target="/backoffice/reports" title="Reports workspace moved" />} />
+        <Route path="/ai-chat" element={<LegacyMerchantRoute target="/backoffice/ai-chat" title="Assistant workspace moved" />} />
+        <Route path="/pos" element={<LegacyMerchantRoute target="/terminal" title="POS terminal moved" />} />
+        <Route path="/services" element={<LegacyMerchantRoute target="/backoffice/services" title="Services workspace moved" />} />
+        <Route path="/fnb" element={<LegacyMerchantRoute target="/backoffice/fnb" title="Food-and-beverage workspace moved" />} />
+        <Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />
+        <Route path="/terminal" element={<MerchantSurfaceRetired target="/terminal" title="POS terminal moved" />} />
+        <Route path="/sales" element={<LegacyMerchantRoute target="/backoffice/sales" title="Sales workspace moved" />} />
+        <Route path="/settings" element={<LegacyMerchantRoute target="/backoffice/settings" title="Settings workspace moved" />} />
+        <Route path="/receive/:token" element={<LegacyReceiveRoute />} />
 
         {/* Admin Portal - nested routes with AdminLayout */}
         <Route path="/admin" element={<AdminLayout />}>
@@ -408,20 +297,17 @@ const mountApp = () => {
 if (shouldRunDevAutoLogin()) {
   (async () => {
     try {
-      const AUTO_EMAIL = 'admin@test.com';
-      const AUTO_PASSWORD = 'Admin123!';
-      const COMPANY_TOKEN = 'token-original';
       const TERMINAL_ID = 'COUNTER-01';
 
       const session = await loginTenantSession({
-        email: AUTO_EMAIL,
-        password: AUTO_PASSWORD,
-        companyToken: COMPANY_TOKEN
+        email: devAutoLoginEmail,
+        password: devAutoLoginPassword,
+        companyToken: devAutoLoginCompanyToken
       });
       if (session?.token) {
         localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
       }
-    } catch (e) {
+    } catch {
       // best-effort only; do not block app mount
       // console.warn('Auto-login failed', e);
     } finally {

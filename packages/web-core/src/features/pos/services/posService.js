@@ -51,7 +51,7 @@ export const fetchPosCatalogPage = async (params = {}) => {
     void reconcilePosImageUploads(items);
     return {
         items,
-        pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
+        pagination: payload.pagination || { page: 1, page_size: 20, total: 0, total_pages: 1 }
     };
 };
 
@@ -269,6 +269,16 @@ export const fetchPosDeviceStatus = async () => {
     const response = await api.get('/pos/device/status', {
         // Device status is a background capability probe. In tablet/APK deployments
         // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
+export const testPosPrinter = async (payload = {}) => {
+    const response = await api.post('/pos/device/test-print', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined,
         skipGlobalErrorToast: true
     });
     return response.data?.data;
@@ -1029,6 +1039,7 @@ export default {
     fetchPosTransactions,
     fetchPosTransactionById,
     fetchPosDeviceStatus,
+    testPosPrinter,
     printPosReceipt,
     printPosShiftSummary,
     printPosZReading,

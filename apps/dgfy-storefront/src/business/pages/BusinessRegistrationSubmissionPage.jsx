@@ -1,14 +1,16 @@
 import React from 'react';
 import { Check, ClipboardCheck, LayoutDashboard, Mail } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';
-import { buildCustomerDashboardOverviewPath } from '../model/businessRegistrationSubmission.js';
+import {
+  buildBusinessRegistrationSubmissionPath,
+  buildCustomerDashboardOverviewPath
+} from '../model/businessRegistrationSubmission.js';
 
 export function BusinessRegistrationSubmissionPage() {
   const [searchParams] = useSearchParams();
   const applicationId = String(searchParams.get('application_id') || '').trim();
   const statusUrl = applicationId
-    ? resolveSkupervisorUrl(`/register-company/status/${encodeURIComponent(applicationId)}`)
+    ? buildBusinessRegistrationSubmissionPath(applicationId)
     : '';
 
   return (

@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-09-14
-review_by: 2027-03-14
+last_reviewed: 2026-09-15
+review_by: 2027-03-15
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
@@ -244,3 +244,46 @@ profiles inside the selected tenant, not a separate credential authority.
   a privileged administrator as a separate step-up-protected recovery surface.
 - This amendment records the contract only. Runtime enrollment, migrations,
   challenge verification, and APK changes are deferred to Phases 346-350.
+
+### 2026-09-15: Manager Back Office Entry While Terminal Is Locked (Phase 366)
+
+- An authenticated, accepted non-cashier tenant user who satisfies the existing Business Admin access policy may open the separate Back Office browser page while the POS terminal remains locked or has no cashier shift.
+- This is navigation only: it does not unlock checkout, create or resume a shift, grant `settings:edit`, change terminal/location binding, or alter cart, shift, or operator state.
+- The POS entry is rendered only for the current authenticated manager identity and remains unavailable when the API is unreachable. Back Office bootstrap/API authentication, tenant membership, branch grants, and section permissions remain the server authority. Cashiers and unauthorized users remain denied, including direct URL/API access.
+- Fresh-tab session hydration uses the existing HttpOnly refresh-cookie authority and in-memory token rules from ADR 0026; no access or company credentials are broadcast. Popup feedback distinguishes blocked/open failure from successful navigation, and the Overview destination remains `/?view=reports#/backoffice/overview`.
+- This amendment records the manager-entry contract; it does not create a new storage owner, bypass, migration, or cross-device synchronization guarantee.
+
+### 2026-09-15: Settings Ownership Boundary (Phase 367)
+
+- Business Admin is the canonical editor for business and receipt metadata,
+  tenant POS configuration and discounts, Storefront and branch configuration,
+  payment policies, team/attendance access, and terminal registry and
+  branch-binding policy.
+- POS `terminal_setup` remains the owner of terminal-local queue scope and
+  local order sound, while device/printer bridge operations, terminal
+  selection, shifts, cash drawer actions, and checkout remain in the POS
+  operational surface. Initial tenant onboarding and legacy settings routes
+  remain compatibility paths.
+- The shared settings editor, existing API/storage owners, server-projected
+  view/edit permissions, tenant/branch scope, and terminal/shift protections
+  remain unchanged. This amendment introduces no duplicate mutation path,
+  migration, or authentication bypass.
+
+### 2026-09-15: Settings Access Final Acceptance (Phase 368)
+
+- Business Admin bootstrap requests are sequence-guarded. A refresh or route
+  transition cannot let an older response restore stale tenant, branch, or
+  section data after a newer request or an auth/company invalidation.
+- The Back Office surface distinguishes unavailable service, authenticated but
+  unauthorized access, and missing/expired session state. Existing server
+  authentication, tenant membership, branch grants, and section permissions
+  remain authoritative; the client messages do not grant access.
+- Existing logout, session-expiry, and company-switch events clear mounted
+  Business Admin data and dirty editor state. Branch settings are carried in the
+  hash-route `branch_id` query and remain stable across reload. Navigation,
+  refresh, branch changes, and browser unload require explicit discard
+  confirmation while a canonical settings editor has unsaved changes.
+- An accepted refresh rehydrates the shared settings editor; a cancelled
+  refresh does not overwrite a dirty draft. This final acceptance adds no
+  storage owner, credential broadcast, migration, cross-device sync guarantee,
+  or authorization bypass.

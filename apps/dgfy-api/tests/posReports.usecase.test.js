@@ -82,6 +82,59 @@ describe('POS reports usecases', () => {
         expect(result.error.statusCode).toBe(401);
     });
 
+    it('exports invoice VAT fields and all split payment methods', async () => {
+        const getReportsOverviewUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                daily_report: {
+                    summary: {
+                        gross_sales: 110,
+                        discounts: 0,
+                        vatable_sales: 98.2143,
+                        vat: 11.7857,
+                        net_sales: 110,
+                        total_transactions: 1
+                    },
+                    discount_breakdown: [],
+                    cashier_summary: [],
+                    transaction_rows: [{
+                        invoice_number: 'NFS-000140',
+                        created_at: '2026-09-21T07:42:44.000Z',
+                        cashier_name: 'Admin',
+                        payment_type: 'cash',
+                        payment_methods: ['gcash', 'cash'],
+                        status: 'completed',
+                        total_amount: 110,
+                        gross_sales: 110,
+                        discount_amount: 0,
+                        vatable_sales: 98.2143,
+                        vat_amount: 11.7857,
+                        net_sales: 110
+                    }]
+                },
+                cashier_lifecycle: {}
+            }
+        });
+        const useCase = buildExportPosReportsUseCase({
+            posRepository: {},
+            getReportsOverviewUseCase
+        });
+
+        const result = await useCase({ query: { section: 'daily' }, user: { user_id: 4 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.content).toContain(
+            '"Invoice","Datetime (Asia/Manila)","Cashier","Payment","Status","Total","Gross Sales","Discount","VAT Sales","VAT","Net Sales"'
+        );
+        expect(result.data.content).toContain(
+            '"NFS-000140","2026-09-21 15:42:44 (Asia/Manila)","Admin","GCash + Cash","completed","110","110","0","98.2143","11.7857","110"'
+        );
+        expect(getReportsOverviewUseCase).toHaveBeenCalledWith({
+            query: { section: 'daily' },
+            user: { user_id: 4 }
+        });
+    });
+
     describe('buildExportProcurementCsvUseCase', () => {
         it('rejects a non-object query', async () => {
             const useCase = buildExportProcurementCsvUseCase({
@@ -135,7 +188,7 @@ describe('POS reports usecases', () => {
             expect(result.success).toBe(true);
             expect(result.data.content_type).toBe('text/csv; charset=utf-8');
             expect(result.data.content).toBe(
-                '"Order #","Order Date","Location","Status","Customer Name","Customer Phone","Delivery Address","SKU","Item Name","Quantity","Unit"'
+                '"Order #","Order Date (Asia/Manila)","Location","Status","Customer Name","Customer Phone","Delivery Address","SKU","Item Name","Quantity","Unit"'
             );
             expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: 4, limit: 500 });
         });
@@ -242,9 +295,10 @@ describe('POS reports usecases', () => {
             expect(result.success).toBe(true);
             const rows = result.data.content.split('\n');
             expect(rows).toHaveLength(4); // header + 2 lines from order 1 + 1 line from order 2
-            expect(rows[1]).toBe('"INV-001","2026-09-01T08:00:00.000Z","Main Branch","confirmed","Juan Dela Cruz","09171234567","123 Rizal St","SKU-1","Rice 5kg","2","sack"');
-            expect(rows[2]).toBe('"INV-001","2026-09-01T08:00:00.000Z","Main Branch","confirmed","Juan Dela Cruz","09171234567","123 Rizal St","SKU-2","Cooking Oil","3","bottle"');
-            expect(rows[3]).toBe('"2","2026-09-01T09:00:00.000Z","Second Branch","placed","Guest Buyer","","","SKU-3","Bottled Water","1","case"');
+            expect(rows[0]).toContain('Order Date (Asia/Manila)');
+            expect(rows[1]).toBe('"INV-001","2026-09-01 16:00:00 (Asia/Manila)","Main Branch","confirmed","Juan Dela Cruz","09171234567","123 Rizal St","SKU-1","Rice 5kg","2","sack"');
+            expect(rows[2]).toBe('"INV-001","2026-09-01 16:00:00 (Asia/Manila)","Main Branch","confirmed","Juan Dela Cruz","09171234567","123 Rizal St","SKU-2","Cooking Oil","3","bottle"');
+            expect(rows[3]).toBe('"2","2026-09-01 17:00:00 (Asia/Manila)","Second Branch","placed","Guest Buyer","","","SKU-3","Bottled Water","1","case"');
             expect(result.data.filename).toMatch(/^pos-procurement-export-\d{4}-\d{2}-\d{2}\.csv$/);
         });
     });

@@ -174,7 +174,7 @@ describe('Items category placement', () => {
     await waitFor(() => expect(fetchPosCatalogPage).toHaveBeenLastCalledWith({
       search: 'meat',
       page: 1,
-      page_size: 15,
+      page_size: 20,
       category_filter: 'all',
       stock_filter: 'all',
       location_id: 9

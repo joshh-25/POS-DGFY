@@ -72,6 +72,7 @@ import {
     updateOnlineOrderStatusUseCase,
     updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
+    testPosPrinterUseCase,
     claimOnlineOrderReceiptAutoPrintUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
@@ -2484,6 +2485,32 @@ export const getDeviceStatus = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const testPrinter = async (req, res, next) => {
+    try {
+        const result = await testPosPrinterUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS printer test page sent',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

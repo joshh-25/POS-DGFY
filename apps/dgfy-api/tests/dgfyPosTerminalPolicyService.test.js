@@ -110,7 +110,23 @@ describe('DGFY POS terminal cashier assignment policy', () => {
     expect(userLocationGrant.count).not.toHaveBeenCalled();
   });
 
-  it('preserves switch-location permission access when the terminal has explicit cashier assignments', async () => {
+  it('allows the accepted tenant owner admin without a branch grant', async () => {
+    await expect(validateDgfyPosTerminalPolicy({
+      tenantId: 'tenant-1',
+      terminalId: 'COUNTER-01',
+      tenantUserId: 22,
+      userRole: 'admin',
+      permissions: ['pos:transact'],
+      isMasterAdmin: false,
+      isTenantOwner: true
+    })).resolves.toEqual(expect.objectContaining({
+      reason_code: 'ALLOWED',
+      registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
+    }));
+    expect(userLocationGrant.count).not.toHaveBeenCalled();
+  });
+
+  it('does not treat switch-location permission as a terminal assignment bypass', async () => {
     await expect(validateDgfyPosTerminalPolicy({
       tenantId: 'tenant-1',
       terminalId: 'COUNTER-01',
@@ -118,10 +134,18 @@ describe('DGFY POS terminal cashier assignment policy', () => {
       userRole: 'cashier',
       permissions: [PERMISSIONS.POS.actions.SWITCH_LOCATION_POS],
       isMasterAdmin: false
-    })).resolves.toEqual(expect.objectContaining({
-      reason_code: 'ALLOWED',
-      registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
-    }));
-    expect(userLocationGrant.count).not.toHaveBeenCalled();
+    })).rejects.toMatchObject({
+      code: DomainErrorCode.AUTHORIZATION_FAILED,
+      statusCode: 403,
+      details: {
+        terminal_identity_policy: expect.objectContaining({
+          reason_code: 'CASHIER_TERMINAL_NOT_ASSIGNED',
+          registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
+        })
+      }
+    });
+    expect(userLocationGrant.count).toHaveBeenCalledWith({
+      where: { user_id: 22, location_id: 7 }
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS,
     buildBusinessAdminSettingsPath,
     buildPosSettingsOwnerPath,
     buildBusinessAdminSettingsEditorUser,
@@ -23,6 +24,25 @@ describe('Business Admin settings navigation model', () => {
         payments: { view: true, edit: false, scope: 'tenant' },
         registers: { view: false, edit: false, scope: 'branch' }
     };
+
+    it('declares one canonical Business Admin owner and scope for every settings section', () => {
+        expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => definition.key)).toEqual([
+            'profile', 'pos', 'storefront', 'delivery', 'branches', 'team', 'attendance', 'payments', 'registers'
+        ]);
+        expect(Object.fromEntries(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.map((definition) => [definition.key, definition.scope]))).toEqual({
+            profile: 'tenant',
+            pos: 'tenant',
+            storefront: 'tenant',
+            delivery: 'tenant',
+            branches: 'branch',
+            team: 'branch',
+            attendance: 'branch',
+            payments: 'tenant',
+            registers: 'branch'
+        });
+        expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'pos').description).toContain('discount rules');
+        expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'registers').description).toContain('Device enrollment remains POS-owned');
+    });
 
     it('parses both Business Admin route aliases and builds canonical nested settings paths', () => {
         expect(parseBusinessAdminPath('/backoffice/settings/team', '/backoffice')).toMatchObject({
@@ -49,7 +69,7 @@ describe('Business Admin settings navigation model', () => {
         expect(resolveSettingsBranchId({ requestedId: '12', scope: 'assigned', branches, allowedLocationIds: [11] })).toBe('11');
         expect(resolveSettingsBranchId({ requestedId: '12', scope: 'assigned', branches, allowedLocationIds: [12] })).toBe('12');
         expect(resolveSettingsBranchId({ requestedId: '99', scope: 'all', branches })).toBe('11');
-        expect(settingsScopeLabel('assigned', 'tenant')).toBe('Tenant-wide setting');
+        expect(settingsScopeLabel('assigned', 'tenant')).toBe('Business-wide setting');
         expect(settingsScopeLabel('assigned', 'branch')).toBe('Assigned branch scope');
     });
 

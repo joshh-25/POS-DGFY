@@ -531,6 +531,71 @@ export const getWeightedInventoryValueOverview = async ({ transaction = null } =
   };
 };
 
+/**
+ * Return the weighted inventory read model for the supplied active branches.
+ *
+ * Business Admin consumes this adapter, but weighted cost and FIFO fallback
+ * rules remain owned by the inventory module. Keeping the branch projection
+ * here prevents each consumer from rebuilding the same per-item valuation
+ * loop with subtly different rounding or drift handling.
+ */
+export const getWeightedInventoryValueByLocation = async ({ locations = [], transaction = null } = {}) => {
+  const Item = dbStore.get('Item');
+  const activeItems = await Item.findAll({
+    where: buildStockBearingItemWhere({ status: 'active', deleted_at: null }),
+    attributes: ['item_id', 'current_stock', 'cost_per_unit', 'fifo_enabled'],
+    raw: true,
+    ...(transaction ? { transaction } : {})
+  });
+  const safeLocations = Array.isArray(locations) ? locations : [];
+
+  const rows = await Promise.all(safeLocations.map(async (location) => {
+    const locationId = Number(location.location_id);
+    const metricsByItem = await getItemsCostMetrics({
+      items: activeItems,
+      locationId,
+      transaction
+    });
+    let availableQty = 0;
+    let inventoryValue = 0;
+    let driftItemCount = 0;
+
+    metricsByItem.forEach((metrics) => {
+      const scoped = metrics?.scoped;
+      if (!scoped) return;
+      availableQty += Number(scoped.available_qty) || 0;
+      inventoryValue += Number(scoped.inventory_value) || 0;
+      if (scoped.diagnostics?.has_drift) driftItemCount += 1;
+    });
+
+    return {
+      location_id: Number.isInteger(locationId) && locationId > 0 ? locationId : null,
+      location_name: location.name || `Branch #${locationId}`,
+      available_qty: Number(availableQty.toFixed(4)),
+      inventory_value: Number(inventoryValue.toFixed(4)),
+      weighted_avg_cost: availableQty > 0 ? Number((inventoryValue / availableQty).toFixed(4)) : 0,
+      drift_item_count: driftItemCount,
+      stock_bearing_item_count: activeItems.length
+    };
+  }));
+
+  const weightedTotalInventoryValue = rows.reduce((sum, row) => sum + (Number(row.inventory_value) || 0), 0);
+  const weightedTotalAvailableQty = rows.reduce((sum, row) => sum + (Number(row.available_qty) || 0), 0);
+  const legacyTotalInventoryValue = activeItems.reduce((sum, item) => (
+    sum + (Number(item.current_stock) || 0) * (Number(item.cost_per_unit) || 0)
+  ), 0);
+
+  return {
+    locations: rows,
+    weighted_total_inventory_value: Number(weightedTotalInventoryValue.toFixed(4)),
+    weighted_total_available_qty: Number(weightedTotalAvailableQty.toFixed(4)),
+    weighted_average_cost_per_unit: weightedTotalAvailableQty > 0
+      ? Number((weightedTotalInventoryValue / weightedTotalAvailableQty).toFixed(4))
+      : 0,
+    legacy_total_inventory_value: Number(legacyTotalInventoryValue.toFixed(4))
+  };
+};
+
 export const invalidateItemCostMetricsCache = ({
   tenantId = null,
   itemIds = [],
@@ -569,5 +634,6 @@ export default {
   getItemCostMetrics,
   getItemCostMetricsByLocation,
   getWeightedInventoryValueOverview,
+  getWeightedInventoryValueByLocation,
   invalidateItemCostMetricsCache
 };

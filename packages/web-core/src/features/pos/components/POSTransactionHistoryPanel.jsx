@@ -1536,6 +1536,14 @@ export default function POSTransactionHistoryPanel({
                                                                 Pending Sync
                                                             </span>
                                                         )}
+                                                        {isVoided && (
+                                                            <div className="mt-2 space-y-0.5 text-[11px] leading-4 text-rose-700">
+                                                                <p><span className="font-bold text-slate-700">Voided by:</span> {voidActorLabel}</p>
+                                                                <p><span className="font-bold text-slate-700">Voided at:</span> {voidedAtLabel}</p>
+                                                                <p className="max-w-[15rem] truncate" title={voidReason}>
+                                                                    <span className="font-bold text-slate-700">Reason:</span> {voidReason}</p>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="px-2.5 py-4 text-[#334155]">

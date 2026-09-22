@@ -67,6 +67,25 @@ describe('standalone POS browser session bootstrap', () => {
     expect(session.getAccessToken()).toBe('refreshed-access-token');
   });
 
+  it('uses the desktop runtime backend for CSRF bootstrap and session refresh', async () => {
+    globalThis.window.__DGFY_POS_RUNTIME__ = {
+      isDesktopShell: true,
+      backendOrigin: 'http://192.168.1.20:5001'
+    };
+
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({
+      token: 'explicit-pos-login-token',
+      companyToken: 'tenant-company-token'
+    });
+
+    await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
+    expect(globalThis.fetch.mock.calls.map(([url]) => url)).toEqual([
+      'http://192.168.1.20:5001/api/v1/auth/csrf-token',
+      'http://192.168.1.20:5001/api/v1/auth/refresh-token'
+    ]);
+  });
+
   it.each(['#/backoffice/overview', '#/business-admin/overview'])('allows cookie refresh for a fresh Back Office route (%s)', async (hash) => {
     globalThis.window.location.hash = hash;
     const session = await import('../browserSession.js');

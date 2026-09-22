@@ -77,6 +77,16 @@ describe('POS close-report payment breakdown', () => {
         });
         const zReadingLines = buildZReadingLines({
             z_reading: {
+                generated_at: '2026-08-19T12:00:00.000Z',
+                reconciliation: {
+                    status: 'matched',
+                    report_recognized_sales: 1050,
+                    z_total_amount: 1050,
+                    variance: 0,
+                    report_refunds_voids: 20,
+                    report_adjustment_amount: 0,
+                    evaluated_at: '2026-08-19T12:01:00.000Z'
+                },
                 summary: {
                     transaction_count: 10,
                     total_amount: 1050,
@@ -105,6 +115,13 @@ describe('POS close-report payment breakdown', () => {
         expect(zReadingLines).toContainEqual(expect.stringContaining('VAT'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Total sales'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('POS voids'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Generated:'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('2026'));
+        expect(zReadingLines).toContain('REPORT RECONCILIATION');
+        expect(zReadingLines).toContainEqual(expect.stringContaining('MATCHED'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Report recognized'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Difference'));
+        expect(zReadingLines).toContainEqual(expect.stringContaining('Checked'));
         expect(zReadingLines).toContain('Provider refunds are reconciled separately.');
     });
 });

@@ -9,6 +9,7 @@ const mockAdjustmentFindAll = jest.fn();
 const mockAttendanceFindAll = jest.fn();
 const mockOperatorFindAll = jest.fn();
 const mockHandoffFindAll = jest.fn();
+const mockZReadingSnapshotFindOne = jest.fn();
 const mockSequelize = {
     fn: jest.fn((...args) => ({ fn: args })),
     col: jest.fn((name) => ({ col: name })),
@@ -30,6 +31,7 @@ const EmployeeAttendanceSessionModel = { modelName: 'EmployeeAttendanceSession',
 const EmployeeBreakSegmentModel = { modelName: 'EmployeeBreakSegment' };
 const PosTerminalOperatorSessionModel = { modelName: 'PosTerminalOperatorSession', findAll: mockOperatorFindAll };
 const PosDrawerHandoffEventModel = { modelName: 'PosDrawerHandoffEvent', findAll: mockHandoffFindAll };
+const PosZReadingSnapshotModel = { modelName: 'PosZReadingSnapshot', findOne: mockZReadingSnapshotFindOne };
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
@@ -65,6 +67,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return PosTerminalOperatorSessionModel;
                 case 'PosDrawerHandoffEvent':
                     return PosDrawerHandoffEventModel;
+                case 'PosZReadingSnapshot':
+                    return PosZReadingSnapshotModel;
                 default:
                     return null;
             }
@@ -89,6 +93,7 @@ describe('posRepository reports analytics', () => {
         mockAttendanceFindAll.mockResolvedValue([]);
         mockOperatorFindAll.mockResolvedValue([]);
         mockHandoffFindAll.mockResolvedValue([]);
+        mockZReadingSnapshotFindOne.mockResolvedValue(null);
     });
 
     it('computes POS profit/loss using cost snapshot first and IMS fallback second', async () => {
@@ -430,6 +435,24 @@ describe('posRepository reports analytics', () => {
         expect(result.cashier_lifecycle.reconciliation).toEqual(expect.objectContaining({ difference: 0, reconciled: true }));
     });
 
+    it('applies an authorized multi-branch location filter to every lifecycle stream', async () => {
+        const result = await posRepository.getCashierLifecycleReport({
+            date_from: '2026-08-24',
+            date_to: '2026-08-24',
+            location_ids: [12, '15', 0, 'invalid', 12]
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            attendance: expect.any(Object),
+            operators: expect.any(Object)
+        }));
+        for (const mock of [mockAttendanceFindAll, mockOperatorFindAll, mockHandoffFindAll]) {
+            expect(mock).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({ location_id: { [Op.in]: [12, 15] } })
+            }));
+        }
+    });
+
     it('normalizes refunded sales as refunds/voids deductions and applies category filter', async () => {
         mockFindAll.mockResolvedValue([
             {
@@ -656,6 +679,70 @@ describe('posRepository reports analytics', () => {
         }));
     });
 
+    it('allocates VAT by the sale-time line tax class when a mixed-VAT invoice is filtered', async () => {
+        mockFindAll.mockResolvedValue([{
+            pos_transaction_id: 260,
+            created_at: '2026-06-22T10:45:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 210,
+            vatable_sales: 98.2143,
+            vat_amount: 11.7857,
+            total_amount: 210,
+            discount_amount: 0,
+            service_fee_amount: 0,
+            restaurant_service_charge_amount: 0,
+            payment_type: 'cash',
+            order_source: 'in_store',
+            order_method: 'dine_in',
+            lines: [
+                {
+                    line_id: 2601,
+                    item_id: 26,
+                    quantity: 1,
+                    line_subtotal: 110,
+                    vat_type_snapshot: 'vatable',
+                    item: { item_id: 26, name: 'Meal', category: 'food' }
+                },
+                {
+                    line_id: 2602,
+                    item_id: 27,
+                    quantity: 1,
+                    line_subtotal: 100,
+                    vat_type_snapshot: 'vat_exempt',
+                    item: { item_id: 27, name: 'Exempt Supply', category: 'supplies' }
+                }
+            ]
+        }]);
+
+        const filteredResult = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22',
+            category: 'supplies'
+        });
+
+        expect(filteredResult.daily_report.summary).toEqual(expect.objectContaining({
+            gross_sales: 100,
+            vatable_sales: 0,
+            vat: 0
+        }));
+        expect(filteredResult.daily_report.transaction_rows[0]).toEqual(expect.objectContaining({
+            gross_sales: 100,
+            vatable_sales: 0,
+            vat_amount: 0
+        }));
+
+        const unfilteredResult = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22'
+        });
+
+        expect(unfilteredResult.daily_report.summary).toEqual(expect.objectContaining({
+            vatable_sales: 98.2143,
+            vat: 11.7857
+        }));
+    });
+
     it('includes voided transactions in refunds/voids and gross sales', async () => {
         mockFindAll.mockResolvedValue([
             {
@@ -852,5 +939,115 @@ describe('posRepository reports analytics', () => {
         transactions[6].payment_status = 'refunded';
         const refundedResult = await posRepository.getReportsOverview({ payment_type: 'gcash' });
         expect(refundedResult.summary_cards.selected_tender.amount).toBe(1280);
+    });
+
+    it('returns a Z-reading reconciliation using the completed recognized transaction total', async () => {
+        mockFindAll.mockResolvedValue([{
+            pos_transaction_id: 901,
+            created_at: '2026-09-05T03:00:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 90,
+            total_amount: 90,
+            discount_amount: 0,
+            service_fee_amount: 0,
+            restaurant_service_charge_amount: 0,
+            vat_amount: 0,
+            payment_type: 'cash',
+            order_source: 'in_store',
+            order_method: 'dine_in',
+            cashier_id: 9,
+            cashier: { user_id: 9, username: 'cashier-1' },
+            lines: [{
+                item_id: 1,
+                quantity: 1,
+                cost_snapshot: 0,
+                line_subtotal: 90,
+                item: { item_id: 1, name: 'Item 1', category: 'product', cost_per_unit: 0 }
+            }]
+        }]);
+        mockZReadingSnapshotFindOne.mockResolvedValue({
+            business_date: '2026-09-05',
+            location_id: 12,
+            reading_identifier: 'ZR-20260905-001',
+            generated_at: '2026-09-05T15:00:00.000Z',
+            summary: JSON.stringify({
+                total_amount: 90,
+                void_transaction_count: 1,
+                void_amount: 20
+            })
+        });
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-05',
+            location_id: 12
+        });
+
+        expect(result.z_reading_reconciliation).toEqual(expect.objectContaining({
+            status: 'matched',
+            comparison_basis: 'completed_recognized_transaction_total',
+            business_date: '2026-09-05',
+            location_id: 12,
+            reading_identifier: 'ZR-20260905-001',
+            generated_at: '2026-09-05T15:00:00.000Z',
+            report_recognized_sales: 90,
+            z_total_amount: 90,
+            variance: 0,
+            z_void_transaction_count: 1,
+            z_void_amount: 20
+        }));
+    });
+
+    it('does not treat a malformed Z-reading summary as a zero-value match', async () => {
+        mockFindAll.mockResolvedValue([]);
+        mockZReadingSnapshotFindOne.mockResolvedValue({
+            business_date: '2026-09-05',
+            location_id: 12,
+            reading_identifier: 'ZR-20260905-002',
+            generated_at: '2026-09-05T15:00:00.000Z',
+            summary: {}
+        });
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-05',
+            location_id: 12
+        });
+
+        expect(result.z_reading_reconciliation).toEqual(expect.objectContaining({
+            status: 'not_comparable',
+            reading_identifier: 'ZR-20260905-002',
+            generated_at: '2026-09-05T15:00:00.000Z',
+            z_total_amount: null,
+            variance: null,
+            message: 'The Z-reading snapshot does not contain a comparable total.'
+        }));
+    });
+
+    it('does not claim a Z-reading match for filtered or multi-day reports', async () => {
+        mockFindAll.mockResolvedValue([]);
+
+        const filtered = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-05',
+            location_id: 12,
+            payment_type: 'cash'
+        });
+        const multiDay = await posRepository.getReportsOverview({
+            date_from: '2026-09-05',
+            date_to: '2026-09-06',
+            location_id: 12
+        });
+
+        expect(filtered.z_reading_reconciliation).toEqual(expect.objectContaining({
+            status: 'not_comparable',
+            variance: null
+        }));
+        expect(multiDay.z_reading_reconciliation).toEqual(expect.objectContaining({
+            status: 'not_comparable',
+            business_date: null,
+            variance: null
+        }));
     });
 });

@@ -40,7 +40,7 @@ const WORKSPACE_VIEW_CONFIG = {
     description: 'Open shifts, inspect cash expectations, manage shift location, and keep cashier operations active.'
   },
   terminal_setup: {
-    title: 'Terminal Setup Context',
+    title: 'Terminal Setup',
     description: 'View compliance, petty cash, and active setup baseline for this terminal.'
   }
 };
@@ -229,7 +229,7 @@ export default function TerminalSidebarPanel({
 
       {showSection('terminal_setup') && (
         <div id={sectionIds.terminalSetup} className="space-y-3 rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-sm shadow-slate-200/70">
-          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup Context</p>
+          <p className="text-xs font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup</p>
           <div className="flex items-center justify-between text-sm">
             <span className="text-[#334155]">Petty Cash</span>
             <span className="font-extrabold text-[#0F172A]">

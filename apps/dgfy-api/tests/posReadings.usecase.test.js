@@ -94,6 +94,17 @@ describe('POS readings usecases', () => {
                 transaction_count: 2,
                 total_amount: 250
             }),
+            getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({
+                status: 'matched',
+                comparison_basis: 'completed_recognized_transaction_total',
+                business_date: '2026-08-07',
+                location_id: 7,
+                report_recognized_sales: 250,
+                z_total_amount: 250,
+                variance: 0,
+                evaluated_at: '2026-08-07T16:01:00.000Z',
+                message: 'Report recognized sales match the immutable Z-reading total.'
+            }),
             incrementPersistentCounter: jest.fn()
                 .mockResolvedValueOnce(12)
                 .mockResolvedValueOnce(4),
@@ -157,6 +168,14 @@ describe('POS readings usecases', () => {
         expect(result.data).toEqual(expect.objectContaining({
             business_date: '2026-08-07',
             location_id: 7,
+            generated_at: '2026-08-07T16:00:00.000Z',
+            z_reading_reconciliation: expect.objectContaining({
+                status: 'matched',
+                report_recognized_sales: 250,
+                z_total_amount: 250,
+                variance: 0,
+                evaluated_at: '2026-08-07T16:01:00.000Z'
+            }),
             snapshot_reused: false,
             replay_outcome: 'new_snapshot'
         }));
@@ -178,6 +197,15 @@ describe('POS readings usecases', () => {
         };
         const posRepository = {
             getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue(existingSnapshot),
+            getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({
+                status: 'matched',
+                business_date: '2026-08-07',
+                location_id: 7,
+                report_recognized_sales: 250,
+                z_total_amount: 250,
+                variance: 0,
+                evaluated_at: '2026-08-07T16:01:00.000Z'
+            }),
             findActiveDayCloseOperatorById: jest.fn().mockResolvedValue({
                 user_id: 11,
                 username: 'Cashier One',
@@ -207,6 +235,10 @@ describe('POS readings usecases', () => {
         expect(result.success).toBe(true);
         expect(result.data).toEqual(expect.objectContaining({
             reading_identifier: existingSnapshot.reading_identifier,
+            z_reading_reconciliation: expect.objectContaining({
+                status: 'matched',
+                evaluated_at: '2026-08-07T16:01:00.000Z'
+            }),
             snapshot_reused: true,
             idempotent_replay: true,
             replay_outcome: 'existing_snapshot'
@@ -271,6 +303,15 @@ describe('POS readings usecases', () => {
     it('buildGetDailyZReadingUseCase applies the authorized branch to on-demand reads', async () => {
         const posRepository = {
             getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue(null),
+            getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({
+                status: 'not_generated',
+                business_date: '2026-08-07',
+                location_id: 7,
+                report_recognized_sales: 480,
+                z_total_amount: null,
+                variance: null,
+                evaluated_at: '2026-08-07T16:01:00.000Z'
+            }),
             getZReadingSummary: jest.fn().mockResolvedValue({
                 transaction_count: 3,
                 total_amount: 480
@@ -305,6 +346,11 @@ describe('POS readings usecases', () => {
             business_date: '2026-08-07',
             location_id: 7,
             snapshot_persisted: false,
+            z_reading_reconciliation: expect.objectContaining({
+                status: 'not_generated',
+                report_recognized_sales: 480,
+                evaluated_at: '2026-08-07T16:01:00.000Z'
+            }),
             replay_outcome: 'computed_on_demand'
         }));
     });

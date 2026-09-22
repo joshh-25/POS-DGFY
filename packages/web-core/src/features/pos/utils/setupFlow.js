@@ -1,5 +1,9 @@
 import { normalizeTerminalRegistry } from './terminalIdentity.js';
 import { normalizeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
+import {
+  DEFAULT_WORKFLOW_MODE,
+  isHospitalityWorkflowMode
+} from '@/src/features/settings/workflowMode.js';
 
 export const POS_TERMINAL_SETUP_FLOW_QUERY_KEY = 'setup_flow';
 export const POS_TERMINAL_SETUP_STEP_QUERY_KEY = 'setup_step';
@@ -16,21 +20,39 @@ export const POS_TERMINAL_SETUP_STEPS = Object.freeze({
 export const POS_TERMINAL_SETUP_ORDER = Object.freeze([
   POS_TERMINAL_SETUP_STEPS.PROFILE,
   POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP,
+  POS_TERMINAL_SETUP_STEPS.STARTER_ITEM,
   POS_TERMINAL_SETUP_STEPS.POS_SETUP
 ]);
+
+// Catalog items are never required during tenant onboarding. Hospitality keeps
+// the shared starter step only for its room-type/room setup, which is not a
+// catalog-item requirement.
+export const isStarterItemSetupRequired = () => false;
+
+export const isStarterSetupRequired = (workflowMode = DEFAULT_WORKFLOW_MODE) => (
+  isHospitalityWorkflowMode(workflowMode)
+);
+
+export const getTenantSetupOrder = (workflowMode = DEFAULT_WORKFLOW_MODE) => (
+  isStarterSetupRequired(workflowMode)
+    ? POS_TERMINAL_SETUP_ORDER
+    : POS_TERMINAL_SETUP_ORDER.filter((step) => step !== POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)
+);
 
 export const POS_TERMINAL_SETUP_VIEW_MODES = Object.freeze({
   [POS_TERMINAL_SETUP_STEPS.PROFILE]: 'settings_profile',
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: 'settings_storefront',
+  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: 'items',
   [POS_TERMINAL_SETUP_STEPS.POS_SETUP]: 'settings_pos'
 });
 
 export const buildTenantSetupSearch = (
   existingSearch = '',
-  step = POS_TERMINAL_SETUP_STEPS.PROFILE
+  step = POS_TERMINAL_SETUP_STEPS.PROFILE,
+  workflowMode = DEFAULT_WORKFLOW_MODE
 ) => {
   const params = new URLSearchParams(existingSearch || '');
-  const normalizedStep = resolveTenantSetupStepValue(step);
+  const normalizedStep = resolveTenantSetupStepValue(step, workflowMode);
   params.set(POS_TERMINAL_SETUP_FLOW_QUERY_KEY, POS_TERMINAL_SETUP_FLOW_VALUE);
   params.set(POS_TERMINAL_SETUP_STEP_QUERY_KEY, normalizedStep);
   return params.toString() ? `?${params.toString()}` : '';
@@ -120,7 +142,11 @@ export const resolveStorefrontSetupReadiness = (settingsPayload = {}, locationsP
   };
 };
 
-export const resolveStarterItemSetupReadiness = (itemsPayload = null) => {
+export const resolveStarterItemSetupReadiness = (
+  itemsPayload = null,
+  onboardingPayload = null,
+  workflowMode = DEFAULT_WORKFLOW_MODE
+) => {
   const itemRows = Array.isArray(itemsPayload)
     ? itemsPayload
     : (Array.isArray(itemsPayload?.items) ? itemsPayload.items : []);
@@ -133,11 +159,16 @@ export const resolveStarterItemSetupReadiness = (itemsPayload = null) => {
       || String(item?.mode_item_preset || '').trim()
     )
   ));
+  const missingRequirements = onboardingPayload?.tenant_onboarding_progress
+    ?.checklist_snapshot?.missing_requirements;
+  const checklistConfirmsReady = !isStarterSetupRequired(workflowMode)
+    || (Array.isArray(missingRequirements) && !missingRequirements.includes('has_priced_starter_item'));
+  const resolvedItem = readyItem || (checklistConfirmsReady ? { item_id: null } : null);
 
   return {
-    ready: Boolean(readyItem),
-    starterItemReady: Boolean(readyItem),
-    starterItemId: Number(readyItem?.item_id || readyItem?.id || 0) || null
+    ready: Boolean(resolvedItem),
+    starterItemReady: Boolean(resolvedItem),
+    starterItemId: Number(resolvedItem?.item_id || resolvedItem?.id || 0) || null
   };
 };
 
@@ -146,10 +177,9 @@ export const resolveTenantSetupViewMode = (step = '') => (
   || POS_TERMINAL_SETUP_VIEW_MODES[POS_TERMINAL_SETUP_STEPS.PROFILE]
 );
 
-export const resolveTenantSetupStepValue = (step = '') => {
+export const resolveTenantSetupStepValue = (step = '', workflowMode = DEFAULT_WORKFLOW_MODE) => {
   const normalizedStep = String(step || '').trim().toLowerCase();
-  // Preserve old POS onboarding links after the starter-item screen is removed.
-  if (normalizedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+  if (normalizedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && !isStarterSetupRequired(workflowMode)) {
     return POS_TERMINAL_SETUP_STEPS.POS_SETUP;
   }
   return (
@@ -160,18 +190,20 @@ export const resolveTenantSetupStepValue = (step = '') => {
     : POS_TERMINAL_SETUP_STEPS.PROFILE;
 };
 
-export const getPreviousTenantSetupStep = (step = '') => {
-  const normalizedStep = String(step || '').trim().toLowerCase();
-  const index = POS_TERMINAL_SETUP_ORDER.indexOf(normalizedStep);
+export const getPreviousTenantSetupStep = (step = '', workflowMode = DEFAULT_WORKFLOW_MODE) => {
+  const normalizedStep = resolveTenantSetupStepValue(step, workflowMode);
+  const setupOrder = getTenantSetupOrder(workflowMode);
+  const index = setupOrder.indexOf(normalizedStep);
   if (index <= 0) return '';
-  return POS_TERMINAL_SETUP_ORDER[index - 1];
+  return setupOrder[index - 1];
 };
 
-export const getNextTenantSetupStep = (step = '') => {
-  const normalizedStep = String(step || '').trim().toLowerCase();
-  const index = POS_TERMINAL_SETUP_ORDER.indexOf(normalizedStep);
-  if (index < 0 || index >= POS_TERMINAL_SETUP_ORDER.length - 1) return '';
-  return POS_TERMINAL_SETUP_ORDER[index + 1];
+export const getNextTenantSetupStep = (step = '', workflowMode = DEFAULT_WORKFLOW_MODE) => {
+  const normalizedStep = resolveTenantSetupStepValue(step, workflowMode);
+  const setupOrder = getTenantSetupOrder(workflowMode);
+  const index = setupOrder.indexOf(normalizedStep);
+  if (index < 0 || index >= setupOrder.length - 1) return '';
+  return setupOrder[index + 1];
 };
 
 export const resolveTenantSetupStep = ({
@@ -181,7 +213,9 @@ export const resolveTenantSetupStep = ({
   requestedStep = '',
   profileReady = false,
   posSetupReady = false,
-  storefrontSetupReady = false
+  storefrontSetupReady = false,
+  starterItemReady = false,
+  workflowMode = DEFAULT_WORKFLOW_MODE
 } = {}) => {
   if (!requested || locked || isMasterAdmin !== true) {
     return POS_TERMINAL_SETUP_STEPS.COMPLETE;
@@ -191,25 +225,38 @@ export const resolveTenantSetupStep = ({
     return POS_TERMINAL_SETUP_STEPS.PROFILE;
   }
   const normalizedRequestedStep = String(requestedStep || '').trim().toLowerCase();
+  const starterSetupRequired = isStarterSetupRequired(workflowMode);
+  const effectiveRequestedStep = normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM
+    && !starterSetupRequired
+    ? POS_TERMINAL_SETUP_STEPS.POS_SETUP
+    : normalizedRequestedStep;
   if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
-    return (profileReady && storefrontSetupReady && posSetupReady)
+    return (profileReady && storefrontSetupReady && (!starterSetupRequired || starterItemReady) && posSetupReady)
       ? POS_TERMINAL_SETUP_STEPS.COMPLETE
       : (
         !storefrontSetupReady
           ? POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
-          : (!posSetupReady ? POS_TERMINAL_SETUP_STEPS.POS_SETUP : POS_TERMINAL_SETUP_STEPS.COMPLETE)
+          : (starterSetupRequired && !starterItemReady
+            ? POS_TERMINAL_SETUP_STEPS.STARTER_ITEM
+            : (!posSetupReady ? POS_TERMINAL_SETUP_STEPS.POS_SETUP : POS_TERMINAL_SETUP_STEPS.COMPLETE))
       );
   }
-  if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
+  if (effectiveRequestedStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
     return POS_TERMINAL_SETUP_STEPS.PROFILE;
   }
-  if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
+  if (effectiveRequestedStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
     return POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP;
   }
   if (!storefrontSetupReady) {
     return POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP;
   }
-  if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP) {
+  if (starterSetupRequired && effectiveRequestedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+    return POS_TERMINAL_SETUP_STEPS.STARTER_ITEM;
+  }
+  if (starterSetupRequired && !starterItemReady) {
+    return POS_TERMINAL_SETUP_STEPS.STARTER_ITEM;
+  }
+  if (effectiveRequestedStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP) {
     return POS_TERMINAL_SETUP_STEPS.POS_SETUP;
   }
   if (!posSetupReady) {

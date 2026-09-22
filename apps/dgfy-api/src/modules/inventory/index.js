@@ -189,4 +189,5 @@ export { resolveMovementLocation, resolveInventoryAuthority };
 
 export * from './commands/stockCommandService.js';
 export * from './contracts/itemRepository.contract.js';
+export * from './services/inventoryHealthService.js';
 export * from './repositories/itemRepository.js';

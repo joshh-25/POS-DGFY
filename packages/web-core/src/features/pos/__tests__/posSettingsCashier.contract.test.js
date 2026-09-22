@@ -147,6 +147,10 @@ describe('regular POS Setup cashier management contract', () => {
   it('loads active cashier authorization profiles after invitation acceptance', () => {
     expect(workspaceSource).toContain('const rows = await fetchPosSetupCashiers();');
     expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:manage')");
+    expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:delete')");
+    expect(workspaceSource).toContain('removeUserFromCompany(userId)');
+    expect(workspaceSource).toContain('data-testid={`remove-cashier-${cashier.user_id}`}');
+    expect(workspaceSource).toContain('Remove cashier access');
   });
 
   it('supports explicit per-terminal cashier assignments with legacy location fallback', () => {
@@ -841,8 +845,10 @@ describe('regular POS Setup cashier management contract', () => {
     expect(tenantSetupModalSource).toContain('storefront_hours: serializeStorefrontBusinessHours(storefrontHours)');
     expect(tenantSetupModalSource).toContain('onKeyDown={handleDialogKeyDown}');
     expect(tenantSetupModalSource.indexOf('Business Hours')).toBeLessThan(tenantSetupModalSource.indexOf('Business Location'));
-    expect(tenantSetupModalSource).not.toContain('STARTER_ITEM');
-    expect(tenantSetupModalSource).not.toContain('starterItemRequirements');
+    expect(tenantSetupModalSource).toContain('STARTER_ITEM');
+    expect(tenantSetupModalSource).toContain('starterItemRequirements');
+    expect(tenantSetupModalSource).toContain('Save Room Setup');
+    expect(tenantSetupModalSource).not.toContain('Save Starter Item');
   });
 
   it('provides an inline business-hours editor from the storefront locations summary', () => {

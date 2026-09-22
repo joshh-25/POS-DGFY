@@ -4,37 +4,26 @@ import { hasTestCredentials, testCredentials } from './fixtures/test-credentials
 
 const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
 
-test.describe('Business Admin to POS settings sync', () => {
+test.describe('Business Admin settings ownership', () => {
   test.skip(
     !hasTestCredentials || !testCompanyName,
     'E2E_TEST_USER_EMAIL, E2E_TEST_USER_PASSWORD, and E2E_TEST_COMPANY_NAME are required.'
   );
 
-  test('updates an open POS terminal setup after a Business Admin save', async ({ page }) => {
+  test('keeps terminal-local controls in POS while registry policy stays in Back Office', async ({ page }) => {
     test.setTimeout(120_000);
 
     await signIn(page, testCredentials, { companyName: testCompanyName });
-    let posSettingsRequestCount = 0;
-    page.on('request', (request) => {
-      if (request.url().includes('/mobile-pos/bootstrap/settings')) posSettingsRequestCount += 1;
-    });
-    page.on('response', async (response) => {
-      if (!response.url().includes('/mobile-pos/bootstrap/settings')) return;
-      const payload = await response.json().catch(() => null);
-      console.log(`POS settings response: ${JSON.stringify(payload?.data?.settings?.pos_terminal_registry_mode || null)}`);
-    });
     const terminalSetupNav = page.getByTestId('pos-nav-terminal-setup');
     await expect(terminalSetupNav).toBeVisible();
     await terminalSetupNav.click();
-    await expect(page.getByText('Terminal Setup Context', { exact: true })).toBeVisible();
-
-    const posRegistryMode = page.locator('select:has(option[value="enforce"])').first();
-    await expect(posRegistryMode).toBeVisible();
-    const originalMode = await posRegistryMode.inputValue();
-    expect(['warn', 'enforce']).toContain(originalMode);
-    const nextMode = originalMode === 'enforce' ? 'warn' : 'enforce';
+    await expect(page.getByText('Terminal Setup', { exact: true })).toBeVisible();
+    await expect(page.getByText('Terminal-only controls', { exact: true })).toBeVisible();
+    await expect(page.getByText('Terminal Registry Mode', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Strict Shift Location Binding', { exact: true })).toHaveCount(0);
 
     const businessAdminPage = await page.context().newPage();
+    let originalMode = null;
     try {
       await businessAdminPage.goto('/?view=reports#/backoffice/settings/registers', { waitUntil: 'domcontentloaded' });
       await expect(businessAdminPage.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
@@ -45,21 +34,19 @@ test.describe('Business Admin to POS settings sync', () => {
 
       const adminRegistryMode = businessAdminPage.locator('select:has(option[value="enforce"])').first();
       await expect(adminRegistryMode).toBeVisible();
-      await expect(adminRegistryMode).toHaveValue(originalMode);
-
+      originalMode = await adminRegistryMode.inputValue();
+      expect(['warn', 'enforce']).toContain(originalMode);
+      const nextMode = originalMode === 'enforce' ? 'warn' : 'enforce';
       await adminRegistryMode.selectOption(nextMode);
       await businessAdminPage.getByRole('button', { name: /^Save$/ }).click();
       await expect(businessAdminPage.getByText('Terminal registry saved.', { exact: true })).toBeVisible();
       await expect(adminRegistryMode).toHaveValue(nextMode);
-
-      console.log(`POS settings requests after save: ${posSettingsRequestCount}`);
-      await expect(posRegistryMode).toHaveValue(nextMode, { timeout: 10_000 });
     } finally {
       if (!businessAdminPage.isClosed()) {
         const adminRegistryMode = businessAdminPage.locator('select:has(option[value="enforce"])').first();
         if (await adminRegistryMode.isVisible().catch(() => false)) {
           const currentMode = await adminRegistryMode.inputValue().catch(() => originalMode);
-          if (currentMode !== originalMode) {
+          if (originalMode && currentMode !== originalMode) {
             await adminRegistryMode.selectOption(originalMode);
             await businessAdminPage.getByRole('button', { name: /^Save$/ }).click();
             await expect(businessAdminPage.getByText('Terminal registry saved.', { exact: true })).toBeVisible();

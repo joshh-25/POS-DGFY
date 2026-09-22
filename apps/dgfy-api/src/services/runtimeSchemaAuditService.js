@@ -85,7 +85,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260904000001-create-pos-discount-beneficiaries.cjs',
     '20260914000002-create-pos-location-item-overrides.cjs',
     '20260914000003-add-job-order-location-scope.cjs',
-    '20260914000004-create-pos-terminal-device-enrollment.cjs'
+    '20260914000004-create-pos-terminal-device-enrollment.cjs',
+    '20260921000002-add-employee-credit-split-tender.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -216,6 +217,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'session_id',
         'status',
         'payment_method',
+        'employee_credit_account_code',
         'applied_amount',
         'provider_event_id',
         'provider_refund_ids',

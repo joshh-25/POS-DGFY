@@ -86,6 +86,7 @@ import {
     validateUpdateOnlineOrderStatus,
     validateUpdateOnlineOrderDeliveryAddress,
     validatePosDeviceReceiptPrint,
+    validatePosDeviceTestPrint,
     validateOnlineOrderReceiptAutoPrintClaim,
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
@@ -349,6 +350,7 @@ router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS),
 // usable before a run is built, unlike the shift-bound incoming-orders queue below.
 router.get('/reports/procurement-export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateProcurementExportQuery, posController.exportProcurementCsv);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
+router.post('/device/test-print', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.requirePairedTerminal, validatePosDeviceTestPrint, posController.testPrinter);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/online-order-receipt-claim', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validateOnlineOrderReceiptAutoPrintClaim, posController.claimOnlineOrderReceiptAutoPrint);
 router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
