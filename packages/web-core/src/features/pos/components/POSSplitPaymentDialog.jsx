@@ -117,7 +117,9 @@ export default function POSSplitPaymentDialog({
     const paymentRowIdempotencyKeysRef = useRef(new Map());
     const paymentRowsScrollRef = useRef(null);
     const previousPaymentRowsLengthRef = useRef(paymentRows.length);
-    const sessionOpenAttemptRef = useRef(false);
+    const sessionRecoveryAttemptRef = useRef(false);
+    const sessionIdempotencyKeyRef = useRef(null);
+    const sessionCreationPromiseRef = useRef(null);
     const recoveredCompletionAttemptRef = useRef(false);
 
     const remainingAmount = round4(session?.remaining_amount ?? totalAmount);
@@ -145,8 +147,7 @@ export default function POSSplitPaymentDialog({
     const amountStillDue = round4(Math.max(0, remainingAmount - enteredAppliedAmount));
     const cashHasNoBalance = cashReceivedAmount > 0 && remainingAfterNonCash <= 0;
     const hasEnteredPayment = activePaymentRows.length > 0;
-    const canCompletePaymentRows = Boolean(session)
-        && hasEnteredPayment
+    const canCompletePaymentRows = hasEnteredPayment
         && !duplicatePaymentMethod
         && !nonCashAmountTooHigh
         && !cashHasNoBalance
@@ -203,8 +204,8 @@ export default function POSSplitPaymentDialog({
     }, [applySession, onOpenChange, onSessionStateChange, sessionScope, storageKey]);
 
     const openOrResumeSession = useCallback(async () => {
-        if (!open || !storageKey || sessionOpenAttemptRef.current) return;
-        sessionOpenAttemptRef.current = true;
+        if (!open || !storageKey || sessionRecoveryAttemptRef.current) return;
+        sessionRecoveryAttemptRef.current = true;
         setLoading(true);
         setError('');
         try {
@@ -225,20 +226,7 @@ export default function POSSplitPaymentDialog({
                 return;
             }
             setRecoveredFromStorage(false);
-            const idempotencyKey = stored?.idempotencyKey || createIdempotencyKey('split-session');
-            const created = await createPosPaymentSession({
-                idempotency_key: idempotencyKey,
-                shift_id: shiftId,
-                terminal_id: terminalId,
-                location_id: locationId || undefined,
-                parked_sale_id: parkedSaleId || undefined,
-                snapshot: buildSnapshot(cart, checkoutSnapshot)
-            });
-            applySession(created);
-            persistPosSplitPaymentSessionPointer(storageKey, {
-                session_id: getSessionId(created),
-                idempotency_key: idempotencyKey
-            });
+            sessionIdempotencyKeyRef.current = stored?.idempotencyKey || null;
         } catch (requestError) {
             const message = requestError?.response?.data?.message || requestError?.message || 'Unable to open split payment.';
             setError(message);
@@ -246,7 +234,39 @@ export default function POSSplitPaymentDialog({
         } finally {
             setLoading(false);
         }
-    }, [applySession, cart, checkoutSnapshot, loadSession, locationId, open, parkedSaleId, sessionScope, shiftId, storageKey, terminalId]);
+    }, [applySession, loadSession, open, sessionScope, storageKey]);
+
+    const ensurePaymentSession = useCallback(async () => {
+        if (session && !isTerminalPosPaymentSession(session)) return session;
+        if (sessionCreationPromiseRef.current) return sessionCreationPromiseRef.current;
+
+        const stored = readPosSplitPaymentSessionPointer(storageKey);
+        const idempotencyKey = sessionIdempotencyKeyRef.current
+            || stored?.idempotencyKey
+            || createIdempotencyKey('split-session');
+        sessionIdempotencyKeyRef.current = idempotencyKey;
+        const request = createPosPaymentSession({
+            idempotency_key: idempotencyKey,
+            shift_id: shiftId,
+            terminal_id: terminalId,
+            location_id: locationId || undefined,
+            parked_sale_id: parkedSaleId || undefined,
+            snapshot: buildSnapshot(cart, checkoutSnapshot)
+        }).then((created) => {
+            applySession(created);
+            persistPosSplitPaymentSessionPointer(storageKey, {
+                session_id: getSessionId(created),
+                idempotency_key: idempotencyKey
+            });
+            return created;
+        });
+        sessionCreationPromiseRef.current = request;
+        try {
+            return await request;
+        } finally {
+            if (sessionCreationPromiseRef.current === request) sessionCreationPromiseRef.current = null;
+        }
+    }, [applySession, cart, checkoutSnapshot, locationId, parkedSaleId, session, shiftId, storageKey, terminalId]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -256,7 +276,11 @@ export default function POSSplitPaymentDialog({
 
     useEffect(() => {
         if (open) return;
-        sessionOpenAttemptRef.current = false;
+        setSession(null);
+        setRecoveredFromStorage(false);
+        sessionRecoveryAttemptRef.current = false;
+        sessionIdempotencyKeyRef.current = null;
+        sessionCreationPromiseRef.current = null;
         setPaymentRows(createDefaultPaymentRows());
         nextPaymentRowIdRef.current = 3;
         paymentRowIdempotencyKeysRef.current.clear();
@@ -337,8 +361,7 @@ export default function POSSplitPaymentDialog({
     }, [loading, onOpenChange, open, recoveredFromStorage, session]);
 
     const handleCompletePaymentRows = async () => {
-        const sessionId = getSessionId(session);
-        if (!sessionId || !hasEnteredPayment) {
+        if (!hasEnteredPayment) {
             setError('Enter an amount for at least one payment method.');
             return;
         }
@@ -362,11 +385,17 @@ export default function POSSplitPaymentDialog({
         const orderedRows = [...activeNonCashRows, ...activeCashRows];
         const completedRowIds = [];
         let latestSession = session;
+        let sessionId = getSessionId(latestSession);
         let inFlightRow = null;
         let inFlightKeySignature = '';
         setLoading(true);
         setError('');
         try {
+            if (!sessionId) {
+                latestSession = await ensurePaymentSession();
+                sessionId = getSessionId(latestSession);
+                if (!sessionId) throw new Error('Unable to create the split-payment session.');
+            }
             for (const row of orderedRows) {
                 const keySignature = [sessionId, row.id, row.method, row.enteredAmount].join(':');
                 let idempotencyKey = paymentRowIdempotencyKeysRef.current.get(keySignature);
@@ -407,10 +436,12 @@ export default function POSSplitPaymentDialog({
             }
         } catch (requestError) {
             let recoveredSession = latestSession;
-            try {
-                recoveredSession = await loadSession(sessionId);
-            } catch {
-                // Keep the last confirmed server response visible when refresh also fails.
+            if (sessionId) {
+                try {
+                    recoveredSession = await loadSession(sessionId);
+                } catch {
+                    // Keep the last confirmed server response visible when refresh also fails.
+                }
             }
 
             const recoveredRemaining = round4(recoveredSession?.remaining_amount ?? remainingAmount);
@@ -574,7 +605,7 @@ export default function POSSplitPaymentDialog({
                         </div>
                     )}
 
-                    {!isReadyToComplete && session && (
+                    {!isReadyToComplete && (
                         <div className="space-y-3" data-testid="pos-split-payment-add-form">
                         <div className="space-y-2 sm:space-y-3" data-testid="pos-payment-rows-form">
                                 <div>
