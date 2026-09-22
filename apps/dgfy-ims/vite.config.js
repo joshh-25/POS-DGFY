@@ -160,9 +160,6 @@ export default defineConfig({
           if (id.includes('maplibre-gl')) return 'vendor-maplibre';
           if (id.includes('qrcode')) return 'vendor-qrcode';
           if (id.includes('lucide-react')) return 'vendor-icons';
-          // AiChat.jsx (Pages/AiChat.jsx) is the only consumer of this family, via
-          // packages/web-core's MarkdownRenderer.jsx.
-          if (id.includes('react-markdown') || id.includes('remark-') || id.includes('rehype-') || id.includes('katex') || id.includes('unified') || id.includes('micromark')) return 'vendor-markdown';
           return undefined;
         }
       }
