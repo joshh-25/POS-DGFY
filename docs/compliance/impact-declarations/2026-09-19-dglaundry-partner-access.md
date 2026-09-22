@@ -11,8 +11,8 @@ verification_evidence: npm run test --prefix apps/dgfy-api -- --runTestsByPath t
 rollback_note: Revert the DGFY partner-token/mapping PR. No migration or production setting is applied by this source change; keep the connection disabled and payments dark until a separately reviewed staging release is qualified.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-19T15:12:04+08:00
-preflight_request_ref: NOT-EXECUTED-2026-09-19-DGLAUNDRY-PARTNER-ACCESS
+preflight_run_at: 2026-09-22T17:04:03.704Z
+preflight_request_ref: PREFLIGHT-35757505429-2026-09-19-DGLAUNDRY-PARTNER-ACCESS
 ---
 
 # DGLaundry partner access and mapped booking authorization
