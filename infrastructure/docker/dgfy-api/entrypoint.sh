@@ -51,6 +51,12 @@ node scripts/sync-tenant-schemas.js \
   --mode repair-apply \
   --report-file "$TENANT_SCHEMA_SYNC_REPORT" 2>&1 | tee "$TENANT_SCHEMA_SYNC_LOG" || true
 
+# #2027: the check above is deliberately non-blocking (see the WARNING banner below), which
+# previously meant an unresolved tenant only ever showed up in stdout/this log file -- nobody
+# tails either live. This raises an actionable Sentry signal instead, without changing the
+# non-blocking behavior itself -- `|| true` keeps it exactly as inert as the step above.
+node scripts/alert-on-tenant-schema-sync-failures.js "$TENANT_SCHEMA_SYNC_REPORT" || true
+
 if grep -qE '^\[TenantSchemaSync\] completed .* failed=0$' "$TENANT_SCHEMA_SYNC_LOG" 2>/dev/null; then
   echo "[entrypoint] Tenant schema sync: all active tenants OK."
 else
