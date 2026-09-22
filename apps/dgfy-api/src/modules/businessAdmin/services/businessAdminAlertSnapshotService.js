@@ -34,6 +34,89 @@ const makeAlert = ({ alert_type, message, level = 'info', source_domain = 'opera
     payload
 });
 
+const parseJsonValue = (value) => {
+    if (Array.isArray(value) || (value && typeof value === 'object')) return value;
+    if (typeof value !== 'string') return null;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+};
+
+const parseTerminalRegistry = (setting) => {
+    const raw = setting?.data_type === 'json' ? parseJsonValue(setting.setting_value) : setting?.setting_value;
+    const parsed = parseJsonValue(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => ({
+        terminal_id: String(entry?.terminal_id || '').trim().toUpperCase(),
+        label: String(entry?.label || entry?.terminal_id || '').trim(),
+        location_id: Number.parseInt(entry?.location_id, 10) || null,
+        is_active: entry?.is_active !== false
+    })).filter((entry) => entry.terminal_id);
+};
+
+const buildReadinessAlerts = async (tenant = null) => {
+    const TenantLocation = dbStore.get('TenantLocation');
+    const SystemSetting = dbStore.get('SystemSetting');
+    const [locations, registrySetting, onboardingSetting] = await Promise.all([
+        TenantLocation?.findAll ? TenantLocation.findAll({ where: { is_active: true }, attributes: ['location_id'], raw: true }) : [],
+        SystemSetting?.findOne ? SystemSetting.findOne({ where: { setting_key: 'pos_terminal_registry' }, attributes: ['setting_value', 'data_type'], raw: true }) : null,
+        SystemSetting?.findOne ? SystemSetting.findOne({ where: { setting_key: 'tenant_onboarding_state' }, attributes: ['setting_value', 'data_type'], raw: true }) : null
+    ]);
+    const registry = parseTerminalRegistry(registrySetting);
+    const activeRegistry = registry.filter((terminal) => terminal.is_active);
+    const tenantId = tenant?.id || dbStore.getStore?.()?.tenantId || null;
+    const onboardingState = tenant?.tenant_onboarding_state
+        || (onboardingSetting?.data_type === 'json' ? parseJsonValue(onboardingSetting.setting_value) : onboardingSetting?.setting_value)
+        || null;
+
+    return [
+        ...(locations.length === 0 ? [makeAlert({
+            alert_type: 'no_active_branches',
+            level: 'critical',
+            message: 'No active branches are configured.',
+            source_domain: 'governance',
+            source_entity_type: 'business',
+            source_entity_id: tenantId,
+            target_route: '/settings/branches',
+            payload: { tenant_id: tenantId }
+        })] : []),
+        ...(activeRegistry.length === 0 ? [makeAlert({
+            alert_type: 'no_active_registers',
+            level: 'warning',
+            message: 'No active POS registers are configured.',
+            source_domain: 'governance',
+            source_entity_type: 'register_registry',
+            source_entity_id: 'pos_terminal_registry',
+            target_route: '/settings/registers',
+            payload: { registry_count: registry.length }
+        })] : []),
+        ...activeRegistry
+            .filter((terminal) => !terminal.location_id)
+            .map((terminal) => makeAlert({
+                alert_type: 'register_missing_branch',
+                level: 'warning',
+                message: `${terminal.label || terminal.terminal_id} is active but not assigned to a branch.`,
+                source_domain: 'governance',
+                source_entity_type: 'terminal',
+                source_entity_id: terminal.terminal_id,
+                target_route: '/settings/registers',
+                payload: terminal
+            })),
+        ...(onboardingState && onboardingState !== 'completed' ? [makeAlert({
+            alert_type: 'onboarding_incomplete',
+            level: 'info',
+            message: 'Business onboarding is not completed.',
+            source_domain: 'governance',
+            source_entity_type: 'onboarding',
+            source_entity_id: tenantId,
+            target_route: '/onboarding',
+            payload: { tenant_id: tenantId, state: onboardingState }
+        })] : [])
+    ];
+};
+
 const buildLegacyInventoryAlerts = async () => {
     const alerts = await generateAlerts();
     return alerts.map((alert) => makeAlert({
@@ -127,8 +210,12 @@ const buildOperationalAlerts = async (now) => {
     ];
 };
 
-export const reconcileBusinessAdminAlertSnapshots = async ({ repository, now = new Date() }) => {
-    const alerts = [...await buildLegacyInventoryAlerts(), ...await buildOperationalAlerts(now)];
+export const reconcileBusinessAdminAlertSnapshots = async ({ repository, tenant = null, now = new Date() }) => {
+    const alerts = [
+        ...await buildLegacyInventoryAlerts(),
+        ...await buildReadinessAlerts(tenant),
+        ...await buildOperationalAlerts(now)
+    ];
     const snapshots = alerts.map((alert) => ({ ...alert, alert_key: stableKey(alert) }));
     await repository.reconcile(snapshots, now);
     return { evaluated: snapshots.length, evaluated_at: now.toISOString() };

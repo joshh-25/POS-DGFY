@@ -23,9 +23,13 @@ The config file is written into Electron `userData` as `pos-runtime.json`.
 Use a running Vite POS server and set:
 
 - `POS_ELECTRON_RENDERER_URL=http://127.0.0.1:5174`
-- optional `POS_ELECTRON_BACKEND_ORIGIN=http://127.0.0.1:5001`
-- optional `POS_ELECTRON_COMPANY_TOKEN=token-original`
-- optional `POS_ELECTRON_TERMINAL_ID=COUNTER-01`
+- optional `POS_ELECTRON_BACKEND_ORIGIN=http://127.0.0.1:5000`
+- optional `POS_ELECTRON_COMPANY_TOKEN=<tenant-company-token>`
+- optional `POS_ELECTRON_TERMINAL_ID=<terminal-id>`
+
+The optional tenant and terminal values must be supplied through local, ignored
+environment configuration. When they are omitted, the renderer uses its normal
+sign-in and terminal-selection flow; no repository default is injected.
 
 Then run:
 

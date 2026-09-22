@@ -23,8 +23,10 @@ describe('POS batch menu import entry point', () => {
     });
 
     it('renders the batch wizard in place of the single-file wizard when the batch flag is on', () => {
-        expect(workspace).toContain("import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';");
-        expect(workspace).toContain('{canCreateItems && menuImportBatchEnabled ? (\n        <MenuImportBatchModal');
-        expect(workspace).toContain(') : canCreateItems && pdfMenuImportEnabled ? (\n        <PdfMenuImportModal');
+        expect(workspace).toContain("const MenuImportBatchModal = lazyWithChunkRetry(() => import('@/components/items/MenuImportBatchModal.jsx'));");
+        expect(workspace).toContain('{showPdfMenuImport && canCreateItems && menuImportBatchEnabled ? (');
+        expect(workspace).toContain(') : showPdfMenuImport && canCreateItems && pdfMenuImportEnabled ? (');
+        expect(workspace).toContain('<MenuImportBatchModal');
+        expect(workspace).toContain('<PdfMenuImportModal');
     });
 });

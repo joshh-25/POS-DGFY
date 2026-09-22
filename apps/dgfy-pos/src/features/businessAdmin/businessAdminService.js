@@ -7,7 +7,6 @@ const get = (path, params = {}) => api.get(path, { params }).then(unwrap);
 export const businessAdminApi = {
     bootstrap: () => get('/business-admin/bootstrap'),
     overview: (params) => get('/business-admin/overview', params),
-    multiCompanyOverview: (params) => get('/business-admin/multi-company/overview', params),
     notifications: (params) => get('/business-admin/notifications', params),
     activity: (params) => get('/business-admin/activity', params),
     reports: (params) => get('/business-admin/reports', params),
@@ -20,6 +19,7 @@ export const businessAdminApi = {
     inventoryValuation: (params) => get('/business-admin/inventory/valuation', params),
     inventoryStock: (params) => get('/business-admin/inventory/stock', params),
     workforce: (params) => get('/business-admin/workforce', params),
+    attendance: (params) => get('/business-admin/attendance', params),
     fiscal: (params) => get('/business-admin/fiscal', params),
     recipes: (params) => get('/business-admin/inventory/recipes', params),
     customers: (params) => get('/business-admin/customers', params),
@@ -27,6 +27,9 @@ export const businessAdminApi = {
     shifts: (params) => get('/business-admin/shifts', params),
     orders: (params) => get('/business-admin/orders', params),
     orderDetail: (transactionId) => get(`/business-admin/orders/${encodeURIComponent(transactionId)}`),
+    expenses: (params) => get('/business-admin/expenses', params),
+    createExpense: (body) => api.post('/business-admin/expenses', body).then(unwrap),
+    voidExpense: (expenseId, body) => api.post(`/business-admin/expenses/${encodeURIComponent(expenseId)}/void`, body).then(unwrap),
     payments: (params) => get('/business-admin/payments/monitoring', params),
     audit: (params) => get('/business-admin/audit', params),
     approvals: (params) => get('/business-admin/approvals', params),
@@ -43,5 +46,5 @@ export const getBusinessAdminErrorMessage = (error) => {
     return payload?.message
         || payload?.error
         || error?.message
-        || 'Business Admin could not load this workspace.';
+        || 'Back Office could not load this workspace.';
 };

@@ -7,6 +7,7 @@ import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../package
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
+import productionAutoLoginGuard from '../../packages/web-core/vite/productionAutoLoginGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -93,7 +94,7 @@ const proxyTargets = {
 };
 
 export default defineConfig({
-  plugins: [react(), esCompatGuardPlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
   // stops covering any module Worker's bundled output (epic #265, Phase 296).

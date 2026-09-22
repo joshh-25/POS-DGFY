@@ -35,6 +35,7 @@ import {
     resolveImageClientConversionGate
 } from '../../shared/utils/imageClientConversionGate.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import { formatReportDateTime } from '../../shared/utils/reportTimezone.js';
 import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
 import {
     normalizeBarcodeValue,
@@ -244,7 +245,8 @@ const LOCATION_SCOPE_REASON_CODES = Object.freeze({
     TERMINAL_HOME_LOCATION_MISMATCH: 'POS_TERMINAL_HOME_LOCATION_MISMATCH',
     TERMINAL_HOME_LOCATION_REQUIRED: 'POS_TERMINAL_HOME_LOCATION_REQUIRED',
     SHIFT_LOCATION_MISMATCH: 'POS_SHIFT_LOCATION_MISMATCH',
-    TRANSACTION_LOCATION_MISMATCH: 'POS_TRANSACTION_LOCATION_MISMATCH'
+    TRANSACTION_LOCATION_MISMATCH: 'POS_TRANSACTION_LOCATION_MISMATCH',
+    FNB_CHECK_LOCATION_MISMATCH: 'FNB_CHECK_LOCATION_MISMATCH'
 });
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -792,9 +794,31 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
 
 const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ query = {}, user } = {}) => {
+const REPORT_PAYMENT_LABELS = Object.freeze({
+    cash: 'Cash',
+    gcash: 'GCash',
+    maya: 'Maya',
+    card: 'Card',
+    bank_transfer: 'Bank Transfer',
+    employee_credit: 'Employee Credit'
+});
+
+const formatReportPaymentMethods = (row = {}) => {
+    const paymentMethods = Array.isArray(row.payment_methods)
+        ? row.payment_methods.filter(Boolean)
+        : [];
+    if (paymentMethods.length > 1) {
+        return paymentMethods
+            .map((method) => REPORT_PAYMENT_LABELS[String(method).trim().toLowerCase()] || method)
+            .join(' + ');
+    }
+    return row.payment_type || paymentMethods[0] || '';
+};
+
+export const buildExportPosReportsUseCase = ({ posRepository, getReportsOverviewUseCase = null }) => async ({ query = {}, user } = {}) => {
     try {
-        const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query, user });
+        const overviewUseCase = getReportsOverviewUseCase || buildGetPosReportsOverviewUseCase({ posRepository });
+        const overviewResult = await overviewUseCase({ query, user });
         if (!overviewResult.success) return overviewResult;
         const summary = overviewResult.data?.daily_report?.summary || {};
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
@@ -804,8 +828,8 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         const lifecycleRows = section === 'attendance'
             ? [
-                ['Cashier', 'Duty Type', 'Status', 'Started At', 'Ended At', 'Break Minutes', 'Worked Minutes', 'Location'],
-                ...(lifecycle.attendance?.rows || []).map((row) => [row.cashier_name, row.duty_type, row.status, row.started_at, row.ended_at, row.break_minutes, row.worked_minutes, row.location_id])
+                ['Cashier', 'Duty Type', 'Status', 'Started At (Asia/Manila)', 'Ended At (Asia/Manila)', 'Break Minutes', 'Worked Minutes', 'Location'],
+                ...(lifecycle.attendance?.rows || []).map((row) => [row.cashier_name, row.duty_type, row.status, formatReportDateTime(row.started_at), formatReportDateTime(row.ended_at), row.break_minutes, row.worked_minutes, row.location_id])
             ]
             : section === 'cashiers'
                 ? [
@@ -819,15 +843,17 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
                     ]
                     : section === 'handoffs'
                         ? [
-                            ['Event At', 'Terminal', 'Shift', 'Type', 'Custody Mode', 'Outgoing', 'Incoming', 'Expected Cash', 'Counted Cash', 'Variance', 'Attribution'],
-                            ...(lifecycle.handoffs?.rows || []).map((row) => [row.event_at, row.terminal_id, row.shift_id, row.event_type, row.custody_mode, row.outgoing_operator_name, row.incoming_operator_name, row.expected_cash_amount, row.counted_cash_amount, row.variance_amount, row.variance_attribution])
+                            ['Event At (Asia/Manila)', 'Terminal', 'Shift', 'Type', 'Custody Mode', 'Outgoing', 'Incoming', 'Expected Cash', 'Counted Cash', 'Variance', 'Attribution'],
+                            ...(lifecycle.handoffs?.rows || []).map((row) => [formatReportDateTime(row.event_at), row.terminal_id, row.shift_id, row.event_type, row.custody_mode, row.outgoing_operator_name, row.incoming_operator_name, row.expected_cash_amount, row.counted_cash_amount, row.variance_amount, row.variance_attribution])
                         ]
                         : null;
         const rows = lifecycleRows || [
             ['Metric', 'Value'],
             ['Gross Sales', summary.gross_sales || 0],
+            ['Discount', summary.discounts || 0],
+            ['VAT Sales', summary.vatable_sales || 0],
+            ['VAT', summary.vat || 0],
             ['Net Sales', summary.net_sales || 0],
-            ['All Discounts', summary.discounts || 0],
             ['Transactions', summary.total_transactions || 0],
             [],
             ['Discount', 'Type', 'Transactions', 'Discount Total', 'VAT Removed'],
@@ -847,14 +873,18 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
                 row.shift_money?.cash_variance_amount
             ]),
             [],
-            ['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales'],
+            ['Invoice', 'Datetime (Asia/Manila)', 'Cashier', 'Payment', 'Status', 'Total', 'Gross Sales', 'Discount', 'VAT Sales', 'VAT', 'Net Sales'],
             ...transactionRows.map((row) => [
                 row.invoice_number || row.pos_transaction_id,
-                row.created_at || '',
+                formatReportDateTime(row.created_at),
                 row.cashier_name || '',
-                row.payment_type || '',
+                formatReportPaymentMethods(row),
                 row.status || '',
                 row.total_amount || 0,
+                row.gross_sales || 0,
+                row.discount_amount || 0,
+                row.vatable_sales || 0,
+                row.vat_amount || 0,
                 row.net_sales || 0
             ])
         ];
@@ -902,10 +932,10 @@ export const buildExportProcurementCsvUseCase = ({
         const orders = await posRepository.listIncomingOnlineOrders({ locationId: locationScope.location_id, limit: 500 });
 
         const rows = [
-            ['Order #', 'Order Date', 'Location', 'Status', 'Customer Name', 'Customer Phone', 'Delivery Address', 'SKU', 'Item Name', 'Quantity', 'Unit'],
+            ['Order #', 'Order Date (Asia/Manila)', 'Location', 'Status', 'Customer Name', 'Customer Phone', 'Delivery Address', 'SKU', 'Item Name', 'Quantity', 'Unit'],
             ...orders.flatMap((order) => (order.lines || []).map((line) => [
                 order.invoice_number || order.pos_transaction_id,
-                order.created_at || '',
+                formatReportDateTime(order.created_at),
                 order.location?.name || '',
                 order.fulfillment_status || '',
                 order.customer_name || 'Guest Buyer',
@@ -1028,7 +1058,8 @@ const buildPersistedZReadingData = ({
     snapshot,
     businessDate,
     locationId,
-    snapshotReused = false
+    snapshotReused = false,
+    reconciliation = null
 }) => {
     const normalizedSummary = normalizeZReadingSummary(
         normalizeJsonObject(snapshot?.summary, {})
@@ -1042,6 +1073,7 @@ const buildPersistedZReadingData = ({
         location_id: parsePositiveInt(snapshot?.location_id) || parsePositiveInt(locationId) || null,
         generated_at: snapshot?.generated_at || snapshot?.created_at || new Date().toISOString(),
         summary: normalizedSummary,
+        z_reading_reconciliation: reconciliation || null,
         snapshot_persisted: true,
         reading_identifier: snapshot?.reading_identifier || null,
         snapshot_reused: snapshotReused,
@@ -1057,6 +1089,41 @@ const buildPersistedZReadingData = ({
             lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
         }
     };
+};
+
+const buildUnavailableZReadingReconciliation = ({ businessDate, locationId }) => ({
+    status: 'not_comparable',
+    comparison_basis: 'completed_recognized_transaction_total',
+    business_date: businessDate || null,
+    location_id: parsePositiveInt(locationId),
+    reading_identifier: null,
+    generated_at: null,
+    evaluated_at: new Date().toISOString(),
+    snapshot_persisted: false,
+    report_recognized_sales: null,
+    z_total_amount: null,
+    variance: null,
+    report_net_sales: 0,
+    report_refunds_voids: 0,
+    report_adjustment_amount: 0,
+    z_void_transaction_count: null,
+    z_void_amount: null,
+    message: 'Report reconciliation was unavailable when this Z-reading was prepared.'
+});
+
+const loadZReadingReconciliation = async ({ posRepository, businessDate, locationId }) => {
+    if (typeof posRepository?.getZReadingReconciliationByBusinessDate !== 'function') {
+        return buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    }
+    try {
+        const reconciliation = await posRepository.getZReadingReconciliationByBusinessDate(
+            businessDate,
+            { locationId }
+        );
+        return reconciliation || buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    } catch {
+        return buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    }
 };
 
 const serializeOpenDayCloseShifts = (openShifts = []) => (
@@ -2485,6 +2552,31 @@ const normalizeFnbModifiersSnapshot = (value) => {
         ));
 };
 
+const buildFnbLineIntegrityKey = (line, { persisted = false } = {}) => {
+    const modifiers = normalizeFnbModifiersSnapshot(
+        persisted ? line?.modifiers_snapshot : (line?.line_modifiers || line?.modifiers)
+    ) || [];
+    return stableStringify({
+        item_id: parsePositiveInt(line?.item_id),
+        quantity: round4(line?.quantity),
+        course: normalizeFnbCourse(line?.course) || 'main',
+        modifiers: modifiers
+            .map((modifier) => ({
+                modifier_group_id: parsePositiveInt(modifier.modifier_group_id),
+                modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
+                quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
+            }))
+            .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
+        special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
+    });
+};
+
+const buildFnbLineIntegrityFingerprint = (lines = [], options = {}) => (
+    (Array.isArray(lines) ? lines : [])
+        .map((line) => buildFnbLineIntegrityKey(line, options))
+        .sort()
+);
+
 const normalizeServiceOptionIds = (value) => (
     [...new Set((Array.isArray(value) ? value : [])
         .map((optionId) => parsePositiveInt(optionId))
@@ -3511,6 +3603,118 @@ export const buildCheckoutPosUseCase = ({
                 });
             }
 
+            let lockedFnbCheckout = null;
+            if (fnbCheckId) {
+                if (typeof posRepository.getFnbCheckForCheckout !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'F&B check settlement protection is unavailable.',
+                        {
+                            statusCode: 503,
+                            details: { reason_code: 'FNB_CHECK_GUARD_UNAVAILABLE' }
+                        }
+                    );
+                }
+                lockedFnbCheckout = await posRepository.getFnbCheckForCheckout(fnbCheckId, {
+                    transaction,
+                    lock: true
+                });
+                const fnbCheck = lockedFnbCheckout?.check;
+                if (!fnbCheck) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        `F&B check #${fnbCheckId} was not found.`,
+                        { statusCode: 404, details: { reason_code: 'FNB_CHECK_NOT_FOUND', check_id: fnbCheckId } }
+                    );
+                }
+                const checkStatus = String(fnbCheck.status || '').trim().toLowerCase();
+                if (checkStatus === 'paid' || fnbCheck.pos_transaction_id) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `F&B check #${fnbCheckId} has already been settled.`,
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'FNB_CHECK_ALREADY_SETTLED',
+                                check_id: fnbCheckId,
+                                pos_transaction_id: parsePositiveInt(fnbCheck.pos_transaction_id)
+                            }
+                        }
+                    );
+                }
+                if (checkStatus === 'partially_paid') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `F&B check #${fnbCheckId} already has a partial payment. Collect its remaining balance through the existing payment session before closing it.`,
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'FNB_PARTIAL_PAYMENT_REQUIRES_BALANCE_SETTLEMENT',
+                                check_id: fnbCheckId
+                            }
+                        }
+                    );
+                }
+                if (!['open', 'sent_to_kitchen'].includes(checkStatus)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `F&B check #${fnbCheckId} cannot be settled from ${checkStatus || 'its current status'}.`,
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_CHECK_NOT_SETTLEABLE', check_id: fnbCheckId, status: checkStatus }
+                        }
+                    );
+                }
+                const persistedLines = Array.isArray(lockedFnbCheckout.lines)
+                    ? lockedFnbCheckout.lines
+                    : [];
+                if (persistedLines.length === 0 && checkStatus !== 'open') {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `F&B check #${fnbCheckId} has no active items. Add an item before checkout.`,
+                        { statusCode: 422, details: { reason_code: 'FNB_CHECK_HAS_NO_ACTIVE_LINES', check_id: fnbCheckId } }
+                    );
+                }
+                const persistedFingerprint = buildFnbLineIntegrityFingerprint(persistedLines, { persisted: true });
+                const checkoutFingerprint = buildFnbLineIntegrityFingerprint(lines);
+                if (persistedFingerprint.length > 0 && stableStringify(persistedFingerprint) !== stableStringify(checkoutFingerprint)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `F&B check #${fnbCheckId} changed after it was loaded. Refresh the check before checkout.`,
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'FNB_CHECK_LINES_CHANGED',
+                                check_id: fnbCheckId,
+                                persisted_line_count: persistedFingerprint.length,
+                                checkout_line_count: checkoutFingerprint.length
+                            }
+                        }
+                    );
+                }
+                if (typeof posRepository.bindFnbCheckLocation === 'function') {
+                    const boundCheck = await posRepository.bindFnbCheckLocation({
+                        checkId: fnbCheckId,
+                        locationId: enforcedCheckoutLocationId
+                    }, { transaction, lock: true });
+                    if (boundCheck === false) {
+                        throw buildLocationScopeDeniedError({
+                            message: 'F&B check belongs to a different branch.',
+                            reasonCode: LOCATION_SCOPE_REASON_CODES.FNB_CHECK_LOCATION_MISMATCH,
+                            statusCode: 403,
+                            details: { check_id: fnbCheckId, location_id: enforcedCheckoutLocationId }
+                        });
+                    }
+                } else if (fnbCheck.location_id && Number(fnbCheck.location_id) !== Number(enforcedCheckoutLocationId)) {
+                    throw buildLocationScopeDeniedError({
+                        message: 'F&B check belongs to a different branch.',
+                        reasonCode: LOCATION_SCOPE_REASON_CODES.FNB_CHECK_LOCATION_MISMATCH,
+                        statusCode: 403,
+                        details: { check_id: fnbCheckId, location_id: enforcedCheckoutLocationId }
+                    });
+                }
+            }
+
             let operatorSession = null;
             if (normalizedOperatorSessionId) {
                 if (typeof posRepository.getTerminalOperatorSessionById !== 'function') {
@@ -4244,9 +4448,19 @@ export const buildCheckoutPosUseCase = ({
                         { statusCode: 500 }
                     );
                 }
+                const employeeCreditAmount = round4(paymentBreakdown
+                    .filter((entry) => entry.payment_type === 'employee_credit')
+                    .reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+                if (employeeCreditAmount <= 0) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Employee Credit payment amount must be greater than 0',
+                        { statusCode: 422 }
+                    );
+                }
                 preparedEmployeeCreditDebit = await employeeCreditService.prepareDebit({
                     accountCode: payload.employee_credit?.account_code,
-                    amount: totalAmount,
+                    amount: employeeCreditAmount,
                     transaction
                 });
             }
@@ -4392,10 +4606,10 @@ export const buildCheckoutPosUseCase = ({
                     payment_provider: String(payload.payment_provider || '').trim() || null,
                     payment_session_reference: String(payload.payment_session_reference || '').trim() || null,
                     payment_breakdown: paymentBreakdown,
-                    cash_received: normalizedPaymentType === 'cash' && payload.cash_received != null
+                    cash_received: getPosCashPaymentAmount(paymentBreakdown) > 0 && payload.cash_received != null
                         ? round4(payload.cash_received)
                         : null,
-                    change_amount: normalizedPaymentType === 'cash' && payload.change_amount != null
+                    change_amount: getPosCashPaymentAmount(paymentBreakdown) > 0 && payload.change_amount != null
                         ? round4(payload.change_amount)
                         : null,
                     employee_credit_account_id: preparedEmployeeCreditDebit?.accountId || null,
@@ -4644,6 +4858,7 @@ export const buildCheckoutPosUseCase = ({
                     server_id: fnbServerId,
                     guest_count: fnbGuestCount,
                     order_method: normalizedOrderMethod,
+                    location_id: enforcedCheckoutLocationId,
                     lines: preparedLines,
                     recipe_movements: recipeMovementPlanByPreparedLine.flat()
                 }, { transaction });
@@ -4660,10 +4875,20 @@ export const buildCheckoutPosUseCase = ({
             }
 
             if (fnbCheckId) {
-                await posRepository.settleFnbCheck({
+                const settledCheck = await posRepository.settleFnbCheck({
                     checkId: fnbCheckId,
                     posTransactionId
                 }, { transaction, lock: true });
+                if (!settledCheck) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        `F&B check #${fnbCheckId} could not be settled because its status changed during checkout.`,
+                        {
+                            statusCode: 409,
+                            details: { reason_code: 'FNB_CHECK_SETTLEMENT_CONFLICT', check_id: fnbCheckId }
+                        }
+                    );
+                }
             }
 
             // #1952: item IDs with a real Inventory stock effect, published as a
@@ -6193,11 +6418,17 @@ export const buildCloseDayZReadingUseCase = ({
                     }
                 }, { transaction });
                 await transaction.commit();
+                const reconciliation = await loadZReadingReconciliation({
+                    posRepository,
+                    businessDate,
+                    locationId: resolvedLocationId
+                });
                 return ok(buildPersistedZReadingData({
                     snapshot: existingSnapshot,
                     businessDate,
                     locationId: resolvedLocationId,
-                    snapshotReused: true
+                    snapshotReused: true,
+                    reconciliation
                 }));
             }
 
@@ -6281,6 +6512,11 @@ export const buildCloseDayZReadingUseCase = ({
             }, { transaction });
 
             await transaction.commit();
+            const reconciliation = await loadZReadingReconciliation({
+                posRepository,
+                businessDate,
+                locationId: resolvedLocationId
+            });
 
             return ok(buildPersistedZReadingData({
                 snapshot: {
@@ -6288,7 +6524,8 @@ export const buildCloseDayZReadingUseCase = ({
                     summary
                 },
                 businessDate,
-                locationId: resolvedLocationId
+                locationId: resolvedLocationId,
+                reconciliation
             }));
         } catch (error) {
             if (transaction && !transaction.finished) {
@@ -6301,11 +6538,17 @@ export const buildCloseDayZReadingUseCase = ({
                     { locationId: resolvedLocationId }
                 );
                 if (existingSnapshot) {
+                    const reconciliation = await loadZReadingReconciliation({
+                        posRepository,
+                        businessDate,
+                        locationId: resolvedLocationId
+                    });
                     return ok(buildPersistedZReadingData({
                         snapshot: existingSnapshot,
                         businessDate,
                         locationId: resolvedLocationId,
-                        snapshotReused: true
+                        snapshotReused: true,
+                        reconciliation
                     }));
                 }
             }
@@ -6350,10 +6593,16 @@ export const buildGetDailyZReadingUseCase = ({
                 { locationId: resolvedLocationId }
             );
             if (snapshot) {
+                const reconciliation = await loadZReadingReconciliation({
+                    posRepository,
+                    businessDate,
+                    locationId: resolvedLocationId
+                });
                 return ok(buildPersistedZReadingData({
                     snapshot,
                     businessDate,
-                    locationId: resolvedLocationId
+                    locationId: resolvedLocationId,
+                    reconciliation
                 }));
             }
 
@@ -6369,12 +6618,18 @@ export const buildGetDailyZReadingUseCase = ({
                 posRepository.getPersistentCounterValue(RESET_COUNTER_KEY),
                 posRepository.getPersistentCounterValue(FISCAL_LIFETIME_COUNTER_KEY)
             ]);
+            const reconciliation = await loadZReadingReconciliation({
+                posRepository,
+                businessDate,
+                locationId: resolvedLocationId
+            });
 
             return ok({
                 business_date: businessDate,
                 location_id: resolvedLocationId,
                 generated_at: new Date().toISOString(),
                 summary,
+                z_reading_reconciliation: reconciliation,
                 snapshot_persisted: false,
                 reading_identifier: null,
                 snapshot_reused: false,

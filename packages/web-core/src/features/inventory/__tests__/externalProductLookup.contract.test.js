@@ -74,7 +74,8 @@ describe('external product lookup contracts', () => {
       expect(content).toContain('suggested_price.location');
       expect(content).toContain('suggested_price.observed_at');
     });
-    // IMS and POS now use the same PHP-prefixed price presentation.
+    // POS's terminal workspace uses the active display-currency variable instead of IMS's fixed
+    // "PHP" prefix; both surfaces must still render the suggested price with its provenance.
     expect(modalContent).toContain('Suggested selling price: PHP');
     expect(posModalContent).toContain('Suggested selling price: PHP');
   });

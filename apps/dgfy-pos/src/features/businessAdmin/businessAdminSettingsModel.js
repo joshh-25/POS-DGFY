@@ -4,7 +4,7 @@ export const BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS = Object.freeze([
     {
         key: 'profile',
         label: 'Business & receipts',
-        description: 'Business identity, receipt details, and tenant-wide profile values.',
+        description: 'Business identity, receipt details, and business-wide profile values.',
         scope: 'tenant',
         ownerViewMode: 'settings_profile',
         ownerLabel: 'Open business settings'
@@ -28,7 +28,7 @@ export const BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS = Object.freeze([
     {
         key: 'delivery',
         label: 'Delivery pricing',
-        description: 'Tenant-wide delivery fee policy used by Storefront checkout.',
+        description: 'Business-wide delivery fee policy used by Storefront checkout.',
         scope: 'tenant',
         ownerViewMode: 'settings_storefront',
         ownerLabel: 'Open delivery settings'
@@ -60,7 +60,7 @@ export const BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS = Object.freeze([
     {
         key: 'payments',
         label: 'Payment policies',
-        description: 'Downpayment and partial-payment policy for the tenant.',
+        description: 'Downpayment and partial-payment policy for this business.',
         scope: 'tenant',
         ownerViewMode: 'settings_pos',
         ownerLabel: 'Open payment settings'
@@ -214,7 +214,7 @@ export const resolveSettingsBranchId = ({
 };
 
 export const settingsScopeLabel = (scope, sectionScope = 'tenant') => {
-    if (sectionScope === 'tenant') return 'Tenant-wide setting';
+    if (sectionScope === 'tenant') return 'Business-wide setting';
     return scope === 'all' ? 'Selected visible branch' : 'Assigned branch scope';
 };
 

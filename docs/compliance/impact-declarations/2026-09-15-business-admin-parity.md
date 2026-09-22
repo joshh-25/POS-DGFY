@@ -4,8 +4,8 @@ authority_level: reference
 owner: engineering
 last_reviewed: 2026-09-15
 declaration_id: 2026-09-15-business-admin-parity
-classification: major
-surfaces: pos,terminal,settings,payments,inventory
+classification: regulatory
+surfaces: pos,terminal,settings,payments,inventory,compliance
 reason_codes_impacted: BUSINESS_ADMIN_READ_MODEL,ALLOWED
 policy_version: 2026.09.15
 verification_evidence: Business Admin contract tests; authenticated API smoke; desktop/mobile Playwright render; API/POS lint and build; architecture and documentation checks; migration status; git diff check
@@ -59,6 +59,12 @@ classification.
 - Desktop and 390px mobile Playwright renders show the full navigation, no
   horizontal page overflow, no console errors, and successful Orders
   navigation without Business Admin request failures.
+- The scoped POS settings-sync bridge remains metadata-only: an accepted
+  tenant/branch Business Admin event refreshes the open POS terminal metadata
+  and the clean SettingsWorkspace draft, while dirty local settings remain
+  untouched. The authenticated
+  `apps/dgfy-pos/tests/e2e/business-admin-pos-settings-sync.spec.js` test
+  passed for Masu Cafe from Warn → Enforce and restored the original value.
 - API/POS lint and POS production build pass; architecture guardrails,
   controller-boundary checks, documentation lint, and `git diff --check` pass.
 

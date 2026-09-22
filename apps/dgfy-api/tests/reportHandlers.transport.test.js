@@ -450,6 +450,7 @@ describe('reportHandlers transport contracts', () => {
     expect(csvOutput).toContain('Weighted Total Inventory Value');
     expect(csvOutput).toContain('Weighted Average Cost Per Unit');
     expect(csvOutput).toContain('Ordered vs Weighted Variance Value');
+    expect(csvOutput).toContain('"Generated At (Asia/Manila)","2026-04-20 08:00:00 (Asia/Manila)"');
     expect(next).not.toHaveBeenCalled();
   });
 

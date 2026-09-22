@@ -1,5 +1,6 @@
 import { QueryTypes } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { businessAdminOrderCenterRepository } from './businessAdminOrderCenterRepository.js';
 
 const positiveInt = (value, fallback) => {
     const parsed = Number.parseInt(value, 10);
@@ -44,6 +45,13 @@ const scopedTransactions = ({ dateFrom, dateTo, branchId = null, allowedLocation
 
 const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, search }) => {
     const scope = scopedTransactions({ dateFrom, dateTo, branchId, allowedLocationIds, search });
+    const canonicalSearch = search
+        ? `WHERE (
+            COALESCE(NULLIF(sc.name, ''), '') LIKE :search
+            OR COALESCE(NULLIF(sc.email, ''), '') LIKE :search
+            OR COALESCE(NULLIF(sc.phone, ''), '') LIKE :search
+        )`
+        : '';
     const query = `
         WITH customer_transactions AS (
             SELECT
@@ -58,6 +66,7 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
                         ), 256)
                     )
                 END AS customer_key,
+                t.pos_transaction_id AS transaction_id,
                 t.store_customer_id,
                 COALESCE(NULLIF(sc.name, ''), NULLIF(t.customer_name, ''), 'Unnamed customer') AS customer_name,
                 COALESCE(NULLIF(sc.email, ''), NULLIF(t.customer_email, '')) AS customer_email,
@@ -67,21 +76,57 @@ const buildCustomerQuery = ({ dateFrom, dateTo, branchId, allowedLocationIds, se
             FROM pos_transactions t
             LEFT JOIN store_customers sc ON sc.customer_id = t.store_customer_id
             WHERE ${scope.where}
+        ), canonical_profiles AS (
+            SELECT
+                CONCAT('linked:', sc.customer_id) AS customer_key,
+                sc.customer_id,
+                sc.name AS customer_name,
+                sc.email AS customer_email,
+                sc.phone AS customer_phone,
+                COUNT(ct.transaction_id) AS visit_count,
+                COALESCE(SUM(ct.total_amount), 0) AS total_spend,
+                COALESCE(AVG(ct.total_amount), 0) AS average_order,
+                MIN(ct.created_at) AS first_purchase_at,
+                MAX(ct.created_at) AS last_purchase_at,
+                CASE WHEN COUNT(ct.transaction_id) > 1 THEN DATEDIFF(MAX(ct.created_at), MIN(ct.created_at)) / (COUNT(ct.transaction_id) - 1) ELSE NULL END AS purchase_frequency_days
+            FROM store_customers sc
+            LEFT JOIN customer_transactions ct ON ct.store_customer_id = sc.customer_id
+            ${canonicalSearch}
+            GROUP BY sc.customer_id, sc.name, sc.email, sc.phone
+        ), snapshot_profiles AS (
+            SELECT
+                customer_key,
+                NULL AS customer_id,
+                MAX(customer_name) AS customer_name,
+                MAX(customer_email) AS customer_email,
+                MAX(customer_phone) AS customer_phone,
+                COUNT(*) AS visit_count,
+                COALESCE(SUM(total_amount), 0) AS total_spend,
+                COALESCE(AVG(total_amount), 0) AS average_order,
+                MIN(created_at) AS first_purchase_at,
+                MAX(created_at) AS last_purchase_at,
+                CASE WHEN COUNT(*) > 1 THEN DATEDIFF(MAX(created_at), MIN(created_at)) / (COUNT(*) - 1) ELSE NULL END AS purchase_frequency_days
+            FROM customer_transactions
+            WHERE store_customer_id IS NULL
+            GROUP BY customer_key
+        ), customer_profiles AS (
+            SELECT * FROM canonical_profiles
+            UNION ALL
+            SELECT * FROM snapshot_profiles
         )
         SELECT
             customer_key,
-            MAX(store_customer_id) AS customer_id,
-            MAX(customer_name) AS customer_name,
-            MAX(customer_email) AS customer_email,
-            MAX(customer_phone) AS customer_phone,
-            COUNT(*) AS visit_count,
-            COALESCE(SUM(total_amount), 0) AS total_spend,
-            COALESCE(AVG(total_amount), 0) AS average_order,
-            MIN(created_at) AS first_purchase_at,
-            MAX(created_at) AS last_purchase_at,
-            CASE WHEN COUNT(*) > 1 THEN DATEDIFF(MAX(created_at), MIN(created_at)) / (COUNT(*) - 1) ELSE NULL END AS purchase_frequency_days
-        FROM customer_transactions
-        GROUP BY customer_key`;
+            customer_id,
+            customer_name,
+            customer_email,
+            customer_phone,
+            visit_count,
+            total_spend,
+            average_order,
+            first_purchase_at,
+            last_purchase_at,
+            purchase_frequency_days
+        FROM customer_profiles`;
     return { query, replacements: scope.replacements };
 };
 
@@ -126,11 +171,36 @@ export const businessAdminCustomerRepository = {
                 date_from: dateFrom,
                 date_to: dateTo,
                 branch_id: branchId,
-                read_only: true,
-                source: 'tenant_pos_customer_snapshots',
+                read_only: false,
+                source: 'tenant_store_customers_and_pos_customer_snapshots',
+                customer_write: 'business_admin',
                 identity_policy: 'Explicit tenant StoreCustomer links only; transaction snapshots are not merged into global DGFY identity.'
             }
         };
+    },
+
+    async findCustomerByEmail(email) {
+        const StoreCustomer = dbStore.get('StoreCustomer');
+        const row = await StoreCustomer.findOne({
+            where: { email: String(email || '').trim().toLowerCase() },
+            attributes: ['customer_id', 'email', 'name', 'phone', 'is_active', 'created_at']
+        });
+        return row?.toJSON ? row.toJSON() : row || null;
+    },
+
+    async createCustomer({ name, email, phone }) {
+        const StoreCustomer = dbStore.get('StoreCustomer');
+        const row = await StoreCustomer.create({
+            name,
+            email,
+            phone: phone || null,
+            // Back Office creates a profile, not a storefront credential. This
+            // placeholder is intentionally not a bcrypt hash and therefore
+            // cannot be used as a password by the existing login flow.
+            password_hash: 'PENDING_INVITATION',
+            is_active: true
+        });
+        return row?.toJSON ? row.toJSON() : row;
     },
 
     async getCustomerDetail({ profileRef, dateFrom, dateTo, branchId = null, allowedLocationIds = null } = {}) {
@@ -167,7 +237,7 @@ export const businessAdminCustomerRepository = {
                 LEFT JOIN store_customers sc ON sc.customer_id = t.store_customer_id
                 WHERE ${scope.where}
             )`;
-        const [customerRows, orderRows, favoriteRows] = await Promise.all([
+        const [customerRows, canonicalOrderData, favoriteRows] = await Promise.all([
             sequelize.query(`${transactionsCte}
                 SELECT customer_key, MAX(store_customer_id) AS customer_id,
                     MAX(customer_name) AS customer_name, MAX(customer_email) AS customer_email,
@@ -177,14 +247,29 @@ export const businessAdminCustomerRepository = {
                     MIN(created_at) AS first_purchase_at, MAX(created_at) AS last_purchase_at
                 FROM customer_transactions
                 WHERE customer_key = :profileRef
-                GROUP BY customer_key`, { replacements, type: QueryTypes.SELECT }),
-            sequelize.query(`${transactionsCte}
-                SELECT transaction_id, invoice_number, created_at, location_id, payment_type,
-                    payment_status, total_amount
-                FROM customer_transactions
-                WHERE customer_key = :profileRef
-                ORDER BY created_at DESC, transaction_id DESC
-                LIMIT 50`, { replacements, type: QueryTypes.SELECT }),
+                GROUP BY customer_key
+                UNION ALL
+                SELECT CONCAT('linked:', sc.customer_id) AS customer_key,
+                    sc.customer_id, sc.name AS customer_name, sc.email AS customer_email,
+                    sc.phone AS customer_phone, 0 AS visit_count,
+                    0 AS total_spend, 0 AS average_order,
+                    NULL AS first_purchase_at, NULL AS last_purchase_at
+                FROM store_customers sc
+                WHERE CONCAT('linked:', sc.customer_id) = :profileRef
+                LIMIT 1`, { replacements, type: QueryTypes.SELECT }),
+            businessAdminOrderCenterRepository.listOrders({
+                allowedLocationIds,
+                filters: {
+                    page: 1,
+                    limit: 50,
+                    branchId,
+                    transactionStatus: 'completed',
+                    startAt: scope.replacements.startAt,
+                    endAtExclusive: scope.replacements.endAt,
+                    customerHistoryOnly: true,
+                    customerProfileRef: profileRef
+                }
+            }),
             sequelize.query(`${transactionsCte}
                 SELECT l.item_id,
                     COALESCE(NULLIF(l.item_name_snapshot, ''), NULLIF(i.name, ''), CONCAT('Item #', l.item_id)) AS item_name,
@@ -220,21 +305,22 @@ export const businessAdminCustomerRepository = {
                 net_spend: number(row.net_spend),
                 order_count: Number.parseInt(row.order_count, 10) || 0
             })),
-            orders: orderRows.map((row) => ({
+            // The customer workspace owns customer aggregates and favorite
+            // products, but order rows come from the canonical Order Center so
+            // customer history and Orders cannot drift on status, branch,
+            // payment, or source semantics.
+            orders: (canonicalOrderData?.orders || []).map((row) => ({
+                ...row,
                 transaction_id: Number(row.transaction_id),
-                invoice_number: row.invoice_number,
-                created_at: row.created_at || null,
-                location_id: row.location_id == null ? null : Number(row.location_id),
-                payment_type: row.payment_type || null,
-                payment_status: row.payment_status || null,
+                location_id: row.branch_id == null ? null : Number(row.branch_id),
                 total_amount: number(row.total_amount)
             })),
             meta: {
                 date_from: dateFrom,
                 date_to: dateTo,
                 branch_id: branchId,
-                read_only: true,
-                source: 'tenant_pos_customer_transaction_detail',
+                read_only: false,
+                source: 'business_admin_order_center_customer_history',
                 identity_policy: 'Explicit tenant StoreCustomer links only; transaction snapshots are not merged into global DGFY identity.'
             }
         };

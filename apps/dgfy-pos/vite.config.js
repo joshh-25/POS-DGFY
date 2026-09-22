@@ -8,6 +8,7 @@ import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webC
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
 import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
+import productionAutoLoginGuard from '../../packages/web-core/vite/productionAutoLoginGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,7 @@ const sharedAliases = [
   { find: '@/lib', replacement: path.resolve(webCoreRoot, 'src/lib') },
   { find: '@/services', replacement: path.resolve(webCoreRoot, 'src/services') },
   { find: '@/src', replacement: path.resolve(webCoreRoot, 'src') },
+  { find: '@/utils.js', replacement: path.resolve(__dirname, 'src/utils.js') },
   // Bare packages web-core's own source imports -- it has no node_modules of its own,
   // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
   ...buildWebCoreRuntimeDepAliases(appNodeModules)
@@ -81,7 +83,7 @@ const proxyTargets = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
   // stops covering any module Worker's bundled output (epic #265, Phase 296).
@@ -98,7 +100,10 @@ export default defineConfig({
     alias: sharedAliases
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react-router', 'react-router-dom']
+    include: ['react', 'react-dom', 'react-router', 'react-router-dom'],
+    // MapLibre resolves its worker relative to the package module. Keep it out of
+    // Vite's dependency optimizer so the explicit worker asset URL remains served.
+    exclude: ['maplibre-gl']
   },
   server: {
     host: true,

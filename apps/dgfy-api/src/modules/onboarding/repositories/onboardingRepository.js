@@ -2,10 +2,6 @@ import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { assertOnboardingRepositoryContract } from '../contracts/onboardingRepository.contract.js';
 import {
-  CORRECTED_ITEM_TAXONOMY_MODES,
-  resolveItemPreset
-} from '../../shared/constants/modeItemTaxonomy.js';
-import {
   DEFAULT_WORKFLOW_MODE,
   normalizeWorkflowMode
 } from '../../shared/constants/workflowModes.js';
@@ -20,14 +16,6 @@ const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const STOREFRONT_HOURS_KEY = 'storefront_hours';
 const STORE_IS_VISIBLE_KEY = 'store_is_visible';
 const STORE_HAS_NO_LOCATION_KEY = 'store_has_no_location';
-const ONBOARDING_COMPLETION_PRESETS_BY_MODE = Object.freeze({
-  food_manufacturing: new Set(['finished_product']),
-  msme: new Set(['product']),
-  services: new Set(['service', 'physical_add_on']),
-  fnb: new Set(['menu_item', 'packaged_beverage']),
-  hospitality: new Set(['room_night', 'paid_amenity', 'minibar_retail_product', 'facility_booking'])
-});
-
 const ALLOWED_STATES = new Set(['not_started', 'in_progress', 'completed']);
 const REQUIRED_CHECK_KEYS = Object.freeze([
   'store_name_ready',
@@ -65,26 +53,39 @@ const sanitizeStepKey = (value) => String(value || '')
 
 const toBoolean = (value) => value === true;
 
-const normalizeChecklist = (rawChecklist = {}) => {
+const isHospitalityWorkflowMode = (value) => normalizeWorkflowMode(value) === 'hospitality';
+
+const getRequiredCheckKeys = (workflowMode = DEFAULT_WORKFLOW_MODE) => (
+  isHospitalityWorkflowMode(workflowMode)
+    ? REQUIRED_CHECK_KEYS
+    : REQUIRED_CHECK_KEYS.filter((key) => key !== 'has_priced_starter_item')
+);
+
+const normalizeChecklist = (rawChecklist = {}, workflowMode = DEFAULT_WORKFLOW_MODE) => {
+  const requiredCheckKeys = getRequiredCheckKeys(workflowMode);
   const checklist = {
     store_name_ready: toBoolean(rawChecklist.store_name_ready),
     has_primary_storefront_location: toBoolean(rawChecklist.has_primary_storefront_location),
-    has_priced_starter_item: toBoolean(rawChecklist.has_priced_starter_item)
+    // Preserve the legacy response field for non-Hospitality modes while the
+    // required key remains intentionally excluded from their checklist.
+    has_priced_starter_item: isHospitalityWorkflowMode(workflowMode)
+      ? toBoolean(rawChecklist.has_priced_starter_item)
+      : true
   };
-  const requiredTotal = REQUIRED_CHECK_KEYS.length;
-  const completedRequiredCount = REQUIRED_CHECK_KEYS.filter((key) => checklist[key] === true).length;
+  const requiredTotal = requiredCheckKeys.length;
+  const completedRequiredCount = requiredCheckKeys.filter((key) => checklist[key] === true).length;
 
   return {
     checklist,
-    required_keys: REQUIRED_CHECK_KEYS,
+    required_keys: requiredCheckKeys,
     required_total: requiredTotal,
     completed_required_count: completedRequiredCount,
     is_ready: completedRequiredCount === requiredTotal,
-    missing_requirements: REQUIRED_CHECK_KEYS.filter((key) => checklist[key] !== true)
+    missing_requirements: requiredCheckKeys.filter((key) => checklist[key] !== true)
   };
 };
 
-const normalizeProgress = (rawValue = {}) => {
+const normalizeProgress = (rawValue = {}, workflowMode = DEFAULT_WORKFLOW_MODE) => {
   const normalized = rawValue && typeof rawValue === 'object' ? rawValue : {};
   const stepPayloads = normalized.step_payloads && typeof normalized.step_payloads === 'object'
     ? normalized.step_payloads
@@ -92,7 +93,10 @@ const normalizeProgress = (rawValue = {}) => {
 
   const nextProgress = {
     step_payloads: stepPayloads,
-    checklist_snapshot: normalizeChecklist(normalized.checklist_snapshot?.checklist || {})
+    checklist_snapshot: normalizeChecklist(
+      normalized.checklist_snapshot?.checklist || {},
+      workflowMode
+    )
   };
   if (normalized.classification_snapshot && typeof normalized.classification_snapshot === 'object') {
     nextProgress.classification_snapshot = normalized.classification_snapshot;
@@ -100,81 +104,10 @@ const normalizeProgress = (rawValue = {}) => {
   return nextProgress;
 };
 
-const buildDefaultProgress = () => ({
+const buildDefaultProgress = (workflowMode = DEFAULT_WORKFLOW_MODE) => ({
   step_payloads: {},
-  checklist_snapshot: normalizeChecklist({})
+  checklist_snapshot: normalizeChecklist({}, workflowMode)
 });
-
-const modelHasColumn = (Model, columnName) => {
-  if (!Model || !Model.rawAttributes || !columnName) return false;
-  const attrs = Object.values(Model.rawAttributes);
-  return attrs.some((attr) => attr?.fieldName === columnName || attr?.field === columnName);
-};
-
-const buildPricedStarterItemWhere = (Item) => {
-  const where = {};
-  if (modelHasColumn(Item, 'deleted_at')) where.deleted_at = null;
-  if (modelHasColumn(Item, 'status')) where.status = 'active';
-  if (modelHasColumn(Item, 'is_active')) where.is_active = true;
-  if (modelHasColumn(Item, 'default_sale_price')) where.default_sale_price = { [Op.gt]: 0 };
-  return where;
-};
-
-const toPlain = (value) => (
-  value && typeof value.toJSON === 'function'
-    ? value.toJSON()
-    : value
-);
-
-const itemHasModeValidPreset = ({ item, workflowMode }) => {
-  const mode = normalizeWorkflowMode(workflowMode);
-  if (!CORRECTED_ITEM_TAXONOMY_MODES.includes(mode)) return true;
-
-  const presetKey = String(item?.mode_item_preset || '').trim();
-  const completionPresets = ONBOARDING_COMPLETION_PRESETS_BY_MODE[mode];
-  if (completionPresets && !completionPresets.has(presetKey)) return false;
-  return Boolean(presetKey && resolveItemPreset(mode, presetKey));
-};
-
-const countPricedStarterItems = async ({ Item, transaction = null, workflowMode = DEFAULT_WORKFLOW_MODE } = {}) => {
-  if (!Item) return 0;
-  if (!modelHasColumn(Item, 'default_sale_price')) return 0;
-  const batchSize = 500;
-  let offset = 0;
-  const attributes = [
-    'item_id',
-    'name',
-    'sku_code',
-    'category',
-    'product_type',
-    'mode_item_preset',
-    'status',
-    'default_sale_price',
-    'current_stock'
-  ].filter((column) => modelHasColumn(Item, column));
-
-  while (true) {
-    const rows = await Item.findAll({
-      where: buildPricedStarterItemWhere(Item),
-      attributes,
-      order: [['item_id', 'ASC']],
-      limit: batchSize,
-      offset,
-      ...(transaction ? { transaction } : {})
-    });
-    if (!rows.length) return 0;
-
-    if (rows.some((row) => {
-      const item = toPlain(row);
-      return itemHasModeValidPreset({ item, workflowMode });
-    })) {
-      return 1;
-    }
-
-    if (rows.length < batchSize) return 0;
-    offset += batchSize;
-  }
-};
 
 const countHospitalityStarterRooms = async ({ transaction = null } = {}) => {
   const HospitalityRoomType = dbStore.get('HospitalityRoomType');
@@ -261,7 +194,6 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
   const baselineName = String(storeNameBaseline || '').trim();
 
   const TenantLocation = dbStore.get('TenantLocation');
-  const Item = dbStore.get('Item');
   const SystemSetting = dbStore.get('SystemSetting');
 
   const fallbackBusinessName = await readSettingValue(SystemSetting, POS_BUSINESS_NAME_KEY, { transaction });
@@ -285,10 +217,10 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     TenantLocation ? TenantLocation.count({
       where: { is_active: true, is_primary_storefront: true },
       ...(transaction ? { transaction } : {})
-    }) : 0,
+    }) : Promise.resolve(0),
     normalizedWorkflowMode === 'hospitality'
       ? countHospitalityStarterRooms({ transaction })
-      : countPricedStarterItems({ Item, transaction, workflowMode: normalizedWorkflowMode })
+      : Promise.resolve(1)
   ]);
 
   const resolvedStoreName = baselineName || contextTenantName || fallbackBusinessName;
@@ -297,7 +229,7 @@ const computeChecklist = async ({ storeNameBaseline = '', transaction = null } =
     store_name_ready: resolvedStoreName.length > 0,
     has_primary_storefront_location: publicStorefrontEnabled && !publicStorefrontWithoutMapPin ? primaryActiveLocationCount > 0 : true,
     has_priced_starter_item: pricedStarterItemCount > 0
-  });
+  }, normalizedWorkflowMode);
 };
 
 const readOnboardingSettings = async ({ transaction = null } = {}) => {
@@ -306,13 +238,20 @@ const readOnboardingSettings = async ({ transaction = null } = {}) => {
     ONBOARDING_STATE_KEY,
     ONBOARDING_STARTED_AT_KEY,
     ONBOARDING_COMPLETED_AT_KEY,
-    ONBOARDING_PROGRESS_KEY
+    ONBOARDING_PROGRESS_KEY,
+    WORKFLOW_MODE_SETTING_KEY
   ], { transaction });
 
   const state = sanitizeState(rowMap.get(ONBOARDING_STATE_KEY)?.setting_value);
   const startedAt = String(rowMap.get(ONBOARDING_STARTED_AT_KEY)?.setting_value || '').trim() || null;
   const completedAt = String(rowMap.get(ONBOARDING_COMPLETED_AT_KEY)?.setting_value || '').trim() || null;
-  const rawProgress = parseJsonLoose(rowMap.get(ONBOARDING_PROGRESS_KEY)?.setting_value, buildDefaultProgress());
+  const workflowMode = normalizeWorkflowMode(
+    rowMap.get(WORKFLOW_MODE_SETTING_KEY)?.setting_value || DEFAULT_WORKFLOW_MODE
+  );
+  const rawProgress = parseJsonLoose(
+    rowMap.get(ONBOARDING_PROGRESS_KEY)?.setting_value,
+    buildDefaultProgress(workflowMode)
+  );
 
   return {
     SystemSetting,
@@ -320,7 +259,7 @@ const readOnboardingSettings = async ({ transaction = null } = {}) => {
     state,
     startedAt,
     completedAt,
-    progress: normalizeProgress(rawProgress)
+    progress: normalizeProgress(rawProgress, workflowMode)
   };
 };
 

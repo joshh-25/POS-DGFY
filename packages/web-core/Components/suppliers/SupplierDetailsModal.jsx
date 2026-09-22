@@ -14,7 +14,8 @@ import {
   MapPin,
   FilePlus,
   Star,
-  Percent
+  Percent,
+  X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { dummyPurchaseOrders } from '@/components/data/dummyData';
@@ -31,10 +32,23 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
     .slice(0, 5);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl">{supplier.name}</DialogTitle>
+          <div className="flex items-start justify-between gap-3">
+            <DialogTitle className="min-w-0 truncate text-xl">{supplier.name}</DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              onClick={onClose}
+              aria-label="Close supplier details"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
@@ -69,7 +83,7 @@ export default function SupplierDetailsModal({ supplier, open, onClose }) {
           {/* Items Supplied */}
           <div>
             <h4 className="font-medium text-slate-900 mb-3">Items Supplied</h4>
-            <div className="bg-slate-50 rounded-xl overflow-hidden">
+            <div className="bg-slate-50 rounded-xl overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-100">
                   <tr>

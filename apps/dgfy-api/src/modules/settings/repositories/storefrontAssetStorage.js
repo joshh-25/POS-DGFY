@@ -1,16 +1,22 @@
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
+import fs from 'fs/promises';
 import dbStore from '../../../utils/dbStore.js';
 import {
     removeOptimizedImageAsset,
     storeOptimizedImageAsset
 } from '../../shared/utils/imageAssetStorage.js';
+import {
+    normalizeStorefrontAssetPath,
+    normalizeStorefrontAssetUrl
+} from '../../shared/utils/storefrontAssetPolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const UPLOADS_ROOT = path.resolve(__dirname, '../../../../uploads');
+const UPLOADS_ROOT_WITH_SEPARATOR = `${UPLOADS_ROOT}${path.sep}`;
 
 const ASSET_TYPE_TO_FOLDER = Object.freeze({
     cover: 'cover',
@@ -23,6 +29,16 @@ const normalizeTenantSegment = (value) => {
     const raw = String(value || fallback).trim();
     const sanitized = raw.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').slice(0, 80);
     return sanitized || fallback;
+};
+
+const resolveStoredAssetAbsolutePath = ({ storedPath, storedUrl } = {}) => {
+    const normalizedPath = normalizeStorefrontAssetPath(storedPath)
+        || normalizeStorefrontAssetUrl(storedUrl).replace(/^\/uploads\//, '');
+    if (!normalizedPath) return null;
+
+    const absolutePath = path.resolve(UPLOADS_ROOT, normalizedPath);
+    if (!absolutePath.startsWith(UPLOADS_ROOT_WITH_SEPARATOR)) return null;
+    return absolutePath;
 };
 
 const createLocalStorefrontAssetStorage = () => ({
@@ -51,6 +67,17 @@ const createLocalStorefrontAssetStorage = () => ({
     async remove({ path: storedPath }) {
         if (!storedPath) return;
         await removeOptimizedImageAsset({ uploadsRoot: UPLOADS_ROOT, storedPath });
+    },
+
+    async isAvailable({ path: storedPath, url: storedUrl } = {}) {
+        const absolutePath = resolveStoredAssetAbsolutePath({ storedPath, storedUrl });
+        if (!absolutePath) return false;
+        try {
+            await fs.access(absolutePath);
+            return true;
+        } catch {
+            return false;
+        }
     }
 });
 

@@ -17,10 +17,15 @@ const routeSource = fs.readFileSync(path.resolve(process.cwd(), 'src/routes/pos.
 
 const runValidator = (validator, source, value) => {
     const req = { [source]: value };
-    const res = { status: () => res, json: () => res };
+    let statusCode = null;
+    let responseBody = null;
+    const res = {
+        status: (code) => { statusCode = code; return res; },
+        json: (body) => { responseBody = body; return res; }
+    };
     let nextCalled = false;
     validator(req, res, () => { nextCalled = true; });
-    return { req, nextCalled };
+    return { req, nextCalled, statusCode, responseBody };
 };
 
 describe('POS split-payment route contract', () => {
@@ -88,5 +93,28 @@ describe('POS split-payment route contract', () => {
         expect(sessionScope.nextCalled).toBe(true);
         expect(sessionScope.req.validatedQuery).toEqual({ shift_id: 41, terminal_id: 'COUNTER-01', location_id: 3 });
         expect(allocationId.req.validatedParams.allocation_id).toBe(701);
+    });
+
+    it('rejects provider-owned fields on Employee Credit allocations', () => {
+        const allocation = runValidator(validateAddPosPaymentAllocation, 'body', {
+            idempotency_key: 'employee-credit-transport-001',
+            shift_id: 41,
+            terminal_id: 'counter-01',
+            payment_method: 'employee_credit',
+            employee_credit: { account_code: 'EC-44' },
+            amount: 500,
+            payment_handoff_mode: 'external',
+            manual_payment_received: true,
+            payment_reference: 'provider-ref-001',
+            payment_provider: 'paymongo'
+        });
+
+        expect(allocation.nextCalled).toBe(false);
+        expect(allocation.statusCode).toBe(422);
+        expect(allocation.responseBody.errors).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                message: 'Employee Credit allocations must use internal successful tender fields only'
+            })
+        ]));
     });
 });

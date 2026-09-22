@@ -44,6 +44,7 @@ vi.mock('../../../../src/features/settings/WorkflowModeContext.jsx', () => ({
 }));
 
 vi.mock('../../../../src/features/settings/workflowMode.js', () => ({
+  DEFAULT_WORKFLOW_MODE: 'food_manufacturing',
   getWorkflowModeLabel: () => 'MSME',
   isWorkflowPageVisible: () => true,
   isWorkflowPageModeSensitive: () => false

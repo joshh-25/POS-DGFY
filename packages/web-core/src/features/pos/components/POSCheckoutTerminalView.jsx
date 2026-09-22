@@ -1920,7 +1920,7 @@ return (
                         <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
                             <div className="mb-3 flex items-start justify-between gap-2">
                                 <div>
-                                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup Context</p>
+                                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup</p>
                                     <h2 id="pos-setup-snapshot-modal-title" className="mt-1 text-[21px] font-black tracking-tight text-[#0F172A]">
                                         POS readiness snapshot
                                     </h2>

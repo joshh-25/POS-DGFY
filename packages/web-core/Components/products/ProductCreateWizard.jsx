@@ -620,7 +620,7 @@ export default function ProductCreateWizard({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography">
+        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography" data-catalog-editor="true">
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-start justify-between gap-4">
               <DialogTitle className="wizard-title flex items-center gap-2">
@@ -782,6 +782,8 @@ export default function ProductCreateWizard({
           onClose();
         }}
         onContinueEditing={() => setShowConfirmation(false)}
+        className="catalog-editor-dialog-content p-0 sm:max-w-md"
+        compact
       />
     </>
   );

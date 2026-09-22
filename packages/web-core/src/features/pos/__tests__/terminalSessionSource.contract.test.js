@@ -40,9 +40,14 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('Math.min(COMPANY_LOOKUP_RETRY_DELAY_MS * (2 ** (retryCount - 1)), 10000)');
   });
 
-  it('does not auto-bind standalone POS dev sessions to the legacy tenant unless explicitly enabled', () => {
+  it('keeps standalone POS development auto-login explicit and credential-free by default', () => {
     expect(standalonePosMainSource).toContain("import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true'");
-    expect(standalonePosMainSource).toContain('devAutoLoginCompanyToken');
+    expect(standalonePosMainSource).toContain("String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || '').trim()");
+    expect(standalonePosMainSource).toContain("String(import.meta.env.VITE_POS_DEV_EMAIL || '').trim()");
+    expect(standalonePosMainSource).toContain("String(import.meta.env.VITE_POS_DEV_PASSWORD || '').trim()");
+    expect(standalonePosMainSource).toContain('hasDevAutoLoginCredentials');
+    expect(standalonePosMainSource).not.toMatch(
+      /VITE_POS_DEV_(?:COMPANY_TOKEN|EMAIL|PASSWORD)\s*\|\|\s*['"][^'"]+['"]/);
     expect(standalonePosMainSource).not.toContain('if (import.meta.env.DEV) {');
   });
 

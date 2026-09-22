@@ -33,13 +33,26 @@ export default function AddSupplierChoiceDialog({
   if (!item) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5 text-teal-600" />
-            Add Supplier
-          </DialogTitle>
+          <div className="flex items-start justify-between gap-3">
+            <DialogTitle className="flex min-w-0 items-center gap-2">
+              <Package className="w-5 h-5 shrink-0 text-teal-600" />
+              <span className="truncate">Add Supplier</span>
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              onClick={onClose}
+              aria-label="Close supplier assignment choices"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
           <DialogDescription>
             Choose how to assign a supplier to this item
           </DialogDescription>
@@ -62,6 +75,7 @@ export default function AddSupplierChoiceDialog({
         <div className="space-y-3">
           {/* Option 1: Use Existing Supplier */}
           <button
+            type="button"
             onClick={onSelectExisting}
             disabled={existingSuppliersCount === 0}
             className={cn(
@@ -97,6 +111,7 @@ export default function AddSupplierChoiceDialog({
 
           {/* Option 2: Create New Supplier */}
           <button
+            type="button"
             onClick={onCreateNew}
             className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-left transition-all"
           >
@@ -114,7 +129,7 @@ export default function AddSupplierChoiceDialog({
 
         {/* Cancel Button */}
         <div className="flex justify-end mt-4">
-          <Button variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" onClick={onClose}>
             <X className="w-4 h-4 mr-2" />
             Cancel
           </Button>

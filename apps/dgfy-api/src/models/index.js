@@ -90,6 +90,7 @@ import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
 import BusinessAdminApprovalRequest from './BusinessAdminApprovalRequest.js';
 import BusinessAdminSavedReportView from './BusinessAdminSavedReportView.js';
+import BusinessAdminExpense from './BusinessAdminExpense.js';
 import BusinessAdminAlertSnapshot from './BusinessAdminAlertSnapshot.js';
 import BusinessAdminNotificationState from './BusinessAdminNotificationState.js';
 import TenantLocation from './TenantLocation.js';
@@ -632,6 +633,12 @@ BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'requested_by', as: '
 BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
 BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
 BusinessAdminSavedReportView.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+BusinessAdminExpense.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', constraints: false });
+BusinessAdminExpense.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser', constraints: false });
+BusinessAdminExpense.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', constraints: false });
+User.hasMany(BusinessAdminExpense, { foreignKey: 'created_by', as: 'createdBusinessAdminExpenses', constraints: false });
+User.hasMany(BusinessAdminExpense, { foreignKey: 'voided_by', as: 'voidedBusinessAdminExpenses', constraints: false });
+TenantLocation.hasMany(BusinessAdminExpense, { foreignKey: 'location_id', as: 'businessAdminExpenses', constraints: false });
 BusinessAdminAlertSnapshot.hasMany(BusinessAdminNotificationState, {
   foreignKey: 'business_admin_alert_snapshot_id',
   as: 'notificationStates'
@@ -1283,6 +1290,7 @@ const db = {
   PosShiftLocationBackfillAudit,
   BusinessAdminApprovalRequest,
   BusinessAdminSavedReportView,
+  BusinessAdminExpense,
   BusinessAdminAlertSnapshot,
   BusinessAdminNotificationState,
   TenantLocation,
@@ -1511,6 +1519,7 @@ export {
   PosShiftLocationBackfillAudit,
   BusinessAdminApprovalRequest,
   BusinessAdminSavedReportView,
+  BusinessAdminExpense,
   BusinessAdminAlertSnapshot,
   BusinessAdminNotificationState,
   TenantLocation,

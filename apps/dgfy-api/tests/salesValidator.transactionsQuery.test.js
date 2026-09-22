@@ -13,6 +13,7 @@ describe('Sales transactions query validator', () => {
         const req = {
             query: {
                 source: 'pos',
+                item_id: '14',
                 pos_order_source: 'online_store',
                 sort_order: 'DESC'
             }
@@ -25,6 +26,7 @@ describe('Sales transactions query validator', () => {
         expect(res.status).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedQuery.source).toBe('POS');
+        expect(req.validatedQuery.item_id).toBe(14);
         expect(req.validatedQuery.sort_order).toBe('desc');
         expect(req.validatedQuery.pos_order_source).toBe('online_store');
     });

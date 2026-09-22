@@ -11,6 +11,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { isStarterSetupRequired } from '../utils/setupFlow.js';
 import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
@@ -44,6 +45,7 @@ export default function TerminalPageDialogLayer({ model }) {
     setBalanceProofFile,
     handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
+    canAccessBusinessAdmin,
     canOpenShift,
     canSubmitOpenShift,
     cashCollectionOrder,
@@ -70,6 +72,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleCashierResumeSubmit,
     handleCashierTakeoverSubmit,
     handleConfirmOpenBackOffice,
+    handleOpenBackOffice,
     handleOpenCashierTakeover,
     handleCloseDay,
     handleCollectCash,
@@ -169,6 +172,7 @@ export default function TerminalPageDialogLayer({ model }) {
     terminalUnlockRequired,
     terminalUser,
     toast,
+    workflowMode,
     zReadingCloseConfirmOpen,
     zReadingClosePin,
     zReadingPrintAutoPrint,
@@ -176,6 +180,8 @@ export default function TerminalPageDialogLayer({ model }) {
     zReadingPrintState,
     zReadingReport
   } = model;
+
+  const starterSetupRequired = isStarterSetupRequired(workflowMode);
 
   const currentCashierLabel = String(
     cashierUnlockSession?.username
@@ -479,7 +485,7 @@ export default function TerminalPageDialogLayer({ model }) {
                         </>
                       )}
                       <p className="text-[11px] text-[#64748B]">
-                        Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
+                        Enter the registered terminal ID from Back Office &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.
                       </p>
                     </div>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
@@ -581,6 +587,17 @@ export default function TerminalPageDialogLayer({ model }) {
                     Back to Resume Shift
                   </Button>
                 )}
+                {canAccessBusinessAdmin && terminalUser && handleOpenBackOffice ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="pos-unlock-open-backoffice"
+                    onClick={handleOpenBackOffice}
+                    disabled={submitting}
+                  >
+                    Open Back Office
+                  </Button>
+                ) : null}
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
                   <Button
                     type="button"
@@ -662,6 +679,17 @@ export default function TerminalPageDialogLayer({ model }) {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
+                {canAccessBusinessAdmin && terminalUser && handleOpenBackOffice ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    data-testid="pos-shift-opening-open-backoffice"
+                    onClick={handleOpenBackOffice}
+                    disabled={shiftActionLoading.open}
+                  >
+                    Open Back Office
+                  </Button>
+                ) : null}
                 {canAdminBypassShiftPrompt && (
                   <Button
                     type="button"
@@ -689,11 +717,13 @@ export default function TerminalPageDialogLayer({ model }) {
               ? 'Finish tenant onboarding in POS Settings first. The rest of POS remains limited until setup is complete.'
               : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
                 ? 'Finish Storefront Setup next. Add the company icon and cover image to continue.'
-                : `Finish POS Setup next. Missing: ${[
-                  setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
-                  setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
-                ].filter(Boolean).join(', ')
-                }.`)}
+                : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && starterSetupRequired
+                  ? 'Create the first room type and room before configuring the terminal.'
+                  : `Finish POS Setup next. Missing: ${[
+                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
+                    setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
+                  ].filter(Boolean).join(', ')
+                  }.`))}
           </div>
         )}
         {setupFlowActive && (
@@ -774,17 +804,22 @@ export default function TerminalPageDialogLayer({ model }) {
           }}
           posRequirements={setupFlowState.posRequirements}
           storefrontRequirements={setupFlowState.storefrontRequirements}
+          starterItemRequirements={setupFlowState.starterItemRequirements}
+          workflowMode={workflowMode}
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           onStepSelect={openTenantSetupStep}
           onBack={() => {
-            const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
+            const previousStep = getPreviousTenantSetupStep(tenantSetupStep, workflowMode);
             if (previousStep) {
               openTenantSetupStep(previousStep);
             }
           }}
-          onContinue={async ({ storefrontSetupReady = setupFlowState.storefrontSetupReady } = {}) => {
-            const nextStep = getNextTenantSetupStep(tenantSetupStep);
+          onContinue={async ({
+            storefrontSetupReady = setupFlowState.storefrontSetupReady,
+            starterItemReady = setupFlowState.starterItemReady
+          } = {}) => {
+            const nextStep = getNextTenantSetupStep(tenantSetupStep, workflowMode);
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
               openTenantSetupStep(nextStep);
               return;
@@ -793,6 +828,15 @@ export default function TerminalPageDialogLayer({ model }) {
               if (!storefrontSetupReady) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+                return;
+              }
+              openTenantSetupStep(nextStep);
+              return;
+            }
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && starterSetupRequired) {
+              if (!starterItemReady) {
+                toast.error('Save one room type and at least one room before continuing to POS Setup.');
+                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
                 return;
               }
               openTenantSetupStep(nextStep);

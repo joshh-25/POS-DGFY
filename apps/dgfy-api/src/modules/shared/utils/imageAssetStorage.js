@@ -367,6 +367,124 @@ export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = nul
     return responsiveVariants;
 };
 
+const isExternalImageUrl = (value) => /^https?:\/\//i.test(String(value || '').trim())
+    && !/^https?:\/\/[^/]+\/uploads\//i.test(String(value || '').trim());
+
+const toUploadRelativePath = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw || isExternalImageUrl(raw)) return null;
+
+    let candidate = raw;
+    if (/^https?:\/\//i.test(candidate)) {
+        try {
+            candidate = new URL(candidate).pathname;
+        } catch {
+            return null;
+        }
+    }
+
+    const normalized = path.posix.normalize(candidate.replace(/\\/g, '/').replace(/^\/+/, ''));
+    const withoutUploadsPrefix = normalized.startsWith('uploads/')
+        ? normalized.slice('uploads/'.length)
+        : normalized;
+    if (!withoutUploadsPrefix || withoutUploadsPrefix === '..' || withoutUploadsPrefix.startsWith('../')) {
+        return null;
+    }
+    return withoutUploadsPrefix;
+};
+
+const resolveSafeUploadPath = (uploadsRoot, relativePath) => {
+    if (!uploadsRoot || !relativePath) return null;
+    const root = path.resolve(uploadsRoot);
+    const absolute = path.resolve(root, ...relativePath.split('/'));
+    return absolute === root || absolute.startsWith(`${root}${path.sep}`) ? absolute : null;
+};
+
+const sanitizeVariantUrl = async (value, uploadsRoot) => {
+    const raw = String(value || '').trim();
+    if (!raw || isExternalImageUrl(raw)) return raw || null;
+
+    const relativePath = toUploadRelativePath(raw);
+    const absolutePath = resolveSafeUploadPath(uploadsRoot, relativePath);
+    return absolutePath && await fileExists(absolutePath) ? raw : null;
+};
+
+const sanitizeImageVariants = async (variants, uploadsRoot) => {
+    if (!variants || typeof variants !== 'object' || Array.isArray(variants)) return null;
+
+    const sanitized = { ...variants };
+    const directUrlKeys = [
+        'pos_thumbnail_url',
+        'thumbnail_url',
+        'medium_url',
+        'large_url',
+        'placeholder_url'
+    ];
+    await Promise.all(directUrlKeys.map(async (key) => {
+        if (Object.prototype.hasOwnProperty.call(sanitized, key)) {
+            sanitized[key] = await sanitizeVariantUrl(sanitized[key], uploadsRoot);
+        }
+    }));
+
+    for (const format of ['webp', 'avif']) {
+        const formatVariants = sanitized[format];
+        if (!formatVariants || typeof formatVariants !== 'object' || Array.isArray(formatVariants)) {
+            continue;
+        }
+        const sanitizedFormat = { ...formatVariants };
+        await Promise.all(['pos_thumbnail_url', 'thumbnail_url', 'medium_url', 'large_url'].map(async (key) => {
+            if (Object.prototype.hasOwnProperty.call(sanitizedFormat, key)) {
+                sanitizedFormat[key] = await sanitizeVariantUrl(sanitizedFormat[key], uploadsRoot);
+            }
+        }));
+        if (Object.values(sanitizedFormat).some(Boolean)) {
+            sanitized[format] = sanitizedFormat;
+        } else {
+            delete sanitized[format];
+        }
+    }
+
+    return sanitized;
+};
+
+/**
+ * Returns only locally generated image references whose source asset exists.
+ *
+ * Legacy flat paths and external URLs intentionally pass through unchanged. The availability
+ * check is limited to versioned optimized-asset folders, where this module owns the complete
+ * sibling-variant contract. This keeps old catalog data compatible while preventing the POS API
+ * from advertising stale thumb.webp/thumb.avif URLs after an asset folder was removed.
+ */
+export const readAvailableImageAsset = async ({
+    uploadsRoot,
+    storedPath = null,
+    storedUrl = null,
+    variants = null
+} = {}) => {
+    const source = String(storedPath || storedUrl || '').trim();
+    const derivedVariants = variants || deriveImageAssetVariantUrls({ storedPath, storedUrl });
+    if (!source || !uploadsRoot) {
+        return { path: storedPath || null, url: storedUrl || null, variants: derivedVariants };
+    }
+
+    const relativePath = toUploadRelativePath(source);
+    const assetFolder = relativePath ? path.posix.basename(path.posix.dirname(relativePath)) : '';
+    if (!relativePath || !RESPONSIVE_ASSET_FOLDER_PATTERN.test(assetFolder)) {
+        return { path: storedPath || null, url: storedUrl || null, variants: derivedVariants };
+    }
+
+    const sourceAbsolutePath = resolveSafeUploadPath(uploadsRoot, relativePath);
+    if (!sourceAbsolutePath || !await fileExists(sourceAbsolutePath)) {
+        return { path: null, url: null, variants: null };
+    }
+
+    return {
+        path: storedPath || relativePath,
+        url: storedUrl || buildPublicUrl(relativePath),
+        variants: await sanitizeImageVariants(derivedVariants, uploadsRoot)
+    };
+};
+
 export const storeOptimizedImageAsset = async ({
     uploadsRoot,
     surfaceFolder,

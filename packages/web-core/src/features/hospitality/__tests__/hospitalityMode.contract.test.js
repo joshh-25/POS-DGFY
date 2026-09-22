@@ -8,16 +8,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('Hospitality frontend contract', () => {
-  it('registers the IMS route and navigation behind the Hospitality workflow capability', () => {
+  it('owns the Hospitality workspace in POS Back Office and retires the IMS merchant route', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
-    const layout = read('apps/dgfy-ims/Layout.jsx');
-    const utils = read('apps/dgfy-ims/utils.js');
+    const posMain = read('apps/dgfy-pos/src/main.jsx');
+    const businessAdmin = read('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
 
-    expect(main).toContain("path=\"/hospitality\"");
-    expect(main).toContain('requiredCapability="hospitalityReservations"');
-    expect(layout).toContain("name: 'Hospitality'");
-    expect(layout).toContain("page: 'Hospitality'");
-    expect(utils).toContain("'Hospitality': '/hospitality'");
+    expect(main).toContain('<Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />');
+    expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(businessAdmin).toContain('hospitality: MERCHANT_BACKOFFICE_MODULE_META.hospitality');
   });
 
   it('keeps manufacturing production modules out of Hospitality by capability, not by a hardcoded mode list', () => {

@@ -85,7 +85,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260904000001-create-pos-discount-beneficiaries.cjs' },
         { name: '20260914000002-create-pos-location-item-overrides.cjs' },
         { name: '20260914000003-add-job-order-location-scope.cjs' },
-        { name: '20260914000004-create-pos-terminal-device-enrollment.cjs' }
+        { name: '20260914000004-create-pos-terminal-device-enrollment.cjs' },
+        { name: '20260921000002-add-employee-credit-split-tender.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -351,6 +352,7 @@ const buildHealthySequelizeMock = () => ({
                     session_id: {},
                     status: {},
                     payment_method: {},
+                    employee_credit_account_code: {},
                     applied_amount: {},
                     provider_event_id: {},
                     provider_refund_ids: {},

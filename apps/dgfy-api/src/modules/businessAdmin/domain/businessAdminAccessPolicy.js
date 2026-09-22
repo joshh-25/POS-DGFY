@@ -154,6 +154,9 @@ export const buildBusinessAdminCapabilities = (user = {}) => ({
         || String(user?.role || '').trim().toLowerCase() === 'admin'
         || userHasBusinessAdminPermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_COSTS)
     ),
+    view_expenses: canUsePermission(user, PERMISSIONS.EXPENSES.actions.VIEW),
+    create_expenses: canUsePermission(user, PERMISSIONS.EXPENSES.actions.CREATE),
+    void_expenses: canUsePermission(user, PERMISSIONS.EXPENSES.actions.VOID),
     approve_high_risk: Boolean(
         user?.is_master_admin
         || userHasBusinessAdminPermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK)

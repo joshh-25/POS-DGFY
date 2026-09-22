@@ -133,6 +133,17 @@ field-level migration rules live in
 `status: accepted` is preserved; this is an amendment, not a revision of the
 original decision history.
 
+## Amendment (2026-09-17): Environment-only development auto-login (Phase 381)
+
+Development auto-login remains a local-only convenience and stays opt-in behind
+the existing development flags. Its email, password, and company token must now
+be supplied explicitly through ignored local environment variables; no source,
+committed environment example, login screen, or E2E helper may provide fallback
+credentials. IMS and standalone POS production builds fail when development
+auto-login is enabled or any of its credential variables are configured. This
+preserves normal cookie/session authentication and the existing route exclusions
+while preventing development credentials from reaching production artifacts.
+
 ## Amendment (2026-09-14): Optional Strict POS Device Access (Phase 345)
 
 - The consequence that POS may authorize an operator from any logged-in device

@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 import {
   getWeightedInventoryValueOverview,
+  getWeightedInventoryValueByLocation,
   getItemsCostMetrics,
   getItemCostMetricsByLocation,
   invalidateItemCostMetricsCache
@@ -254,5 +255,42 @@ describe('costValuationService', () => {
       items: [{ item_id: 99, current_stock: 1, cost_per_unit: 3 }]
     });
     expect(FIFOBatch.findAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps branch valuation projections in the inventory cost owner', async () => {
+    const Item = {
+      findAll: jest.fn().mockResolvedValue([
+        { item_id: 44, current_stock: 6, cost_per_unit: 3, fifo_enabled: false }
+      ])
+    };
+    const FIFOBatch = { findAll: jest.fn().mockResolvedValue([]) };
+    const ItemLocationStock = {
+      findAll: jest.fn().mockResolvedValue([{ item_id: 44, quantity_on_hand: '4' }])
+    };
+
+    getSpy.mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'FIFOBatch') return FIFOBatch;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    await expect(getWeightedInventoryValueByLocation({
+      locations: [{ location_id: 3, name: 'Main branch' }]
+    })).resolves.toEqual({
+      locations: [{
+        location_id: 3,
+        location_name: 'Main branch',
+        available_qty: 4,
+        inventory_value: 12,
+        weighted_avg_cost: 3,
+        drift_item_count: 0,
+        stock_bearing_item_count: 1
+      }],
+      weighted_total_inventory_value: 12,
+      weighted_total_available_qty: 4,
+      weighted_average_cost_per_unit: 3,
+      legacy_total_inventory_value: 18
+    });
   });
 });

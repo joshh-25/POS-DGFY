@@ -4,8 +4,9 @@
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
 import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
+import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx';
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -13,7 +14,6 @@ import VersionBadge from '../../../packages/web-core/src/components/common/Versi
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
-import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 import {
   getPosUpdateSafetyState,
   hasCheckoutOwnedSafetyReason,
@@ -67,7 +67,7 @@ function PosRouteNotFound() {
         <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
         <h1 className="mt-2 text-2xl font-black text-slate-950">Route not available</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This standalone POS app serves the DGFY terminal. Sales reports open in SKUpervisor.
+          This standalone POS app serves the DGFY terminal and merchant Back Office.
         </p>
         <Link
           to="/terminal"
@@ -80,36 +80,26 @@ function PosRouteNotFound() {
   );
 }
 
-function SkupervisorSalesRedirect() {
-  useEffect(() => {
-    const query = typeof window === 'undefined' ? '' : window.location.search;
-    window.location.replace(buildSkupervisorPath('/sales', query));
-  }, []);
-
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
-      <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">Opening SKUpervisor</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Sales reports are handled in the SKUpervisor app context.
-        </p>
-      </section>
-    </main>
-  );
+function LegacyBackOfficeRoute({ section = 'overview' }) {
+  const location = useLocation();
+  return <Navigate to={`/backoffice/${section}${location.search || ''}`} replace />;
 }
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true';
-const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || 'token-original').trim();
-const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
-const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
+const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || '').trim();
+const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || '').trim();
+const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || '').trim();
+const hasDevAutoLoginCredentials = Boolean(
+  devAutoLoginCompanyToken && devAutoLoginEmail && devAutoLoginPassword
+);
 const POS_DEV_SERVICE_WORKER_RESET_MARKER = 'dgfy_pos_dev_service_worker_reset_v1';
 const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
 const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
 const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'));
 const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
+const MobileReceivePage = lazy(() => import('../../../packages/web-core/src/features/merchantBackOffice/pages/MobileReceivePage.jsx'));
 const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
@@ -351,10 +341,9 @@ const mountApp = () => {
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
                   <Route path="/business-admin/*" element={<BusinessAdminPage />} />
                   <Route path="/backoffice/*" element={<BusinessAdminPage />} />
-                  <Route
-                    path="/sales"
-                    element={<SkupervisorSalesRedirect />}
-                  />
+                  <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
+                  <Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />
+                  <Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />
@@ -372,7 +361,7 @@ const mountApp = () => {
 const bootstrapPosApp = async () => {
   if (await resetStaleDevelopmentServiceWorkers()) return;
 
-  if (enableDevAutoLogin) {
+  if (enableDevAutoLogin && hasDevAutoLoginCredentials) {
     try {
       window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
 

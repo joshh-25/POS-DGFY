@@ -11,7 +11,7 @@ const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup']
 const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
-const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque'];
+const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit'];
 const SPLIT_PAYMENT_OUTCOMES = ['pending', 'successful', 'failed'];
 const DOCUMENT_CONTEXTS = ['fiscal', 'non_fiscal', 'training_test'];
 const DISCOUNT_MODES = ['none', 'preset', 'percentage', 'amount'];
@@ -367,6 +367,13 @@ const addPosPaymentAllocationSchema = Joi.object({
     terminal_id: Joi.string().trim().uppercase().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required(),
     location_id: Joi.number().integer().positive().optional(),
     payment_method: Joi.string().lowercase().valid(...SPLIT_PAYMENT_METHODS).required(),
+    employee_credit: Joi.object({
+        account_code: Joi.string().trim().uppercase().min(4).max(40).required()
+    }).when('payment_method', {
+        is: 'employee_credit',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    }),
     amount: Joi.number().positive().precision(4).required(),
     outcome: Joi.string().lowercase().valid(...SPLIT_PAYMENT_OUTCOMES).optional(),
     payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
@@ -375,6 +382,30 @@ const addPosPaymentAllocationSchema = Joi.object({
     payment_provider: Joi.string().trim().max(40).allow('', null).optional(),
     failure_code: Joi.string().trim().max(80).allow('', null).optional(),
     failure_reason: Joi.string().trim().max(255).allow('', null).optional()
+}).custom((value, helpers) => {
+    if (value.payment_method !== 'employee_credit') return value;
+
+    const paymentHandoffMode = String(value.payment_handoff_mode || '').trim().toLowerCase();
+    const outcome = String(value.outcome || '').trim().toLowerCase();
+    const hasProviderFields = Boolean(
+        (paymentHandoffMode && paymentHandoffMode !== 'internal')
+        || value.manual_payment_received === true
+        || String(value.payment_reference || '').trim()
+        || String(value.payment_provider || '').trim()
+        || String(value.failure_code || '').trim()
+        || String(value.failure_reason || '').trim()
+        || (outcome && outcome !== 'successful')
+    );
+
+    if (hasProviderFields) {
+        return helpers.error('any.invalid', {
+            message: 'Employee Credit allocations must use internal successful tender fields only'
+        });
+    }
+
+    return value;
+}).messages({
+    'any.invalid': '{{#message}}'
 });
 
 const cancelPosPaymentSchema = Joi.object({
@@ -435,7 +466,7 @@ const posCatalogQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional(),
     paginate: Joi.boolean().default(false),
     page: Joi.number().integer().min(1).default(1),
-    page_size: Joi.number().integer().min(1).max(100).default(15),
+    page_size: Joi.number().integer().min(1).max(100).default(20),
     category_filter: Joi.string().trim().max(160).allow('').default('all'),
     stock_filter: Joi.string().valid('all', 'in_stock', 'low_stock', 'almost_out', 'out_of_stock').default('all')
 });
@@ -1101,6 +1132,12 @@ const devicePrintReceiptSchema = Joi.object({
     client_result: deviceClientResultSchema.optional()
 });
 
+const deviceTestPrintSchema = Joi.object({
+    message: Joi.string().trim().max(160).allow('', null).optional(),
+    copies: Joi.number().integer().min(1).max(2).default(1),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+});
+
 const onlineOrderReceiptAutoPrintClaimSchema = Joi.object({
     transaction_id: Joi.number().integer().positive().required(),
     terminal_id: Joi.string().trim().max(100).pattern(/^[A-Za-z0-9._-]{2,100}$/).required()
@@ -1566,6 +1603,7 @@ export const validatePosBalancePaymentProofParams = validateSchema(balancePaymen
 export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');
 export const validateDeliveryCompletionEvidenceImageParams = validateSchema(deliveryCompletionEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validatePosDeviceTestPrint = validateSchema(deviceTestPrintSchema, 'body', 'validatedData');
 export const validateOnlineOrderReceiptAutoPrintClaim = validateSchema(onlineOrderReceiptAutoPrintClaimSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');

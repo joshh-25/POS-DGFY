@@ -26,6 +26,7 @@ describe('dashboardAndInsightsToolRegistry', () => {
     expect(result).toEqual({
       total_items: 120,
       low_stock_count: 7,
+      out_of_stock_count: 0,
       healthy_stock_count: 100,
       overstock_count: 13,
       pending_purchase_orders: 4,

@@ -98,8 +98,13 @@ describe('SalesPage accessibility affordances', () => {
     viewButton.focus();
     await user.keyboard('{Enter}');
 
-    expect(screen.getByText('Transaction Detail')).toBeTruthy();
-    expect(screen.getByText(/Reference:/)).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Selected transaction detail' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Transaction INV-1001' })).toBeTruthy();
+    expect(screen.getByText('Reference', { exact: true })).toBeTruthy();
+    expect(screen.getByText('Tax breakdown', { exact: true })).toBeTruthy();
     expect(screen.getAllByText('INV-1001').length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole('button', { name: 'Close transaction detail' }));
+    expect(screen.queryByRole('dialog', { name: 'Selected transaction detail' })).toBeNull();
   });
 });

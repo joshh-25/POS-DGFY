@@ -165,6 +165,52 @@ const terminalIdentityPolicy = () => ({
     active_registry: activeTerminalRegistry
 });
 
+const buildFnbGuardRepository = ({ check, lines, includeCheckoutDependencies = false }) => {
+    let createdTransaction = null;
+    const repository = {
+        getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+        findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+        createTransactionWithLines: jest.fn(),
+        getFnbCheckForCheckout: jest.fn().mockResolvedValue({
+            check,
+            lines: (Array.isArray(lines) ? lines : []).filter((line) => line?.status !== 'voided')
+        }),
+        bindFnbCheckLocation: jest.fn().mockResolvedValue(check),
+        ...(includeCheckoutDependencies ? {
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Burger',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 30,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: false
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-FNB-GUARD-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines: transactionLines }) => {
+                createdTransaction = { pos_transaction_id: 901, ...header, lines: transactionLines };
+                return 901;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 901 } }),
+            settleFnbCheck: jest.fn().mockResolvedValue({ check_id: check.check_id, status: 'paid' }),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        } : {})
+    };
+    return {
+        repository,
+        inventoryCommandService: { createStockMovement: jest.fn().mockResolvedValue({ movement_id: 901 }) },
+        getCreatedTransaction: () => createdTransaction
+    };
+};
+
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -224,6 +270,91 @@ describe('POS checkout F&B contracts', () => {
             expect.objectContaining({ item_id: 1, quantity: 2 })
         ]);
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('charges only the Employee Credit portion of a mixed split checkout', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Mixed Tender Meal',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 20,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-EMPLOYEE-CREDIT-SPLIT-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 503, ...header, lines };
+                return 503;
+            }),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const employeeCreditService = {
+            prepareDebit: jest.fn().mockResolvedValue({
+                accountId: 44,
+                userId: null,
+                employeeId: 44,
+                employeeName: 'Employee 44',
+                amount: 60,
+                outstandingAfter: 60,
+                authorizationReference: 'EC-AUTH-503',
+                maskedAccountCode: 'EC-**44'
+            }),
+            finalizeDebit: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            employeeCreditService
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'mixed-employee-credit-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'employee_credit',
+                payment_handoff_mode: 'internal',
+                payment_session_reference: 'PAY-MIXED-503',
+                employee_credit: { account_code: 'EC-44' },
+                payment_breakdown: [
+                    { payment_type: 'employee_credit', count: 1, amount: 60 },
+                    { payment_type: 'cash', count: 1, amount: 40 }
+                ],
+                cash_received: 40,
+                change_amount: 0,
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(employeeCreditService.prepareDebit).toHaveBeenCalledWith(expect.objectContaining({
+            accountCode: 'EC-44',
+            amount: 60
+        }));
+        expect(employeeCreditService.finalizeDebit).toHaveBeenCalledWith(expect.objectContaining({
+            prepared: expect.objectContaining({ amount: 60 }),
+            posTransactionId: 503
+        }));
+        expect(createdTransaction.payment_type).toBe('employee_credit');
+        expect(createdTransaction.employee_credit_amount).toBe(60);
+        expect(createdTransaction.cash_received).toBe(40);
+        expect(createdTransaction.change_amount).toBe(0);
     });
 
     it.each([
@@ -1594,6 +1725,193 @@ describe('POS checkout F&B contracts', () => {
         expect(result.error.details).toEqual(expect.objectContaining({
             reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
         }));
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('rejects a second checkout for an already-paid F&B check before creating a POS transaction', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 700, status: 'paid', pos_transaction_id: 880 },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-paid-check-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 700,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_CHECK_ALREADY_SETTLED',
+            pos_transaction_id: 880
+        }));
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('rejects checkout when the persisted F&B check lines differ from the submitted cart', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 701, status: 'open', pos_transaction_id: null },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 2, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-changed-lines-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 701,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_CHECK_LINES_CHANGED',
+            check_id: 701
+        }));
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('allows a newly opened empty check to take its initial POS cart lines', async () => {
+        const { repository, inventoryCommandService, getCreatedTransaction } = buildFnbGuardRepository({
+            check: { check_id: 705, status: 'open', pos_transaction_id: null, location_id: 3 },
+            lines: [],
+            includeCheckoutDependencies: true
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-empty-check-initial-cart',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_check_id: 705,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(getCreatedTransaction().lines).toHaveLength(1);
+        expect(repository.createFnbKitchenOrderForTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            check_id: 705,
+            lines: [expect.objectContaining({ item_id: 1, quantity: 1 })]
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(repository.settleFnbCheck).toHaveBeenCalledWith(
+            { checkId: 705, posTransactionId: 901 },
+            expect.objectContaining({ transaction: expect.any(Object), lock: true })
+        );
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles the branch-bound check once and excludes voided lines from the sale and kitchen ticket', async () => {
+        const { repository, inventoryCommandService, getCreatedTransaction } = buildFnbGuardRepository({
+            check: { check_id: 702, status: 'sent_to_kitchen', pos_transaction_id: null, location_id: 3 },
+            lines: [
+                { check_line_id: 1, item_id: 1, quantity: 1, course: 'main', status: 'sent' },
+                { check_line_id: 2, item_id: 1, quantity: 4, course: 'dessert', status: 'voided' }
+            ],
+            includeCheckoutDependencies: true
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-voided-line-safe-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_check_id: 702,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(getCreatedTransaction().lines).toHaveLength(1);
+        expect(repository.createFnbKitchenOrderForTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            check_id: 702,
+            lines: [expect.objectContaining({ item_id: 1, quantity: 1 })]
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(repository.settleFnbCheck).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a check owned by another branch before checkout writes', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 703, status: 'open', pos_transaction_id: null, location_id: 4 },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        repository.bindFnbCheckLocation.mockResolvedValue(false);
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-cross-branch-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 703,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('FNB_CHECK_LOCATION_MISMATCH');
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('does not allow a partially paid check to be collected as a new sale', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 704, status: 'partially_paid', pos_transaction_id: null },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-partial-payment-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 704,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('FNB_PARTIAL_PAYMENT_REQUIRES_BALANCE_SETTLEMENT');
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
     });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { usePermission } from '../../packages/web-core/src/hooks/usePermission'; // Created next
 import { createPageUrl } from './utils.js';
@@ -34,8 +34,8 @@ import TenantCapabilityNotice from '../../packages/web-core/src/components/commo
 import useStore from '../../packages/web-core/src/store/useStore.js';
 import { useWorkflowMode } from '../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible, modeHasCapability } from '../../packages/web-core/src/features/settings/workflowMode.js';
-import OnboardingSetupModal, { OnboardingReminderBanner } from '../../packages/web-core/src/features/onboarding/components/OnboardingSetupModal.jsx';
-import { trackOnboardingEvent } from '../../packages/web-core/src/services/onboardingService.js';
+import { resolvePosTerminalUrl } from '../../packages/web-core/src/features/dgfyRouteHelpers.js';
+import { buildTenantSetupSearch, POS_TERMINAL_SETUP_STEPS } from '../../packages/web-core/src/features/pos/utils/setupFlow.js';
 import { getAllSettings } from '../../packages/web-core/src/services/settingsService.js';
 import { buildTenantCapabilityNoticeFromSettings } from '../../packages/web-core/src/utils/tenantCapabilityMessages.js';
 import { mergeCurrentCompanyWithMemberships } from '../../packages/web-core/src/utils/companySwitcherRows.js';
@@ -270,10 +270,6 @@ export default function Layout({ children, currentPageName }) {
     modeChangeNotice,
     dismissModeChangeNotice
   } = useWorkflowMode();
-  const [onboardingModalOpen, setOnboardingModalOpen] = useState(false);
-  const [onboardingDismissedThisSession, setOnboardingDismissedThisSession] = useState(false);
-  const onboardingReminderTrackedRef = useRef(false);
-
   React.useEffect(() => {
     if (!loading) {
       console.log('Layout: Permission State', { userRole, loading, canItems: can('items:view') });
@@ -335,43 +331,18 @@ export default function Layout({ children, currentPageName }) {
 
   const onboarding = currentUser?.onboarding || null;
   const onboardingState = String(onboarding?.tenant_onboarding_state || 'not_started').trim().toLowerCase();
-  const shouldShowOnboardingReminder = Boolean(
+  const shouldShowPosOnboardingHandoff = Boolean(
     currentUser?.is_master_admin === true
     && onboardingState !== 'completed'
     && workflowModeLoading === false
     && workflowModeResolved === true
   );
+  const posOnboardingUrl = resolvePosTerminalUrl(
+    buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE)
+  );
   const shouldShowPhoneReminder = Boolean(
     currentUser && !String(currentUser.phone_number || '').trim()
   );
-
-  React.useEffect(() => {
-    if (!shouldShowOnboardingReminder) {
-      onboardingReminderTrackedRef.current = false;
-      return;
-    }
-
-    if (!onboardingReminderTrackedRef.current) {
-      onboardingReminderTrackedRef.current = true;
-      trackOnboardingEvent({
-        eventKey: 'reminder_shown',
-        metadata: { surface: 'layout' }
-      }).catch(() => {});
-    }
-
-    if (onboardingDismissedThisSession) return;
-    setOnboardingModalOpen(true);
-  }, [onboardingDismissedThisSession, shouldShowOnboardingReminder]);
-
-  const refreshCurrentUser = React.useCallback(async () => {
-    try {
-      const user = await getCurrentUser();
-      setCurrentUser(user);
-      setGlobalCurrentUser(user);
-    } catch (error) {
-      console.warn('Failed to refresh user profile after onboarding action', error);
-    }
-  }, [setGlobalCurrentUser]);
 
   // Filter nav items - only filter after permissions have loaded
   // During loading, show all items to prevent flash of limited menu
@@ -494,14 +465,23 @@ export default function Layout({ children, currentPageName }) {
               onDismiss={() => setCapabilityNotice(null)}
             />
           )}
-          {shouldShowOnboardingReminder && (
-            <OnboardingReminderBanner
-              onboarding={onboarding}
-              onOpenWizard={() => {
-                setOnboardingDismissedThisSession(false);
-                setOnboardingModalOpen(true);
-              }}
-            />
+          {shouldShowPosOnboardingHandoff && (
+            <div className="mb-4 rounded-xl border border-blue-300 bg-blue-50 px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-blue-950">Tenant setup is now managed in POS.</p>
+                  <p className="mt-1 text-xs text-blue-900">
+                    Complete the profile, storefront, starter item, and terminal setup from one POS onboarding flow.
+                  </p>
+                </div>
+                <a
+                  href={posOnboardingUrl}
+                  className="rounded-md border border-blue-400 bg-white px-3 py-1.5 text-xs font-semibold text-blue-950 hover:bg-blue-100"
+                >
+                  Open POS Setup
+                </a>
+              </div>
+            </div>
           )}
           {shouldShowPhoneReminder && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -548,21 +528,6 @@ export default function Layout({ children, currentPageName }) {
           {children}
         </div>
       </main>
-      <OnboardingSetupModal
-        open={onboardingModalOpen && shouldShowOnboardingReminder}
-        onClose={() => {
-          setOnboardingModalOpen(false);
-          setOnboardingDismissedThisSession(true);
-          trackOnboardingEvent({
-            eventKey: 'reminder_dismissed',
-            metadata: { surface: 'layout' }
-          }).catch(() => {});
-        }}
-        onboarding={onboarding}
-        currentUser={currentUser}
-        workflowMode={workflowMode}
-        onRefreshUser={refreshCurrentUser}
-      />
       <FeedbackWidget />
     </div>
   );

@@ -18,7 +18,8 @@ import {
     Loader2,
     ArrowLeft,
     ArrowRight,
-    RefreshCw
+    RefreshCw,
+    X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { useSupplierCSV } from '../../src/hooks/useSupplierCSV.js';
@@ -65,6 +66,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
     });
 
     const handleClose = () => {
+        if (loading) return;
         setStep(1);
         setFile(null);
         setFileName('');
@@ -105,6 +107,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
     }, []);
 
     const handlePreview = async () => {
+        if (loading) return;
         if (!file) {
             toast.error('Please select a CSV file first');
             return;
@@ -119,6 +122,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
     };
 
     const handleConfirm = async () => {
+        if (loading) return;
         if (!previewData?.rows) return;
 
         const validRows = previewData.rows.filter(row => row.valid);
@@ -138,6 +142,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
     };
 
     const handleDownloadTemplate = async () => {
+        if (loading) return;
         const result = await downloadTemplate();
         if (result.success) {
             toast.success('Template downloaded');
@@ -147,6 +152,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
     };
 
     const handleStartOver = () => {
+        if (loading) return;
         setStep(1);
         setFile(null);
         setFileName('');
@@ -199,9 +205,11 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
                     <span>Need the format?</span>
                 </div>
                 <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     onClick={handleDownloadTemplate}
+                    disabled={loading}
                     className="text-teal-600 border-teal-200 hover:bg-teal-50"
                 >
                     <Download className="w-3 h-3 mr-1" />
@@ -346,10 +354,24 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
         <Dialog open={open} onOpenChange={handleClose}>
             <DialogContent className="sm:max-w-2xl">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Upload className="w-5 h-5 text-teal-600" />
-                        Import Suppliers
-                    </DialogTitle>
+                    <div className="flex items-start justify-between gap-3">
+                        <DialogTitle className="flex min-w-0 items-center gap-2">
+                            <Upload className="w-5 h-5 shrink-0 text-teal-600" />
+                            <span className="truncate">Import Suppliers</span>
+                        </DialogTitle>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={handleClose}
+                            disabled={loading}
+                            aria-label="Close supplier import"
+                            title="Close"
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </div>
                 </DialogHeader>
 
                 <WizardStepNavigator
@@ -375,10 +397,11 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
                 <DialogFooter>
                     {step === 1 && (
                         <>
-                            <Button variant="outline" onClick={handleClose}>
+                            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
                                 Cancel
                             </Button>
                             <Button
+                                type="button"
                                 onClick={handlePreview}
                                 disabled={!file || loading}
                                 className="bg-teal-600 hover:bg-teal-700"
@@ -394,11 +417,12 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
 
                     {step === 2 && (
                         <>
-                            <Button variant="outline" onClick={handleStartOver}>
+                            <Button type="button" variant="outline" onClick={handleStartOver} disabled={loading}>
                                 <ArrowLeft className="w-4 h-4 mr-2" />
                                 Back
                             </Button>
                             <Button
+                                type="button"
                                 onClick={handleConfirm}
                                 disabled={loading || (previewData?.validRows === 0)}
                                 className="bg-teal-600 hover:bg-teal-700"
@@ -414,6 +438,7 @@ export default function SupplierImportModal({ open, onClose, onSuccess }) {
 
                     {step === 3 && (
                         <Button
+                            type="button"
                             onClick={handleDone}
                             className="bg-teal-600 hover:bg-teal-700"
                         >

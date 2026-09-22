@@ -13,6 +13,7 @@ const listSalesTransactionsQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(200).default(20),
     source: Joi.string().trim().uppercase().valid(...SALES_SOURCES).optional(),
     source_id: Joi.number().integer().positive().optional(),
+    item_id: Joi.number().integer().positive().optional(),
     search: Joi.string().trim().allow('', null).optional(),
     status: Joi.string().trim().max(60).optional(),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),

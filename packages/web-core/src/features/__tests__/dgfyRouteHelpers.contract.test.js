@@ -44,9 +44,11 @@ describe('DGFY route helper contracts', () => {
     }
   });
 
-  it('keeps the SKUpervisor terminal route on the governed terminal page', () => {
-    expect(skupervisorMainSource).toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
-    expect(skupervisorMainSource).toContain('<Route path="/terminal" element={<TerminalPage />} />');
+  it('retires IMS merchant routes while preserving the POS handoff', () => {
+    expect(skupervisorMainSource).toContain("import MerchantSurfaceRetired from './pages/MerchantSurfaceRetired.jsx'");
+    expect(skupervisorMainSource).toContain('<Route path="/terminal" element={<MerchantSurfaceRetired target="/terminal" title="POS terminal moved" />} />');
+    expect(skupervisorMainSource).toContain('<Route path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />} />');
+    expect(skupervisorMainSource).not.toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
   });
 
   it('builds a saved-item Storefront detail URL without exposing inventory routes', () => {

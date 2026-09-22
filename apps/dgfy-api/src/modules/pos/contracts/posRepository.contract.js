@@ -7,6 +7,8 @@ const REQUIRED_METHODS = [
     'createTransactionWithLines',
     'getTransactionById',
     'getReportsOverview',
+    'getZReadingReconciliationByBusinessDate',
+    'getCashierLifecycleReport',
     'listTransactions',
     'getZReadingSummary',
     'listReportTransactionAdjustments',

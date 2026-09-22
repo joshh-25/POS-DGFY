@@ -110,6 +110,22 @@ describe('DGFY POS terminal cashier assignment policy', () => {
     expect(userLocationGrant.count).not.toHaveBeenCalled();
   });
 
+  it('allows the accepted tenant owner admin without a branch grant', async () => {
+    await expect(validateDgfyPosTerminalPolicy({
+      tenantId: 'tenant-1',
+      terminalId: 'COUNTER-01',
+      tenantUserId: 22,
+      userRole: 'admin',
+      permissions: ['pos:transact'],
+      isMasterAdmin: false,
+      isTenantOwner: true
+    })).resolves.toEqual(expect.objectContaining({
+      reason_code: 'ALLOWED',
+      registry_entry: expect.objectContaining({ cashier_user_ids: [21] })
+    }));
+    expect(userLocationGrant.count).not.toHaveBeenCalled();
+  });
+
   it('does not treat switch-location permission as a terminal assignment bypass', async () => {
     await expect(validateDgfyPosTerminalPolicy({
       tenantId: 'tenant-1',

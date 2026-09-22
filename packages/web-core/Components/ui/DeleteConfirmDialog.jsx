@@ -20,12 +20,14 @@ export default function DeleteConfirmDialog({
   cancelText = "Cancel",
   variant = "destructive",
   loading = false,
-  errors = null
+  errors = null,
+  className,
+  compact = false
 }) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className={className}>
+        <DialogHeader className={compact ? "border-b border-slate-100 p-4 pb-3" : undefined}>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {description}
@@ -45,7 +47,7 @@ export default function DeleteConfirmDialog({
             </div>
           )}
         </DialogHeader>
-        <DialogFooter>
+        <DialogFooter className={compact ? "gap-2 border-t border-slate-100 p-4 pt-3" : undefined}>
           <Button variant="outline" onClick={() => onClose(false)} disabled={loading}>
             {cancelText}
           </Button>

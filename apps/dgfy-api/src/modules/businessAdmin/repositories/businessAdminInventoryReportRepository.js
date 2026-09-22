@@ -1,5 +1,8 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { buildStockHealthWhere, getStockHealthStatus, STOCK_HEALTH_STATUS } from '../../inventory/services/inventoryHealthService.js';
+import { buildStockBearingItemWhere } from '../../shared/utils/stockBearingPolicy.js';
+import { getReportSortColumnMap, getReportSortFields } from '../../reports/domain/reportRegistry.js';
 
 const toPlain = (value) => value?.toJSON ? value.toJSON() : value;
 const positiveInt = (value, fallback) => {
@@ -35,20 +38,6 @@ const locationLabel = (location, allowedLocationIds) => {
     return location.name || `Branch #${location.location_id}`;
 };
 
-const movementSortColumns = Object.freeze({
-    timestamp: 'timestamp',
-    item: 'item_id',
-    movement_type: 'movement_type',
-    quantity: 'quantity',
-    reference: 'reference_id'
-});
-
-const lowStockSortColumns = Object.freeze({
-    item: 'item_id',
-    quantity_on_hand: 'quantity_on_hand',
-    min_threshold: 'item.min_threshold'
-});
-
 export const businessAdminInventoryReportRepository = {
     async listBranchStock({ branchId, itemIds = [] } = {}) {
         const ItemLocationStock = dbStore.get('ItemLocationStock');
@@ -81,6 +70,8 @@ export const businessAdminInventoryReportRepository = {
         const TenantLocation = dbStore.get('TenantLocation');
         const normalizedPage = positiveInt(page, 1);
         const normalizedLimit = Math.min(5000, positiveInt(limit, 50));
+        const movementSortColumns = getReportSortColumnMap('inventory_movements');
+        const movementSortFields = getReportSortFields('inventory_movements');
         const sortColumn = movementSortColumns[sortBy] || movementSortColumns.timestamp;
         const { count, rows } = await StockMovement.findAndCountAll({
             where: scopedMovementWhere({ dateFrom, dateTo, branchId, allowedLocationIds }),
@@ -116,7 +107,7 @@ export const businessAdminInventoryReportRepository = {
             }),
             pagination: { page: normalizedPage, limit: normalizedLimit, total: count, total_pages: Math.ceil(count / normalizedLimit) },
             sort: { by: Object.entries(movementSortColumns).find(([, value]) => value === sortColumn)?.[0] || 'timestamp', direction: direction(sortDirection).toLowerCase() },
-            available_sort_fields: ['timestamp', 'item', 'movement_type', 'quantity', 'reference']
+            available_sort_fields: movementSortFields
         };
     },
 
@@ -130,14 +121,22 @@ export const businessAdminInventoryReportRepository = {
         const locationIds = branchId ? [branchId] : allowedLocationIds;
         const where = {};
         if (Array.isArray(locationIds)) where.location_id = { [Op.in]: locationIds };
+        const lowStockSortColumns = getReportSortColumnMap('low_stock');
+        const lowStockSortFields = getReportSortFields('low_stock');
         const sortColumn = lowStockSortColumns[sortBy] || lowStockSortColumns.quantity_on_hand;
         const { count, rows } = await ItemLocationStock.findAndCountAll({
             where: {
                 ...where,
-                [Op.and]: [sequelize.where(sequelize.col('quantity_on_hand'), Op.lte, sequelize.col('item.min_threshold'))]
+                [Op.and]: [buildStockHealthWhere({
+                    statuses: [STOCK_HEALTH_STATUS.LOW_STOCK, STOCK_HEALTH_STATUS.OUT_OF_STOCK],
+                    sequelize,
+                    stockColumn: 'quantity_on_hand',
+                    minColumn: 'item.min_threshold',
+                    maxColumn: 'item.max_capacity'
+                })]
             },
             include: [
-                { model: Item, as: 'item', attributes: ['item_id', 'name', 'sku_code', 'min_threshold'], where: { status: 'active', min_threshold: { [Op.ne]: null } }, required: true },
+                { model: Item, as: 'item', attributes: ['item_id', 'name', 'sku_code', 'min_threshold', 'max_capacity'], where: buildStockBearingItemWhere({ status: 'active' }), required: true },
                 { model: TenantLocation, as: 'location', attributes: ['location_id', 'name'], required: true }
             ],
             distinct: true,
@@ -154,18 +153,25 @@ export const businessAdminInventoryReportRepository = {
                 const stock = toPlain(row);
                 const quantity = decimal(stock.quantity_on_hand);
                 const threshold = decimal(stock.item?.min_threshold);
+                const maxCapacity = stock.item?.max_capacity == null ? null : decimal(stock.item.max_capacity);
                 return {
                     item: stock.item?.name || `Item #${stock.item_id}`,
                     sku_code: stock.item?.sku_code || '',
                     branch: locationLabel(stock.location, allowedLocationIds),
                     quantity_on_hand: quantity,
                     min_threshold: threshold,
+                    max_capacity: maxCapacity,
+                    stock_status: getStockHealthStatus({
+                        currentStock: quantity,
+                        minThreshold: stock.item?.min_threshold,
+                        maxCapacity: stock.item?.max_capacity
+                    }),
                     shortage_quantity: Math.max(0, threshold - quantity)
                 };
             }),
             pagination: { page: normalizedPage, limit: normalizedLimit, total: count, total_pages: Math.ceil(count / normalizedLimit) },
             sort: { by: Object.entries(lowStockSortColumns).find(([, value]) => value === sortColumn)?.[0] || 'quantity_on_hand', direction: direction(sortDirection).toLowerCase() },
-            available_sort_fields: ['item', 'quantity_on_hand', 'min_threshold']
+            available_sort_fields: lowStockSortFields
         };
     }
 };

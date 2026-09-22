@@ -36,4 +36,25 @@ describe('sales handoff and export UX contracts', () => {
     expect(salesPageContent).toContain('aria-label={`View transaction ${row.reference_no || row.source_id}`}');
     expect(salesPageContent).toContain('aria-live="polite"');
   });
+
+  it('opens transaction details in an accessible read-only modal', () => {
+    expect(salesPageContent).toContain('const [detailOpen, setDetailOpen] = useState(false);');
+    expect(salesPageContent).toContain('setDetailOpen(true);');
+    expect(salesPageContent).toContain('<Dialog open={detailOpen && Boolean(selected)}');
+    expect(salesPageContent).toContain('aria-label="Selected transaction detail"');
+    expect(salesPageContent).toContain('aria-label="Close transaction detail"');
+    expect(salesPageContent).toContain('TransactionMetric label="Gross sales"');
+    expect(salesPageContent).toContain('TransactionDetailSection title="Tax breakdown"');
+  });
+
+  it('supports an embedded Back Office presentation without changing the direct sales route', () => {
+    expect(salesPageContent).toContain('export default function SalesPage({ embedded = false })');
+    expect(salesPageContent).toContain('{!embedded && (');
+    expect(salesPageContent).toContain('Sales overview');
+    expect(salesPageContent).toContain("showAdvancedFilters ? 'Hide filters' : 'Filters'");
+    expect(salesPageContent).toContain('aria-label="Clear sales filters"');
+    expect(salesPageContent).toContain('aria-controls="sales-advanced-filters"');
+    expect(salesPageContent).toContain('aria-label="Sales transaction cards"');
+    expect(salesPageContent).toContain('Loading sales activity');
+  });
 });

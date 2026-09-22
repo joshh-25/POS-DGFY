@@ -78,6 +78,17 @@ const buildPosRepositoryStub = ({
         z_counter_value: 7,
         reset_counter_value: 2,
         lifetime_grand_total_cents: 1234500
+    }),
+    getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({
+        status: 'matched',
+        comparison_basis: 'completed_recognized_transaction_total',
+        business_date: '2026-08-07',
+        location_id: 3,
+        report_recognized_sales: 300,
+        z_total_amount: 300,
+        variance: 0,
+        evaluated_at: '2026-08-07T12:01:00.000Z',
+        message: 'Report recognized sales match the immutable Z-reading total.'
     })
 });
 
@@ -344,6 +355,14 @@ describe('buildPrintPosZReadingUseCase', () => {
             z_reading: expect.objectContaining({
                 z_reading: expect.objectContaining({
                     reading_identifier: 'Z-20260807-0001',
+                    generated_at: '2026-08-07T12:00:00.000Z',
+                    reconciliation: expect.objectContaining({
+                        status: 'matched',
+                        report_recognized_sales: 300,
+                        z_total_amount: 300,
+                        variance: 0,
+                        evaluated_at: '2026-08-07T12:01:00.000Z'
+                    }),
                     z_counter_value: 7
                 })
             })
@@ -371,6 +390,7 @@ describe('buildPrintPosZReadingUseCase', () => {
 
         expect(result.success).toBe(true);
         expect(deviceDriver.printZReading).not.toHaveBeenCalled();
+        expect(posRepository.getZReadingReconciliationByBusinessDate).not.toHaveBeenCalled();
         expect(result.data.bridge).toEqual(expect.objectContaining({
             ok: true,
             delegated: true,

@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { businessAdminShiftActivityRepository } from './businessAdminShiftActivityRepository.js';
 
 const OVERDUE_SHIFT_MS = 12 * 60 * 60 * 1000;
 
@@ -42,48 +43,10 @@ const buildWhere = ({ allowedLocationIds = null, filters = {} } = {}) => {
 };
 
 const normalizeShifts = async (rows) => {
-    const PosTransaction = dbStore.get('PosTransaction');
-    const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
     const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
     const shifts = rows.map(toPlain);
     const shiftIds = shifts.map((shift) => Number(shift.pos_terminal_shift_id)).filter(Number.isInteger);
-    const transactions = shiftIds.length > 0
-        ? await PosTransaction.findAll({
-            where: { shift_id: { [Op.in]: shiftIds } },
-            attributes: ['pos_transaction_id', 'shift_id', 'status', 'discount_amount'],
-            raw: true
-        })
-        : [];
-    const transactionShiftById = new Map();
-    const activityByShift = new Map(shiftIds.map((shiftId) => [shiftId, {
-        orders_processed: 0,
-        refunds_amount: 0,
-        discounts_amount: 0,
-        void_count: 0
-    }]));
-    transactions.forEach((transaction) => {
-        const activity = activityByShift.get(Number(transaction.shift_id));
-        if (!activity) return;
-        transactionShiftById.set(Number(transaction.pos_transaction_id), Number(transaction.shift_id));
-        activity.orders_processed += 1;
-        activity.discounts_amount += toNumber(transaction.discount_amount);
-        if (String(transaction.status).toLowerCase() === 'voided') activity.void_count += 1;
-    });
-    if (PosTransactionAdjustment && transactionShiftById.size > 0) {
-        const refunds = await PosTransactionAdjustment.findAll({
-            where: {
-                pos_transaction_id: { [Op.in]: Array.from(transactionShiftById.keys()) },
-                adjustment_type: { [Op.in]: ['cash_refund', 'external_refund', 'provider_refund'] },
-                status: 'succeeded'
-            },
-            attributes: ['pos_transaction_id', 'amount'],
-            raw: true
-        });
-        refunds.forEach((refund) => {
-            const activity = activityByShift.get(transactionShiftById.get(Number(refund.pos_transaction_id)));
-            if (activity) activity.refunds_amount += toNumber(refund.amount);
-        });
-    }
+    const activityByShift = await businessAdminShiftActivityRepository.getByShiftIds(shiftIds);
 
     const cashEvents = PosCashDrawerEvent && shiftIds.length > 0
         ? await PosCashDrawerEvent.findAll({

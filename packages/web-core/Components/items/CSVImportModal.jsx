@@ -31,9 +31,9 @@ import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx
 import { toast } from 'sonner';
 
 const CSV_IMPORT_STEPS = Object.freeze([
-    { id: 'upload', number: 1, name: 'Upload', description: 'Choose the CSV template file to validate.' },
-    { id: 'preview', number: 2, name: 'Preview', description: 'Review parsed rows and validation errors before import.' },
-    { id: 'result', number: 3, name: 'Result', description: 'Review created, updated, skipped, and failed rows.' }
+    { id: 'upload', number: 1, name: 'Upload', description: 'Choose a CSV file.' },
+    { id: 'preview', number: 2, name: 'Preview', description: 'Review rows and errors.' },
+    { id: 'result', number: 3, name: 'Result', description: 'Review import results.' }
 ]);
 
 // #1495 Part B. Append is the historical behaviour and stays the default; sync additionally
@@ -574,8 +574,8 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="sm:max-w-2xl">
-                <DialogHeader>
+            <DialogContent className="catalog-editor-dialog-content flex sm:max-w-2xl flex-col overflow-hidden p-0">
+                <DialogHeader className="border-b border-slate-100 p-4 pb-3">
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />
                         Import Items from CSV
@@ -590,7 +590,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     ariaLabel="CSV import steps"
                 />
 
-                <div className="py-4">
+                <div className="flex-1 overflow-y-auto p-4 pt-3">
                     {error && (
                         <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
                             {error}
@@ -602,7 +602,7 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     {step === 3 && renderResultStep()}
                 </div>
 
-                <DialogFooter className="gap-2">
+                <DialogFooter className="gap-2 border-t border-slate-100 p-4 pt-3">
                     {step === 1 && (
                         <>
                             <Button variant="outline" onClick={handleClose}>

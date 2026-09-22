@@ -329,10 +329,10 @@ export default function POSTransactionHistoryPanel({
                                     <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Payment</th>
                                     <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Status</th>
                                     {!isTabletViewport && <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Cashier</th>}
-                                    {!isTabletViewport && <th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Discount</th>}
+                                    {!isTabletViewport && <th scope="col" className="w-[8rem] min-w-[8rem] max-w-[8rem] px-2 py-4 text-left text-[13px] font-black">Discount</th>}
                                     {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">VATable Sales</th>}
                                     {!isTabletViewport && <th scope="col" className="px-4 py-4 text-right text-[13px] font-black">VAT Amount (12%)</th>}
-                                    <th scope="col" className="px-4 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>
+                                    <th scope="col" className="w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px] font-black text-[#1A4E8D]">Total</th>
                                     <th scope="col" className={`${isTabletViewport ? 'w-[15rem] min-w-[15rem]' : 'w-[10rem] min-w-[10rem]'} px-3 py-4 text-center text-[13px] font-black`}>Action</th>
                                 </tr>
                             </thead>
@@ -419,7 +419,7 @@ export default function POSTransactionHistoryPanel({
                                                 </td>
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
-                                                    <td className="px-4 py-4 text-[#334155]">
+                                                    <td className="w-[8rem] min-w-[8rem] max-w-[8rem] break-words px-2 py-4 text-[#334155]">
                                                         {row.discount ? (
                                                             <div>
                                                                 <div className="font-semibold">
@@ -447,7 +447,7 @@ export default function POSTransactionHistoryPanel({
                                                 )}
                                                 {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">₱{money(row.vatable_sales)}</td>}
                                                 {!isTabletViewport && <td className="px-4 py-4 text-right text-[#334155]">₱{money(row.vat_amount)}</td>}
-                                                <td className="px-4 py-4 text-right font-black text-[#1A4E8D]">₱{money(row.total_amount)}</td>
+                                                <td className="w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right font-black tabular-nums text-[#1A4E8D]">₱{money(row.total_amount)}</td>
                                                 <td className={`${isTabletViewport ? 'w-[15rem] min-w-[15rem]' : 'w-[10rem] min-w-[10rem]'} px-2 py-3 text-center`}>
                                                     <div className="flex flex-nowrap justify-center gap-2">
                                                         <Button

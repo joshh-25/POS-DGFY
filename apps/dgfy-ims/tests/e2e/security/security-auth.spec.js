@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
+import { hasTestCredentials, loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
 import { TEST_COMPANY_TOKEN } from '../helpers/urls.js';
 import { signIn } from '../fixtures/login.js';
 import { registerCrashDetection } from '../helpers/assertions.js';
@@ -31,6 +31,7 @@ test.describe('Security - Auth Boundaries', () => {
   }
 
   test('Session cleanup returns the surface to its unauthenticated boundary', async ({ page, context }) => {
+    test.skip(!hasTestCredentials, 'Provide E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in .env.e2e.');
     const crashChecker = registerCrashDetection(page);
     if (isPosSurface) {
       await signIn(page, { email: TEST_USER_EMAIL, password: TEST_USER_PASSWORD });

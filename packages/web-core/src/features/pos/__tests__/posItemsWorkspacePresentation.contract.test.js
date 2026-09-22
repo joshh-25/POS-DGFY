@@ -31,6 +31,10 @@ describe('standalone POS Items workspace presentation', () => {
     const source = readWorkspace();
 
     expect(source).toContain("['Item', 'Details & Identification', 'Category', 'Stock Status', 'Profit Margin', 'Price', 'Cost', 'Actions']");
+    expect(source).toContain("const isMoneyColumn = heading === 'Price' || heading === 'Cost';");
+    expect(source).toContain("${isMoneyColumn ? 'text-right' : ''}");
+    expect(source).toContain('text-sm font-black tabular-nums text-[#0F172A]');
+    expect(source).toContain('text-sm font-bold tabular-nums text-[#0F172A]');
     expect(source).toContain('Search by item name, SKU, or barcode');
     expect(source).toContain('Add Item');
     expect(source).toContain('Import Items');

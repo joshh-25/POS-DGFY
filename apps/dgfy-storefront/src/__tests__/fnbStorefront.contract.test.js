@@ -184,7 +184,8 @@ describe('Food & Beverage storefront contract', () => {
     expect(businessSource).toContain('Your businesses');
     expect(businessSource).toContain('Pending invitations');
     expect(businessSource).toContain("startBusinessAction('accept'");
-    expect(customerAccountPanelHookSource()).toContain('if (!isDgfyCustomerSignedIn || accountPanel?.loading) return;');
+    expect(customerAccountPanelHookSource()).toContain('if (!isDgfyCustomerSignedIn) return;');
+    expect(customerAccountPanelHookSource()).toContain('const scopeChanged = loadedScopeRef.current !== historyScopeKey;');
   });
 
   it('shows signed-in saved addresses in F&B delivery checkout before map pinning', () => {

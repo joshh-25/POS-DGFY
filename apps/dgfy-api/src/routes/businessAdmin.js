@@ -17,7 +17,12 @@ router.get('/notifications', businessAdminHandlers.listNotifications);
 router.patch('/notifications/:id/read', validatePosTransactionIdParam, businessAdminHandlers.markNotificationRead);
 router.post('/notifications/:id/dismiss', validatePosTransactionIdParam, businessAdminHandlers.dismissNotification);
 router.post('/notifications/:id/acknowledge', validatePosTransactionIdParam, businessAdminHandlers.acknowledgeNotification);
-router.get('/activity', businessAdminHandlers.listActivity);
+// `/activity` was a mixed notification/audit feed. Keep the legacy URL as a
+// redirect so clients follow the canonical immutable Audit owner.
+router.get('/activity', (req, res) => {
+    const query = req.originalUrl?.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+    return res.redirect(308, `${req.baseUrl}/audit${query}`);
+});
 router.get('/reports', businessAdminHandlers.getReports);
 router.get('/reports/definitions', businessAdminHandlers.listReportDefinitions);
 router.get('/reports/datasets/:reportKey', businessAdminHandlers.getReportDataset);
@@ -25,13 +30,18 @@ router.get('/reports/datasets/:reportKey/export', businessAdminHandlers.exportRe
 router.get('/inventory/valuation', businessAdminHandlers.getInventoryValuation);
 router.get('/inventory/stock', businessAdminHandlers.listInventoryStock);
 router.get('/workforce', businessAdminHandlers.getWorkforce);
+router.get('/attendance', businessAdminHandlers.getAttendance);
 router.get('/fiscal', businessAdminHandlers.getFiscal);
 router.get('/inventory/recipes', businessAdminHandlers.listRecipes);
 router.get('/customers', businessAdminHandlers.listCustomers);
+router.post('/customers', businessAdminHandlers.createCustomer);
 router.get('/customers/:profileRef', businessAdminHandlers.getCustomerDetail);
 router.get('/shifts', businessAdminHandlers.listShifts);
 router.get('/orders', businessAdminHandlers.listOrders);
 router.get('/orders/:id', validatePosTransactionIdParam, businessAdminHandlers.getOrderDetail);
+router.get('/expenses', businessAdminHandlers.listExpenses);
+router.post('/expenses', businessAdminHandlers.createExpense);
+router.post('/expenses/:id/void', validatePosTransactionIdParam, businessAdminHandlers.voidExpense);
 router.get('/payments/monitoring', businessAdminHandlers.getCommerceMonitoring);
 router.get('/report-views', businessAdminHandlers.listSavedReportViews);
 router.post('/report-views', businessAdminHandlers.createSavedReportView);

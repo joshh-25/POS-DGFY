@@ -475,9 +475,11 @@ npm run dev
 The local dev server uses port 5174. Configure only the POS VITE variables needed by
 the standalone app. Do not copy the entire IMS environment file into POS.
 
-Development auto-login is opt-in and requires the corresponding VITE_POS_DEV_AUTO_LOGIN
-setting plus the configured development company token, email, and password. Do not place
-real credentials in committed environment files.
+Development auto-login is opt-in and requires `VITE_POS_DEV_AUTO_LOGIN=true` plus explicit
+`VITE_POS_DEV_COMPANY_TOKEN`, `VITE_POS_DEV_EMAIL`, and `VITE_POS_DEV_PASSWORD` values in
+ignored local environment configuration. There are no credential fallbacks, and production
+builds reject development auto-login settings. Do not place real credentials in committed
+environment files.
 
 ### Build and lint
 

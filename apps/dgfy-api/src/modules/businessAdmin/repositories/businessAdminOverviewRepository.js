@@ -1,5 +1,9 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { buildStockHealthWhere, STOCK_HEALTH_STATUS } from '../../inventory/services/inventoryHealthService.js';
+import { buildStockBearingItemWhere } from '../../shared/utils/stockBearingPolicy.js';
+import { businessAdminFinancialReportRepository } from './businessAdminFinancialReportRepository.js';
+import { businessAdminShiftActivityRepository } from './businessAdminShiftActivityRepository.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -14,6 +18,11 @@ const toNumber = (value) => {
 
 const OVERDUE_SHIFT_MS = 12 * 60 * 60 * 1000;
 const TERMINAL_HEARTBEAT_ONLINE_MS = 2 * 60 * 1000;
+const MANILA_UTC_OFFSET = '+08:00';
+
+const auditDateBoundary = (dateValue, endOfDay = false) => new Date(
+    `${dateValue}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}${MANILA_UTC_OFFSET}`
+);
 
 const parseJsonLoosely = (value) => {
     if (Array.isArray(value) || (value && typeof value === 'object')) return value;
@@ -170,8 +179,8 @@ export const businessAdminOverviewRepository = {
         if (entityType) where.entity_type = entityType;
         if (action) where.action = action;
         if (dateFrom || dateTo) where.timestamp = {
-            ...(dateFrom ? { [Op.gte]: new Date(`${dateFrom}T00:00:00.000Z`) } : {}),
-            ...(dateTo ? { [Op.lte]: new Date(`${dateTo}T23:59:59.999Z`) } : {})
+            ...(dateFrom ? { [Op.gte]: auditDateBoundary(dateFrom) } : {}),
+            ...(dateTo ? { [Op.lte]: auditDateBoundary(dateTo, true) } : {})
         };
         const { rows, count } = await AuditLog.findAndCountAll({
             where,
@@ -333,7 +342,19 @@ export const businessAdminOverviewRepository = {
         if (registerId) closedShiftWhere.terminal_id = registerId;
 
         const tenantWideMetrics = !Array.isArray(allowedLocationIds);
-        const [paymentSummaryRows, recentTransactions, closedShiftSummaryRows, lowStockCount, pendingApprovals] = await Promise.all([
+        const [salesTrendReport, paymentSummaryRows, recentTransactions, closedShiftSummaryRows, lowStockCount, pendingApprovals] = await Promise.all([
+            businessAdminFinancialReportRepository.getDataset({
+                reportKey: 'sales_trend',
+                dateFrom,
+                dateTo,
+                branchId,
+                registerId,
+                allowedLocationIds: Array.isArray(allowedLocationIds) ? allowedLocationIds : null,
+                page: 1,
+                limit: 5000,
+                sortBy: 'period',
+                sortDirection: 'asc'
+            }),
             PosTransaction.findAll({
                 where: transactionWhere,
                 attributes: [
@@ -378,10 +399,13 @@ export const businessAdminOverviewRepository = {
             }),
             tenantWideMetrics && Item?.count
                 ? Item.count({
-                    where: {
-                        min_threshold: { [Op.ne]: null },
-                        current_stock: { [Op.lte]: sequelize.col('min_threshold') }
-                    }
+                    where: buildStockBearingItemWhere({
+                        status: 'active',
+                        [Op.and]: [buildStockHealthWhere({
+                            status: STOCK_HEALTH_STATUS.LOW_STOCK,
+                            sequelize
+                        })]
+                    })
                 })
                 : Promise.resolve(null),
             tenantWideMetrics && BusinessAdminApprovalRequest?.count
@@ -389,6 +413,7 @@ export const businessAdminOverviewRepository = {
                 : Promise.resolve(null)
         ]);
         const closedShiftSummary = closedShiftSummaryRows[0] || {};
+        const salesTrendRows = Array.isArray(salesTrendReport?.rows) ? salesTrendReport.rows : [];
 
         const branchSalesRows = await PosTransaction.findAll({
             where: transactionWhere,
@@ -436,45 +461,7 @@ export const businessAdminOverviewRepository = {
         const recentShiftIds = recentShifts
             .map((shift) => Number(shift.pos_terminal_shift_id))
             .filter((shiftId) => Number.isInteger(shiftId) && shiftId > 0);
-        const shiftTransactions = recentShiftIds.length > 0
-            ? await PosTransaction.findAll({
-                where: { shift_id: { [Op.in]: recentShiftIds } },
-                attributes: ['pos_transaction_id', 'shift_id', 'status', 'discount_amount'],
-                raw: true
-            })
-            : [];
-        const transactionShiftById = new Map();
-        const shiftActivity = new Map(recentShiftIds.map((shiftId) => [shiftId, {
-            orders_processed: 0,
-            discounts_amount: 0,
-            void_count: 0,
-            refunds_amount: 0
-        }]));
-        shiftTransactions.forEach((transaction) => {
-            const shiftId = Number(transaction.shift_id);
-            const activity = shiftActivity.get(shiftId);
-            if (!activity) return;
-            transactionShiftById.set(Number(transaction.pos_transaction_id), shiftId);
-            activity.orders_processed += 1;
-            activity.discounts_amount += toNumber(transaction.discount_amount);
-            if (String(transaction.status).toLowerCase() === 'voided') activity.void_count += 1;
-        });
-        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
-        if (PosTransactionAdjustment && transactionShiftById.size > 0) {
-            const refunds = await PosTransactionAdjustment.findAll({
-                where: {
-                    pos_transaction_id: { [Op.in]: Array.from(transactionShiftById.keys()) },
-                    adjustment_type: { [Op.in]: ['cash_refund', 'external_refund', 'provider_refund'] },
-                    status: 'succeeded'
-                },
-                attributes: ['pos_transaction_id', 'amount'],
-                raw: true
-            });
-            refunds.forEach((refund) => {
-                const activity = shiftActivity.get(transactionShiftById.get(Number(refund.pos_transaction_id)));
-                if (activity) activity.refunds_amount += toNumber(refund.amount);
-            });
-        }
+        const shiftActivity = await businessAdminShiftActivityRepository.getByShiftIds(recentShiftIds);
 
         const branchesById = buildBranchMap(locations);
         branchSalesRows.forEach((row) => {
@@ -610,50 +597,6 @@ export const businessAdminOverviewRepository = {
             };
         });
 
-        const alerts = [];
-        if (locations.length === 0) {
-            alerts.push({
-                code: 'NO_ACTIVE_BRANCHES',
-                severity: 'critical',
-                message: 'No active branches are configured.',
-                target: { type: 'business', id: String(tenant?.id || store.tenantId || '') }
-            });
-        }
-        if (!registry.some((terminal) => terminal.is_active)) {
-            alerts.push({
-                code: 'NO_ACTIVE_REGISTERS',
-                severity: 'warning',
-                message: 'No active POS registers are configured.',
-                target: { type: 'register', id: 'pos_terminal_registry' }
-            });
-        }
-        registry
-            .filter((terminal) => terminal.is_active && !terminal.location_id)
-            .forEach((terminal) => {
-                alerts.push({
-                    code: 'REGISTER_MISSING_BRANCH',
-                    severity: 'warning',
-                    message: `${terminal.label || terminal.terminal_id} is active but not assigned to a branch.`,
-                    target: { type: 'register', id: terminal.terminal_id }
-                });
-            });
-        if (tenant?.tenant_onboarding_state && tenant.tenant_onboarding_state !== 'completed') {
-            alerts.push({
-                code: 'ONBOARDING_INCOMPLETE',
-                severity: 'info',
-                message: 'Business onboarding is not completed.',
-                target: { type: 'onboarding', id: String(tenant.id || store.tenantId || '') }
-            });
-        }
-        overdueShifts.forEach((shift) => {
-            alerts.push({
-                code: 'OVERDUE_SHIFT',
-                severity: 'warning',
-                message: `${shift.terminal_id} has been open for over 12 hours.`,
-                target: { type: 'shift', id: String(shift.shift_id) }
-            });
-        });
-
         const branches = Array.from(branchesById.values())
             .sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name));
 
@@ -694,10 +637,19 @@ export const businessAdminOverviewRepository = {
                 transaction_count: toNumber(row.transaction_count),
                 amount: toNumber(row.amount)
             })),
+            sales_trend: salesTrendRows.map((row) => ({
+                period: String(row.period || '').slice(0, 16),
+                gross_sales: toNumber(row.gross_sales),
+                refunds: toNumber(row.refunds_voids),
+                discounts: toNumber(row.discounts),
+                net_sales: toNumber(row.net_sales),
+                gross_profit: toNumber(row.pos_profit_loss),
+                vat: toNumber(row.vat),
+                transaction_count: toNumber(row.transaction_count)
+            })),
             recent_transactions: normalizedRecentTransactions,
             recent_shifts: normalizedRecentShifts,
-            overdue_shifts: overdueShifts,
-            alerts
+            overdue_shifts: overdueShifts
         };
     }
 };

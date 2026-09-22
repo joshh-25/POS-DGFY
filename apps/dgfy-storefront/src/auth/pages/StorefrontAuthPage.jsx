@@ -41,7 +41,7 @@ import {
 
 import { writeDgfyAuthToken } from '../storefrontSessionStorage.js';
 import { sanitizeStorefrontReturnPath, toInternalReturnPath } from '../storefrontAuthReturnPath.js';
-import { resolveSkupervisorUrl } from '../storefrontSkupervisorLink.js';
+import { resolveStorefrontInternalUrl } from '../storefrontInternalLink.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Business registration is hosted in-app at dgfy.ph/business/grow; on skupervisor
@@ -1205,7 +1205,7 @@ export default function StorefrontAuthPage({ initialMode }) {
                     disabledReason={accountLegalTermsUnavailable ? accountLegalDisabledReason : ''}
                     label="I have reviewed and agree to the current DGFY Account Terms, Privacy Policy, and Marketplace Provider Terms."
                     documents={accountLegalDocuments}
-                    resolveDocumentHref={resolveSkupervisorUrl}
+                    resolveDocumentHref={resolveStorefrontInternalUrl}
                     snapshotText={accountLegalSnapshot.acknowledgement_text || legalTerms?.provider_clause || ''}
                     versionLabel={[accountLegalSnapshot.terms_version, accountLegalSnapshot.privacy_version, accountLegalSnapshot.marketplace_terms_version].filter(Boolean).join(' · ')}
                   />

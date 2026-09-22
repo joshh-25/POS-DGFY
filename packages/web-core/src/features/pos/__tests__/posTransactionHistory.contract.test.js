@@ -42,6 +42,13 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('shrink-0 whitespace-nowrap');
     });
 
+    it('allocates a compact discount column and keeps total amounts on one line', () => {
+        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] px-2 py-4 text-left');
+        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px]');
+        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] break-words px-2 py-4 text-[#334155]');
+        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right font-black tabular-nums');
+    });
+
     it('renders a visible void status and audit details for voided transactions', () => {
         expect(panelContent).toContain('<th scope="col" className="px-4 py-4 text-left text-[13px] font-black">Status</th>');
         expect(panelContent).toContain('data-testid={`pos-void-status-${row.pos_transaction_id}`}');

@@ -6,6 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const mainPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
+const businessAdminPath = path.resolve(__dirname, '../../../../../apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
 const legacyItemsPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/Items.jsx');
 const legacyJobOrdersPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/JobOrders.jsx');
 const legacyStockMovementsPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/StockMovements.jsx');
@@ -15,6 +16,7 @@ const featureStockMovementsPath = path.resolve(__dirname, '../stockMovements/pag
 
 describe('feature route wiring', () => {
   let mainContent = '';
+  let businessAdminContent = '';
   let legacyStockMovementsContent = '';
   let featureItemsContent = '';
   let featureJobOrdersContent = '';
@@ -22,22 +24,26 @@ describe('feature route wiring', () => {
 
   beforeAll(() => {
     mainContent = fs.readFileSync(mainPath, 'utf8');
+    businessAdminContent = fs.readFileSync(businessAdminPath, 'utf8');
     legacyStockMovementsContent = fs.readFileSync(legacyStockMovementsPath, 'utf8');
     featureItemsContent = fs.readFileSync(featureItemsPath, 'utf8');
     featureJobOrdersContent = fs.readFileSync(featureJobOrdersPath, 'utf8');
     featureStockMovementsContent = fs.readFileSync(featureStockMovementsPath, 'utf8');
   });
 
-  it('loads Items page from inventory feature path', () => {
-    expect(mainContent).toContain("const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))");
+  it('owns the catalog migration in POS Back Office', () => {
+    expect(businessAdminContent).toContain('catalog: MERCHANT_BACKOFFICE_MODULE_META.catalog');
+    expect(mainContent).toContain('<Route path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />} />');
   });
 
-  it('loads JobOrders page from jobOrders feature path', () => {
-    expect(mainContent).toContain("const JobOrders = lazy(() => import('../../../packages/web-core/src/features/jobOrders/pages/JobOrdersPage.jsx'))");
+  it('owns Job Orders in POS Back Office', () => {
+    expect(businessAdminContent).toContain("'job-orders': MERCHANT_BACKOFFICE_MODULE_META['job-orders']");
+    expect(mainContent).toContain('<Route path="/job-orders" element={<LegacyMerchantRoute target="/backoffice/job-orders" title="Job-order workspace moved" />} />');
   });
 
-  it('loads StockMovements page from stockMovements feature path', () => {
-    expect(mainContent).toContain("const StockMovements = lazy(() => import('../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'))");
+  it('owns Stock Movements in POS Back Office', () => {
+    expect(businessAdminContent).toContain("'stock-movements': MERCHANT_BACKOFFICE_MODULE_META['stock-movements']");
+    expect(mainContent).toContain('<Route path="/stock-movements" element={<LegacyMerchantRoute target="/backoffice/stock-movements" title="Inventory workspace moved" />} />');
   });
 
   it('removes retired feature facades while preserving the remaining migration facade', () => {

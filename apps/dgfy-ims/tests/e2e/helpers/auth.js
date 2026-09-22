@@ -1,4 +1,4 @@
-import { SKUPERVISOR_URL, POS_URL, TEST_COMPANY_TOKEN } from './urls.js';
+import { TEST_COMPANY_TOKEN } from './urls.js';
 
 export async function loginToApp(page, email, password, token = TEST_COMPANY_TOKEN) {
   // Set up lookup request promise before triggering blur
@@ -23,9 +23,6 @@ export async function loginToApp(page, email, password, token = TEST_COMPANY_TOK
   
   await page.getByRole('button', { name: /Sign In/i }).click();
 }
-export const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL
-  || process.env.VITE_TEST_USER_EMAIL
-  || 'admin@tenant-a.com';
-export const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD
-  || process.env.VITE_TEST_USER_PASSWORD
-  || 'Admin123!';
+export const TEST_USER_EMAIL = String(process.env.E2E_TEST_USER_EMAIL || '').trim();
+export const TEST_USER_PASSWORD = String(process.env.E2E_TEST_USER_PASSWORD || '');
+export const hasTestCredentials = Boolean(TEST_USER_EMAIL && TEST_USER_PASSWORD);

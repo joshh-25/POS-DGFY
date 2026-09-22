@@ -56,6 +56,48 @@ describe('userService soft-delete policy', () => {
     });
   });
 
+  it.each([
+    ['PosTerminalShift', { cashier_id: 2, status: 'open' }, 'open POS shift'],
+    ['PosTerminalOperatorSession', { user_id: 2, status: 'active' }, 'active POS operator session'],
+    ['EmployeeAttendanceSession', { user_id: 2, status: 'open' }, 'open attendance session'],
+  ])('blocks removal while the target has an %s operating record', async (modelName, expectedWhere, stateLabel) => {
+    const adminUser = {
+      user_id: 1,
+      role: 'admin',
+      is_master_admin: true,
+      invitation_status: 'accepted'
+    };
+    const targetUser = {
+      user_id: 2,
+      role: 'cashier',
+      invitation_status: 'accepted',
+      is_active: true,
+      update: jest.fn()
+    };
+    const User = {
+      findOne: jest.fn()
+        .mockResolvedValueOnce(adminUser)
+        .mockResolvedValueOnce(targetUser)
+    };
+    const operatingModels = new Map([
+      ['PosTerminalShift', { findOne: jest.fn().mockResolvedValue(modelName === 'PosTerminalShift' ? { pos_terminal_shift_id: 10 } : null) }],
+      ['PosTerminalOperatorSession', { findOne: jest.fn().mockResolvedValue(modelName === 'PosTerminalOperatorSession' ? { pos_terminal_operator_session_id: 20 } : null) }],
+      ['EmployeeAttendanceSession', { findOne: jest.fn().mockResolvedValue(modelName === 'EmployeeAttendanceSession' ? { employee_attendance_session_id: 30 } : null) }]
+    ]);
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'User') return User;
+      return operatingModels.get(name) || {};
+    });
+
+    await expect(removeUserFromCompany(1, 2)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining(stateLabel)
+    });
+    expect(operatingModels.get(modelName).findOne).toHaveBeenCalledWith({ where: expectedWhere });
+    expect(targetUser.update).not.toHaveBeenCalled();
+  });
+
   it('excludes soft-deleted users from export query', async () => {
     const User = { findAll: jest.fn().mockResolvedValue([]) };
 

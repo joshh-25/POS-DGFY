@@ -27,6 +27,13 @@ const parseBooleanSetting = (value) => {
   return normalized === 'true' || normalized === '1';
 };
 
+const isEnabledFlag = (value) => (
+  value === true
+  || value === 1
+  || value === '1'
+  || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+);
+
 const parseJsonSetting = (setting) => {
   const raw = setting?.setting_value ?? setting?.value;
   if (Array.isArray(raw)) return raw;
@@ -52,6 +59,8 @@ export const validateDgfyPosTerminalPolicy = async ({
   terminalId,
   tenantUserId = null,
   isMasterAdmin = false,
+  userRole = '',
+  isTenantOwner = false,
   deviceProof = null,
   request = null
 } = {}) => {
@@ -110,9 +119,13 @@ export const validateDgfyPosTerminalPolicy = async ({
     const bindingEnforced = parseBooleanSetting(lookup.get('pos_terminal_location_binding_enforced')?.setting_value);
     const registryEntry = registry.find((entry) => entry.terminal_id === normalizedTerminalId) || null;
     const resolvedTenantUserId = parsePositiveInt(tenantUserId);
-    // Navigation permission is not a branch grant. Preserve the existing
-    // tenant-wide master-admin exception, not a permission-based bypass.
-    const requiresLocationGrant = resolvedTenantUserId && !isMasterAdmin;
+    const normalizedUserRole = String(userRole || '').trim().toLowerCase();
+    const hasTenantWideAuthority = isEnabledFlag(isMasterAdmin)
+      || (isEnabledFlag(isTenantOwner) && normalizedUserRole === 'admin');
+    // Navigation permission is not a branch grant. Preserve tenant-wide
+    // master-admin and accepted tenant-owner/admin authority, not a
+    // permission-based bypass. Ordinary admins and cashiers remain grant-bound.
+    const requiresLocationGrant = Boolean(resolvedTenantUserId && !hasTenantWideAuthority);
 
     const context = {
       terminal_id: normalizedTerminalId,

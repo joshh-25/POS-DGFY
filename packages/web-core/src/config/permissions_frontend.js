@@ -12,6 +12,15 @@
 // PERMISSION_GROUPS format for PermissionMatrix and PermissionPickerModal.
 // Uses "permissions" instead of "actions" for consistency with those components.
 export const PERMISSION_GROUPS = {
+    BUSINESS_ADMIN: {
+        label: "Business Admin Dashboard",
+        permissions: {
+            ACCESS: "business_admin:access",
+            VIEW_ALL_BRANCHES: "business_admin:branches:view_all",
+            VIEW_COSTS: "business_admin:costs:view",
+            APPROVE_HIGH_RISK: "business_admin:high_risk:approve"
+        }
+    },
     INVENTORY: {
         label: "Inventory Management",
         permissions: {
@@ -73,6 +82,8 @@ export const PERMISSION_GROUPS = {
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",
             VOID_POS_TRANSACTION: "pos:void",
+            REFUND_TRANSACTION: "pos:refund",
+            FORCE_CLOSE_SHIFT: "pos:shift_force_close",
             MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage",
             MANAGE_ESALES_REPORTS: "pos:esales:manage",
             SWITCH_LOCATION_POS: "pos:switch_location",

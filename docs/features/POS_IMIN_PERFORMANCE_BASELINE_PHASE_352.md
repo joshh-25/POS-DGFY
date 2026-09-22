@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: pos
-last_reviewed: 2026-09-14
+last_reviewed: 2026-09-17
 applies_to: pos_imin_performance
 topic: pos_imin_performance_baseline
 ---
@@ -38,7 +38,7 @@ remains in progress. No Phase 353 optimization is included here.
 | Explicit operations-tab schedule | Pane transition is 150 ms; content replacement is scheduled after 150 ms, then a 16 ms enter step | This is a confirmed user-visible delay candidate for Phase 353. |
 | Workspace prefetch | Lazy workspace prefetch has a 300 ms fallback timer | Background preparation, not a direct click-to-visible measurement. |
 | Catalog image policy | Phase 352 baseline: POS cards request 144x144 images; first four/mobile are eager/high priority and later cards are lazy | Physical decode/paint measurement remains unavailable; Phase 358 now routes persisted variant-backed `PosItemImage` cards through responsive `srcSet`/`<picture>` sources. |
-| Blurry-card candidate | Out-of-stock, blocked, and options-loading cards retain `blur-[0.5px]` | This is a normal CSS filter and is not removed by the current backdrop-blur override. |
+| Blurry-card candidate | The legacy out-of-stock/blocked card path retains `blur-[0.5px]` in source; Phase 386 neutralizes it under the iMin marker | Browser styling and disabled semantics remain unchanged; physical readability and frame evidence are still blocked on the target device. |
 | Largest POS chunks | Fresh build: `TerminalOperationsWorkspace` 1,309.03 kB minified / 318.40 kB gzip; `vendor-maplibre` 1,066.59 kB / 288.93 kB gzip | Code-load risk, especially when the lazy workspace is first opened; size alone does not prove every-button latency. |
 | Native bridge | Async iMin paths exist; legacy synchronous fallback paths remain | Bridge invocation and completion must be measured separately on hardware. |
 
@@ -100,3 +100,54 @@ were explicitly approved while that device gate was pending; these changes do
 not close Phase 352 or allow physical latency claims. The current source
 remediation scope includes the 150 ms tab swap, card/locked-surface blur cost,
 iMin catalog search scheduling, and responsive catalog image sources.
+
+## Subsequent source-only remediation
+
+On 2026-09-17, Phase 383 additionally removed the iMin unlocked-session idle
+download of the large operations workspace, routed Audit prefetch to its own
+lazy panel, added pointer-down intent warm-up, and deferred optional operations
+panels and closed modal dependencies. A fresh POS build emitted the operations
+workspace at approximately 560.28 KB minified / 127.72 KB gzip, compared with
+the 1,309.03 KB minified / 318.40 KB gzip source snapshot above. This is build
+evidence only; the physical interaction matrix and native bridge measurements
+remain blocked until the target iMin is connected.
+
+On 2026-09-17, Phase 384 completed the remaining source-only modal and paint
+closure: item image preview and service catalog create/edit dialogs are absent
+from the eager operations import graph and load only when opened, while the
+iMin marker also removes the remaining base/arbitrary backdrop blur and small
+decorative blur variants, including the POS Back Office action-bar filter.
+The POS build emitted the operations workspace at approximately 535.84 KB
+minified / 121.78 KB gzip after this closure. This preserves browser styling
+and does not substitute build evidence for physical iMin frame, WebView,
+image, memory, or bridge measurements.
+
+On 2026-09-17, Phase 385 removed the incoming online queue and its delivery/
+drag-and-drop dependency graph from the eager operations workspace chunk. The
+shared workspace shell remains in its own small module, while
+`IncomingQueueWorkspace` is loaded through the existing retryable lazy-loader;
+Orders pointer/focus/press intent warms both the operations and queue chunks.
+The fresh POS build emitted the eager operations workspace at approximately
+365.81 KB minified / 80.25 KB gzip and `TerminalOperationsPanels` separately at
+approximately 124.11 KB minified / 27.29 KB gzip. Queue behavior and named
+exports remain unchanged. This is source/build evidence only; physical iMin
+frame, WebView, image, memory, and native bridge timings remain blocked under
+Phase 352.
+
+On 2026-09-17, Phase 386 closed the remaining source-only catalog-card blur
+candidate. The iMin marker now removes the `blur-[0.5px]` filter used by the
+legacy disabled/out-of-stock card path, while the browser keeps that existing
+visual treatment. This is a CSS/source safeguard only; it does not replace the
+physical card readability, frame, image, memory, or bridge measurements still
+required to close Phase 352.
+
+## Phase 387 validation attempt
+
+On 2026-09-17, the Phase 387 preflight confirmed that the local API, device
+bridge, IMS, POS, and Storefront services were listening; the API health check
+reported a healthy database and runtime schema, and the bridge health check
+responded successfully. However, `adb devices -l` returned no attached
+physical iMin. Consequently, no device model/WebView/APK identity, cold-start
+or warm-cache trace, frame/image/memory measurement, or printer/drawer bridge
+timing was collected. Phase 387 is blocked and Phase 352 remains in progress;
+no runtime source, production data, or hardware state was changed.

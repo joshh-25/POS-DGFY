@@ -687,6 +687,46 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
     return finalizeResult(raw);
 };
 
+export const printTestReceiptWithIminBridge = ({ message = 'DGFY POS printer test', terminalId = '' } = {}) => {
+    const bridge = getIminBridge();
+    if (!bridge || (
+        typeof bridge.printReceiptAsync !== 'function'
+        && typeof bridge.printReceipt !== 'function'
+    )) {
+        return { handled: false };
+    }
+
+    const receiptText = [
+        center('DGFY POS'),
+        center('PRINTER TEST'),
+        line(),
+        pair('Terminal', safeText(terminalId, 'Unassigned')),
+        pair('Message', safeText(message, 'DGFY POS printer test')),
+        pair('Time', new Date().toLocaleString('en-US')),
+        line(),
+        center('No sale recorded.'),
+        center('Printer connection is working.')
+    ].join('\n');
+    const raw = sendIminTextPrint({
+        bridge,
+        receiptText,
+        fallbackMessage: 'Printer test page sent.'
+    });
+
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, 'Printer test page sent.');
+        const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: normalizedResult.message || 'Printer test page sent.',
+            tone: normalizedResult.success ? 'success' : 'error',
+            source: 'iMin hardware',
+            details: normalizedResult.diagnostics || null
+        });
+        return { handled: true, result: normalizedResult };
+    });
+};
+
 const resolveOrderTicketItemName = (cartLine, index) => safeText(
     cartLine?.item_name
     || cartLine?.item?.name

@@ -64,6 +64,7 @@ import {
 } from '../utils/businessAdminSettingsSync.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
+import { getOnboardingStatus } from '@/services/onboardingService.js';
 import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
@@ -120,6 +121,7 @@ import {
   clearTenantSetupSearch,
   getNextTenantSetupStep,
   getPreviousTenantSetupStep,
+  isStarterSetupRequired,
   POS_TERMINAL_SETUP_STEP_QUERY_KEY,
   POS_TERMINAL_SETUP_STEPS,
   isTenantSetupFlowRequested,
@@ -227,13 +229,14 @@ const OPERATIONS_VIEW_MODES = [
   'shift_controls',
   'cash_drawer',
   'close_shift',
+  'fnb_service',
   'reports',
   'audit',
   'items',
   'services',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists'];
+const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
 // RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
@@ -253,7 +256,9 @@ const CASHIER_ALLOWED_VIEW_MODES = new Set([
   'services',
   'shift_controls',
   'cash_drawer',
-  'close_shift'
+  'close_shift',
+  'fnb_service',
+  'terminal_setup'
 ]);
 const TERMINAL_SECTION_IDS = {
   checkoutWorkspace: 'pos-checkout-workspace',
@@ -266,6 +271,7 @@ const TERMINAL_SECTION_IDS = {
   reports: 'pos-section-reports',
   items: 'pos-section-items',
   services: 'pos-section-services',
+  fnbService: 'pos-section-fnb-service',
   affiliates: 'pos-section-affiliates',
   // RF-3 (PR #762 review): were missing entirely -- both new panels rendered with no id attribute
   // while every other top-level mode gets one.
@@ -380,8 +386,10 @@ const writeStoredPosView = (storageKey, viewMode) => {
   safeLocalStorageSet(storageKey, String(viewMode || '').trim());
 };
 
-const readRequestedPosView = () => {
+const readRequestedPosView = (routeSearch = '') => {
   if (typeof window === 'undefined') return '';
+  const routeView = String(new URLSearchParams(routeSearch).get(POS_VIEW_MODE_QUERY_KEY) || '').trim();
+  if (routeView) return routeView;
   return String(new URLSearchParams(window.location.search).get(POS_VIEW_MODE_QUERY_KEY) || '').trim();
 };
 
@@ -656,6 +664,7 @@ export default function TerminalPage() {
     salesSummary: null
   });
   const [reportRefreshKey, setReportRefreshKey] = useState(0);
+  const [settingsRefreshKey, setSettingsRefreshKey] = useState(0);
   const [employeeCreditReportRefreshKey, setEmployeeCreditReportRefreshKey] = useState(0);
   const [openShiftForm, setOpenShiftForm] = useState({
     openingFloatAmount: '',
@@ -820,7 +829,7 @@ export default function TerminalPage() {
     [TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED]: 0
   });
   const [replayingQueuedTerminalOperations, setReplayingQueuedTerminalOperations] = useState(false);
-  const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView() || 'checkout');
+  const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView(location.search) || 'checkout');
   const checkoutLifecycleRef = useRef(null);
   const handleCheckoutLifecycleChange = useCallback((lifecycle) => {
     checkoutLifecycleRef.current = lifecycle;
@@ -962,11 +971,20 @@ export default function TerminalPage() {
   }, [permissions, terminalUser]);
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   const isCashierRole = normalizedTerminalRole === 'cashier';
+  const canViewPos = hasPermission('pos:view');
+  const canTransactPos = hasPermission('pos:transact');
   const canAccessBusinessAdmin = !isCashierRole && (
     isMasterAdminOperator
     || normalizedTerminalRole === 'admin'
     || hasPermission('business_admin:access')
   );
+  const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
+  // Terminal setup is a POS operational surface, not a second Business Admin
+  // editor. Any authenticated operator who can use POS needs the local
+  // terminal, printer, branch-queue, and order-sound controls even when the
+  // tenant/user has no Business Admin entitlement. Business Admin remains
+  // independently guarded above and below.
+  const canAccessPosOnlySetup = !canAccessBusinessAdmin && canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
   // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
   //
@@ -987,7 +1005,10 @@ export default function TerminalPage() {
   // VOUCHERS.VIEW/VOUCHERS.MANAGE OR the legacy SYSTEM.VIEW_SETTINGS/SYSTEM.EDIT_SETTINGS pair.
   // Read access is deliberately unchanged by #1493 -- it restricts management, not visibility.
   const canViewVouchers = canManagePricelists || hasPermission('vouchers:view') || hasPermission('settings:view');
-
+  const hasFnbDiningCapability = Array.isArray(profile?.modules)
+    ? profile.modules.includes('fnbDining')
+    : workflowMode === 'fnb';
+  const canAccessFnbService = hasFnbDiningCapability && (canViewPos || canTransactPos);
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
     const workflowScopedModes = workflowMode === 'services'
@@ -999,12 +1020,14 @@ export default function TerminalPage() {
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
     const roleScopedModes = queueScopedModes
       .filter((mode) => mode !== 'audit' || canViewAudit)
-      .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers);
+      .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
+      .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
+      .filter((mode) => mode !== 'terminal_setup' || canAccessBusinessAdmin || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessBusinessAdmin, canAccessFnbService, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -1044,8 +1067,6 @@ export default function TerminalPage() {
     const merged = new Set([...fallbackOptions, current, formTerminal].filter(Boolean));
     return Array.from(merged);
   }, [activeTerminalId, activeTerminalRegistry, formData.terminalId, registryEnforced]);
-  const canViewPos = hasPermission('pos:view');
-  const canTransactPos = hasPermission('pos:transact');
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
@@ -1074,7 +1095,6 @@ export default function TerminalPage() {
     serviceOperationsPermissions.viewReminders,
     serviceOperationsPermissions.viewClients
   ].some(Boolean);
-  const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
   const canEditItems = hasPermission('items:edit');
@@ -1116,11 +1136,15 @@ export default function TerminalPage() {
   const requestedTenantSetupStep = String(
     setupFlowSearchParams.get(POS_TERMINAL_SETUP_STEP_QUERY_KEY) || POS_TERMINAL_SETUP_STEPS.PROFILE
   ).trim().toLowerCase();
+  const starterSetupRequired = isStarterSetupRequired(workflowMode);
   const tenantSetupIncomplete = !setupFlowState.loading
     && !locked
     && terminalUser?.is_master_admin === true
     && !setupFlowState.onboardingCompleted
-    && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.posSetupReady);
+    && (!setupFlowState.profileReady
+      || !setupFlowState.storefrontSetupReady
+      || (starterSetupRequired && !setupFlowState.starterItemReady)
+      || !setupFlowState.posSetupReady);
   const tenantSetupRequestedOrRequired = !setupFlowState.onboardingCompleted
     && (tenantSetupFlowRequested || tenantSetupIncomplete);
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
@@ -1130,15 +1154,20 @@ export default function TerminalPage() {
     requestedStep: requestedTenantSetupStep,
     profileReady: setupFlowState.profileReady,
     posSetupReady: setupFlowState.posSetupReady,
-    storefrontSetupReady: setupFlowState.storefrontSetupReady
+    storefrontSetupReady: setupFlowState.storefrontSetupReady,
+    starterItemReady: setupFlowState.starterItemReady,
+    workflowMode
   }), [
     locked,
     requestedTenantSetupStep,
+    starterSetupRequired,
     setupFlowState.profileReady,
     setupFlowState.posSetupReady,
     setupFlowState.storefrontSetupReady,
+    setupFlowState.starterItemReady,
     tenantSetupRequestedOrRequired,
-    terminalUser?.is_master_admin
+    terminalUser?.is_master_admin,
+    workflowMode
   ]);
   const setupFlowActive = tenantSetupRequestedOrRequired
     && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE;
@@ -1206,13 +1235,13 @@ export default function TerminalPage() {
   }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewAudit, canViewPos, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
-    const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep);
+    const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep, workflowMode);
     navigate({
       pathname: location.pathname,
       search: buildTenantSetupSearch(location.search, normalizedStep),
       hash: location.hash
     }, { replace: true });
-  }, [location.hash, location.pathname, location.search, navigate, tenantSetupStep]);
+  }, [location.hash, location.pathname, location.search, navigate, tenantSetupStep, workflowMode]);
 
   const clearTenantSetupQueryState = useCallback(() => {
     navigate({
@@ -1238,10 +1267,10 @@ export default function TerminalPage() {
   }, []);
 
   const openTenantSetupStep = useCallback((step = '') => {
-    const normalizedStep = resolveTenantSetupStepValue(step || tenantSetupStep);
+    const normalizedStep = resolveTenantSetupStepValue(step || tenantSetupStep, workflowMode);
     replaceTenantSetupQuery(normalizedStep);
     setPosViewMode(resolveTenantSetupViewMode(normalizedStep));
-  }, [replaceTenantSetupQuery, tenantSetupStep]);
+  }, [replaceTenantSetupQuery, tenantSetupStep, workflowMode]);
 
   const resumeTenantSetupFlow = useCallback((step = '') => {
     setTenantSetupDismissedThisSession(false);
@@ -1263,7 +1292,7 @@ export default function TerminalPage() {
     }
     try {
       const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
-      const [settingsPayload, companyPayload, usersPayload, locationsPayload, itemsPayload] = await Promise.all([
+      const [settingsPayload, companyPayload, usersPayload, locationsPayload, onboardingPayload] = await Promise.all([
         getAllSettings({
           force: true,
           requestConfig
@@ -1271,12 +1300,12 @@ export default function TerminalPage() {
         getCompanyInfo().catch(() => null),
         getAllUsers({ include_invitations: true }).catch(() => []),
         listTenantLocations({ include_inactive: false }).catch(() => []),
-        fetchPosCatalog({ limit: 200 }).catch(() => [])
+        getOnboardingStatus().catch(() => null)
       ]);
       const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
-      const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
+      const starterItemRequirements = resolveStarterItemSetupReadiness([], onboardingPayload, workflowMode);
       const onboardingState = String(
         settingsPayload?.tenant_onboarding_state?.value || 'not_started'
       ).trim().toLowerCase();
@@ -1299,7 +1328,7 @@ export default function TerminalPage() {
         setSetupFlowState((prev) => ({ ...prev, loading: false }));
       }
     }
-  }, [locked, terminalUser?.is_master_admin]);
+  }, [locked, terminalUser?.is_master_admin, workflowMode]);
 
   const refreshTerminalOperationQueue = useCallback(async () => {
     const { getTerminalOperationQueueSummary } = await loadTerminalOperationQueueStore();
@@ -2936,7 +2965,7 @@ export default function TerminalPage() {
     const restoredView = onboardingJustCompleted
       ? ''
       : (
-        resolveRestorablePosView(readRequestedPosView())
+        resolveRestorablePosView(readRequestedPosView(location.search))
         || resolveRestorablePosView(readStoredPosView(posLastViewStorageKey))
       );
     const nextView = restoredView || 'checkout';
@@ -2952,6 +2981,7 @@ export default function TerminalPage() {
     setupFlowState.loading,
     terminalMeta.loading,
     terminalUser,
+    location.search,
     updatePosViewQuery
   ]);
 
@@ -3524,7 +3554,7 @@ export default function TerminalPage() {
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
     if (activeTerminalRegistry.length === 0) {
-      toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
+      toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
       return false;
     }
     if (!selectedTerminalId) {
@@ -3536,7 +3566,7 @@ export default function TerminalPage() {
       return false;
     }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
-      toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
       return false;
     }
     return true;
@@ -3720,6 +3750,49 @@ export default function TerminalPage() {
     }
   };
 
+  const handleSelectTerminalFromSetup = async (selectedTerminalId) => {
+    if (locked) {
+      toast.error('Unlock the terminal before changing its terminal identity.');
+      return false;
+    }
+    if (activeShiftId) {
+      toast.error('Close the active shift before changing the terminal identity.');
+      return false;
+    }
+
+    const terminalId = sanitizeTerminalId(selectedTerminalId);
+    const registryEntry = terminalRegistryLookup.get(terminalId);
+    if (!terminalId || (registryEnforced && !registryEntry)) {
+      toast.error('Select an active registered terminal.');
+      return false;
+    }
+
+    const selectedLocationId = Number(registryEntry?.location_id || 0);
+    const currentLocationId = Number(operatingLocationId || viewingLocationId || 0);
+    if (
+      selectedLocationId > 0
+      && currentLocationId > 0
+      && selectedLocationId !== currentLocationId
+      && !canSwitchPosLocation
+    ) {
+      toast.error('You do not have permission to change the terminal branch.');
+      return false;
+    }
+
+    if (terminalId === sanitizeTerminalId(activeTerminalId)) return true;
+
+    try {
+      await completeTerminalUnlock(terminalId, {
+        operatingLocationIdOverride: selectedLocationId > 0 ? selectedLocationId : null
+      });
+      toast.success(`${terminalId} selected for this POS device.`);
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to select this terminal.');
+      return false;
+    }
+  };
+
   const handleDgfyPosLogin = async (event, { intent = 'shift' } = {}) => {
     event?.preventDefault?.();
     const entryIntent = intent === 'day_close' ? 'day_close' : 'shift';
@@ -3824,7 +3897,7 @@ export default function TerminalPage() {
         || selectedPermissionList.includes('settings:view');
       const selectedCanViewUsers = effectiveSelectedTenantUser?.is_master_admin === true
         || selectedPermissionList.includes('users:view');
-      const [selectedTenantSettings, selectedTenantLocations, selectedTenantItems, selectedCurrentShiftResult] = await Promise.all([
+      const [selectedTenantSettings, selectedTenantLocations, selectedOnboardingStatus, selectedCurrentShiftResult] = await Promise.all([
         selectedCanAccessSettings
           ? getAllSettings({
             force: true,
@@ -3832,7 +3905,7 @@ export default function TerminalPage() {
           })
           : fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),
         listTenantLocations({ include_inactive: false }).catch(() => []),
-        fetchPosCatalog({ limit: 200 }).catch(() => []),
+        getOnboardingStatus().catch(() => null),
         fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)
       ]);
       const [selectedTenantCompany, selectedTenantUsers] = await Promise.all([
@@ -3842,12 +3915,14 @@ export default function TerminalPage() {
           : Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])
       ]);
       const { buildTenantSetupStateSnapshot } = await import('../utils/posTenantSetupSnapshot.js');
+      const selectedWorkflowMode = selectedTenantSettings?.ops_workflow_mode?.value || workflowMode;
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
         usersPayload: selectedTenantUsers,
         locationsPayload: selectedTenantLocations,
-        itemsPayload: selectedTenantItems
+        onboardingPayload: selectedOnboardingStatus,
+        workflowMode: selectedWorkflowMode
       });
       const selectedTenantSetupStep = resolveTenantSetupStep({
         requested: true,
@@ -3857,7 +3932,8 @@ export default function TerminalPage() {
         profileReady: selectedTenantSetupState.profileReady,
         posSetupReady: selectedTenantSetupState.posSetupReady,
         storefrontSetupReady: selectedTenantSetupState.storefrontSetupReady,
-        starterItemReady: selectedTenantSetupState.starterItemReady
+        starterItemReady: selectedTenantSetupState.starterItemReady,
+        workflowMode: selectedWorkflowMode
       });
 
       setTerminalUser(effectiveSelectedTenantUser);
@@ -3969,7 +4045,7 @@ export default function TerminalPage() {
         }
         const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
         if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
-          throw new Error('This terminal has no assigned store location. Set the location in POS Setup first.');
+          throw new Error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
         }
         if (typeof window !== 'undefined') {
           safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
@@ -4019,7 +4095,7 @@ export default function TerminalPage() {
       const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find((entry) => String(entry?.terminal_id || '') === selectedTerminalId);
       if (selectedTenantActiveRegistry.length === 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
+        toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
         return;
       }
       if (!selectedTerminalId || !selectedTenantRegistryEntry) {
@@ -4030,7 +4106,7 @@ export default function TerminalPage() {
       const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
       if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
         return;
       }
       if (Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
@@ -4611,7 +4687,7 @@ export default function TerminalPage() {
         : Number(operatingLocationId || 0);
 
       if (!Number.isInteger(resolvedLocationId) || resolvedLocationId <= 0) {
-        toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
         return;
       }
 
@@ -5069,7 +5145,7 @@ export default function TerminalPage() {
       ? registryLocationId
       : Number(operatingLocationId);
     if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
-      toast.error('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
       return;
     }
 
@@ -6321,7 +6397,7 @@ export default function TerminalPage() {
     const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
     if (setupFlowActive) {
-      const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront']);
+      const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'items']);
       if (!allowedSetupModes.has(nextMode)) {
         toast.error(
           tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE
@@ -6329,7 +6405,9 @@ export default function TerminalPage() {
             : (
               tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
                 ? 'Finish Storefront Setup before opening the rest of the POS.'
-                : 'Finish POS Setup before opening the rest of the POS.')
+                : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM
+                  ? 'Finish the Hospitality room setup before opening the rest of the POS.'
+                  : 'Finish POS Setup before opening the rest of the POS.'))
         );
         if (!tenantSetupDismissedThisSession) {
           resumeTenantSetupFlow();
@@ -6346,6 +6424,7 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    const isAuthorizedPosOnlyTerminalSetup = nextMode === 'terminal_setup' && canAccessPosOnlySetup;
     if (
       nextMode !== posViewMode
       && storefrontContentGuardRef.current.dirty
@@ -6354,7 +6433,7 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (isPinProtectedViewMode && !canAccessSettingsDirectly) {
+    if (isPinProtectedViewMode && !canAccessSettingsDirectly && !isAuthorizedPosOnlyTerminalSetup) {
       let pinEnabled = settingsAccessPinEnabled;
       if (!pinEnabled) {
         const refreshedMeta = await hydrateTerminalMeta({ suppressGlobalErrors: true });
@@ -6388,6 +6467,7 @@ export default function TerminalPage() {
   }, [
     activeViewModes,
     canAccessSettingsDirectly,
+    canAccessPosOnlySetup,
     canAdminBypassShiftPrompt,
     canAccessServiceOperations,
     canManageCategories,
@@ -6447,6 +6527,25 @@ export default function TerminalPage() {
     }
   }, []);
 
+  const handleTestPrinter = useCallback(async () => {
+    if (!posHardware.isPrinterAvailable) {
+      toast.error('No printer is currently detected for this POS terminal.');
+      return false;
+    }
+
+    const outcome = await posHardware.testPrint({
+      terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
+      message: 'DGFY POS setup test',
+      copies: 1
+    });
+    if (outcome?.success) {
+      toast.success(outcome.message || 'Printer test page sent.');
+      return true;
+    }
+    toast.error(outcome?.message || 'The printer test page could not be sent.');
+    return false;
+  }, [activeTerminalId, posHardware]);
+
   const handlePosSetupSaved = useCallback(async () => {
     await hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true });
   }, [hydrateTenantSetupState]);
@@ -6458,7 +6557,7 @@ export default function TerminalPage() {
     ]);
   }, [hydrateTenantSetupState, hydrateTerminalMeta]);
 
-  const handleTenantSetupDataChanged = useCallback(async ({ source = '' } = {}) => {
+  const handleTenantSetupDataChanged = useCallback(async ({ source = '', starterItemReady = false } = {}) => {
     const refreshTasks = [
       hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true })
     ];
@@ -6474,6 +6573,17 @@ export default function TerminalPage() {
     }
 
     await Promise.all(refreshTasks);
+    if (source === 'hospitality_rooms' && starterItemReady === true) {
+      setSetupFlowState((previous) => ({
+        ...previous,
+        starterItemReady: true,
+        starterItemRequirements: {
+          ...previous.starterItemRequirements,
+          ready: true,
+          starterItemReady: true
+        }
+      }));
+    }
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
 
   useEffect(() => {
@@ -6493,6 +6603,7 @@ export default function TerminalPage() {
       );
       if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
 
+      setSettingsRefreshKey((previous) => previous + 1);
       const refreshTasks = [
         hydrateUser({ suppressGlobalErrors: true }),
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
@@ -6511,14 +6622,9 @@ export default function TerminalPage() {
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
 
-    // POS onboarding no longer owns starter-item creation. The shared IMS
-    // onboarding checklist still governs its own completion separately, so
-    // close the POS-only flow locally when catalog readiness is not present.
-    if (!setupFlowState.starterItemReady) {
-      clearTenantSetupQueryState();
-      setTenantSetupDismissedThisSession(false);
-      setTenantSetupModalOpen(false);
-      toast.message('POS setup is complete. Add catalog items later from Storefront or IMS onboarding.');
+    if (starterSetupRequired && !setupFlowState.starterItemReady) {
+      openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+      toast.error('Finish the Hospitality room setup before opening the full POS.');
       return;
     }
 
@@ -6561,7 +6667,9 @@ export default function TerminalPage() {
     clearTenantSetupQueryState,
     hydrateTenantSetupState,
     hydrateUser,
-    setupFlowState.starterItemReady
+    openTenantSetupStep,
+    setupFlowState.starterItemReady,
+    starterSetupRequired
   ]);
 
   useEffect(() => {
@@ -6854,6 +6962,7 @@ function PosRestorationLoadingScreen() {
               balanceProofViewerLoading,
               backOfficeConfirmOpen,
               backOfficeTargetPath,
+              canAccessBusinessAdmin,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -6881,6 +6990,7 @@ function PosRestorationLoadingScreen() {
               handleCashierResumeSubmit,
               handleCashierTakeoverSubmit,
               handleConfirmOpenBackOffice,
+              handleOpenBackOffice,
               handleOpenCashierTakeover,
               handleCloseDay,
               handleCollectCash,
@@ -7023,6 +7133,8 @@ function PosRestorationLoadingScreen() {
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
           canAccessBusinessAdmin={canAccessBusinessAdmin}
+          canAccessPosOnlySetup={canAccessPosOnlySetup}
+          showFnbService={canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
@@ -7061,8 +7173,15 @@ function PosRestorationLoadingScreen() {
           settingsEntryViewMode={
             setupFlowActive
               ? resolveTenantSetupViewMode(tenantSetupStep)
-              : (isMsmeMode || !canAccessBusinessAdmin ? 'settings_profile' : 'terminal_setup')
+              : 'terminal_setup'
           }
+          onSelectTerminal={handleSelectTerminalFromSetup}
+          hardwareDriverLabel={posHardware.driverLabel}
+          hardwareStatus={posHardware.status}
+          hardwareLoading={posHardware.loading}
+          isPrinterAvailable={posHardware.isPrinterAvailable}
+          printersDetected={posHardware.printersDetected}
+          onTestPrinter={handleTestPrinter}
           onOpenBackOffice={handleOpenBackOffice}
           handleLock={handleLock}
           handleCashierSignIn={handleCashierSignIn}
@@ -7080,6 +7199,7 @@ function PosRestorationLoadingScreen() {
           terminalMeta={terminalMeta}
           todayDashboard={todayDashboard}
           reportRefreshKey={reportRefreshKey}
+          settingsRefreshKey={settingsRefreshKey}
           employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
           onCheckoutLifecycleChange={handleCheckoutLifecycleChange}
           openShiftForm={openShiftForm}

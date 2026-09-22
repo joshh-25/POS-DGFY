@@ -1,48 +1,10 @@
+import {
+    BUSINESS_ADMIN_REPORT_DEFINITIONS,
+    listBusinessAdminReportDefinitions as listCanonicalBusinessAdminReportDefinitions,
+    getReportSortFields
+} from '../../reports/domain/reportRegistry.js';
+
 const number = (value) => Number(value || 0);
-
-const POS_REPORT = (label, defaultSort) => Object.freeze({
-    label,
-    default_sort: defaultSort,
-    source: 'pos',
-    filters: ['date_from', 'date_to', 'branch_id'],
-    formula: 'Persisted finalized POS transaction snapshots, grouped without recalculating money values.',
-    permission: 'business_admin:access',
-    pagination: { max_limit: 5000 },
-    export_formats: ['csv', 'xls']
-});
-
-const INVENTORY_REPORT = (label, defaultSort) => Object.freeze({
-    label,
-    default_sort: defaultSort,
-    source: 'inventory_valuation',
-    filters: ['branch_id'],
-    formula: 'FIFO batch value reconciled against the authoritative branch stock ledger.',
-    permission: 'business_admin:access',
-    pagination: { max_limit: 5000 },
-    export_formats: ['csv', 'xls']
-});
-
-const INVENTORY_LEDGER_REPORT = (label, defaultSort) => Object.freeze({
-    label,
-    default_sort: defaultSort,
-    source: 'inventory_ledger',
-    filters: ['date_from', 'date_to', 'branch_id'],
-    formula: 'Immutable inventory movements recorded by the inventory command owner.',
-    permission: 'business_admin:access',
-    pagination: { max_limit: 5000 },
-    export_formats: ['csv', 'xls']
-});
-
-const LOW_STOCK_REPORT = (label, defaultSort) => Object.freeze({
-    label,
-    default_sort: defaultSort,
-    source: 'inventory_ledger',
-    filters: ['branch_id'],
-    formula: 'Current branch stock at or below the item low-stock threshold.',
-    permission: 'business_admin:access',
-    pagination: { max_limit: 5000 },
-    export_formats: ['csv', 'xls']
-});
 
 const summaryRow = (label, summary = {}) => {
     const row = {
@@ -63,28 +25,9 @@ const summaryRow = (label, summary = {}) => {
 
 const withSummary = (row, summary = {}) => ({ ...row, ...summaryRow('', summary) });
 
-export const BUSINESS_ADMIN_REPORT_DEFINITIONS = Object.freeze({
-    sales_trend: POS_REPORT('Sales trend', 'period'),
-    sales_by_terminal: POS_REPORT('Sales by terminal', 'net_sales'),
-    sales_by_branch: POS_REPORT('Sales by branch', 'net_sales'),
-    sales_by_source: POS_REPORT('POS versus Storefront', 'net_sales'),
-    sales_by_employee: POS_REPORT('Sales by employee', 'net_sales'),
-    sales_by_item: POS_REPORT('Sales by item', 'net_sales'),
-    sales_by_category: POS_REPORT('Sales by category', 'net_sales'),
-    sales_by_payment: POS_REPORT('Sales by payment method', 'net_sales'),
-    discounts: POS_REPORT('Discounts', 'discount_amount'),
-    fulfillment: POS_REPORT('Sales by fulfillment method', 'net_sales'),
-    shifts: POS_REPORT('Shift sales', 'net_sales'),
-    tax_and_fees: POS_REPORT('Taxes and fees', 'net_sales'),
-    refunds_and_voids: POS_REPORT('Refunds and voids', 'refunds_voids'),
-    customer_activity: POS_REPORT('Customer activity', 'net_sales'),
-    inventory_valuation: INVENTORY_REPORT('FIFO inventory valuation', 'inventory_value'),
-    inventory_movements: INVENTORY_LEDGER_REPORT('Inventory movements', 'timestamp'),
-    low_stock: LOW_STOCK_REPORT('Low-stock items', 'quantity_on_hand')
-});
+export { BUSINESS_ADMIN_REPORT_DEFINITIONS };
 
-export const listBusinessAdminReportDefinitions = () => Object.entries(BUSINESS_ADMIN_REPORT_DEFINITIONS)
-    .map(([key, definition]) => ({ key, ...definition }));
+export const listBusinessAdminReportDefinitions = () => listCanonicalBusinessAdminReportDefinitions();
 
 export const buildBusinessAdminReportRows = (report = {}, reportKey = '') => {
     const daily = report?.daily_report || {};
@@ -141,8 +84,14 @@ const compare = (left, right) => {
 export const paginateBusinessAdminReportRows = ({ rows = [], reportKey, sortBy = '', sortDirection = 'desc', page = 1, limit = 50 }) => {
     const definition = BUSINESS_ADMIN_REPORT_DEFINITIONS[reportKey];
     if (!definition) return null;
-    const allowedSorts = new Set(Object.keys(rows[0] || {}).filter((key) => !['cogs', 'pos_profit_loss'].includes(key)));
-    const normalizedSort = allowedSorts.has(sortBy) ? sortBy : definition.default_sort;
+    const rowFields = new Set(Object.keys(rows[0] || {}));
+    const allowedSorts = new Set(getReportSortFields(reportKey)
+        .filter((key) => rowFields.has(key) && !['cogs', 'pos_profit_loss'].includes(key)));
+    const normalizedSort = allowedSorts.has(sortBy)
+        ? sortBy
+        : allowedSorts.has(definition.default_sort)
+            ? definition.default_sort
+            : [...allowedSorts][0] || definition.default_sort;
     const direction = String(sortDirection).toLowerCase() === 'asc' ? 'asc' : 'desc';
     const sorted = [...rows].sort((left, right) => {
         const result = compare(left[normalizedSort], right[normalizedSort]);

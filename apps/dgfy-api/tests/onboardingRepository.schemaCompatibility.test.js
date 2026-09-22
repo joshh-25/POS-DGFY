@@ -51,7 +51,7 @@ describe('onboardingRepository schema compatibility', () => {
     expect(Item.findAll).not.toHaveBeenCalled();
   });
 
-  it('reports priced starter item readiness without requiring positive stock', async () => {
+  it('allows non-Hospitality onboarding readiness without a catalog item', async () => {
     const progress = {
       step_payloads: {
         bulk_items: { created_item_ids: [1] }
@@ -115,7 +115,7 @@ describe('onboardingRepository schema compatibility', () => {
     expect(checklist.missing_requirements).toEqual([]);
   });
 
-  it('does not count internal Food Manufacturing presets as onboarding completion starters', async () => {
+  it('does not count catalog items as Food Manufacturing onboarding requirements', async () => {
     const SystemSetting = {
       findAll: jest.fn().mockResolvedValue([]),
       findOne: jest.fn(({ where }) => {
@@ -164,7 +164,82 @@ describe('onboardingRepository schema compatibility', () => {
 
     const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
     const checklist = result.tenant_onboarding_progress.checklist_snapshot;
-    expect(checklist.checklist.has_priced_starter_item).toBe(false);
+    expect(checklist.checklist.has_priced_starter_item).toBe(true);
+    expect(checklist.required_keys).toEqual([
+      'store_name_ready',
+      'has_primary_storefront_location'
+    ]);
+    expect(checklist.missing_requirements).toEqual([]);
+    expect(Item.findAll).not.toHaveBeenCalled();
+  });
+
+  it('retains Hospitality room readiness without querying catalog items', async () => {
+    const SystemSetting = {
+      findAll: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(({ where }) => where?.setting_key === 'ops_workflow_mode'
+        ? Promise.resolve({ setting_value: 'hospitality' })
+        : Promise.resolve(null))
+    };
+    const TenantLocation = { count: jest.fn().mockResolvedValue(1) };
+    const HospitalityRoomType = { findOne: jest.fn().mockResolvedValue({ room_type_id: 10 }) };
+    const HospitalityRoom = { count: jest.fn().mockResolvedValue(0) };
+    const Item = { findAll: jest.fn() };
+
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'SystemSetting') return SystemSetting;
+      if (name === 'TenantLocation') return TenantLocation;
+      if (name === 'HospitalityRoomType') return HospitalityRoomType;
+      if (name === 'HospitalityRoom') return HospitalityRoom;
+      if (name === 'Item') return Item;
+      return null;
+    });
+
+    const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
+    const checklist = result.tenant_onboarding_progress.checklist_snapshot;
+    expect(checklist.required_keys).toContain('has_priced_starter_item');
     expect(checklist.missing_requirements).toContain('has_priced_starter_item');
+    expect(HospitalityRoomType.findOne).toHaveBeenCalled();
+    expect(HospitalityRoom.count).toHaveBeenCalled();
+    expect(Item.findAll).not.toHaveBeenCalled();
+  });
+
+  it('does not require or query a starter item for Food & Beverage onboarding', async () => {
+    const SystemSetting = {
+      findAll: jest.fn().mockResolvedValue([]),
+      findOne: jest.fn(({ where }) => {
+        if (where?.setting_key === 'ops_workflow_mode') {
+          return Promise.resolve({ setting_value: 'fnb' });
+        }
+        return Promise.resolve(null);
+      })
+    };
+    const TenantLocation = {
+      count: jest.fn().mockResolvedValue(1)
+    };
+    const Item = {
+      rawAttributes: {
+        item_id: { fieldName: 'item_id', field: 'item_id' },
+        status: { fieldName: 'status', field: 'status' },
+        default_sale_price: { fieldName: 'default_sale_price', field: 'default_sale_price' }
+      },
+      findAll: jest.fn()
+    };
+
+    mockDbStore.get.mockImplementation((name) => {
+      if (name === 'SystemSetting') return SystemSetting;
+      if (name === 'TenantLocation') return TenantLocation;
+      if (name === 'Item') return Item;
+      return null;
+    });
+
+    const result = await onboardingRepository.getStatus({ storeNameBaseline: 'Tenant One' });
+    const checklist = result.tenant_onboarding_progress.checklist_snapshot;
+    expect(checklist.checklist.has_priced_starter_item).toBe(true);
+    expect(checklist.required_keys).toEqual([
+      'store_name_ready',
+      'has_primary_storefront_location'
+    ]);
+    expect(checklist.missing_requirements).toEqual([]);
+    expect(Item.findAll).not.toHaveBeenCalled();
   });
 });

@@ -14,6 +14,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { saveOnboardingStep } from '@/services/onboardingService.js';
 import { createTenantLocation, updateTenantLocation } from '@/services/tenantLocationService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { createSuggestedTerminalId, normalizeTerminalCashierIds, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
@@ -41,6 +42,12 @@ const STEP_CONFIG = {
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
     description: 'Register every counter against a canonical business location. Cashier access is managed separately in POS Settings.'
+  },
+  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: {
+    title: 'Hospitality Setup',
+    icon: Settings2,
+    summary: 'Create the first room type and room required before Hospitality can operate.',
+    description: 'Set up the first room type and at least one room for reservations and room operations.'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
     title: 'Storefront',
@@ -108,6 +115,17 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
+const makeStarterRowId = () => `starter-row-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const buildEmptyStarterRoomRow = () => ({
+  client_row_id: makeStarterRowId(),
+  room_number: '',
+  floor: '',
+  status: 'vacant_clean',
+  errors: [],
+  created_room: null
+});
+
 export default function PosTenantSetupModal({
   open = false,
   finishing = false,
@@ -116,6 +134,8 @@ export default function PosTenantSetupModal({
   profileData = {},
   posRequirements = {},
   storefrontRequirements = {},
+  starterItemRequirements = {},
+  workflowMode = DEFAULT_WORKFLOW_MODE,
   terminalRegistry = [],
   terminalLocations = [],
   onStepSelect = () => {},
@@ -123,11 +143,17 @@ export default function PosTenantSetupModal({
   onContinue = () => {},
   onSetupDataChanged = async () => {}
 }) {
+  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
+  const setupOrder = useMemo(
+    () => getTenantSetupOrder(normalizedWorkflowMode),
+    [normalizedWorkflowMode]
+  );
   const stepConfig = STEP_CONFIG[currentStep] || STEP_CONFIG[POS_TERMINAL_SETUP_STEPS.PROFILE];
   const Icon = stepConfig.icon;
-  const activeStepIndex = Math.max(0, POS_TERMINAL_SETUP_ORDER.indexOf(currentStep));
+  const activeStepIndex = Math.max(0, setupOrder.indexOf(currentStep));
   const hasPreviousStep = activeStepIndex > 0;
-  const isLastStep = activeStepIndex === POS_TERMINAL_SETUP_ORDER.length - 1;
+  const isLastStep = activeStepIndex === setupOrder.length - 1;
   const continueLabel = isLastStep ? 'Finish Setup' : 'Next Step';
   const [terminalDrafts, setTerminalDrafts] = useState(() => normalizeTerminalDrafts(terminalRegistry));
   const [terminalSaving, setTerminalSaving] = useState(false);
@@ -140,11 +166,43 @@ export default function PosTenantSetupModal({
   const [locationSaving, setLocationSaving] = useState(false);
   const [hoursSaving, setHoursSaving] = useState(false);
   const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
+  const [starterSetupSaving, setStarterSetupSaving] = useState(false);
+  const [starterSetupContinueAttempted, setStarterSetupContinueAttempted] = useState(false);
+  const [hospitalityRoomTypeForm, setHospitalityRoomTypeForm] = useState({
+    code: 'STD',
+    name: 'Standard Room',
+    base_occupancy: 1,
+    max_occupancy: 2,
+    default_rate: '',
+    currency: 'PHP',
+    description: '',
+    amenities_snapshot: 'Wi-Fi, Air conditioning'
+  });
+  const [hospitalityRoomTypeId, setHospitalityRoomTypeId] = useState(null);
+  const [hospitalityRoomRows, setHospitalityRoomRows] = useState(() => [buildEmptyStarterRoomRow()]);
   const [storefrontHours, setStorefrontHours] = useState(() => normalizeStorefrontBusinessHours(
     storefrontRequirements.businessHours || createDefaultStorefrontBusinessHours()
   ));
 
   const localPreviewUrlsRef = useRef(new Set());
+
+  useEffect(() => {
+    if (!open) return;
+    setStarterSetupSaving(false);
+    setStarterSetupContinueAttempted(false);
+    setHospitalityRoomTypeForm({
+      code: 'STD',
+      name: 'Standard Room',
+      base_occupancy: 1,
+      max_occupancy: 2,
+      default_rate: '',
+      currency: 'PHP',
+      description: '',
+      amenities_snapshot: 'Wi-Fi, Air conditioning'
+    });
+    setHospitalityRoomTypeId(null);
+    setHospitalityRoomRows([buildEmptyStarterRoomRow()]);
+  }, [normalizedWorkflowMode, open]);
 
   const [locationDraft, setLocationDraft] = useState(() => createLocationDraft(
     resolvePrimaryLocation(terminalLocations),
@@ -208,6 +266,13 @@ export default function PosTenantSetupModal({
   const highlightMissingStorefrontProfile = storefrontContinueAttempted && !effectiveProfileImageReady;
   const highlightMissingStorefrontCover = storefrontContinueAttempted && !effectiveCoverImageReady;
   const highlightMissingStorefrontLocation = storefrontContinueAttempted && !effectivePrimaryLocationReady;
+  const resolvedPrimaryLocationId = toPositiveInt(locationDraft.location_id) || primaryLocationId;
+  const serverStarterSetupReady = starterItemRequirements.ready === true
+    || starterItemRequirements.starterItemReady === true;
+  const localStarterSetupReady = isHospitalityMode
+    && Boolean(hospitalityRoomTypeId)
+    && hospitalityRoomRows.some((row) => row.created_room);
+  const effectiveStarterSetupReady = serverStarterSetupReady || localStarterSetupReady;
 
   useEffect(() => {
     const fallbackLocationId = primaryLocationId || (normalizedLocations.length === 1 ? normalizedLocations[0].location_id : null);
@@ -490,6 +555,97 @@ export default function PosTenantSetupModal({
     }
   };
 
+  const updateHospitalityRoomRow = (clientRowId, patch) => {
+    setHospitalityRoomRows((rows) => rows.map((row) => (
+      row.client_row_id === clientRowId && !row.created_room ? { ...row, ...patch } : row
+    )));
+  };
+
+  const addHospitalityRoomRow = () => {
+    setHospitalityRoomRows((rows) => [...rows, buildEmptyStarterRoomRow()]);
+  };
+
+  const removeHospitalityRoomRow = (clientRowId) => {
+    setHospitalityRoomRows((rows) => rows.length === 1
+      ? rows
+      : rows.filter((row) => row.client_row_id !== clientRowId || row.created_room));
+  };
+
+  const handleSaveHospitalityStarterSetup = async () => {
+    if (!resolvedPrimaryLocationId) {
+      toast.error('Save a primary business location before creating rooms.');
+      return;
+    }
+    const rate = Number(hospitalityRoomTypeForm.default_rate || 0);
+    if (
+      !String(hospitalityRoomTypeForm.code || '').trim()
+      || !String(hospitalityRoomTypeForm.name || '').trim()
+      || !Number.isFinite(rate)
+      || rate <= 0
+    ) {
+      toast.error('Room type code, name, and positive nightly rate are required.');
+      return;
+    }
+
+    setStarterSetupSaving(true);
+    try {
+      const roomType = hospitalityRoomTypeId
+        ? { room_type_id: hospitalityRoomTypeId }
+        : await createHospitalityRoomType({
+          ...hospitalityRoomTypeForm,
+          location_id: resolvedPrimaryLocationId,
+          base_occupancy: Number(hospitalityRoomTypeForm.base_occupancy || 1),
+          max_occupancy: Number(hospitalityRoomTypeForm.max_occupancy || 2),
+          default_rate: rate,
+          amenities_snapshot: String(hospitalityRoomTypeForm.amenities_snapshot || '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean)
+        });
+      const roomTypeId = roomType?.room_type_id || hospitalityRoomTypeId;
+      setHospitalityRoomTypeId(roomTypeId);
+
+      const nextRows = await Promise.all(hospitalityRoomRows.map(async (row) => {
+        if (row.created_room) return row;
+        if (!String(row.room_number || '').trim()) {
+          return { ...row, errors: ['Room number is required.'] };
+        }
+        try {
+          const room = await createHospitalityRoom({
+            room_type_id: roomTypeId,
+            location_id: resolvedPrimaryLocationId,
+            room_number: String(row.room_number).trim(),
+            floor: row.floor || null,
+            status: row.status || 'vacant_clean'
+          });
+          return { ...row, created_room: room, errors: [] };
+        } catch (error) {
+          return { ...row, errors: [error?.response?.data?.message || 'Unable to create room.'] };
+        }
+      }));
+
+      setHospitalityRoomRows(nextRows);
+      await saveOnboardingStep({
+        stepKey: 'hospitality_rooms',
+        payload: {
+          workflow_mode: normalizedWorkflowMode,
+          room_type_id: roomTypeId,
+          room_type_name: hospitalityRoomTypeForm.name,
+          room_ids: nextRows.map((row) => row.created_room?.room_id).filter(Boolean)
+        }
+      });
+      await onSetupDataChanged({
+        source: 'hospitality_rooms',
+        starterItemReady: Boolean(roomTypeId && nextRows.some((row) => row.created_room))
+      });
+      toast.success('Hospitality room setup saved.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to save Hospitality room setup.');
+    } finally {
+      setStarterSetupSaving(false);
+    }
+  };
+
   const handleContinue = async () => {
     if (finishing) return;
     if (currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
@@ -498,8 +654,12 @@ export default function PosTenantSetupModal({
       // for onboarding completion, matching the shared Storefront contract.
       await handleSaveStorefrontHours();
     }
+    if (currentStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+      setStarterSetupContinueAttempted(true);
+    }
     onContinue({
-      storefrontSetupReady: effectiveStorefrontSetupReady
+      storefrontSetupReady: effectiveStorefrontSetupReady,
+      starterItemReady: effectiveStarterSetupReady
     });
   };
 
@@ -543,10 +703,10 @@ export default function PosTenantSetupModal({
         <div className="shrink-0 px-5 py-2 sm:px-6">
           <div>
             <p className="text-sm font-semibold text-slate-600">
-              Step {activeStepIndex + 1} of {POS_TERMINAL_SETUP_ORDER.length}
+              Step {activeStepIndex + 1} of {setupOrder.length}
             </p>
             <div className="mt-4 flex items-center gap-3">
-              {POS_TERMINAL_SETUP_ORDER.map((stepId, index) => {
+              {setupOrder.map((stepId, index) => {
                 const isActive = stepId === currentStep;
                 const isCompleted = index < activeStepIndex;
                 const isSelectable = isCompleted || isActive;
@@ -570,7 +730,7 @@ export default function PosTenantSetupModal({
                     >
                       {isCompleted ? <CheckCircle2 className="h-5 w-5" /> : index + 1}
                     </button>
-                    {index < POS_TERMINAL_SETUP_ORDER.length - 1 ? (
+                    {index < setupOrder.length - 1 ? (
                       <div className={`h-px flex-1 ${index < activeStepIndex ? 'bg-emerald-300' : 'bg-slate-200'}`} />
                     ) : null}
                   </React.Fragment>
@@ -614,6 +774,96 @@ export default function PosTenantSetupModal({
                     <p className="text-[12px] text-slate-500">
                       These values are reused from registration and the shared account profile.
                     </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {currentStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && isHospitalityMode ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+                    <p className="font-black">Hospitality room setup</p>
+                    <p className="mt-1 text-xs leading-5 text-blue-900">
+                      Create the first room type and at least one room before using reservations and room operations.
+                    </p>
+                  </div>
+
+                  <>
+                      <div className="grid gap-3 md:grid-cols-6">
+                        <label className="text-xs text-slate-700">
+                          Room type code
+                          <Input value={hospitalityRoomTypeForm.code} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, code: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700 md:col-span-2">
+                          Room type name
+                          <Input value={hospitalityRoomTypeForm.name} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, name: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700">
+                          Base occupancy
+                          <Input type="number" min="1" value={hospitalityRoomTypeForm.base_occupancy} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, base_occupancy: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700">
+                          Max occupancy
+                          <Input type="number" min="1" value={hospitalityRoomTypeForm.max_occupancy} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, max_occupancy: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700">
+                          Nightly rate
+                          <Input type="number" min="0" step="0.01" value={hospitalityRoomTypeForm.default_rate} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, default_rate: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700 md:col-span-3">
+                          Amenities
+                          <Input value={hospitalityRoomTypeForm.amenities_snapshot} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, amenities_snapshot: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                        <label className="text-xs text-slate-700 md:col-span-3">
+                          Description
+                          <Input value={hospitalityRoomTypeForm.description} onChange={(event) => setHospitalityRoomTypeForm((prev) => ({ ...prev, description: event.target.value }))} disabled={Boolean(hospitalityRoomTypeId) || starterSetupSaving} />
+                        </label>
+                      </div>
+                      <div className="space-y-3">
+                        {hospitalityRoomRows.map((row, index) => (
+                          <div key={row.client_row_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="grid gap-3 md:grid-cols-5">
+                              <label className="text-xs text-slate-700">
+                                Room number
+                                <Input value={row.room_number} onChange={(event) => updateHospitalityRoomRow(row.client_row_id, { room_number: event.target.value })} disabled={Boolean(row.created_room) || starterSetupSaving} />
+                              </label>
+                              <label className="text-xs text-slate-700">
+                                Floor
+                                <Input value={row.floor} onChange={(event) => updateHospitalityRoomRow(row.client_row_id, { floor: event.target.value })} disabled={Boolean(row.created_room) || starterSetupSaving} />
+                              </label>
+                              <label className="text-xs text-slate-700">
+                                Status
+                                <select className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm" value={row.status} onChange={(event) => updateHospitalityRoomRow(row.client_row_id, { status: event.target.value })} disabled={Boolean(row.created_room) || starterSetupSaving}>
+                                  <option value="vacant_clean">Vacant clean</option>
+                                  <option value="vacant_dirty">Vacant dirty</option>
+                                  <option value="inspected">Inspected</option>
+                                </select>
+                              </label>
+                              <div className="flex items-end text-xs text-slate-500">Room row {index + 1}</div>
+                              <div className="flex items-end justify-end">
+                                <Button type="button" variant="outline" onClick={() => removeHospitalityRoomRow(row.client_row_id)} disabled={hospitalityRoomRows.length === 1 || starterSetupSaving || Boolean(row.created_room)}>
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                            {row.created_room ? <p className="mt-2 text-xs font-semibold text-emerald-700">Room created and ready for booking.</p> : null}
+                            {row.errors.length > 0 ? <p className="mt-2 text-xs font-semibold text-rose-700">{row.errors.join(' ')}</p> : null}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <Button type="button" variant="outline" onClick={addHospitalityRoomRow} disabled={starterSetupSaving}>
+                          Add Room
+                        </Button>
+                        <Button type="button" className="bg-[#1A4E8D] text-white hover:bg-[#143F73]" onClick={handleSaveHospitalityStarterSetup} disabled={starterSetupSaving}>
+                          {starterSetupSaving ? 'Saving...' : 'Save Room Setup'}
+                        </Button>
+                      </div>
+                  </>
+                  <div className={`rounded-2xl border px-4 py-3 text-sm ${effectiveStarterSetupReady ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : (starterSetupContinueAttempted ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-200 bg-slate-50 text-slate-600')}`}>
+                    {effectiveStarterSetupReady
+                      ? 'Complete: Hospitality room setup is ready.'
+                      : 'Required: save one room type and at least one room.'}
                   </div>
                 </div>
               ) : null}

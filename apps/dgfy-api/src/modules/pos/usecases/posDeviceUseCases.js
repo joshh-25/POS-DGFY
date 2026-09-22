@@ -168,6 +168,41 @@ const parseJsonObject = (value) => {
     }
 };
 
+const buildUnavailableZReadingReconciliation = ({ businessDate, locationId }) => ({
+    status: 'not_comparable',
+    comparison_basis: 'completed_recognized_transaction_total',
+    business_date: businessDate || null,
+    location_id: parsePositiveInt(locationId),
+    reading_identifier: null,
+    generated_at: null,
+    evaluated_at: new Date().toISOString(),
+    snapshot_persisted: false,
+    report_recognized_sales: null,
+    z_total_amount: null,
+    variance: null,
+    report_net_sales: 0,
+    report_refunds_voids: 0,
+    report_adjustment_amount: 0,
+    z_void_transaction_count: null,
+    z_void_amount: null,
+    message: 'Report reconciliation was unavailable at print time.'
+});
+
+const loadZReadingReconciliation = async ({ posRepository, businessDate, locationId }) => {
+    if (typeof posRepository?.getZReadingReconciliationByBusinessDate !== 'function') {
+        return buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    }
+    try {
+        const reconciliation = await posRepository.getZReadingReconciliationByBusinessDate(
+            businessDate,
+            { locationId }
+        );
+        return reconciliation || buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    } catch {
+        return buildUnavailableZReadingReconciliation({ businessDate, locationId });
+    }
+};
+
 const buildOperationReplayConflictError = () => new DomainError(
     DomainErrorCode.CONFLICT,
     'idempotency_key was already used with a different payload',
@@ -461,6 +496,86 @@ export const buildGetPosDeviceStatusUseCase = ({ deviceDriver }) => {
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS device bridge status'));
+        }
+    };
+};
+
+export const buildTestPosPrinterUseCase = ({ posRepository, deviceDriver }) => {
+    return async ({ payload = {}, user, auditContext = {} }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const terminalId = String(payload?.terminal_id || '').trim() || null;
+        const message = String(payload?.message || '').trim() || 'DGFY POS printer test';
+        const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 2));
+
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+
+        if (typeof deviceDriver?.testPrint !== 'function') {
+            return fail(new DomainError(
+                DomainErrorCode.SERVICE_UNAVAILABLE,
+                'The active POS hardware driver does not support test printing.',
+                { statusCode: 503, details: { reason_code: 'TEST_PRINT_NOT_SUPPORTED' } }
+            ));
+        }
+
+        try {
+            const bridgeResponse = await deviceDriver.testPrint({
+                message,
+                copies,
+                terminal_id: terminalId,
+                reason: 'terminal_setup_test_print'
+            });
+
+            await posRepository.createAuditLog({
+                user_id: userId,
+                entity_type: 'pos_device_test_print',
+                entity_id: null,
+                action: 'CREATE',
+                changes: {
+                    operation: 'test_print',
+                    terminal_id: terminalId,
+                    copies,
+                    driver_id: deviceDriver.id,
+                    bridge_result: bridgeResponse?.result || bridgeResponse || null
+                },
+                ...buildAuditMetadata(auditContext)
+            });
+
+            return ok({
+                terminal_id: terminalId,
+                copies,
+                driver_id: deviceDriver.id,
+                bridge: bridgeResponse
+            });
+        } catch (error) {
+            try {
+                await posRepository.createAuditLog({
+                    user_id: userId,
+                    entity_type: 'pos_device_test_print',
+                    entity_id: null,
+                    action: 'CREATE',
+                    changes: {
+                        operation: 'test_print',
+                        terminal_id: terminalId,
+                        copies,
+                        driver_id: deviceDriver?.id || null,
+                        bridge_result: {
+                            success: false,
+                            reason_code: error?.details?.reason_code || error?.code || 'TEST_PRINT_FAILED',
+                            message: error?.message || 'POS printer test failed'
+                        }
+                    },
+                    ...buildAuditMetadata(auditContext)
+                });
+            } catch {
+                // A secondary audit failure must not hide the hardware failure.
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to print the POS printer test page'));
         }
     };
 };
@@ -888,6 +1003,13 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
             const snapshotSummary = parseJsonObject(snapshot.summary);
+            const reconciliation = clientDriverId
+                ? null
+                : await loadZReadingReconciliation({
+                    posRepository,
+                    businessDate,
+                    locationId
+                });
             const zReading = {
                 business: buildBusinessSettings(allSettings),
                 z_reading: {
@@ -896,6 +1018,7 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
                     location_id: snapshot.location_id || locationId,
                     reading_identifier: snapshot.reading_identifier || null,
                     generated_at: snapshot.generated_at || snapshot.created_at || null,
+                    reconciliation,
                     summary: {
                         ...snapshotSummary,
                         payment_breakdown: normalizePosPaymentBreakdown(

@@ -21,7 +21,7 @@ describe('BusinessRegistrationSubmissionPage', () => {
     expect(screen.getByText(/email inbox \(or spam folder\)/i)).toBeTruthy();
     expect(screen.queryByText(/no-reply@dgfy\.com/i)).toBeNull();
     expect(screen.getByRole('link', { name: /view registration status/i }).getAttribute('href'))
-      .toContain('/register-company/status/app-42');
+      .toContain('/business-registration-submission?application_id=app-42');
     expect(screen.getByRole('link', { name: /go to customer dashboard/i }).getAttribute('href'))
       .toBe('/map-dgfy/account/overview');
   });
