@@ -89,8 +89,82 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const REQUIRED_PR_CHECKS_MARKERS = [
   'RUNNER_HEAVY_JSON: *runner_heavy',
   'route-build-checks:',
-  'release/*|hotfix/*'
+  'release/*|hotfix/*',
+  // #1748: the three develop-PR lint caller jobs -- one explicit job per frontend app, each
+  // passing its own `app:` input to pr-frontend-lint-checks.yml. Job-name markers alone can't
+  // prove the app mapping is right (the build-check jobs carry the same `app:` values), so
+  // checkDevelopPrLintJobMapping below asserts the per-block mapping structurally; these markers
+  // are the cheap "job silently removed or renamed" tripwire on top of it.
+  'frontend-ims-lint-check',
+  'frontend-pos-lint-check',
+  'frontend-storefront-lint-check'
 ];
+
+/**
+ * #1748: guards the develop-PR lint app-to-check mapping in pr-checks.yml. Each of the three
+ * `frontend-*-lint-check` jobs must call the shared `pr-frontend-lint-checks.yml` reusable
+ * workflow with its own `app:` input, gate on its own `changes.outputs.frontend_*` output, ride
+ * the light-runner routing, and stay blocking (no `continue-on-error` -- contrast
+ * promotion-quality-gate.yml's #1063 advisory regime, which must never leak into these jobs).
+ *
+ * @param {string} prChecksText contents of .github/workflows/pr-checks.yml
+ * @returns {string[]} human-readable problems found; empty when all three mappings are intact
+ */
+const DEVELOP_PR_LINT_JOB_BY_APP = Object.freeze({
+  'dgfy-ims': { job: 'frontend-ims-lint-check', changedOutput: 'frontend_ims' },
+  'dgfy-pos': { job: 'frontend-pos-lint-check', changedOutput: 'frontend_pos' },
+  'dgfy-storefront': { job: 'frontend-storefront-lint-check', changedOutput: 'frontend_storefront' }
+});
+
+function checkDevelopPrLintJobMapping(prChecksText) {
+  const problems = [];
+  for (const [app, { job, changedOutput }] of Object.entries(DEVELOP_PR_LINT_JOB_BY_APP)) {
+    const blockMatch = prChecksText.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `pr-checks.yml: could not find the "${job}:" job block -- was it renamed or removed? ` +
+        'checkDevelopPrLintJobMapping needs updating to match.'
+      );
+      continue;
+    }
+    const block = blockMatch[1];
+    if (!block.includes('uses: ./.github/workflows/pr-frontend-lint-checks.yml')) {
+      problems.push(
+        `pr-checks.yml: "${job}" must call \`uses: ./.github/workflows/pr-frontend-lint-checks.yml\` ` +
+        '-- the shared lint workflow, not a build check or an inline step.'
+      );
+    }
+    const appLines = block.match(/^ {6}app:.*$/gm) || [];
+    if (appLines.length !== 1 || appLines[0].trim() !== `app: ${app}`) {
+      problems.push(
+        `pr-checks.yml: "${job}" must pass exactly \`app: ${app}\` (found: ` +
+        `${appLines.length === 0 ? 'none' : appLines.map((l) => `\`${l.trim()}\``).join(', ')}) ` +
+        '-- the app-to-check mapping must not silently drift.'
+      );
+    }
+    if (!block.includes(`needs.changes.outputs.${changedOutput} == 'true'`)) {
+      problems.push(
+        `pr-checks.yml: "${job}" must gate on \`needs.changes.outputs.${changedOutput} == 'true'\` ` +
+        '-- each lint caller runs only behind its own app\'s changed-path output.'
+      );
+    }
+    if (!block.includes('needs.route-build-checks.outputs.light')) {
+      problems.push(
+        `pr-checks.yml: "${job}" must ride the light-runner routing ` +
+        '(`needs.route-build-checks.outputs.light`) -- lint has no build cost.'
+      );
+    }
+    if (/continue-on-error/.test(block)) {
+      problems.push(
+        `pr-checks.yml: "${job}" must stay blocking (no \`continue-on-error\`) -- a lint failure ` +
+        'there must redden the check, unlike promotion-quality-gate.yml\'s #1063 advisory jobs.'
+      );
+    }
+  }
+  return problems;
+}
 const REQUIRED_QUALITY_MARKERS = [
   'workflow_call:',
   // #1018: the promotion-detection gate job, and its two head-prefix literals -- see
@@ -1100,6 +1174,7 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
     ...checkPromotionPrefixSync(complianceScriptText, qualityWorkflowText),
     ...checkRunnerCacheConsistency(prChecksText),
+    ...checkDevelopPrLintJobMapping(prChecksText),
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
@@ -1139,6 +1214,8 @@ module.exports = {
   checkPrQualityWorkflow,
   checkPromotionPrefixSync,
   checkRunnerCacheConsistency,
+  checkDevelopPrLintJobMapping,
+  DEVELOP_PR_LINT_JOB_BY_APP,
   checkStagingLegSkipShape,
   checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,

@@ -103,6 +103,26 @@ describe('POS manual walk-in tender', () => {
         expect(window.localStorage.getItem('pos_split_payment_session:missing-recovery')).toBeNull();
     });
 
+    it('does not create a server session until the cashier records a payment', async () => {
+        render(
+            <POSSplitPaymentDialog
+                open
+                onOpenChange={vi.fn()}
+                cart={[{ item_id: 36, quantity: 1, sale_price: 90 }]}
+                totalAmount={90}
+                shiftId={41}
+                locationId={3}
+                terminalId="COUNTER-01"
+                storageScopeKey="lazy-session"
+            />
+        );
+
+        await screen.findByText('Payment Methods');
+        await waitFor(() => expect(serviceMocks.fetchActivePosPaymentSession).toHaveBeenCalledTimes(1));
+        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
+    });
+
     it.each([
         ['desktop', 1280],
         ['mobile', 390]

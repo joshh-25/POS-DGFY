@@ -5366,6 +5366,34 @@ export const posRepository = {
         return rows.map(toPlainPaymentSession);
     },
 
+    async cancelEmptyInFlightPaymentSessionsForShift(shiftId, options = {}) {
+        const sessions = await this.listInFlightPaymentSessionsForShift(shiftId, options);
+        const cancelled = [];
+        const cancelledBy = toPositiveInt(options.cancelledBy);
+
+        for (const session of sessions) {
+            if (Number(session.paid_amount || 0) > 0) continue;
+
+            const allocations = await this.listPosPaymentAllocationsForSession(
+                session.pos_payment_session_id,
+                options
+            );
+            if (allocations.length > 0) continue;
+
+            const updated = await this.updatePosPaymentSession(session.pos_payment_session_id, {
+                status: 'cancelled',
+                cancelled_by: cancelledBy || null,
+                cancelled_at: new Date(),
+                cancel_reason: 'Automatically cancelled empty split-payment session before shift close.',
+                paid_amount: 0,
+                remaining_amount: Number(session.remaining_amount ?? session.total_amount ?? 0)
+            }, options);
+            if (updated) cancelled.push(updated);
+        }
+
+        return cancelled;
+    },
+
     async findInFlightOperatorMutationForShift(shiftId, { staleBefore, transaction, lock = false } = {}) {
         const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
         const normalizedShiftId = toPositiveInt(shiftId);

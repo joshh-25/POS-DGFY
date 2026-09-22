@@ -47,7 +47,8 @@ const serialized = (session) => ({
 export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
   commercePaymentRepository,
   paymongoService,
-  partnerClient
+  partnerClient,
+  mappingRepository
 }) => async ({ payload = {} } = {}) => {
   try {
     if (!enabled()) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'DGLaundry booking payments are dark-disabled.', { statusCode: 503 });
@@ -62,6 +63,11 @@ export const buildCreateDglaundryBookingPaymentSessionUseCase = ({
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant, company/location, references, lines, and idempotency_key are required.', { statusCode: 422 });
     }
     if (!branchEnabled(locationId)) throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Online laundry booking is disabled for this branch.', { statusCode: 503 });
+    if (typeof mappingRepository?.findActiveMapping !== 'function') {
+      throw new DomainError(DomainErrorCode.SERVICE_UNAVAILABLE, 'Laundry company/location mapping lookup is unavailable.', { statusCode: 503 });
+    }
+    const mapping = await mappingRepository.findActiveMapping({ companyId, locationId });
+    if (!mapping) throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'The DGFY company/location is not actively mapped to DGLaundry.', { statusCode: 403 });
 
     const group = {
       externalOrderGroupReference: trim(payload.external_order_group_reference || externalOrderReference, 200),

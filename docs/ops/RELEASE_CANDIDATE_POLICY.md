@@ -1717,3 +1717,49 @@ environments, and each bare alias against its revision tag
 `.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
 
 PR: (this PR). Refs #1977.
+
+### 2026-09-21: No Playwright/e2e coverage before the `release/*→main` leg — accepted tradeoff (#1556)
+
+Not rewritten in place, same convention as every amendment above. This entry records the
+decision #1556's own acceptance criterion requires — fix the gap, or explicitly accept it with
+a stated reason — not a mechanism change. Nothing about what any workflow runs changes here.
+
+**Verified shape being accepted.** `pr-checks.yml` runs only `changes` plus per-deployable
+Docker build checks on every `develop`/`staging`/`main` PR — no Playwright step by design
+(#1018's deliberate separation: the promotion gate lives in its own workflow file precisely so
+it never becomes a row on ordinary feature PRs). `promotion-quality-gate.yml`'s `gate` job
+scopes that workflow to promotion PRs only, and every quality job carries
+`needs.gate.outputs.is_staging_leg != 'true'` — the `to-staging/*→staging` leg runs zero
+quality jobs, exactly as the 2026-08-31 #1253 entry restored. The only point in the pipeline
+where `test:e2e:fnb-contract` (`run_fnb_browser_contract`,
+`frontend-storefront-quality`, `apps/dgfy-storefront/playwright.fnb-contract.config.js` —
+single-spec F&B conditional-modifiers contract, workers 1) actually runs is therefore the
+`release/*→main` leg (and the `staging→main` leg of the optional soak), advisory-only
+(`continue-on-error` at job and step level, #1063/#1066 mechanism).
+
+**Why accepted, stated explicitly rather than left implicit.** The `to-staging/*→staging`
+leg optimizes for promotion speed, not for quality-gate signal — Pat's verbatim direction
+behind #1254/#1253 ("ease up promotion to staging, only heavy checks on main/prod"), driven
+by the real ~20 min serial cost of the full quality suite on the single self-hosted runner
+for a result nobody acted on. Re-adding even a 3–5 min Playwright smoke to that leg
+reintroduces the cost that decision removed, and running e2e inside `pr-checks.yml` gated to
+frontend paths reintroduces the every-PR cost #416 removed and #1018 deliberately kept out.
+Separately, the last-leg e2e signal itself is not currently a candidate for earlier promotion:
+#1063's advisory-temp still holds for the gate overall, and #1550 root-causes that exact
+`run_fnb_browser_contract` step failing deterministically on the most recent real promotion
+(run `33789462561`, PR #1547) — moving a currently-red, untriaged browser test earlier would
+produce earlier red noise, not earlier useful signal. Advisory-failure evidence continues to
+land on #1124, not silently dropped.
+
+**Consequence, said plainly.** A frontend-only change of the #1550 class (commit `2ab68238`,
+`fix(storefront): format customer amounts as grouped pesos` — landed on `develop`, soaked
+through `to-staging/*` and `staging` with zero browser coverage, caught only at the
+`release/*→main` gate) can travel `develop → staging` unexercised by any e2e suite. That is
+the accepted cost of the speed tradeoff above, not an undiscovered gap. If early browser
+signal is ever wanted back, that is new scope (e.g. a cheap advisory path-filtered smoke
+subset, triaged green first per #1550) — not a reopen of this decision.
+
+This is a `[default]`-tier procedure record under ADR 0039 — no `[binding]` clause of this
+policy or of any ADR is changed by this entry.
+
+PR: (this PR). Closes #1556. Refs #1124, #1550, #1254, #1063.
