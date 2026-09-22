@@ -23670,6 +23670,80 @@ Not yet merged — set at merge time.
 
 343 after Phase 342's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 343 - Blocking develop-PR lint coverage for apps/dgfy-pos and apps/dgfy-storefront (#1748)
+
+### Initiative and release
+
+CI quality gates, current release.
+
+### Objective and scope
+
+Extend the ordinary `develop`-PR lint gate (#1712) from IMS-only to all three frontend apps:
+parameterize `.github/workflows/pr-frontend-lint-checks.yml` with a required `app` input,
+add `frontend-pos-lint-check` and `frontend-storefront-lint-check` caller jobs to
+`.github/workflows/pr-checks.yml` behind the existing `frontend_pos`/`frontend_storefront`
+changed-path outputs, synchronize the shared lint workflow into the POS/Storefront
+unconditional trigger patterns in `.github/workflows/shared-changed-paths.yml` and
+`scripts/resolve-frontend-build-triggers.js`, guard the three caller jobs and their app
+mappings in `scripts/check-pr-quality-workflow.js`, and record the new enforcement truth in
+ADR 0067. Lint-only; no Docker/Vite builds, no rule changes, no `--max-warnings`, no
+`packages/web-core` scope broadening for POS/Storefront, no promotion-gate changes, no app
+version bumps, no runtime/API/database/frontend change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #1748 (decision); #1712 (the IMS-only develop-PR lint gate this extends); #918/#1433
+(web-core lint coverage and error baseline); ADR 0067 (2026-09-08 amendment's residual gap,
+superseded for develop-PR purposes by the 2026-09-22 amendment); ADR 0071 Decision 4
+`[binding]` (web-core lint stays IMS-run, unchanged); Phase 342 (#1977, sequence predecessor —
+still `in_progress` at reservation time, as is Phase 341, so this entry records the next free
+continuous number per the ledger rule rather than a completed-predecessor chain; Phase 344
+becomes eligible only after this phase's implementation, review, merge, and deployed QA).
+
+### Acceptance and validation evidence
+
+- [x] Live lint baseline on already-installed locked dependencies (2026-09-22): `apps/dgfy-pos`
+      `npm run lint` exits 0 with no reported problems; `apps/dgfy-storefront` exits 0 with
+      135 warnings / 0 errors — the warning-tolerant blocking contract rests on this evidence.
+- [x] `node scripts/check-pr-quality-workflow.js` passes against the real workflows, including
+      the new develop-PR lint mapping check (all three caller jobs call the shared workflow
+      with the intended app input, condition, and light-runner routing; no `continue-on-error`).
+- [x] `npm run test:pr-quality-workflow` passes (58/58, incl. 7 new mapping regression cases).
+- [x] `npm run test:frontend-build-triggers` passes (11/11, incl. the shared lint-workflow
+      unconditional-trigger case).
+- [x] `node --check` passes on both changed scripts; `git diff --check` clean.
+- [x] `npm run lint:docs` passes (amended ADR 0067 + this ledger entry).
+- [x] `npm run check:compliance`, `npm run check:architecture`, and
+      `npm run check:workspace-hygiene` pass as applicable to the changed workflow/docs/script
+      surfaces.
+- [ ] PR review, merge, and deployed QA remain outstanding (first CI run's check names and
+      conclusions to be reported after the PR opens; no merge/deploy is part of this phase).
+
+### Links
+
+- Issue: #1748 (`Closes`).
+- Handoff: `.tmp/plan-1748.md` (planning head `4bb0e2e892e9780dd413ec9b22838f2e0e3ffab2`).
+- Implementation: `.github/workflows/pr-frontend-lint-checks.yml`,
+  `.github/workflows/pr-checks.yml`, `.github/workflows/shared-changed-paths.yml`,
+  `scripts/resolve-frontend-build-triggers.js` (+ tests),
+  `scripts/check-pr-quality-workflow.js` (+ tests),
+  `docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md`.
+- Prior lint-gate work: #1712 (develop-PR IMS gate), #918 (web-core coverage), #1433 (error baseline).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+344 after Phase 343's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
 ## Phase 344 - Stitch POS Items management-panel design
 
 - Initiative/release: Shared POS catalog presentation / Apex POS Terminal & Catalog. Status: completed.
@@ -25254,80 +25328,3 @@ Not yet merged — set at merge time.
 - Release inventory: Existing dirty checkout preserved. Phase 459 is not staged, committed, merged, pushed, or deployed. No external service, production environment, database row, payment, inventory, customer, or loyalty state was changed.
 - Rollback: No runtime rollback is required. If implementation rollback is requested, revert the Phase 455–458 UI/API/docs/test changes by domain after review; keep this acceptance entry open until replacement evidence exists.
 - Current phase: 459 deferred pending authenticated acceptance. Next eligible phase: 460 only after Phase 459 is completed or explicitly replaced by a reconciled plan.
-
-<!-- codex-ledger-chunk-19 -->
-<!-- ledger reconciliation marker -->
-
-## Phase 343 - Blocking develop-PR lint coverage for apps/dgfy-pos and apps/dgfy-storefront (#1748)
-
-### Initiative and release
-
-CI quality gates, current release.
-
-### Objective and scope
-
-Extend the ordinary `develop`-PR lint gate (#1712) from IMS-only to all three frontend apps:
-parameterize `.github/workflows/pr-frontend-lint-checks.yml` with a required `app` input,
-add `frontend-pos-lint-check` and `frontend-storefront-lint-check` caller jobs to
-`.github/workflows/pr-checks.yml` behind the existing `frontend_pos`/`frontend_storefront`
-changed-path outputs, synchronize the shared lint workflow into the POS/Storefront
-unconditional trigger patterns in `.github/workflows/shared-changed-paths.yml` and
-`scripts/resolve-frontend-build-triggers.js`, guard the three caller jobs and their app
-mappings in `scripts/check-pr-quality-workflow.js`, and record the new enforcement truth in
-ADR 0067. Lint-only; no Docker/Vite builds, no rule changes, no `--max-warnings`, no
-`packages/web-core` scope broadening for POS/Storefront, no promotion-gate changes, no app
-version bumps, no runtime/API/database/frontend change.
-
-### Status
-
-`in_progress` — implementation and local validation are in progress; PR review, merge, and
-deployed QA remain outstanding.
-
-### Dependencies
-
-Issue #1748 (decision); #1712 (the IMS-only develop-PR lint gate this extends); #918/#1433
-(web-core lint coverage and error baseline); ADR 0067 (2026-09-08 amendment's residual gap,
-superseded for develop-PR purposes by the 2026-09-22 amendment); ADR 0071 Decision 4
-`[binding]` (web-core lint stays IMS-run, unchanged); Phase 342 (#1977, sequence predecessor —
-still `in_progress` at reservation time, as is Phase 341, so this entry records the next free
-continuous number per the ledger rule rather than a completed-predecessor chain; Phase 344
-becomes eligible only after this phase's implementation, review, merge, and deployed QA).
-
-### Acceptance and validation evidence
-
-- [x] Live lint baseline on already-installed locked dependencies (2026-09-22): `apps/dgfy-pos`
-      `npm run lint` exits 0 with no reported problems; `apps/dgfy-storefront` exits 0 with
-      135 warnings / 0 errors — the warning-tolerant blocking contract rests on this evidence.
-- [x] `node scripts/check-pr-quality-workflow.js` passes against the real workflows, including
-      the new develop-PR lint mapping check (all three caller jobs call the shared workflow
-      with the intended app input, condition, and light-runner routing; no `continue-on-error`).
-- [x] `npm run test:pr-quality-workflow` passes (58/58, incl. 7 new mapping regression cases).
-- [x] `npm run test:frontend-build-triggers` passes (11/11, incl. the shared lint-workflow
-      unconditional-trigger case).
-- [x] `node --check` passes on both changed scripts; `git diff --check` clean.
-- [x] `npm run lint:docs` passes (amended ADR 0067 + this ledger entry).
-- [x] `npm run check:compliance`, `npm run check:architecture`, and
-      `npm run check:workspace-hygiene` pass as applicable to the changed workflow/docs/script
-      surfaces.
-- [ ] PR review, merge, and deployed QA remain outstanding (first CI run's check names and
-      conclusions to be reported after the PR opens; no merge/deploy is part of this phase).
-
-### Links
-
-- Issue: #1748 (`Closes`).
-- Handoff: `.tmp/plan-1748.md` (planning head `4bb0e2e892e9780dd413ec9b22838f2e0e3ffab2`).
-- Implementation: `.github/workflows/pr-frontend-lint-checks.yml`,
-  `.github/workflows/pr-checks.yml`, `.github/workflows/shared-changed-paths.yml`,
-  `scripts/resolve-frontend-build-triggers.js` (+ tests),
-  `scripts/check-pr-quality-workflow.js` (+ tests),
-  `docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md`.
-- Prior lint-gate work: #1712 (develop-PR IMS gate), #918 (web-core coverage), #1433 (error baseline).
-
-### Completion date
-
-Not yet merged — set at merge time.
-
-### Next eligible phase
-
-344 after Phase 343's implementation, review, merge, and deployed QA evidence are complete
-(re-check the ledger before reserving it).
