@@ -395,7 +395,7 @@ test('runParityCheck: an unlabeled PROD image cannot pass, even with a real stag
 test('runParityCheck: an invalid manifest throws PromotionCandidateError, same validation as check-promotion-candidate.js', () => {
   assert.throws(
     () => runParityCheck({ manifest: { schema: 'not-the-right-schema' } }),
-    /Candidate manifest schema must be sku-release-candidate\/v1/,
+    /Candidate manifest schema must be one of sku-release-candidate\/v1, sku-release-candidate\/v2/,
   );
 });
 
@@ -444,6 +444,136 @@ test('runParityCheck: an app untouched by a repair is compared against ITS OWN p
   // Top-level candidate_source_sha stays the manifest's overall latest identity -- context only, not
   // what every app was actually compared against (see each entry's own field instead).
   assert.equal(result.candidate_source_sha, headSha);
+});
+
+// #2055 (Phase 346) -- v2 manifests verify each app against its OWN allocated revision from
+// the per-app release_revision map, and skip apps the candidate never rebuilt.
+
+function candidateV2Manifest({ headSha, initialSha, apps }) {
+  return {
+    schema: 'sku-release-candidate/v2',
+    candidate_id: '2026-09-23-01',
+    status: 'qualified',
+    source_develop_sha: initialSha,
+    current_staging_sha: headSha,
+    staging_head_sha: headSha,
+    revisions: [
+      {
+        kind: 'initial', sha: initialSha, parent_sha: null, branch: 'to-staging/2026-09-23-01', pr: 9101,
+        dev_artifacts: Object.values(apps).map((entry) => ({ app: entry.app, revision: entry.devRevision, sha: initialSha, digest: entry.digest })),
+      },
+      { kind: 'staging_repair', repair_seq: 1, sha: headSha, parent_sha: initialSha, branch: 'fix/staging/2026-09-23-01-1', pr: 9102, issue: 9103, apps_touched: ['dgfy-api', 'dgfy-migration-runner'] },
+    ],
+    release_revision: {
+      source_staging_sha: headSha,
+      branch: 'release/2026-09-23-01',
+      pr: 9104,
+      apps: Object.fromEntries(Object.values(apps).map((entry) => [entry.app, { revision: entry.revision, source_sha: entry.sourceSha, digest: entry.digest, origin: entry.origin }])),
+    },
+  };
+}
+
+test('runParityCheck (v2): each app is verified against its own allocated revision', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+      ims: { app: 'dgfy-ims', devRevision: 4, revision: 4, sourceSha: initialSha, digest: `sha256:${'2'.repeat(64)}`, origin: 'dev' },
+    },
+  });
+
+  // The fixture answers every inspected ref with a fully agreeing label set -- keyed per
+  // app, since the revision EXPECTED differs per app (r8 for dgfy-api, r4 for dgfy-ims). A
+  // candidate-wide check would compare both against one shared rN and fail one of them.
+  // (Keyed per app rather than parsed off the ref because the bare floor alias carries no
+  // rN fragment itself -- its revision label is what the gate compares.)
+  const inspectFn = (ref) => {
+    const revision = ref.includes('dgfy-api') ? 'r8' : 'r4';
+    const expectedSha = ref.includes('dgfy-api') ? headSha : initialSha;
+    const appFloor = '9.9.9';
+    return {
+      status: 0,
+      stdout: JSON.stringify({
+        digest: 'sha256:v2-per-app-fixture',
+        Image: { Config: { Labels: {
+          [CANDIDATE_SOURCE_LABEL]: expectedSha,
+          'org.opencontainers.image.version': `${appFloor}-${revision}`,
+          'org.dgfy-platform.release-floor': appFloor,
+          [RELEASE_REVISION_LABEL]: revision,
+        } } },
+      }),
+      stderr: '',
+    };
+  };
+
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-api', 'dgfy-ims'], inspectFn });
+
+  assert.equal(result.mode, 'manifest');
+  const apiEntry = result.results.find((entry) => entry.app === 'dgfy-api');
+  const imsEntry = result.results.find((entry) => entry.app === 'dgfy-ims');
+  assert.equal(apiEntry.revision, 8);
+  assert.equal(imsEntry.revision, 4);
+  assert.equal(apiEntry.candidate_source_sha, headSha);
+  assert.equal(imsEntry.candidate_source_sha, initialSha);
+  assert.equal(result.ok, true);
+});
+
+test('runParityCheck (v2): an app absent from the per-app map is skipped, not failed', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+    },
+  });
+
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api', 'dgfy-pos'],
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r8' }) }),
+  });
+
+  const posEntry = result.results.find((entry) => entry.app === 'dgfy-pos');
+  assert.equal(posEntry.verdict, 'skip');
+  assert.equal(posEntry.code, 'app-not-in-candidate');
+  assert.equal(result.ok, true);
+});
+
+test('runParityCheck (v2): a revision-label mismatch against the app\u2019s own allocated rN fails', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+    },
+  });
+
+  // Every ref claims r7 while the manifest released r8 for dgfy-api -- a different
+  // candidate revision's artifact, even though digests line up.
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api'],
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r7' }) }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.results[0].verdict, 'fail');
+  assert.equal(result.results[0].code, 'revision-label-mismatch');
 });
 
 // runDirectParityCheck (--source-sha mode, RF-2) -- the #1007/hotfix entrypoint that never needs a
