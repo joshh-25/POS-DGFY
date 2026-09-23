@@ -25676,14 +25676,16 @@ Phase 463 (numbering predecessor; its completion gates are independent of this p
       posTerminalDeviceService is not defined` on module import with dummy secrets,
       no DB) and resolved post-fix (`IMPORT OK`); POS device suites green
       (service, use-cases, route transport — 13 tests).
-- [ ] DEV redeploy + live verification via `ssh sieitz-dgfy-remote`: api
-      `RestartCount` stable across ~30s, `curl 127.0.0.1:5000/api/health` 200,
-      OPIS `/api/*` no longer 502s, `https://opis.dev.dgfy.ph/` renders the overview
-      at `/` with no redirect flash, `/backoffice/overview` redirects to `/`, deep
-      sections resolve, POS terminal links land on the real POS origin with the
-      unsaved-changes confirm intact.
-- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges
-      or deploys).
+- [x] DEV redeploy + live verification, deploy run `35891103498` (revisioned DEV
+      lane, full six-app matrix, uniform `sha-2acb8b9`, success 2026-09-23 ~17:16Z;
+      first attempt `35890770913` failed pre-build on a transient runner cache
+      `ENOENT`, re-dispatch clean): api `RestartCount=0` stable, `:5000/health` and
+      nginx OPIS-host `/api/v1/health` 200, business-admin endpoint 401 JSON (was
+      502), zero 502s in nginx error log, `/` + `/backoffice/overview` + deep
+      sections 200 with the live shell stamped `1.0.1`/`r1`, `pos.dev.dgfy.ph/
+      terminal` 200. In-browser click-through (redirect flash, dirty-guard confirm)
+      still needs an authenticated session — left for verifier/QA.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges).
 
 ### Links
 
