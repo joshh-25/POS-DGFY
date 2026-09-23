@@ -452,6 +452,7 @@ function PosReportsAnalyticsWorkspace({
   const selectedTender = summaryCards.selected_tender || null;
   const filterOptions = reportData?.filter_options || {};
   const dailyReport = reportData?.daily_report || {};
+  const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
   const monthlyReport = reportData?.monthly_report || {};
   const yearlyReport = reportData?.yearly_report || {};
   const comparisonReport = reportData?.sales_comparison || {};
