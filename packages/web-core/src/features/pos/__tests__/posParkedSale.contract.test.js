@@ -111,6 +111,9 @@ describe('POS Park & New Sale cashier flow', () => {
         expect(componentSource.match(/data-testid="pos-clear-current-sale"/g)).toHaveLength(1);
         expect(componentSource).toContain('data-testid="pos-clear-current-sale-dialog"');
         expect(componentSource).toContain('data-testid="pos-confirm-clear-current-sale"');
+        expect(componentSource).toContain('<DialogFooter className="!flex-row flex-nowrap items-center !gap-3 border-t border-slate-200 px-5 py-4">');
+        expect(componentSource).toContain('className="h-11 min-w-0 flex-1 px-2 text-[12px] sm:px-4 sm:text-[13px]"');
+        expect(componentSource).toContain('className="h-11 min-w-0 flex-1 whitespace-nowrap bg-rose-600 px-2 text-[12px] text-white hover:bg-rose-700 sm:px-4 sm:text-[13px]"');
         expect(componentSource).toContain('clearPosCartDraft(offlineSnapshotScope, activeShiftId);');
         expect(componentSource).toContain('setClearSaleConfirmOpen(true);');
         expect(componentSource).toContain('Boolean(activeParkedSale?.pos_parked_sale_id)');

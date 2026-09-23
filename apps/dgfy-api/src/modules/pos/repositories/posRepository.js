@@ -5883,6 +5883,7 @@ export const posRepository = {
         const sessions = await this.listInFlightPaymentSessionsForShift(shiftId, options);
         const cancelled = [];
         const cancelledBy = toPositiveInt(options.cancelledBy);
+
         for (const session of sessions) {
             if (Number(session.paid_amount || 0) > 0) continue;
 
@@ -5902,6 +5903,7 @@ export const posRepository = {
             }, options);
             if (updated) cancelled.push(updated);
         }
+
         return cancelled;
     },
 

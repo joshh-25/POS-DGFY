@@ -117,6 +117,7 @@ const createBaseProps = (overrides = {}) => ({
     setReceiptPreviewSource: vi.fn(),
     setReceiptPreviewModalOpen: vi.fn(),
     setCheckoutConfirmModalOpen: vi.fn(),
+    setCheckoutOpenedFromCurrentSale: vi.fn(),
     setSplitPaymentDialogOpen: vi.fn(),
     setSplitPaymentSession: vi.fn(),
     setSplitPaymentWorkflowVersion: vi.fn(),
@@ -241,6 +242,19 @@ describe('usePosCheckoutWorkflow', () => {
 
         expect(posToast.error).toHaveBeenCalledWith(validationMessage);
         expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalled();
+        expect(props.setCheckoutOpenedFromCurrentSale).not.toHaveBeenCalled();
+    });
+
+    it('marks the current-sale checkout handoff so the checkout sheet opens without motion', async () => {
+        const { result, props } = renderCheckout();
+
+        await act(async () => {
+            await result.current.openCheckoutConfirmModal();
+        });
+
+        expect(props.setCheckoutOpenedFromCurrentSale).toHaveBeenCalledWith(true);
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(true);
+        expect(props.setMobileCheckoutPanelOpen).toHaveBeenCalledWith(false);
     });
 
     it('maps a stale backend price-override error to the cashier-facing message', async () => {

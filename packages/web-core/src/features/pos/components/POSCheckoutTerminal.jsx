@@ -167,12 +167,17 @@ export default function POSCheckoutTerminal({
     }, []);
 
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
+    const [checkoutOpenedFromCurrentSale, setCheckoutOpenedFromCurrentSale] = useState(false);
     const [splitPaymentDialogOpen, setSplitPaymentDialogOpen] = useState(false);
     const [splitPaymentSession, setSplitPaymentSession] = useState(null);
     const [splitPaymentCancelModalOpen, setSplitPaymentCancelModalOpen] = useState(false);
     const [splitPaymentCancelLoading, setSplitPaymentCancelLoading] = useState(false);
     const [splitPaymentWorkflowVersion, setSplitPaymentWorkflowVersion] = useState(0);
     const [mobileCheckoutPanelOpen, setMobileCheckoutPanelOpen] = useState(false);
+
+    useEffect(() => {
+        if (!checkoutConfirmModalOpen) setCheckoutOpenedFromCurrentSale(false);
+    }, [checkoutConfirmModalOpen]);
 
     const handleSplitPaymentSessionStateChange = useCallback((nextState) => {
         setSplitPaymentSession(nextState?.active && nextState?.session ? nextState.session : null);
@@ -182,6 +187,11 @@ export default function POSCheckoutTerminal({
     const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
+
+    useEffect(() => {
+        if (currentViewMode !== 'checkout') setMobileCheckoutPanelOpen(false);
+    }, [currentViewMode]);
+
     const normalizedTerminalId = String(terminalId || '').trim();
     const offlineSnapshotScope = useMemo(() => ({
         tenantId: providedOfflineSnapshotScope?.tenantId,
@@ -217,7 +227,9 @@ export default function POSCheckoutTerminal({
         search,
         setSearch,
         isTabletViewport,
+        isTabletPortraitViewport,
         isMobileViewport,
+        isMobileLandscapeViewport,
         catalogPage,
         catalogPageSizeOverride,
         catalogGridLayout,
@@ -274,6 +286,10 @@ export default function POSCheckoutTerminal({
         isFnbWorkflow,
         allowedMethods: posWorkflow.allowedMethods
     });
+
+    useEffect(() => {
+        if (isTabletViewport) setMobileCheckoutPanelOpen(false);
+    }, [isTabletViewport]);
     const parkedSaleEmptyCartHandlerRef = useRef(null);
     const handleCartBecameEmpty = useCallback(() => {
         if (typeof parkedSaleEmptyCartHandlerRef.current === 'function') {
@@ -334,6 +350,7 @@ export default function POSCheckoutTerminal({
         onCatalogAddAnimation: handleCatalogAddAnimation
     });
     const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;
+    const isTabletPortraitMobileLayout = isTabletPortraitViewport;
     const {
         shellClassName,
         checkoutGridClassName,
@@ -344,7 +361,7 @@ export default function POSCheckoutTerminal({
         checkoutPaneClassName,
         catalogPaneHeightClassName,
         currentSalePaneHeightClassName
-    } = getPosTerminalLayoutClasses({ isTabletViewport });
+    } = getPosTerminalLayoutClasses({ isTabletViewport, isTabletPortraitViewport, isTabletPortraitMobileLayout });
     const {
         safeCatalog,
         safeCart,
@@ -462,17 +479,31 @@ export default function POSCheckoutTerminal({
         selectedEmployeeCreditOption,
         splitPaymentSession
     });
-    const catalogCardClassName = IS_DGFY_POS_SURFACE
+    const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletPortraitMobileLayout
+        ? 'group box-border flex h-full min-h-0 min-w-0 flex-row overflow-hidden rounded-lg border bg-clip-padding bg-white px-1.5 py-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+        : IS_DGFY_POS_SURFACE && isTabletViewport
+        ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1 text-left transition-all shadow-sm shadow-slate-200/70 sm:grid sm:grid-rows-[minmax(0,1fr)_auto]'
+        : IS_DGFY_POS_SURFACE
             ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:px-2 max-sm:pt-2 max-sm:pb-2 sm:grid sm:grid-rows-[minmax(0,1fr)_auto]'
-            : isTabletViewport
+            : isTabletPortraitMobileLayout
+                ? 'group box-border flex h-full min-h-0 min-w-0 flex-row overflow-hidden rounded-lg border bg-clip-padding bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70'
+                : isTabletViewport
                 ? 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
                 : 'group box-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-clip-padding bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-2 md:p-1.5';
-    const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE
+    const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletPortraitMobileLayout
+        ? 'flex h-full w-[144px] shrink-0 items-center justify-center self-start overflow-hidden rounded-md'
+        : IS_DGFY_POS_SURFACE && isTabletViewport
+        ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
+        : IS_DGFY_POS_SURFACE
             ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start'
+        : isTabletPortraitMobileLayout
+            ? 'flex h-full w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
             : isTabletViewport
                 ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
                 : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-full max-sm:flex-none max-sm:self-start md:h-16 xl:h-24';
-    const folderButtonClassName = isTabletViewport
+    const folderButtonClassName = isTabletPortraitMobileLayout
+        ? 'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-[11px] font-extrabold transition-all'
+        : isTabletViewport
         ? 'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold transition-all'
         : 'inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-[12px] text-[12px] font-extrabold transition-all';
     const setupMeta = terminalMeta && typeof terminalMeta === 'object' ? terminalMeta : {};
@@ -612,6 +643,7 @@ export default function POSCheckoutTerminal({
         historyRows: visibleHistoryRows,
         historyLoading,
         historyPage,
+        historyPageSize,
         historyPagination: visibleHistoryPagination,
         historySearch,
         setHistorySearch,
@@ -629,6 +661,7 @@ export default function POSCheckoutTerminal({
         setHistoryDateFrom,
         historyDateTo,
         setHistoryDateTo,
+        setHistoryPageSize,
         historyDetailLoading, voidingTransactionId,
         refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow,
         openHistoryDetail, handleVoidHistoryTransaction,
@@ -760,6 +793,7 @@ export default function POSCheckoutTerminal({
         setAffiliateCodeInput,
         ...customerPaymentAmountState,
         setCheckoutConfirmModalOpen,
+        setCheckoutOpenedFromCurrentSale,
         setMobileCheckoutPanelOpen,
         setItemOptionsLineKey,
         setServiceOptionsModal,
@@ -1251,6 +1285,7 @@ export default function POSCheckoutTerminal({
         catalogViewportRef,
         checkoutBlockedReason,
         checkoutConfirmModalOpen,
+        checkoutOpenedFromCurrentSale,
         checkoutDiscountLabel,
         checkoutGridClassName,
         checkoutLoading,
@@ -1343,6 +1378,7 @@ export default function POSCheckoutTerminal({
         historyOrderMethod,
         historyOrderSource,
         historyPage,
+        historyPageSize,
         historyPaymentType,
         historySearch,
         historyStatus,
@@ -1356,7 +1392,9 @@ export default function POSCheckoutTerminal({
         isOrderPrinterAvailable,
         isPrinterAvailable,
         isTabletViewport,
+        isTabletPortraitViewport,
         isMobileViewport,
+        isMobileLandscapeViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
         itemOptionsLine,
@@ -1446,6 +1484,7 @@ export default function POSCheckoutTerminal({
         setHistoryCashierName,
         setHistoryDateFrom,
         setHistoryDateTo,
+        setHistoryPageSize,
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
@@ -1480,6 +1519,7 @@ export default function POSCheckoutTerminal({
         setupMeta,
         setupSnapshotModalOpen,
         shellClassName,
+        sidebarCollapsed,
         showDiscountPin,
         splitPaymentCancelLoading,
         splitPaymentCancelModalOpen,

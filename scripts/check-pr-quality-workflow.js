@@ -89,8 +89,82 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const REQUIRED_PR_CHECKS_MARKERS = [
   'RUNNER_HEAVY_JSON: *runner_heavy',
   'route-build-checks:',
-  'release/*|hotfix/*'
+  'release/*|hotfix/*',
+  // #1748: the three develop-PR lint caller jobs -- one explicit job per frontend app, each
+  // passing its own `app:` input to pr-frontend-lint-checks.yml. Job-name markers alone can't
+  // prove the app mapping is right (the build-check jobs carry the same `app:` values), so
+  // checkDevelopPrLintJobMapping below asserts the per-block mapping structurally; these markers
+  // are the cheap "job silently removed or renamed" tripwire on top of it.
+  'frontend-ims-lint-check',
+  'frontend-pos-lint-check',
+  'frontend-storefront-lint-check'
 ];
+
+/**
+ * #1748: guards the develop-PR lint app-to-check mapping in pr-checks.yml. Each of the three
+ * `frontend-*-lint-check` jobs must call the shared `pr-frontend-lint-checks.yml` reusable
+ * workflow with its own `app:` input, gate on its own `changes.outputs.frontend_*` output, ride
+ * the light-runner routing, and stay blocking (no `continue-on-error` -- contrast
+ * promotion-quality-gate.yml's #1063 advisory regime, which must never leak into these jobs).
+ *
+ * @param {string} prChecksText contents of .github/workflows/pr-checks.yml
+ * @returns {string[]} human-readable problems found; empty when all three mappings are intact
+ */
+const DEVELOP_PR_LINT_JOB_BY_APP = Object.freeze({
+  'dgfy-ims': { job: 'frontend-ims-lint-check', changedOutput: 'frontend_ims' },
+  'dgfy-pos': { job: 'frontend-pos-lint-check', changedOutput: 'frontend_pos' },
+  'dgfy-storefront': { job: 'frontend-storefront-lint-check', changedOutput: 'frontend_storefront' }
+});
+
+function checkDevelopPrLintJobMapping(prChecksText) {
+  const problems = [];
+  for (const [app, { job, changedOutput }] of Object.entries(DEVELOP_PR_LINT_JOB_BY_APP)) {
+    const blockMatch = prChecksText.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `pr-checks.yml: could not find the "${job}:" job block -- was it renamed or removed? ` +
+        'checkDevelopPrLintJobMapping needs updating to match.'
+      );
+      continue;
+    }
+    const block = blockMatch[1];
+    if (!block.includes('uses: ./.github/workflows/pr-frontend-lint-checks.yml')) {
+      problems.push(
+        `pr-checks.yml: "${job}" must call \`uses: ./.github/workflows/pr-frontend-lint-checks.yml\` ` +
+        '-- the shared lint workflow, not a build check or an inline step.'
+      );
+    }
+    const appLines = block.match(/^ {6}app:.*$/gm) || [];
+    if (appLines.length !== 1 || appLines[0].trim() !== `app: ${app}`) {
+      problems.push(
+        `pr-checks.yml: "${job}" must pass exactly \`app: ${app}\` (found: ` +
+        `${appLines.length === 0 ? 'none' : appLines.map((l) => `\`${l.trim()}\``).join(', ')}) ` +
+        '-- the app-to-check mapping must not silently drift.'
+      );
+    }
+    if (!block.includes(`needs.changes.outputs.${changedOutput} == 'true'`)) {
+      problems.push(
+        `pr-checks.yml: "${job}" must gate on \`needs.changes.outputs.${changedOutput} == 'true'\` ` +
+        '-- each lint caller runs only behind its own app\'s changed-path output.'
+      );
+    }
+    if (!block.includes('needs.route-build-checks.outputs.light')) {
+      problems.push(
+        `pr-checks.yml: "${job}" must ride the light-runner routing ` +
+        '(`needs.route-build-checks.outputs.light`) -- lint has no build cost.'
+      );
+    }
+    if (/continue-on-error/.test(block)) {
+      problems.push(
+        `pr-checks.yml: "${job}" must stay blocking (no \`continue-on-error\`) -- a lint failure ` +
+        'there must redden the check, unlike promotion-quality-gate.yml\'s #1063 advisory jobs.'
+      );
+    }
+  }
+  return problems;
+}
 const REQUIRED_QUALITY_MARKERS = [
   'workflow_call:',
   // #1018: the promotion-detection gate job, and its two head-prefix literals -- see
@@ -641,6 +715,125 @@ function checkStepLevelAdvisory(qualityWorkflowText) {
 }
 
 /**
+ * #1557: BLOCKING_STEP_IDS (this file, keyed by step id) and the reporter's BLOCKING_STEP_NAMES
+ * (promotion-quality-gate.yml's `report-advisory-failures` embedded script, keyed by step name)
+ * name the same "blocking" set for two different consumers with no shared source at runtime --
+ * the workflow's own comment above the Set says so outright. A drift is silent and
+ * low-visibility: the step still reds out the job (enforcement is unaffected), but the automated
+ * #1124 comment mislabels a real blocking failure as `advisory`.
+ *
+ * Derives the expected name set id -> STEP_OUTCOMES label (what `real_failures` actually
+ * contains), not id -> step `name:` -- the two can differ (e.g. `Clear stale sparse-checkout
+ * state (workspace-hygiene v1)` vs label `Clear stale sparse-checkout state`). Both directions
+ * fail: a blocking label missing from the Set (mislabeled `advisory`), and a Set entry with no
+ * blocking id behind it (stale name after a rename/removal -- silently classifies nothing). A
+ * blocking id with no STEP_OUTCOMES row is the same class of problem (its failure could never
+ * be labeled at all).
+ *
+ * @param {string} qualityWorkflowText contents of .github/workflows/promotion-quality-gate.yml
+ * @returns {string[]} human-readable problems found; empty when the two lists agree
+ */
+function checkBlockingStepNamesInSync(qualityWorkflowText) {
+  const problems = [];
+
+  const reporterMatch = qualityWorkflowText.match(
+    new RegExp(`\\n  ${REPORTER_JOB_NAME}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+  );
+  if (!reporterMatch) {
+    problems.push(
+      `promotion-quality-gate.yml: could not find the "${REPORTER_JOB_NAME}:" job block -- was it ` +
+      'renamed or restructured? checkBlockingStepNamesInSync needs updating to match.'
+    );
+    return problems;
+  }
+  const reporterBlock = reporterMatch[1];
+  const setMatch = reporterBlock.match(/const BLOCKING_STEP_NAMES = new Set\(\[([\s\S]*?)\]\)/);
+  if (!setMatch) {
+    problems.push(
+      `promotion-quality-gate.yml: "${REPORTER_JOB_NAME}" has no ` +
+      '`const BLOCKING_STEP_NAMES = new Set([...])` literal -- was the reporter restructured? ' +
+      'checkBlockingStepNamesInSync needs updating to match.'
+    );
+    return problems;
+  }
+  // Strip `//` comment lines before matching string literals -- comments deliberately quote
+  // excluded names (e.g. `Run full dependency audit`) and must not count as Set entries.
+  const setBody = setMatch[1]
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+  const reporterNames = [...setBody.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const reporterSet = new Set(reporterNames);
+
+  const expectedLabels = new Map();
+  for (const [job, ids] of Object.entries(BLOCKING_STEP_IDS)) {
+    const blockMatch = qualityWorkflowText.match(
+      new RegExp(`\\n  ${job}:\\n([\\s\\S]*?)(?=\\n  [a-zA-Z][\\w-]*:\\n|$)`)
+    );
+    if (!blockMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: could not find the "${job}:" job block -- was it renamed or ` +
+        'restructured? checkBlockingStepNamesInSync needs updating to match.'
+      );
+      continue;
+    }
+    const stepsIndex = blockMatch[1].indexOf('\n    steps:\n');
+    if (stepsIndex === -1) {
+      problems.push(`promotion-quality-gate.yml: "${job}" has no \`steps:\` block -- was it restructured?`);
+      continue;
+    }
+    const stepsBlock = blockMatch[1].slice(stepsIndex);
+    const stepOutcomesMatch = stepsBlock.match(/STEP_OUTCOMES: \|\n([\s\S]*?)\n {8}run: \|/);
+    if (!stepOutcomesMatch) {
+      problems.push(
+        `promotion-quality-gate.yml: "${job}" has no \`STEP_OUTCOMES: |\` block on its ` +
+        'record_outcomes step -- checkBlockingStepNamesInSync needs updating to match, or the ' +
+        'step was restructured.'
+      );
+      continue;
+    }
+    const labelById = new Map();
+    for (const m of stepOutcomesMatch[1].matchAll(/^\s*(.+?)\|\$\{\{\s*steps\.([A-Za-z0-9_]+)\.outcome\s*\}\}\s*$/gm)) {
+      labelById.set(m[2], m[1].trim());
+    }
+    for (const id of ids) {
+      if (!labelById.has(id)) {
+        problems.push(
+          `promotion-quality-gate.yml: "${job}"'s "${id}" step is listed in BLOCKING_STEP_IDS ` +
+          'but has no STEP_OUTCOMES row -- a failure there could never reach the ' +
+          `"${REPORTER_JOB_NAME}" comment labeled at all, blocking or otherwise.`
+        );
+        continue;
+      }
+      const label = labelById.get(id);
+      if (!expectedLabels.has(label)) {
+        expectedLabels.set(label, { job, id });
+      }
+    }
+  }
+
+  for (const [label, { job, id }] of expectedLabels) {
+    if (!reporterSet.has(label)) {
+      problems.push(
+        `promotion-quality-gate.yml: "${job}"'s "${id}" step (label "${label}") is blocking per ` +
+        'BLOCKING_STEP_IDS but missing from BLOCKING_STEP_NAMES -- a real failure there reds the ' +
+        'job while the #1124 comment mislabels it `advisory` (#1557).'
+      );
+    }
+  }
+  for (const name of reporterSet) {
+    if (!expectedLabels.has(name)) {
+      problems.push(
+        `promotion-quality-gate.yml: BLOCKING_STEP_NAMES has "${name}" but no BLOCKING_STEP_IDS ` +
+        'entry maps to it via STEP_OUTCOMES -- stale name after a rename/removal, silently ' +
+        'classifies nothing (#1557).'
+      );
+    }
+  }
+  return problems;
+}
+
+/**
  * RF-4 (2026-08-26, pr-reviewer second round, PR #1068 should-fix): checkStepLevelAdvisory above
  * only ever compares *counts* -- a job with N steps and N step-level continue-on-error lines passes
  * even if one step's id was dropped, or STEP_OUTCOMES lists the wrong id, or
@@ -981,9 +1174,11 @@ function checkPrQualityWorkflow({ prChecksText, complianceScriptText, qualityWor
     ...REQUIRED_QUALITY_MARKERS.filter((marker) => !qualityWorkflowText.includes(marker)).map((marker) => `promotion-quality-gate.yml:${marker}`),
     ...checkPromotionPrefixSync(complianceScriptText, qualityWorkflowText),
     ...checkRunnerCacheConsistency(prChecksText),
+    ...checkDevelopPrLintJobMapping(prChecksText),
     ...checkStagingLegSkipShape(qualityWorkflowText),
     ...checkBackendMatrixResourceGuards(qualityWorkflowText),
     ...checkStepLevelAdvisory(qualityWorkflowText),
+    ...checkBlockingStepNamesInSync(qualityWorkflowText),
     ...checkAdvisoryFailureReportingShape(qualityWorkflowText),
     ...checkReporterHasNoShellBinaryDependency(qualityWorkflowText),
     ...checkReportingJobsRespectStagingLeg(qualityWorkflowText),
@@ -1019,9 +1214,12 @@ module.exports = {
   checkPrQualityWorkflow,
   checkPromotionPrefixSync,
   checkRunnerCacheConsistency,
+  checkDevelopPrLintJobMapping,
+  DEVELOP_PR_LINT_JOB_BY_APP,
   checkStagingLegSkipShape,
   checkBackendMatrixResourceGuards,
   checkStepLevelAdvisory,
+  checkBlockingStepNamesInSync,
   checkAdvisoryFailureReportingShape,
   checkReporterHasNoShellBinaryDependency,
   checkReportingJobsRespectStagingLeg,

@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Phone, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   FULFILLMENT_STATUS_LABELS,
@@ -210,7 +211,9 @@ function OnlineOrderHistoryPanel({
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
   locked,
-  isOnline = true
+  isOnline = true,
+  orderHistoryPageSize = 20,
+  setOrderHistoryPageSize = () => {}
 }) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [fulfillmentStatus, setFulfillmentStatus] = React.useState('');
@@ -223,16 +226,17 @@ function OnlineOrderHistoryPanel({
   const currentPage = Number(orderHistoryState?.pagination?.page) > 0
     ? Number(orderHistoryState.pagination.page)
     : page;
-  const totalPages = Math.max(1, Number(orderHistoryState?.pagination?.totalPages) || 1);
+  const totalPages = Math.max(1, Number(orderHistoryState?.pagination?.totalPages || orderHistoryState?.pagination?.total_pages) || 1);
 
-  const loadPage = (nextPage) => {
+  const loadPage = (nextPage, nextPageSize = orderHistoryPageSize) => {
     const normalizedPage = Math.min(totalPages, Math.max(1, Number(nextPage) || 1));
     setPage(normalizedPage);
     refreshOrderHistory?.({
       search: searchTerm,
       fulfillmentStatus,
       paymentStatus,
-      page: normalizedPage
+      page: normalizedPage,
+      limit: nextPageSize
     });
   };
 
@@ -389,36 +393,24 @@ function OnlineOrderHistoryPanel({
             </tbody>
           </table>
           {Number.isFinite(historyTotal) ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
-              <p className="text-xs text-slate-500">
-                Showing {historyOrders.length} of {historyTotal} exception order{historyTotal === 1 ? '' : 's'}.
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={orderHistoryState?.loading || currentPage <= 1}
-                  onClick={() => loadPage(currentPage - 1)}
-                  aria-label="Previous order history page"
-                >
-                  Previous
-                </Button>
-                <span className="min-w-24 text-center text-xs font-bold tabular-nums text-slate-600" aria-live="polite">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={orderHistoryState?.loading || currentPage >= totalPages}
-                  onClick={() => loadPage(currentPage + 1)}
-                  aria-label="Next order history page"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
+            <GlobalPagination
+              testId="online-order-history-pagination"
+              ariaLabel="Online order history pagination"
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={historyTotal}
+              pageSize={orderHistoryPageSize}
+              pageSizeOptions={[20, 40, 60]}
+              itemLabel="orders"
+              loading={orderHistoryState?.loading}
+              onPageChange={(nextPage) => loadPage(nextPage)}
+              onPageSizeChange={(nextPageSize) => {
+                if (!Number.isInteger(nextPageSize) || nextPageSize <= 0) return;
+                setPage(1);
+                setOrderHistoryPageSize(nextPageSize);
+              }}
+              className="rounded-none border-0 border-t border-slate-100 px-4 py-3 shadow-none"
+            />
           ) : null}
         </div>
       )}
@@ -530,6 +522,7 @@ function IncomingQueueWorkspace({
   workflowMode = '',
   ensureDeliveryPersonnelLoaded = () => {}
 }) {
+  const [orderHistoryPageSize, setOrderHistoryPageSize] = React.useState(20);
   const [orderSort, setOrderSort] = React.useState('newest');
   const [activeView, setActiveView] = React.useState('active');
   // Phase 230 (#1288): Active Queue view-mode toggle (card/table). Initialized lazily from
@@ -852,8 +845,8 @@ function IncomingQueueWorkspace({
 
   React.useEffect(() => {
     if (activeView !== 'history') return;
-    refreshOrderHistory?.();
-  }, [activeView, refreshOrderHistory]);
+    refreshOrderHistory?.({ page: 1, limit: orderHistoryPageSize });
+  }, [activeView, orderHistoryPageSize, refreshOrderHistory]);
 
   // Phase 226 (#1273): WORKFLOW_MODE_CHANGED_EVENT can flip the mode while this tab is open --
   // a stale activeView === 'runs' must never render the panel once delivery-run mode is off. Belt
@@ -895,6 +888,8 @@ function IncomingQueueWorkspace({
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           locked={locked}
           isOnline={isOnline}
+          orderHistoryPageSize={orderHistoryPageSize}
+          setOrderHistoryPageSize={setOrderHistoryPageSize}
         />
       </div>
     );

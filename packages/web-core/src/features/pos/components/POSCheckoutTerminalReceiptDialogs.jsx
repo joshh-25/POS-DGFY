@@ -173,8 +173,8 @@ export function POSCheckoutTerminalReceiptDialogs({
                     closeReceiptPreviewModal();
                 }
             }}>
-                <DialogContent className={`pos-receipt-print-dialog flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:max-h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
-                    receiptPreviewSource === 'order_preview' ? 'max-w-3xl bg-white' : 'max-w-xl bg-slate-50'
+                <DialogContent className={`pos-receipt-print-dialog flex h-auto max-h-[calc(100dvh-1.5rem)] w-[calc(100vw-1.5rem)] max-w-xl flex-col overflow-hidden rounded-xl border border-slate-200 p-0 shadow-2xl shadow-slate-950/25 sm:max-h-[calc(100dvh-3rem)] sm:w-full print:h-auto print:max-h-none print:max-w-none print:rounded-none print:border-none print:shadow-none ${
+                    receiptPreviewSource === 'order_preview' ? 'bg-white' : 'bg-slate-50'
                 }`}>
                     <DialogHeader className="relative border-b border-slate-200 bg-white px-5 py-3.5 print:hidden">
                         <div className="flex items-center gap-3">
@@ -255,9 +255,9 @@ export function POSCheckoutTerminalReceiptDialogs({
                             </div>
                         )}
                     </div>
-                    <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3 print:hidden">
+                    <DialogFooter className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-5 py-3 print:hidden sm:flex-nowrap">
                         {receiptPreviewSource !== 'order_preview' && (
-                            <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+                            <label className="flex shrink-0 items-center gap-2 text-xs font-extrabold text-slate-700">
                                 Paper
                                 <select
                                     value={receiptPaperWidth}
@@ -270,7 +270,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                                 </select>
                             </label>
                         )}
-                        <div className="ml-auto flex items-center gap-2">
+                        <div className="ml-auto flex min-w-0 w-full items-center gap-2 sm:max-w-none">
                             {lastReceipt && (
                                 <Button
                                     type="button"
@@ -278,7 +278,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                                     onClick={() => setReceiptPreviewSource(
                                         receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'
                                     )}
-                                    className="h-9 rounded-lg border border-[#1A4E8D] bg-white px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50"
+                                    className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-lg border border-[#1A4E8D] bg-white px-2 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 sm:px-3 sm:text-xs"
                                 >
                                     {receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}
                                 </Button>
@@ -288,7 +288,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                                 disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
                                 title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                                 onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
-                                className="h-9 rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-lg bg-[#1A4E8D] px-2 text-[11px] font-extrabold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:text-xs"
                             >
                                 {receiptPrinting ? 'Printing...' : 'Print'}
                             </Button>
@@ -299,9 +299,9 @@ export function POSCheckoutTerminalReceiptDialogs({
                                 disabled={posActionsBlocked || !lastReceipt || !isOrderPrinterAvailable}
                                 title={isOrderPrinterAvailable ? undefined : 'No order-ticket printer detected on this device.'}
                                 onClick={() => handlePrintOrder(lastReceipt)}
-                                className="h-9 rounded-lg border border-[#1A4E8D] bg-white px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="h-10 min-w-0 flex-1 whitespace-nowrap rounded-lg border border-[#1A4E8D] bg-white px-2 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60 sm:px-3 sm:text-xs"
                             >
-                                <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                                <Printer className="mr-1 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                                 Print Order
                             </Button>
                         </div>

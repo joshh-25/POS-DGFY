@@ -1307,8 +1307,8 @@ export const buildListPublicDgfyCustomerReviewsUseCase = ({ repository = dgfyCus
         const itemId = parsePositiveInt(query.item_id);
         const targetType = String(query.target_type || '').trim().toLowerCase() || null;
         const targetId = parsePositiveInt(query.target_id);
-        if (!tenantId || (!itemId && !(targetType && targetId))) {
-            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id and item_id or explicit target_type/target_id are required.', { statusCode: 422 });
+        if (!tenantId) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'tenant_id is required.', { statusCode: 422 });
         }
         const result = await repository.listPublicReviews({
             tenantId: tenantId || null,

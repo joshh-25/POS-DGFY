@@ -4,9 +4,6 @@ import { createPortal } from 'react-dom';
 import {
     AlertCircle,
     CarTaxiFront,
-    ChevronDown,
-    ChevronLeft,
-    ChevronRight,
     Delete,
     Folder,
     Minus,
@@ -22,6 +19,7 @@ import {
     LayoutGrid
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
 import {
     Dialog,
     DialogContent,
@@ -60,159 +58,17 @@ const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransac
 const POSDiscountWorkspace = lazyWithChunkRetry(() => import('./POSDiscountWorkspace.jsx'));
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false }) => {
+const CatalogItemBadges = ({ isServiceItem = false, isAlwaysAvailable = false, isBestSeller = false, overlay = false, tabletPortrait = false }) => {
     if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
     const sharedClassName = overlay ? 'border-slate-950/20 bg-[#0F274D] text-white' : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
     const bestSellerClassName = overlay ? 'border-orange-600/20 bg-[#F97316] text-white' : 'border-amber-200 bg-amber-50 text-amber-700';
     return (
         <div data-pos-catalog-badges="true" className="flex min-w-0 flex-col items-start gap-1">
-            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${sharedClassName}`}>Service</span>}
-            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${sharedClassName}`}>Always available</span>}
-            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide ${bestSellerClassName}`}>Best seller</span>}
+            {isServiceItem && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${sharedClassName}`}>Service</span>}
+            {isAlwaysAvailable && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${sharedClassName}`}>Always available</span>}
+            {isBestSeller && <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-extrabold uppercase leading-tight tracking-wide sm:text-[9px] ${tabletPortrait ? 'whitespace-nowrap' : ''} ${bestSellerClassName}`}>Best seller</span>}
         </div>
     );
-};
-
-const CatalogPageSizeControl = React.memo(({ value = null, options = [], onChange = () => {}, showPageSuffix = false }) => {
-    const [open, setOpen] = React.useState(false);
-    const controlRef = React.useRef(null);
-    const selectedValue = value ?? 'auto';
-    const selectedLabel = selectedValue === 'auto' ? 'Auto' : String(selectedValue);
-
-    React.useEffect(() => {
-        if (!open) return undefined;
-
-        const handleOutsidePointerDown = (event) => {
-            if (!controlRef.current?.contains(event.target)) setOpen(false);
-        };
-        const handleEscape = (event) => {
-            if (event.key === 'Escape') setOpen(false);
-        };
-
-        document.addEventListener('pointerdown', handleOutsidePointerDown);
-        document.addEventListener('keydown', handleEscape);
-        return () => {
-            document.removeEventListener('pointerdown', handleOutsidePointerDown);
-            document.removeEventListener('keydown', handleEscape);
-        };
-    }, [open]);
-
-    const choosePageSize = (nextValue) => {
-        onChange(nextValue);
-        setOpen(false);
-    };
-
-    return (
-        <div ref={controlRef} className="relative z-20">
-            <button
-                type="button"
-                onClick={() => setOpen((current) => !current)}
-                aria-label={`Products per page, currently ${selectedLabel}`}
-                aria-haspopup="listbox"
-                aria-expanded={open}
-                className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 text-[11px] font-medium leading-none text-slate-900 outline-none transition hover:border-slate-400 hover:bg-white hover:text-slate-900 focus-visible:ring-slate-300 ${showPageSuffix ? 'min-w-[6.25rem]' : 'min-w-[4.25rem]'}`}
-            >
-                <span>{selectedLabel}</span>
-                {showPageSuffix && <span className="text-slate-500">/ page</span>}
-                <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
-            </button>
-            {open && (
-                <div
-                    role="listbox"
-                    aria-label="Products per page options"
-                    className="absolute bottom-[calc(100%+0.25rem)] right-0 min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-xl shadow-slate-950/15"
-                >
-                    <button
-                        type="button"
-                        role="option"
-                        aria-selected={selectedValue === 'auto'}
-                        onClick={() => choosePageSize('auto')}
-                        className={`flex h-7 w-full items-center justify-center rounded-md px-2 text-center text-[11px] font-medium leading-none transition ${selectedValue === 'auto' ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-blue-50'}`}
-                    >
-                        Auto
-                    </button>
-                    {options.map((pageSize) => (
-                        <button
-                            key={pageSize}
-                            type="button"
-                            role="option"
-                            aria-selected={selectedValue === pageSize}
-                            onClick={() => choosePageSize(pageSize)}
-                            className={`flex h-7 w-full items-center justify-center rounded-md px-2 text-center text-[11px] font-medium leading-none transition ${selectedValue === pageSize ? 'bg-blue-600 text-white' : 'text-slate-800 hover:bg-blue-50'}`}
-                        >
-                            {pageSize}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-});
-CatalogPageSizeControl.displayName = 'CatalogPageSizeControl';
-
-const CatalogPageJumpControl = React.memo(({ currentPage = 1, totalPages = 1, onChange = () => {}, hideLabels = false }) => {
-    const [inputValue, setInputValue] = React.useState(String(currentPage));
-    const safeTotalPages = Math.max(1, Number(totalPages) || 1);
-
-    React.useEffect(() => {
-        setInputValue(String(currentPage));
-    }, [currentPage]);
-
-    const commitPageJump = () => {
-        const requestedPage = Number.parseInt(inputValue, 10);
-        if (!Number.isFinite(requestedPage)) {
-            setInputValue(String(currentPage));
-            return;
-        }
-
-        const nextPage = Math.min(safeTotalPages, Math.max(1, requestedPage));
-        setInputValue(String(nextPage));
-        onChange(nextPage);
-    };
-
-    return (
-        <form
-            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-700"
-            onSubmit={(event) => {
-                event.preventDefault();
-                commitPageJump();
-            }}
-            onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) commitPageJump();
-            }}
-        >
-            {!hideLabels && <label htmlFor="pos-catalog-page-jump" className="whitespace-nowrap">Go to</label>}
-            <input
-                id="pos-catalog-page-jump"
-                type="text"
-                inputMode="numeric"
-                 pattern="[0-9]*"
-                 value={inputValue}
-                 onChange={(event) => setInputValue(event.target.value.replace(/[^0-9]/g, ''))}
-                 aria-label="Go to catalog page"
-                className="h-8 w-14 rounded-lg border border-slate-300 bg-white px-2 text-center text-[11px] font-semibold text-slate-900 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
-            />
-            {!hideLabels && <span className="whitespace-nowrap">Page</span>}
-        </form>
-    );
-});
-CatalogPageJumpControl.displayName = 'CatalogPageJumpControl';
-
-const getCatalogPageNumbers = (currentPage, totalPages) => {
-    const safeTotalPages = Math.max(1, Number(totalPages) || 1);
-    const safeCurrentPage = Math.min(
-        safeTotalPages,
-        Math.max(1, Number(currentPage) || 1)
-    );
-    const maxVisiblePages = 5;
-    const lastVisibleStart = Math.max(1, safeTotalPages - maxVisiblePages + 1);
-    const startPage = Math.min(
-        Math.max(1, safeCurrentPage - Math.floor(maxVisiblePages / 2)),
-        lastVisibleStart
-    );
-    const endPage = Math.min(safeTotalPages, startPage + maxVisiblePages - 1);
-
-    return Array.from({ length: endPage - startPage + 1 }, (_, index) => startPage + index);
 };
 
 const PosImagelessCatalogName = React.memo(({ name = '' }) => {
@@ -295,7 +151,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogLoading,
         catalogPage,
         catalogPageSize,
-        catalogPageSizeOverride,
         catalogPageSizeOptions,
         catalogPaneHeightClassName,
         catalogRefreshing,
@@ -305,6 +160,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         catalogViewportClassName,
         catalogViewportRef,
         checkoutBlockedReason,
+        checkoutOpenedFromCurrentSale,
         checkoutGridClassName,
         checkoutLoading,
         checkoutPaneClassName,
@@ -318,6 +174,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         currentSaleItemsListClassName,
         currentSalePaneHeightClassName,
         currentViewMode,
+        sidebarCollapsed,
         handleClearSaleDialogOpenChange,
         pendingViewModeAfterSaleClear,
         discountModalOpen,
@@ -373,6 +230,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historyOrderMethod,
         historyOrderSource,
         historyPage,
+        historyPageSize,
         historyPaymentType,
         historySearch,
         historyStatus,
@@ -383,10 +241,12 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         employeeCreditLookupLoading,
         handleSelectEmployeeCredit,
         isEmployeeCreditPayment,
+        isMobileLandscapeViewport,
         isMobileViewport,
         isMsmeMode,
         isOrderPrinterAvailable,
         isPrinterAvailable,
+        isTabletPortraitViewport,
         isTabletViewport,
         itemDiscountTotals,
         itemOptionsGlobalDiscount,
@@ -420,6 +280,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         posFoldersLoading,
         posHardware,
         posPresentationBundle,
+        posWorkflow,
         qtyMeterState,
         quantityInputValue,
         queuedCheckoutBlockedCount,
@@ -455,6 +316,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         setHistoryCashierName,
         setHistoryDateFrom,
         setHistoryDateTo,
+        setHistoryPageSize,
         setHistoryOrderMethod,
         setHistoryOrderSource,
         setHistoryPaymentType,
@@ -508,20 +370,23 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         });
         return quantities;
     }, [safeCart]);
-    const catalogPageNumbers = getCatalogPageNumbers(catalogPage, totalCatalogPages);
-    const hasManyCatalogPages = totalCatalogPages > 5;
-    const isCompactTabletCatalogPagination = IS_DGFY_POS_SURFACE && isTabletViewport;
-    const drawerDialogButtonClassName = isCompactTabletCatalogPagination
+    const drawerDialogButtonClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'min-h-11 w-full min-w-0 whitespace-nowrap px-3 sm:w-auto sm:flex-1'
         : '';
     const handleCloseDiscountModal = () => {
         closeDiscountModal();
     };
     const cashDrawerAvailable = posHardware?.supportsCapability?.(POS_HARDWARE_CAPABILITIES.OPEN_DRAWER) === true;
+    const isTabletPortraitMobileLayout = isTabletPortraitViewport;
 
 
 return (
-        <div className={modalOnly ? 'hidden' : shellClassName} aria-hidden={modalOnly ? 'true' : undefined}>
+        <div
+            className={modalOnly ? 'hidden' : shellClassName}
+            data-pos-mobile-landscape={isMobileLandscapeViewport ? 'true' : undefined}
+            data-pos-tablet-portrait={isTabletPortraitMobileLayout ? 'true' : undefined}
+            aria-hidden={modalOnly ? 'true' : undefined}
+        >
             {currentViewMode === 'checkout'
                 && !sessionLocked
                 && posPresentationBundle.currentSaleActions.showParkedSaleControls
@@ -546,12 +411,12 @@ return (
                     currentViewMode === 'checkout'
                         ? 'contents'
                         : (currentViewMode === 'history'
-                            ? 'flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5'
+                            ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-5 sm:pb-0 max-sm:p-2 max-sm:pb-0'
                             : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5')
                 }
             >
             {currentViewMode === 'history' && (
-                <div key="view-history" className="catalog-slide-enter h-full min-h-0 max-sm:animate-pos-slide-in">
+                <div key="view-history" className="catalog-slide-enter h-full min-h-0 min-w-0 max-w-full max-sm:animate-pos-slide-in">
                 <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
@@ -586,6 +451,8 @@ return (
                         onSubmitRefundWorkflow={submitHistoryRefundWorkflow}
                         loadHistory={loadHistory}
                         historyPage={historyPage}
+                        historyPageSize={historyPageSize}
+                        setHistoryPageSize={setHistoryPageSize}
                         historyPagination={visibleHistoryPagination}
                         pendingSyncCount={queuedCheckoutPendingCount}
                         pendingSyncBlockedCount={queuedCheckoutBlockedCount}
@@ -594,8 +461,11 @@ return (
                         syncDisabled={sessionLocked || Boolean(checkoutBlockedReason) || manualSyncPolicy?.remaining <= 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)}
                         syncRemaining={manualSyncPolicy?.remaining}
                         syncResetAt={manualSyncPolicy?.resetAt}
-                        universalPendingSyncCount={universalPendingSyncCount}
-                    />
+                         universalPendingSyncCount={universalPendingSyncCount}
+                         sidebarCollapsed={sidebarCollapsed}
+                         posWorkflow={posWorkflow}
+                         isMobileViewport={isMobileViewport}
+                     />
                 </Suspense>
                 </div>
             )}
@@ -604,14 +474,14 @@ return (
                 <div key="view-checkout" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-6 sm:pb-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:rounded-none max-sm:border-0 max-sm:p-2 max-sm:shadow-none' : ''} ${catalogPaneHeightClassName} flex min-h-0 flex-col overflow-hidden`}>
-                    {isTabletViewport && renderViewModeControls()}
+            <section ref={catalogSectionRef} className={`pos-catalog-pane ${isTabletPortraitMobileLayout ? 'rounded-none border-0 bg-white p-2 pb-0 shadow-none' : isTabletViewport ? 'rounded-xl border border-slate-200 bg-white p-3 pb-0 shadow-sm shadow-slate-200/70' : 'rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-6 sm:pb-0'} ${IS_DGFY_POS_SURFACE ? 'max-sm:rounded-none max-sm:border-0 max-sm:p-2 max-sm:shadow-none' : ''} ${catalogPaneHeightClassName} flex min-h-0 flex-col overflow-hidden`}>
+                    {isTabletViewport && !isTabletPortraitMobileLayout && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
-                <div data-testid="pos-catalog-controls" className={`${isTabletViewport ? 'mb-4 max-sm:mb-[18px] sm:mb-6 gap-2.5' : 'mb-4 max-sm:mb-[18px] sm:mb-6 gap-4'} flex min-w-0 shrink-0 flex-col max-sm:pt-[10px] ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
-                    <div className={`${isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative max-sm:gap-2.5`}>
+                <div data-testid="pos-catalog-controls" className={`${isTabletPortraitMobileLayout ? 'mb-3 gap-2.5' : isTabletViewport ? 'mb-3 gap-2.5' : 'mb-4 max-sm:mb-[18px] sm:mb-6 gap-4'} flex min-w-0 shrink-0 flex-col ${isTabletPortraitMobileLayout ? 'pt-2' : 'max-sm:pt-[10px]'} ${IS_DGFY_POS_SURFACE ? (isTabletViewport ? 'lg:flex-row lg:items-start' : 'xl:flex-row xl:items-start') : 'lg:flex-row lg:items-start'}`}>
+                    <div className={`${isTabletPortraitMobileLayout ? 'flex-wrap items-center' : isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 ${isTabletPortraitMobileLayout ? 'relative gap-2.5' : 'max-sm:relative max-sm:gap-2.5'}`}>
                         {/* Mobile: keep the search field visible by default. */}
                         {!isTabletViewport && (
-                            <div className="relative flex min-w-0 flex-1 items-center sm:hidden">
+                            <div className={`relative flex min-w-0 flex-1 items-center ${isTabletPortraitMobileLayout ? '' : 'sm:hidden'}`}>
                                 <Search size={16} className="pointer-events-none absolute left-3 text-[#1A4E8D]" />
                                 <input
                                     type="text"
@@ -637,7 +507,8 @@ return (
                             </div>
                         )}
                         {/* Desktop / tablet: original search label */}
-                        <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 max-sm:hidden">
+                        <label className={`${isTabletPortraitMobileLayout ? 'flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100' : isTabletViewport ? 'flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100' : 'flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100'} ${isTabletPortraitMobileLayout ? '' : 'max-sm:hidden'}`}
+                        >
                             <Search size={20} className="shrink-0 text-[#1A4E8D]" />
                             <span className="sr-only">Search POS-visible items</span>
                             <input
@@ -645,7 +516,7 @@ return (
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
                                 placeholder="Search POS-visible items..."
-                                className="h-auto min-w-0 w-full border-0 bg-transparent p-0 text-[13px] text-[#0F172A] shadow-none outline-none ring-0 placeholder:text-[#64748B] focus:outline-none focus:ring-0"
+                                    className="h-auto min-w-0 w-full border-0 bg-transparent p-0 text-[13px] text-[#0F172A] shadow-none outline-none ring-0 placeholder:text-[#64748B] focus:outline-none focus:ring-0"
                             />
                             <button
                                 type="button"
@@ -666,7 +537,7 @@ return (
                                     <button
                                         type="button"
                                         disabled
-                                        className="flex h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400"
+                                    className={`${isTabletPortraitMobileLayout ? 'flex h-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-bold text-slate-400' : 'flex h-10 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-[12px] font-bold text-slate-400'}`}
                                     >
                                         Scan
                                     </button>
@@ -676,7 +547,7 @@ return (
                                         selectedLocationId={selectedLocationId}
                                         terminalId={normalizedTerminalId}
                                         onAddToCart={addToCart}
-                                        className="w-auto"
+                                    className={isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'}
                                     />
                                 </Suspense>
                             </div>
@@ -688,10 +559,10 @@ return (
                                     disabled
                                         aria-label="Scan barcode"
                                         title="Scan barcode"
-                                        className="flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400 max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0 max-sm:gap-0 max-sm:px-0"
+                                        className={`${isTabletPortraitMobileLayout ? 'flex h-10 w-10 shrink-0 items-center justify-center gap-0 rounded-lg border border-slate-300 bg-white px-0 text-[13px] font-bold text-slate-400' : 'flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400 max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0 max-sm:gap-0 max-sm:px-0'}`}
                                     >
                                         <ScanLine className="hidden h-5 w-5 max-sm:block" />
-                                        <span className="max-sm:hidden">Scan</span>
+                                        <span className={isTabletPortraitMobileLayout ? 'hidden' : 'max-sm:hidden'}>Scan</span>
                                     </button>
                             )}>
                                 <POSBarcodeScanner
@@ -699,7 +570,7 @@ return (
                                     selectedLocationId={selectedLocationId}
                                     terminalId={normalizedTerminalId}
                                     onAddToCart={addToCart}
-                                    className="max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0"
+                                    className={isTabletPortraitMobileLayout ? 'h-10 w-10 flex-none min-w-0' : 'max-sm:h-10 max-sm:w-10 max-sm:flex-none max-sm:min-w-0'}
                                 />
                             </Suspense>
                             </>
@@ -708,7 +579,7 @@ return (
                 </div>
                 <div
                     ref={folderStripRef}
-                    className="mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-1 dgfy-pos-scrollbar-hidden"
+                    className={`${isTabletViewport && !isTabletPortraitMobileLayout ? 'mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-0.5 dgfy-pos-scrollbar-hidden' : 'mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-1 dgfy-pos-scrollbar-hidden'}`}
                     onPointerDown={handleFolderStripPointerDown}
                     onPointerMove={handleFolderStripPointerMove}
                     onPointerUp={handleFolderStripPointerEnd}
@@ -767,7 +638,7 @@ return (
                 <div
                     ref={catalogCapacityViewportRef}
                     data-testid="pos-catalog-scroll"
-                    className="dgfy-pos-scroll-region dgfy-pos-catalog-scroll relative mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pt-4 pb-1 max-sm:pt-[18px] sm:pt-6 touch-pan-y select-none"
+                    className={`dgfy-pos-scroll-region dgfy-pos-catalog-scroll relative mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 ${isTabletPortraitMobileLayout ? 'pt-3' : isTabletViewport ? 'pt-4' : 'pt-4 max-sm:pt-[18px] sm:pt-6'} pb-1 touch-pan-y select-none`}
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -834,15 +705,23 @@ return (
                                 : resolvedImageSources;
                             const { src: posImageSrc } = imageSources;
                             const hasImage = Boolean(posImageSrc);
-                            const catalogCardMediaClassName = `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'}`;
-                            const catalogCardImageFrameClassName = `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
+                            const catalogCardMediaClassName = isTabletPortraitMobileLayout
+                                ? `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} h-full min-h-0 w-[144px] min-w-0 flex-none shrink-0 self-stretch`
+                                : `${IS_DGFY_POS_SURFACE ? 'mb-0' : 'mb-1'} ${IS_DGFY_POS_SURFACE ? 'sm:flex sm:min-h-0' : ''} max-sm:mb-0 max-sm:h-full max-sm:min-h-0 ${IS_DGFY_POS_SURFACE ? 'max-sm:w-[128px]' : 'max-sm:w-auto'} max-sm:min-w-0 max-sm:flex-none max-sm:shrink-0 max-sm:self-stretch ${IS_DGFY_POS_SURFACE ? '' : 'max-sm:aspect-square'}`;
+                            const catalogCardImageFrameClassName = isTabletPortraitMobileLayout
+                                ? `${catalogCardImageWrapClassName} relative box-border h-full w-full flex-none`
+                                : `${catalogCardImageWrapClassName} relative ${IS_DGFY_POS_SURFACE && !isTabletViewport ? '' : 'max-sm:aspect-square'} max-sm:box-border max-sm:h-full max-sm:w-full max-sm:flex-none`;
                             const cartQuantityForItem = cartQuantityByItemId.get(Number(item.item_id)) || 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
                             const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
                             const catalogCardCaptionClassName = !hasImage
                                 ? 'flex min-w-0 min-h-[2.5rem] flex-col items-start justify-center p-1 text-left text-[12px] leading-tight'
-                                : 'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight';
+                                : (isTabletPortraitMobileLayout
+                                    ? 'flex min-w-0 flex-col items-start gap-0 p-1 text-[11px] leading-tight'
+                                    : isTabletViewport
+                                    ? 'flex min-w-0 flex-col items-start gap-0 p-1 text-[12px] leading-tight'
+                                    : 'flex min-w-0 flex-col items-start gap-0.5 p-1 min-h-[2.5rem] text-[12px] leading-tight');
                             return (
                                 <div
                                     key={item.item_id}
@@ -875,14 +754,14 @@ return (
                                 >
                                 <div
                                     className={catalogCardMediaClassName}
-                                    style={IS_DGFY_POS_SURFACE && isMobileViewport && !isTabletViewport
-                                        ? { flex: '0 0 128px', width: '128px' }
+                                    style={IS_DGFY_POS_SURFACE && (isTabletPortraitMobileLayout || (isMobileViewport && !isTabletViewport && !isMobileLandscapeViewport))
+                                        ? { flex: `0 0 ${isTabletPortraitMobileLayout ? 144 : 128}px`, width: `${isTabletPortraitMobileLayout ? 144 : 128}px` }
                                         : undefined}
                                 >
                                     <div
                                         className={catalogCardImageFrameClassName}
-                                        style={IS_DGFY_POS_SURFACE && isMobileViewport && !isTabletViewport
-                                            ? { width: '128px', maxWidth: 'none', aspectRatio: 'auto' }
+                                        style={IS_DGFY_POS_SURFACE && (isTabletPortraitMobileLayout || (isMobileViewport && !isTabletViewport && !isMobileLandscapeViewport))
+                                        ? { width: `${isTabletPortraitMobileLayout ? 144 : 128}px`, maxWidth: 'none', aspectRatio: 'auto' }
                                             : undefined}
                                         aria-hidden="true"
                                     >
@@ -890,9 +769,9 @@ return (
                                             <PosItemImage
                                                 item={item}
                                                 alt={`${item.name} menu`}
-                                                loading={isMobileViewport || itemIndex < 4 ? 'eager' : 'lazy'}
+                                                loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}
                                                 decoding="async"
-                                                fetchpriority={isMobileViewport || itemIndex < 4 ? 'high' : 'auto'}
+                                                fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}
                                                 width={144}
                                                 height={144}
                                                 sizes="144px"
@@ -926,6 +805,7 @@ return (
                                                         isAlwaysAvailable={isAlwaysAvailable}
                                                         isBestSeller={isBestSeller}
                                                         overlay
+                                                        tabletPortrait={isTabletPortraitMobileLayout}
                                                     />
                                                 </div>
                                                 {!hasImage && (
@@ -1109,96 +989,29 @@ return (
                     </div>
                     <div
                         data-testid="pos-catalog-footer"
-                        className="relative z-10 mt-auto flex min-h-[56px] w-full shrink-0 items-center border-t border-slate-200 bg-white px-3 py-3 shadow-[0_-1px_0_rgba(148,163,184,0.14)] max-sm:min-h-0 max-sm:py-2"
+                        className="relative z-10 mt-auto w-full shrink-0 border-t border-slate-200 bg-white shadow-[0_-1px_0_rgba(148,163,184,0.14)]"
                     >
-                        <div className={`grid w-full min-w-0 items-center gap-x-3 gap-y-2 max-sm:gap-y-1 ${isCompactTabletCatalogPagination
-                            ? 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto]'
-                            : 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto]'} max-sm:grid-cols-[minmax(0,1fr)_auto]`}>
-                            <p className="whitespace-nowrap text-[11px] font-semibold text-[#334155]">
-                                Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
-                            </p>
-                            <nav
-                                data-testid="pos-catalog-pagination"
-                                aria-label="Product catalog pagination"
-                                className="flex min-w-0 shrink-0 items-center justify-end gap-1.5 sm:justify-self-center max-sm:col-span-2 max-sm:row-start-2 max-sm:w-max max-sm:justify-self-center max-sm:justify-center max-sm:gap-1"
-                            >
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleCatalogPageChange('previous')}
-                                    disabled={catalogPage <= 1}
-                                    aria-label="Go to previous catalog page"
-                                    title="Previous catalog page"
-                                    className="mr-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300"
-                                >
-                                    <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                                </Button>
-                                {!isCompactTabletCatalogPagination && catalogPageNumbers.map((page) => {
-                                    const isCurrentPage = catalogPage === page;
-                                    return (
-                                        <Button
-                                            key={page}
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleCatalogPageChange(page)}
-                                            aria-label={`Go to catalog page ${page}`}
-                                            aria-current={isCurrentPage ? 'page' : undefined}
-                                            title={`Catalog page ${page}`}
-                                            className={`${isCurrentPage || !hasManyCatalogPages ? 'inline-flex' : 'hidden sm:inline-flex'} ${isCurrentPage
-                                                ? 'h-9 w-9 shrink-0 touch-manipulation border-[#1A4E8D] bg-[#1A4E8D] p-0 text-[11px] font-bold text-white hover:border-[#143F73] hover:bg-[#143F73] hover:text-white focus-visible:ring-[#1A4E8D]'
-                                                : 'h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-[11px] font-semibold text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300'}`}
-                                        >
-                                            {page}
-                                        </Button>
-                                    );
-                                })}
-                                {isCompactTabletCatalogPagination && (
-                                    <CatalogPageJumpControl
-                                        currentPage={catalogPage}
-                                        totalPages={totalCatalogPages}
-                                        onChange={handleCatalogPageChange}
-                                        hideLabels
-                                    />
-                                )}
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleCatalogPageChange('next')}
-                                    disabled={catalogPage >= totalCatalogPages}
-                                    aria-label="Go to next catalog page"
-                                    title="Next catalog page"
-                                    className="ml-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white p-0 text-slate-900 hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:ring-slate-300"
-                                >
-                                    <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                                </Button>
-                            </nav>
-                            <div className="max-sm:justify-self-end">
-                                <CatalogPageSizeControl
-                                    value={catalogPageSizeOverride}
-                                    options={catalogPageSizeOptions}
-                                    onChange={handleCatalogPageSizeChange}
-                                    showPageSuffix
-                                />
-                            </div>
-                            {!isCompactTabletCatalogPagination && (
-                                <div className="hidden sm:inline-flex">
-                                    <CatalogPageJumpControl
-                                        currentPage={catalogPage}
-                                        totalPages={totalCatalogPages}
-                                        onChange={handleCatalogPageChange}
-                                    />
-                                </div>
-                            )}
-                        </div>
+                        <GlobalPagination
+                            testId="pos-catalog-pagination"
+                            ariaLabel="Product catalog pagination"
+                            currentPage={catalogPage}
+                            totalPages={totalCatalogPages}
+                            totalItems={catalogForDisplay.length || 0}
+                            start={visibleCatalogRange.start}
+                            end={visibleCatalogRange.end}
+                            pageSize={catalogPageSize}
+                            pageSizeOptions={catalogPageSizeOptions}
+                            loading={catalogLoading || catalogRefreshing}
+                            onPageChange={handleCatalogPageChange}
+                            onPageSizeChange={handleCatalogPageSizeChange}
+                            className={`${isTabletViewport ? 'rounded-none border-0 px-2 py-2 shadow-none' : 'rounded-none border-0 px-3 py-3 shadow-none max-sm:px-2 max-sm:py-2'}`}
+                        />
                     </div>
             </section>
 
             {mobileCheckoutPanelOpen && (
                 <div
-                    className="fixed inset-0 z-40 bg-slate-950/70 md:hidden"
+                    className={`pos-current-sale-mobile-overlay fixed inset-0 z-40 bg-slate-950/70 ${isTabletPortraitMobileLayout ? '' : 'md:hidden'}`}
                     onClick={() => setMobileCheckoutPanelOpen(false)}
                     aria-hidden="true"
                 />
@@ -1206,16 +1019,16 @@ return (
 
             <aside
                 data-testid="pos-current-sale-panel"
-                className={`${checkoutPaneClassName} pos-mobile-bottom-sheet ${mobileCheckoutPanelOpen
+                className={`${checkoutPaneClassName} pos-mobile-bottom-sheet pos-current-sale-mobile-sheet ${((isMobileViewport && !isMobileLandscapeViewport) || isTabletPortraitMobileLayout) ? 'pos-current-sale-portrait-sheet' : ''} ${checkoutOpenedFromCurrentSale ? 'pos-current-sale-handoff' : ''} ${mobileCheckoutPanelOpen
                     ? 'fixed inset-x-0 bottom-0 z-50 translate-y-0 pointer-events-auto'
                     : 'fixed inset-x-0 bottom-0 z-50 translate-y-full pointer-events-none'
-                } transition-transform duration-300 ease-out motion-reduce:transition-none md:static md:z-auto md:h-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none`}
+                } transition-transform duration-300 ease-out motion-reduce:transition-none ${isTabletPortraitMobileLayout ? '' : 'md:static md:z-auto md:h-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none'}`}
             >
-            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/20 sm:p-4 md:rounded-xl md:shadow-sm md:shadow-slate-200/70 ${currentSalePaneHeightClassName}`}>
+            <section className={`pos-current-sale-mobile-sheet-content relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-2xl shadow-slate-950/20 ${isTabletViewport ? '' : 'sm:p-4'} ${isTabletPortraitMobileLayout ? '' : 'md:rounded-xl md:shadow-sm md:shadow-slate-200/70'} ${currentSalePaneHeightClassName}`}>
                     <div role="region" aria-label="Current sale contents" className="dgfy-pos-current-sale-scroll-surface flex min-h-0 flex-1 flex-col overflow-hidden">
                 <div data-testid="pos-current-sale-header" className="relative mb-2 shrink-0">
                     <div className="flex items-center justify-between gap-2">
-                        <h2 className="text-[21px] font-black tracking-tight text-[#0F172A]">Current Sale</h2>
+                        <h2 className={`${isTabletPortraitMobileLayout ? 'text-[21px]' : isTabletViewport ? 'text-[18px] sm:text-[19px] lg:text-[20px]' : 'text-[21px]'} font-black tracking-tight text-[#0F172A]`}>Current Sale</h2>
                         <div className="flex items-center gap-1">
                         <button
                             type="button"
@@ -1240,7 +1053,7 @@ return (
                         <button
                             type="button"
                             onClick={() => setMobileCheckoutPanelOpen(false)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 md:hidden"
+                            className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 ${isTabletPortraitMobileLayout ? '' : 'md:hidden'}`}
                             aria-label="Close current sale panel"
                             title="Close"
                         >
@@ -1291,7 +1104,7 @@ return (
                     </Suspense>
                 </div>
                 <div data-testid="pos-current-sale-scroll" className={currentSaleBodyClassName}>
-                <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
+                <div className={`col-span-2 flex min-h-0 flex-col overflow-hidden ${isTabletPortraitMobileLayout ? '' : 'md:h-[clamp(18rem,46vh,26rem)] md:flex-none'}`}>
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
                         {safeCart.length > 0 ? safeCart.map((line) => {
@@ -1320,23 +1133,23 @@ return (
                                         <div className="flex min-w-0 items-center gap-2.5">
                                             <div className="flex min-w-0 items-center gap-2.5 text-left">
                                                 <span className="min-w-0">
-                                                    <span className="block max-w-full line-clamp-2 text-[13px] font-black leading-tight break-words text-[#0F172A]">{line.item_name}</span>
-                                                    <span className="mt-0.5 hidden text-[10px] font-bold text-blue-700 sm:block">Tap item to customize</span>
+                                                    <span className="block max-w-full line-clamp-2 text-[13px] font-black leading-tight break-words text-[#0F172A] sm:text-[14px]">{line.item_name}</span>
+                                                    <span className="mt-0.5 hidden text-[10px] font-bold text-blue-700 sm:block sm:text-[11px]">Tap item to customize</span>
                                                 </span>
                                             </div>
                                             <div className="min-w-0">
                                                 {Array.isArray(line.service_option_details) && line.service_option_details.length > 0 ? (
-                                                    <p className="mt-0.5 break-words line-clamp-2 text-[10px] font-semibold text-blue-700">
+                                                    <p className="mt-0.5 break-words line-clamp-2 text-[10px] font-semibold text-blue-700 sm:text-[11px]">
                                                         Options: {line.service_option_details.map((option) => option.name).filter(Boolean).join(', ')}
                                                     </p>
                                                 ) : null}
                                                 {line.special_instructions ? (
-                                                    <p className="mt-1 max-w-full break-words line-clamp-2 text-[10px] font-semibold text-slate-600">
+                                                    <p className="mt-1 max-w-full break-words line-clamp-2 text-[10px] font-semibold text-slate-600 sm:text-[11px]">
                                                         Note: {line.special_instructions}
                                                     </p>
                                                 ) : null}
                                                 {line.item_discount ? (
-                                                    <p className="mt-1 max-w-full break-words line-clamp-2 text-[10px] font-extrabold text-rose-600">
+                                                    <p className="mt-1 max-w-full break-words line-clamp-2 text-[10px] font-extrabold text-rose-600 sm:text-[11px]">
                                                         {(line.item_discount.discount_type === 'pwd'
                                                             ? 'PWD discount'
                                                             : line.item_discount.discount_type === 'senior'
@@ -1373,7 +1186,7 @@ return (
                                         onClick={(event) => event.stopPropagation()}
                                         onKeyDown={(event) => event.stopPropagation()}
                                     >
-                                        <label className="text-[11px] text-slate-500">
+                                        <label className="text-[11px] text-slate-500 sm:text-[12px]">
                                             Qty
                                             {/* Mobile: read-only, qty is managed from the catalog card's stepper. */}
                                             <div className="mt-1 flex items-center gap-1 sm:hidden">
@@ -1443,9 +1256,9 @@ return (
                                                 </Button>
                                             </div>
                                         </label>
-                                        <div className="text-[11px] text-slate-500">
+                                        <div className="text-[11px] text-slate-500 sm:text-[12px]">
                                             <span>Price</span>
-                                            <p className="mt-1 h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-[13px] font-extrabold leading-8 text-[#0F172A]">
+                                            <p className="mt-1 h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-[13px] font-extrabold leading-8 text-[#0F172A] sm:text-[14px]">
                                                 {money(getCartLineSubtotal(line))}
                                             </p>
                                         </div>
@@ -1679,7 +1492,7 @@ return (
 
                 <div
                     id="checkout-bar"
-                    className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] md:hidden"
+                    className={`fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 pt-2.5 shadow-[0_-8px_24px_rgba(15,23,42,0.12)] ${isTabletPortraitMobileLayout ? '' : 'md:hidden'}`}
                     style={{ paddingBottom: 'max(0.625rem, env(safe-area-inset-bottom))' }}
                     role="region"
                     aria-label="Current sale summary"
@@ -1846,13 +1659,13 @@ return (
                             </div>
                         )}
                     </form>
-                    <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                    <DialogFooter className="grid w-full grid-cols-1 items-stretch gap-2 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 sm:gap-2">
                         <Button
                             type="button"
                             variant="outline"
                             onClick={() => setDrawerAuthorizationModalOpen(false)}
                             disabled={drawerAuthorizationSubmitting}
-                            className={drawerDialogButtonClassName}
+                            className="order-2 h-10 w-full min-w-0 px-2 sm:order-1"
                         >
                             Cancel
                         </Button>
@@ -1861,7 +1674,7 @@ return (
                             form="pos-drawer-authorization-form"
                             disabled={drawerAuthorizationSubmitting}
                             aria-busy={drawerAuthorizationSubmitting}
-                            className={`${drawerDialogButtonClassName} bg-[#1A4E8D] text-white hover:bg-[#143F73]`}
+                            className="order-1 h-10 w-full min-w-0 bg-[#1A4E8D] px-2 text-white hover:bg-[#143F73] sm:order-2"
                             data-testid="pos-drawer-authorize-submit"
                         >
                             {drawerAuthorizationSubmitting ? 'Authorizing…' : 'Authorize & Open Drawer'}
@@ -2074,18 +1887,19 @@ return (
                                 : 'This removes all items and unsaved sale details from the current sale. This cannot be undone.'}
                         </DialogDescription>
                     </DialogHeader>
-                    <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
+                    <DialogFooter className="!flex-row flex-nowrap items-center !gap-3 border-t border-slate-200 px-5 py-4">
                         <Button
                             type="button"
                             variant="outline"
                             onClick={() => handleClearSaleDialogOpenChange(false)}
+                            className="h-11 min-w-0 flex-1 px-2 text-[12px] sm:px-4 sm:text-[13px]"
                         >
                             Cancel
                         </Button>
                         <Button
                             type="button"
                             onClick={confirmClearCurrentSale}
-                            className="bg-rose-600 text-white hover:bg-rose-700"
+                            className="h-11 min-w-0 flex-1 whitespace-nowrap bg-rose-600 px-2 text-[12px] text-white hover:bg-rose-700 sm:px-4 sm:text-[13px]"
                             data-testid="pos-confirm-clear-current-sale"
                         >
                             <Trash2 className="mr-2 h-4 w-4" />

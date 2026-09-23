@@ -7,7 +7,7 @@ import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../package
 import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 import esCompatGuardPlugin from '../../packages/web-core/vite/esCompatGuardPlugin.js';
-import { resolveAppVersion, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
+import { resolveAppVersion, resolveReleaseFloor, buildStampPlugin } from '../../packages/web-core/vite/buildStampPlugin.js';
 import productionAutoLoginGuard from '../../packages/web-core/vite/productionAutoLoginGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,7 +23,11 @@ const appNodeModules = path.resolve(__dirname, 'node_modules');
 // fallback, stamped into VITE_APP_VERSION below and, via buildStampPlugin, into the built
 // index.html's <meta name="dgfy-version"> and a generated version.json. See
 // docs/deployment/PWA_SURFACE_CONTRACT.md.
+// #1977 (Phase 342): the release floor (bare X.Y.Z) and candidate revision (rN) ride alongside
+// as APP_RELEASE_FLOOR/APP_RELEASE_REVISION (VITE_-prefixed spellings in the builder stage),
+// stamped into version.json/meta tags so runtime consumers never infer the floor from an alias.
 const appVersion = resolveAppVersion(__dirname);
+const releaseInfo = resolveReleaseFloor(__dirname);
 // This app's own src/main.jsx only imports `@/components/ui/sonner` directly, but it also
 // pulls in TerminalPage.jsx and WorkflowModeContext.jsx from packages/web-core, and THEIR
 // own internal code still uses the pre-extraction `@/...` self-referential alias convention
@@ -83,7 +87,7 @@ const proxyTargets = {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion), ...buildSentryVitePlugins(appSurface)],
+  plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), posOfflinePrecachePlugin(), buildStampPlugin(appVersion, releaseInfo), ...buildSentryVitePlugins(appSurface)],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
   // stops covering any module Worker's bundled output (epic #265, Phase 296).
@@ -92,7 +96,9 @@ export default defineConfig({
   },
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos'),
-    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion)
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_APP_RELEASE_FLOOR': JSON.stringify(releaseInfo.floor),
+    'import.meta.env.VITE_APP_RELEASE_REVISION': JSON.stringify(releaseInfo.revision ?? '')
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
@@ -109,6 +115,12 @@ export default defineConfig({
     host: true,
     port: 5174,
     allowedHosts,
+    // POS imports the shared frontend trunk through relative paths. Keep that
+    // source tree available in dev so a clean Vite restart serves the same
+    // modules that the production build consumes.
+    fs: {
+      allow: [__dirname, webCoreRoot]
+    },
     headers: devSecurityHeaders,
     proxy: proxyTargets
   },

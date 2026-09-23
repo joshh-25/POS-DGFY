@@ -97,7 +97,9 @@ describe('TerminalLockDrawer DGFY access UI', () => {
       />
     );
 
-    expect(screen.getByLabelText('Company').disabled).toBe(false);
+    const companySelector = screen.getByRole('button', { name: 'Company' });
+    expect(companySelector.disabled).toBe(false);
+    fireEvent.click(companySelector);
     expect(screen.getByRole('option', { name: 'Counter Foods' })).toBeTruthy();
     expect(screen.getByText(/Choose the company to continue/i)).toBeTruthy();
     expect(screen.getByText(/onboarding or terminal unlock based on company setup/i)).toBeTruthy();

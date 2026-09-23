@@ -94,7 +94,8 @@ const buildReplayRepository = () => {
         cashEventsCreated: 0,
         shiftCloses: 0,
         auditLogsCreated: 0,
-        orderUpdates: 0
+        orderUpdates: 0,
+        emptyPaymentSessionsCancelled: 0
     };
     let failAuditWrites = false;
     let activeParkedSaleCount = 0;
@@ -253,9 +254,17 @@ const buildReplayRepository = () => {
             return clone(inFlightPaymentSessions);
         },
         async cancelEmptyInFlightPaymentSessionsForShift() {
-            const emptySessions = inFlightPaymentSessions.filter((session) => session.empty_session === true);
-            inFlightPaymentSessions = inFlightPaymentSessions.filter((session) => session.empty_session !== true);
-            return clone(emptySessions);
+            const emptySessions = inFlightPaymentSessions.filter((session) => (
+                Number(session.paid_amount || 0) <= 0
+                && (!Array.isArray(session.allocations) || session.allocations.length === 0)
+            ));
+            inFlightPaymentSessions = inFlightPaymentSessions.filter((session) => !emptySessions.includes(session));
+            counters.emptyPaymentSessionsCancelled += emptySessions.length;
+            return emptySessions.map((session) => ({
+                ...clone(session),
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString()
+            }));
         },
         async findInFlightOperatorMutationForShift() {
             return clone(inFlightOperatorMutation);
@@ -912,7 +921,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
     });
 
-    it('blocks shift close while an unfunded payment session is still open', async () => {
+    it('cancels an empty unpaid payment session before closing the shift', async () => {
         const posRepository = buildReplayRepository();
         const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
@@ -924,7 +933,14 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 user: { user_id: 17 }
             });
             const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
-            posRepository.setInFlightPaymentSessions([{ pos_payment_session_id: 502, session_reference: 'PAY-OPEN', status: 'open' }]);
+            posRepository.setInFlightPaymentSessions([{
+                pos_payment_session_id: 502,
+                session_reference: 'PAY-EMPTY',
+                status: 'open',
+                paid_amount: 0,
+                remaining_amount: 90,
+                allocations: []
+            }]);
 
             const result = await closeShiftUseCase({
                 shiftId,
@@ -932,8 +948,46 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 user: { user_id: 17 }
             });
 
+            expect(result.success).toBe(true);
+            expect(posRepository.counters.emptyPaymentSessionsCancelled).toBe(1);
+            expect(posRepository.counters.shiftCloses).toBe(1);
+        });
+    });
+
+    it('blocks shift close while an unfunded payment attempt remains open', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-PAYMENT-ATTEMPT' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightPaymentSessions([{
+                pos_payment_session_id: 503,
+                session_reference: 'PAY-PENDING',
+                status: 'open',
+                paid_amount: 0,
+                remaining_amount: 90,
+                allocations: [{ status: 'pending', applied_amount: 0 }]
+            }]);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-PAYMENT-ATTEMPT', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
             expect(result.success).toBe(false);
-            expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT', shift_id: shiftId }));
+            expect(result.error.details).toEqual(expect.objectContaining({
+                reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
+                active_payment_session_count: 1,
+                shift_id: shiftId
+            }));
+            expect(posRepository.counters.emptyPaymentSessionsCancelled).toBe(0);
             expect(posRepository.counters.shiftCloses).toBe(0);
         });
     });

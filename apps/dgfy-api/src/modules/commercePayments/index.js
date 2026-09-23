@@ -21,6 +21,7 @@ import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrd
 import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
 import { buildCreateDglaundryBookingPaymentSessionUseCase } from './usecases/createDglaundryBookingPaymentSessionUseCase.js';
 import { dglaundryPartnerClient } from '../dgfyLaundryOrders/services/dglaundryPartnerClient.js';
+import { dgfyLaundryOrderRepository } from '../dgfyLaundryOrders/repositories/dgfyLaundryOrderRepository.js';
 
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
@@ -95,7 +96,8 @@ export const getPayMongoSandboxCertificationUseCase = buildGetPayMongoSandboxCer
 export const createDglaundryBookingPaymentSessionUseCase = buildCreateDglaundryBookingPaymentSessionUseCase({
   commercePaymentRepository,
   paymongoService,
-  partnerClient: dglaundryPartnerClient
+  partnerClient: dglaundryPartnerClient,
+  mappingRepository: dgfyLaundryOrderRepository
 });
 
 export { commercePaymentRepository };

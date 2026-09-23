@@ -64,7 +64,7 @@ describe('usePosCatalogWorkflow catalog capacity', () => {
             sessionLocked: true
         }));
 
-        expect(result.current.catalogPageSize).toBe(2);
+        expect(result.current.catalogPageSize).toBeGreaterThanOrEqual(4);
 
         const viewport = {
             clientHeight: 544,

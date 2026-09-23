@@ -8951,21 +8951,23 @@ const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId,
             cancelledBy
         });
     }
+
     const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
         ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
         : [];
-    if (sessions.length === 0) return;
+    const unfundedSessions = sessions.filter((session) => Number(session.paid_amount || 0) <= 0);
+    if (unfundedSessions.length === 0) return;
 
     throw new DomainError(
         DomainErrorCode.CONFLICT,
-        `Complete or cancel ${sessions.length} in-flight payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        `Complete or cancel ${unfundedSessions.length} in-flight payment session${unfundedSessions.length === 1 ? '' : 's'} before closing this shift.`,
         {
             statusCode: 409,
             details: {
                 reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT',
-                active_payment_session_count: sessions.length,
+                active_payment_session_count: unfundedSessions.length,
                 shift_id: Number(shiftId),
-                sessions: sessions.map((session) => ({
+                sessions: unfundedSessions.map((session) => ({
                     pos_payment_session_id: Number(session.pos_payment_session_id),
                     session_reference: session.session_reference,
                     status: session.status

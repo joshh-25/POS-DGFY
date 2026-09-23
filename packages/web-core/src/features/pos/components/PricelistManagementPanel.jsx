@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { getItems } from '@/services/itemService.js';
 import {
@@ -34,6 +35,7 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const PAGE_SIZE_HINT = 1000; // items list max limit (itemValidator.js) -- covers every real tenant's catalog in one call.
 const DESKTOP_TABLE_PAGE_SIZE = 50; // #698: the desktop table paginates client-side over the already-loaded catalog.
+const DESKTOP_TABLE_PAGE_SIZE_OPTIONS = [25, 50, 100];
 
 const STATUS_BADGE_CLASS = Object.freeze({
   draft: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -121,6 +123,7 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   const [restoreBanner, setRestoreBanner] = useState(null); // { rows, savedAt } | null
   const [isDraftRevision, setIsDraftRevision] = useState(false);
   const [desktopPage, setDesktopPage] = useState(0);
+  const [desktopPageSize, setDesktopPageSize] = useState(DESKTOP_TABLE_PAGE_SIZE);
 
   const autosaveTimerRef = useRef(null);
   const skipNextAutosaveRef = useRef(false);
@@ -298,10 +301,10 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
   // #698's own spec asked for a paginated desktop table -- up to ~300 rows on the largest real
   // tenant is unwieldy in one scroll region even with the sticky header. Client-side only: the
   // whole catalog is already loaded in `rows` (one `getItems` call, see PAGE_SIZE_HINT above).
-  const desktopTotalPages = Math.max(1, Math.ceil(filteredRows.length / DESKTOP_TABLE_PAGE_SIZE));
+  const desktopTotalPages = Math.max(1, Math.ceil(filteredRows.length / desktopPageSize));
   const pagedRows = useMemo(
-    () => filteredRows.slice(desktopPage * DESKTOP_TABLE_PAGE_SIZE, (desktopPage + 1) * DESKTOP_TABLE_PAGE_SIZE),
-    [filteredRows, desktopPage]
+    () => filteredRows.slice(desktopPage * desktopPageSize, (desktopPage + 1) * desktopPageSize),
+    [desktopPage, desktopPageSize, filteredRows]
   );
   // A new search (or the catalog itself changing) can leave `desktopPage` pointing past the end.
   useEffect(() => {
@@ -625,19 +628,23 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
             </table>
           </div>
             {desktopTotalPages > 1 && (
-              <div className="flex items-center justify-between gap-2 border-t bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-600">
-                <span>
-                  Page {desktopPage + 1} of {desktopTotalPages} ({filteredRows.length} items)
-                </span>
-                <div className="flex gap-1.5">
-                  <Button type="button" size="sm" variant="outline" className="h-7 px-2" disabled={desktopPage === 0} onClick={() => setDesktopPage((p) => Math.max(0, p - 1))}>
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button type="button" size="sm" variant="outline" className="h-7 px-2" disabled={desktopPage >= desktopTotalPages - 1} onClick={() => setDesktopPage((p) => Math.min(desktopTotalPages - 1, p + 1))}>
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+              <GlobalPagination
+                testId="pos-pricelist-items-pagination"
+                ariaLabel="Pricelist items pagination"
+                currentPage={desktopPage + 1}
+                totalPages={desktopTotalPages}
+                totalItems={filteredRows.length}
+                pageSize={desktopPageSize}
+                pageSizeOptions={DESKTOP_TABLE_PAGE_SIZE_OPTIONS}
+                itemLabel="items"
+                onPageChange={(nextPage) => setDesktopPage(nextPage - 1)}
+                onPageSizeChange={(nextPageSize) => {
+                  if (!Number.isInteger(nextPageSize) || nextPageSize <= 0) return;
+                  setDesktopPageSize(nextPageSize);
+                  setDesktopPage(0);
+                }}
+                className="rounded-none border-0 border-t bg-slate-50 px-3 py-2 shadow-none"
+              />
             )}
           </div>
         )}

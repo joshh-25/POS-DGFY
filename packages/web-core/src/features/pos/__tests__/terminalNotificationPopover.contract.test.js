@@ -25,4 +25,12 @@ describe('POS notification popover layout contract', () => {
     );
     expect(layoutSource).not.toContain('absolute left-1/2 top-0 z-10 h-5 w-5');
   });
+
+  it('keeps the compact mobile/tablet notification count inside the bell control', () => {
+    expect(layoutSource).toContain(
+      "absolute right-0.5 top-0.5 z-10 inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-500 px-0 text-[9px] font-black leading-none text-white"
+    );
+    expect(layoutSource).toContain('data-testid="pos-notification-badge"');
+    expect(layoutSource).not.toContain('absolute -right-1.5 -top-1.5 grid h-4.5 w-4.5');
+  });
 });

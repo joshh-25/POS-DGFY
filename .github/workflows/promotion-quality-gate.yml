@@ -2541,6 +2541,12 @@ jobs:
               // exception cited ("packages/web-core has known lint debt"). 'Run test matrix' is now
               // the only step in this file still advisory-by-design.
               'Run web-core lint',
+              // #1557: closes the drift checkBlockingStepNamesInSync now guards --
+              // verify_playwright_install flipped blocking per #1856 (deterministic environment
+              // check, blocking within its job, same rationale as the #1712 entry above) but this
+              // Set never gained its label, so a real failure here reds the job while the #1124
+              // comment mislabels it `advisory`.
+              'Verify Playwright Chromium installation',
             ]);
 
             const lines = [];

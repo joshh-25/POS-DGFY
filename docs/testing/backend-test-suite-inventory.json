@@ -1,27 +1,27 @@
 {
-  "generatedAt": "2026-09-19T06:21:38.514Z",
-  "totalFiles": 722,
+  "generatedAt": "2026-09-23T06:18:08.737Z",
+  "totalFiles": 740,
   "byClassification": {
-    "keep": 667,
-    "delete": 16,
-    "consolidate": 31,
+    "keep": 683,
+    "delete": 17,
+    "consolidate": 32,
     "trim": 3,
     "demote": 5
   },
   "bySuffix": {
     "migration": 38,
-    "(none)": 255,
+    "(none)": 257,
     "middleware": 14,
     "handler": 1,
     "transport": 41,
     "integration": 13,
-    "unit": 65,
+    "unit": 66,
     "applicationResult": 20,
     "cacheInvalidation": 1,
     "asyncCrashRecovery": 1,
     "storeTemplateKey": 1,
-    "usecase": 60,
-    "contract": 34,
+    "usecase": 61,
+    "contract": 47,
     "ratelimit.e2e": 1,
     "hardening": 1,
     "phoneCompletionGate.middleware": 1,
@@ -29,6 +29,7 @@
     "db.integration": 4,
     "idempotency": 1,
     "util": 4,
+    "audit": 1,
     "routeContracts": 1,
     "api": 1,
     "usecases": 32,
@@ -210,8 +211,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -250,8 +249,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -288,8 +285,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -330,8 +325,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -476,8 +469,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -516,8 +507,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -558,8 +547,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -781,8 +768,6 @@
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
           "docs/compliance/impact-declarations/2026-06-15-platform-admin-compliance-mode-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -825,8 +810,6 @@
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
           "docs/compliance/impact-declarations/2026-06-15-platform-admin-compliance-mode-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1001,8 +984,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-11-registration-industry-visibility.md",
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1086,8 +1067,6 @@
           "docs/compliance/impact-declarations/2026-06-16-storefront-access-mode-ceiling-ui.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-fulfillment-method-availability.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1128,8 +1107,6 @@
           "docs/compliance/impact-declarations/2026-06-07-platform-admin-tenant-capability-controls.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-fulfillment-method-availability.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1141,14 +1118,14 @@
     },
     {
       "path": "tests/adminTenantHandlers.transport.test.js",
-      "lines": 403,
-      "caseCount": 10,
+      "lines": 459,
+      "caseCount": 12,
       "describeTitles": [
         "adminTenantHandlers transport contracts"
       ],
-      "expectCount": 31,
-      "expectResCount": 17,
-      "toHaveBeenCalledCount": 31,
+      "expectCount": 36,
+      "expectResCount": 20,
+      "toHaveBeenCalledCount": 36,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -1173,8 +1150,6 @@
           "docs/compliance/impact-declarations/2026-05-15-account-phone-registration.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1211,8 +1186,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-05-08-tenant-deletion-premium-settings-compliance-fix.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -1287,8 +1260,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1328,8 +1299,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1379,8 +1348,6 @@
           "docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md",
           "docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md",
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1419,8 +1386,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-affiliate-per-category-commission-rates.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -1535,8 +1500,6 @@
           "apps/dgfy-api/src/modules/dgfy/usecases/dgfyAffiliateUseCases.js"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -2369,11 +2332,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -2522,8 +2481,6 @@
           "docs/compliance/impact-declarations/2026-05-15-account-phone-registration.md",
           "docs/compliance/impact-declarations/2026-05-17-email-otp-verification.md",
           "docs/compliance/impact-declarations/2026-06-17-dgfy-company-access-hardening.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -2898,8 +2855,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -2972,8 +2927,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -3199,8 +3152,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -3234,12 +3185,439 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        "live": [
+          "BackOfficeF.md"
         ],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminAlertSnapshotService.contract.test.js",
+      "lines": 63,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin alert snapshot ownership contract"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminAttendance.contract.test.js",
+      "lines": 102,
+      "caseCount": 4,
+      "describeTitles": [
+        "Business Admin attendance read model"
+      ],
+      "expectCount": 13,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCustomerHistory.contract.test.js",
+      "lines": 94,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin customer history canonical source"
+      ],
+      "expectCount": 4,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminCustomerWrite.usecase.test.js",
+      "lines": 88,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin customer creation"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "usecase",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: usecase)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminExpenses.contract.test.js",
+      "lines": 184,
+      "caseCount": 5,
+      "describeTitles": [
+        "Business Admin operational expense ledger"
+      ],
+      "expectCount": 15,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 8,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminNotifications.contract.test.js",
+      "lines": 78,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin notifications and audit ownership contracts"
+      ],
+      "expectCount": 11,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 3,
+      "textRatio": 0.55,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "consolidate",
+      "reason": "source-text-mixed (text_ratio=0.55)",
+      "rule": "R4-source-text-mixed",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterCustomerHistory.contract.test.js",
+      "lines": 132,
+      "caseCount": 3,
+      "describeTitles": [
+        "Business Admin Order Center customer-history source"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 2,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterReceiptFilter.contract.test.js",
+      "lines": 57,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin Order Center receipt-type filter"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 2,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOrderCenterReceiptView.contract.test.js",
+      "lines": 52,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin original receipt view contract"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOverviewRepository.audit.test.js",
+      "lines": 40,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin audit repository date boundaries"
+      ],
+      "expectCount": 2,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "audit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: audit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminOverviewSalesTrend.contract.test.js",
+      "lines": 35,
+      "caseCount": 1,
+      "describeTitles": [
+        "Business Admin overview sales trend contract"
+      ],
+      "expectCount": 14,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 2,
+      "textRatio": 1,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "delete",
+      "reason": "source-text-only (text_ratio=1)",
+      "rule": "R3-source-text-only",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminSalesStockReport.contract.test.js",
+      "lines": 36,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin sales and stock report contract"
+      ],
+      "expectCount": 8,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/businessAdminShiftActivityRepository.contract.test.js",
+      "lines": 75,
+      "caseCount": 2,
+      "describeTitles": [
+        "Business Admin shared shift activity projection"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 4,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -3569,8 +3947,6 @@
           "docs/features/POS_IMAGE_UPLOAD_IMPLEMENTATION_PLAN.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -3827,8 +4203,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md",
           "docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -3953,8 +4327,6 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -4228,8 +4600,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -4307,8 +4677,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-04-08-compliance-redesign-slice-and-readiness-e2e.md",
           "docs/compliance/impact-declarations/2026-06-01-rmo-24-2023-filing-readiness-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -4906,12 +5274,12 @@
     },
     {
       "path": "tests/costValuationService.test.js",
-      "lines": 259,
-      "caseCount": 7,
+      "lines": 297,
+      "caseCount": 8,
       "describeTitles": [
         "costValuationService"
       ],
-      "expectCount": 11,
+      "expectCount": 12,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
@@ -4967,8 +5335,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5005,8 +5371,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5249,8 +5613,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5404,8 +5766,6 @@
           "docs/compliance/impact-declarations/2026-06-16-storefront-access-mode-ceiling-ui.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
           "docs/compliance/impact-declarations/2026-08-30-storefront-per-store-cash-payment-toggle.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5456,7 +5816,7 @@
     },
     {
       "path": "tests/dashboardAndInsightsToolRegistry.test.js",
-      "lines": 151,
+      "lines": 152,
       "caseCount": 5,
       "describeTitles": [
         "dashboardAndInsightsToolRegistry"
@@ -5591,14 +5951,14 @@
     },
     {
       "path": "tests/deleteTenantUseCase.test.js",
-      "lines": 137,
-      "caseCount": 6,
+      "lines": 264,
+      "caseCount": 11,
       "describeTitles": [
         "deleteTenantUseCase"
       ],
-      "expectCount": 35,
+      "expectCount": 73,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 21,
+      "toHaveBeenCalledCount": 39,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -5626,7 +5986,7 @@
     },
     {
       "path": "tests/deliveryCompletionEvidenceStorage.test.js",
-      "lines": 49,
+      "lines": 51,
       "caseCount": 1,
       "describeTitles": [
         "delivery completion evidence private storage"
@@ -5651,8 +6011,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5730,8 +6088,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5768,8 +6124,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5809,8 +6163,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5850,8 +6202,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5888,8 +6238,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5926,8 +6274,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -5969,8 +6315,6 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6019,8 +6363,6 @@
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
           "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6057,8 +6399,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6096,8 +6436,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6134,8 +6472,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-courier-cash-custody-remittance-variance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6178,8 +6514,6 @@
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
           "docs/compliance/impact-declarations/2026-09-17-delivery-run-dispatch-warnings.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6215,8 +6549,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6257,8 +6589,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6295,8 +6625,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6337,8 +6665,6 @@
           "docs/compliance/impact-declarations/2026-09-03-pos-delivery-run-summary.md",
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6534,8 +6860,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6575,8 +6899,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-affiliate-reactivation-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6616,8 +6938,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6657,8 +6977,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-affiliate-reactivation-endpoint.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6703,8 +7021,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-affiliate-reactivation-endpoint.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6749,8 +7065,6 @@
           "PHASE_214_PLAN.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6800,14 +7114,14 @@
     },
     {
       "path": "tests/dgfyAuthUseCases.test.js",
-      "lines": 2470,
-      "caseCount": 61,
+      "lines": 2519,
+      "caseCount": 62,
       "describeTitles": [
         "dgfyAuthUseCases"
       ],
-      "expectCount": 269,
+      "expectCount": 272,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 104,
+      "toHaveBeenCalledCount": 105,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6823,6 +7137,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "Phase346_HANDOFF.md",
           "System_Audit/1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md",
           "apps/dgfy-api/src/modules/dgfy/README.md",
           "docs/features/DGFY_CUSTOMER_ACCOUNT.md",
@@ -6844,8 +7159,6 @@
           "docs/compliance/impact-declarations/2026-07-01-pos-dgfy-cashier-device-pairing.md",
           "docs/compliance/impact-declarations/2026-07-03-dgfy-invitation-accept-reject-schema-hotfix.md",
           "docs/compliance/impact-declarations/2026-07-06-backend-lint-and-duplication-remediation.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json"
         ],
@@ -6888,8 +7201,6 @@
           "docs/compliance/impact-declarations/2026-05-28-storefront-business-hours.md",
           "docs/compliance/impact-declarations/2026-06-03-dgfy-account-storefront-gallery-health.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -6934,14 +7245,14 @@
     },
     {
       "path": "tests/dgfyCustomerUseCases.test.js",
-      "lines": 1003,
-      "caseCount": 34,
+      "lines": 1047,
+      "caseCount": 37,
       "describeTitles": [
         "dgfyCustomerUseCases"
       ],
-      "expectCount": 133,
+      "expectCount": 142,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 38,
+      "toHaveBeenCalledCount": 41,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -6966,8 +7277,6 @@
           "docs/compliance/impact-declarations/2026-05-28-storefront-business-hours.md",
           "docs/compliance/impact-declarations/2026-06-03-dgfy-account-storefront-gallery-health.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7045,14 +7354,14 @@
     },
     {
       "path": "tests/dgfyLaundryOrderUseCases.test.js",
-      "lines": 168,
-      "caseCount": 6,
+      "lines": 181,
+      "caseCount": 7,
       "describeTitles": [
         "DGFY DGLaundry storefront/order projections"
       ],
-      "expectCount": 25,
+      "expectCount": 28,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 8,
+      "toHaveBeenCalledCount": 10,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7068,7 +7377,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -7208,7 +7519,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -7252,14 +7565,14 @@
     },
     {
       "path": "tests/dgfyPosTerminalPolicyService.test.js",
-      "lines": 128,
-      "caseCount": 4,
+      "lines": 152,
+      "caseCount": 5,
       "describeTitles": [
         "DGFY POS terminal cashier assignment policy"
       ],
-      "expectCount": 7,
+      "expectCount": 9,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7355,8 +7668,6 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-06-17-dgfy-company-access-hardening.md",
           "docs/compliance/impact-declarations/2026-06-27-assisted-provisioning-ui-consolidation.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7367,15 +7678,48 @@
       "findings": []
     },
     {
+      "path": "tests/dgfyTenantSessionService.test.js",
+      "lines": 98,
+      "caseCount": 1,
+      "describeTitles": [
+        "DGFY tenant session authority normalization"
+      ],
+      "expectCount": 3,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 1,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 1,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 0,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/dglaundryBookingPayment.usecase.test.js",
-      "lines": 62,
-      "caseCount": 2,
+      "lines": 79,
+      "caseCount": 3,
       "describeTitles": [
         "DGLaundry booking payment session"
       ],
-      "expectCount": 10,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 4,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -7391,7 +7735,9 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [],
+        "historical": [
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
+        ],
         "hardcoded": []
       },
       "classification": "keep",
@@ -7426,8 +7772,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-11-dglaundry-contract-authentication.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7496,8 +7840,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7509,12 +7851,12 @@
     },
     {
       "path": "tests/dglaundryPartnerClient.test.js",
-      "lines": 41,
-      "caseCount": 1,
+      "lines": 127,
+      "caseCount": 4,
       "describeTitles": [
         "DGLaundry partner request profile"
       ],
-      "expectCount": 6,
+      "expectCount": 19,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -7524,7 +7866,7 @@
       "isSnapshot": false,
       "onDbManifest": false,
       "usesCreateTestTenant": false,
-      "srcImportCount": 1,
+      "srcImportCount": 2,
       "deadImportCount": 0,
       "suffix": "(none)",
       "conditionalSkip": false,
@@ -7534,8 +7876,7 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-11-dglaundry-contract-authentication.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7643,10 +7984,7 @@
           "docs/features/multi-location-inventory/ROLLOUT_HANDOFF_PACKET_WAVE-LOCAL-2026-04-16.md"
         ],
         "historical": [
-          "docs/compliance/impact-declarations/2026-05-07-mode-price-cost-catalog-contract.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-05-07-mode-price-cost-catalog-contract.md"
         ],
         "hardcoded": []
       },
@@ -7681,8 +8019,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -7725,8 +8061,6 @@
           "docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-settings-pos-ui.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7763,8 +8097,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7805,8 +8137,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7844,8 +8174,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-config-surface.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7884,8 +8212,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -7961,8 +8287,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-16-retail-acceptance-inventory-timing.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -8615,8 +8939,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -8895,8 +9217,6 @@
           "docs/compliance/impact-declarations/2026-08-20-cart-quote-preview-no-checkout-contact.md",
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9372,12 +9692,12 @@
     },
     {
       "path": "tests/frontend.imsPosSalesJourney.e2e.test.js",
-      "lines": 2617,
+      "lines": 2854,
       "caseCount": 8,
       "describeTitles": [
         "Frontend Real Browser E2E - IMS -> POS -> Sales Journey"
       ],
-      "expectCount": 32,
+      "expectCount": 44,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -9395,6 +9715,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          ".agents/skills/verifier/SKILL.md",
           "scripts/check-pr-quality-workflow.js"
         ],
         "historical": [
@@ -9490,8 +9811,6 @@
           "docs/architecture/backend-absorption.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9628,8 +9947,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9736,8 +10053,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9777,8 +10092,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-17-quadruper-geocoder-swap.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9883,8 +10196,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9923,8 +10234,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -9967,8 +10276,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10006,8 +10313,6 @@
           "docs/superpowers/plans/2026-09-17-quadruper-geocoder-swap.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10183,8 +10488,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
           "docs/compliance/impact-declarations/2026-09-01-delivery-fee-mode-config-schema.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10297,12 +10600,13 @@
     },
     {
       "path": "tests/healthService.test.js",
-      "lines": 669,
-      "caseCount": 17,
+      "lines": 742,
+      "caseCount": 22,
       "describeTitles": [
-        "healthService"
+        "healthService",
+        "resolveReleaseFloorInfo (#1977 Phase 342)"
       ],
-      "expectCount": 41,
+      "expectCount": 47,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -10326,8 +10630,6 @@
           "docs/archive/testing/2026-02/production-readiness-audit-2026-02-19.md",
           "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json"
         ],
@@ -10455,12 +10757,12 @@
     },
     {
       "path": "tests/imageAssetStorage.util.test.js",
-      "lines": 542,
-      "caseCount": 23,
+      "lines": 588,
+      "caseCount": 25,
       "describeTitles": [
         "imageAssetStorage utility"
       ],
-      "expectCount": 86,
+      "expectCount": 95,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -10483,8 +10785,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10554,8 +10854,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10593,10 +10891,7 @@
           "Implementation.md"
         ],
         "historical": [
-          "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md"
         ],
         "hardcoded": []
       },
@@ -10704,8 +10999,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-04-24-storefront-branding-assets-settings-discovery.md",
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10776,8 +11069,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10849,8 +11140,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -10887,14 +11176,45 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
       },
       "classification": "keep",
       "reason": "default keep (suffix: (none))",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/inventoryHealthService.contract.test.js",
+      "lines": 90,
+      "caseCount": 5,
+      "describeTitles": [
+        "inventory health contract"
+      ],
+      "expectCount": 17,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
       "rule": "R5-default",
       "findings": []
     },
@@ -10942,8 +11262,6 @@
           "docs/compliance/impact-declarations/2026-09-05-pos-catalog-image-reliability-and-bulk-import.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-fnb-import-image-hotfix.json",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json"
         ],
@@ -10979,11 +11297,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -11089,8 +11403,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -11128,8 +11440,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -11175,8 +11485,6 @@
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -11696,8 +12004,6 @@
           "docs/compliance/impact-declarations/2026-06-07-platform-admin-tenant-capability-controls.md",
           "docs/compliance/impact-declarations/2026-06-13-dgfy-full-flow-pos-session-qa.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-fulfillment-method-availability.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -11736,8 +12042,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-06-07-platform-admin-tenant-capability-controls.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12230,8 +12534,6 @@
           "docs/proposals/MENU_IMPORT_BATCH_IMPORT_HANDOFF_2026-07-28.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12339,8 +12641,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12375,11 +12675,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -12411,7 +12707,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-06-19-standalone-native-hardware-pos-bootstrap.md",
           "docs/compliance/impact-declarations/2026-07-24-pos-receipt-renderer-and-mobile-item-sync.md",
@@ -12519,10 +12817,7 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/compliance/impact-declarations/2026-07-22-mobile-refresh-token-and-free-tier-offline-sync.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-07-22-mobile-refresh-token-and-free-tier-offline-sync.md"
         ],
         "hardcoded": []
       },
@@ -12555,7 +12850,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -12746,8 +13043,6 @@
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md",
           "docs/compliance/impact-declarations/2026-09-01-staff-delivery-fee-override.md",
           "docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12783,10 +13078,7 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/compliance/impact-declarations/2026-09-14-multi-location-inventory-readiness-phase-338.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-09-14-multi-location-inventory-readiness-phase-338.md"
         ],
         "hardcoded": []
       },
@@ -12892,8 +13184,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-06-16-production-observability-traceability.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -12944,14 +13234,14 @@
     },
     {
       "path": "tests/onboardingRepository.schemaCompatibility.test.js",
-      "lines": 171,
-      "caseCount": 3,
+      "lines": 246,
+      "caseCount": 5,
       "describeTitles": [
         "onboardingRepository schema compatibility"
       ],
-      "expectCount": 5,
+      "expectCount": 16,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -13239,8 +13529,6 @@
         ],
         "historical": [
           "docs/archive/system-audit-2026-03/3.3-Payment_processing_atomicity.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -13724,11 +14012,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -13837,8 +14121,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-07-28-platform-admin-manual-review-and-qa-invoicing.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -13985,8 +14267,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14389,8 +14669,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14426,8 +14704,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14465,8 +14741,6 @@
           "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14507,8 +14781,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-26-pos-attendance-permission-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14545,11 +14817,7 @@
         "live": [
           "docs/features/POS_CASHIER_LOCATION_ACCESS_PHASE_357.md"
         ],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": [
           "scripts/backend-db-dependent-tests.js"
         ]
@@ -14583,7 +14851,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-04-pos-development-bundle.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
@@ -14620,7 +14890,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-01-pos-map-tile-routing-hotfix.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
@@ -14775,8 +15047,6 @@
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
           "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
@@ -14822,8 +15092,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -14835,14 +15103,14 @@
     },
     {
       "path": "tests/posCheckoutFnbContracts.usecase.test.js",
-      "lines": 2785,
-      "caseCount": 39,
+      "lines": 3103,
+      "caseCount": 46,
       "describeTitles": [
         "POS checkout F&B contracts"
       ],
-      "expectCount": 187,
+      "expectCount": 220,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 69,
+      "toHaveBeenCalledCount": 85,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 5,
@@ -14879,8 +15147,6 @@
           "docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md",
           "docs/compliance/impact-declarations/2026-08-31-pos-affiliate-attribution-commit-time-recheck.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json",
@@ -14958,8 +15224,6 @@
           "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15001,8 +15265,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15075,8 +15337,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-completion-evidence.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15117,8 +15377,6 @@
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15156,8 +15414,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-staff-delivery-fee-override.md",
           "docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15198,8 +15454,6 @@
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md",
           "docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15236,8 +15490,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15349,7 +15601,7 @@
     },
     {
       "path": "tests/posDevicePrintReceipt.unit.test.js",
-      "lines": 381,
+      "lines": 401,
       "caseCount": 10,
       "describeTitles": [
         "buildPrintPosReceiptUseCase — client-delegated printing",
@@ -15357,9 +15609,9 @@
         "buildPrintPosShiftSummaryUseCase",
         "buildPrintPosZReadingUseCase"
       ],
-      "expectCount": 33,
+      "expectCount": 34,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 15,
+      "toHaveBeenCalledCount": 16,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -15374,7 +15626,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "UpdatesRepo.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -15407,7 +15661,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -15490,6 +15746,39 @@
       "findings": []
     },
     {
+      "path": "tests/posDeviceTestPrint.unit.test.js",
+      "lines": 103,
+      "caseCount": 3,
+      "describeTitles": [
+        "buildTestPosPrinterUseCase"
+      ],
+      "expectCount": 12,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 5,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "unit",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: unit)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
       "path": "tests/posDiscountApprovalPolicy.unit.test.js",
       "lines": 106,
       "caseCount": 9,
@@ -15515,8 +15804,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15627,8 +15914,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-07-07-pos-commercial-and-statutory-discount-hardening.md",
           "docs/compliance/impact-declarations/2026-08-20-pos-voucher-redemption.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15794,8 +16079,6 @@
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
           "docs/releases/batches/2026-07-01-pos-map-tile-routing-hotfix.json",
@@ -15870,8 +16153,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15907,8 +16188,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -15946,10 +16225,7 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/compliance/impact-declarations/2026-09-16-retail-acceptance-inventory-timing.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-09-16-retail-acceptance-inventory-timing.md"
         ],
         "hardcoded": []
       },
@@ -15987,8 +16263,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16000,12 +16274,12 @@
     },
     {
       "path": "tests/posOperationReplayParity.usecase.test.js",
-      "lines": 1242,
-      "caseCount": 17,
+      "lines": 1333,
+      "caseCount": 19,
       "describeTitles": [
         "NVP-01 operation replay parity across terminal flows"
       ],
-      "expectCount": 123,
+      "expectCount": 129,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -16031,8 +16305,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-06-26-fnb-pos-inventory-boundary.md",
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phase9-external-ims-delegation.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json"
         ],
@@ -16105,8 +16377,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-26-pos-attendance-permission-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16146,8 +16416,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-26-pos-attendance-permission-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16183,8 +16451,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16259,8 +16525,6 @@
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
           "docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md",
           "docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16296,8 +16560,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16333,8 +16595,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16371,8 +16631,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-retail-order-packed-step.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16411,8 +16669,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-order-rejection-reason-and-address-edit.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16450,8 +16706,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-13-pos-packing-evidence-images.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16487,8 +16741,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16524,8 +16776,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16563,8 +16813,6 @@
           "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16602,8 +16850,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16639,8 +16885,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16652,12 +16896,12 @@
     },
     {
       "path": "tests/posPaymentBreakdown.test.js",
-      "lines": 111,
+      "lines": 128,
       "caseCount": 5,
       "describeTitles": [
         "POS close-report payment breakdown"
       ],
-      "expectCount": 29,
+      "expectCount": 36,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -16676,8 +16920,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16713,8 +16955,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16795,7 +17035,7 @@
     },
     {
       "path": "tests/posReadings.usecase.test.js",
-      "lines": 438,
+      "lines": 484,
       "caseCount": 9,
       "describeTitles": [
         "POS readings usecases"
@@ -16821,8 +17061,6 @@
           "docs/compliance/DGFY Compliance Certification Checklist.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16834,14 +17072,14 @@
     },
     {
       "path": "tests/posReports.repository.test.js",
-      "lines": 857,
-      "caseCount": 12,
+      "lines": 1054,
+      "caseCount": 17,
       "describeTitles": [
         "posRepository reports analytics"
       ],
-      "expectCount": 55,
+      "expectCount": 64,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 1,
+      "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 2,
@@ -16862,8 +17100,6 @@
           "docs/compliance/impact-declarations/2026-07-06-pos-reports-overview-endpoint.md",
           "docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/release/merge-adoption/pr25-pos-safe-adoption-2026-06-29.json"
         ],
@@ -16876,14 +17112,14 @@
     },
     {
       "path": "tests/posReports.usecase.test.js",
-      "lines": 252,
-      "caseCount": 13,
+      "lines": 306,
+      "caseCount": 14,
       "describeTitles": [
         "POS reports usecases"
       ],
-      "expectCount": 43,
+      "expectCount": 48,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 7,
+      "toHaveBeenCalledCount": 8,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -16902,8 +17138,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-07-06-pos-reports-overview-endpoint.md",
           "docs/compliance/impact-declarations/2026-09-03-procurement-csv-export.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16937,11 +17171,11 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "ContinuePhase_HANDOFF.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16953,12 +17187,12 @@
     },
     {
       "path": "tests/posRepository.catalogImages.test.js",
-      "lines": 363,
-      "caseCount": 5,
+      "lines": 421,
+      "caseCount": 6,
       "describeTitles": [
         "posRepository catalog image mapping"
       ],
-      "expectCount": 10,
+      "expectCount": 12,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 2,
       "readFileSyncCount": 0,
@@ -16986,8 +17220,6 @@
           "docs/compliance/impact-declarations/2026-07-06-pos-multi-image-storefront-gallery-unification.md",
           "docs/compliance/impact-declarations/2026-08-21-item-location-stock-overlay-hoist.md",
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -16999,14 +17231,14 @@
     },
     {
       "path": "tests/posRepository.catalogPagination.test.js",
-      "lines": 89,
-      "caseCount": 3,
+      "lines": 108,
+      "caseCount": 4,
       "describeTitles": [
         "POS Items management catalog pagination"
       ],
-      "expectCount": 8,
+      "expectCount": 11,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 4,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17021,12 +17253,10 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+        "live": [
+          "ContinuePhase_HANDOFF.md"
         ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -17070,8 +17300,6 @@
           "docs/compliance/impact-declarations/2026-07-26-unified-product-domain-phases-0-4.md",
           "docs/compliance/impact-declarations/2026-08-21-item-location-stock-overlay-hoist.md",
           "docs/compliance/impact-declarations/2026-09-04-pos-ims-catalog-filter-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17109,8 +17337,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-bulk-assign.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-member-fulfillment-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17161,8 +17387,6 @@
           "docs/compliance/impact-declarations/2026-06-28-pos-optional-compliance-operation.md",
           "docs/compliance/impact-declarations/2026-07-11-pos-cash-collection-and-terminal-safety.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json"
@@ -17446,11 +17670,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -17460,14 +17680,14 @@
     },
     {
       "path": "tests/posSplitPayment.repository.test.js",
-      "lines": 74,
-      "caseCount": 2,
+      "lines": 132,
+      "caseCount": 3,
       "describeTitles": [
         "POS split-payment repository contract"
       ],
-      "expectCount": 8,
+      "expectCount": 15,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 6,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17484,8 +17704,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17497,16 +17715,16 @@
     },
     {
       "path": "tests/posSplitPayment.route.contract.test.js",
-      "lines": 93,
-      "caseCount": 2,
+      "lines": 121,
+      "caseCount": 3,
       "describeTitles": [
         "POS split-payment route contract"
       ],
-      "expectCount": 27,
+      "expectCount": 30,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 1,
-      "textRatio": 0.33,
+      "textRatio": 0.3,
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
@@ -17521,8 +17739,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17534,16 +17750,16 @@
     },
     {
       "path": "tests/posSplitPayment.schema.contract.test.js",
-      "lines": 148,
-      "caseCount": 6,
+      "lines": 163,
+      "caseCount": 7,
       "describeTitles": [
         "split payment schema contract"
       ],
-      "expectCount": 62,
+      "expectCount": 70,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 5,
-      "textRatio": 0.66,
+      "readFileSyncCount": 6,
+      "textRatio": 0.69,
       "maxMockStubCount": 0,
       "isSupertest": false,
       "isSnapshot": false,
@@ -17561,8 +17777,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-cheque-tender-method.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17576,14 +17790,14 @@
     },
     {
       "path": "tests/posSplitPayment.usecases.test.js",
-      "lines": 1138,
-      "caseCount": 31,
+      "lines": 1416,
+      "caseCount": 38,
       "describeTitles": [
         "POS split-payment engine"
       ],
-      "expectCount": 130,
+      "expectCount": 167,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 24,
+      "toHaveBeenCalledCount": 32,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -17601,8 +17815,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-19-storefront-voucher-fiscal-audit-row.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17638,8 +17850,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -17673,7 +17883,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17706,7 +17918,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17739,7 +17953,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17772,7 +17988,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [],
         "hardcoded": []
       },
@@ -17971,7 +18189,9 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-01-pos-dgfy-cashier-device-pairing.md",
           "docs/releases/batches/2026-06-29-pr25-pos-safe-adoption.json",
@@ -18168,8 +18388,6 @@
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
           "docs/compliance/impact-declarations/2026-09-10-bulk-image-conversion-gate.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json",
           "docs/releases/batches/2026-07-02-pos-logical-terminal-shift-open.json",
           "docs/releases/batches/2026-07-03-pos-online-order-pairing-hotfix.json"
@@ -18242,8 +18460,6 @@
           "PHASE_221_PLAN.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18281,8 +18497,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-30-pos-delivery-personnel-registry-crud.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18359,8 +18573,6 @@
           "docs/compliance/impact-declarations/2026-09-07-pos-delivery-run-date-range.md",
           "docs/compliance/impact-declarations/2026-09-13-pos-delivery-run-transportation-label.md",
           "docs/compliance/impact-declarations/2026-09-14-pos-delivery-run-loading-verification.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18401,8 +18613,6 @@
           "docs/compliance/impact-declarations/2026-06-01-rmo-24-2023-filing-readiness-gate.md",
           "docs/compliance/impact-declarations/2026-07-07-pos-commercial-and-statutory-discount-hardening.md",
           "docs/compliance/impact-declarations/2026-08-20-pos-voucher-redemption.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18438,8 +18648,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18477,8 +18685,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-06-pos-reports-overview-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18516,11 +18722,7 @@
           "docs/compliance/evidence/rbac-sensitive-action-matrix.md",
           "docs/testing/pos-readiness-status.md"
         ],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -18557,8 +18759,6 @@
           "docs/testing/pos-readiness-status.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18596,8 +18796,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-23-downpayment-balance-settlement.md",
           "docs/compliance/impact-declarations/2026-09-17-pos-stock-invalidation-composition-clear.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18632,11 +18830,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [],
-        "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
-        ],
+        "historical": [],
         "hardcoded": []
       },
       "classification": "keep",
@@ -18674,8 +18868,6 @@
           "docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md",
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18813,8 +19005,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -18964,8 +19154,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19087,12 +19275,12 @@
     },
     {
       "path": "tests/productionEnvValidation.test.js",
-      "lines": 386,
-      "caseCount": 16,
+      "lines": 478,
+      "caseCount": 20,
       "describeTitles": [
         "production environment validation"
       ],
-      "expectCount": 47,
+      "expectCount": 55,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -19119,7 +19307,8 @@
         ],
         "historical": [
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
-          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md"
+          "docs/compliance/impact-declarations/2026-06-03-production-env-fail-stop.md",
+          "docs/compliance/impact-declarations/2026-09-19-dglaundry-partner-access.md"
         ],
         "hardcoded": []
       },
@@ -19450,8 +19639,6 @@
           "scripts/backend-test-audit-overrides.js"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19539,8 +19726,6 @@
           "docs/compliance/impact-declarations/2026-07-06-pos-reports-overview-endpoint.md",
           "docs/compliance/impact-declarations/2026-09-01-pos-delivery-run-api.md",
           "docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-pos-dgfy-onboarding-session.json",
           "docs/releases/batches/2026-07-03-pos-online-order-pairing-hotfix.json"
@@ -19778,8 +19963,6 @@
           "docs/compliance/impact-declarations/2026-08-09-registration-industry-templates.md",
           "docs/compliance/impact-declarations/2026-08-11-registration-industry-visibility.md",
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19818,8 +20001,6 @@
           "docs/compliance/impact-declarations/2026-08-09-registration-industry-templates.md",
           "docs/compliance/impact-declarations/2026-08-11-registration-industry-visibility.md",
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19889,8 +20070,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19902,12 +20081,12 @@
     },
     {
       "path": "tests/reportHandlers.transport.test.js",
-      "lines": 490,
+      "lines": 491,
       "caseCount": 10,
       "describeTitles": [
         "reportHandlers transport contracts"
       ],
-      "expectCount": 41,
+      "expectCount": 42,
       "expectResCount": 17,
       "toHaveBeenCalledCount": 35,
       "readFileSyncCount": 0,
@@ -19929,8 +20108,6 @@
           "docs/compliance/evidence/open-controls-matrix.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -19938,6 +20115,39 @@
       "classification": "keep",
       "reason": "compliance evidence citation: docs/compliance/DGFY Compliance Certification Checklist.md, docs/compliance/evidence/open-controls-matrix.md",
       "rule": "R1-pin",
+      "findings": []
+    },
+    {
+      "path": "tests/reportRegistry.contract.test.js",
+      "lines": 101,
+      "caseCount": 4,
+      "describeTitles": [
+        "canonical report registry contract"
+      ],
+      "expectCount": 26,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 1,
+      "textRatio": 0.35,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 2,
+      "deadImportCount": 0,
+      "suffix": "contract",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: contract)",
+      "rule": "R5-default",
       "findings": []
     },
     {
@@ -19970,6 +20180,39 @@
       },
       "classification": "keep",
       "reason": "default keep (suffix: poAnalysis)",
+      "rule": "R5-default",
+      "findings": []
+    },
+    {
+      "path": "tests/reportTimezone.test.js",
+      "lines": 17,
+      "caseCount": 2,
+      "describeTitles": [
+        "report timezone formatting"
+      ],
+      "expectCount": 6,
+      "expectResCount": 0,
+      "toHaveBeenCalledCount": 0,
+      "readFileSyncCount": 0,
+      "textRatio": 0,
+      "maxMockStubCount": 0,
+      "isSupertest": false,
+      "isSnapshot": false,
+      "onDbManifest": false,
+      "usesCreateTestTenant": false,
+      "srcImportCount": 1,
+      "deadImportCount": 0,
+      "suffix": "(none)",
+      "conditionalSkip": false,
+      "envGated": false,
+      "falseGreenWrapper": false,
+      "citations": {
+        "live": [],
+        "historical": [],
+        "hardcoded": []
+      },
+      "classification": "keep",
+      "reason": "default keep (suffix: (none))",
       "rule": "R5-default",
       "findings": []
     },
@@ -20322,10 +20565,7 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md"
         ],
         "hardcoded": []
       },
@@ -20365,8 +20605,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -20516,8 +20754,6 @@
           "docs/archive/system-audit-2026-03/PHASE0_Failure_Matrix_2026-03-04.md",
           "docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md",
           "docs/compliance/impact-declarations/2026-06-05-platform-admin-login-session-recovery.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -20531,7 +20767,7 @@
     },
     {
       "path": "tests/runtimeSchemaAuditService.test.js",
-      "lines": 1016,
+      "lines": 1018,
       "caseCount": 11,
       "describeTitles": [
         "runtimeSchemaAuditService"
@@ -20554,6 +20790,7 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
+          "Phase346_HANDOFF.md",
           "System_Audit/README.md",
           "docs/testing/README.md",
           "docs/testing/nonprod-gap-closure-checklist.md",
@@ -20569,8 +20806,6 @@
           "docs/compliance/impact-declarations/2026-08-11-registration-industry-visibility.md",
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
           "docs/compliance/impact-declarations/2026-08-18-pos-drawer-test-fixture-realignment.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json"
         ],
@@ -20622,10 +20857,10 @@
     },
     {
       "path": "tests/salesRepositoryPromoReadModel.test.js",
-      "lines": 66,
+      "lines": 75,
       "caseCount": 1,
       "describeTitles": [],
-      "expectCount": 1,
+      "expectCount": 2,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -20655,12 +20890,12 @@
     },
     {
       "path": "tests/salesValidator.transactionsQuery.test.js",
-      "lines": 48,
+      "lines": 50,
       "caseCount": 2,
       "describeTitles": [
         "Sales transactions query validator"
       ],
-      "expectCount": 8,
+      "expectCount": 9,
       "expectResCount": 3,
       "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
@@ -20715,8 +20950,6 @@
         "live": [],
         "historical": [
           "docs/archive/testing/2026-02/production-readiness-audit-2026-02-19.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -20865,8 +21098,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -21019,8 +21250,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -21056,8 +21285,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -21176,8 +21403,6 @@
           "docs/compliance/impact-declarations/2026-05-28-storefront-business-hours.md",
           "docs/compliance/impact-declarations/2026-06-07-storefront-root-handles-branch-scope.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -21490,14 +21715,14 @@
     },
     {
       "path": "tests/settingsUsecases.applicationResult.test.js",
-      "lines": 1523,
-      "caseCount": 64,
+      "lines": 1548,
+      "caseCount": 65,
       "describeTitles": [
         "settings use-cases application result contract"
       ],
-      "expectCount": 207,
+      "expectCount": 213,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 62,
+      "toHaveBeenCalledCount": 63,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -21532,8 +21757,6 @@
           "docs/compliance/impact-declarations/2026-08-27-storefront-fulfillment-method-availability.md",
           "docs/compliance/impact-declarations/2026-09-01-dglaundry-runtime-ownership-guard.md",
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/release/merge-adoption/pr25-pos-file-disposition-2026-06-29.json"
         ],
@@ -21574,8 +21797,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-05-04-customer-access-services-production-hardening.md",
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -21925,8 +22146,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-14-assigned-delivery-job-status.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22174,8 +22393,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-folder-delete-secondary-membership-warning.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22250,8 +22467,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22323,8 +22538,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22437,8 +22650,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md",
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22477,8 +22688,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22532,8 +22741,6 @@
           "docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22574,8 +22781,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22617,8 +22822,6 @@
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22660,8 +22863,6 @@
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22700,8 +22901,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22744,8 +22943,6 @@
           "docs/compliance/impact-declarations/2026-09-02-delivery-fee-waiver-voucher.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22795,8 +22992,6 @@
           "docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22835,10 +23030,7 @@
           "docs/compliance/impact-declarations/2026-09-01-delivery-fee-mode-config-schema.md",
           "docs/compliance/impact-declarations/2026-09-02-server-side-road-distance-capture-observation-only.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
-          "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
+          "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md"
         ],
         "hardcoded": []
       },
@@ -22879,8 +23071,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-delivery-fee-override-provenance.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -22930,8 +23120,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23078,8 +23266,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-22-downpayment-choice-and-settings-clarity.md",
           "docs/compliance/impact-declarations/2026-08-26-storefront-direct-payment-capability-advertising.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23194,8 +23380,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-27-storefront-per-store-guest-checkout-toggle.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23343,8 +23527,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23384,8 +23566,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23432,8 +23612,6 @@
           "docs/compliance/impact-declarations/2026-08-09-store-template-writepath-hardening.md",
           "docs/compliance/impact-declarations/2026-08-11-registration-industry-visibility.md",
           "docs/compliance/impact-declarations/2026-08-12-registration-industry-catalog.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23480,8 +23658,6 @@
           "docs/compliance/impact-declarations/2026-08-18-voucher-below-cost-guard.md",
           "docs/compliance/impact-declarations/2026-08-18-voucher-catalog-display-seam.md",
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23558,8 +23734,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23601,8 +23775,6 @@
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23705,8 +23877,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-calculated-and-free-delivery-fee-modes.md",
           "docs/compliance/impact-declarations/2026-09-04-haversine-outside-radius-flag-retirement.md",
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23919,8 +24089,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -23958,8 +24126,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -24012,8 +24178,6 @@
           "docs/compliance/impact-declarations/2026-09-06-client-derived-upload-contract.md",
           "docs/compliance/impact-declarations/2026-09-09-rollout-ladder-kill-switch.md",
           "docs/compliance/impact-declarations/2026-09-10-bulk-image-conversion-gate.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -24091,8 +24255,6 @@
           "docs/compliance/impact-declarations/2026-06-07-storefront-root-handles-branch-scope.md",
           "docs/compliance/impact-declarations/2026-06-16-no-location-storefront-business-hours.md",
           "docs/compliance/impact-declarations/2026-08-20-voucher-public-listing.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -24189,8 +24351,6 @@
           "docs/compliance/impact-declarations/2026-06-16-no-location-storefront-business-hours.md",
           "docs/compliance/impact-declarations/2026-06-25-storefront-onboarding-fnb-import-hardening.md",
           "docs/compliance/impact-declarations/2026-09-05-discovery-delivery-from-price.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-06-30-staging-to-master-aggregate.json"
         ],
@@ -24538,8 +24698,6 @@
           "docs/compliance/impact-declarations/2026-08-21-downpayment-capture-webhook-finalization.md",
           "docs/compliance/impact-declarations/2026-08-21-downpayment-quote-checkout-resolution.md",
           "docs/compliance/impact-declarations/2026-08-22-downpayment-storefront-checkout-ui.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -24737,8 +24895,6 @@
           "docs/archive/system-audit-2026-03/FINAL_SYSTEM_AUDIT_REVIEW_2026-03-04.md",
           "docs/archive/system-audit-2026-03/PHASE0_Acceptance_Gates_Immutable_2026-03-04.md",
           "docs/archive/system-audit-2026-03/PHASE0_Failure_Matrix_2026-03-04.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -24924,15 +25080,15 @@
     },
     {
       "path": "tests/tenantAdminAuditLogActions.contract.test.js",
-      "lines": 28,
+      "lines": 31,
       "caseCount": 1,
       "describeTitles": [
         "tenant admin audit log action contract"
       ],
-      "expectCount": 9,
+      "expectCount": 11,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
-      "readFileSyncCount": 4,
+      "readFileSyncCount": 5,
       "textRatio": 1,
       "maxMockStubCount": 0,
       "isSupertest": false,
@@ -24952,8 +25108,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-06-25-platform-admin-assisted-provisioning.md",
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -24991,8 +25145,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -25029,8 +25181,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-31-affiliate-slot-cap-admin-write-endpoint.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -25286,8 +25436,6 @@
         "historical": [
           "docs/archive/system-audit-2026-03/11.1-Plaintext_DB_credentials.md",
           "docs/archive/testing/2026-02/production-readiness-audit-2026-02-19.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -25478,8 +25626,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -25703,8 +25849,6 @@
         ],
         "historical": [
           "docs/compliance/impact-declarations/2026-05-19-hospitality-front-desk-pos-and-onboarding.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -25781,8 +25925,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-22-downpayment-refund-and-forfeiture.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -25861,8 +26003,6 @@
         "historical": [
           "docs/compliance/impact-declarations/2026-06-06-storefront-public-visibility-opt-in.md",
           "docs/compliance/impact-declarations/2026-09-11-tenant-provisioning-async-crash-recoverable.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -26092,8 +26232,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-08-21-paymongo-commerce-webhook-idempotency.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -26206,12 +26344,12 @@
     },
     {
       "path": "tests/tenantSchemaBootstrap.integration.test.js",
-      "lines": 80,
-      "caseCount": 2,
+      "lines": 126,
+      "caseCount": 3,
       "describeTitles": [
         "tenantSchemaBootstrap.applyPostSyncTenantSchema (DB integration)"
       ],
-      "expectCount": 4,
+      "expectCount": 9,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 0,
       "readFileSyncCount": 0,
@@ -26229,11 +26367,10 @@
       "falseGreenWrapper": false,
       "citations": {
         "live": [
-          "docs/ops/RELEASE_CANDIDATE_POLICY.md"
+          "docs/ops/RELEASE_CANDIDATE_POLICY.md",
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md"
         ],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -26280,12 +26417,12 @@
     },
     {
       "path": "tests/tenantSchemaSyncScripts.test.js",
-      "lines": 637,
-      "caseCount": 32,
+      "lines": 775,
+      "caseCount": 39,
       "describeTitles": [
         "tenant schema sync script contracts"
       ],
-      "expectCount": 145,
+      "expectCount": 177,
       "expectResCount": 0,
       "toHaveBeenCalledCount": 3,
       "readFileSyncCount": 0,
@@ -26302,7 +26439,10 @@
       "envGated": false,
       "falseGreenWrapper": false,
       "citations": {
-        "live": [],
+        "live": [
+          "Phase346_HANDOFF.md",
+          "docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md"
+        ],
         "historical": [
           "docs/compliance/impact-declarations/2026-07-02-pos-item-creation-onboarding-schema-repair.md",
           "docs/compliance/impact-declarations/2026-07-06-pos-services-mode-starter-item-fix.md",
@@ -26310,8 +26450,6 @@
           "docs/compliance/impact-declarations/2026-08-19-pricelist-lifecycle-integrity.md",
           "docs/compliance/impact-declarations/2026-08-20-voucher-public-listing.md",
           "docs/compliance/impact-declarations/2026-09-02-auto-applied-delivery-campaigns.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/releases/batches/2026-07-02-pos-item-creation-onboarding-schema-hotfix.json"
         ],
@@ -26532,8 +26670,6 @@
       "citations": {
         "live": [],
         "historical": [
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -26656,14 +26792,14 @@
     },
     {
       "path": "tests/userSoftDeletePolicy.test.js",
-      "lines": 217,
-      "caseCount": 7,
+      "lines": 259,
+      "caseCount": 8,
       "describeTitles": [
         "userService soft-delete policy"
       ],
-      "expectCount": 14,
+      "expectCount": 17,
       "expectResCount": 0,
-      "toHaveBeenCalledCount": 3,
+      "toHaveBeenCalledCount": 5,
       "readFileSyncCount": 0,
       "textRatio": 0,
       "maxMockStubCount": 0,
@@ -26784,8 +26920,6 @@
         "live": [],
         "historical": [
           "docs/archive/system-audit-2026-03/5.3-Void_logic_missing_batches.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": [
@@ -26871,8 +27005,6 @@
           "docs/compliance/impact-declarations/2026-08-19-fixed-price-voucher-create-null.md",
           "docs/compliance/impact-declarations/2026-08-19-pricelist-lifecycle-integrity.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -26954,8 +27086,6 @@
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md",
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27004,8 +27134,6 @@
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md",
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27047,8 +27175,6 @@
           "docs/compliance/impact-declarations/2026-08-19-pricelist-lifecycle-integrity.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-04-storefront-catalog-secondary-categories.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27085,8 +27211,6 @@
         "live": [],
         "historical": [
           "docs/compliance/impact-declarations/2026-09-03-accounting-role-voucher-management-gating.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27135,8 +27259,6 @@
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27176,8 +27298,6 @@
           "docs/compliance/impact-declarations/2026-08-19-pricelist-lifecycle-integrity.md",
           "docs/compliance/impact-declarations/2026-09-02-storefront-cancel-voucher-reversal.md",
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27227,8 +27347,6 @@
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md",
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []
@@ -27286,8 +27404,6 @@
           "docs/compliance/impact-declarations/2026-09-02-voucher-benefit-target-axis.md",
           "docs/compliance/impact-declarations/2026-09-06-voucher-max-order-value-and-audit-columns.md",
           "docs/compliance/impact-declarations/2026-09-08-voucher-account-restricted-issuance.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
-          "docs/features/IMPLEMENTATION_PHASE_LEDGER.md",
           "docs/features/IMPLEMENTATION_PHASE_LEDGER.md"
         ],
         "hardcoded": []

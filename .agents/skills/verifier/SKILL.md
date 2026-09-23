@@ -38,18 +38,23 @@ card back out of it.
 ## What "verify on a deployed environment" means here — and what it doesn't (yet)
 
 #536's own Definition of Done left this open. This plan resolves the **infra-health half** and
-names the **functional half as an explicit, unresolved gap** — not silently implied to be
-covered:
+designs a **bounded functional sentinel** for one regression class (#1698, below) plus an
+API-only fallback — still best-effort, explicitly not full feature coverage:
 
 - **Infra health (solved, below): does the deployed environment's own health.** Reuses
   `.github/workflows/verify-deployment.yml` (#514) rather than inventing a second SSH/health
   mechanism — that workflow already polls `docker compose ps` status, each service's
   `RestartCount`, and an in-container `/health` hit over a window, specifically to catch a
-  crash-loop a single snapshot would miss.
-- **Functional correctness (NOT solved here): did the merged feature actually behave correctly.**
-  This role does not (yet) re-derive or re-run feature-specific checks. Flag this explicitly in
-  the verdict rather than pretending an infra-health PASS also proves the feature works — a future
-  session can extend this per class of change; this one does not claim to have designed that.
+  crash-loop a single snapshot would miss. It stays a distinct prerequisite: never fold browser
+  checks into it, never make it a promotion gate, and never treat `/health` as proof a feature
+  works.
+- **Functional correctness (bounded sentinel, designed below): did the merged change actually
+  behave correctly where it landed.** This role runs one targeted, read-mostly smoke selected
+  from the merged diff — currently the authenticated POS Items check for the #1698 class, or a
+  bounded authenticated API probe for API-only changes. Name exactly what was and wasn't checked
+  in the verdict rather than implying full coverage: this sentinel catches a client-side
+  `ReferenceError` or broken deployed bundle that container health and an API-only probe miss,
+  and nothing more.
 
 ### Dispatching #514's workflow is not a deploy-dispatch checkpoint
 
@@ -85,11 +90,66 @@ no-op.
 4. **Read the result.** `conclusion: success` → infra-health PASS. `conclusion: failure` → infra-
    health FAIL; pull the step summary (`gh run view <id> --log` or the run's own summary) for the
    poll transcript to cite in the verdict.
-5. **Functional check — best-effort, not a designed procedure.** Read the merged PR's diff and the
-   issue's own acceptance criteria if any exist; do a light manual sanity pass where feasible (e.g.
-   hitting an affected endpoint). This is explicitly weaker than the infra-health check above —
-   name what was and wasn't actually checked in the verdict rather than implying full coverage.
-6. **Decide and act** — see "Board transitions" below.
+5. **Functional check — one targeted smoke selected from the merged diff (best-effort, not
+   UAT).** Read the merged PR's diff and the issue's acceptance criteria, then pick exactly one:
+   - **Deployed POS/web UI change with an identifiable route → the #1698-class browser smoke
+     below.** This is the check that catches what infra health and API probes cannot: a
+     client-side `ReferenceError` or broken deployed bundle where `GET /pos/catalog` succeeds
+     but the workspace still renders the load-error fallback.
+   - **API-only change → a bounded authenticated API probe** such as
+     `apps/dgfy-api/scripts/smoke-local-pos.js` (DGFY login → company resolution → tenant
+     session → authenticated `GET /api/v1/pos/catalog`, retargeted at the deployed API base).
+     Report it as **API evidence, never as browser/UI evidence**.
+   - **No safe, relevant check exists → report `not run`.** Never call the functional portion a
+     pass on that basis — see "Board transitions".
+6. **Decide and act** — see "Board transitions" below. Verdict semantics: infra-health PASS
+   **plus** a relevant functional PASS permits the normal `For Prod` recommendation; an
+   infra-health FAIL **or** a functional FAIL recommends `Failed`. Missing credentials, an
+   unreachable route, or no applicable probe is `not run` — never a PASS, and never silent: say
+   exactly which precondition was missing without leaking secrets, and distinguish
+   fixture/configuration failure from application failure. Unlock/session setup may leave
+   unavoidable session/audit noise even though catalog reads are read-only — disclose it.
+
+## Functional smoke contract — the #1698-class browser check
+
+Read-mostly and non-mutating. Drive the *deployed* environment with Playwright against its exact
+base URL — never localhost, never the mutating local journey suite
+(`apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js` proves these assertions pre-merge
+against a provisioned local stack; it is evidence, not a live command).
+`apps/dgfy-pos/playwright.config.js` already supports remote runs via `E2E_BASE_URL` (local web
+servers start only for localhost; credentials come from the environment or the ignored
+`.env.e2e`). `scripts/smoke-pos-terminal-ui.js` sets the evidence conventions (`POS_UI_BASE_URL`,
+console/page-error capture, documented 400/401 exclusions) but stops at the locked terminal —
+extend past it only as follows:
+
+- **Inputs (all explicit, none invented):** deployed POS base URL; dedicated non-production smoke
+  account email/password plus tenant/company selector; known active terminal ID when the route
+  requires unlock. Provision these before running — never reuse a personal account or a
+  production tenant. **Never print passwords, bearer tokens, or company tokens.**
+- **Navigate:** open `<POS_BASE>/terminal`, authenticate/select the intended company, and unlock
+  **only** the pre-provisioned terminal. Do not create/edit/delete catalog data, change settings,
+  open/close a shift, perform checkout, or run import/upload flows.
+- **Assert (the #1698 regression signature):** click the exact accessible control —
+  `getByRole('button', { name: /^Items$/ })` (`TerminalWorkspaceSidebar.jsx`'s plain `Items`
+  NavButton, `testId="pos-nav-items"`) — then wait for the Items panel
+  (`#pos-items-items-panel[role="tabpanel"]`, i.e. `pos-items-${activeTab}-panel` with the
+  default `items` tab for a `canViewPos` login; the workspace is lazy-loaded) and for the loading
+  state (`Loading POS-visible IMS items...`, `TerminalOperationsWorkspace.jsx`'s `loadItems()`)
+  to settle. Require the known fallback banner (`Failed to load POS-visible IMS items.`) to be
+  **absent**, and require **one** of: a rendered item row, or the legitimate empty state
+  (`No POS items found` / `No matching items`). Capture page errors, console errors, unexpected
+  failed/5xx responses, and the final route throughout. This observes the real client bundle
+  end to end down to `posService.js`'s authenticated `GET /pos/catalog` — which is exactly why
+  an API-only `/pos/catalog` hit and infra `/health` evidence do not substitute for it.
+- **Record:** environment (STAGING default), base route, redacted tenant identifier/name, target
+  commit/deploy evidence when available, every assertion above with its outcome, ignored expected
+  responses with reasons, and any limitation (e.g. which preconditions had to be assumed).
+
+This sentinel is deliberately narrow: one authenticated Items load proving the workspace renders
+a valid result. It is not full POS UAT, CRUD coverage, checkout verification, accessibility
+coverage, or a guarantee that unrelated changed features work — say the tested route and the
+assertions by name instead. Do not wire it into promotion CI or deploy workflows; it runs
+Verifier-driven, and the first live use stays report-only per below.
 
 ## Unattended vs. checkpoint — stop and ask before proceeding
 

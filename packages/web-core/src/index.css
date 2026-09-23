@@ -15,6 +15,25 @@ body {
   box-sizing: border-box;
 }
 
+/* Touch pointers can retain :hover after a tap. Keep the text-size menu's
+   selected state, but prevent an unselected option or trigger from looking
+   permanently hovered on touch-capable views. */
+.pos-text-size-control__trigger,
+.pos-text-size-control__option {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (max-width: 1023.98px), (hover: none), (pointer: coarse) {
+  .pos-text-size-control__trigger:hover {
+    background-color: transparent;
+  }
+
+  .pos-text-size-control__option:not([aria-selected="true"]):hover {
+    background-color: transparent;
+    color: #0f172a;
+  }
+}
+
 /* POS amount and numeric fields require deliberate manual entry. */
 .dgfy-number-input {
   -moz-appearance: textfield;
@@ -191,6 +210,159 @@ body {
   display: none;
 }
 
+/* Horizontal filter rows stay discoverable when their chips exceed a phone's
+   width; unlike the general-purpose hidden scrollbar utility, this surface
+   exposes the native scrollbar and enables horizontal touch panning. */
+.dgfy-pos-history-horizontal-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+.dgfy-pos-history-horizontal-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dgfy-pos-history-horizontal-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dgfy-pos-history-horizontal-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+/* Shared POS pagination follows the mobile wireframe: the range and Go to
+   label share the first row, while page size and navigation share the second. */
+.dgfy-global-pagination__mobile-go-to-label {
+  display: none;
+}
+
+.dgfy-global-pagination__page-size-trigger {
+  border-color: #dbe4f0;
+  background: #ffffff;
+  color: #334155;
+  letter-spacing: -0.01em;
+}
+
+.dgfy-global-pagination__page-size-trigger:hover:not(:disabled) {
+  border-color: rgba(26, 78, 141, 0.5);
+  background: #f8fbff;
+}
+
+.dgfy-global-pagination__page-size-menu {
+  min-width: 100%;
+}
+
+@media (max-width: 767.98px) {
+  .dgfy-global-pagination {
+    display: grid !important;
+    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-rows: auto auto;
+    column-gap: 0.25rem;
+    row-gap: 0.25rem;
+    align-items: center;
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  .dgfy-global-pagination__summary,
+  .dgfy-global-pagination__controls,
+  .dgfy-global-pagination__go-to {
+    display: contents !important;
+  }
+
+  .dgfy-global-pagination__summary-text {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dgfy-global-pagination__page-size {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 5.75rem;
+    max-width: 100%;
+  }
+
+  .dgfy-global-pagination__page-size-trigger {
+    width: 100%;
+    min-width: 5.75rem;
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .dgfy-global-pagination__previous {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__status {
+    grid-column: 3;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .dgfy-global-pagination__next {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__mobile-go-to-label {
+    display: block;
+    grid-column: 5;
+    grid-row: 1;
+    justify-self: end;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none;
+  }
+
+  .dgfy-global-pagination__go-to-input {
+    grid-column: 5;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .dgfy-global-pagination {
+    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
+    column-gap: 0.2rem;
+  }
+}
+
+/* Keep the History controls slightly above the phone home indicator. This is
+   intentionally scoped to this footer because the shared mobile pagination
+   rule uses !important padding and other paginated surfaces should not move. */
+@media (max-width: 767.98px) {
+  .dgfy-pos-history-pagination-footer {
+    padding-bottom: 0.75rem !important;
+  }
+}
+
+/* Keep the void dialog's title, field, and actions on one shared content
+   gutter. DialogContent has a default horizontal inset while DialogHeader and
+   DialogFooter add their own padding, which otherwise makes the field wider
+   than the action row. */
+.pos-history-void-dialog {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pos-history-void-footer {
+  gap: 0.75rem;
+}
+
 .dgfy-pos-scroll-region {
   scrollbar-color: transparent transparent;
   scrollbar-gutter: stable;
@@ -320,36 +492,347 @@ body {
   }
 }
 
-/* Keep the checkout confirmation sheet reachable on short mobile viewports.
-   The text-size setting is included because larger POS typography changes the
-   usable content height without changing the dialog's ownership. */
-@media (max-width: 639.98px) {
-  .pos-checkout-mobile-sheet {
-    height: calc(100dvh - 3rem);
-    max-height: calc(100dvh - 3rem);
-    transition: height 280ms cubic-bezier(0.16, 1, 0.3, 1), max-height 280ms cubic-bezier(0.16, 1, 0.3, 1);
+/* Tablet action buttons retain larger touch targets while inheriting the same
+ * six-track parked-sale grouping as desktop. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
   }
 
-  body[data-pos-text-size] .pos-checkout-confirm-dialog {
-    height: calc(100dvh - 9rem + 10px);
-    max-height: calc(100dvh - 9rem + 10px);
-  }
-
-  body[data-pos-text-size] .pos-checkout-mobile-sheet-expanded {
-    height: calc(100dvh - 3rem);
-    max-height: calc(100dvh - 3rem);
-    overflow-y: auto;
-  }
-
-  body[data-pos-text-size] .pos-checkout-mobile-scroll-locked {
-    overflow-y: hidden;
-  }
-
-  body[data-pos-text-size] .pos-checkout-mobile-scroll-expanded {
-    overflow-y: auto;
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
   }
 }
 
+/* Keep the Sell current-sale sheet aligned with the other POS mobile surfaces.
+   The sheet is selected by the md breakpoint in the component, so its sizing
+   must cover the complete phone/narrow-device range through 767.98px. */
+@media (max-width: 767.98px) {
+  .pos-current-sale-mobile-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 9rem + 10px);
+    max-height: calc(100dvh - 9rem + 10px);
+    will-change: transform;
+  }
+
+  .pos-current-sale-mobile-sheet-content {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+}
+
+/* Keep the compact portrait Checkout Tab layout. The discount workspace stays
+   in a constrained bottom sheet and scrolls internally when its content is
+   taller than the available mobile height. */
+@media (max-width: 767.98px) {
+  [data-dialog-mobile-sheet="true"] {
+    align-items: flex-end;
+  }
+
+/* Keep the checkout confirmation sheet reachable on short mobile viewports.
+   The text-size setting is included because larger POS typography changes the
+   usable content height without changing the dialog's ownership. */
+  .pos-checkout-mobile-sheet {
+    box-sizing: border-box;
+    transform: translate3d(0, 100%, 0);
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+
+  /* Keep the sheet and overlay free of legacy keyframe entrance effects. The
+     checkout contents retain their own transitions and loading indicators. */
+  .pos-checkout-mobile-sheet,
+  .pos-checkout-mobile-overlay {
+    animation: none !important;
+  }
+
+  .pos-checkout-mobile-sheet,
+  .pos-checkout-mobile-overlay {
+    transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease;
+  }
+
+  .pos-checkout-mobile-sheet.pos-checkout-mobile-sheet-visible {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .pos-checkout-mobile-overlay {
+    opacity: 0;
+  }
+
+  .pos-checkout-mobile-overlay.pos-checkout-mobile-overlay-visible,
+  .pos-checkout-mobile-overlay.pos-checkout-mobile-overlay-handoff {
+    opacity: 1;
+  }
+
+  .pos-checkout-mobile-sheet.pos-checkout-mobile-sheet-expanded {
+    /* The sheet itself stays anchored to the bottom. Only the content region
+       below the reveal owns vertical scrolling after a discount is selected. */
+    overflow: hidden;
+    will-change: auto;
+  }
+
+  /* The discount controls sit directly above the footer on a phone. Trim the
+     extra fieldset and horizontal-strip bottom padding without changing the
+     desktop/tablet spacing. */
+  .pos-checkout-discount-types {
+    padding-bottom: 0.25rem;
+  }
+
+  .pos-checkout-discount-type-scroll {
+    padding-bottom: 0;
+  }
+
+  .pos-checkout-mobile-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .pos-checkout-mobile-footer {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  /* Current Sale and Checkout Tab leave/enter together. These handoff hooks
+     keep both panels on one motion curve without changing their desktop
+     layout or their state transitions. */
+  .pos-checkout-mobile-sheet-handoff {
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .pos-current-sale-handoff {
+    transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  /* The Current Sale backdrop is replaced by the Dialog backdrop in the same
+     render pass during a handoff. Keep that replacement opaque so the page
+     never flashes between the two sheets. */
+  .pos-checkout-mobile-overlay-handoff {
+    opacity: 1;
+  }
+
+  /* Keep the normal checkout layout fixed in the sheet. Its individual
+     button rows retain their own horizontal sliders, while the full body only
+     becomes vertically scrollable when the Apply Discount workspace opens. */
+  .pos-checkout-mobile-scroll-locked {
+    overflow-y: hidden;
+    overflow-y: hidden !important;
+    scrollbar-gutter: stable;
+  }
+
+  .pos-checkout-mobile-scroll-expanded {
+    overflow-y: auto;
+    overflow-y: auto !important;
+    scrollbar-gutter: stable;
+  }
+
+}
+
+/* The portrait discount workspace remains a bottom sheet instead of filling
+   the whole phone. The landscape phone rule below intentionally keeps its
+   separate full-screen behavior. */
+@media (max-width: 767.98px) and (orientation: portrait) {
+  .pos-checkout-mobile-sheet.pos-checkout-mobile-sheet-expanded {
+    height: auto !important;
+    /* Keep a small, predictable gap above the sheet. Do not cap this with a
+       fixed rem value: on taller phones that cap can be smaller than the
+       compact sheet and make the expanded state move downward. */
+    max-height: calc(100dvh - 4rem) !important;
+  }
+}
+
+/* Short touch phones in landscape use a full-screen Checkout Tab. Keep this
+   separate from portrait so the good landscape handoff is preserved without
+   forcing the normal portrait form to stretch to the bottom of the screen. */
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+  [data-dialog-mobile-sheet="true"] {
+    align-items: flex-end;
+  }
+
+  .pos-checkout-mobile-sheet {
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .pos-checkout-order-summary-modal {
+    width: 100% !important;
+    max-width: none !important;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .pos-checkout-order-summary-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+  }
+
+  .pos-checkout-order-summary-totals {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .pos-checkout-order-summary-close {
+    top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  body[data-pos-text-size] .pos-checkout-confirm-dialog {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  body[data-pos-text-size] .pos-checkout-mobile-sheet-expanded {
+    height: 100dvh;
+    max-height: 100dvh;
+  }
+
+  .pos-checkout-mobile-header {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .pos-checkout-mobile-footer {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  [data-pos-mobile-landscape="true"] .pos-catalog-pane {
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.5rem 0;
+  }
+
+  [data-pos-mobile-landscape="true"] [data-testid="pos-catalog-controls"] {
+    margin-bottom: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  [data-pos-mobile-landscape="true"] [data-testid="pos-catalog-scroll"] {
+    padding-top: 0.5rem;
+  }
+
+  [data-pos-mobile-landscape="true"] [data-testid="pos-catalog-footer"] {
+    padding-inline: 0;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .pos-checkout-discount-workspace {
+    max-height: 0;
+    /* The checkout body is the single vertical scroll surface. Keeping this
+       reveal clipped prevents a nested scrollbar from changing the sheet's
+       height or making the discount panel appear to slide in the wrong
+       direction. The eligible-item list inside the workspace remains
+       independently scrollable when it has more rows. */
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(0, 0.75rem, 0);
+    transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 360ms cubic-bezier(0.22, 1, 0.36, 1), transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: max-height, opacity, transform;
+  }
+
+  .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open {
+    max-height: 10rem;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Mobile portrait is the compact checkout flow that expands into a vertical
+   form. Keep the landscape phone behavior unchanged while allowing the full
+   discount workspace to contribute to this body's scroll height. */
+@media (max-width: 767.98px) and (orientation: portrait) {
+  .pos-checkout-mobile-sheet.pos-checkout-mobile-sheet-expanded > .pos-modal-scroll-content.pos-checkout-mobile-scroll-expanded {
+    min-height: 0;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+  }
+
+  .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open {
+    /* Keep the reveal animated, but do not clip the fields below Eligible
+       Items once the expanded body becomes scrollable. */
+    max-height: 80rem;
+  }
+}
+
+/* The POS device preview can render a phone inside a desktop-sized browser
+   viewport. The component supplies this class from its responsive viewport
+   state so the phone-only scroll contract still works in that preview. It is
+   deliberately absent from mobile landscape and every tablet/desktop state. */
+.pos-checkout-mobile-portrait-sheet.pos-checkout-mobile-sheet-expanded {
+  overflow: hidden !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-locked {
+  overflow-y: hidden !important;
+  scrollbar-gutter: stable;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-expanded {
+  min-height: 0;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-workspace {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0.75rem, 0);
+  transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease, transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: max-height, opacity, transform;
+}
+
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open {
+  max-height: 80rem;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-checkout-mobile-sheet,
+  .pos-checkout-mobile-overlay,
+  .pos-current-sale-mobile-overlay,
+  .pos-checkout-discount-workspace {
+    transition: none !important;
+    will-change: auto;
+  }
+
+  .pos-current-sale-mobile-sheet,
+  .pos-current-sale-handoff {
+    transition: none !important;
+    will-change: auto;
+  }
+
+  .pos-checkout-mobile-sheet {
+    transform: translate3d(0, 0, 0) !important;
+    opacity: 1 !important;
+    pointer-events: auto;
+  }
+}
+
+/* Keep tablet action targets touch-safe without changing the shared six-track
+ * layout. The component assigns two wide tracks to Checkout/Print and three
+ * equal tracks to the secondary actions. */
 /* Tablet action buttons retain larger touch targets while reusing the same
  * parked-sale grouping and ordering as the PC layout. */
 @media (min-width: 640px) and (max-width: 1023.98px) {
@@ -361,6 +844,163 @@ body {
   .dgfy-pos-tablet-action-grid > button > span {
     font-size: 0.75rem;
     line-height: 1.2;
+  }
+}
+
+/* The dialog is portaled outside the tablet shell, so scope this extended
+   surface by the class assigned from the tablet-portrait viewport state. Give
+   the sheet a visible inset as well as a shared inner gutter; this prevents it
+   from appearing full-screen while leaving every other viewport untouched. */
+.pos-checkout-tablet-portrait-sheet {
+  box-sizing: border-box;
+  width: calc(100vw - 2rem) !important;
+  max-width: calc(100vw - 2rem) !important;
+  margin-left: 1rem !important;
+  margin-right: 1rem !important;
+  --pos-checkout-tablet-portrait-gutter: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-mobile-header,
+.pos-checkout-tablet-portrait-sheet > section[aria-label="Payment totals"],
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content,
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-mobile-footer {
+  padding-left: var(--pos-checkout-tablet-portrait-gutter);
+  padding-right: var(--pos-checkout-tablet-portrait-gutter);
+}
+
+.pos-checkout-tablet-portrait-sheet.pos-checkout-mobile-sheet-expanded {
+  /* The discount workspace adds more fields than can fit in the compact
+     checkout surface. Raise the sheet only partway, then let the single body
+     scroll region expose the remaining fields instead of filling the tablet. */
+  max-height: clamp(30rem, calc(100dvh - 18rem), 48rem) !important;
+}
+
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-locked {
+  overflow-y: hidden !important;
+  scrollbar-gutter: stable;
+}
+
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-expanded {
+  min-height: 0;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+
+/* Tablet portrait keeps every checkout button row inside the available
+   width. Mobile still uses its intentional one-row horizontal sliders; this
+   selector is isolated to the tablet-portrait sheet only. */
+.pos-checkout-tablet-portrait-sheet .pos-checkout-payment-method-scroll,
+.pos-checkout-tablet-portrait-sheet .pos-checkout-payment-suggestion-scroll,
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-type-scroll {
+  overflow-x: hidden !important;
+  touch-action: auto;
+}
+
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-payment-method-buttons"],
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-cash-payment-suggestions"],
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-discount-type-buttons"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-payment-method-buttons"] > *,
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-cash-payment-suggestions"] > *,
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-discount-type-buttons"] > * {
+  min-width: 0;
+}
+
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-payment-method-buttons"] > button,
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-cash-payment-suggestions"] > button,
+.pos-checkout-tablet-portrait-sheet [data-testid="pos-checkout-discount-type-buttons"] > button {
+  height: auto !important;
+  min-height: 2.25rem;
+  padding-right: 0.25rem;
+  padding-left: 0.25rem;
+  overflow-wrap: anywhere;
+  white-space: normal !important;
+  line-height: 1.15;
+}
+
+/* Tablet portrait uses the same direct workspace state change as the phone.
+   The inner workspace owns the single max-height/opacity/transform motion so
+   the sheet opens or closes as one stable surface. */
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-workspace {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 0.75rem, 0);
+  transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 220ms ease, transform 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: max-height, opacity, transform;
+}
+
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open {
+  max-height: 80rem;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0);
+}
+
+/* Tablet portrait reuses the mobile-portrait POS composition. Keep this
+   override isolated to that viewport so desktop, mobile portrait, and tablet
+   landscape retain their existing shell and card behavior. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+
+  /* The portaled Checkout Tab is mounted after Current Sale closes. Keep it
+     hidden for the first paint, then reveal it on the same 300ms curve so the
+     tablet handoff reads as one continuous slide-up instead of a teleport. */
+  .pos-checkout-tablet-portrait-sheet.pos-checkout-mobile-sheet {
+    transform: translate3d(0, 100%, 0);
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+    transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease;
+  }
+
+  .pos-checkout-tablet-portrait-sheet.pos-checkout-mobile-sheet.pos-checkout-mobile-sheet-visible {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .pos-checkout-mobile-overlay {
+    opacity: 0;
+    transition: opacity 220ms ease;
+  }
+
+  .pos-checkout-mobile-overlay.pos-checkout-mobile-overlay-visible,
+  .pos-checkout-mobile-overlay.pos-checkout-mobile-overlay-handoff {
+    opacity: 1;
+  }
+
+  .pos-current-sale-mobile-sheet {
+    transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  [data-pos-tablet-portrait="true"] .pos-current-sale-mobile-sheet {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: calc(100dvh - 9rem + 10px);
+    max-height: calc(100dvh - 9rem + 10px);
+    will-change: transform;
+  }
+
+  [data-pos-tablet-portrait="true"] .pos-current-sale-mobile-sheet-content {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  [data-pos-tablet-portrait="true"] [data-pos-catalog-card] .sm\:hidden {
+    display: flex;
+  }
+
+  [data-pos-tablet-portrait="true"] [data-pos-catalog-card] .max-sm\:hidden {
+    display: none;
   }
 }
 
@@ -549,6 +1189,39 @@ body.dgfy-pos-document-scroll-lock {
 
 .dgfy-pos-shell .bg-pos-accent {
   background: var(--pos-shell-accent);
+}
+
+/* The terminal company picker uses a controlled POS menu so its open state is
+   styled consistently instead of being handed off to the browser's native
+   option popup. */
+.dgfy-pos-company-select {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.dgfy-pos-company-select[aria-expanded="true"] {
+  border-color: #60a5fa;
+  background: #f7faff;
+  box-shadow: var(--pos-control-focus-shadow);
+}
+
+.dgfy-pos-company-select-menu {
+  animation: dgfy-pos-company-menu-in 140ms ease-out;
+}
+
+.dgfy-pos-company-select-option[aria-selected="true"] {
+  box-shadow: inset 3px 0 0 #1a4e8d;
+}
+
+@keyframes dgfy-pos-company-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .dgfy-pos-shell .border-pos {
@@ -757,6 +1430,42 @@ body[data-pos-text-size="extra-large"] {
   }
 }
 
+/* The compact parked-sale action row is only adjusted for the two touch
+   layouts where its longer labels were being clipped: iPad portrait and a
+   phone held in landscape. Desktop, phone portrait, and tablet landscape keep
+   their existing button metrics. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px),
+       (pointer: coarse) and (orientation: landscape) and (max-height: 500px) and (max-width: 1023.98px) {
+  .dgfy-pos-current-sale-actions[data-has-parked-sale-controls="true"] > button {
+    box-sizing: border-box;
+    height: 3.5rem;
+    min-height: 3.5rem;
+    max-height: 3.5rem;
+    padding: 0.375rem 0.25rem;
+    line-height: 1;
+  }
+
+  .dgfy-pos-current-sale-actions[data-has-parked-sale-controls="true"] > button > svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-bottom: 0.125rem;
+  }
+
+  .dgfy-pos-current-sale-actions[data-has-parked-sale-controls="true"] > button > span {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: visible;
+    overflow-wrap: normal !important;
+    text-overflow: clip;
+    white-space: nowrap;
+    word-break: normal;
+    line-height: 0.875rem;
+    font-size: 0.6875rem;
+    -webkit-line-clamp: unset;
+  }
+}
+
 /* iOS Safari zooms focused controls below 16px. Tailwind text-size utilities
    must not override this inside the standalone POS terminal, including
    Settings forms rendered through body-level portals. */
@@ -771,6 +1480,16 @@ body[data-pos-text-size="extra-large"] {
     font-size: 16px !important;
   }
 
+  /* Pagination is a compact, fixed-height control row. Keep its page number
+     visually aligned with the summary and page-status labels while leaving
+     the 16px no-zoom safeguard in place for the rest of the POS inputs. */
+  .dgfy-pos-shell .dgfy-global-pagination__go-to-input {
+    font-family: inherit;
+    font-size: 0.75rem !important;
+    font-weight: 600;
+    line-height: 1rem;
+
+  }
   /* POS Settings keeps its compact field scale on mobile. The workspace still
      provides the touch-friendly control height, while labels and values remain
      visually consistent with the desktop Settings density. */
@@ -938,6 +1657,17 @@ html.dgfy-imin-performance [class~="blur-[0.5px]"] {
   filter: none !important;
 }
 
+/* POS extended views use a solid dimmed backdrop so the underlying checkout
+ * surface stays readable and the overlay does not create a frosted-glass
+ * effect that varies between desktop, tablet, and mobile browsers. Dialog
+ * overlays are portaled to body, so TerminalPage's body marker scopes this
+ * rule without changing IMS or Storefront. */
+body[data-dgfy-pos-surface] [data-dialog-overlay="true"],
+body[data-dgfy-pos-surface] [role="dialog"] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
 html.dgfy-imin-performance .animate-pos-card-scale-up,
 html.dgfy-imin-performance .animate-pos-illustration-float,
@@ -1008,6 +1738,158 @@ html.dgfy-imin-performance [class~="transition-all"] {
   scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* Portrait checkout scroll contract.
+ *
+ * The checkout body already toggles between locked/expanded overflow states.
+ * Give only the two portrait responsive surfaces an explicit flex column
+ * contract: the natural-height sheet owns the bottom anchor, the body owns
+ * vertical scrolling once the viewport ceiling is reached, and the
+ * header/footer stay fixed. Desktop, mobile landscape, and tablet landscape do
+ * not receive these classes and therefore keep their existing layout behavior. */
+.pos-checkout-mobile-portrait-sheet,
+.pos-checkout-tablet-portrait-sheet {
+  display: flex !important;
+  min-height: 0 !important;
+  flex-direction: column !important;
+}
+
+.pos-checkout-mobile-portrait-sheet.pos-checkout-mobile-sheet-expanded {
+  /* Keep the sheet clipped while the body owns vertical scrolling. */
+  overflow: hidden !important;
+}
+
+/* Let the workspace transition push the bottom sheet's top edge. Keeping the
+ * sheet natural-height avoids a compact-height measurement followed by a
+ * second viewport-height reflow. The max-height only becomes a ceiling when
+ * the discount form is taller than the available phone/tablet viewport. */
+.pos-checkout-mobile-portrait-sheet,
+.pos-checkout-tablet-portrait-sheet {
+  height: auto !important;
+  max-height: calc(100dvh - 4rem) !important;
+}
+
+/* Mobile and tablet portrait sheets share one top boundary. The class is
+ * supplied by the measured POS viewport state so the rule also works inside
+ * the desktop device-preview shell. Mobile landscape does not receive this
+ * class and keeps its existing sheet height. */
+.pos-current-sale-portrait-sheet {
+  height: calc(100vh - 4rem) !important;
+  max-height: calc(100vh - 4rem) !important;
+  height: calc(100dvh - 4rem) !important;
+  max-height: calc(100dvh - 4rem) !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-modal-scroll-content,
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content {
+  min-height: 0 !important;
+}
+
+/* Use an explicit state marker for the scroll owner. This avoids relying on
+ * utility-class ordering in the portaled DialogContent and keeps the rule
+ * limited to mobile/tablet portrait checkout. The expanded body remains the
+ * single scroll owner once the natural-height sheet reaches its ceiling. */
+.pos-checkout-mobile-portrait-sheet > .pos-checkout-scroll-region,
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-scroll-region {
+  min-height: 0 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  /* Adding/removing the discount form must not make the browser move the
+   * scroll anchor while the sheet is animating. */
+  overflow-anchor: none;
+}
+
+/* The compact checkout has no scroll viewport. Its body sizes to the visible
+ * controls, while the expanded state receives the remaining sheet height and
+ * can scroll through the discount fields. Keeping this decision on the state
+ * marker prevents the button rows from becoming the scroll owner. */
+.pos-checkout-mobile-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="locked"],
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="locked"] {
+  flex: 0 0 auto !important;
+}
+
+/* After a mobile discount is canceled, let the compact sheet resolve to its
+ * natural content height. This keeps both the Apply Discount buttons and the
+ * fixed footer inside the sheet without making the compact body scrollable. */
+.pos-checkout-mobile-portrait-sheet:not(.pos-checkout-mobile-sheet-expanded) {
+  min-height: max-content !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="expanded"],
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="expanded"] {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="locked"],
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="locked"] {
+  overflow-y: hidden !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="expanded"],
+.pos-checkout-tablet-portrait-sheet > .pos-checkout-scroll-region[data-pos-checkout-scroll-state="expanded"] {
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* The inline discount form is intentionally collapsed while its reveal
+ * transition runs. Once open, however, the grid item must use the form's
+ * intrinsic height so the portrait checkout body can expose the overflow.
+ * Without this, the grid row resolves to the visible slice (roughly one
+ * control row), the workspace clips the remaining fields, and the body has
+ * no scrollable overflow even though the form is taller than the viewport. */
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-workspace,
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-workspace {
+  align-self: flex-start !important;
+  height: max-content !important;
+}
+
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open,
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-workspace.pos-checkout-discount-workspace-open {
+  min-height: max-content !important;
+}
+
+/* Keep the Apply Discount row close to the controls below it in portrait
+ * checkout. This is intentionally scoped so desktop, mobile landscape, and
+ * tablet landscape keep their existing vertical rhythm. */
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-types {
+  padding-bottom: 0 !important;
+}
+
+/* Give the phone's Apply Discount buttons a small visual buffer before the
+ * Eligible Items heading without increasing the button height itself. */
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-types {
+  padding-bottom: 0.375rem !important;
+}
+
+.pos-checkout-tablet-portrait-sheet .pos-checkout-discount-type-scroll {
+  padding-bottom: 0 !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-locked,
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-locked {
+  overflow-y: hidden !important;
+}
+
+.pos-checkout-mobile-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-expanded,
+.pos-checkout-tablet-portrait-sheet > .pos-modal-scroll-content.pos-checkout-mobile-scroll-expanded {
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y !important;
+}
+
+/* A vertical swipe that starts on a one-row control strip must still reach the
+ * checkout body. Keep the phone's intentional horizontal strip behavior, but
+ * allow the same gesture to participate in vertical scrolling. Tablet
+ * portrait's strips are already non-scrollable through the scoped rules above. */
+.pos-checkout-mobile-portrait-sheet .pos-checkout-payment-method-scroll,
+.pos-checkout-mobile-portrait-sheet .pos-checkout-payment-suggestion-scroll,
+.pos-checkout-mobile-portrait-sheet .pos-checkout-discount-type-scroll {
+  touch-action: pan-x pan-y !important;
+
+}
 /*
  * POS Items custom modals cannot rely on dynamic viewport units because the
  * iMin wrapper supports Chrome 80. Keep the vh declaration first so older
@@ -1153,6 +2035,678 @@ html.dgfy-imin-performance [class~="transition-all"] {
    overlapping calendar affordance inside the same input. */
 .pos-report-date-input::-webkit-calendar-picker-indicator {
   cursor: pointer;
+}
+
+/* Keep transaction action cells above row content when the history table uses
+   a narrow scrolling layout. PC-style tablet mode overrides the sticky
+   positioning below so its columns inherit the desktop flow. */
+.dgfy-pos-history-table .pos-history-action-column {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #ffffff;
+  box-shadow: -10px 0 14px -14px rgba(15, 23, 42, 0.7);
+}
+
+.dgfy-pos-history-table thead .pos-history-action-column {
+  z-index: 3;
+}
+
+.dgfy-pos-history-table tbody > tr > td:not([colspan]) {
+  transition: background-color 150ms ease;
+}
+
+/* Use one row hover surface for values and actions. The sticky action cell
+   otherwise paints an opaque white surface and the icon buttons add separate
+   blue/rose/amber hover blocks, making one row look like multiple targets. */
+.dgfy-pos-history-table tbody > tr:hover > td:not([colspan]) {
+  background-color: rgb(248 250 252 / 70%);
+}
+
+/* Desktop history is designed as a single viewport. A shared twelve-column
+   grid keeps every column visually balanced and keeps the action controls in
+   the same row as their transaction without creating a second horizontal
+   scrolling surface. */
+.dgfy-pos-history-table--single-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.dgfy-pos-history-table--single-view > colgroup > col {
+  width: 8.333333%;
+}
+
+.dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dgfy-pos-history-panel {
+  container: pos-history / inline-size;
+}
+
+.dgfy-pos-history-table--single-view > thead > tr > .dgfy-pos-history-header-cell {
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+.dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  vertical-align: middle;
+}
+
+.dgfy-pos-history-table--single-view > tbody > tr > td {
+  line-height: 1.25;
+}
+
+/* Transaction values share one left edge across every financial column. The
+   action cell is intentionally excluded because its icon controls stay
+   centered in their compact column. */
+.dgfy-pos-history-table > tbody > tr > td:not([colspan]):not(.pos-history-action-column) {
+  text-align: left;
+}
+
+/* A visible sidebar reduces the real table width even when the browser is
+   still in the desktop breakpoint. Tighten only the table's horizontal cell
+   spacing so all twelve desktop columns remain visible without a second
+   scrolling surface. The collapsed-sidebar view keeps the more open spacing. */
+.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+@container pos-history (max-width: 1320px) {
+  .dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
+@container pos-history (max-width: 1200px) {
+  .dgfy-pos-history-table--single-view > thead > tr > :is(th, td) {
+    font-size: 0.6875rem;
+    letter-spacing: -0.01em;
+  }
+}
+
+@container pos-history (max-width: 1160px) {
+  .dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+    padding-left: 0.375rem;
+    padding-right: 0.375rem;
+  }
+}
+
+.dgfy-pos-history-table--single-view > thead > tr > .dgfy-pos-history-header--wrap {
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* The normal-size desktop history view must keep its fixed column contract.
+   The text-size compatibility layer above intentionally relaxes table sizing
+   and wrapping for large text, but its `overflow-wrap: anywhere` rule would
+   otherwise split the Restaurant heading inside the word. */
+body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].dgfy-pos-history-table--single-view {
+  table-layout: fixed;
+}
+
+body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
+  overflow-wrap: normal;
+}
+
+.dgfy-pos-history-table--single-view > tbody > tr {
+  height: 4.5rem;
+}
+
+.dgfy-pos-history-table--single-view > tbody > tr > td:not([colspan]) {
+  vertical-align: middle;
+  padding-bottom: 0;
+  padding-top: 0;
+}
+
+/* Table-cell vertical alignment alone leaves short content visually pinned
+   near the top in Chromium when the row has an explicit height. Give every
+   normal desktop cell one shared content box so the values and action icons
+   use the same vertical center. */
+.dgfy-pos-history-table--single-view > tbody > tr > td:not([colspan]) > .pos-history-row-content {
+  display: flex;
+  width: 100%;
+  min-height: 4.5rem;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.dgfy-pos-history-table--single-view > tbody > tr > td:not([colspan]) > .pos-history-row-content--column {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dgfy-pos-history-table--single-view .pos-history-action-column {
+  min-width: 0;
+  position: static;
+  right: auto;
+  box-shadow: none;
+}
+
+/* Tablets use the same twelve-column history contract as PC, but on a compact
+   fixed canvas. The surrounding scroll region provides intentional horizontal
+   panning instead of collapsing financial fields into an unrelated layout. */
+.dgfy-pos-history-table--tablet {
+  width: 100%;
+  max-width: none;
+  min-width: 1180px;
+  table-layout: fixed;
+}
+
+.dgfy-pos-history-table--tablet > colgroup > col {
+  width: 8.333333%;
+}
+
+.dgfy-pos-history-table--tablet > :is(thead, tbody) > tr > :is(th, td) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  padding-left: 0.375rem;
+  padding-right: 0.375rem;
+}
+
+.dgfy-pos-history-table--tablet > thead > tr > :is(th, td) {
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+  font-size: 0.6875rem;
+  line-height: 1.15;
+}
+
+.dgfy-pos-history-table--tablet > tbody > tr {
+  height: 4rem;
+}
+
+.dgfy-pos-history-table--tablet > tbody > tr > td:not([colspan]) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.dgfy-pos-history-table--tablet > tbody > tr > td:not([colspan]) > .pos-history-row-content {
+  display: flex;
+  width: 100%;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.dgfy-pos-history-table--tablet > tbody > tr > td:not([colspan]) > .pos-history-row-content--column {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dgfy-pos-history-table--tablet .pos-history-action-column {
+  min-width: 0;
+  position: static;
+  right: auto;
+  box-shadow: none;
+}
+
+/* Tablet landscape has enough width for the full financial table, but not for
+   the desktop table's 1180px canvas. Fit the same twelve columns to the
+   available panel width and reserve a slightly wider final column so the two
+   action controls stay visible without disturbing the financial values. */
+.dgfy-pos-history-table--tablet-landscape {
+  width: 100%;
+  min-width: 0;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col {
+  width: 8.090909%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {
+  width: 11%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > :is(thead, tbody) > tr > :is(th, td) {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+.dgfy-pos-history-table--tablet-landscape .pos-history-action-column {
+  text-align: left;
+}
+
+.dgfy-pos-history-table--tablet-landscape .pos-history-action-column > .pos-history-row-content {
+  justify-content: flex-start;
+}
+
+/* Phones use a readable summary table instead of shrinking the desktop
+   financial grid into unreadable slivers. The detail toggle keeps the fields
+   that are intentionally removed from the first view accessible without
+   introducing horizontal scrolling. */
+.dgfy-pos-history-table--mobile {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.dgfy-pos-history-table--mobile > :is(thead, tbody) > tr > :is(th, td) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.dgfy-pos-history-table--mobile > thead > tr > :is(th, td) {
+  padding: 0.625rem 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.15;
+}
+
+.dgfy-pos-history-table--mobile > tbody > tr {
+  height: 3.5rem;
+}
+
+.dgfy-pos-history-table--mobile > tbody > tr > td:not([colspan]) {
+  padding: 0;
+}
+
+.dgfy-pos-history-table--mobile > tbody > tr > td:not([colspan]) > .pos-history-row-content {
+  display: flex;
+  width: 100%;
+  min-height: 3.5rem;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+
+.dgfy-pos-history-table--mobile > tbody > tr > td:not([colspan]) > .pos-history-row-content--column {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+.dgfy-pos-history-table--mobile > tbody > tr > td[colspan] {
+  overflow: visible;
+  white-space: normal;
+}
+
+.dgfy-pos-history-table--mobile .pos-history-action-column {
+  position: static;
+  right: auto;
+  min-width: 0;
+  box-shadow: none;
+}
+
+/* Icon-only transaction actions keep a fixed square hit area. The text-size
+   compatibility rule above intentionally allows table buttons to grow for
+   wrapped labels, but that rule must not stretch these icon controls into
+   rectangular hover surfaces. */
+.pos-history-action-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+}
+
+.pos-history-action-button--standard {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  max-width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  max-height: 2.25rem;
+  flex-basis: 2.25rem;
+}
+
+.pos-history-action-button--large {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  max-height: 2.5rem;
+  flex-basis: 2.5rem;
+}
+
+/* The receipt/view action uses the same neutral clipboard tile in the mobile
+ * summary, full history table, and expanded mobile details row. Keep this
+ * visual contract independent of utility-class generation order. */
+.pos-history-view-action {
+  background-color: #f8fafc;
+  color: #475569;
+}
+
+.pos-history-view-action:hover {
+  background-color: #f1f5f9;
+  color: #334155;
+}
+
+/* This selector intentionally outranks the text-size table-button rule so
+   the square contract remains true at every POS text-size setting. */
+body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-history-action-button--standard {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  max-width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  max-height: 2.25rem;
+  flex-basis: 2.25rem;
+}
+
+body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-history-action-button--large {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  max-width: 2.5rem;
+  height: 2.5rem;
+  min-height: 2.5rem;
+  max-height: 2.5rem;
+  flex-basis: 2.5rem;
+}
+
+@media (max-width: 767.98px) {
+  /* Keep the mobile history search field and its three icon controls on one
+     exact control height. The shared Button primitive already uses h-10, but
+     this boundary rule prevents inherited/theme sizing from making the row
+     look uneven. */
+  [data-testid="pos-history-toolbar"] .pos-history-toolbar-control {
+    height: 2.5rem;
+    min-height: 2.5rem;
+    max-height: 2.5rem;
+  }
+
+  /* The toolbar must stay a single horizontal control row even before the
+     viewport hook finishes its first resize measurement. */
+  [data-testid="pos-history-toolbar"] {
+    display: flex;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  [data-testid="pos-history-toolbar"] > .relative {
+    min-width: 0;
+    flex: 1 1 0%;
+  }
+
+  [data-testid="pos-history-toolbar"] > :not(.relative) {
+    flex-shrink: 0;
+  }
+
+  .dgfy-pos-history-table--mobile > tbody > tr > td:not([colspan]) > .pos-history-row-content {
+    font-size: 0.75rem;
+  }
+
+  .dgfy-pos-history-table--mobile > tbody > tr > td:not([colspan]) > .pos-history-row-content .text-\[13px\] {
+    font-size: 0.75rem;
+  }
+
+  .dgfy-pos-history-mobile-sheet {
+    /*
+     * DialogContent is rendered inside a centered flex wrapper. Reset every
+     * desktop-centering offset here so the mobile sheet is anchored to the
+     * viewport instead of opening with its header scrolled/clipped away.
+     */
+    position: fixed !important;
+    top: auto !important;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: min(90vh, 40rem) !important;
+    max-height: min(90dvh, 40rem) !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    animation: dgfy-pos-history-mobile-sheet-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: bottom, opacity;
+  }
+
+  .dgfy-pos-history-panel {
+    border-radius: 0;
+    padding: 0;
+  }
+}
+
+/* Tablet portrait inherits the phone history surface. Keep this copy scoped
+ * to the portrait tablet breakpoint so tablet landscape and desktop retain
+ * their existing table/dialog geometry. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  [data-testid="pos-history-toolbar"] .pos-history-toolbar-control {
+    height: 2.5rem;
+    min-height: 2.5rem;
+    max-height: 2.5rem;
+  }
+
+  [data-testid="pos-history-toolbar"] {
+    display: flex;
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: nowrap;
+  }
+
+  [data-testid="pos-history-toolbar"] > .relative {
+    min-width: 0;
+    flex: 1 1 0%;
+  }
+
+  [data-testid="pos-history-toolbar"] > :not(.relative) {
+    flex-shrink: 0;
+  }
+
+  .dgfy-pos-history-mobile-sheet {
+    position: fixed !important;
+    top: auto !important;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: min(90vh, 40rem) !important;
+    max-height: min(90dvh, 40rem) !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    animation: dgfy-pos-history-mobile-sheet-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: bottom, opacity;
+  }
+
+  /* Tablet portrait keeps the mobile History cards, but its Filter and
+   * Calendar extended views use the PC dialog treatment: fixed width,
+   * centered in the viewport, and vertically constrained without becoming a
+   * full-width bottom sheet. */
+  .dgfy-pos-history-tablet-portrait-dialog {
+    position: fixed !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: 50% !important;
+    width: min(42rem, calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+    max-height: min(90vh, 40rem) !important;
+    max-height: min(90dvh, 40rem) !important;
+    height: auto !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%) !important;
+    border-radius: 1rem !important;
+  }
+
+  .dgfy-pos-history-panel {
+    border-radius: 0;
+    padding: 0;
+  }
+}
+
+/*
+ * Landscape phones have enough horizontal room for a compact dialog, but not
+ * enough vertical room for a full-width bottom sheet. Keep the portrait sheet
+ * behavior above and switch only this mobile orientation to a centered dialog.
+ * The explicit sizing also prevents the date controls from inheriting the
+ * taller portrait-mobile dimensions and clipping the footer.
+ */
+/* The orientation class is supplied by the history panel's viewport hook
+ * instead of relying only on CSS media queries. This also works in device
+ * preview shells where the app's visual viewport and browser window differ. */
+.dgfy-pos-history-mobile-landscape-dialog {
+    position: fixed !important;
+    top: 50% !important;
+    right: auto !important;
+    bottom: auto !important;
+    left: 50% !important;
+    width: min(26rem, calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+    max-height: calc(100vh - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
+    height: auto !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%) !important;
+    border-radius: 1rem !important;
+    animation: dgfy-pos-history-mobile-landscape-dialog-enter 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-header {
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-title {
+  font-size: 1rem !important;
+  line-height: 1.25rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-header [data-testid="pos-history-reset-dates"],
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-header [aria-label="Close history filters"] {
+  width: 2rem !important;
+  height: 2rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-body {
+  padding: 0.5rem 0.75rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-footer {
+  gap: 0.5rem !important;
+  padding: 0.5rem 0.75rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog .dgfy-pos-history-dialog-footer > button {
+  height: 2.25rem !important;
+  border-radius: 0.625rem !important;
+  font-size: 0.6875rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] {
+  gap: 0.5rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] > [role="group"] {
+  gap: 0.375rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid^="pos-history-calendar-preset-"] {
+  height: 2rem !important;
+  border-radius: 0.625rem !important;
+  padding-right: 0.375rem !important;
+  padding-left: 0.375rem !important;
+  font-size: 0.625rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-preset-custom"] {
+  gap: 0.25rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-preset-custom"] svg {
+  width: 0.875rem !important;
+  height: 0.875rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] > div:nth-child(2) {
+  border: 1px solid rgb(226 232 240 / 0.8) !important;
+  border-radius: 0.625rem !important;
+  background: rgb(248 250 252 / 0.6) !important;
+  padding: 0.25rem 0.375rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-previous-month"],
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-next-month"] {
+  width: 1.75rem !important;
+  height: 1.75rem !important;
+  border-radius: 0.5rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] [role="row"] {
+  margin-top: 0.25rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] [role="row"] > span {
+  padding-top: 0.125rem !important;
+  padding-bottom: 0.125rem !important;
+  font-size: 0.5625rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] [role="grid"] > button {
+  height: 1.75rem !important;
+  font-size: 0.6875rem !important;
+}
+
+.dgfy-pos-history-mobile-landscape-dialog [data-testid="pos-history-calendar-picker"] [role="grid"] > button > span {
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+}
+
+@keyframes dgfy-pos-history-mobile-landscape-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -47%) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes dgfy-pos-history-mobile-sheet-enter {
+  from {
+    bottom: -2rem;
+    opacity: 0;
+  }
+
+  to {
+    bottom: 0;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dgfy-pos-history-mobile-sheet {
+    animation: none;
+    will-change: auto;
+  }
+
+  .dgfy-pos-history-mobile-landscape-dialog {
+    animation: none;
+    will-change: auto;
+  }
 }
 
 /* F&B POS Saving Modal Keyframes */

@@ -151,6 +151,7 @@ export const usePosCheckoutWorkflow = ({
     setCustomerPaymentAmountInput = () => {},
     setCustomerPaymentAmountAutoFilled = () => {},
     setCheckoutConfirmModalOpen = () => {},
+    setCheckoutOpenedFromCurrentSale = () => {},
     setMobileCheckoutPanelOpen = () => {},
     setItemOptionsLineKey = () => {},
     setServiceOptionsModal = () => {},
@@ -536,7 +537,9 @@ export const usePosCheckoutWorkflow = ({
                 : 'Enter the client name before checkout.');
             setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
             setCustomerPaymentAmountAutoFilled(true);
+            setCheckoutOpenedFromCurrentSale(true);
             setCheckoutConfirmModalOpen(true);
+            setMobileCheckoutPanelOpen(false);
             return;
         }
         if (
@@ -549,9 +552,10 @@ export const usePosCheckoutWorkflow = ({
         }
         setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
         setCustomerPaymentAmountAutoFilled(true);
+        setCheckoutOpenedFromCurrentSale(true);
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
+    }, [cartTotal, checkoutBlockedReason, checkoutWorkflowValidationMessage, isCheckoutWorkflowValid, normalizedTerminalId, orderMethod, paymentType, safeCart, selectedLocationId, setCheckoutConfirmModalOpen, setCheckoutOpenedFromCurrentSale, setCustomerPaymentAmountAutoFilled, setCustomerPaymentAmountInput, setItemOptionsLineKey, setMobileCheckoutPanelOpen]);
 
     const openSplitPaymentModal = useCallback(async () => {
         if (checkoutBlockedReason) {

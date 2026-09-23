@@ -8,7 +8,8 @@ export const loadPosOrderHistoryState = async ({
   search = '',
   fulfillmentStatus = '',
   paymentStatus = '',
-  page = 1
+  page = 1,
+  limit = 20
 }) => {
   if (locked) {
     return {
@@ -48,7 +49,7 @@ export const loadPosOrderHistoryState = async ({
       ...(fulfillmentStatus ? { fulfillment_status: fulfillmentStatus } : {}),
       ...(paymentStatus ? { payment_status: paymentStatus } : {}),
       page: Math.max(1, Number.parseInt(page, 10) || 1),
-      limit: 100
+      limit: Math.max(1, Number.parseInt(limit, 10) || 20)
     });
     return {
       state: {

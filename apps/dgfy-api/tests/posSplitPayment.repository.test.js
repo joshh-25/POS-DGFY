@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
+import { Op } from 'sequelize';
 import { posRepository } from '../src/modules/pos/repositories/posRepository.js';
 import dbStore from '../src/utils/dbStore.js';
 
@@ -6,7 +7,8 @@ const buildModel = () => ({
     findOne: jest.fn(),
     create: jest.fn(),
     findAll: jest.fn(),
-    findByPk: jest.fn()
+    findByPk: jest.fn(),
+    update: jest.fn()
 });
 
 afterEach(() => jest.restoreAllMocks());

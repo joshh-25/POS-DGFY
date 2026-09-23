@@ -695,6 +695,50 @@ describe('dgfyCustomerUseCases', () => {
         expect(result.data.summary.distribution[5]).toBe(1);
     });
 
+    it('returns tenant-wide public reviews without item or target filters', async () => {
+        const listPublicReviews = jest.fn().mockResolvedValue({
+            rows: [{ review_id: 2, status: 'approved', rating: 4 }],
+            summary: { average_rating: 4, total_count: 1, verified_count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 0 } }
+        });
+        const useCase = buildListPublicDgfyCustomerReviewsUseCase({ repository: { listPublicReviews } });
+
+        const result = await useCase({ query: { tenant_id: 'tenant-1', limit: 50 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.reviews).toHaveLength(1);
+        expect(listPublicReviews).toHaveBeenCalledWith(expect.objectContaining({
+            tenantId: 'tenant-1',
+            itemId: null,
+            targetType: null,
+            targetId: null
+        }));
+    });
+
+    it('passes the tenant through unchanged so reviews stay tenant-isolated', async () => {
+        const listPublicReviews = jest.fn().mockResolvedValue({
+            rows: [{ review_id: 3, tenant_id: 'tenant-1', status: 'approved', rating: 5 }],
+            summary: { average_rating: 5, total_count: 1 }
+        });
+        const useCase = buildListPublicDgfyCustomerReviewsUseCase({ repository: { listPublicReviews } });
+
+        const result = await useCase({ query: { tenant_id: 'tenant-1', limit: 50 } });
+
+        expect(result.success).toBe(true);
+        expect(listPublicReviews).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-1' }));
+        expect(result.data.reviews.every((review) => review.tenant_id === undefined || review.tenant_id === 'tenant-1')).toBe(true);
+    });
+
+    it('still rejects a public review read with no tenant_id', async () => {
+        const listPublicReviews = jest.fn();
+        const useCase = buildListPublicDgfyCustomerReviewsUseCase({ repository: { listPublicReviews } });
+
+        const result = await useCase({ query: { item_id: 5 } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(listPublicReviews).not.toHaveBeenCalled();
+    });
+
     it('validates an active guest review invite token for a fulfilled menu item', async () => {
         const useCase = buildValidateDgfyReviewInviteUseCase({
             repository: {

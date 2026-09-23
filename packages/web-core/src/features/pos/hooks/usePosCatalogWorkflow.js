@@ -14,7 +14,7 @@ import {
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 import { getPosTextSizeScale } from '../utils/posTextSizePreference.js';
-import { isPosTabletViewport } from '../utils/posTabletViewport.js';
+import { isPosMobileLandscapeViewport, isPosMobileViewport, isPosTabletLandscapeViewport, isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTabletViewport.js';
 import {
     buildCatalogRequestKey,
     buildCatalogRequestParams,
@@ -40,11 +40,17 @@ const CATALOG_IMIN_SEARCH_DELAY_MS = 150;
 export {
     CATALOG_DGFY_DESKTOP_CARD_HEIGHT_PX,
     CATALOG_DGFY_DESKTOP_CARD_MIN_WIDTH_PX,
+    CATALOG_DGFY_TABLET_PORTRAIT_CARD_HEIGHT_PX,
+    CATALOG_DGFY_TABLET_PORTRAIT_CARD_MIN_WIDTH_PX,
+    CATALOG_DGFY_TABLET_PORTRAIT_COLUMNS,
+    CATALOG_DGFY_TABLET_DEFAULT_COLUMNS,
     CATALOG_DESKTOP_CARD_HEIGHT_PX,
     CATALOG_DESKTOP_CARD_MIN_WIDTH_PX,
     CATALOG_GRID_GAP_PX,
     CATALOG_PAGE_SIZE_OPTIONS,
     CATALOG_MOBILE_CARD_HEIGHT_PX,
+    CATALOG_TABLET_LANDSCAPE_CARD_HEIGHT_PX,
+    CATALOG_TABLET_LANDSCAPE_CARD_MIN_WIDTH_PX,
     CATALOG_TABLET_CARD_HEIGHT_PX,
     CATALOG_TABLET_CARD_MIN_WIDTH_PX
 } from '../utils/posCatalogWorkflow.js';
@@ -61,6 +67,22 @@ export const usePosCatalogWorkflow = ({
     setReceiptSettings = () => {},
     setLowStockDisplayThreshold = () => {}
 } = {}) => {
+    const readMobileViewportState = () => {
+        if (typeof window === 'undefined') {
+            return { isMobileViewport: false, isMobileLandscapeViewport: false };
+        }
+
+        const viewportOptions = {
+            viewportWidth: window.innerWidth,
+            viewportHeight: window.innerHeight,
+            windowObj: window
+        };
+
+        return {
+            isMobileViewport: isPosMobileViewport(viewportOptions),
+            isMobileLandscapeViewport: isPosMobileLandscapeViewport(viewportOptions)
+        };
+    };
     const catalogImageFailureScope = useMemo(() => ({
         tenantId: offlineSnapshotScope?.tenantId ?? offlineSnapshotScope?.tenant_id,
         terminalId: offlineSnapshotScope?.terminalId ?? offlineSnapshotScope?.terminal_id,
@@ -98,10 +120,11 @@ export const usePosCatalogWorkflow = ({
     // on the fixed Chrome 80-84 iMin WebView when typing or holding backspace.
     const deferredSearch = useDeferredValue(search);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
-    const [isMobileViewport, setIsMobileViewport] = useState(() => (
-        typeof window !== 'undefined'
-        && window.matchMedia?.('(max-width: 639px)')?.matches === true
-    ));
+    const [isTabletLandscapeViewport, setIsTabletLandscapeViewport] = useState(false);
+    const [isTabletPortraitViewport, setIsTabletPortraitViewport] = useState(false);
+    const initialMobileViewportState = readMobileViewportState();
+    const [isMobileViewport, setIsMobileViewport] = useState(initialMobileViewportState.isMobileViewport);
+    const [isMobileLandscapeViewport, setIsMobileLandscapeViewport] = useState(initialMobileViewportState.isMobileLandscapeViewport);
     const [catalogPage, setCatalogPage] = useState(1);
     const [catalogPageSizeOverride, setCatalogPageSizeOverride] = useState(null);
     const [catalogCapacityViewport, setCatalogCapacityViewport] = useState(null);
@@ -368,11 +391,17 @@ export const usePosCatalogWorkflow = ({
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const syncTabletViewport = () => {
-            setIsTabletViewport(isPosTabletViewport({
-                viewportWidth: window.innerWidth,
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const viewportOptions = {
+                viewportWidth,
+                viewportHeight,
                 isDgfyPosSurface,
                 windowObj: window
-            }));
+            };
+            setIsTabletViewport(isPosTabletViewport(viewportOptions));
+            setIsTabletLandscapeViewport(isPosTabletLandscapeViewport(viewportOptions));
+            setIsTabletPortraitViewport(isPosTabletPortraitViewport(viewportOptions));
         };
         syncTabletViewport();
         window.addEventListener('resize', syncTabletViewport);
@@ -382,7 +411,9 @@ export const usePosCatalogWorkflow = ({
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const syncMobileViewport = () => {
-            setIsMobileViewport(window.matchMedia?.('(max-width: 639px)')?.matches === true);
+            const nextViewportState = readMobileViewportState();
+            setIsMobileViewport(nextViewportState.isMobileViewport);
+            setIsMobileLandscapeViewport(nextViewportState.isMobileLandscapeViewport);
         };
         syncMobileViewport();
         window.addEventListener('resize', syncMobileViewport);
@@ -650,15 +681,18 @@ export const usePosCatalogWorkflow = ({
             const height = viewport.clientHeight - verticalPadding;
             if (width <= 0 || height <= 0) return;
 
-            const isMobileViewport = window.matchMedia?.('(max-width: 639px)')?.matches === true;
+            const mobileViewportState = readMobileViewportState();
             const textSizeScale = getPosTextSizeScale(
                 document.body?.getAttribute('data-pos-text-size')
             );
             const nextLayout = getCatalogGridMeasurement({
                 width,
                 height,
-                isMobileViewport,
+                isMobileViewport: mobileViewportState.isMobileViewport,
+                isMobileLandscapeViewport: mobileViewportState.isMobileLandscapeViewport,
                 isTabletViewport,
+                isTabletPortraitViewport,
+                isTabletLandscapeViewport,
                 isDgfyPosSurface,
                 textSizeScale
             });
@@ -703,7 +737,7 @@ export const usePosCatalogWorkflow = ({
                 window.cancelAnimationFrame(animationFrameId);
             }
         };
-    }, [catalogCapacityViewport, currentViewMode, isDgfyPosSurface, isTabletViewport, sidebarCollapsed]);
+     }, [catalogCapacityViewport, currentViewMode, isDgfyPosSurface, isMobileLandscapeViewport, isMobileViewport, isTabletLandscapeViewport, isTabletPortraitViewport, isTabletViewport, sidebarCollapsed]);
 
     useEffect(() => {
         setCatalogPage(1);
@@ -760,7 +794,10 @@ export const usePosCatalogWorkflow = ({
         search,
         setSearch,
         isTabletViewport,
+        isTabletLandscapeViewport,
+        isTabletPortraitViewport,
         isMobileViewport,
+        isMobileLandscapeViewport,
         catalogPage,
         setCatalogPage,
         catalogPageSizeOverride,
