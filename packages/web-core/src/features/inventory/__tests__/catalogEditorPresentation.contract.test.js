@@ -12,7 +12,7 @@ const readRepoFile = (relativePath) => fs.readFileSync(path.resolve(repoRoot, re
 describe('Catalog Editor presentation contracts', () => {
   it('keeps Catalog Editor embedded under Back Office without duplicate page chrome', () => {
     const itemsPageSource = readWebCoreFile('src/features/inventory/pages/ItemsPage.jsx');
-    const migratedModuleSource = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const migratedModuleSource = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
 
     expect(itemsPageSource).toContain('export default function Items({ embedded = false })');
     expect(itemsPageSource).toContain("className={cn('catalog-editor-page space-y-4', embedded && 'catalog-editor-page--embedded')}");

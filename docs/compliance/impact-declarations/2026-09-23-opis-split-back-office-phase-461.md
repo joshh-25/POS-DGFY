@@ -9,7 +9,7 @@ classification: major
 surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED,UI_LAYOUT,PERMISSION_BOUNDARY,AUTHORIZATION_FAILED
 policy_version: 2026.09.23
-verification_evidence: OPIS/cookie-namespace/CSRF/handoff/refresh unit suites; POS/IMS/Storefront/OPIS builds; architecture, compatibility-seam, agent-surface, documentation, hygiene, version, reachability, trigger, and diff checks
+verification_evidence: OPIS/cookie-namespace/CSRF/handoff/refresh unit suites (backend 36, web-core 64, OPIS 122, IMS 2726, Storefront 1200, POS 9 — all green); POS/IMS/Storefront/OPIS builds; OPIS Docker build/run smoke (200 shell, 404 hashed asset); architecture, compatibility-seam, agent-surface, documentation, hygiene, version, reachability, trigger, diff, and prod-audit checks
 rollback_note: Revert the Phase 461 commits by domain; POS Back Office redirect and IMS handoff fall back to in-app/POS targets with no data migration to undo.
 preflight_result: no_breach
 preflight_reason_code: OPIS_BACKOFFICE_SPLIT
@@ -73,3 +73,20 @@ preflight sweep reconciles it before any `release/* → main` promotion, and no
   `test:frontend-build-triggers`, `test:app-versions`, `git diff --check`.
 - DNS records remain #2051; TLS and registry-pull prerequisites are recorded, not
   claimed complete.
+
+## Measured local evidence (2026-09-23)
+
+- Backend: `browserSessionOpisNamespace` (new, 14 tests) + `browserSessionCookies` +
+  `csrfProtection` — 36 passed. DGFY session suites — 106 passed. RTR suite not run:
+  requires a live MySQL test DB (`SequelizeConnectionRefusedError` in this session).
+- Web-core (from `apps/dgfy-ims`): new OPIS handoff/refresh suites + affected contract
+  suites — 64 passed across the focused set; full IMS suite — 2726 passed, 13 skipped.
+- `apps/dgfy-opis`: full suite — 122 passed (26 files, incl. 26 moved Back Office
+  contract files). `apps/dgfy-pos`: 9 passed. `apps/dgfy-storefront`: 1200 passed.
+- `npm run audit:dependencies:prod` — PASS across 8 trees including `apps/dgfy-opis`.
+  Full `audit:dependencies` FAIL is pre-existing dev-only findings in `apps/dgfy-api`
+  and `tests/frontend-cross-app`, untouched by this change.
+- `npm run check:frontend-budgets` — FAIL is pre-existing: expected
+  `SkupervisorPOSCheckoutTerminal`/`SkupervisorPOSPage`/`TerminalPage`/`SalesPage`
+  chunks are absent from a fresh IMS build on this integration base; unrelated to
+  this change (one `apps/dgfy-ims` copy-text file touched).

@@ -1,6 +1,12 @@
 import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
 
-const CSRF_COOKIE_KEY = 'sku_csrf_token';
+const APP_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase();
+const IS_OPIS_SURFACE = APP_SURFACE === 'opis';
+// OPIS (issue #2052) keeps an independent browser session from POS: its CSRF cookie lives
+// in the opis_* namespace so company switching or logout in OPIS can never consume or
+// clear the sku_* POS cookies, even under a shared SESSION_COOKIE_DOMAIN.
+const CSRF_COOKIE_KEY = IS_OPIS_SURFACE ? 'opis_csrf_token' : 'sku_csrf_token';
+export const APP_SURFACE_HEADER_VALUE = IS_OPIS_SURFACE ? 'opis' : '';
 const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 const POS_BROWSER_SESSION_STORAGE_KEY = 'pos_browser_session_v1';
 const POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY = 'pos_company_switch_handoff_v1';
@@ -268,6 +274,9 @@ export const getAuthHeaders = ({ includeCsrf = false } = {}) => {
   const headers = {};
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   if (companyToken) headers['x-company-token'] = companyToken;
+  // Cookie-namespace selector only (issue #2052); it grants no authorization. The server
+  // uses it to read/issue/clear the opis_* session cookies instead of the sku_* ones.
+  if (APP_SURFACE_HEADER_VALUE) headers['x-dgfy-app-surface'] = APP_SURFACE_HEADER_VALUE;
   const csrfToken = includeCsrf ? getCsrfToken() : '';
   if (csrfToken) headers['x-csrf-token'] = csrfToken;
   return headers;

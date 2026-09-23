@@ -10,7 +10,7 @@ const posEntrySource = fs.readFileSync(
 );
 const sharedStyles = fs.readFileSync(path.join(webCoreRoot, 'src/index.css'), 'utf8');
 const businessAdminStyles = fs.readFileSync(
-  path.join(repositoryRoot, 'apps/dgfy-pos/src/features/businessAdmin/businessAdmin.css'),
+  path.join(repositoryRoot, 'apps/dgfy-opis/src/features/businessAdmin/businessAdmin.css'),
   'utf8'
 );
 const catalogWorkflowSource = fs.readFileSync(

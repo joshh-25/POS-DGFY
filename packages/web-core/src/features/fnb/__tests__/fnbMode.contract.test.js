@@ -10,11 +10,11 @@ describe('Food & Beverage frontend contract', () => {
   it('owns the F&B workspace in POS Back Office and retires the IMS merchant route', () => {
     const main = read('apps/dgfy-ims/src/main.jsx');
     const posMain = read('apps/dgfy-pos/src/main.jsx');
-    const businessAdmin = read('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
-    const businessAdminManifest = read('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
+    const businessAdmin = read('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+    const businessAdminManifest = read('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(main).toContain('<Route path="/fnb" element={<LegacyMerchantRoute target="/backoffice/fnb" title="Food-and-beverage workspace moved" />} />');
-    expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(posMain).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
     expect(businessAdmin).toContain('MIGRATED_BACKOFFICE_MODULE_KEYS');
     expect(businessAdmin).toContain('MigratedBackOfficeModule');
     expect(businessAdminManifest).toContain("fnb: module('Operations', 'fnb', 'F&B Setup'");
@@ -55,8 +55,8 @@ describe('Food & Beverage frontend contract', () => {
     const terminalPage = read('packages/web-core/src/features/pos/pages/TerminalPage.jsx');
     const terminalLayout = read('packages/web-core/src/features/pos/components/TerminalPageLayout.jsx');
     const terminalSidebar = read('packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx');
-    const wrapper = read('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
-    const businessAdminManifest = read('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
+    const wrapper = read('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const businessAdminManifest = read('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(backOfficePage).toContain('Setup &amp; monitoring only');
     expect(backOfficePage).toContain('data-testid="fnb-checks-read-only"');
@@ -84,8 +84,8 @@ describe('Food & Beverage frontend contract', () => {
 
   it('keeps the embedded F&B workspace concise and scannable', () => {
     const page = read('packages/web-core/src/features/fnb/pages/FnbPage.jsx');
-    const wrapper = read('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
-    const businessAdminCss = read('apps/dgfy-pos/src/features/businessAdmin/businessAdmin.css');
+    const wrapper = read('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const businessAdminCss = read('apps/dgfy-opis/src/features/businessAdmin/businessAdmin.css');
 
     expect(page).toContain('embedded = false');
     expect(page).toContain('business-admin-fnb-workspace');

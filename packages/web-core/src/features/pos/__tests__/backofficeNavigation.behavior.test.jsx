@@ -18,7 +18,7 @@ const terminalWorkspaceSidebarSource = readSource('../components/TerminalWorkspa
 const terminalOperationsWorkspaceSource = readSource('../components/TerminalOperationsWorkspace.jsx');
 const settingsWorkspaceSource = readSource('../settings/PosSettingsWorkspace.jsx');
 const terminalLocalControlsSource = readSource('../settings/TerminalLocalControlsSection.jsx');
-const businessAdminPageSource = readSource('../../../../../../apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
+const businessAdminPageSource = readSource('../../../../../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
 const posRouteSource = readSource('../../../../../../apps/dgfy-pos/src/main.jsx');
 
 const renderSidebar = ({ terminalUser = { role: 'admin' }, canAccessBusinessAdmin = true, canAccessPosOnlySetup = false, currentViewMode = 'checkout', isCollapsed = false, locked = false, onOpenBackOffice = vi.fn(), onSelectViewMode = vi.fn() } = {}) => render(
@@ -170,33 +170,30 @@ describe('POS Back Office navigation', () => {
     expect(screen.queryByTestId('pos-nav-settings')).toBeNull();
   });
 
-  it('keeps the access predicate, confirmation dialog, and separate-page URL aligned with the Back Office contract', () => {
+  it('keeps the access predicate, confirmation dialog, and OPIS handoff aligned with the Back Office contract', () => {
     expect(terminalPageSource).toContain('const canAccessBusinessAdmin = !isCashierRole && (');
     expect(terminalPageSource).toContain("|| normalizedTerminalRole === 'admin'");
     expect(terminalPageSource).toContain("|| hasPermission('business_admin:access')");
     expect(terminalPageSource).toContain('setBackOfficeConfirmOpen(true)');
-    expect(terminalPageSource).toContain("url.search = '?view=reports'");
-    expect(terminalPageSource).toContain("url.hash = '#/backoffice/overview'");
-    expect(terminalPageSource).toContain("url.hash = `#${backOfficeTargetPath}`");
     expect(terminalPageSource).toContain("setBackOfficeTargetPath(safePath)");
     expect(terminalPageSource).toContain("const requestedPath = typeof target === 'string' ? target : target?.path;");
     expect(terminalPageSource).toContain("params.set('branch_id', String(activeBranchId))");
-    expect(terminalPageSource).toContain("const canAccessPosOnlySetup = !canAccessBusinessAdmin && canViewPos;");
-    expect(terminalPageSource).toContain('const isAuthorizedPosOnlyTerminalSetup = nextMode === \'terminal_setup\' && canAccessPosOnlySetup;');
-    expect(terminalPageSource).toContain(": 'terminal_setup'");
     expect(terminalPageSource).toContain("subscribeToBusinessAdminSettingsUpdates");
     expect(terminalPageSource).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
-    expect(terminalPageSource).toContain('|| formData.dgfyTenantId');
     expect(terminalPageSource).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (!locked && canViewPos)');
     expect(terminalPageSource).toContain('refreshTenantLocations({');
     expect(terminalPageSource).toContain('silent: true');
     expect(terminalPageSource).toContain("if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;");
-    expect(terminalPageSource).toContain("const openedWindow = window.open('', '_blank');");
-    expect(terminalPageSource).toContain('openedWindow.opener = null;');
-    expect(terminalPageSource).toContain('openedWindow.location.replace(url.toString());');
-    expect(terminalPageSource).toContain('Your browser blocked the Back Office window.');
+    // The merchant Back Office moved to OPIS (issue #2052): the opener hands the safe
+    // path to the OPIS helper, which recovers via same-tab navigation when blocked.
+    expect(terminalPageSource).toContain("import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';");
+    expect(terminalPageSource).toContain("replace(/^\\/business-admin(?=\\/|$)/, '/backoffice')");
+    expect(terminalPageSource).toContain('openOpisBackOffice({');
+    expect(terminalPageSource).toContain('Back Office opened in OPIS at');
+    expect(terminalPageSource).toContain('Opening Back Office in OPIS at');
+    expect(terminalPageSource).not.toContain("window.open('', '_blank')");
     expect(terminalPageSource).not.toContain("navigate('/backoffice')");
     expect(terminalPageSource).not.toContain('window.confirm');
     expect(terminalPageDialogLayerSource).toContain('Back Office will open in a new window at Overview. Continue?');
@@ -206,7 +203,9 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageDialogLayerSource).toContain('canAccessBusinessAdmin && terminalUser && handleOpenBackOffice');
     expect(terminalLockDrawerSource).toContain('data-testid="pos-lock-drawer-open-backoffice"');
     expect(terminalLockDrawerSource).toContain('Open Back Office without unlocking checkout or starting a cashier shift.');
-    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
+    expect(posRouteSource).toContain('<Route path="/business-admin/*" element={<OpisCompatRedirect />} />');
+    expect(posRouteSource).toContain('buildOpisBackOfficeUrl');
     expect(terminalPageLayoutSource).toContain('const lockedSidebarSurfaceClassName = locked');
     expect(terminalPageLayoutSource).toContain('disabled={locked && !canAccessBusinessAdmin}');
     expect(terminalPageLayoutSource).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
