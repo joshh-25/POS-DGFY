@@ -180,7 +180,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node scripts/resolve-build-skip-plan.js --revision "${{ github.sha }}" --environment "${{ inputs.environment }}"
+          SKIP_ARGS=(--revision "${{ github.sha }}" --environment "${{ inputs.environment }}")
+          if [ -n "${{ inputs.release_revision }}" ]; then
+            SKIP_ARGS+=(--release-revision "${{ inputs.release_revision }}")
+          fi
+          node scripts/resolve-build-skip-plan.js "${SKIP_ARGS[@]}"
 
   dgfy-api:
     # The backend, refactored into apps/dgfy-api -- now the source of truth

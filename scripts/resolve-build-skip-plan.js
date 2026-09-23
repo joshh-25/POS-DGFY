@@ -81,8 +81,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { decideImmutability, runInspect } = require('./check-tag-immutability');
-const { APPS, resolveFileDependencyPackages, readVersionAt } = require('./check-app-version-bump');
+const { APPS, resolveFileDependencyPackages, readVersionAt, fileExistsAtRef } = require('./check-app-version-bump');
 const { IMAGE_NAME_BY_APP } = require('./check-image-version-parity');
+const { resolveAppReachabilityVerdict, REACHABILITY_SCOPE_DIRS } = require('./resolve-web-core-reachability');
+const { resolveNarrowingEnabled } = require('./lib/web-core-reachability-gate-toggle');
 // #1977 (Phase 342): revision-aware tag derivation -- a candidate dispatch checks the
 // revision tag (X.Y.Z-rN[-staging]), not the legacy uniform X.Y.Z[-channel] tag.
 const { resolveReleaseTags } = require('./resolve-release-tags');
@@ -165,10 +167,22 @@ function gitDiffChangedFiles({ repoRoot, fromRevision, toRevision, paths }) {
  *   - repoRoot (default: this repo).
  *   - inspectFn (default: runInspect from check-tag-immutability.js).
  *   - diffFn (default: gitDiffChangedFiles above).
+ *   - reachabilityFn (default: resolveAppReachabilityVerdict above).
+ *   - narrowingEnabledFn (default: resolveNarrowingEnabled above).
  *
  * Returns { skip: boolean, code, detail }.
  */
-function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles }) {
+async function decideBuildSkip({
+  app,
+  image,
+  versionTag,
+  currentRevision,
+  repoRoot = REPO_ROOT,
+  inspectFn = runInspect,
+  diffFn = gitDiffChangedFiles,
+  reachabilityFn = resolveAppReachabilityVerdict,
+  narrowingEnabledFn = resolveNarrowingEnabled,
+}) {
   const imageRef = `${image}:${versionTag}`;
   const inspectResult = inspectFn(imageRef);
   const verdict = decideImmutability({
@@ -228,6 +242,23 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
     };
   }
 
+  const onlyReachabilityScopedFiles = changedFiles.every((file) =>
+    REACHABILITY_SCOPE_DIRS.some((directory) => file === directory || file.startsWith(`${directory}/`)));
+
+  if (narrowingEnabledFn() && onlyReachabilityScopedFiles) {
+    const reachabilityVerdict = await reachabilityFn(repoRoot, app, changedFiles, {
+      fileExistsAtRef: (file) => fileExistsAtRef(repoRoot, currentRevision, file),
+    });
+
+    if (reachabilityVerdict.applicable && !reachabilityVerdict.changed) {
+      return {
+        skip: true,
+        code: 'content-equivalent-narrowed',
+        detail: `${existingRevision}..${currentRevision}: ${changedFiles.length} changed file(s) under ${REACHABILITY_SCOPE_DIRS.join('/')} are not reachable from ${app}'s production entry, skipping`,
+      };
+    }
+  }
+
   // Outcome 4: content genuinely differs -- do NOT skip. Build normally; the existing, unmodified
   // Decision 7 guard refuses it at the end, exactly as it does today. This is not a new failure
   // path -- "don't skip" already produces the required "fail loudly" behavior (plan §1).
@@ -265,7 +296,17 @@ function deriveVersionTag({ version, environment, app, revision }) {
   return resolveReleaseTags({ app, version, environment, revision }).tag;
 }
 
-function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
+async function resolveBuildSkipPlan({
+  apps = APPS,
+  currentRevision,
+  environment,
+  revision,
+  repoRoot = REPO_ROOT,
+  inspectFn = runInspect,
+  diffFn = gitDiffChangedFiles,
+  reachabilityFn = resolveAppReachabilityVerdict,
+  narrowingEnabledFn = resolveNarrowingEnabled,
+} = {}) {
   const plan = {};
   for (const app of apps) {
     try {
@@ -280,7 +321,17 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revis
         continue;
       }
       const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision });
-      plan[app] = decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot, inspectFn, diffFn });
+      plan[app] = await decideBuildSkip({
+        app,
+        image,
+        versionTag,
+        currentRevision,
+        repoRoot,
+        inspectFn,
+        diffFn,
+        reachabilityFn,
+        narrowingEnabledFn,
+      });
     } catch (error) {
       plan[app] = {
         skip: false,
@@ -343,9 +394,9 @@ function writeGithubOutput(plan) {
   fs.appendFileSync(outputPath, `${lines}\n`);
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const plan = resolveBuildSkipPlan({
+  const plan = await resolveBuildSkipPlan({
     apps: options.apps || undefined,
     currentRevision: options.revision,
     environment: options.environment,
@@ -357,7 +408,10 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
 
 module.exports = {

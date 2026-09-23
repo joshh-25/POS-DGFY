@@ -84,7 +84,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(textContent).not.toContain('Kitchen Notes');
   });
 
-  it('expands global order notes only for Takeout', () => {
+  it('expands global order notes for tablet Takeout', () => {
     render(
       <FnbWorkflowPanel
         orderMethod="takeout"

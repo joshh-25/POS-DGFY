@@ -379,7 +379,7 @@ jobs:
           # candidate dispatch with byte-identical tracked inputs, so the plan resolves
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
-          SKIP_ARGS=(--revision "${{ github.sha }}")
+          SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
           if [ -n "${{ inputs.release_revision }}" ]; then
             SKIP_ARGS+=(--release-revision "${{ inputs.release_revision }}")
           fi
@@ -593,6 +593,7 @@ jobs:
       needs.frontend-pos-prod.result != 'failure' &&
       needs.frontend-storefront-prod.result != 'failure' &&
       inputs.release_revision != ''
+    # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
     permissions:

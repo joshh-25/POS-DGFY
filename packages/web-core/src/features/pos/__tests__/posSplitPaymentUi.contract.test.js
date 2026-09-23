@@ -76,7 +76,9 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
         expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
-        expect(splitDialogSource).toContain('sessionOpenAttemptRef');
+        expect(splitDialogSource).toContain('sessionCreationPromiseRef');
+        expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback');
+        expect(splitDialogSource).toContain('if (!sessionId) {');
         expect(checkoutSource).toContain('data-testid="pos-split-payment-cancel-dialog"');
         expect(checkoutSource).toContain('handleCancelCheckout');
         expect(checkoutWorkflowSource).toContain('cancelPosPaymentAllocation');

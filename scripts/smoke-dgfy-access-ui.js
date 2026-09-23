@@ -34,13 +34,12 @@ const checks = [
       /DGFY POS unlock/i,
       /Legacy access until June 17, 2027/i
     ],
-    requiredLabels: [/DGFY Email/i, /DGFY Password/i, /Company/i, /Terminal ID/i],
+    requiredLabels: [/DGFY.*Email/i, /Password/i],
     seededExpected: envPatterns('DGFY_ACCESS_POS_EXPECT_TEXT'),
     interact: async (page) => {
-      const email = page.getByLabel('DGFY Email');
+      const email = page.getByLabel(/DGFY.*Email/i);
       await email.fill('cashier@example.test');
-      const terminal = page.getByLabel(/Terminal ID/i).first();
-      await terminal.fill('COUNTER-01').catch(async () => {});
+      await page.getByPlaceholder('Enter your password').fill('password-example');
     }
   },
   {
