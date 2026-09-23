@@ -25393,86 +25393,60 @@ Not yet merged — set at merge time.
 461 after Phase 460's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
 
-## Phase 461 - Split the Back Office into the dedicated OPIS app (issue #2052, epic #1354)
+## Phase 345 - Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
 
 ### Initiative and release
 
-DGFY Back Office fourth frontend app, intermediate integration line (not a promotion).
-
-### Ledger reconciliation
-
-Revalidated 2026-09-23 on the implementation base
-`feat/DGFY-459-pos-development-pr-ready` (`e4af6b76`): the highest phase is 460
-(`in_progress`), Phase 459 remains `deferred` pending authenticated acceptance, and no
-Phase 461 entry exists — this entry reserves 461 without renumbering history, completing
-neither 459 nor 460. The "next eligible phase" pointers on those entries are unchanged.
+Test-tier routing evidence for Worker Tier 2 and real-DB testing, current release.
 
 ### Objective and scope
 
-Create `apps/dgfy-opis` as the independently buildable/deployable DGFY Back Office at
-`opis.dgfy.ph` (`opis.dev.dgfy.ph`, `opis.stage.dgfy.ph`); migrate the POS Back Office
-shell preserving workflows and canonical backend owners; add OPIS independent
-authentication and the isolated `opis_*` browser-session namespace; POS compatibility
-redirects; POS settings refresh on focus/reconnect; app/build/deploy/CI wiring;
-successor ADR 0086 (proposed, tech-lead approval pending); compatibility seams; docs.
+Provide one durable, generated, checkable inventory of every existing unit/component test
+file across `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`,
+`packages/web-core` (via the IMS Vitest invocation, ADR 0071), and the migration-runner's
+operational commands — each classified `fast-pure`, `fast-mocked-external`, `db-required`,
+`redis-required`, `network/provider-required`, `browser-e2e`, or `opt-in/legacy` — plus a
+concise guide defining the default fast subset, opt-in tiers, decision rules, refresh/check
+commands, and the #378 cross-reference. Reuses the backend DB manifest/matrix as execution
+source of truth; creates no competing DB list, no new test runner, no CI gate change, no
+migration, no runtime/API change.
 
 ### Status
 
-`in_progress` — implementation and local validation are in progress; PR review, merge,
-and deployed QA remain outstanding (this phase never merges or deploys itself).
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
 
 ### Dependencies
 
-Issue #2052 (`Closes`); parent epic #1354; related #322, #350, #358, #1356, #2026,
-#2051; ADR 0071 (binding three-app decision, superseded in part by proposed ADR 0086),
-ADR 0072 (image naming), ADR 0026 (cookie authority), ADR 0035 (seam governance);
-Phases 455–459 contract; Phase 459 remains deferred and does not satisfy this phase's
-acceptance gates; Phase 460 remains in progress.
+Issue #438; #436 Worker Tier 2 consumer; #372 real-DB consumer; #378 baseline-failure
+cross-reference; #344 (location/structure question — explicitly not this issue);
+authoritative `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+`docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0071, `docs/architecture/apps-layout-migration.md`,
+`docs/testing/README.md`; Phase 344 (continuous ledger predecessor).
 
 ### Acceptance and validation evidence
 
-- [ ] OPIS installs, builds, lints, unit-tests, containerizes, and routes at all three
-      hostnames (local proof: `build:opis`, Docker build, compose/nginx config checks).
-- [ ] Back Office workflows run in OPIS with canonical API ownership, permissions, and
-      tenant/branch boundaries preserved; POS stays terminal-focused; IMS handoffs target
-      OPIS.
-- [ ] OPIS login/refresh/CSRF/logout/company-switch/handoff operate independently of POS
-      session state (namespace isolation suites green).
-- [ ] POS refreshes scoped settings on focus/reconnect without disturbing operational
-      state (refresh suites green).
-- [ ] CI/local routing, builds, versioning, audits, deploy inputs, docs, ADR,
-      compatibility seams, and this ledger entry include OPIS and pass applicable gates.
-- [ ] Intermediate PR targets `feat/DGFY-459-pos-development-pr-ready`; no deployment
-      occurs in this work.
-- [ ] Authenticated multi-role/cross-branch acceptance (deferred from Phase 459) remains
-      open; DNS (#2051), TLS, and registry-pull prerequisites are recorded, not claimed.
+- [ ] `npm run test:audit-test-cost` passes (discovery, stale-record, runner-exclusion,
+      manifest-reuse, classification, safe-subset coverage).
+- [ ] `npm run audit:test-cost:check` passes against the real checkout (1334 records current,
+      no stale/missing entries, all #378 basenames matched).
+- [ ] Default-subset proof: backend fast file, IMS web-core file, and Storefront file timed
+      and passing with no DB/Redis/network/browser service.
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
 
 ### Links
 
-- Issue: #2052 (`Closes`); parent: #1354.
-- Handoff: `.tmp/plan-2052.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`,
-  implementation base `feat/DGFY-459-pos-development-pr-ready` at `e4af6b76`).
-- Implementation: `apps/dgfy-opis/**`; `apps/dgfy-pos/src/main.jsx` (OPIS redirects);
-  `apps/dgfy-ims/src/pages/MerchantSurfaceRetired.jsx` (OPIS handoff);
-  `packages/web-core` auth/session/handoff/refresh helpers;
-  `apps/dgfy-api` browser-session cookie/CSRF transport;
-  `.github/workflows/**`, `scripts/**`, `infrastructure/docker/**`,
-  `infrastructure/nginx-host/**`.
-- Successor ADR: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`
-  (proposed).
-- Compatibility seams: `opis-pos-backoffice-redirect`, `opis-ims-merchant-handoff`.
-- Compliance declaration:
-  `docs/compliance/impact-declarations/2026-09-23-opis-split-back-office-phase-461.md`.
+- Issue: #438 (`Closes`).
+- Handoff: `.tmp/plan-438.md` (planning head `de26008bb82db0a1a0423d8ab16e263ba35be45c`).
+- Implementation: `scripts/audit-test-cost-inventory.js` (+ test),
+  `docs/testing/test-cost-inventory.json`, `docs/testing/test-cost-inventory.md`,
+  `docs/testing/README.md`.
 - Authoritative architecture sources: `docs/START_HERE.md`,
   `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
-  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
-
-### Completion criteria and rollback
-
-Complete only after the acceptance evidence above passes, including the required
-authenticated acceptance and ADR 0086 tech-lead approval. Rollback: revert the Phase 461
-commits by domain (new app → dependents → docs → CI); no data migration to undo; POS
-Back Office redirect and IMS handoff fall back without merchant data effect.
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; testing
+  documentation/tooling within existing boundaries).
 
 ### Completion date
 
@@ -25480,4 +25454,88 @@ Not yet merged — set at merge time.
 
 ### Next eligible phase
 
-462, subject to ledger revalidation (Phases 459/460 statuses preserved above).
+346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 346 - Trace container revisions from DEV through PROD, per app (#2055)
+
+### Initiative and release
+
+Epic #1548 follow-up (reverses Phase 342's candidate-wide-uniform-`rN` design); current release.
+
+### Objective and scope
+
+Give eligible DEV container builds immutable per-app revision identities (`X.Y.Z-rN-dev`,
+GHCR-sourced max-plus-one per app+floor, same-source retry reuse, Decision 7 race net) that
+a frozen v2 promotion candidate selects (`dev_artifacts`) and carries through staging
+repairs (fresh allocation per touched app, cosmetic `repair_seq`, `fix/staging/<id>-<seq>`
+branches) to PROD (per-app `release_revision` map, plain `release/<id>` cut), preserving
+each app's `X.Y.Z` floor, ADR 0081 Decision 7 (`[binding]`, untouched), frontend
+environment-qualified vs backend environment-neutral artifact distinctions, and legacy
+bare `X.Y.Z-dev` tags as untouched history. Feature-branch DEV dispatches publish
+non-promotion-eligible `X.Y.Z-<slug>-dev` (sha tag only, never the moving `develop` tag).
+Out of scope: per-app floor bump policy, routine DEV deployment defaults (#982),
+app/package version ownership, production approval gates, unrelated container naming.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #2055 (with the 2026-09-23 revision-allocation decision recorded on it);
+`.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`);
+ADR 0039 (amendment path), ADR 0081 (2026-09-23 amendment, Decisions 1/3/4/8),
+ADR 0082 (2026-09-23 amendment, Decisions 6/8); Phase 342 (reversed design);
+Phase 345 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:release-tags` passes (revisioned/ad-hoc/legacy DEV, `parseRevisionTag`,
+      `sanitizePrRef`, unchanged STAGING/PROD matrix).
+- [ ] `npm run test:artifact-revision` passes (max-plus-one, same-source reuse, fail-closed
+      probe, `--select-dev` selection).
+- [ ] `npm run test:promotion-candidate` passes (v2 manifest, `repair_seq`, per-app map,
+      frozen v1 legacy path).
+- [ ] `npm run test:tag-immutability`, `npm run test:image-alias`, `npm run test:release-notes`
+      pass (revisioned-DEV guard cases, unchanged alias creation, plain `release/<id>`).
+- [ ] Parity/build-skip/workflow-shape suites pass (per-app revision verification,
+      `app-not-in-candidate` skip, `--release-revisions-json`/`--dev-pr-ref`, grouped
+      workflow wiring, `dev_pr_ref` builder contract).
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #2055 (`Closes`).
+- Handoff: `.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`).
+- Implementation: `scripts/resolve-release-tags.js` (+ test),
+  `scripts/allocate-artifact-revision.js` (+ test),
+  `scripts/check-promotion-candidate.js` (+ test),
+  `scripts/check-image-version-parity.js` (+ test),
+  `scripts/resolve-build-skip-plan.js` (+ test),
+  `scripts/check-deploy-version-stamping-workflow.js` (+ test),
+  `scripts/check-release-notes.js` (+ test),
+  `scripts/check-tag-immutability.test.js`,
+  `scripts/build-release-candidate-evidence.test.js`,
+  `.github/workflows/deploy.yml` / `deployment-orchestrator.yml` / `deploy-main.yml` /
+  `deploy-api.yml` / `deploy-frontend.yml` / `deploy-migration-runner.yml` /
+  `promotion-quality-gate.yml`,
+  `.agents/skills/promoter/SKILL.md` /
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0081 (2026-09-23 amendment),
+  ADR 0082 (2026-09-23 amendment), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-23 entry),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).

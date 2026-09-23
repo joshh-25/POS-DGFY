@@ -34,11 +34,24 @@ on:
         default: ''
       release_revision:
         description: >-
-          Candidate-wide release revision (#1977, Phase 342 -- scripts/check-promotion-candidate.js's
-          manifest release_revision.revision, e.g. "r16" or "16"). Required for a STAGING candidate
-          or PROD dispatch (the meta step fails closed without it); ignored for DEV. Selects the
-          revision-aware matrix tag (X.Y.Z-rN-staging here -- frontends bake VITE_* per environment)
-          and stamps the release-floor/revision labels the parity gate and alias promotion read.
+          Per-app artifact revision (#2055, Phase 346 -- this app's own allocated rN, e.g.
+          "r16" or "16"; #1977's candidate-wide value, Phase 342). Required for a STAGING
+          candidate or PROD dispatch (the meta step fails closed without it); on DEV it
+          selects the promotion-eligible X.Y.Z-rN-dev tag (allocated upstream by
+          deployment-orchestrator.yml's resolve-build-plan job, or passed explicitly on a
+          re-dispatch). Selects the revision-aware matrix tag (X.Y.Z-rN-staging here --
+          frontends bake VITE_* per environment) and stamps the release-floor/revision
+          labels the parity gate and alias promotion read.
+        required: false
+        type: string
+        default: ''
+      dev_pr_ref:
+        description: >-
+          DEV ad-hoc marker (#2055, Phase 346 -- a PR number like "pr482" or a branch name).
+          Set ONLY for a feature-branch DEV dispatch (deployment-orchestrator.yml derives it
+          from the dispatched ref automatically): resolves the non-promotion-eligible
+          X.Y.Z-<slug>-dev tag, which a candidate can never select. Mutually exclusive with
+          release_revision; rejected for STAGING/PROD.
         required: false
         type: string
         default: ''
@@ -116,6 +129,7 @@ jobs:
           APP: ${{ inputs.app }}
           ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_REVISION: ${{ inputs.release_revision }}
+          DEV_PR_REF: ${{ inputs.dev_pr_ref }}
           CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
           IMAGE_SERVER_URL: ${{ github.server_url }}
           IMAGE_REPOSITORY: ${{ github.repository }}
@@ -125,23 +139,32 @@ jobs:
           {
             echo "tags<<EOF"
             IFS=',' read -ra TAG_ARR <<< "${{ inputs.image_tags }}"
-            for t in "${TAG_ARR[@]}"; do echo "${IMAGE_NAME}:${t}"; done
+            for t in "${TAG_ARR[@]}"; do [ -n "$t" ] && echo "${IMAGE_NAME}:${t}"; done
             echo "${IMAGE_NAME}:${SHA_TAG}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
-          # ADR 0081 Decisions 1/3 (#1977, Phase 342): revision-aware version tag, resolved by the
-          # central resolver -- the floor X.Y.Z is read from apps/${APP}/package.json, never
-          # written here (Decision 6 -- bumps are PR-authored); rN comes from the candidate-wide
-          # release_revision input. STAGING/PROD fail closed here when the revision is missing
-          # (the resolver throws); DEV needs none. No channel suffix is derived in this file
-          # anymore -- app type and environment cannot drift between workflows because only the
-          # resolver maps them to tags.
+          # ADR 0081 Decisions 1/3 (#1977, Phase 342; #2055, Phase 346): revision-aware
+          # version tag, resolved by the central resolver -- the floor X.Y.Z is read from
+          # apps/${APP}/package.json, never written here (Decision 6 -- bumps are
+          # PR-authored); rN is this app's own allocated artifact revision. STAGING/PROD
+          # fail closed here when the revision is missing (the resolver throws). DEV needs
+          # exactly one identity: release_revision (promotion-eligible X.Y.Z-rN-dev,
+          # allocated upstream) or dev_pr_ref (ad-hoc X.Y.Z-<slug>-dev, never
+          # candidate-selectable) -- a DEV dispatch with neither fails closed here instead
+          # of silently re-emitting the legacy colliding X.Y.Z-dev. No channel suffix is
+          # derived in this file anymore -- app type and environment cannot drift between
+          # workflows because only the resolver maps them to tags.
           APP_PKG_VERSION="$(node -p "require('./apps/${APP}/package.json').version")"
           RESOLVER_ARGS=(--app "${APP}" --version "${APP_PKG_VERSION}" --environment "${ENVIRONMENT}")
           if [ -n "${RELEASE_REVISION:-}" ]; then
             RESOLVER_ARGS+=(--revision "${RELEASE_REVISION}")
+          elif [ "${ENVIRONMENT}" = "DEV" ] && [ -n "${DEV_PR_REF:-}" ]; then
+            RESOLVER_ARGS+=(--pr-ref "${DEV_PR_REF}")
+          elif [ "${ENVIRONMENT}" = "DEV" ]; then
+            echo "::error::DEV dispatch for ${APP} carries neither release_revision nor dev_pr_ref -- a DEV build needs exactly one identity (X.Y.Z-rN-dev via the orchestrator's allocation, or X.Y.Z-<slug>-dev via dev_pr_ref); refusing to re-emit the legacy colliding X.Y.Z-dev (#2055)."
+            exit 1
           fi
           RESOLVED="$(node scripts/resolve-release-tags.js "${RESOLVER_ARGS[@]}")"
           VERSION_TAG="$(node -p "JSON.parse(process.argv[1]).tag" "${RESOLVED}")"
@@ -160,7 +183,7 @@ jobs:
           # output, same pattern already used for `tags` above.
           # #1977 (Phase 342): the release floor is stamped unconditionally (runtime consumers must
           # not infer it from an alias); the revision fragment only when this build carries one
-          # (DEV/ad-hoc builds have no candidate revision -- same omit-when-empty rule as above).
+          # (ad-hoc DEV builds carry no revision -- same omit-when-empty rule as above; revisioned DEV builds stamp theirs like any candidate build, #2055).
           {
             echo "labels<<LABELS_EOF"
             echo "org.opencontainers.image.revision=${GITHUB_SHA}"

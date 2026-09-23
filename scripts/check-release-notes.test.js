@@ -127,6 +127,8 @@ function cleanup(root) {
 // --- resolveCandidateIdFromHeadBranch ---------------------------------------------
 
 test('resolveCandidateIdFromHeadBranch: matches the default flow and the #1007 exception alike (same pattern)', () => {
+  assert.deepEqual(resolveCandidateIdFromHeadBranch('release/2026-09-05-01'), { candidateId: '2026-09-05-01', revision: null });
+  // Historical release/<id>-rN branches (pre-#2055) still resolve, with their suffix.
   assert.deepEqual(resolveCandidateIdFromHeadBranch('release/2026-09-05-01-r1'), { candidateId: '2026-09-05-01', revision: 1 });
   assert.deepEqual(resolveCandidateIdFromHeadBranch('release/2026-09-05-01-r3'), { candidateId: '2026-09-05-01', revision: 3 });
 });
