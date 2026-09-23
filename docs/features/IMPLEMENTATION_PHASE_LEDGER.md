@@ -25393,7 +25393,97 @@ Not yet merged — set at merge time.
 461 after Phase 460's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
 
-## Phase 345 - Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
+## Phase 461 - Split the Back Office into the dedicated OPIS app (issue #2052, epic #1354)
+
+### Initiative and release
+
+DGFY Back Office fourth frontend app, intermediate integration line (not a promotion).
+
+### Ledger reconciliation
+
+Originally reserved on 2026-09-23 against the implementation base
+`feat/DGFY-459-pos-development-pr-ready` (`e4af6b76`), when Phase 460 was the highest
+entry. During this merge, upstream develop also brought entries originally numbered 345
+and 346; because those numbers already belong to completed local POS device phases, the
+upstream work is recorded below as reconciliation Phases 462 and 463 without renumbering
+completed history. Phase 459 remains deferred and Phase 460 remains in progress.
+
+### Objective and scope
+
+Create `apps/dgfy-opis` as the independently buildable/deployable DGFY Back Office at
+`opis.dgfy.ph` (`opis.dev.dgfy.ph`, `opis.stage.dgfy.ph`); migrate the POS Back Office
+shell preserving workflows and canonical backend owners; add OPIS independent
+authentication and the isolated `opis_*` browser-session namespace; POS compatibility
+redirects; POS settings refresh on focus/reconnect; app/build/deploy/CI wiring;
+successor ADR 0086 (proposed, tech-lead approval pending); compatibility seams; docs.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge,
+and deployed QA remain outstanding (this phase never merges or deploys itself).
+
+### Dependencies
+
+Issue #2052 (`Closes`); parent epic #1354; related #322, #350, #358, #1356, #2026,
+#2051; ADR 0071 (binding three-app decision, superseded in part by proposed ADR 0086),
+ADR 0072 (image naming), ADR 0026 (cookie authority), ADR 0035 (seam governance);
+Phases 455–459 contract; Phase 459 remains deferred and does not satisfy this phase's
+acceptance gates; Phase 460 remains in progress.
+
+### Acceptance and validation evidence
+
+- [ ] OPIS installs, builds, lints, unit-tests, containerizes, and routes at all three
+      hostnames (local proof: `build:opis`, Docker build, compose/nginx config checks).
+- [ ] Back Office workflows run in OPIS with canonical API ownership, permissions, and
+      tenant/branch boundaries preserved; POS stays terminal-focused; IMS handoffs target
+      OPIS.
+- [ ] OPIS login/refresh/CSRF/logout/company-switch/handoff operate independently of POS
+      session state (namespace isolation suites green).
+- [ ] POS refreshes scoped settings on focus/reconnect without disturbing operational
+      state (refresh suites green).
+- [ ] CI/local routing, builds, versioning, audits, deploy inputs, docs, ADR,
+      compatibility seams, and this ledger entry include OPIS and pass applicable gates.
+- [ ] Intermediate PR targets `feat/DGFY-459-pos-development-pr-ready`; no deployment
+      occurs in this work.
+- [ ] Authenticated multi-role/cross-branch acceptance (deferred from Phase 459) remains
+      open; DNS (#2051), TLS, and registry-pull prerequisites are recorded, not claimed.
+
+### Links
+
+- Issue: #2052 (`Closes`); parent: #1354.
+- Handoff: `.tmp/plan-2052.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`,
+  implementation base `feat/DGFY-459-pos-development-pr-ready` at `e4af6b76`).
+- Implementation: `apps/dgfy-opis/**`; `apps/dgfy-pos/src/main.jsx` (OPIS redirects);
+  `apps/dgfy-ims/src/pages/MerchantSurfaceRetired.jsx` (OPIS handoff);
+  `packages/web-core` auth/session/handoff/refresh helpers;
+  `apps/dgfy-api` browser-session cookie/CSRF transport;
+  `.github/workflows/**`, `scripts/**`, `infrastructure/docker/**`,
+  `infrastructure/nginx-host/**`.
+- Successor ADR: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`
+  (proposed).
+- Compatibility seams: `opis-pos-backoffice-redirect`, `opis-ims-merchant-handoff`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-23-opis-split-back-office-phase-461.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+
+### Completion criteria and rollback
+
+Complete only after the acceptance evidence above passes, including the required
+authenticated acceptance and ADR 0086 tech-lead approval. Rollback: revert the Phase 461
+commits by domain (new app → dependents → docs → CI); no data migration to undo; POS
+Back Office redirect and IMS handoff fall back without merchant data effect.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+462, subject to ledger revalidation (Phases 459/460 statuses preserved above).
+
+## Phase 462 - Reconciled upstream develop Phase 345: Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
 
 ### Initiative and release
 
@@ -25422,7 +25512,7 @@ Issue #438; #436 Worker Tier 2 consumer; #372 real-DB consumer; #378 baseline-fa
 cross-reference; #344 (location/structure question — explicitly not this issue);
 authoritative `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
 `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0071, `docs/architecture/apps-layout-migration.md`,
-`docs/testing/README.md`; Phase 344 (continuous ledger predecessor).
+`docs/testing/README.md`; Phase 460 (this branch's reconciliation of upstream develop Phase 344).
 
 ### Acceptance and validation evidence
 
@@ -25454,10 +25544,10 @@ Not yet merged — set at merge time.
 
 ### Next eligible phase
 
-346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
+463 after Phase 462's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
 
-## Phase 346 - Trace container revisions from DEV through PROD, per app (#2055)
+## Phase 463 - Reconciled upstream develop Phase 346: Trace container revisions from DEV through PROD, per app (#2055)
 
 ### Initiative and release
 
@@ -25488,7 +25578,7 @@ Issue #2055 (with the 2026-09-23 revision-allocation decision recorded on it);
 `.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`);
 ADR 0039 (amendment path), ADR 0081 (2026-09-23 amendment, Decisions 1/3/4/8),
 ADR 0082 (2026-09-23 amendment, Decisions 6/8); Phase 342 (reversed design);
-Phase 345 (continuous ledger predecessor).
+Phase 462 (this branch's reconciliation of upstream develop Phase 345).
 
 ### Acceptance and validation evidence
 
@@ -25537,5 +25627,5 @@ Not yet merged — set at merge time.
 
 ### Next eligible phase
 
-347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
+464 after Phase 463's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
