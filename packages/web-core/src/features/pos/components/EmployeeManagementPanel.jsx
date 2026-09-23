@@ -192,16 +192,6 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!isAddingEmployee || !isOverlayViewport || typeof document === 'undefined') return undefined;
-
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousBodyOverflow;
-    };
-  }, [isAddingEmployee, isOverlayViewport]);
-
   const resetForm = () => {
     const nextForm = cloneEmployeeForm();
     setEditingId(null);
