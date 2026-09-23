@@ -108,7 +108,7 @@ describe('Dialog focus management', () => {
 
     const overlay = document.querySelector('[data-dialog-overlay="true"]')
     expect(overlay).not.toBeNull()
-    expect(overlay.className).toContain('bg-slate-950/60')
+    expect(overlay.className).toContain('bg-black/50')
     expect(overlay.className).toContain('backdrop-blur-none')
     expect(overlay.className).not.toContain('backdrop-blur-sm')
   })

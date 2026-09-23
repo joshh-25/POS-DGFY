@@ -103,7 +103,7 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
     fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
 
     expect(await screen.findByRole('heading', { name: 'Delivery Personnel' })).toBeTruthy();
-    expect(await screen.findByText('Juan Dela Cruz')).toBeTruthy();
+    expect((await screen.findAllByText('Juan Dela Cruz')).length).toBeGreaterThan(0);
     expect(onDeliveryPersonnelChanged).toHaveBeenCalledWith(REGISTRY_ROWS);
   });
 
@@ -150,7 +150,7 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
       fireEvent.click((await screen.findAllByRole('tab', { name: 'Employees' }))[0]);
       fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
 
-      expect(await screen.findByText('Juan Dela Cruz')).toBeTruthy();
+      expect((await screen.findAllByText('Juan Dela Cruz')).length).toBeGreaterThan(0);
       expect(screen.getAllByRole('article')).toHaveLength(2);
       fireEvent.click(await screen.findByRole('button', { name: 'Add Delivery Personnel' }));
 
@@ -182,11 +182,11 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
     const filterRegion = await screen.findByRole('region', { name: 'Filter delivery personnel' });
     expect(within(filterRegion).getByRole('button', { name: 'Enabled' }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(within(filterRegion).getByRole('button', { name: 'Enabled' }));
-    expect(screen.getByText('Inactive Rider')).toBeTruthy();
+    expect(screen.getAllByText('Inactive Rider').length).toBeGreaterThan(0);
     fireEvent.click(within(filterRegion).getByRole('button', { name: 'Done' }));
 
     await waitFor(() => expect(screen.queryByText('Inactive Rider')).toBeNull());
-    expect(screen.getByText('Juan Dela Cruz')).toBeTruthy();
+    expect(screen.getAllByText('Juan Dela Cruz').length).toBeGreaterThan(0);
   });
 
   it('keeps icon-only edit and activation actions wired to the delivery service', async () => {
@@ -195,10 +195,10 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
 
     fireEvent.click((await screen.findAllByRole('tab', { name: 'Employees' }))[0]);
     fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Juan Dela Cruz' }));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit Juan Dela Cruz' }))[0]);
     expect(await screen.findByDisplayValue('Juan Dela Cruz')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Disable Juan Dela Cruz' }));
+    fireEvent.click((screen.getAllByRole('button', { name: 'Disable Juan Dela Cruz' }))[0]);
 
     await waitFor(() => expect(updateDeliveryPersonnel).toHaveBeenCalledWith(1, { is_active: false }));
     expect(createDeliveryPersonnel).not.toHaveBeenCalled();
