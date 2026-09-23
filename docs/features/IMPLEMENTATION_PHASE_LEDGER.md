@@ -25629,3 +25629,98 @@ Not yet merged — set at merge time.
 
 464 after Phase 463's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 464 - Stabilize the OPIS Back Office: root routing, dgfy-api crash, dead POS links (issue #2052, epic #1354)
+
+### Initiative and release
+
+DGFY Back Office fourth frontend app, intermediate integration line (not a promotion).
+
+### Objective and scope
+
+Stabilize the deployed OPIS follow-up on the same `feature/2052-opis-split-back-office`
+branch/PR #2054: `/` renders the Back Office overview directly (no redirect);
+`/backoffice/overview` redirects to `/` preserving query; every other section stays
+under `/backoffice/*` with `/business-admin/*` as alias; fix the DEV `dgfy-api`
+crash-loop (`posTerminalDeviceService` missing import, every `/api/*` 502ing); repoint
+the dead in-app "Open POS terminal" links (react-router `<Link to="/terminal">` on the
+OPIS origin) at the real POS origin with the settings dirty-guard contract preserved;
+correct ADR 0086's ambiguous routing clause. Explicit non-goals: no merge/promotion of
+PR #2054, no `infrastructure/nginx-host/*.conf` changes, no flattening beyond overview,
+no rewrite of the ~20 other `/backoffice/overview` handoff call sites outside OPIS.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, DEV
+redeploy, and live DEV verification remain outstanding (this phase never merges or
+deploys itself).
+
+### Dependencies
+
+Issue #2052 (`Refs`; the `Closes` linkage stays with Phase 461's app-split scope);
+parent epic #1354; PR #2054 (`feature/2052-opis-split-back-office` →
+`feat/DGFY-459-pos-development-pr-ready`); ADR 0086 (proposed — routing clause
+corrected directly, no Amendments block); Phase 461 (app-split foundation);
+Phase 463 (numbering predecessor; its completion gates are independent of this phase).
+
+### Acceptance and validation evidence
+
+- [x] OPIS suite green (27 files, 127 tests); focused web-core suites green
+      (`opisBackOfficeHandoff` + `backofficeNavigation`, 2 files, 25 tests).
+- [x] Four-app builds pass (`build:opis`, `build:pos`, `build:skupervisor`,
+      `build:store`).
+- [x] `npm run check:compliance -- --staged` (PASS, declaration Phase 464),
+      `npm run check:architecture` (PASS), `npm run lint:docs` + `check:adr` (PASS),
+      `git diff --check` clean, marker scan clean.
+- [x] `dgfy-api` crash reproduced pre-fix (`ReferenceError:
+      posTerminalDeviceService is not defined` on module import with dummy secrets,
+      no DB) and resolved post-fix (`IMPORT OK`); POS device suites green
+      (service, use-cases, route transport — 13 tests).
+- [ ] DEV redeploy + live verification via `ssh sieitz-dgfy-remote`: api
+      `RestartCount` stable across ~30s, `curl 127.0.0.1:5000/api/health` 200,
+      OPIS `/api/*` no longer 502s, `https://opis.dev.dgfy.ph/` renders the overview
+      at `/` with no redirect flash, `/backoffice/overview` redirects to `/`, deep
+      sections resolve, POS terminal links land on the real POS origin with the
+      unsaved-changes confirm intact.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges
+      or deploys).
+
+### Links
+
+- Issue: #2052 (`Refs`); parent: #1354.
+- Handoff: `.tmp/plan-2052.md` (planning head `6da1e83368ca67c31c2b8fd2c7dc4be36d603971`,
+  follow-up re-plan; original app-split plan superseded).
+- Implementation: `apps/dgfy-opis/src/main.jsx` (root route + overview redirect);
+  `apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx` (rootPath,
+  sidebar overview canonical, `GuardedLink` external mode, five POS-link sites);
+  `apps/dgfy-opis/src/utils.js` (Dashboard `/`); `apps/dgfy-opis/src/__tests__/opisRoutes.test.js`;
+  `apps/dgfy-api/src/modules/pos/index.js` (missing import);
+  `packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js`
+  (`buildPosTerminalUrl`, opis→pos origin mapping);
+  `packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js`;
+  `packages/web-core/src/features/pos/__tests__/backofficeNavigation.behavior.test.jsx`.
+- Governance: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`
+  (routing clause correction, still `proposed`).
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-23-opis-stabilization-phase-464.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+
+### Completion criteria and rollback
+
+Complete only after the acceptance evidence above passes, including the DEV redeploy
+with live verification and ADR 0086 tech-lead approval (carried by PR #2054's review).
+Rollback: revert the Phase 464 commits by domain (routing → api fix → links → docs);
+the api crash-loop returns if the import line is reverted (DEV 502s resume); OPIS
+routing/links fall back to the redirect/dead-link behavior with no data migration to
+undo.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+465 after Phase 464's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
