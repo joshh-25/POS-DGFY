@@ -13,6 +13,10 @@ import { createPageUrl, getPageNameFromPath } from '../utils.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mainSource = readFileSync(resolve(here, '../main.jsx'), 'utf8');
+const businessAdminPageSource = readFileSync(
+  resolve(here, '../features/businessAdmin/BusinessAdminPage.jsx'),
+  'utf8'
+);
 
 describe('OPIS routes (issue #2052)', () => {
   it('keeps /backoffice/* canonical with /business-admin/* as an alias', () => {
@@ -80,6 +84,22 @@ describe('OPIS Back Office manifest', () => {
     expect(BACKOFFICE_NAV_GROUPS.flatMap((group) => group.items).length).toBe(
       Object.keys(BACKOFFICE_MANIFEST).length
     );
+  });
+});
+
+describe('OPIS "Open POS terminal" links (issue #2052 follow-up)', () => {
+  it('navigates cross-origin via real hrefs, not react-router Links', () => {
+    expect(businessAdminPageSource).not.toContain('to="/terminal"');
+    expect(businessAdminPageSource).toContain('href={buildPosTerminalUrl()}');
+    expect(businessAdminPageSource).toContain(
+      "href={buildPosTerminalUrl({ path: '/terminal', search: `?view=${encodeURIComponent('terminal_setup')}` })}"
+    );
+  });
+
+  it('keeps the dirty-guard contract on the external GuardedLink mode', () => {
+    expect(businessAdminPageSource).toContain('window.location.assign(externalHref)');
+    expect(businessAdminPageSource).toContain('shouldBlockSettingsNavigation(isDirty)');
+    expect(businessAdminPageSource).toContain('onLeave?.()');
   });
 });
 

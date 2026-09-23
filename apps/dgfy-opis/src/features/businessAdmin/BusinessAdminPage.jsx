@@ -50,7 +50,6 @@ import {
 import { businessAdminApi, getBusinessAdminErrorMessage } from './businessAdminService.js';
 import {
     buildBusinessAdminSettingsPath,
-    buildPosSettingsOwnerPath,
     buildBusinessAdminSettingsEditorUser,
     canAccessBusinessAdminSettingsSection,
     getBusinessAdminSettingsSectionDefinition,
@@ -87,6 +86,7 @@ import {
     getBusinessAdminWorkflowPageName,
     isBusinessAdminWorkflowSectionVisible
 } from './businessAdminWorkflowVisibility.js';
+import { buildPosTerminalUrl } from '../../../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import {
     DATE_RANGE_PRESETS,
     formatDateRangeLabel,
@@ -276,7 +276,12 @@ const NotificationMetric = ({ icon: Icon, label, value, detail, tone = '' }) => 
     </div>
 );
 
-const GuardedLink = ({ to, isDirty = false, onLeave, children, ...props }) => {
+// `href` mode is for real cross-origin navigation (e.g. OPIS → POS terminal links):
+// react-router <Link> only performs client-side routing on this origin, so it can
+// never leave OPIS. The dirty-guard contract (confirm, then onLeave) is identical
+// in both modes; the external branch navigates via window.location.assign after it.
+const GuardedLink = ({ to, href, isDirty = false, onLeave, children, ...props }) => {
+    const externalHref = href || (typeof to === 'string' && /^(https?:)?\/\//.test(to) ? to : null);
     const handleClick = (event) => {
         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;
@@ -291,8 +296,15 @@ const GuardedLink = ({ to, isDirty = false, onLeave, children, ...props }) => {
             }
         }
         onLeave?.();
+        if (externalHref) {
+            event.preventDefault();
+            if (typeof window !== 'undefined') window.location.assign(externalHref);
+        }
     };
 
+    if (externalHref) {
+        return <a {...props} href={externalHref} onClick={handleClick}>{children}</a>;
+    }
     return <Link {...props} to={to} onClick={handleClick}>{children}</Link>;
 };
 
@@ -2184,7 +2196,7 @@ function BusinessAdminSettingsWorkspace({
                                 </div>
                                 <div className="business-admin-settings-terminal-link">
                                     <GuardedLink
-                                        to={buildPosSettingsOwnerPath('terminal_setup')}
+                                        href={buildPosTerminalUrl({ path: '/terminal', search: `?view=${encodeURIComponent('terminal_setup')}` })}
                                         isDirty={settingsDirty}
                                         onLeave={onLeaveSettings}
                                         className="business-admin-button"
@@ -2441,7 +2453,7 @@ function SimpleWorkspace({ section, bootstrap }) {
         ]
     };
     const cards = features[section] || features.settings;
-    return <><div className="business-admin-alert info"><CheckCircle2 size={17} /><div><strong>Read-model boundary.</strong><div>This business Back Office keeps POS, Storefront, catalog, inventory, identity, and fiscal ownership boundaries intact.</div></div></div><div className="business-admin-feature-grid">{cards}</div><div className="mt-5 flex flex-wrap gap-3"><Link to="/terminal" className="business-admin-button primary"><ExternalLink size={14} /> Open POS terminal</Link>{section === 'fnb' ? <Link to="/terminal" className="business-admin-button"><ChefHat size={14} /> Open F&B operations</Link> : null}</div></>;
+    return <><div className="business-admin-alert info"><CheckCircle2 size={17} /><div><strong>Read-model boundary.</strong><div>This business Back Office keeps POS, Storefront, catalog, inventory, identity, and fiscal ownership boundaries intact.</div></div></div><div className="business-admin-feature-grid">{cards}</div><div className="mt-5 flex flex-wrap gap-3"><a href={buildPosTerminalUrl()} className="business-admin-button primary"><ExternalLink size={14} /> Open POS terminal</a>{section === 'fnb' ? <a href={buildPosTerminalUrl()} className="business-admin-button"><ChefHat size={14} /> Open F&B operations</a> : null}</div></>;
 }
 
 export default function BusinessAdminPage() {
@@ -3204,7 +3216,7 @@ export default function BusinessAdminPage() {
                     if (!items.length) return null;
                     return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : (item.key === 'overview' && rootPath === '/backoffice' ? '/' : buildBackOfficeModulePath(rootPath, item.key)))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
                 })}
-                <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink to="/terminal" isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
+                <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
             </aside>
             {mobileNavOpen ? <button type="button" className="business-admin-mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} /> : null}
             <main className="business-admin-main">
@@ -3234,7 +3246,7 @@ export default function BusinessAdminPage() {
                             {activeSection !== 'settings' && meta.description ? <p className="business-admin-description">{meta.description}</p> : null}
                         </div>
                     </div>
-                    <div className="business-admin-top-actions"><span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink to="/terminal" isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
+                    <div className="business-admin-top-actions"><span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
                 </div>
                 {showDateFilters ? (
                     <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>

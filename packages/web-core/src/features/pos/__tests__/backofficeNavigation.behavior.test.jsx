@@ -276,7 +276,9 @@ describe('POS Back Office navigation', () => {
     expect(businessAdminPageSource).toContain('settingsRefreshKey={settingsRefreshKey}');
     expect(businessAdminPageSource).toContain('settingsRefreshKey={reloadNonce}');
     expect(businessAdminPageSource).toContain('key={`${definition.key}-${settingsRefreshKey}`}');
-    expect(businessAdminPageSource).toContain("buildPosSettingsOwnerPath('terminal_setup')");
+    expect(businessAdminPageSource).toContain('buildPosTerminalUrl');
+    expect(businessAdminPageSource).toContain('window.location.assign(externalHref)');
+    expect(businessAdminPageSource).not.toContain('to="/terminal"');
     expect(businessAdminPageSource).toContain('Open POS terminal controls');
   });
 });

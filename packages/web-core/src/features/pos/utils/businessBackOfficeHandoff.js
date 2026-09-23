@@ -28,6 +28,7 @@ const resolvePosOrigin = () => {
 
   if (hostname.startsWith('store.')) return `${protocol}//${hostname.replace(/^store\./, 'pos.')}`;
   if (hostname.startsWith('pos.')) return `${protocol}//${hostname}`;
+  if (hostname.startsWith('opis.')) return `${protocol}//${hostname.replace(/^opis\./, 'pos.')}`;
   if (hostname.startsWith('skupervisor.')) return `${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}`;
   return hostname ? `${protocol}//pos.${hostname}` : DEFAULT_PUBLIC_POS_ORIGIN;
 };
@@ -104,6 +105,19 @@ export const buildOpisHandoffUrl = ({ tenantId = '', next = '/backoffice/overvie
   const target = new URL('/dgfy/companies', getOpisBackOfficeOrigin());
   target.search = params.toString();
   return target.toString();
+};
+
+// ── OPIS → POS terminal links (issue #2052 follow-up) ─────────────────────────
+// OPIS serves no /terminal route, so "Open POS terminal" affordances in the Back
+// Office cannot use react-router <Link> (client-side routing only, dead on the OPIS
+// origin). This builder emits a real cross-origin POS URL for a plain <a> href,
+// reusing the POS origin-resolution mechanism above (VITE_POS_TERMINAL_URL override,
+// localhost dev-port fallback, hostname-prefix substitution).
+export const buildPosTerminalUrl = ({ path = '/terminal', search = '' } = {}) => {
+  const normalizedPath = normalizePath(path);
+  const normalizedSearch = String(search || '').trim();
+  const query = normalizedSearch.startsWith('?') || !normalizedSearch ? normalizedSearch : `?${normalizedSearch}`;
+  return `${resolvePosOrigin()}${normalizedPath}${query}`;
 };
 
 // Opens an OPIS Back Office URL in a new tab with clear recovery when the popup is

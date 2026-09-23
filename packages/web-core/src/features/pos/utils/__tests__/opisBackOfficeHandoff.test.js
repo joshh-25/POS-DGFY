@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildOpisBackOfficeUrl,
   buildOpisHandoffUrl,
+  buildPosTerminalUrl,
+  getBusinessBackOfficeOrigin,
   getOpisBackOfficeOrigin,
   openOpisBackOffice
 } from '../businessBackOfficeHandoff.js';
@@ -81,6 +83,37 @@ describe('buildOpisHandoffUrl', () => {
     expect(parsed.searchParams.get('tenant_id')).toBe('tenant-1');
     expect(parsed.searchParams.get('next')).toBe('/backoffice/catalog');
     expect(parsed.searchParams.get('handoff_token')).toBe('handoff-1');
+  });
+});
+
+describe('buildPosTerminalUrl (OPIS → POS terminal links, issue #2052 follow-up)', () => {
+  it('defaults to the /terminal path on the configured POS origin', () => {
+    vi.stubEnv('VITE_POS_TERMINAL_URL', 'https://pos.dgfy.ph');
+    expect(buildPosTerminalUrl()).toBe('https://pos.dgfy.ph/terminal');
+  });
+
+  it('maps the OPIS production host to the POS host (not pos.opis.*)', () => {
+    setLocation({ hostname: 'opis.dev.dgfy.ph' });
+    expect(getBusinessBackOfficeOrigin()).toBe('https://pos.dev.dgfy.ph');
+    expect(buildPosTerminalUrl()).toBe('https://pos.dev.dgfy.ph/terminal');
+  });
+
+  it('derives the local POS dev port from a localhost OPIS tab', () => {
+    setLocation({ protocol: 'http:', hostname: 'localhost', port: '5176' });
+    expect(buildPosTerminalUrl()).toBe('http://localhost:5174/terminal');
+  });
+
+  it('preserves a terminal query across the cross-origin link', () => {
+    vi.stubEnv('VITE_POS_TERMINAL_URL', 'https://pos.dgfy.ph');
+    expect(buildPosTerminalUrl({ path: '/terminal', search: '?view=terminal_setup' })).toBe(
+      'https://pos.dgfy.ph/terminal?view=terminal_setup'
+    );
+  });
+
+  it('honors the VITE_POS_TERMINAL_URL override', () => {
+    vi.stubEnv('VITE_POS_TERMINAL_URL', 'https://pos.stage.dgfy.ph');
+    setLocation({ hostname: 'opis.dgfy.ph' });
+    expect(buildPosTerminalUrl()).toBe('https://pos.stage.dgfy.ph/terminal');
   });
 });
 

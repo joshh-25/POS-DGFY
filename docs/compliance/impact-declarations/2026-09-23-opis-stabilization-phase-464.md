@@ -9,7 +9,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,UI_LAYOUT
 policy_version: 2026.09.23
-verification_evidence: dgfy-api pos-module import evaluation (pre-fix ReferenceError reproduced, post-fix IMPORT OK with dummy secrets, no DB); node --check; OPIS suite (27 files, 125 tests, green); build:opis
+verification_evidence: dgfy-api pos-module import evaluation (pre-fix ReferenceError reproduced, post-fix IMPORT OK with dummy secrets, no DB); node --check; OPIS suite (27 files, 127 tests, green); web-core handoff plus back-office navigation suites (2 files, 25 tests, green); four-app builds (opis, pos, skupervisor, store)
 rollback_note: Revert the Phase 464 commits by domain; the api crash-loop returns if the import line is reverted (DEV 502s resume); OPIS routing/links fall back to the redirect/dead-link behavior with no data migration to undo.
 preflight_result: no_breach
 preflight_reason_code: OPIS_STABILIZATION
@@ -65,10 +65,13 @@ preflight sweep reconciles it before any `release/* → main` promotion, and no
   evaluation with dummy `JWT_SECRET`/`REFRESH_TOKEN_SECRET` (≥32 chars, no DB):
   pre-fix `ReferenceError: posTerminalDeviceService is not defined`, post-fix
   `IMPORT OK`.
-- OPIS: full suite green (27 files, 125 tests); `npm run build:opis` passes.
+- OPIS: full suite green (27 files, 127 tests); `npm run build:opis` passes.
 - Web-core: `opisBackOfficeHandoff` suite extended with `buildPosTerminalUrl` cases
   (default path, opis→pos host mapping, localhost dev port, query preservation,
-  `VITE_POS_TERMINAL_URL` override).
+  `VITE_POS_TERMINAL_URL` override); `backofficeNavigation` behavior suite updated
+  for the external-link pattern — focused run 2 files, 25 tests, green.
+- Frontend builds: `build:opis`, `build:pos`, `build:skupervisor`, `build:store`
+  all pass.
 - Gates: `npm run check:compliance -- --staged`, `npm run check:architecture`,
   `npm run lint:docs`, `git diff --check`, and the pre-commit marker scan clean.
 - Live DEV verification (post-push, post-redeploy) recorded in the Phase 464 ledger
