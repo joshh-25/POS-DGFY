@@ -9,7 +9,7 @@ classification: major
 surfaces: pos,terminal,settings
 reason_codes_impacted: ALLOWED,UI_LAYOUT,PERMISSION_BOUNDARY,AUTHORIZATION_FAILED
 policy_version: 2026.09.23
-verification_evidence: OPIS/cookie-namespace/CSRF/handoff/refresh unit suites (backend 36, web-core 64, OPIS 122, IMS 2726, Storefront 1200, POS 9 — all green); POS/IMS/Storefront/OPIS builds; OPIS Docker build/run smoke (200 shell, 404 hashed asset); architecture, compatibility-seam, agent-surface, documentation, hygiene, version, reachability, trigger, diff, and prod-audit checks
+verification_evidence: OPIS/cookie-namespace/CSRF/handoff/refresh unit suites (backend 36, web-core 64, OPIS 122, IMS 2726, Storefront 1200, POS 9 — all green); POS/IMS/Storefront/OPIS builds; OPIS Docker build/run smoke (200 shell, 404 hashed asset); architecture, compatibility-seam, agent-surface, documentation, hygiene, version, reachability, trigger, diff, and prod-audit checks,OPIS BrowserRouter migration and in-app auth-recovery suites and four-app builds
 rollback_note: Revert the Phase 461 commits by domain; POS Back Office redirect and IMS handoff fall back to in-app/POS targets with no data migration to undo.
 preflight_result: no_breach
 preflight_reason_code: OPIS_BACKOFFICE_SPLIT
@@ -73,6 +73,16 @@ preflight sweep reconciles it before any `release/* → main` promotion, and no
   `test:frontend-build-triggers`, `test:app-versions`, `git diff --check`.
 - DNS records remain #2051; TLS and registry-pull prerequisites are recorded, not
   claimed complete.
+- Proper-path routing follow-up: OPIS moves from `HashRouter` to `BrowserRouter`
+  (nginx already serves the SPA fallback for every path; Storefront precedent), the
+  OPIS handoff builders emit plain paths and company-picker query URLs instead of
+  hash URLs, and the Back Office session-required screen recovers in-app via
+  `/dgfy/companies?next=` (direct sign-in, no dead `/terminal` link). No new data
+  source, query, export, or mutation; the `opis_*` session model, CSRF enforcement,
+  and server-side permission checks are unchanged. Covered by the updated handoff
+  unit suites, the OPIS route suite's `BrowserRouter` lock-in, the back-office
+  navigation behavior suite, and fresh `build:opis`/`build:pos`/`build:skupervisor`/
+  `build:store` passes.
 
 ## Measured local evidence (2026-09-23)
 

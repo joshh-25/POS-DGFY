@@ -30,6 +30,11 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).toContain('MobileReceivePage');
   });
 
+  it('serves proper paths via BrowserRouter (no hash redirect)', () => {
+    expect(mainSource).toContain('BrowserRouter');
+    expect(mainSource).not.toContain('HashRouter');
+  });
+
   it('selects OPIS as the DGFY company destination', () => {
     expect(mainSource).toContain('targetSurface="opis"');
   });

@@ -64,6 +64,7 @@ import {
 import SettingsWorkspace from '../../../../../packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx';
 import { resolveAppAssetUrl } from '../../../../../packages/web-core/src/utils/assetUrl.js';
 import { publishBusinessAdminSettingsUpdated } from '../../../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
+import { DGFY_COMPANY_SELECT_ROUTE } from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 import { useWorkflowMode } from '../../../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import UserManagementModal from '../../../../../packages/web-core/Components/users/UserManagementModal.jsx';
 import {
@@ -99,7 +100,7 @@ import './businessAdmin.css';
 const MIGRATED_BACKOFFICE_MODULE_KEYS = new Set(Object.keys(MERCHANT_BACKOFFICE_MODULE_META));
 const DGFY_BUSINESS_ADMIN_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const BUSINESS_ADMIN_SIDEBAR_COLLAPSED_STORAGE_KEY = 'dgfy.businessAdmin.sidebarCollapsed';
-const BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE = 'Your session is missing or expired. Return to POS to sign in with an authorized manager account.';
+const BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE = 'Your session is missing or expired. Sign in to continue with an authorized manager account.';
 const BUSINESS_ADMIN_COMPANY_SWITCHED_MESSAGE = 'The company changed in another window. Return to POS and open Back Office again for the selected company.';
 const BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE = 'Your account is authenticated but is not authorized to open Back Office.';
 const BUSINESS_ADMIN_ORDERS_PAGE_SIZE = 20;
@@ -3011,7 +3012,17 @@ export default function BusinessAdminPage() {
 
     if (bootstrapLoading) return <Loading />;
     if (bootstrapError || !bootstrap) {
-        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p><Link to="/terminal" className="business-admin-button primary mt-5"><ExternalLink size={14} /> {bootstrapAuthRequired ? 'Open POS sign-in' : 'Open POS terminal'}</Link></section></main>;
+        // OPIS has no /terminal route: recovery stays in-app. Sign-in returns
+        // to the requested Back Office path via the company picker's `next`
+        // contract; access-denied offers a business switch; a generic failure
+        // retries the bootstrap through the same guarded refresh as settings.
+        const signInTarget = `${DGFY_COMPANY_SELECT_ROUTE}?next=${encodeURIComponent(`${location.pathname}${location.search}`)}`;
+        const recoveryAction = bootstrapAuthRequired
+            ? <Link to={signInTarget} className="business-admin-button primary mt-5"><ExternalLink size={14} /> Sign in to Back Office</Link>
+            : (bootstrapAccessDenied
+                ? <Link to={DGFY_COMPANY_SELECT_ROUTE} className="business-admin-button primary mt-5"><ExternalLink size={14} /> Switch business</Link>
+                : <button type="button" onClick={handleBusinessAdminRefresh} className="business-admin-button primary mt-5"><RefreshCw size={14} /> Try again</button>);
+        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p>{recoveryAction}</section></main>;
     }
 
     const meta = activeSection === 'settings' && settingsDefinition

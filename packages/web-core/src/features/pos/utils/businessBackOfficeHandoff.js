@@ -80,10 +80,13 @@ const resolveOpisOrigin = () => {
 export const getOpisBackOfficeOrigin = () => resolveOpisOrigin();
 
 // @compat-seam id=opis-pos-backoffice-redirect
+// OPIS serves proper paths (BrowserRouter + nginx SPA fallback), so the handoff
+// is a plain same-path URL -- no hash. POS itself stays on HashRouter; only the
+// emitted OPIS target changed.
 export const buildOpisBackOfficeUrl = ({ path = '/backoffice/overview', search = '' } = {}) => {  const normalizedPath = normalizePath(path);
   const normalizedSearch = String(search || '').trim();
   const query = normalizedSearch.startsWith('?') || !normalizedSearch ? normalizedSearch : `?${normalizedSearch}`;
-  return `${getOpisBackOfficeOrigin()}/#${normalizedPath}${query}`;
+  return `${getOpisBackOfficeOrigin()}${normalizedPath}${query}`;
 };
 
 // IMS merchant-surface handoff retargeted to OPIS (issue #2052): same tenant_id / next /
@@ -98,8 +101,8 @@ export const buildOpisHandoffUrl = ({ tenantId = '', next = '/backoffice/overvie
   params.set('next', normalizePath(next));
   if (normalizedHandoffToken) params.set('handoff_token', normalizedHandoffToken);
 
-  const target = new URL('/', getOpisBackOfficeOrigin());
-  target.hash = `/dgfy/companies?${params.toString()}`;
+  const target = new URL('/dgfy/companies', getOpisBackOfficeOrigin());
+  target.search = params.toString();
   return target.toString();
 };
 

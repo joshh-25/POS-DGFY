@@ -58,29 +58,29 @@ describe('buildOpisBackOfficeUrl', () => {
   it('preserves the Back Office path and query across the redirect', () => {
     vi.stubEnv('VITE_OPIS_URL', 'https://opis.dgfy.ph');
     expect(buildOpisBackOfficeUrl({ path: '/backoffice/sales', search: '?range=last_30' })).toBe(
-      'https://opis.dgfy.ph/#/backoffice/sales?range=last_30'
+      'https://opis.dgfy.ph/backoffice/sales?range=last_30'
     );
   });
 
   it('defaults to the overview when no path is given', () => {
     vi.stubEnv('VITE_OPIS_URL', 'https://opis.dgfy.ph');
-    expect(buildOpisBackOfficeUrl({})).toBe('https://opis.dgfy.ph/#/backoffice/overview');
+    expect(buildOpisBackOfficeUrl({})).toBe('https://opis.dgfy.ph/backoffice/overview');
   });
 });
 
 describe('buildOpisHandoffUrl', () => {
-  it('carries tenant, destination, and handoff token inside the OPIS hash route', () => {
+  it('carries tenant, destination, and handoff token as the OPIS company-picker query', () => {
     vi.stubEnv('VITE_OPIS_URL', 'https://opis.dgfy.ph');
     const parsed = new URL(buildOpisHandoffUrl({
       tenantId: 'tenant-1',
       next: '/backoffice/catalog',
       handoffToken: 'handoff-1'
     }));
-    expect(`${parsed.origin}/`).toBe('https://opis.dgfy.ph/');
-    expect(parsed.hash).toContain('/dgfy/companies');
-    expect(parsed.hash).toContain('tenant_id=tenant-1');
-    expect(parsed.hash).toContain('next=%2Fbackoffice%2Fcatalog');
-    expect(parsed.hash).toContain('handoff_token=handoff-1');
+    expect(`${parsed.origin}${parsed.pathname}`).toBe('https://opis.dgfy.ph/dgfy/companies');
+    expect(parsed.hash).toBe('');
+    expect(parsed.searchParams.get('tenant_id')).toBe('tenant-1');
+    expect(parsed.searchParams.get('next')).toBe('/backoffice/catalog');
+    expect(parsed.searchParams.get('handoff_token')).toBe('handoff-1');
   });
 });
 
@@ -91,7 +91,7 @@ describe('openOpisBackOffice', () => {
     const fakeWindow = { open: vi.fn(() => ({})), location: { assign } };
     expect(openOpisBackOffice({ path: '/backoffice/settings', windowObj: fakeWindow })).toBe('new-tab');
     expect(fakeWindow.open).toHaveBeenCalledWith(
-      'https://opis.dgfy.ph/#/backoffice/settings',
+      'https://opis.dgfy.ph/backoffice/settings',
       '_blank',
       'noopener,noreferrer'
     );
@@ -103,6 +103,6 @@ describe('openOpisBackOffice', () => {
     const assign = vi.fn();
     const fakeWindow = { open: vi.fn(() => null), location: { assign } };
     expect(openOpisBackOffice({ path: '/backoffice/catalog', search: '?q=beans', windowObj: fakeWindow })).toBe('same-tab');
-    expect(assign).toHaveBeenCalledWith('https://opis.dgfy.ph/#/backoffice/catalog?q=beans');
+    expect(assign).toHaveBeenCalledWith('https://opis.dgfy.ph/backoffice/catalog?q=beans');
   });
 });

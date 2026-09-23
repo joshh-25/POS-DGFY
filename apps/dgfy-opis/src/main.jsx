@@ -3,7 +3,7 @@
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
 import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -130,7 +130,7 @@ const mountApp = () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <ErrorBoundary>
-        <HashRouter
+        <BrowserRouter
           future={{
             v7_startTransition: true,
             v7_relativeSplatPath: true
@@ -158,7 +158,7 @@ const mountApp = () => {
               </Suspense>
             </WorkflowModeProvider>
           </PermissionProvider>
-        </HashRouter>
+        </BrowserRouter>
       </ErrorBoundary>
     </React.StrictMode>
   );

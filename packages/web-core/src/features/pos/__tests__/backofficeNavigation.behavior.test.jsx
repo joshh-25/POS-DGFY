@@ -256,7 +256,11 @@ describe('POS Back Office navigation', () => {
     expect(businessAdminPageSource).toContain('Back Office access denied');
     expect(businessAdminPageSource).toContain("bootstrapAuthRequired ? 'business-admin-session-required'");
     expect(businessAdminPageSource).toContain("bootstrapAccessDenied ? 'business-admin-access-denied'");
-    expect(businessAdminPageSource).toContain('Open POS sign-in');
+    expect(businessAdminPageSource).toContain('Sign in to Back Office');
+    expect(businessAdminPageSource).toContain('Switch business');
+    expect(businessAdminPageSource).toContain('DGFY_COMPANY_SELECT_ROUTE');
+    expect(businessAdminPageSource).not.toContain('<Link to="/terminal" className="business-admin-button primary mt-5">');
+    expect(businessAdminPageSource).not.toContain('Open POS sign-in');
     expect(businessAdminPageSource).toContain('const handleBusinessAdminRefresh = useCallback');
     expect(businessAdminPageSource).toContain("window.confirm('You have unsaved settings changes. Refresh and discard them?')");
     expect(businessAdminPageSource).toContain("onSettingsSaved={notifySettingsSaved}");
