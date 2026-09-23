@@ -97,6 +97,11 @@ on:
         required: false
         type: string
         default: ''
+      release_revision_frontend_opis:
+        description: Same per-app contract as the other frontend release revisions, for dgfy-opis.
+        required: false
+        type: string
+        default: ''
     outputs:
       frontend_ims_sha_tag:
         value: ${{ jobs.frontend-ims.outputs.sha_tag }}
@@ -147,6 +152,7 @@ jobs:
       should_build_dgfy_ims: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+      should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
       # #2055 (Phase 346): the per-app revision map (JSON object) and DEV ad-hoc marker the
       # builder jobs consume -- see the "Resolve per-app artifact revisions" step below.
       revisions_json: ${{ steps.revisions.outputs.revisions_json }}
@@ -238,6 +244,7 @@ jobs:
           RELEASE_REVISION_IMS: ${{ inputs.release_revision_frontend_ims }}
           RELEASE_REVISION_POS: ${{ inputs.release_revision_frontend_pos }}
           RELEASE_REVISION_STOREFRONT: ${{ inputs.release_revision_frontend_storefront }}
+          RELEASE_REVISION_OPIS: ${{ inputs.release_revision_frontend_opis }}
         run: |
           set -euo pipefail
           if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REF_NAME}" != "develop" ]; then
@@ -248,7 +255,7 @@ jobs:
           fi
           if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ]; then
             echo "[revisions] DEV dispatch on develop -- allocating per-app revisions from GHCR (#2055)."
-            REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
+            REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
               FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
               ALLOC="$(node scripts/allocate-artifact-revision.js --image "ghcr.io/sieitzz/${APP}" --floor "${FLOOR}" --revision "${GITHUB_SHA}")"
               echo "[revisions] ${ALLOC}"
@@ -259,7 +266,7 @@ jobs:
             echo "dev_pr_ref=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);console.log(JSON.stringify(m))")"
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
           echo "[revisions] STAGING dispatch -- per-app revisions from dispatch inputs: ${REVISIONS_JSON}"
           echo "revisions_json=${REVISIONS_JSON}" >> "$GITHUB_OUTPUT"
           echo "dev_pr_ref=" >> "$GITHUB_OUTPUT"
@@ -391,7 +398,8 @@ jobs:
       image_tags: ${{ inputs.image_tags }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-opis }}
+      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read

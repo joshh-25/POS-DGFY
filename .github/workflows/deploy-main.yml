@@ -89,6 +89,11 @@ on:
         required: false
         type: string
         default: ''
+      candidate_source_sha_frontend_opis:
+        description: Same candidate source identity contract as the other frontend apps, for dgfy-opis.
+        required: false
+        type: string
+        default: ''
       release_revision_api:
         description: >-
           Per-app artifact revision for dgfy-api and dgfy-migration-runner (#2055, Phase 346 --
@@ -126,6 +131,11 @@ on:
           Same per-app contract as release_revision_api above, for dgfy-storefront
           specifically (frontend X.Y.Z-rN with production VITE_* values). Promotion and
           direct-hotfix dispatch only.
+        required: false
+        type: string
+        default: ''
+      release_revision_frontend_opis:
+        description: Same per-app revision contract as the other frontend apps, for dgfy-opis.
         required: false
         type: string
         default: ''
@@ -411,7 +421,7 @@ jobs:
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
           SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);console.log(JSON.stringify(m))")"
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);console.log(JSON.stringify(m))")"
           if [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
           fi
@@ -421,6 +431,7 @@ jobs:
           IMS_R: ${{ inputs.release_revision_frontend_ims }}
           POS_R: ${{ inputs.release_revision_frontend_pos }}
           STOREFRONT_R: ${{ inputs.release_revision_frontend_storefront }}
+          OPIS_R: ${{ inputs.release_revision_frontend_opis }}
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -597,7 +608,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_opis }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_frontend_opis }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -717,7 +728,7 @@ jobs:
           set -euo pipefail
           FAILURES=0
           SKIPPED=0
-          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
+          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
             # #2055 (Phase 346): each app aliases its OWN allocated revision -- an unchecked
             # app-group (empty input, nothing built) is skipped, never aliased blind.
             case "${APP}" in
@@ -725,6 +736,7 @@ jobs:
               dgfy-ims) APP_REVISION="${{ inputs.release_revision_frontend_ims }}" ;;
               dgfy-pos) APP_REVISION="${{ inputs.release_revision_frontend_pos }}" ;;
               dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
+              dgfy-opis) APP_REVISION="${{ inputs.release_revision_frontend_opis }}" ;;
             esac
             if [ -z "${APP_REVISION:-}" ]; then
               echo "[promote-aliases] ${APP}: no revision input for this app-group (unchecked build) -- skipping, not aliasing."

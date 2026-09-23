@@ -126,6 +126,10 @@ on:
           specifically (frontend X.Y.Z-rN-staging). STAGING candidate dispatch only.
         type: string
         default: ''
+      release_revision_frontend_opis:
+        description: Same per-app revision contract for dgfy-opis (frontend X.Y.Z-rN-staging).
+        type: string
+        default: ''
       environment_override:
         description: >-
           Manual environment override (DEV or STAGING). Defaults to empty (auto-derived from branch).
@@ -208,6 +212,7 @@ jobs:
       release_revision_frontend_ims: ${{ inputs.release_revision_frontend_ims }}
       release_revision_frontend_pos: ${{ inputs.release_revision_frontend_pos }}
       release_revision_frontend_storefront: ${{ inputs.release_revision_frontend_storefront }}
+      release_revision_frontend_opis: ${{ inputs.release_revision_frontend_opis }}
     secrets: inherit
     permissions:
       contents: read
