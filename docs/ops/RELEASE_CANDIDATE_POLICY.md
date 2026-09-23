@@ -1776,11 +1776,14 @@ structurally coherent once DEV is folded into the same lineage (full rationale o
 (`N = max + 1` over `<app>:<floor>-r*` across all channels; same-source retry reuses its own
 `N`; a floor bump resets the sequence). `develop` dispatches publish promotion-eligible
 `X.Y.Z-rN-dev` (allocated once per dispatch by `deployment-orchestrator.yml`'s
-resolve-build-plan job, so the skip plan and every builder resolve byte-identical tags);
-feature-branch dispatches publish ad-hoc `X.Y.Z-<slug>-dev` (sha tag only, never the moving
-`develop` tag, never candidate-selectable). Legacy bare `X.Y.Z-dev` tags stay historical and
-untouched. STAGING/PROD tag *format* is unchanged — only where each app's `N` comes from
-changes. The candidate manifest is `sku-release-candidate/v2` (per-app `release_revision`
+resolve-build-plan job, so the skip plan and every builder resolve byte-identical tags).
+Ordinary feature-branch dispatches publish ad-hoc `X.Y.Z-<slug>-dev` and never move the
+`develop` tag. A temporary DEV integration ref may opt into the same revisioned DEV lane via
+`deploy.yml`'s explicit `revisioned_dev_dispatch` input; it becomes promotion-eligible by
+intent and deploys through its immutable `sha-<7>` tag using the shared Compose `IMAGE_TAG`
+override. Leave the input false for ordinary feature branches. Legacy bare `X.Y.Z-dev` tags
+stay historical and untouched. STAGING/PROD tag *format* is unchanged — only where each app's
+`N` comes from changes. The candidate manifest is `sku-release-candidate/v2` (per-app `release_revision`
 map, cosmetic `repair_seq`, selected DEV artifacts on the initial revision, plain
 `release/<candidate_id>` cut); `v1` still validates but is never written. Branches are
 `fix/staging/<candidate_id>-<repair_seq>` (bare sequence, no `r` prefix) and
