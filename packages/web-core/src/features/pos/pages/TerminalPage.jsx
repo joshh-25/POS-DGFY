@@ -59,9 +59,11 @@ import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/featur
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import {
+  installPosFocusSettingsRefresh,
   shouldRefreshBusinessAdminSettingsUpdate,
   subscribeToBusinessAdminSettingsUpdates
 } from '../utils/businessAdminSettingsSync.js';
+import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
@@ -6373,41 +6375,24 @@ export default function TerminalPage() {
   const handleConfirmOpenBackOffice = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const url = new URL('/', window.location.origin);
-    if (backOfficeTargetPath === '/backoffice/overview') {
-      url.search = '?view=reports';
-      url.hash = '#/backoffice/overview';
-    } else {
-      url.search = '';
-      url.hash = `#${backOfficeTargetPath}`;
-    }
-    // Open a blank tab synchronously from the confirmation click so popup
-    // blocking is detectable. Detach the opener before navigating so the new
-    // same-origin Back Office page remains an independent browser context.
-    const openedWindow = window.open('', '_blank');
     setBackOfficeConfirmOpen(false);
+    // The merchant Back Office moved to the dedicated OPIS app (issue #2052): open it
+    // externally, preserving the safe path and query. openOpisBackOffice opens a new tab
+    // and falls back to same-tab navigation when the popup is blocked, so the merchant
+    // always has a recovery path.
+    const canonicalPath = String(backOfficeTargetPath || '').replace(/^\/business-admin(?=\/|$)/, '/backoffice');
+    const [pathOnly, queryString = ''] = canonicalPath.split('?');
+    const outcome = openOpisBackOffice({
+      path: pathOnly || '/backoffice/overview',
+      search: queryString ? `?${queryString}` : ''
+    });
 
-    if (!openedWindow) {
-      toast.error('Your browser blocked the Back Office window. Allow pop-ups and try again.');
-      return;
+    const destinationLabel = pathOnly === '/backoffice/overview' ? 'Overview' : 'Business settings';
+    if (outcome === 'new-tab') {
+      toast.success(`Back Office opened in OPIS at ${destinationLabel}.`);
+    } else {
+      toast.success(`Opening Back Office in OPIS at ${destinationLabel}.`);
     }
-
-    try {
-      openedWindow.opener = null;
-      openedWindow.location.replace(url.toString());
-    } catch {
-      try {
-        openedWindow.close();
-      } catch {
-        // The browser may deny closing a newly opened context; the error below
-        // still gives the operator an actionable recovery path.
-      }
-      toast.error('Back Office could not open. Allow pop-ups and try again.');
-      return;
-    }
-
-    const destinationLabel = backOfficeTargetPath === '/backoffice/overview' ? 'Overview' : 'Business settings';
-    toast.success(`Back Office opened in a new window at ${destinationLabel}.`);
   }, [backOfficeTargetPath]);
 
   const handleSelectViewMode = useCallback(async (nextMode) => {
@@ -6639,7 +6624,38 @@ export default function TerminalPage() {
   useEffect(() => {
     if (!activeTenantId || typeof window === 'undefined') return undefined;
 
-    return subscribeToBusinessAdminSettingsUpdates((payload) => {
+    // Same scoped hydration for the same-origin Back Office channel and the OPIS
+    // focus/reconnect path below: re-reads user, terminal meta, setup state, and
+    // locations without changing tenant, resetting checkout, closing a shift,
+    // overwriting dirty settings, or repricing an active sale (issue #2052).
+    const refreshScopedSettings = () => {
+      const selectedTerminalBranchId = Number(
+        terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id || 0
+      );
+      const activeBranchId = Number(
+        shiftState?.shift?.location_id
+        || operatingLocationId
+        || viewingLocationId
+        || queueLocationScopeId
+        || selectedTerminalBranchId
+        || 0
+      );
+      setSettingsRefreshKey((previous) => previous + 1);
+      const refreshTasks = [
+        hydrateUser({ suppressGlobalErrors: true }),
+        hydrateTerminalMeta({ suppressGlobalErrors: true }),
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
+        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
+      ];
+      if (!locked && canViewPos) {
+        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
+      }
+      return Promise.all(refreshTasks).catch(() => {
+        // The POS remains usable on its current snapshot when a background refresh fails.
+      });
+    };
+
+    const unsubscribeSync = subscribeToBusinessAdminSettingsUpdates((payload) => {
       const selectedTerminalBranchId = Number(
         terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id || 0
       );
@@ -6652,21 +6668,16 @@ export default function TerminalPage() {
         || 0
       );
       if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
-
-      setSettingsRefreshKey((previous) => previous + 1);
-      const refreshTasks = [
-        hydrateUser({ suppressGlobalErrors: true }),
-        hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
-      ];
-      if (!locked && canViewPos) {
-        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
-      }
-      void Promise.all(refreshTasks).catch(() => {
-        // The POS remains usable on its current snapshot when a background refresh fails.
-      });
+      void refreshScopedSettings();
     });
+    // OPIS saves land on another origin, so they never arrive on the channel above.
+    // Revalidate the same scoped snapshot when POS regains focus/visibility or
+    // reconnects after offline state (coalesced; no realtime service).
+    const uninstallFocusRefresh = installPosFocusSettingsRefresh(() => refreshScopedSettings());
+    return () => {
+      unsubscribeSync();
+      uninstallFocusRefresh();
+    };
   }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {

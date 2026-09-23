@@ -124,4 +124,63 @@ export const shouldRefreshBusinessAdminSettingsUpdate = ({
     && eventBranchId === currentBranchId;
 };
 
+// OPIS (issue #2052) lives on another origin, so its saves never reach POS through the
+// same-origin CustomEvent/localStorage/BroadcastChannel paths above. Instead POS
+// revalidates its canonical settings when it regains focus/visibility or reconnects
+// after offline state. Duplicate triggers are coalesced behind a minimum interval; the
+// caller owns the actual refresh (scoped hydration that must not change tenant, reset
+// checkout, close a shift, overwrite dirty settings, or silently reprice an active
+// sale). No realtime service and no cross-origin token messaging.
+export const OPIS_SETTINGS_REFRESH_MIN_INTERVAL_MS = 15000;
+
+export const installPosFocusSettingsRefresh = (
+  refresh,
+  windowObj = typeof window === 'undefined' ? null : window,
+  { minIntervalMs = OPIS_SETTINGS_REFRESH_MIN_INTERVAL_MS } = {}
+) => {
+  if (!windowObj || typeof refresh !== 'function') return () => {};
+  let lastRefreshAt = 0;
+  let offlineSeen = false;
+
+  const maybeRefresh = (reason) => {
+    if (windowObj.document?.visibilityState === 'hidden') return;
+    const now = Date.now();
+    if (now - lastRefreshAt < minIntervalMs) return;
+    lastRefreshAt = now;
+    try {
+      const result = refresh({ reason });
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => {
+          // A background refresh failure leaves POS on its current snapshot.
+        });
+      }
+    } catch {
+      // A background refresh must never break the terminal that triggered it.
+    }
+  };
+
+  const handleFocus = () => maybeRefresh('focus');
+  const handleVisibility = () => {
+    if (windowObj.document?.visibilityState === 'visible') maybeRefresh('visible');
+  };
+  const handleOffline = () => { offlineSeen = true; };
+  const handleOnline = () => {
+    if (!offlineSeen) return;
+    offlineSeen = false;
+    maybeRefresh('reconnect');
+  };
+
+  windowObj.addEventListener('focus', handleFocus);
+  windowObj.document?.addEventListener('visibilitychange', handleVisibility);
+  windowObj.addEventListener('offline', handleOffline);
+  windowObj.addEventListener('online', handleOnline);
+
+  return () => {
+    windowObj.removeEventListener('focus', handleFocus);
+    windowObj.document?.removeEventListener('visibilitychange', handleVisibility);
+    windowObj.removeEventListener('offline', handleOffline);
+    windowObj.removeEventListener('online', handleOnline);
+  };
+};
+
 export { BUSINESS_ADMIN_SETTINGS_CHANNEL, BUSINESS_ADMIN_SETTINGS_STORAGE_KEY };
