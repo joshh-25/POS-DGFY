@@ -23864,3 +23864,86 @@ Not yet merged — set at merge time.
 
 346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 346 - Trace container revisions from DEV through PROD, per app (#2055)
+
+### Initiative and release
+
+Epic #1548 follow-up (reverses Phase 342's candidate-wide-uniform-`rN` design); current release.
+
+### Objective and scope
+
+Give eligible DEV container builds immutable per-app revision identities (`X.Y.Z-rN-dev`,
+GHCR-sourced max-plus-one per app+floor, same-source retry reuse, Decision 7 race net) that
+a frozen v2 promotion candidate selects (`dev_artifacts`) and carries through staging
+repairs (fresh allocation per touched app, cosmetic `repair_seq`, `fix/staging/<id>-<seq>`
+branches) to PROD (per-app `release_revision` map, plain `release/<id>` cut), preserving
+each app's `X.Y.Z` floor, ADR 0081 Decision 7 (`[binding]`, untouched), frontend
+environment-qualified vs backend environment-neutral artifact distinctions, and legacy
+bare `X.Y.Z-dev` tags as untouched history. Feature-branch DEV dispatches publish
+non-promotion-eligible `X.Y.Z-<slug>-dev` (sha tag only, never the moving `develop` tag).
+Out of scope: per-app floor bump policy, routine DEV deployment defaults (#982),
+app/package version ownership, production approval gates, unrelated container naming.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #2055 (with the 2026-09-23 revision-allocation decision recorded on it);
+`.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`);
+ADR 0039 (amendment path), ADR 0081 (2026-09-23 amendment, Decisions 1/3/4/8),
+ADR 0082 (2026-09-23 amendment, Decisions 6/8); Phase 342 (reversed design);
+Phase 345 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:release-tags` passes (revisioned/ad-hoc/legacy DEV, `parseRevisionTag`,
+      `sanitizePrRef`, unchanged STAGING/PROD matrix).
+- [ ] `npm run test:artifact-revision` passes (max-plus-one, same-source reuse, fail-closed
+      probe, `--select-dev` selection).
+- [ ] `npm run test:promotion-candidate` passes (v2 manifest, `repair_seq`, per-app map,
+      frozen v1 legacy path).
+- [ ] `npm run test:tag-immutability`, `npm run test:image-alias`, `npm run test:release-notes`
+      pass (revisioned-DEV guard cases, unchanged alias creation, plain `release/<id>`).
+- [ ] Parity/build-skip/workflow-shape suites pass (per-app revision verification,
+      `app-not-in-candidate` skip, `--release-revisions-json`/`--dev-pr-ref`, grouped
+      workflow wiring, `dev_pr_ref` builder contract).
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #2055 (`Closes`).
+- Handoff: `.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`).
+- Implementation: `scripts/resolve-release-tags.js` (+ test),
+  `scripts/allocate-artifact-revision.js` (+ test),
+  `scripts/check-promotion-candidate.js` (+ test),
+  `scripts/check-image-version-parity.js` (+ test),
+  `scripts/resolve-build-skip-plan.js` (+ test),
+  `scripts/check-deploy-version-stamping-workflow.js` (+ test),
+  `scripts/check-release-notes.js` (+ test),
+  `scripts/check-tag-immutability.test.js`,
+  `scripts/build-release-candidate-evidence.test.js`,
+  `.github/workflows/deploy.yml` / `deployment-orchestrator.yml` / `deploy-main.yml` /
+  `deploy-api.yml` / `deploy-frontend.yml` / `deploy-migration-runner.yml` /
+  `promotion-quality-gate.yml`,
+  `.agents/skills/promoter/SKILL.md` /
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0081 (2026-09-23 amendment),
+  ADR 0082 (2026-09-23 amendment), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-23 entry),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).

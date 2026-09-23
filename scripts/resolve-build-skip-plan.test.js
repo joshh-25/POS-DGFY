@@ -425,3 +425,57 @@ test('parseArgs: --release-revision is optional (omitted for DEV/ad-hoc dispatch
   assert.equal(withRevision.releaseRevision, 'r16');
   assert.equal(withRevision.environment, 'STAGING');
 });
+
+// #2055 (Phase 346) -- per-app revisions and DEV ad-hoc tags in the skip plan.
+
+test('deriveVersionTag: per-app revisions resolve per app; prRef resolves ad-hoc DEV tags', () => {
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', revision: 'r16' }), '1.13.0-r16-dev');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', prRef: 'pr482' }), '1.13.0-pr482-dev');
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', prRef: 'feat/foo' }), '1.13.0-feat-foo-dev');
+  // prRef outside DEV fails closed -- the resolver rejects it, so the plan can never check
+  // the wrong tag for a STAGING/PROD dispatch.
+  assert.throws(() => deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-pos', prRef: 'pr482' }), /DEV-only/);
+});
+
+test('resolveBuildSkipPlan: an explicit per-app entry wins over the shared candidate-wide revision', async () => {
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-api', 'dgfy-pos'],
+    currentRevision: 'HEAD',
+    environment: 'STAGING',
+    revision: 'r16',
+    revisionsByApp: { 'dgfy-pos': 'r17' },
+    inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(inspectedRefs.length, 2);
+  const apiRef = inspectedRefs.find((ref) => ref.includes('dgfy-api'));
+  const posRef = inspectedRefs.find((ref) => ref.includes('dgfy-pos'));
+  assert.match(apiRef, /-r16$/);
+  assert.match(posRef, /-r17-staging$/);
+  assert.equal(plan['dgfy-api'].code, 'not-published');
+  assert.equal(plan['dgfy-pos'].code, 'not-published');
+});
+
+test('resolveBuildSkipPlan: DEV ad-hoc prRef checks the slug tag per app', async () => {
+  const inspectedRefs = [];
+  await resolveBuildSkipPlan({
+    apps: ['dgfy-pos'],
+    currentRevision: 'HEAD',
+    environment: 'DEV',
+    prRef: 'pr482',
+    inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  assert.equal(inspectedRefs.length, 1);
+  assert.match(inspectedRefs[0], /-pr482-dev$/);
+});
+
+test('parseArgs: --release-revisions-json parses to a per-app map; garbage fails closed', () => {
+  const options = parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"r16","dgfy-pos":"17"}']);
+  assert.deepEqual(options.revisionsByApp, { 'dgfy-api': 'r16', 'dgfy-pos': '17' });
+  assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', 'not-json']), /not valid JSON/);
+  assert.throws(() => parseArgs(['--revision', 'abc123', '--release-revisions-json', '["r16"]']), /must be a JSON object/);
+  const prRef = parseArgs(['--revision', 'abc123', '--environment', 'DEV', '--dev-pr-ref', 'pr482']);
+  assert.equal(prRef.devPrRef, 'pr482');
+});
