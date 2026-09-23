@@ -116,6 +116,13 @@
  *     bare-tag behavior applies. `--revision` with `--manifest` is rejected -- the manifest
  *     is authoritative for its own revision.
  *
+ * #2055 (Phase 346) makes the manifest-mode revision per-app, not candidate-wide: a v2
+ * manifest's `release_revision` is an apps map (`{ "<app>": { revision, ... } }`), so each
+ * app is verified against its OWN allocated `rN` (an app the candidate never rebuilds is
+ * absent from the map and reports `skip/app-not-in-candidate` -- it keeps its
+ * last-published artifact, nothing new to verify). v1 manifests keep the #1977
+ * candidate-wide behavior verbatim.
+ *
  * Read-only: only ever runs `docker buildx imagetools inspect`, never a push -- same classification
  * as `scripts/check-tag-immutability.js`'s own inspect step, no new checkpoint (see
  * `.agents/skills/promoter/SKILL.md`'s "Unattended vs. checkpoint" table).
@@ -600,12 +607,32 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // across environments, and each bare production alias against its revision tag. A candidate
   // with no release revision yet (still in staging qualification) keeps the legacy
   // `X.Y.Z-staging`/`X.Y.Z` comparison -- nothing revision-tagged exists to verify.
+  //
+  // #2055 (Phase 346): a v2 manifest's `release_revision` is a per-app map, so each app is
+  // verified against its OWN allocated revision. Apps absent from the map were never
+  // rebuilt by this candidate -- skip, don't fail: their last-published artifact stands.
   const releaseRevision = candidate.release_revision;
-  const results = apps.map((app) => (
-    releaseRevision === null
+  const perAppRevisions = (manifest.schema === 'sku-release-candidate/v2' && releaseRevision !== null) ? releaseRevision : null;
+  const results = apps.map((app) => {
+    if (perAppRevisions) {
+      const entry = perAppRevisions[app];
+      if (!entry) {
+        return {
+          app,
+          version: null,
+          revision: null,
+          candidate_source_sha: candidateShaByApp[app],
+          verdict: 'skip',
+          code: 'app-not-in-candidate',
+          detail: `${app} is absent from this candidate's per-app release_revision map -- the candidate never rebuilt it, so its last-published artifact stands and there is nothing new to verify (#2055).`,
+        };
+      }
+      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], inspectFn });
+    }
+    return releaseRevision === null
       ? checkApp({ repoRoot, app, candidateSha: candidateShaByApp[app], inspectFn })
-      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], inspectFn })
-  ));
+      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], inspectFn });
+  });
 
   return {
     mode: 'manifest',
@@ -782,10 +809,16 @@ function printResult(result) {
     const revision = entry.revision !== undefined && entry.revision !== null ? ` revision=r${entry.revision}` : '';
     console.log(`[check-image-version-parity] [${label}] ${entry.app}${version}${candidateSha}${revision} (${entry.code}): ${entry.detail}`);
   }
-  const revisionContext = result.release_revision !== undefined && result.release_revision !== null ? ` release_revision=r${result.release_revision}`
-    : result.revision !== undefined && result.revision !== null ? ` revision=r${result.revision}` : '';
+  // #2055: a v2 manifest's release_revision is a per-app map -- summarize per app instead of
+  // stringifying the object into the context line.
+  const releaseRevision = result.release_revision;
+  const revisionContext = releaseRevision === undefined || releaseRevision === null ? ''
+    : typeof releaseRevision === 'object'
+      ? ` release_revision={${Object.entries(releaseRevision).map(([app, entry]) => `${app}:r${entry.revision}`).join(',')}}`
+      : ` release_revision=r${releaseRevision}`;
+  const directRevision = result.revision !== undefined && result.revision !== null ? ` revision=r${result.revision}` : '';
   const context = result.mode === 'direct'
-    ? `mode=direct source_sha=${result.candidate_source_sha}${revisionContext}`
+    ? `mode=direct source_sha=${result.candidate_source_sha}${directRevision}`
     : `candidate=${result.candidate_id} candidate_source_sha=${result.candidate_source_sha}${revisionContext}`;
   if (result.ok) {
     console.log(`[check-image-version-parity] PASS. ${context}`);

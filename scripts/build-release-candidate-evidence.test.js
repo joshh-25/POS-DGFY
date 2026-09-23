@@ -113,6 +113,37 @@ test('candidate evidence rejects missing or failed documentation closure', () =>
   }
 });
 
+test('candidate evidence carries a v2 per-app release_revision map through untouched', () => {
+  const { root, options } = fixture();
+  try {
+    write(root, options.candidateManifest, {
+      schema: 'sku-release-candidate/v2',
+      candidate_id: '2026-09-04-01',
+      status: 'qualified',
+      source_develop_sha: SHA,
+      current_staging_sha: SHA,
+      staging_head_sha: SHA,
+      revisions: [{
+        kind: 'initial', sha: SHA, parent_sha: null, branch: 'to-staging/2026-09-04-01', pr: 2001,
+        dev_artifacts: [{ app: 'dgfy-api', revision: 7, sha: SHA, digest: `sha256:${'1'.repeat(64)}` }],
+      }],
+      release_revision: {
+        source_staging_sha: SHA,
+        branch: 'release/2026-09-04-01',
+        pr: 2002,
+        apps: { 'dgfy-api': { revision: 8, source_sha: SHA, digest: `sha256:${'2'.repeat(64)}`, origin: 'staging_repair' } },
+      },
+    });
+    const evidence = buildCandidateEvidence(options);
+    assert.equal(evidence.candidate.schema, 'sku-release-candidate/v2');
+    assert.deepEqual(evidence.candidate.release_revision, {
+      'dgfy-api': { revision: 8, source_sha: SHA, digest: `sha256:${'2'.repeat(64)}`, origin: 'staging_repair' },
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('candidate evidence permits only fully approved isolated-QA emergency evidence', () => {
   const { root, options } = fixture();
   try {

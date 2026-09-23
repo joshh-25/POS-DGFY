@@ -51,7 +51,7 @@ on:
           shared value, #1588, epic #1548 Wave 4, Phase 279) -- covers BOTH dgfy-api and
           dgfy-migration-runner, since build_api above always rebuilds them as one paired unit (a
           repair that touches either always lists both in its manifest apps_touched, so they never
-          actually diverge). Set this on the normal three-stage flow's release/<candidate_id>-rN ->
+          actually diverge). Set this on the normal three-stage flow's release/<candidate_id> ->
           main dispatch, or the #1007-gated release/<label> -> main exception, to
           scripts/check-promotion-candidate.js's `resolveCandidateSourceShaByApp()` result for
           dgfy-api (NOT the manifest's raw current_staging_sha -- an app a repair never touched must
@@ -85,18 +85,43 @@ on:
         required: false
         type: string
         default: ''
-      release_revision:
+      release_revision_api:
         description: >-
-          Candidate-wide release revision (#1977, Phase 342 -- the candidate manifest's
-          release_revision.revision, e.g. "r16", one greater than the latest staging repair
-          revision). Required for a release/<candidate_id>-rN -> main promotion dispatch AND for
-          a direct production hotfix (which uses the same paired revision/canonical tags without
-          a staging parity predecessor): every PROD builder resolves its revision tag from this
-          (frontend X.Y.Z-rN with production VITE_* values, backend the environment-neutral
-          X.Y.Z-rN) and fails closed without it. The promote-aliases job below then creates each
-          app's bare X.Y.Z floor alias from the same digest via
-          scripts/promote-image-alias.js (backend PROD reuses the staging digest -- it is never
-          rebuilt environment-specific). See .agents/skills/promoter/references/promotion-runbook.md.
+          Per-app artifact revision for dgfy-api and dgfy-migration-runner (#2055, Phase 346 --
+          each app's own allocated rN, e.g. "r16"; #1977's single candidate-wide value, Phase
+          342). Covers both backends because build_api always rebuilds them as one paired
+          unit. Required for a release/<candidate_id> -> main promotion dispatch AND for a
+          direct production hotfix (which uses the same paired revision/canonical tags without
+          a staging parity predecessor): every PROD builder resolves its revision tag from its
+          app-group's value (frontend X.Y.Z-rN with production VITE_* values, backend the
+          environment-neutral X.Y.Z-rN -- backend PROD reuses the staging digest, it is never
+          rebuilt environment-specific) and fails closed without it. The promote-aliases job
+          below then creates each app's bare X.Y.Z floor alias from the same digest via
+          scripts/promote-image-alias.js. See .agents/skills/promoter/references/promotion-runbook.md.
+        required: false
+        type: string
+        default: ''
+      release_revision_frontend_ims:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-ims specifically
+          (frontend X.Y.Z-rN with production VITE_* values). Promotion and direct-hotfix
+          dispatch only.
+        required: false
+        type: string
+        default: ''
+      release_revision_frontend_pos:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-pos specifically
+          (frontend X.Y.Z-rN with production VITE_* values). Promotion and direct-hotfix
+          dispatch only.
+        required: false
+        type: string
+        default: ''
+      release_revision_frontend_storefront:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-storefront
+          specifically (frontend X.Y.Z-rN with production VITE_* values). Promotion and
+          direct-hotfix dispatch only.
         required: false
         type: string
         default: ''
@@ -372,18 +397,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # #1977 (Phase 342): --release-revision makes the skip check hit each app's
-          # revision-aware matrix tag (omitted for ad-hoc dispatches -- legacy behavior).
+          # #1977 (Phase 342); #2055 (Phase 346): --release-revisions-json makes the skip
+          # check hit each app's own revision-aware matrix tag (omitted entries fall back to
+          # the legacy tag -- e.g. an unchecked app-group on an ad-hoc dispatch).
           # Backend PROD on a promotion dispatch is the mechanism that actually skips the
           # environment-specific rebuild: the revision tag already exists from the STAGING
           # candidate dispatch with byte-identical tracked inputs, so the plan resolves
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
-          SKIP_ARGS=(--revision "${{ github.sha }}")
-          if [ -n "${{ inputs.release_revision }}" ]; then
-            SKIP_ARGS+=(--release-revision "${{ inputs.release_revision }}")
+          SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);console.log(JSON.stringify(m))")"
+          if [ "${REVISIONS_JSON}" != "{}" ]; then
+            SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
           fi
           node scripts/resolve-build-skip-plan.js "${SKIP_ARGS[@]}"
+        env:
+          API_R: ${{ inputs.release_revision_api }}
+          IMS_R: ${{ inputs.release_revision_frontend_ims }}
+          POS_R: ${{ inputs.release_revision_frontend_pos }}
+          STOREFRONT_R: ${{ inputs.release_revision_frontend_storefront }}
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -410,7 +442,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -435,7 +467,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_api }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_api }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -488,7 +520,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_ims }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_frontend_ims }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -512,7 +544,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_pos }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_frontend_pos }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -536,7 +568,7 @@ jobs:
       environment: PROD
       image_tags: "latest"
       candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_storefront }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision: ${{ inputs.release_revision_frontend_storefront }}
       # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
       # (ubuntu-latest) is the intended class for every production build/deploy job.
       # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
@@ -592,7 +624,7 @@ jobs:
       needs.frontend-ims-prod.result != 'failure' &&
       needs.frontend-pos-prod.result != 'failure' &&
       needs.frontend-storefront-prod.result != 'failure' &&
-      inputs.release_revision != ''
+      (inputs.release_revision_api != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '')
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
@@ -655,14 +687,28 @@ jobs:
         run: |
           set -euo pipefail
           FAILURES=0
+          SKIPPED=0
           for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
+            # #2055 (Phase 346): each app aliases its OWN allocated revision -- an unchecked
+            # app-group (empty input, nothing built) is skipped, never aliased blind.
+            case "${APP}" in
+              dgfy-api|dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_api }}" ;;
+              dgfy-ims) APP_REVISION="${{ inputs.release_revision_frontend_ims }}" ;;
+              dgfy-pos) APP_REVISION="${{ inputs.release_revision_frontend_pos }}" ;;
+              dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
+            esac
+            if [ -z "${APP_REVISION:-}" ]; then
+              echo "[promote-aliases] ${APP}: no revision input for this app-group (unchecked build) -- skipping, not aliasing."
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
             FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
-            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP}" --version "${FLOOR}" --environment PROD --revision "${{ inputs.release_revision }}")"
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP}" --version "${FLOOR}" --environment PROD --revision "${APP_REVISION}")"
             SOURCE_TAG="$(node -p "JSON.parse(process.argv[1]).productionTag" "${RESOLVED}")"
             ALIAS_TAG="$(node -p "JSON.parse(process.argv[1]).canonicalAlias" "${RESOLVED}")"
             IMAGE="ghcr.io/sieitzz/${APP}"
             echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> ${ALIAS_TAG}"
-            if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${{ inputs.release_revision }}"; then
+            if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
               echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
               FAILURES=$((FAILURES + 1))
             fi
@@ -671,7 +717,7 @@ jobs:
             echo "::error::${FAILURES} floor-alias promotion(s) failed -- see errors above."
             exit 1
           fi
-          echo "[promote-aliases] all five floor aliases verified."
+          echo "[promote-aliases] floor aliases verified (${SKIPPED} unchecked app(s) skipped)."
 
   publish:
     needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, promote-aliases ]

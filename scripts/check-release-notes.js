@@ -10,9 +10,10 @@
  * `check:app-versions` (ADR 0081 Decision 9) already went through in this repo.
  *
  * Scope, per ADR 0082 Decision 8's own "Path coverage" paragraph:
- *   - `release/<candidate_id>-rN` covers BOTH the default flow's final leg (`staging -> main`) and
+ *   - `release/<candidate_id>` covers BOTH the default flow's final leg (`staging -> main`) and
  *     the #1007-gated exception (`develop -> main`) -- they share the identical branch pattern, no
- *     special-casing needed.
+ *     special-casing needed. (#2055: the `-rN` suffix is gone; historical `release/<id>-rN`
+ *     branches still resolve.)
  *   - It does NOT cover a `main` hotfix, whose branch is `fix/*` per `implement`'s own naming
  *     convention -- resolving a candidate id from a non-`release/*` head exits 0 ("not applicable").
  *     That path's binding obligation is enforced procedurally, not mechanically, via
@@ -36,7 +37,7 @@
  *     [--project-root <path>]
  *   Resolves the head branch from `--head-branch`, else `GITHUB_HEAD_REF` (the shape every other
  *   PR-time check in this repo uses -- see check-app-version-bump.js's own runCheck()). A head that
- *   does not match `release/<candidate_id>-rN` exits 0, "not applicable" -- this correctly leaves a
+ *   does not match `release/<candidate_id>` exits 0, "not applicable" -- this correctly leaves a
  *   `fix/*` hotfix branch unchecked, see the Scope note above.
  *   Exit 0 on pass (including "not applicable"); non-zero with a per-finding report otherwise.
  */
@@ -57,14 +58,17 @@ const SCHEMA_ID = 'sku-release-note/v1';
 const NO_USER_VISIBLE_CHANGES = 'No user-visible changes.';
 const PRODUCTION_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-// release/<candidate_id>-rN -- the one branch shape ADR 0082 Decision 6/8 says covers both the
+// release/<candidate_id> -- the one branch shape ADR 0082 Decision 6/8 says covers both the
 // default flow's final leg and the #1007-gated exception (identical pattern, no special-casing).
-const RELEASE_BRANCH_PATTERN = new RegExp(`^release/(${CANDIDATE_ID_PATTERN.source.slice(1, -1)})-r(\\d+)$`);
+// #2055 (Phase 346) drops the `-rN` suffix the candidate-wide revision used to require (that
+// counter no longer exists -- revisions are per-app now); the suffix stays accepted so
+// historical release/<id>-rN branches still resolve.
+const RELEASE_BRANCH_PATTERN = new RegExp(`^release/(${CANDIDATE_ID_PATTERN.source.slice(1, -1)})(?:-r(\\d+))?$`);
 
 function resolveCandidateIdFromHeadBranch(headBranchName) {
   const match = RELEASE_BRANCH_PATTERN.exec(String(headBranchName || '').trim());
   if (!match) return null;
-  return { candidateId: match[1], revision: Number(match[2]) };
+  return { candidateId: match[1], revision: match[2] === undefined ? null : Number(match[2]) };
 }
 
 // Instructional comments in TEMPLATE.md-derived notes (e.g. the two <!-- --> blocks explaining
@@ -313,7 +317,7 @@ function parseArgs(argv) {
 
 function printResult(result) {
   if (result.skipped) {
-    console.log('[check:release-notes] Head branch does not match release/<candidate_id>-rN -- not a promotion PR, not applicable.');
+    console.log('[check:release-notes] Head branch does not match release/<candidate_id> -- not a promotion PR, not applicable.');
     return;
   }
   if (result.ok) {
