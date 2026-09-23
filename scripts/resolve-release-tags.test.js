@@ -7,6 +7,8 @@ const {
   isBackendApp,
   parseFloorVersion,
   parseReleaseRevision,
+  sanitizePrRef,
+  parseRevisionTag,
   resolveReleaseTags,
   parseArgs,
 } = require('./resolve-release-tags');
@@ -49,7 +51,7 @@ test('parseReleaseRevision: accepts rN, N, and integer; rejects missing/invalid'
   assert.throws(() => parseReleaseRevision('1.5'), ReleaseTagsError);
 });
 
-test('DEV: existing behavior unchanged -- X.Y.Z-dev, no revision required or consumed', () => {
+test('DEV without identity: legacy behavior preserved -- X.Y.Z-dev, never promotion-eligible', () => {
   for (const app of ['dgfy-api', 'dgfy-migration-runner', 'dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
     const resolved = resolveReleaseTags({ app, version: '1.13.0', environment: 'DEV' });
     assert.equal(resolved.tag, '1.13.0-dev');
@@ -57,7 +59,78 @@ test('DEV: existing behavior unchanged -- X.Y.Z-dev, no revision required or con
     assert.equal(resolved.revision, null);
     assert.equal(resolved.revisionTag, null);
     assert.equal(resolved.canonicalAlias, null);
+    assert.equal(resolved.prRef, null);
+    assert.equal(resolved.promotionEligible, false);
   }
+});
+
+// Issue #2055 (Phase 346) -- DEV builds carry their own per-app allocated revision.
+test('DEV with revision: promotion-eligible X.Y.Z-rN-dev for every app', () => {
+  for (const app of ['dgfy-api', 'dgfy-migration-runner', 'dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+    const resolved = resolveReleaseTags({ app, version: '1.13.0', environment: 'DEV', revision: 'r16' });
+    assert.equal(resolved.tag, '1.13.0-r16-dev');
+    assert.equal(resolved.floor, '1.13.0');
+    assert.equal(resolved.revision, 16);
+    assert.equal(resolved.revisionTag, '1.13.0-r16');
+    assert.equal(resolved.stagingTag, null);
+    assert.equal(resolved.productionTag, null);
+    assert.equal(resolved.canonicalAlias, null);
+    assert.equal(resolved.prRef, null);
+    assert.equal(resolved.promotionEligible, true);
+  }
+});
+
+test('DEV with revision: accepts bare N and integer, same as STAGING/PROD', () => {
+  assert.equal(resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', revision: 3 }).tag, '1.13.0-r3-dev');
+  assert.equal(resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', revision: '3' }).tag, '1.13.0-r3-dev');
+  assert.throws(() => resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', revision: 'bogus' }), ReleaseTagsError);
+});
+
+test('DEV with pr-ref: non-eligible X.Y.Z-<slug>-dev, PR number and branch slug forms', () => {
+  const fromPr = resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', prRef: 'pr482' });
+  assert.equal(fromPr.tag, '1.13.0-pr482-dev');
+  assert.equal(fromPr.prRef, 'pr482');
+  assert.equal(fromPr.promotionEligible, false);
+  assert.equal(fromPr.revision, null);
+
+  assert.equal(resolveReleaseTags({ app: 'dgfy-api', version: '2.0.1', environment: 'DEV', prRef: '482' }).tag, '2.0.1-pr482-dev');
+  assert.equal(resolveReleaseTags({ app: 'dgfy-ims', version: '1.13.0', environment: 'DEV', prRef: 'feat/release-trace' }).tag, '1.13.0-feat-release-trace-dev');
+});
+
+test('DEV with both revision and pr-ref is rejected -- one identity per build', () => {
+  assert.throws(
+    () => resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', revision: 'r16', prRef: 'pr1' }),
+    /mutually exclusive/,
+  );
+});
+
+test('pr-ref is DEV-only -- STAGING/PROD reject it instead of silently ignoring it', () => {
+  assert.throws(() => resolveReleaseTags({ app: 'dgfy-pos', version: '1.13.0', environment: 'STAGING', revision: 'r16', prRef: 'pr1' }), /DEV-only/);
+  assert.throws(() => resolveReleaseTags({ app: 'dgfy-api', version: '1.13.0', environment: 'PROD', revision: 'r16', prRef: 'pr1' }), /DEV-only/);
+});
+
+test('sanitizePrRef: PR numbers normalize, branch names slugify, garbage fails closed', () => {
+  assert.equal(sanitizePrRef('pr482'), 'pr482');
+  assert.equal(sanitizePrRef('482'), 'pr482');
+  assert.equal(sanitizePrRef('#482'), 'pr482');
+  assert.equal(sanitizePrRef('PR-482'), 'pr482');
+  assert.equal(sanitizePrRef('feat/release-trace'), 'feat-release-trace');
+  assert.equal(sanitizePrRef('Feature_Branch.NAME'), 'feature-branch-name');
+  assert.throws(() => sanitizePrRef(''), ReleaseTagsError);
+  assert.throws(() => sanitizePrRef('---'), ReleaseTagsError);
+  const long = sanitizePrRef(`${'a'.repeat(60)}/branch`);
+  assert.ok(long.length <= 48);
+});
+
+test('parseRevisionTag: revision tags parse, everything else returns null', () => {
+  assert.deepEqual(parseRevisionTag('1.13.0-r16'), { floor: '1.13.0', revision: 16 });
+  assert.deepEqual(parseRevisionTag('1.13.0-r16-dev'), { floor: '1.13.0', revision: 16 });
+  assert.deepEqual(parseRevisionTag('1.13.0-r16-staging'), { floor: '1.13.0', revision: 16 });
+  assert.equal(parseRevisionTag('1.13.0-dev'), null);
+  assert.equal(parseRevisionTag('1.13.0-pr482-dev'), null);
+  assert.equal(parseRevisionTag('1.13.0-feat-foo-dev'), null);
+  assert.equal(parseRevisionTag('1.13.0'), null);
+  assert.equal(parseRevisionTag('not-a-tag'), null);
 });
 
 test('STAGING frontend: X.Y.Z-rN-staging (candidate revision from release_revision.revision)', () => {
@@ -108,6 +181,9 @@ test('no resolved tag ever contains "+"', () => {
     { app: 'dgfy-api', version: '1.13.0', environment: 'STAGING', revision: 'r16' },
     { app: 'dgfy-pos', version: '1.13.0', environment: 'PROD', revision: 'r16' },
     { app: 'dgfy-api', version: '1.13.0', environment: 'PROD', revision: 'r16' },
+    { app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', revision: 'r16' },
+    { app: 'dgfy-pos', version: '1.13.0', environment: 'DEV', prRef: 'feat/foo' },
+    { app: 'dgfy-pos', version: '1.13.0', environment: 'DEV' },
   ];
   for (const options of cases) {
     const resolved = resolveReleaseTags(options);
@@ -126,4 +202,9 @@ test('parseArgs: revision is optional at parse time (resolveReleaseTags enforces
   const options = parseArgs(['--app', 'dgfy-pos', '--version', '1.13.0', '--environment', 'STAGING', '--revision', 'r16']);
   assert.equal(options.revision, 'r16');
   assert.throws(() => parseArgs(['--bogus']), ReleaseTagsError);
+});
+
+test('parseArgs: --pr-ref parses for ad-hoc DEV dispatches', () => {
+  const options = parseArgs(['--app', 'dgfy-pos', '--version', '1.13.0', '--environment', 'DEV', '--pr-ref', 'pr482']);
+  assert.equal(options.prRef, 'pr482');
 });

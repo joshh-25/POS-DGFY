@@ -235,24 +235,65 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
 }
 
 /**
- * #1977 (Phase 342): deployment-orchestrator.yml must both declare its own `release_revision`
- * workflow_call input and forward it, unchanged, into each of the five builder jobs -- checked
- * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently missing
- * it isn't masked by another job having it.
+ * #2055 (Phase 346): deployment-orchestrator.yml declares the four per-app-group
+ * `release_revision_*` workflow_call inputs (api covers both backends, one per frontend),
+ * and each of its five builder jobs forwards its own app's revision out of the
+ * resolve-build-plan job's `revisions_json` map plus the shared `dev_pr_ref` -- checked
+ * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently
+ * missing or misrouting its revision isn't masked by another job having the right one.
+ * The single candidate-wide `release_revision` input this replaces no longer exists.
  */
+const ORCHESTRATOR_RELEASE_REVISION_INPUTS = Object.freeze([
+  'release_revision_api',
+  'release_revision_frontend_ims',
+  'release_revision_frontend_pos',
+  'release_revision_frontend_storefront',
+]);
+
+const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
+  ['dgfy-api', 'dgfy-api'],
+  ['dgfy-migration-runner', 'dgfy-migration-runner'],
+  ['frontend-ims', 'dgfy-ims'],
+  ['frontend-pos', 'dgfy-pos'],
+  ['frontend-storefront', 'dgfy-storefront'],
+]);
+
 function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
   const problems = [];
 
-  if (!/release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(orchestratorText)) {
-    problems.push('deployment-orchestrator.yml: "on.workflow_call.inputs" is missing a "release_revision" string input (#1977).');
+  for (const inputName of ORCHESTRATOR_RELEASE_REVISION_INPUTS) {
+    const pattern = new RegExp(`${inputName}:\\s*\\n(?:[^\\n]*\\n)*?\\s*type:\\s*string`);
+    if (!pattern.test(orchestratorText)) {
+      problems.push(`deployment-orchestrator.yml: "on.workflow_call.inputs" is missing a "${inputName}" string input (#2055).`);
+    }
+  }
+  // The old candidate-wide input must be gone from the orchestrator -- builders still
+  // declare their own per-app `release_revision` (checked separately), but the fan-out
+  // layer only speaks per-app-group now. (Matches the multi-line input-declaration shape,
+  // not the single-line `with:` forwarding lines, which never carry `type: string`.)
+  if (/(^|\n)\s*release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: still declares the old candidate-wide "release_revision" input -- revisions are per-app-group now (#2055).');
   }
 
   const jobBlocks = orchestratorText.split(/\n  (?=[a-z][a-z-]*:\n)/);
-  for (const jobName of ORCHESTRATOR_BUILDER_JOBS) {
+  for (const [jobName, revisionKey] of ORCHESTRATOR_JOB_REVISION_KEYS) {
     const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
-    if (!block || !/release_revision:\s*\$\{\{\s*inputs\.release_revision\s*\}\}/.test(block)) {
-      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "release_revision: \${{ inputs.release_revision }}" to its called workflow (#1977).`);
+    const forwardPattern = new RegExp(`release_revision:\\s*\\$\\{\\{\\s*fromJSON\\(needs\\.resolve-build-plan\\.outputs\\.revisions_json\\)\\.${revisionKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\}\\}`);
+    if (!block || !forwardPattern.test(block)) {
+      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${revisionKey} }}" to its called workflow (#2055).`);
     }
+    if (!block || !/dev_pr_ref:\s*\$\{\{\s*needs\.resolve-build-plan\.outputs\.dev_pr_ref\s*\}\}/.test(block)) {
+      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "dev_pr_ref: \${{ needs.resolve-build-plan.outputs.dev_pr_ref }}" to its called workflow (#2055).`);
+    }
+  }
+
+  if (!/id:\s*revisions/.test(orchestratorText) || !/node scripts\/allocate-artifact-revision\.js/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: no "Resolve per-app artifact revisions" step (id: revisions) calling "node scripts/allocate-artifact-revision.js" -- DEV on develop must allocate per-app revisions exactly once per dispatch (#2055).');
+  }
+
+  const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(orchestratorText);
+  if (!skipStepRegion || !/--release-revisions-json/.test(skipStepRegion[0])) {
+    problems.push('deployment-orchestrator.yml: the resolve-build-plan step does not pass "--release-revisions-json" -- the skip check would inspect legacy tags instead of each app\'s own revision-aware matrix tag (#2055).');
   }
 
   return problems;
@@ -313,32 +354,55 @@ function checkDeployMainCandidateSourceShaWiring(deployMainText) {
 }
 
 /**
- * #1977 (Phase 342): deploy-main.yml must declare the candidate-wide `release_revision`
- * workflow_dispatch input, forward it into each of its five builder jobs' `with:` blocks,
- * thread it into the resolve-build-plan step (`--release-revision`, so the skip check hits
- * each app's revision-aware matrix tag), and run the `promote-aliases` job that creates each
- * app's bare floor alias from its revision-tag digest.
+ * #2055 (Phase 346): deploy-main.yml declares the four per-app-group `release_revision_*`
+ * workflow_dispatch inputs (same grouping as its candidate_source_sha_* inputs -- api covers
+ * both backends), forwards each of its five builder jobs' own grouped one, threads the map
+ * into the resolve-build-plan step (`--release-revisions-json`, so the skip check hits each
+ * app's own revision-aware matrix tag), and runs the `promote-aliases` job that creates each
+ * app's bare floor alias from its own revision-tag digest.
  */
+const DEPLOY_MAIN_RELEASE_REVISION_INPUTS = Object.freeze([
+  'release_revision_api',
+  'release_revision_frontend_ims',
+  'release_revision_frontend_pos',
+  'release_revision_frontend_storefront',
+]);
+
+const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
+  ['dgfy-api', 'release_revision_api'],
+  ['dgfy-migration-runner', 'release_revision_api'],
+  ['frontend-ims-prod', 'release_revision_frontend_ims'],
+  ['frontend-pos-prod', 'release_revision_frontend_pos'],
+  ['frontend-storefront-prod', 'release_revision_frontend_storefront'],
+]);
+
 function checkDeployMainReleaseRevisionWiring(deployMainText) {
   const problems = [];
 
-  if (!/release_revision:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(deployMainText)) {
-    problems.push('deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "release_revision" string input (#1977).');
-  }
-
-  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
-  for (const [jobName] of DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES) {
-    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
-    if (!block || !/release_revision:\s*\$\{\{\s*inputs\.release_revision\s*\}\}/.test(block)) {
-      problems.push(`deploy-main.yml: job "${jobName}" does not forward "release_revision: \${{ inputs.release_revision }}" to its called workflow (#1977).`);
+  for (const inputName of DEPLOY_MAIN_RELEASE_REVISION_INPUTS) {
+    const pattern = new RegExp(`${inputName}:\\s*\\n(?:[^\\n]*\\n)*?\\s*type:\\s*string`);
+    if (!pattern.test(deployMainText)) {
+      problems.push(`deploy-main.yml: "on.workflow_dispatch.inputs" is missing a "${inputName}" string input (#2055).`);
     }
   }
 
-  // The flag is assembled into SKIP_ARGS on its own line (conditional on a non-empty input),
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+  for (const [jobName, inputName] of DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    const forwardPattern = new RegExp(`release_revision:\\s*\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
+    if (!block || !forwardPattern.test(block)) {
+      problems.push(`deploy-main.yml: job "${jobName}" does not forward "release_revision: \${{ inputs.${inputName} }}" to its called workflow (#2055).`);
+    }
+  }
+
+  // The flag is assembled into SKIP_ARGS on its own line (conditional on a non-empty map),
   // so match within the step region rather than on a single invocation line.
   const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(deployMainText);
-  if (!skipStepRegion || !/--release-revision/.test(skipStepRegion[0])) {
-    problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--release-revision" -- the skip check would hit legacy tags instead of the revision-aware matrix tags (#1977).');
+  if (!skipStepRegion || !/--release-revisions-json/.test(skipStepRegion[0])) {
+    problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--release-revisions-json" -- the skip check would hit legacy tags instead of each app\'s own revision-aware matrix tag (#2055).');
+  }
+  if (!skipStepRegion || !/--environment\s+PROD/.test(skipStepRegion[0])) {
+    problems.push('deploy-main.yml: the resolve-build-plan step does not pass "--environment PROD" -- revision-aware PROD tags cannot be resolved without the explicit environment (#1977).');
   }
 
   if (!/promote-aliases:\s*\n/.test(deployMainText)) {
@@ -350,6 +414,14 @@ function checkDeployMainReleaseRevisionWiring(deployMainText) {
     }
     if (!block || !/node scripts\/resolve-release-tags\.js/.test(block)) {
       problems.push('deploy-main.yml: the "promote-aliases" job does not resolve tags via "node scripts/resolve-release-tags.js" -- alias sources/targets must come from the central resolver (#1977).');
+    }
+    // #2055: one shared revision for all five apps no longer exists -- the loop must read
+    // each app-group's own input (the api-group value covers both backends).
+    for (const inputName of DEPLOY_MAIN_RELEASE_REVISION_INPUTS) {
+      const pattern = new RegExp(`\\$\\{\\{\\s*inputs\\.${inputName}\\s*\\}\\}`);
+      if (!pattern.test(block)) {
+        problems.push(`deploy-main.yml: the "promote-aliases" job never reads "\${{ inputs.${inputName} }}" -- each app-group aliases its own allocated revision (#2055).`);
+      }
     }
   }
 
@@ -507,6 +579,31 @@ function checkDeployMainPublishGate(deployMainText) {
   return problems;
 }
 
+/**
+ * #2055 (Phase 346): each builder must declare the optional `dev_pr_ref` workflow_call
+ * input and map it into the meta step's env (`DEV_PR_REF: ${{ inputs.dev_pr_ref }}`) --
+ * the resolver call consumes it for ad-hoc DEV dispatches, and a DEV dispatch with
+ * neither revision nor pr-ref fails closed instead of re-emitting the legacy
+ * colliding X.Y.Z-dev.
+ */
+function checkBuilderDevPrRefInput(workflowText, { label }) {
+  const problems = [];
+
+  if (!/dev_pr_ref:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(workflowText)) {
+    problems.push(`${label}: "on.workflow_call.inputs" is missing a "dev_pr_ref" string input (#2055).`);
+  }
+
+  if (!/DEV_PR_REF:\s*\$\{\{\s*inputs\.dev_pr_ref\s*\}\}/.test(workflowText)) {
+    problems.push(`${label}: the meta step's "env:" is missing "DEV_PR_REF: \${{ inputs.dev_pr_ref }}" (#2055).`);
+  }
+
+  if (!/RESOLVER_ARGS\+=\(--revision/.test(workflowText) || !/--pr-ref "\$\{DEV_PR_REF\}"/.test(workflowText)) {
+    problems.push(`${label}: the meta step never passes "--pr-ref "\${DEV_PR_REF}"" to the resolver -- ad-hoc DEV tags cannot resolve without it (#2055).`);
+  }
+
+  return problems;
+}
+
 /** A step must exist that runs the tag-immutability guard script, wired to this build's digest, tag, and revision (ADR 0081 Decision 7, the ADR's one [binding] clause). */
 function checkImmutabilityGuardStep(workflowText, { label }) {
   const problems = [];
@@ -574,6 +671,7 @@ function runAllChecks({ readFile = read } = {}) {
     const text = readFile(file);
     problems.push(...checkVersionTagComputation(text, { label, appPathExpr }));
     problems.push(...checkReleaseRevisionInput(text, { label }));
+    problems.push(...checkBuilderDevPrRefInput(text, { label }));
     problems.push(...checkJobOutputsVersionTag(text, { label }));
     problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
@@ -623,8 +721,11 @@ module.exports = {
   ORCHESTRATOR_FILE,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
+  ORCHESTRATOR_RELEASE_REVISION_INPUTS,
+  ORCHESTRATOR_JOB_REVISION_KEYS,
   checkVersionTagComputation,
   checkReleaseRevisionInput,
+  checkBuilderDevPrRefInput,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
@@ -644,6 +745,8 @@ module.exports = {
   DEPLOY_MAIN_FILE,
   DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
   DEPLOY_MAIN_JOB_INPUT_NAMES,
+  DEPLOY_MAIN_RELEASE_REVISION_INPUTS,
+  DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES,
   DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES,
   runAllChecks,
 };

@@ -5477,6 +5477,7 @@ export default function TerminalOperationsWorkspace({
     case 'reports':
       return (
         <PosReportsAnalyticsWorkspace
+          terminalUser={terminalUser}
           todayDashboard={todayDashboard}
           terminalMeta={terminalMeta}
           activeTerminalId={activeTerminalId}
@@ -5689,7 +5690,7 @@ export default function TerminalOperationsWorkspace({
       subtitle={modeMeta.subtitle}
       terminalUser={terminalUser}
       locked={locked}
-      bare={isSettingsView}
+      bare={isSettingsView || effectiveViewMode === 'reports'}
       className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
     >
       <div key={effectiveViewMode} className="catalog-slide-enter">

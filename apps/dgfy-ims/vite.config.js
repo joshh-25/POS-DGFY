@@ -37,6 +37,15 @@ const routerAliases = [
   { find: /^react-router$/, replacement: path.resolve(appNodeModules, 'react-router') },
   { find: /^react-router-dom$/, replacement: path.resolve(appNodeModules, 'react-router-dom') },
 ];
+// Component tests live in packages/web-core, whose files intentionally have no local
+// node_modules. Pin Vite's JSX runtime subpaths to this consuming app as well as the bare
+// React package so external .jsx tests can be transformed by the React plugin.
+const reactRuntimeAliases = [
+  { find: /^react$/, replacement: path.resolve(appNodeModules, 'react') },
+  { find: /^react-dom$/, replacement: path.resolve(appNodeModules, 'react-dom') },
+  { find: /^react\/jsx-runtime$/, replacement: path.resolve(appNodeModules, 'react/jsx-runtime.js') },
+  { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(appNodeModules, 'react/jsx-dev-runtime.js') },
+];
 
 // Both blocks below existed identically in the pre-split root apps/dgfy-web/vite.config.js
 // but were missing from apps/skupervisor/vite.config.js's server/preview blocks -- carried
@@ -114,6 +123,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
     alias: [
       // More specific aliases must come first.
+      ...reactRuntimeAliases,
       ...routerAliases,
       { find: '@/hooks', replacement: path.resolve(webCoreRoot, 'src/hooks') },
       { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },

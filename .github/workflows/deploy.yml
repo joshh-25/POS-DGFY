@@ -91,13 +91,35 @@ on:
           misleading one. See .agents/skills/promoter/references/promotion-runbook.md.
         type: string
         default: ''
-      release_revision:
+      release_revision_api:
         description: >-
-          Candidate-wide release revision (#1977, Phase 342 -- the candidate manifest's
-          release_revision.revision, e.g. "r16"). Set this whenever the STAGING dispatch is part
-          of a to-staging/<candidate_id> promotion -- the builders fail closed without it, and
-          the published staging tags carry it (frontend X.Y.Z-rN-staging, backend X.Y.Z-rN).
-          Leave empty for a DEV dispatch or any ad hoc STAGING rebuild outside a real promotion.
+          Per-app artifact revision for dgfy-api and dgfy-migration-runner (#2055, Phase 346 --
+          each app's own allocated rN, e.g. "r16"). Set these four ONLY when the STAGING
+          dispatch is part of a to-staging/<candidate_id> promotion (promoter-filled from the
+          candidate manifest's per-app release_revision map) -- the builders fail closed
+          without them, and the published staging tags carry them (backend X.Y.Z-rN).
+          Leave all four empty for a DEV dispatch (revisions are allocated per app from GHCR
+          on develop, or ad-hoc X.Y.Z-<slug>-dev tags on a feature branch) or any ad hoc
+          STAGING rebuild outside a real promotion (which the builders refuse -- STAGING
+          outside a tracked candidate has no revision to publish under).
+        type: string
+        default: ''
+      release_revision_frontend_ims:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-ims specifically
+          (frontend X.Y.Z-rN-staging). STAGING candidate dispatch only.
+        type: string
+        default: ''
+      release_revision_frontend_pos:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-pos specifically
+          (frontend X.Y.Z-rN-staging). STAGING candidate dispatch only.
+        type: string
+        default: ''
+      release_revision_frontend_storefront:
+        description: >-
+          Same per-app contract as release_revision_api above, for dgfy-storefront
+          specifically (frontend X.Y.Z-rN-staging). STAGING candidate dispatch only.
         type: string
         default: ''
 
@@ -120,22 +142,32 @@ jobs:
     timeout-minutes: 2
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
+      image_tags: ${{ steps.resolve.outputs.image_tags }}
     steps:
       - name: Derive environment from the dispatched branch
         id: resolve
         shell: bash
         run: |
           set -euo pipefail
+          # #2055 (Phase 346): feature branches dispatch DEV ad-hoc -- same environment, but
+          # the orchestrator tags X.Y.Z-<slug>-dev (never candidate-selectable) and publishes
+          # the sha tag only, never the moving `develop` tag. develop keeps the moving tag;
+          # staging keeps its own. main is still refused here unconditionally.
           case "${{ github.ref_name }}" in
-            develop) ENV=DEV ;;
-            staging) ENV=STAGING ;;
-            *)
-              echo "::error::No environment is mapped to branch '${{ github.ref_name }}'. This workflow only recognizes develop (DEV) and staging (STAGING) -- dispatch from one of those branches using the branch selector above. For main/PROD, use deploy-main.yml instead (beta.dgfy.ph was retired 2026-08-23, #329/#895 -- main no longer maps to a BETA environment here)."
+            develop) ENV=DEV; TAGS=develop ;;
+            staging) ENV=STAGING; TAGS=staging ;;
+            main)
+              echo "::error::deploy.yml was dispatched against 'main'. This workflow covers DEV/STAGING only -- for main/PROD, use deploy-main.yml instead."
               exit 1
+              ;;
+            *)
+              ENV=DEV; TAGS=
+              echo "::notice::Branch '${{ github.ref_name }}' is not develop/staging -- ad-hoc DEV dispatch: images publish under X.Y.Z-<slug>-dev + sha tags only (never the moving 'develop' tag, never promotion-eligible). For main/PROD, use deploy-main.yml instead."
               ;;
           esac
           echo "environment=$ENV" >> "$GITHUB_OUTPUT"
-          echo "OK: branch '${{ github.ref_name }}' -> environment '$ENV'."
+          echo "image_tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "OK: branch '${{ github.ref_name }}' -> environment '$ENV' (image_tags='$TAGS')."
 
   build-and-push:
     needs: resolve-environment
@@ -143,10 +175,13 @@ jobs:
     with:
       environment: ${{ needs.resolve-environment.outputs.environment }}
       # Only DEV or STAGING ever reach this job -- resolve-environment errors
-      # out (and this job never runs) for any other branch, main included,
-      # since main deploys go through deploy-main.yml instead. No 'beta'
+      # out (and this job never runs) for main, since main deploys go through
+      # deploy-main.yml instead. No 'beta'
       # fallback is needed here anymore (#329/#895).
-      image_tags: ${{ needs.resolve-environment.outputs.environment == 'DEV' && 'develop' || 'staging' }}
+      # #2055: ad-hoc DEV (any branch but develop) publishes the sha tag only -- the moving
+      # `develop` tag stays on the develop line, so a feature-branch dispatch can never
+      # redirect the shared DEV target at unreviewed code.
+      image_tags: ${{ needs.resolve-environment.outputs.image_tags }}
       publish: ${{ inputs.deploy }}
       # The self-hosted runner already sits on the DEV/STAGING network and,
       # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
@@ -158,7 +193,10 @@ jobs:
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
-      release_revision: ${{ inputs.release_revision }}
+      release_revision_api: ${{ inputs.release_revision_api }}
+      release_revision_frontend_ims: ${{ inputs.release_revision_frontend_ims }}
+      release_revision_frontend_pos: ${{ inputs.release_revision_frontend_pos }}
+      release_revision_frontend_storefront: ${{ inputs.release_revision_frontend_storefront }}
     secrets: inherit
     permissions:
       contents: read
