@@ -100,6 +100,12 @@ on:
           Leave empty for a DEV dispatch or any ad hoc STAGING rebuild outside a real promotion.
         type: string
         default: ''
+      environment_override:
+        description: >-
+          Manual environment override (DEV or STAGING). Defaults to empty (auto-derived from branch).
+          Use DEV to deploy a feature branch to the DEV environment without merging to develop.
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-${{ github.ref_name }}
@@ -126,14 +132,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ github.ref_name }}" in
-            develop) ENV=DEV ;;
-            staging) ENV=STAGING ;;
-            *)
-              echo "::error::No environment is mapped to branch '${{ github.ref_name }}'. This workflow only recognizes develop (DEV) and staging (STAGING) -- dispatch from one of those branches using the branch selector above. For main/PROD, use deploy-main.yml instead (beta.dgfy.ph was retired 2026-08-23, #329/#895 -- main no longer maps to a BETA environment here)."
-              exit 1
-              ;;
-          esac
+          OVERRIDE="${{ inputs.environment_override || '' }}"
+          if [ -n "$OVERRIDE" ]; then
+            case "$OVERRIDE" in
+              DEV|STAGING) ENV="$OVERRIDE" ;;
+              *)
+                echo "::error::Invalid environment_override '$OVERRIDE'. Must be DEV or STAGING."
+                exit 1
+                ;;
+            esac
+          else
+            case "${{ github.ref_name }}" in
+              develop) ENV=DEV ;;
+              staging) ENV=STAGING ;;
+              *)
+                echo "::warning::Branch '${{ github.ref_name }}' is not develop/staging; routing to DEV for branch testing."
+                ENV=DEV
+                ;;
+            esac
+          fi
           echo "environment=$ENV" >> "$GITHUB_OUTPUT"
           echo "OK: branch '${{ github.ref_name }}' -> environment '$ENV'."
 
