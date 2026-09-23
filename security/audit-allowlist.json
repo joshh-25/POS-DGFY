@@ -6,8 +6,8 @@
     "Fields:",
     "  tree      - one of the trees audited by audit-dependencies.js:",
     "              'root' | 'apps/dgfy-api' | 'apps/dgfy-ims' | 'apps/dgfy-pos' |",
-    "              'apps/dgfy-storefront' | 'apps/dgfy-migration-runner' |",
-    "              'tests/frontend-cross-app'",
+    "              'apps/dgfy-storefront' | 'apps/dgfy-opis' |",
+    "              'apps/dgfy-migration-runner' | 'tests/frontend-cross-app'",
     "  package   - the top-level package name as reported by `npm audit --json`",
     "              (the key under `vulnerabilities`, not necessarily the vulnerable",
     "              leaf package if the finding is transitive)",
@@ -133,6 +133,13 @@
       "package": "maplibre-gl",
       "severity": "critical",
       "reason": "Same finding as apps/dgfy-ims; see that entry. Tracked in #1787.",
+      "reviewBy": "2026-09-24"
+    },
+    {
+      "tree": "apps/dgfy-opis",
+      "package": "maplibre-gl",
+      "severity": "critical",
+      "reason": "Same finding as apps/dgfy-ims; see that entry. OPIS carries the verbatim #322/#2052 dependency set including maplibre-gl. Tracked in #1787.",
       "reviewBy": "2026-09-24"
     },
     {

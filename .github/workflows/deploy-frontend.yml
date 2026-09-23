@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: One of dgfy-ims, dgfy-pos, dgfy-storefront
+        description: One of dgfy-ims, dgfy-pos, dgfy-storefront, dgfy-opis
         required: true
         type: string
       environment:
@@ -228,10 +228,12 @@ jobs:
           VITE_SKUPERVISOR_BASE_URL: ${{ vars.VITE_SKUPERVISOR_BASE_URL }}
           VITE_STOREFRONT_ACCOUNT_URL: ${{ vars.VITE_STOREFRONT_ACCOUNT_URL }}
           VITE_POS_TERMINAL_URL: ${{ vars.VITE_POS_TERMINAL_URL }}
+          VITE_OPIS_URL: ${{ vars.VITE_OPIS_URL }}
           VITE_SENTRY_ENABLED: ${{ vars.VITE_SENTRY_ENABLED }}
           VITE_SENTRY_DSN_SKUPERVISOR: ${{ vars.VITE_SENTRY_DSN_SKUPERVISOR }}
           VITE_SENTRY_DSN_POS: ${{ vars.VITE_SENTRY_DSN_POS }}
           VITE_SENTRY_DSN_STORE: ${{ vars.VITE_SENTRY_DSN_STORE }}
+          VITE_SENTRY_DSN_OPIS: ${{ vars.VITE_SENTRY_DSN_OPIS }}
           VITE_SENTRY_ENVIRONMENT: ${{ vars.VITE_SENTRY_ENVIRONMENT }}
           VITE_SENTRY_RELEASE: ${{ github.sha }}
           VITE_SENTRY_TRACES_SAMPLE_RATE: ${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
@@ -250,6 +252,7 @@ jobs:
           SENTRY_PROJECT_SKUPERVISOR: ${{ vars.SENTRY_PROJECT_SKUPERVISOR }}
           SENTRY_PROJECT_POS: ${{ vars.SENTRY_PROJECT_POS }}
           SENTRY_PROJECT_STORE: ${{ vars.SENTRY_PROJECT_STORE }}
+          SENTRY_PROJECT_OPIS: ${{ vars.SENTRY_PROJECT_OPIS }}
           SENTRY_URL: ${{ vars.SENTRY_URL }}
         run: |
           set -euo pipefail
@@ -263,6 +266,7 @@ jobs:
           VITE_SKUPERVISOR_BASE_URL=${VITE_SKUPERVISOR_BASE_URL}
           VITE_STOREFRONT_ACCOUNT_URL=${VITE_STOREFRONT_ACCOUNT_URL}
           VITE_POS_TERMINAL_URL=${VITE_POS_TERMINAL_URL}
+          VITE_OPIS_URL=${VITE_OPIS_URL}
           VITE_SENTRY_ENABLED=${VITE_SENTRY_ENABLED}
           VITE_SENTRY_ENVIRONMENT=${VITE_SENTRY_ENVIRONMENT}
           VITE_SENTRY_RELEASE=${VITE_SENTRY_RELEASE}
@@ -303,8 +307,13 @@ jobs:
           VITE_POSTHOG_SESSION_REPLAY_STORE=${VITE_POSTHOG_SESSION_REPLAY_STORE}
           SENTRY_PROJECT_STORE=${SENTRY_PROJECT_STORE}"
               ;;
+            dgfy-opis)
+              PER_APP="VITE_OPIS_URL=${VITE_OPIS_URL}
+          VITE_SENTRY_DSN_OPIS=${VITE_SENTRY_DSN_OPIS}
+          SENTRY_PROJECT_OPIS=${SENTRY_PROJECT_OPIS}"
+              ;;
             *)
-              echo "::error::unknown app '${APP}' -- expected dgfy-ims, dgfy-pos, or dgfy-storefront"
+              echo "::error::unknown app '${APP}' -- expected dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis"
               exit 1
               ;;
           esac

@@ -36,7 +36,7 @@
  *   node scripts/resolve-release-tags.js --app <app> --version <X.Y.Z> --environment <DEV|STAGING|PROD> [--revision <rN|N>]
  */
 
-const FRONTEND_APPS = Object.freeze(['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
+const FRONTEND_APPS = Object.freeze(['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']);
 const BACKEND_APPS = Object.freeze(['dgfy-api', 'dgfy-migration-runner']);
 const RELEASE_APPS = Object.freeze([...BACKEND_APPS, ...FRONTEND_APPS]);
 

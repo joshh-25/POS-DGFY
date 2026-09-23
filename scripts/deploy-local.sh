@@ -18,12 +18,12 @@
 #
 # Usage:
 #   scripts/deploy-local.sh --env DEV \
-#     --components all|backend|frontend|dgfy-ims|dgfy-pos|dgfy-storefront \
+#     --components all|backend|frontend|dgfy-ims|dgfy-pos|dgfy-storefront|dgfy-opis \
 #     [--push] [--deploy] [--ssh-target user@host] [--docker-dir /opt/dgfy-platform]
 #
-# `frontend` builds all three frontend apps (issue #322 Phase 6 split the
-# single frontend image into dgfy-ims/dgfy-pos/dgfy-storefront); pass one of
-# the three app names directly to build just that one.
+# `frontend` builds all four frontend apps (issue #322 Phase 6 split the
+# single frontend image into dgfy-ims/dgfy-pos/dgfy-storefront; issue #2052 adds
+# dgfy-opis); pass one of the four app names directly to build just that one.
 #
 # --push requires `docker login ghcr.io` already done locally (your own PAT
 #         or `gh auth token | docker login ghcr.io -u <you> --password-stdin`).
@@ -171,14 +171,15 @@ build_frontend() {
   build_frontend_app dgfy-ims
   build_frontend_app dgfy-pos
   build_frontend_app dgfy-storefront
+  build_frontend_app dgfy-opis
 }
 
 case "$COMPONENTS" in
   all) build_backend; build_frontend ;;
   backend) build_backend ;;
   frontend) build_frontend ;;
-  dgfy-ims|dgfy-pos|dgfy-storefront) build_frontend_app "$COMPONENTS" ;;
-  *) echo "::error:: --components must be all, backend, frontend, dgfy-ims, dgfy-pos, or dgfy-storefront (got '$COMPONENTS')." >&2; exit 1 ;;
+  dgfy-ims|dgfy-pos|dgfy-storefront|dgfy-opis) build_frontend_app "$COMPONENTS" ;;
+  *) echo "::error:: --components must be all, backend, frontend, dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis (got '$COMPONENTS')." >&2; exit 1 ;;
 esac
 
 if $DO_PUSH; then
@@ -192,11 +193,11 @@ if $DO_PUSH; then
     docker push "$REGISTRY/dgfy-migration-runner:sha-${REVISION:0:7}"
   fi
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "frontend" ]; then
-    for app in dgfy-ims dgfy-pos dgfy-storefront; do
+    for app in dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
       docker push "$REGISTRY/${app}:$TAG"
       docker push "$REGISTRY/${app}:sha-${REVISION:0:7}"
     done
-  elif [ "$COMPONENTS" = "dgfy-ims" ] || [ "$COMPONENTS" = "dgfy-pos" ] || [ "$COMPONENTS" = "dgfy-storefront" ]; then
+  elif [ "$COMPONENTS" = "dgfy-ims" ] || [ "$COMPONENTS" = "dgfy-pos" ] || [ "$COMPONENTS" = "dgfy-storefront" ] || [ "$COMPONENTS" = "dgfy-opis" ]; then
     docker push "$REGISTRY/${COMPONENTS}:$TAG"
     docker push "$REGISTRY/${COMPONENTS}:sha-${REVISION:0:7}"
   fi

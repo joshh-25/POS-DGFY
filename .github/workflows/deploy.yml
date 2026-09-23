@@ -76,6 +76,10 @@ on:
         description: Build/push the dgfy-storefront image. Uncheck to skip.
         type: boolean
         default: true
+      build_frontend_opis:
+        description: Build/push the dgfy-opis image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -173,6 +177,7 @@ jobs:
       build_frontend_ims: ${{ inputs.build_frontend_ims }}
       build_frontend_pos: ${{ inputs.build_frontend_pos }}
       build_frontend_storefront: ${{ inputs.build_frontend_storefront }}
+      build_frontend_opis: ${{ inputs.build_frontend_opis }}
       runner_labels_json: '["sieitz-runner"]'  # #923: DEV/STAGING, either box (see CI_RUNNER_MIGRATION_HANDOFF.md)
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ inputs.release_revision }}

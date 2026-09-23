@@ -65,6 +65,7 @@ const SURFACE_APP_DIR = {
   skupervisor: 'apps/dgfy-ims',
   pos: 'apps/dgfy-pos',
   store: 'apps/dgfy-storefront',
+  opis: 'apps/dgfy-opis',
 };
 
 function surfaceManifest(projectRoot, surface) {

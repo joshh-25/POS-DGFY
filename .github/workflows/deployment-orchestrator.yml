@@ -41,6 +41,11 @@ on:
         required: false
         type: boolean
         default: true
+      build_frontend_opis:
+        description: Whether to build/push the dgfy-opis image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
+        required: false
+        type: boolean
+        default: true
       runner_labels_json:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
@@ -78,6 +83,10 @@ on:
         value: ${{ jobs.frontend-storefront.outputs.sha_tag }}
       frontend_storefront_version_tag:
         value: ${{ jobs.frontend-storefront.outputs.version_tag }}
+      frontend_opis_sha_tag:
+        value: ${{ jobs.frontend-opis.outputs.sha_tag }}
+      frontend_opis_version_tag:
+        value: ${{ jobs.frontend-opis.outputs.version_tag }}
       dgfy_api_sha_tag:
         value: ${{ jobs.dgfy-api.outputs.sha_tag }}
       dgfy_api_version_tag:
@@ -111,6 +120,7 @@ jobs:
       should_build_dgfy_ims: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+      should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
     steps:
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
         shell: bash
@@ -281,8 +291,26 @@ jobs:
       contents: read
       packages: write
 
+  frontend-opis:
+    # Builds/pushes the dgfy-opis image -- see
+    # infrastructure/docker/dgfy-opis/Dockerfile (issue #2052).
+    needs: resolve-build-plan
+    if: inputs.build_frontend_opis && needs.resolve-build-plan.outputs.should_build_dgfy_opis == 'true'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-opis
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+      candidate_source_sha: ${{ inputs.candidate_source_sha }}
+      release_revision: ${{ inputs.release_revision }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   publish:
-    needs: [ resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront ]
+    needs: [ resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims, frontend-pos, frontend-storefront, frontend-opis ]
     # dgfy-api/dgfy-migration-runner/frontend-* are conditionally skipped
     # (build_api/build_frontend above, and now also #1610's resolve-build-plan verdict), and
     # `needs.<job>.result` on a skipped job is 'skipped', not 'success' -- so this can't require all
@@ -301,7 +329,8 @@ jobs:
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-ims.result != 'failure' &&
       needs.frontend-pos.result != 'failure' &&
-      needs.frontend-storefront.result != 'failure'
+      needs.frontend-storefront.result != 'failure' &&
+      needs.frontend-opis.result != 'failure'
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}
