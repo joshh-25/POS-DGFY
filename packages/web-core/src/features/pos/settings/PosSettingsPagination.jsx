@@ -23,6 +23,7 @@ export default function PosSettingsPagination({
   pageInputLabel = `Go to ${itemLabel} page`,
   previousLabel = `Previous ${itemLabel} page`,
   nextLabel = `Next ${itemLabel} page`,
+  renderPageSizeSelect,
   disabled = false,
   className = ''
 }) {
@@ -59,19 +60,29 @@ export default function PosSettingsPagination({
         <span aria-live="polite" title={rangeLabel} className="min-w-0 flex-1 break-words whitespace-normal leading-5 sm:truncate sm:whitespace-nowrap sm:leading-8">
           Showing {start}–{end} of {safeTotal} {itemLabel}
         </span>
-        <label className="relative block shrink-0">
-          <span className="sr-only">{pageSizeLabel}</span>
-          <select
-            aria-label={pageSizeLabel}
-            value={safePageSize}
-            disabled={disabled}
-            onChange={(event) => onPageSizeChange(Number(event.target.value))}
-            className="h-9 w-[6.25rem] appearance-none rounded-lg border border-slate-200 bg-white pl-2.5 pr-7 text-[12px] font-bold text-slate-700 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-[7.5rem] sm:pl-3 sm:pr-8"
-          >
-            {options.map((option) => <option key={option} value={option}>{option} / page</option>)}
-          </select>
-          <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 sm:right-2.5" />
-        </label>
+        {typeof renderPageSizeSelect === 'function'
+          ? renderPageSizeSelect({
+            options,
+            value: safePageSize,
+            onChange: onPageSizeChange,
+            disabled,
+            label: pageSizeLabel
+          })
+          : (
+            <label className="relative block shrink-0">
+              <span className="sr-only">{pageSizeLabel}</span>
+              <select
+                aria-label={pageSizeLabel}
+                value={safePageSize}
+                disabled={disabled}
+                onChange={(event) => onPageSizeChange(Number(event.target.value))}
+                className="h-9 w-[6.25rem] appearance-none rounded-lg border border-slate-200 bg-white pl-2.5 pr-7 text-[12px] font-bold text-slate-700 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20 disabled:cursor-not-allowed disabled:opacity-50 sm:w-[7.5rem] sm:pl-3 sm:pr-8"
+              >
+                {options.map((option) => <option key={option} value={option}>{option} / page</option>)}
+              </select>
+              <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 sm:right-2.5" />
+            </label>
+          )}
       </div>
 
       <div className="flex min-w-0 items-center justify-between gap-2 sm:ml-auto sm:justify-end">

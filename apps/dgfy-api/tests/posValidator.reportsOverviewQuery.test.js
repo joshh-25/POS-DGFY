@@ -147,6 +147,40 @@ describe('POS reports export query validator', () => {
         expect(req.validatedQuery.format).toBe('csv');
     });
 
+    it('accepts the transaction-level sales export section', () => {
+        const req = {
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                section: 'sales'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosReportsExportQuery(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery.section).toBe('sales');
+    });
+
+    it('accepts the Employee Credit activity export section', () => {
+        const req = {
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                section: 'employee_credit'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosReportsExportQuery(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery.section).toBe('employee_credit');
+    });
+
     it('rejects an unsupported section value', () => {
         const req = {
             query: {
