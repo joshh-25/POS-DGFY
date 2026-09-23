@@ -30,6 +30,7 @@ import {
 } from '../inventory/index.js';
 import { resolvePosDeviceDriver } from './integrations/resolvePosDeviceDriver.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
+import * as posTerminalDeviceService from './services/posTerminalDeviceEnrollmentService.js';
 import { getEmployeeCreditReportUseCase, employeeCreditService } from '../employeeCredit/index.js';
 import { serviceRepository } from '../services/repositories/serviceRepository.js';
 import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
