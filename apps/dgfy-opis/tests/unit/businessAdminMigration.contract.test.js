@@ -8,19 +8,20 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../../../..');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
-describe('POS Back Office migration contract', () => {
-  it('keeps legacy POS sales/report entry points inside POS Back Office', () => {
+describe('OPIS Back Office migration contract', () => {
+  it('redirects legacy POS sales/report entry points to OPIS preserving path and query', () => {
     const source = readRepoFile('apps/dgfy-pos/src/main.jsx');
     expect(source).toContain('<Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />');
     expect(source).toContain('<Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />');
+    expect(source).toContain('buildOpisBackOfficeUrl');
     expect(source).not.toContain('SkupervisorSalesRedirect');
     expect(source).not.toContain('buildSkupervisorPath');
   });
 
   it('exposes migrated merchant workspaces from the single Business Admin shell', () => {
-    const source = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
-    const businessAdmin = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
-    const manifest = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
+    const source = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const businessAdmin = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+    const manifest = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
     for (const key of ['catalog', 'suppliers', 'purchase-orders', 'job-orders', 'stock-movements', 'dispatch-orders', 'services', 'fnb', 'hospitality', 'sales', 'reports', 'ai-chat']) {
       expect(manifest).toContain(key);
       const manifestKey = key.includes('-') ? `'${key}'` : key;
@@ -35,7 +36,7 @@ describe('POS Back Office migration contract', () => {
   });
 
   it('embeds Sales Timeline in the parent Back Office shell', () => {
-    const source = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+    const source = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
     expect(source).toContain("const isSales = section === 'sales';");
     expect(source).toContain("const isReports = section === 'reports';");
     expect(source).toContain('{!isCatalog && !isFnb && !isSales && !isReports ? (');

@@ -10,7 +10,7 @@ const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relat
 
 const purchaseOrdersPage = readRepoFile('packages/web-core/src/features/merchantBackOffice/pages/PurchaseOrdersPage.jsx');
 const purchaseOrdersHook = readRepoFile('packages/web-core/src/hooks/usePurchaseOrders.js');
-const businessAdminCss = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/businessAdmin.css');
+const businessAdminCss = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdmin.css');
 
 describe('POS Back Office purchase orders presentation contract', () => {
   it('keeps purchase-order lifecycle actions and permission gates intact', () => {

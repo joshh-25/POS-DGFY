@@ -10,7 +10,7 @@ const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relat
 
 describe('Business Admin attendance workspace contract', () => {
     it('connects the dedicated API route to the canonical POS lifecycle reader', () => {
-        const service = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/businessAdminService.js');
+        const service = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminService.js');
         const route = readRepoFile('apps/dgfy-api/src/routes/businessAdmin.js');
         const useCase = readRepoFile('apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminAttendanceUseCase.js');
         const repository = readRepoFile('apps/dgfy-api/src/modules/pos/repositories/posRepository.js');
@@ -23,7 +23,7 @@ describe('Business Admin attendance workspace contract', () => {
     });
 
     it('renders filters, both read-only tables, and explicit empty/denied states', () => {
-        const page = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
+        const page = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
 
         expect(page).toContain('function AttendanceWorkspace');
         expect(page).toContain("activeSection === 'attendance'");

@@ -9,10 +9,10 @@ const readRepoFile = (relativePath) => fs.readFileSync(
     'utf8'
 );
 
-const businessAdminPage = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
-const businessAdminService = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/businessAdminService.js');
-const migratedModule = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
-const businessAdminManifest = readRepoFile('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
+const businessAdminPage = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+const businessAdminService = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminService.js');
+const migratedModule = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+const businessAdminManifest = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
 const reportsPage = readRepoFile('packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx');
 const aiChatPage = readRepoFile('packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx');
 
