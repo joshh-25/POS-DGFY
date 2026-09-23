@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.23
-verification_evidence: npm run check:architecture,focused POS Reports Vitest suites,npm run build:pos,workspace integration contract tests,git diff --check
+verification_evidence: npm run check:architecture,focused POS Reports Vitest behavior and contract suites,npm run build:pos,workspace integration contract tests,git diff --check
 rollback_note: Revert the POS Reports implementation commits and this declaration; existing POS transaction, shift, and authorization contracts remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -50,6 +50,8 @@ tenant access, or payment authorization behavior.
 - `npm run check:architecture` passed for the repository architecture and controller boundaries.
 - Focused POS Reports UI and API test suites passed for report tables, filters, responsive behavior,
   workspace contracts, report repositories, use cases, and query validation.
+- Reports behavior coverage includes filter/date popovers, KPI states, all report table variants,
+  horizontal table scrolling, dropdowns, toolbar actions, and the employee-credit report panel.
 - `npm run build:pos` passed for the shared POS frontend.
 - Workspace integration wiring preserves the existing report data sources, subtab state, shared
   pagination, and employee-credit report boundary.

@@ -103,12 +103,13 @@ describe('Employee Credit POS contract', () => {
     expect(serviceContent).toContain('`/pos/employee-credit/accounts/${accountId}/adjust-outstanding`');
   });
 
-  it('uses one report refresh path and preserves ledger rows during refreshes', () => {
+  it('uses the parent report refresh signal without rendering a manual refresh control', () => {
     expect(employeeCreditReportContent).toContain('requestSequence');
     expect(employeeCreditReportContent).toContain('controller.abort()');
-    expect(employeeCreditReportContent).toContain('manualRefreshKey');
+    expect(employeeCreditReportContent).not.toContain('manualRefreshKey');
+    expect(employeeCreditReportContent).not.toContain('RefreshCw');
     expect(employeeCreditReportContent).not.toContain("pos:employee-credit-ledger-updated");
-    expect(employeeCreditReportContent).toContain('Refreshing Employee Credit report...');
+    expect(employeeCreditReportContent).toContain('Refreshing Employee Credit activity...');
     expect(terminalPageContent).toContain('const [employeeCreditReportRefreshKey, setEmployeeCreditReportRefreshKey] = useState(0)');
     expect(terminalPageContent).toContain("completedTransaction?.payment_type || ''");
     expect(terminalPageContent).toContain("=== 'employee_credit'");
