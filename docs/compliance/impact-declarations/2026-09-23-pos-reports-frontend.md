@@ -12,8 +12,8 @@ verification_evidence: npm run check:architecture,focused POS Reports Vitest beh
 rollback_note: Revert the POS Reports implementation commits and this declaration; existing POS transaction, shift, and authorization contracts remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-23T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-REPORTS-FRONTEND-20260923
+preflight_run_at: 2026-09-23T06:01:24.383Z
+preflight_request_ref: PREFLIGHT-35823552520-2026-09-23-POS-REPORTS-FRONTEND
 ---
 
 # POS Reports frontend and report-query presentation
