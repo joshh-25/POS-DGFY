@@ -84,7 +84,13 @@ const proxyTargets = {
 };
 
 export default defineConfig({
-  base: './',
+  // Absolute asset base (issue #2052 follow-up): OPIS is a BrowserRouter SPA served
+  // from subpaths (`/dgfy/auth`, `/backoffice/*`) with an nginx SPA fallback, so a
+  // relative `./` base resolves asset URLs against the subpath (e.g.
+  // `/dgfy/assets/*.js` serves index.html-as-JS) and blanks the page on any full
+  // document load away from `/`. POS keeps `./` for its Electron/HashRouter shell;
+  // do not "harmonize" this back.
+  base: '/',
   plugins: [react(), esCompatGuardPlugin(), buildStampPlugin(appVersion, releaseInfo), ...buildSentryVitePlugins(appSurface)],
   // `config.plugins` above only applies to workers in dev -- Vite 6 requires `worker.plugins`
   // separately for the production worker build, or the ADR 0067 Layer 2 guardrail silently
