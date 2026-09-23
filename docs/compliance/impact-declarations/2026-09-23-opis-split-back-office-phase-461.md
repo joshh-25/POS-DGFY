@@ -90,3 +90,8 @@ preflight sweep reconciles it before any `release/* → main` promotion, and no
   `SkupervisorPOSCheckoutTerminal`/`SkupervisorPOSPage`/`TerminalPage`/`SalesPage`
   chunks are absent from a fresh IMS build on this integration base; unrelated to
   this change (one `apps/dgfy-ims` copy-text file touched).
+- Lint-gate repair: `TerminalPageDialogLayer.jsx` carried a pre-existing
+  `String.prototype.replaceAll` (banned for the Chrome 80-84 iMin WebView) on the
+  integration base, failing `frontend-ims-lint-check`'s web-core step through no
+  fault of this change; repaired here with the lint-prescribed `.replace(/_/g, ' ')`
+  equivalent so the required gate passes.

@@ -983,7 +983,7 @@ export default function TerminalPageDialogLayer({ model }) {
                         {closeShiftBlocker.sessions.map((session) => (
                           <li key={session.pos_payment_session_id || session.session_reference}>
                             {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
-                            {session.status ? ` · ${String(session.status).replaceAll('_', ' ')}` : ''}
+                            {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
                             {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
                           </li>
                         ))}
