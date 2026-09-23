@@ -45,7 +45,7 @@ afterEach(() => {
 });
 
 describe('POS manual walk-in tender', () => {
-    it('opens a fresh server session without reading or writing a saved split-payment pointer', async () => {
+    it('does not create a server session until a payment is recorded', async () => {
         serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
         const onSessionStateChange = vi.fn();
         render(
@@ -62,13 +62,13 @@ describe('POS manual walk-in tender', () => {
         );
 
         await screen.findByText('Payment Methods');
-        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
         expect(serviceMocks.fetchPosPaymentSession).not.toHaveBeenCalled();
         expect(window.localStorage.length).toBe(0);
-        expect(onSessionStateChange).toHaveBeenCalledWith(expect.objectContaining({ active: true, recovered: false }));
+        expect(onSessionStateChange).not.toHaveBeenCalled();
     });
 
-    it('does not auto-complete a ready session returned while opening the checkout', async () => {
+    it('does not auto-complete a ready session because opening the checkout is side-effect free', async () => {
         const readySession = {
             ...openSession,
             status: 'ready_to_complete',
@@ -92,13 +92,19 @@ describe('POS manual walk-in tender', () => {
         );
 
         await waitFor(() => expect(screen.getByTestId('pos-split-payment-dialog')).toBeTruthy());
+        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
         expect(onReadyToComplete).not.toHaveBeenCalled();
         expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
         expect(screen.queryByTestId('pos-split-payment-saved-sale')).toBeNull();
     });
 
     it('does not restart the session request when the checkout snapshot object changes identity', async () => {
-        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
+        serviceMocks.createPosPaymentSession.mockResolvedValue({
+            ...openSession,
+            total_amount: 90,
+            remaining_amount: 90
+        });
+        const user = userEvent.setup();
         const view = render(
             <POSSplitPaymentDialog
                 open
@@ -113,7 +119,11 @@ describe('POS manual walk-in tender', () => {
         );
 
         await screen.findByText('Payment Methods');
-        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
+        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
+
+        await user.type(screen.getByRole('spinbutton', { name: 'Amount for GCash' }), '90');
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
+        await waitFor(() => expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1));
 
         view.rerender(
             <POSSplitPaymentDialog

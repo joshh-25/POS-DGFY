@@ -8355,7 +8355,8 @@ export const buildSwitchTerminalShiftLocationUseCase = ({
                 shiftId: normalizedShiftId,
                 shift: existingShift,
                 transaction,
-                closingCashAmount
+                closingCashAmount,
+                cancelledBy: normalizedUserId
             });
             const switchClosingNote = `location_switch to ${enforcedTargetLocationId}: ${closingNote || reason}`.slice(0, 255);
             const switchOpeningNote = `location_switch from shift #${normalizedShiftId}: ${openingNote || reason}`.slice(0, 255);
@@ -8942,7 +8943,14 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction, cancelledBy = null }) => {
+    if (typeof posRepository.cancelEmptyInFlightPaymentSessionsForShift === 'function') {
+        await posRepository.cancelEmptyInFlightPaymentSessionsForShift(shiftId, {
+            transaction,
+            lock: true,
+            cancelledBy
+        });
+    }
     const sessions = typeof posRepository.listInFlightPaymentSessionsForShift === 'function'
         ? await posRepository.listInFlightPaymentSessionsForShift(shiftId, { transaction, lock: true })
         : [];
@@ -8997,7 +9005,8 @@ const buildShiftCloseCashData = async ({
     shiftId,
     shift,
     transaction,
-    closingCashAmount
+    closingCashAmount,
+    cancelledBy = null
 }) => {
     await assertNoUnresolvedParkedSalesForShift({
         posRepository,
@@ -9012,7 +9021,8 @@ const buildShiftCloseCashData = async ({
     await assertNoInFlightPaymentSessionsForShift({
         posRepository,
         shiftId,
-        transaction
+        transaction,
+        cancelledBy
     });
     await assertNoUnresolvedFundedPaymentSessionsForShift({
         posRepository,
@@ -9129,7 +9139,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shiftId: normalizedShiftId,
                 shift,
                 transaction,
-                closingCashAmount
+                closingCashAmount,
+                cancelledBy: normalizedUserId
             });
             const {
                 shiftPayload,
@@ -9345,7 +9356,8 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
             await assertNoInFlightPaymentSessionsForShift({
                 posRepository,
                 shiftId: normalizedShiftId,
-                transaction
+                transaction,
+                cancelledBy: normalizedUserId
             });
             await assertNoUnresolvedFundedPaymentSessionsForShift({
                 posRepository,

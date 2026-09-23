@@ -252,6 +252,11 @@ const buildReplayRepository = () => {
         async listInFlightPaymentSessionsForShift() {
             return clone(inFlightPaymentSessions);
         },
+        async cancelEmptyInFlightPaymentSessionsForShift() {
+            const emptySessions = inFlightPaymentSessions.filter((session) => session.empty_session === true);
+            inFlightPaymentSessions = inFlightPaymentSessions.filter((session) => session.empty_session !== true);
+            return clone(emptySessions);
+        },
         async findInFlightOperatorMutationForShift() {
             return clone(inFlightOperatorMutation);
         },
@@ -930,6 +935,38 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             expect(result.success).toBe(false);
             expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'POS_PAYMENT_SESSIONS_IN_FLIGHT', shift_id: shiftId }));
             expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('cleans up an empty payment session before closing the shift', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-EMPTY-PAYMENT-CLEANUP' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightPaymentSessions([{
+                pos_payment_session_id: 503,
+                session_reference: 'PAY-EMPTY',
+                status: 'open',
+                paid_amount: 0,
+                remaining_amount: 1250,
+                empty_session: true
+            }]);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-EMPTY-PAYMENT-CLEANUP', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(posRepository.counters.shiftCloses).toBe(1);
         });
     });
 
