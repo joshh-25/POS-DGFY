@@ -103,7 +103,10 @@ function inspectAliasSource({ ref, inspectFn }) {
   } catch (error) {
     return { ref, state: 'error', reason: `could not parse inspect JSON output for source ${ref}: ${error.message}` };
   }
-  const digest = typeof parsed.digest === 'string' && parsed.digest.trim() ? parsed.digest.trim() : null;
+  const digest = (typeof parsed.digest === 'string' && parsed.digest.trim())
+    || (parsed.manifest && typeof parsed.manifest.digest === 'string' && parsed.manifest.digest.trim())
+    || (parsed.image && typeof parsed.image.digest === 'string' && parsed.image.digest.trim())
+    || null;
   if (!digest) {
     return { ref, state: 'error', reason: `source ${ref} inspect output carries no image digest -- cannot alias a digest-less manifest` };
   }
@@ -196,7 +199,10 @@ function inspectAliasTarget({ ref, inspectFn }) {
   } catch (error) {
     return { ref, state: 'error', reason: `could not parse inspect JSON output for target ${ref}: ${error.message}` };
   }
-  const digest = typeof parsed.digest === 'string' && parsed.digest.trim() ? parsed.digest.trim() : null;
+  const digest = (typeof parsed.digest === 'string' && parsed.digest.trim())
+    || (parsed.manifest && typeof parsed.manifest.digest === 'string' && parsed.manifest.digest.trim())
+    || (parsed.image && typeof parsed.image.digest === 'string' && parsed.image.digest.trim())
+    || null;
   if (!digest) {
     return { ref, state: 'error', reason: `target ${ref} inspect output carries no image digest -- refusing to compare against a digest-less manifest` };
   }
