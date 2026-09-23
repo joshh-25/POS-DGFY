@@ -161,7 +161,7 @@ jobs:
                SENTRY_RELEASE=\"$SENTRY_RELEASE\" ./deploy-sops.sh && docker logout ghcr.io; \
              else \
                ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
-               SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io; \
+               { SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans || { echo \"::error::docker compose up failed. Dumping runner logs:\" >&2; docker compose logs --tail=100 dgfy-migration-runner >&2; docker compose logs --tail=100 dgfy-api >&2; docker logout ghcr.io || true; exit 1; }; } && docker logout ghcr.io; \
              fi" \
             <<< "$GITHUB_TOKEN"
 
