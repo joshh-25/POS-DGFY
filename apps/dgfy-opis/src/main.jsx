@@ -49,7 +49,7 @@ function OpisRouteNotFound() {
           This app serves the DGFY Back Office. Terminal operations stay on POS.
         </p>
         <Link
-          to="/backoffice/overview"
+          to="/"
           className="mt-5 inline-flex h-11 items-center justify-center rounded-lg bg-[#1A4E8D] px-5 text-sm font-bold text-white hover:bg-[#143F73]"
         >
           Open Back Office
@@ -64,6 +64,15 @@ function BusinessAdminAliasRoute() {
   const suffix = String(location.pathname || '').replace(/^\/business-admin/, '') || '/';
   const search = location.search || '';
   return <Navigate to={`/backoffice${suffix === '/' ? '/overview' : suffix}${search}`} replace />;
+}
+
+// `/` renders the Back Office overview directly (issue #2052 follow-up); the legacy
+// `/backoffice/overview` URL redirects to `/` preserving the query string, mirroring
+// BusinessAdminAliasRoute's pattern above.
+function BackofficeOverviewRedirect() {
+  const location = useLocation();
+  const search = location.search || '';
+  return <Navigate to={`/${search}`} replace />;
 }
 
 const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
@@ -150,9 +159,10 @@ const mountApp = () => {
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
                   <Route path="/backoffice/*" element={<BusinessAdminPage />} />
+                  <Route path="/backoffice/overview" element={<BackofficeOverviewRedirect />} />
                   <Route path="/business-admin/*" element={<BusinessAdminAliasRoute />} />
                   <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
-                  <Route path="/" element={<Navigate to="/backoffice/overview" replace />} />
+                  <Route path="/" element={<BusinessAdminPage />} />
                   <Route path="*" element={<OpisRouteNotFound />} />
                 </Routes>
               </Suspense>

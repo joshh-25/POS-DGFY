@@ -1,5 +1,5 @@
 const BACK_OFFICE_PAGE_ROUTES = Object.freeze({
-  Dashboard: '/backoffice/overview',
+  Dashboard: '/',
   Items: '/backoffice/catalog',
   Suppliers: '/backoffice/suppliers',
   PurchaseOrders: '/backoffice/purchase-orders',
@@ -15,7 +15,7 @@ const BACK_OFFICE_PAGE_ROUTES = Object.freeze({
   Settings: '/backoffice/settings'
 });
 
-export const createPageUrl = (pageName) => BACK_OFFICE_PAGE_ROUTES[pageName] || '/backoffice/overview';
+export const createPageUrl = (pageName) => BACK_OFFICE_PAGE_ROUTES[pageName] || '/';
 
 export const getPageNameFromPath = (pathname) => {
   const normalizedPath = String(pathname || '').replace(/\/+$/, '') || '/';

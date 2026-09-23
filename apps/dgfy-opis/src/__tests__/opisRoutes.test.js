@@ -8,6 +8,7 @@ import {
   buildBackOfficeModulePath,
   getBackOfficeModuleDefinition
 } from '../features/businessAdmin/businessAdminManifest.js';
+import { parseBusinessAdminPath } from '../features/businessAdmin/businessAdminSettingsModel.js';
 import { createPageUrl, getPageNameFromPath } from '../utils.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -20,8 +21,20 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).toContain('BusinessAdminAliasRoute');
   });
 
-  it('opens the Back Office overview at /', () => {
-    expect(mainSource).toContain('path="/" element={<Navigate to="/backoffice/overview" replace />}');
+  it('renders the Back Office overview directly at / with no redirect', () => {
+    expect(mainSource).toContain('path="/" element={<BusinessAdminPage />}');
+    expect(mainSource).not.toContain('path="/" element={<Navigate to="/backoffice/overview"');
+  });
+
+  it('redirects the legacy /backoffice/overview URL to the canonical /', () => {
+    expect(mainSource).toContain('path="/backoffice/overview"');
+    expect(mainSource).toContain('BackofficeOverviewRedirect');
+    expect(mainSource).toContain('to={`/${search}`}');
+  });
+
+  it('resolves a bare / to the overview section under the canonical root', () => {
+    expect(parseBusinessAdminPath('/', '/backoffice').activeSection).toBe('overview');
+    expect(parseBusinessAdminPath('/backoffice/catalog', '/backoffice').activeSection).toBe('catalog');
   });
 
   it('preserves /receive/:token handling with authorization intact', () => {
@@ -73,8 +86,10 @@ describe('OPIS Back Office manifest', () => {
 describe('OPIS page routes', () => {
   it('resolves known pages and falls back to the dashboard', () => {
     expect(createPageUrl('Sales')).toBe('/backoffice/sales');
-    expect(createPageUrl('Unknown')).toBe('/backoffice/overview');
+    expect(createPageUrl('Unknown')).toBe('/');
+    expect(createPageUrl('Dashboard')).toBe('/');
     expect(getPageNameFromPath('/backoffice/catalog')).toBe('Items');
+    expect(getPageNameFromPath('/')).toBe('Dashboard');
     expect(getPageNameFromPath('/nope')).toBe('Dashboard');
   });
 });
