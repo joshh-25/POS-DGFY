@@ -23800,3 +23800,67 @@ Not yet merged — set at merge time.
 
 345 after Phase 344's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 345 - Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
+
+### Initiative and release
+
+Test-tier routing evidence for Worker Tier 2 and real-DB testing, current release.
+
+### Objective and scope
+
+Provide one durable, generated, checkable inventory of every existing unit/component test
+file across `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`,
+`packages/web-core` (via the IMS Vitest invocation, ADR 0071), and the migration-runner's
+operational commands — each classified `fast-pure`, `fast-mocked-external`, `db-required`,
+`redis-required`, `network/provider-required`, `browser-e2e`, or `opt-in/legacy` — plus a
+concise guide defining the default fast subset, opt-in tiers, decision rules, refresh/check
+commands, and the #378 cross-reference. Reuses the backend DB manifest/matrix as execution
+source of truth; creates no competing DB list, no new test runner, no CI gate change, no
+migration, no runtime/API change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #438; #436 Worker Tier 2 consumer; #372 real-DB consumer; #378 baseline-failure
+cross-reference; #344 (location/structure question — explicitly not this issue);
+authoritative `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+`docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0071, `docs/architecture/apps-layout-migration.md`,
+`docs/testing/README.md`; Phase 344 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:audit-test-cost` passes (discovery, stale-record, runner-exclusion,
+      manifest-reuse, classification, safe-subset coverage).
+- [ ] `npm run audit:test-cost:check` passes against the real checkout (1334 records current,
+      no stale/missing entries, all #378 basenames matched).
+- [ ] Default-subset proof: backend fast file, IMS web-core file, and Storefront file timed
+      and passing with no DB/Redis/network/browser service.
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #438 (`Closes`).
+- Handoff: `.tmp/plan-438.md` (planning head `de26008bb82db0a1a0423d8ab16e263ba35be45c`).
+- Implementation: `scripts/audit-test-cost-inventory.js` (+ test),
+  `docs/testing/test-cost-inventory.json`, `docs/testing/test-cost-inventory.md`,
+  `docs/testing/README.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; testing
+  documentation/tooling within existing boundaries).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
