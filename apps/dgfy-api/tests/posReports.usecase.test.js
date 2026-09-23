@@ -82,6 +82,66 @@ describe('POS reports usecases', () => {
         expect(result.error.statusCode).toBe(401);
     });
 
+    it('exports Employee Credit activity from the dedicated ledger report', async () => {
+        const getReportsOverview = jest.fn().mockResolvedValue({
+            daily_report: { summary: {}, discount_breakdown: [], cashier_summary: [], transaction_rows: [] },
+            cashier_lifecycle: {}
+        });
+        const employeeCreditReportUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                entries: [{
+                    created_at: '2026-07-02T08:00:00.000Z',
+                    entry_type: 'charge',
+                    amount: 125,
+                    balance_after: 125,
+                    authorization_reference: 'AUTH-1',
+                    account: { employeeProfile: { full_name: 'Maria Employee' } },
+                    actor: { username: 'cashier-1' }
+                }],
+                totals: { credit_sales: 125, repayments: 0, grants: 0, reversals: 0 }
+            }
+        });
+        const useCase = buildExportPosReportsUseCase({
+            posRepository: { getReportsOverview },
+            employeeCreditReportUseCase
+        });
+
+        const result = await useCase({
+            query: { date_from: '2026-07-01', date_to: '2026-07-06', section: 'employee_credit' },
+            user: { user_id: 4, is_master_admin: true }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.filename).toBe('pos-employee-credit-activity-report.csv');
+        expect(result.data.content).toContain('"Time","Employee","Type","Amount","Outstanding After","Cashier","Reference"');
+        expect(result.data.content).toContain('"2026-07-02T08:00:00.000Z","Maria Employee","charge","125","125","cashier-1","AUTH-1"');
+        expect(employeeCreditReportUseCase).toHaveBeenCalledWith({
+            query: { date_from: '2026-07-01', date_to: '2026-07-06', limit: 1000 }
+        });
+    });
+
+    it('protects Employee Credit activity export with the dedicated report permission', async () => {
+        const useCase = buildExportPosReportsUseCase({
+            posRepository: {
+                getReportsOverview: jest.fn().mockResolvedValue({
+                    daily_report: { summary: {}, discount_breakdown: [], cashier_summary: [], transaction_rows: [] },
+                    cashier_lifecycle: {}
+                })
+            },
+            employeeCreditReportUseCase: jest.fn()
+        });
+
+        const result = await useCase({
+            query: { date_from: '2026-07-01', date_to: '2026-07-06', section: 'employee_credit' },
+            user: { user_id: 4, permissions: ['pos:view'] }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+        expect(result.error.statusCode).toBe(403);
+    });
+
     describe('buildExportProcurementCsvUseCase', () => {
         it('rejects a non-object query', async () => {
             const useCase = buildExportProcurementCsvUseCase({

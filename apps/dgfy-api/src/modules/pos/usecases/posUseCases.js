@@ -791,8 +791,92 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
 
 const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ query = {}, user } = {}) => {
+export const buildExportPosReportsUseCase = ({ posRepository, employeeCreditReportUseCase = null }) => async ({ query = {}, user } = {}) => {
     try {
+        if (!isPlainObject(query)) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Report query must be an object',
+                { statusCode: 400 }
+            );
+        }
+
+        if (!parsePositiveInt(user?.user_id)) {
+            throw new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view POS reports',
+                { statusCode: 401 }
+            );
+        }
+
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
+
+        if (section === 'employee_credit') {
+            if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT)) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'Employee Credit report access is required for this export',
+                    { statusCode: 403 }
+                );
+            }
+            if (typeof employeeCreditReportUseCase !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.INTERNAL_ERROR,
+                    'Employee Credit report export is not configured',
+                    { statusCode: 500 }
+                );
+            }
+
+            const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
+            const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo) || dateFrom > dateTo) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Report dates must use a valid YYYY-MM-DD range',
+                    { statusCode: 400 }
+                );
+            }
+
+            const employeeCreditResult = await employeeCreditReportUseCase({
+                query: {
+                    date_from: dateFrom,
+                    date_to: dateTo,
+                    limit: 1000
+                }
+            });
+            if (!employeeCreditResult.success) return employeeCreditResult;
+
+            const employeeCreditReport = employeeCreditResult.data || {};
+            const employeeCreditEntries = Array.isArray(employeeCreditReport.entries) ? employeeCreditReport.entries : [];
+            const employeeCreditRows = [
+                ['Time', 'Employee', 'Type', 'Amount', 'Outstanding After', 'Cashier', 'Reference'],
+                ...employeeCreditEntries.map((entry) => [
+                    entry.created_at || '',
+                    entry.account?.employeeProfile?.full_name
+                      || entry.account?.employee?.username
+                      || entry.account?.employee?.email
+                      || '',
+                    String(entry.entry_type || '').replace(/_/g, ' '),
+                    entry.amount,
+                    entry.balance_after,
+                    entry.actor?.username || '',
+                    entry.authorization_reference || ''
+                ]),
+                [],
+                ['Metric', 'Value'],
+                ['Credit Sales', employeeCreditReport.totals?.credit_sales || 0],
+                ['Repayments', employeeCreditReport.totals?.repayments || 0],
+                ['Admin Adjustments', employeeCreditReport.totals?.grants || 0],
+                ['Reversals', employeeCreditReport.totals?.reversals || 0]
+            ];
+
+            return ok({
+                filename: 'pos-employee-credit-activity-report.csv',
+                content_type: 'text/csv; charset=utf-8',
+                content: employeeCreditRows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
+            });
+        }
+
         const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query, user });
         if (!overviewResult.success) return overviewResult;
         const summary = overviewResult.data?.daily_report?.summary || {};
@@ -800,7 +884,6 @@ export const buildExportPosReportsUseCase = ({ posRepository }) => async ({ quer
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
         const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
         const lifecycle = overviewResult.data?.cashier_lifecycle || {};
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         const lifecycleRows = section === 'attendance'
             ? [
                 ['Cashier', 'Duty Type', 'Status', 'Started At', 'Ended At', 'Break Minutes', 'Worked Minutes', 'Location'],

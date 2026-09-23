@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import { Op } from 'sequelize';
 
 const mockFindAll = jest.fn();
+const mockFindOne = jest.fn();
 const mockLineFindAll = jest.fn();
 const mockItemFolderFindAll = jest.fn();
 const mockShiftFindAll = jest.fn();
@@ -16,7 +17,7 @@ const mockSequelize = {
     literal: jest.fn((value) => ({ literal: value }))
 };
 
-const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll, sequelize: mockSequelize };
+const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll, findOne: mockFindOne, sequelize: mockSequelize };
 const PosTransactionLineModel = { modelName: 'PosTransactionLine', findAll: mockLineFindAll };
 const ItemModel = { modelName: 'Item' };
 const ItemFolderModel = { modelName: 'ItemFolder', findAll: mockItemFolderFindAll };
@@ -82,6 +83,7 @@ beforeAll(async () => {
 describe('posRepository reports analytics', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockFindOne.mockResolvedValue(null);
         mockItemFolderFindAll.mockResolvedValue([]);
         mockShiftFindAll.mockResolvedValue([]);
         mockLineFindAll.mockResolvedValue([{ post_close_voided_item_count: 0 }]);
@@ -89,6 +91,85 @@ describe('posRepository reports analytics', () => {
         mockAttendanceFindAll.mockResolvedValue([]);
         mockOperatorFindAll.mockResolvedValue([]);
         mockHandoffFindAll.mockResolvedValue([]);
+    });
+
+    it('exposes the first transaction date and Manila today as report display bounds', async () => {
+        mockFindAll.mockResolvedValue([]);
+        mockFindOne.mockResolvedValue({ created_at: '2026-05-01T16:00:00.000Z' });
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-18',
+            date_to: '2026-09-18'
+        });
+
+        expect(result.date_bounds).toEqual(expect.objectContaining({
+            first_transaction_date: '2026-05-02',
+            today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)
+        }));
+        expect(mockFindOne).toHaveBeenCalledWith(expect.objectContaining({
+            attributes: ['created_at'],
+            order: [['created_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            raw: true
+        }));
+    });
+
+    it('loads the previous equivalent range for accurate comparison metrics and trend points', async () => {
+        const makeTransaction = (id, createdAt, lineSubtotal, costSnapshot) => ({
+            pos_transaction_id: id,
+            created_at: createdAt,
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: lineSubtotal,
+            discount_amount: 0,
+            service_fee_amount: 0,
+            restaurant_service_charge_amount: 0,
+            vat_amount: 0,
+            payment_type: 'cash',
+            order_source: 'in_store',
+            order_method: 'dine_in',
+            cashier: { user_id: 9, username: 'cashier-1' },
+            lines: [{
+                line_id: id,
+                item_id: 1,
+                quantity: 1,
+                cost_snapshot: costSnapshot,
+                line_subtotal: lineSubtotal,
+                item: {
+                    item_id: 1,
+                    name: 'Meal',
+                    sku_code: `MEAL-${id}`,
+                    category: 'product',
+                    cost_per_unit: costSnapshot
+                }
+            }]
+        });
+
+        mockFindAll
+            .mockResolvedValueOnce([makeTransaction(701, '2026-08-28T02:00:00.000Z', 100, 40)])
+            .mockResolvedValueOnce([makeTransaction(702, '2026-08-27T02:00:00.000Z', 80, 40)]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-08-28',
+            date_to: '2026-08-28'
+        });
+
+        expect(result.sales_comparison.flexible_range).toEqual(expect.objectContaining({
+            current: expect.objectContaining({ net_sales: 100, pos_profit_loss: 60 }),
+            previous: expect.objectContaining({ net_sales: 80, pos_profit_loss: 40 }),
+            sales_delta: 20,
+            sales_delta_percentage: 25,
+            current_range: { dateFrom: '2026-08-28', dateTo: '2026-08-28' },
+            previous_range: { dateFrom: '2026-08-27', dateTo: '2026-08-27' }
+        }));
+        expect(result.sales_comparison.flexible_trend).toEqual([
+            expect.objectContaining({
+                label: '2026-08-28',
+                current_period: '2026-08-28',
+                previous_period: '2026-08-27',
+                current_net_sales: 100,
+                previous_net_sales: 80
+            })
+        ]);
     });
 
     it('computes POS profit/loss using cost snapshot first and IMS fallback second', async () => {
@@ -222,6 +303,10 @@ describe('posRepository reports analytics', () => {
         expect(result.daily_report.top_items[0]).toEqual(expect.objectContaining({
             item_name: 'Chicken',
             quantity: 2,
+            quantity_sold: 2,
+            orders: 1,
+            average_price: 45,
+            sales_share_percentage: 64.2857,
             cogs: 60,
             pos_profit_loss: 30
         }));
@@ -231,6 +316,25 @@ describe('posRepository reports analytics', () => {
             cogs: 20,
             pos_profit_loss: 30
         }));
+        expect(result.profit_loss.rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                rank: 1,
+                item_name: 'Chicken',
+                item_sold: 2,
+                gross_sales: 100,
+                cogs: 60,
+                net_sales: 90,
+                net_profit: 30,
+                loss: 0,
+                profit_margin: 33.3333
+            }),
+            expect.objectContaining({
+                item_name: 'Burger',
+                net_profit: 30,
+                loss: 0,
+                profit_margin: 60
+            })
+        ]));
     });
 
     it('returns cashier transaction rows with shift cash reconciliation for the selected date and cashier', async () => {
@@ -324,8 +428,13 @@ describe('posRepository reports analytics', () => {
                 invoice_number: 'INV-401',
                 cashier_name: 'cashier-1',
                 payment_type: 'cash',
+                payment_methods: ['cash'],
+                order_method: 'dine_in',
                 total_amount: 90,
-                net_sales: 90
+                discount_amount: 10,
+                gross_sales: 100,
+                net_sales: 90,
+                pos_profit_loss: 70
             })
         ]);
 
