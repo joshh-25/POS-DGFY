@@ -7,14 +7,16 @@ When to use:
 
 ## Frontend Workspace Layout (read before running any frontend command)
 
-The frontend is three independent Vite apps plus one shared package (ADR 0071,
-`docs/architecture/adr/0071-frontend-split-into-three-apps.md`):
+The frontend is four independent Vite apps plus one shared package (ADR 0071,
+`docs/architecture/adr/0071-frontend-split-into-three-apps.md`, plus proposed successor ADR
+0086 for OPIS, `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`):
 
 | Workspace | Surface | Dev port | Root dev script | Root build script |
 |---|---|---|---|---|
 | `apps/dgfy-ims` | SKUpervisor / IMS | 5173 | `npm run dev:skupervisor` | `npm run build:skupervisor` |
 | `apps/dgfy-pos` | Standalone POS | 5174 | `npm run dev:pos` | `npm run build:pos` |
 | `apps/dgfy-storefront` | Public Storefront | 5175 | `npm run dev:store` | `npm run build:store` |
+| `apps/dgfy-opis` | DGFY Back Office (OPIS) | 5176 | `npm run dev:opis` | `npm run build:opis` |
 | `packages/web-core` | Shared trunk (`@sieitzz/web-core`) | n/a | n/a | no build step |
 
 There is no aggregate `build:all` script — run only the app builds actually affected.
@@ -190,8 +192,8 @@ Evidence semantics:
 ## Frontend Bundle Guard
 
 Current bundle-gate expectations:
-1. `npm run check:frontend-budgets` owns a fresh build of all three apps by default (`npm --prefix apps/dgfy-ims run build`, `npm --prefix apps/dgfy-pos run build`, `npm --prefix apps/dgfy-storefront run build`), then enforces route-chunk ceilings for login, POS, terminal, and sales surfaces.
-2. The gate requires all three current per-app artifact directories: `apps/dgfy-ims/dist/assets`, `apps/dgfy-pos/dist/assets`, and `apps/dgfy-storefront/dist/assets`. Each app now emits into its own `dist/` instead of a shared top-level output directory. Falling back to a partial or legacy artifact set is not release evidence.
+1. `npm run check:frontend-budgets` owns a fresh build of all four apps by default (`npm --prefix apps/dgfy-ims run build`, `npm --prefix apps/dgfy-pos run build`, `npm --prefix apps/dgfy-storefront run build`, `npm --prefix apps/dgfy-opis run build`), then enforces route-chunk ceilings for login, POS, terminal, OPIS, and sales surfaces.
+2. The gate requires all four current per-app artifact directories: `apps/dgfy-ims/dist/assets`, `apps/dgfy-pos/dist/assets`, `apps/dgfy-storefront/dist/assets`, and `apps/dgfy-opis/dist/assets`. Each app now emits into its own `dist/` instead of a shared top-level output directory. Falling back to a partial or legacy artifact set is not release evidence.
 3. Freshness is checked against the build start time for every budgeted route chunk. A missing, renamed, or stale route chunk fails the gate before it can be treated as a passing budget verdict.
 4. Prebuilt artifacts are allowed only through the explicit contract `npm run check:frontend-budgets -- --skip-build --built-after <ISO timestamp or epoch ms>`. This mode is for CI jobs that have already run the same multi-app build and need a timestamped freshness proof.
 5. The default standalone report is `.tmp/frontend-budgets/frontend_budget_report.json`. The local release gate writes the release-owned report to `.tmp/release-gates/<sha>/frontend-budgets/frontend_budget_report.json`.

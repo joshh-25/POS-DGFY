@@ -916,3 +916,18 @@ Rollback is code/test/documentation-only: revert the Phase 376 POS terminal
 setup, printer diagnostic, and navigation changes. No schema, tenant, branch,
 session, shift, transaction, or hardware-pairing data rollback is required.
 Phase 376 is completed; the next eligible repository phase is 377.
+
+## 2026-09-23 — OPIS move (issue #2052, epic #1354, Phase 461)
+
+Recorded, not a rewrite of the history above: the Back Office shell documented here
+moved from `apps/dgfy-pos/src/features/businessAdmin` to `apps/dgfy-opis`
+(the dedicated DGFY Back Office at `opis.dgfy.ph`), with canonical routes
+`/backoffice/*` and the `/business-admin/*` alias, an isolated `opis_*`
+browser-session namespace, POS external redirects preserving path/query, and IMS
+handoff retargeting. POS terminal operational flows are unaffected. The interim
+"POS is the canonical merchant back-office surface" framing above holds only until
+PR #2026 merges and proposed ADR 0086 is accepted; thereafter OPIS is canonical.
+See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.md),
+[ADR 0086](../architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md),
+and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
+seams.

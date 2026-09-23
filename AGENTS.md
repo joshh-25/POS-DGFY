@@ -12,7 +12,10 @@ stale; the real code lives under:
 - `apps/dgfy-migration-runner` — migrations/seeders (split out of the API)
 - `apps/dgfy-android-bridge` — Android
 - `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront` — the three frontend apps (issue #322)
-- `packages/web-core` — the shared frontend trunk all three of the above consume via a `file:`
+- `apps/dgfy-opis` — the dedicated DGFY Back Office (issue #2052, epic #1354; in-flight on
+  the `feat/DGFY-459-pos-development-pr-ready` integration line until PR #2026 merges —
+  proposed ADR 0086, not yet the target for new work: the interim POS rule below still holds)
+- `packages/web-core` — the shared frontend trunk all four of the above consume via a `file:`
   dependency; it has no build step, no `node_modules`, and no lockfile of its own
 
 Full path maps, before/after commands, and in-flight-branch merge guidance:
