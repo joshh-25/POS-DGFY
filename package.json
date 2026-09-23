@@ -139,6 +139,7 @@
     "test:deploy-version-stamping": "node --test scripts/check-deploy-version-stamping-workflow.test.js",
     "test:tag-immutability": "node --test scripts/check-tag-immutability.test.js",
     "test:release-tags": "node --test scripts/resolve-release-tags.test.js",
+    "test:artifact-revision": "node --test scripts/allocate-artifact-revision.test.js",
     "test:image-alias": "node --test scripts/promote-image-alias.test.js",
     "prepare": "node -e \"if(process.env.NODE_ENV!=='production')try{require('child_process').execSync('husky',{stdio:'inherit'})}catch(e){}\"",
     "kill:dev": "bash scripts/kill-dev.sh",
