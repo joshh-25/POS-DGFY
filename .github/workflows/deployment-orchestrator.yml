@@ -11,6 +11,16 @@ on:
         description: Comma-separated branch tags, e.g. "latest,beta"
         required: true
         type: string
+      revisioned_dev_dispatch:
+        description: Allocate per-app X.Y.Z-rN-dev tags for a temporary DEV integration branch
+        required: false
+        type: boolean
+        default: false
+      image_tag_override:
+        description: Optional immutable shared Compose IMAGE_TAG override for deployment
+        required: false
+        type: string
+        default: ''
       publish:
         description: Whether to SSH-deploy to the target server after images are pushed
         required: false
@@ -229,8 +239,11 @@ jobs:
       #     retry reuses its own N so a re-dispatch converges instead of burning a number).
       #     The map is emitted as revisions_json for the skip plan AND the builder jobs, so
       #     both resolve byte-identical tags -- allocation happens exactly once per dispatch.
-      #   - DEV on any other branch -- ad-hoc: no allocation, dev_pr_ref carries the raw ref
-      #     (the resolver sanitizes it to X.Y.Z-<slug>-dev, never candidate-selectable).
+      #   - DEV on any other branch -- ad-hoc by default: no allocation, dev_pr_ref carries the
+      #     raw ref (the resolver sanitizes it to X.Y.Z-<slug>-dev, never candidate-selectable).
+      #     A temporary DEV integration ref may opt into the revisioned lane with the explicit
+      #     revisioned_dev_dispatch input; it receives the same promotion-eligible X.Y.Z-rN-dev
+      #     identity as develop and still deploys through its SHA tag rather than the develop alias.
       #   - STAGING -- revisions arrive per app-group from the dispatch inputs
       #     (promoter-filled from the candidate manifest's per-app release_revision map);
       #     groups fan out to apps (api covers both backends).
@@ -240,6 +253,7 @@ jobs:
         env:
           DISPATCH_ENVIRONMENT: ${{ inputs.environment }}
           REF_NAME: ${{ github.ref_name }}
+          REVISIONED_DEV_DISPATCH: ${{ inputs.revisioned_dev_dispatch }}
           RELEASE_REVISION_API: ${{ inputs.release_revision_api }}
           RELEASE_REVISION_IMS: ${{ inputs.release_revision_frontend_ims }}
           RELEASE_REVISION_POS: ${{ inputs.release_revision_frontend_pos }}
@@ -247,14 +261,14 @@ jobs:
           RELEASE_REVISION_OPIS: ${{ inputs.release_revision_frontend_opis }}
         run: |
           set -euo pipefail
-          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REF_NAME}" != "develop" ]; then
+          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REF_NAME}" != "develop" ] && [ "${REVISIONED_DEV_DISPATCH}" != "true" ]; then
             echo "[revisions] feature-branch DEV dispatch on '${REF_NAME}' -- ad-hoc tags (X.Y.Z-<slug>-dev), never promotion-eligible (#2055)."
             echo "revisions_json={}" >> "$GITHUB_OUTPUT"
             echo "dev_pr_ref=${REF_NAME}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ]; then
-            echo "[revisions] DEV dispatch on develop -- allocating per-app revisions from GHCR (#2055)."
+            echo "[revisions] revisioned DEV dispatch on '${REF_NAME}' -- allocating per-app revisions from GHCR (#2055)."
             REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
               FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
               ALLOC="$(node scripts/allocate-artifact-revision.js --image "ghcr.io/sieitzz/${APP}" --floor "${FLOOR}" --revision "${GITHUB_SHA}")"
@@ -431,6 +445,7 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       vpn_required: ${{ inputs.vpn_required }}
+      image_tag_override: ${{ inputs.image_tag_override }}
       runner_labels_json: ${{ inputs.runner_labels_json }}
     secrets: inherit
     permissions:
