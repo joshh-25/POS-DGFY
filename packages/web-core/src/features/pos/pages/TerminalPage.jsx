@@ -1,6 +1,11 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
+import {
+  appendDineInScheduleAlertQueue,
+  getDineInScheduleAlertCandidates,
+  isDineInScheduleAlertsEnabled
+} from '../utils/dineInScheduleAlerts.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -768,6 +773,10 @@ export default function TerminalPage() {
   const [incomingOrderReceiptOpen, setIncomingOrderReceiptOpen] = useState(false);
   const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
   const [incomingOrderPrintLoading, setIncomingOrderPrintLoading] = useState(false);
+  const [scheduledDineInAlertQueue, setScheduledDineInAlertQueue] = useState([]);
+  const [scheduledDineInNow, setScheduledDineInNow] = useState(() => Date.now());
+  const scheduledDineInAlertScopeRef = useRef('');
+  const scheduledDineInAlertKeysRef = useRef(new Set());
   const [catalogSearchPrefill, setCatalogSearchPrefill] = useState(() => {
     if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
@@ -999,6 +1008,60 @@ export default function TerminalPage() {
 
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
+
+  useEffect(() => {
+    if (workflowMode !== 'fnb' || !onlineOrderQueueEnabled || locked) return undefined;
+    setScheduledDineInNow(Date.now());
+    const timer = window.setInterval(() => setScheduledDineInNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [locked, onlineOrderQueueEnabled, workflowMode]);
+
+  useEffect(() => {
+    const shiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
+    const locationId = Number(shiftState?.shift?.location_id || 0);
+    const scopeKey = `${shiftId}:${locationId}`;
+    if (scheduledDineInAlertScopeRef.current !== scopeKey) {
+      scheduledDineInAlertScopeRef.current = scopeKey;
+      scheduledDineInAlertKeysRef.current = new Set();
+      setScheduledDineInAlertQueue([]);
+    }
+
+    const hasActiveShift = hasUsableIncomingOrderShift({
+      pos_terminal_shift_id: shiftId,
+      location_id: locationId,
+      status: shiftState?.shift?.status,
+      closed_at: shiftState?.shift?.closed_at,
+      closedAt: shiftState?.shift?.closedAt
+    });
+    const alertsEnabled = isDineInScheduleAlertsEnabled({
+      workflowMode,
+      onlineOrderQueueEnabled,
+      incomingOrdersAccessState: incomingOrdersState?.accessState,
+      hasActiveShift,
+      canTransactPos,
+      locked
+    });
+
+    if (!alertsEnabled) {
+      setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
+      return;
+    }
+
+    const newAlerts = getDineInScheduleAlertCandidates(incomingOrdersState?.orders, {
+      now: scheduledDineInNow,
+      scopeKey,
+      alertedKeys: scheduledDineInAlertKeysRef.current
+    });
+
+    if (newAlerts.length === 0) return;
+    newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
+    setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+  }, [canTransactPos, incomingOrdersState?.accessState, incomingOrdersState?.orders, locked, onlineOrderQueueEnabled, scheduledDineInNow, shiftState?.shift?.closedAt, shiftState?.shift?.closed_at, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.status, workflowMode]);
+
+  const handleScheduledDineInAlertOpenChange = useCallback((open) => {
+    if (open) return;
+    setScheduledDineInAlertQueue((currentQueue) => currentQueue.slice(1));
+  }, []);
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
@@ -6507,7 +6570,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlertQueue.length > 0 || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -6581,6 +6644,9 @@ function PosRestorationLoadingScreen() {
               incomingOrderPrintLoading,
               incomingOrderReceiptOpen,
               incomingReceiptOpeningId,
+              scheduledDineInAlert: scheduledDineInAlertQueue[0] || null,
+              scheduledDineInAlertNow: scheduledDineInNow,
+              handleScheduledDineInAlertOpenChange,
               isOnline,
               legacyLinkState,
               locationNameLookup,

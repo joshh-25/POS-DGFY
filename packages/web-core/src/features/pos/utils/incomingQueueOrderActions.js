@@ -83,6 +83,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     && orderBalanceDue > 0
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   // Phase 229 (#1291): once an order is a member of an active (not completed/cancelled) delivery

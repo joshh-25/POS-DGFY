@@ -28,13 +28,16 @@ import {
     formatSplitPaymentMethod,
     resolvePaymentMethodColorStyles
 } from '../utils/posCheckoutTerminalUtils.js';
+import { usePosEmployeeCreditWorkflow } from '../hooks/usePosEmployeeCreditWorkflow.js';
+import EmployeeCreditPaymentPanel from './EmployeeCreditPaymentPanel.jsx';
 
 const PAYMENT_METHODS = [
     { value: 'cash', label: 'Cash' },
     { value: 'gcash', label: 'GCash', entryLabel: 'GCash (Store QR)' },
     { value: 'maya', label: 'Maya', entryLabel: 'Maya (Store QR)' },
     { value: 'card', label: 'Card', entryLabel: 'Card (Store Terminal)' },
-    { value: 'bank_transfer', label: 'Bank Transfer', entryLabel: 'Bank Transfer (Store Account)' }
+    { value: 'bank_transfer', label: 'Bank Transfer', entryLabel: 'Bank Transfer (Store Account)' },
+    { value: 'employee_credit', label: 'Employee Credit' }
 ];
 const PAYMENT_METHOD_IDLE_CLASS_NAME = 'border-slate-300 bg-white text-[#0F172A] hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';
 const MAX_PAYMENT_ROWS = PAYMENT_METHODS.length;
@@ -71,8 +74,15 @@ const statusClassName = (status) => ({
     reversed: 'border-slate-200 bg-slate-100 text-slate-500'
 }[status] || 'border-slate-200 bg-slate-100 text-slate-600');
 
-const buildSnapshot = (cart, checkoutSnapshot = null) => ({
+const buildSnapshot = (cart, checkoutSnapshot = null, employeeCreditOption = null) => ({
     ...(checkoutSnapshot && typeof checkoutSnapshot === 'object' ? checkoutSnapshot : {}),
+    ...(employeeCreditOption?.account_code
+        ? {
+            employee_credit: {
+                account_code: String(employeeCreditOption.account_code).trim().toUpperCase()
+            }
+        }
+        : {}),
     lines: (Array.isArray(cart) ? cart : []).map((line) => ({
         item_id: Number(line?.item_id),
         quantity: Number(line?.quantity),
@@ -121,6 +131,13 @@ export default function POSSplitPaymentDialog({
     const sessionIdempotencyKeyRef = useRef(null);
     const sessionCreationPromiseRef = useRef(null);
     const recoveredCompletionAttemptRef = useRef(false);
+    const {
+        employeeCreditAccount,
+        employeeCreditLookupLoading,
+        handleSelectEmployeeCredit,
+        resetEmployeeCredit,
+        selectedEmployeeCreditOption
+    } = usePosEmployeeCreditWorkflow();
 
     const remainingAmount = round4(session?.remaining_amount ?? totalAmount);
     const paidAmount = round4(session?.paid_amount);
@@ -132,6 +149,13 @@ export default function POSSplitPaymentDialog({
     const activePaymentRows = normalizedPaymentRows.filter((row) => row.enteredAmount > 0);
     const activeNonCashRows = activePaymentRows.filter((row) => !row.isCash);
     const activeCashRows = activePaymentRows.filter((row) => row.isCash);
+    const employeeCreditRow = normalizedPaymentRows.find((row) => row.method === 'employee_credit') || null;
+    const employeeCreditReady = !employeeCreditRow || Boolean(
+        selectedEmployeeCreditOption?.account_code
+        && selectedEmployeeCreditOption?.is_eligible
+        && employeeCreditAccount
+        && !employeeCreditLookupLoading
+    );
     const nonCashEnteredAmount = round4(activeNonCashRows.reduce((sum, row) => sum + row.enteredAmount, 0));
     const cashReceivedAmount = round4(activeCashRows.reduce((sum, row) => sum + row.enteredAmount, 0));
     const selectedMethodValues = paymentRows.map((row) => row.method);
@@ -151,6 +175,7 @@ export default function POSSplitPaymentDialog({
         && !duplicatePaymentMethod
         && !nonCashAmountTooHigh
         && !cashHasNoBalance
+        && employeeCreditReady
         && amountStillDue === 0;
     const isReadyToComplete = session?.status === 'ready_to_complete';
     const allocations = Array.isArray(session?.allocations) ? session.allocations : [];
@@ -251,7 +276,7 @@ export default function POSSplitPaymentDialog({
             terminal_id: terminalId,
             location_id: locationId || undefined,
             parked_sale_id: parkedSaleId || undefined,
-            snapshot: buildSnapshot(cart, checkoutSnapshot)
+            snapshot: buildSnapshot(cart, checkoutSnapshot, employeeCreditRow ? selectedEmployeeCreditOption : null)
         }).then((created) => {
             applySession(created);
             persistPosSplitPaymentSessionPointer(storageKey, {
@@ -266,7 +291,7 @@ export default function POSSplitPaymentDialog({
         } finally {
             if (sessionCreationPromiseRef.current === request) sessionCreationPromiseRef.current = null;
         }
-    }, [applySession, cart, checkoutSnapshot, locationId, parkedSaleId, session, shiftId, storageKey, terminalId]);
+    }, [applySession, cart, checkoutSnapshot, employeeCreditRow, locationId, parkedSaleId, selectedEmployeeCreditOption, session, shiftId, storageKey, terminalId]);
 
     useEffect(() => {
         if (!open) return undefined;
@@ -282,9 +307,10 @@ export default function POSSplitPaymentDialog({
         sessionIdempotencyKeyRef.current = null;
         sessionCreationPromiseRef.current = null;
         setPaymentRows(createDefaultPaymentRows());
+        resetEmployeeCredit();
         nextPaymentRowIdRef.current = 3;
         paymentRowIdempotencyKeysRef.current.clear();
-    }, [open]);
+    }, [open, resetEmployeeCredit]);
 
     const updatePaymentRow = (rowId, updates) => {
         setPaymentRows((currentRows) => currentRows.map((row) => {
@@ -365,6 +391,10 @@ export default function POSSplitPaymentDialog({
             setError('Enter an amount for at least one payment method.');
             return;
         }
+        if (!employeeCreditReady) {
+            setError('Select and verify an eligible Employee Credit account before recording payment.');
+            return;
+        }
         if (duplicatePaymentMethod) {
             setError('Use each payment method only once.');
             return;
@@ -404,6 +434,7 @@ export default function POSSplitPaymentDialog({
                     paymentRowIdempotencyKeysRef.current.set(keySignature, idempotencyKey);
                 }
                 const isCash = row.method === 'cash';
+                const isEmployeeCredit = row.method === 'employee_credit';
                 inFlightRow = row;
                 inFlightKeySignature = keySignature;
                 const result = await addPosPaymentAllocation(sessionId, {
@@ -413,8 +444,13 @@ export default function POSSplitPaymentDialog({
                     location_id: locationId || undefined,
                     payment_method: row.method,
                     amount: row.enteredAmount,
-                    payment_handoff_mode: isCash ? 'internal' : 'external',
-                    ...(!isCash ? {
+                    payment_handoff_mode: isCash || isEmployeeCredit ? 'internal' : 'external',
+                    ...(isEmployeeCredit ? {
+                        employee_credit: {
+                            account_code: String(selectedEmployeeCreditOption?.account_code || '').trim().toUpperCase()
+                        }
+                    } : {}),
+                    ...(!isCash && !isEmployeeCredit ? {
                         payment_provider: 'merchant_owned',
                         manual_payment_received: true
                     } : {})
@@ -624,7 +660,7 @@ export default function POSSplitPaymentDialog({
                                                         <span className="block">Method of Payment</span>
                                                         <div className="mt-1 w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
                                                             <div
-                                                                className="grid w-max min-w-full grid-cols-5 gap-1.5 overflow-visible sm:w-full"
+                                                                className="grid w-max min-w-full grid-cols-6 gap-1.5 overflow-visible sm:w-full"
                                                                 role="group"
                                                                 aria-label={`Method of payment ${index + 1}`}
                                                                 data-testid={`pos-payment-method-${index + 1}`}
@@ -655,6 +691,17 @@ export default function POSSplitPaymentDialog({
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    {selectedMethod?.value === 'employee_credit' ? (
+                                                        <EmployeeCreditPaymentPanel
+                                                            selectedEmployee={selectedEmployeeCreditOption}
+                                                            onSelectEmployee={handleSelectEmployeeCredit}
+                                                            lookupLoading={employeeCreditLookupLoading}
+                                                            account={employeeCreditAccount}
+                                                            totalDue={row.enteredAmount || remainingAmount}
+                                                            locationId={locationId}
+                                                            prefillEnabled={false}
+                                                        />
+                                                    ) : null}
                                                      <div className={`grid w-full min-w-0 ${paymentRows.length > 2 ? 'grid-cols-[minmax(0,1fr)_auto]' : 'grid-cols-1'} items-end gap-2`}>
                                                         <label className="block w-full min-w-0 text-xs font-bold text-slate-700">
                                                             Amount

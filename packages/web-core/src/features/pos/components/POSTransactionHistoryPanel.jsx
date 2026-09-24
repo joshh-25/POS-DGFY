@@ -356,7 +356,8 @@ const FILTER_OPTIONS = {
         { value: 'maya', label: 'Maya' },
         { value: 'card', label: 'Card' },
         { value: 'bank_transfer', label: 'Bank Transfer' },
-        { value: 'employee_credit', label: 'Employee Credit' }
+        { value: 'employee_credit', label: 'Employee Credit' },
+        { value: 'other', label: 'Other' }
     ],
     orderSource: [
         { value: 'all', label: 'All' },

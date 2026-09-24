@@ -4,7 +4,6 @@ import { CSS } from '@dnd-kit/utilities';
 import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
@@ -13,6 +12,7 @@ import {
   isCompletionPaymentPending,
   getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
+  getFulfillmentStatusLabel,
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
   getNextStatusActions,
@@ -30,6 +30,12 @@ import {
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel
 } from '../utils/incomingQueueOrderFormatting.js';
+import {
+  getDineInScheduleCountdownLabel,
+  getDineInScheduleState,
+  getDineInScheduleStateLabel,
+  isScheduledDineInOrder
+} from '../utils/dineInSchedule.js';
 
 // Phase 229 (#1289), §2.7. Pure extraction of the Active Queue's order-card grid out of
 // TerminalOperationsPanels.jsx's IncomingQueueWorkspace, so #1288 (view-mode toggle) and #1290
@@ -68,6 +74,7 @@ export default function IncomingQueueOrderList({
   onRequestReject = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
+  scheduleNow = null,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel = () => {},
   handleUpdateOnlineOrderDeliveryAddress = () => {},
@@ -136,6 +143,7 @@ export default function IncomingQueueOrderList({
           onRequestReject={onRequestReject}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
+          scheduleNow={scheduleNow}
           deliveryPersonnelState={deliveryPersonnelState}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
@@ -167,6 +175,7 @@ function OrderCard({
   onRequestReject,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
+  scheduleNow,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel,
   handleUpdateOnlineOrderDeliveryAddress,
@@ -211,6 +220,10 @@ function OrderCard({
     : '';
 
   const bulkAssignEligibility = getRunAssignEligibility(order, {});
+  const scheduledDineIn = isScheduledDineInOrder(order);
+  const [fallbackScheduleNow] = React.useState(() => Date.now());
+  const effectiveScheduleNow = Number.isFinite(Number(scheduleNow)) ? Number(scheduleNow) : fallbackScheduleNow;
+  const dineInScheduleState = getDineInScheduleState(order, effectiveScheduleNow);
 
   // §2.8/§2.10: the same predicate the checkbox already disables on, plus eligibility -- a card
   // that cannot legally join a run is never a drag source, and drag/checkbox can never disagree.
@@ -440,8 +453,17 @@ function OrderCard({
             <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
           </div>
           <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-            {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+            {getFulfillmentStatusLabel(order.fulfillment_status, order) || 'Unknown'}
           </span>
+          {scheduledDineIn ? (
+            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${dineInScheduleState === 'late'
+              ? 'border-rose-200 bg-rose-50 text-rose-700'
+              : dineInScheduleState === 'ready'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+              {getDineInScheduleStateLabel(dineInScheduleState)}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
@@ -572,10 +594,21 @@ function OrderCard({
                 <Calendar className="h-4 w-4" />
               </div>
               <div className="flex items-center flex-1 min-w-0">
-                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Order Time</span>
-                <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(order.created_at)}</span>
+                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">{scheduledDineIn ? 'Serve By' : 'Order Time'}</span>
+                <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(scheduledDineIn ? order.scheduled_for : order.created_at)}</span>
               </div>
             </div>
+            {scheduledDineIn ? (
+              <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="flex items-center flex-1 min-w-0">
+                  <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
+                  <span className="text-xs font-semibold text-slate-900 break-words flex-1">{getDineInScheduleCountdownLabel(order, effectiveScheduleNow)}</span>
+                </div>
+              </div>
+            ) : null}
 
             {order.order_method === 'delivery' && (
               <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
