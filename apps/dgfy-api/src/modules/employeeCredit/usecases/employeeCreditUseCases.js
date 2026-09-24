@@ -181,7 +181,9 @@ export const buildEmployeeCreditService = ({ repository }) => ({
   },
 
   async reverseForVoid({ posTransaction, actorUserId, reason, transaction }) {
-    if (String(posTransaction?.payment_type || '').toLowerCase() !== 'employee_credit') return null;
+    const isEmployeeCreditPayment = String(posTransaction?.payment_type || '').toLowerCase() === 'employee_credit';
+    const hasSplitEmployeeCredit = round4(posTransaction?.employee_credit_amount) > 0;
+    if (!isEmployeeCreditPayment && !hasSplitEmployeeCredit) return null;
     const financialEntry = await repository.findFinancialEntryForTransaction(posTransaction.pos_transaction_id, { transaction, lock: true });
     if (!financialEntry) {
       throw new DomainError(DomainErrorCode.CONFLICT, 'Employee Credit financial record is missing', { statusCode: 409 });

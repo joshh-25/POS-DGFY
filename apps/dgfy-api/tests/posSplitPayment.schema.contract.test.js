@@ -20,6 +20,10 @@ const phase129MigrationSource = fs.readFileSync(
     path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260819000002-add-pos-split-allocation-reversal-state.cjs'),
     'utf8'
 );
+const employeeCreditSplitTenderMigrationSource = fs.readFileSync(
+    path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260924000001-add-employee-credit-split-tender.cjs'),
+    'utf8'
+);
 const tenantSchemaSource = fs.readFileSync(
     path.resolve(process.cwd(), 'scripts/sync-tenant-schemas.js'),
     'utf8'
@@ -56,7 +60,8 @@ describe('split payment schema contract', () => {
             'maya',
             'card',
             'bank_transfer',
-            'cheque'
+            'cheque',
+            'employee_credit'
         ]);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.cash_tendered.allowNull).toBe(true);
         expect(defaultDb.PosPaymentAllocation.rawAttributes.change_amount.allowNull).toBe(true);
@@ -101,6 +106,13 @@ describe('split payment schema contract', () => {
         expect(phase129MigrationSource).not.toContain('Payment.create');
     });
 
+    it('widens the allocation tender enum for Employee Credit across active tenant databases', () => {
+        expect(employeeCreditSplitTenderMigrationSource).toContain("'cash','gcash','maya','card','bank_transfer','cheque','employee_credit'");
+        expect(employeeCreditSplitTenderMigrationSource).toContain('information_schema.tables');
+        expect(employeeCreditSplitTenderMigrationSource).toContain('tenants WHERE status = \'active\'');
+        expect(employeeCreditSplitTenderMigrationSource).toContain('contains employee_credit rows');
+    });
+
     it('uses an additive migration with dependency-ordered tables and no payment writes', () => {
         expect(migrationSource).toContain("if (!(await tableExists(queryInterface, 'pos_payment_sessions')))");
         expect(migrationSource).toContain("if (!(await tableExists(queryInterface, 'pos_payment_allocations')))");
@@ -131,6 +143,7 @@ describe('split payment schema contract', () => {
         expect(tenantSchemaSource).toContain('ADD COLUMN `pos_payment_allocation_id`');
         expect(tenantSchemaSource).toContain('idx_pos_payment_allocations_session_reversal_status');
         expect(tenantSchemaSource).toContain('idx_pos_transaction_adjustments_allocation_created');
+        expect(tenantSchemaSource).toContain("payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque','employee_credit')");
         expect(TENANT_LOCATION_REFERENCE_SOURCES).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 modelName: 'PosPaymentSession',

@@ -925,7 +925,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL,\n"
             + "  `payment_handoff_mode` enum('external','internal') DEFAULT NULL,\n"
             + "  `applied_amount` decimal(14,4) NOT NULL,\n"
             + "  `cash_tendered` decimal(14,4) DEFAULT NULL,\n"
@@ -2610,8 +2610,8 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     }),
     pos_payment_allocations: Object.freeze({
         payment_method: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']),
-            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit']),
+            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({
@@ -2637,7 +2637,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-14.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-24.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

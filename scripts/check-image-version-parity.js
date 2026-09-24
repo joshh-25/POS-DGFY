@@ -368,7 +368,10 @@ function inspectImageDigest({ image, tag, inspectFn }) {
   } catch (error) {
     return { ref, state: 'error', reason: `could not parse "docker buildx imagetools inspect" JSON output for ${ref}: ${error.message}` };
   }
-  const digest = typeof parsed.digest === 'string' && parsed.digest.trim() ? parsed.digest.trim() : null;
+  const digest = (typeof parsed.digest === 'string' && parsed.digest.trim())
+    || (parsed.manifest && typeof parsed.manifest.digest === 'string' && parsed.manifest.digest.trim())
+    || (parsed.image && typeof parsed.image.digest === 'string' && parsed.image.digest.trim())
+    || null;
   if (!digest) {
     return { ref, state: 'error', reason: `inspect output for ${ref} carries no image digest -- refusing to compare digests against a digest-less manifest` };
   }

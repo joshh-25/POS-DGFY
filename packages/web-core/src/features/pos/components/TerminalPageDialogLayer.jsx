@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
+import ScheduledDineInAlertDialog from './ScheduledDineInAlertDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
 
@@ -95,6 +96,9 @@ export default function TerminalPageDialogLayer({ model }) {
     incomingOrderPrintLoading,
     incomingOrderReceiptOpen,
     incomingReceiptOpeningId,
+    scheduledDineInAlert,
+    scheduledDineInAlertNow,
+    handleScheduledDineInAlertOpenChange,
     isOnline,
     legacyLinkState,
     locationNameLookup,
@@ -1004,6 +1008,11 @@ export default function TerminalPageDialogLayer({ model }) {
             />
             </Suspense>
         )}
+        <ScheduledDineInAlertDialog
+          alert={scheduledDineInAlert}
+          now={scheduledDineInAlertNow}
+          onOpenChange={handleScheduledDineInAlertOpenChange}
+        />
         {closedShiftReportOpen && closedShiftReport && (
           <ShiftCloseSummaryPrintView
             report={closedShiftReport}

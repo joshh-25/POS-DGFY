@@ -3260,7 +3260,7 @@ export const buildCheckoutPosUseCase = ({
             ...(parkedSaleId ? { parked_sale_id: parkedSaleId } : {}),
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
-            ...(String(payload.payment_type || 'cash').trim().toLowerCase() === 'employee_credit'
+            ...(String(payload.employee_credit?.account_code || '').trim()
                 ? {
                     employee_credit: {
                         account_code: String(payload.employee_credit?.account_code || '').trim().toUpperCase()
@@ -4318,7 +4318,10 @@ export const buildCheckoutPosUseCase = ({
                     : [{ payment_type: normalizedPaymentType, count: 1, amount: totalAmount }]
             );
             let preparedEmployeeCreditDebit = null;
-            if (normalizedPaymentType === 'employee_credit') {
+            const employeeCreditPaymentAmount = round4(paymentBreakdown
+                .filter((entry) => entry.payment_type === 'employee_credit')
+                .reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+            if (normalizedPaymentType === 'employee_credit' || employeeCreditPaymentAmount > 0) {
                 if (!employeeCreditService) {
                     throw new DomainError(
                         DomainErrorCode.INTERNAL_ERROR,
@@ -4328,7 +4331,7 @@ export const buildCheckoutPosUseCase = ({
                 }
                 preparedEmployeeCreditDebit = await employeeCreditService.prepareDebit({
                     accountCode: payload.employee_credit?.account_code,
-                    amount: totalAmount,
+                    amount: normalizedPaymentType === 'employee_credit' ? totalAmount : employeeCreditPaymentAmount,
                     transaction
                 });
             }

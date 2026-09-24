@@ -260,7 +260,10 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-dialog"');
         expect(splitDialogSource).toContain('max-w-2xl');
         expect(splitDialogSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x');
-        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-5 gap-1.5 overflow-visible sm:w-full');
+        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-6 gap-1.5 overflow-visible sm:w-full');
+        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit' }");
+        expect(splitDialogSource).toContain('EmployeeCreditPaymentPanel');
+        expect(splitDialogSource).toContain('employee_credit');
         expect(splitDialogSource).toContain('h-8 min-w-[7.25rem] whitespace-nowrap');
         expect(splitDialogSource).toContain('px-2 text-center text-[11px]');
         expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');

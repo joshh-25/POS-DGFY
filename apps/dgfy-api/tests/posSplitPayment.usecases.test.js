@@ -408,6 +408,74 @@ describe('POS split-payment engine', () => {
         expect(result.data.session.remaining_amount).toBe(0);
     });
 
+    it('records Employee Credit as a successful internal allocation for the selected account', async () => {
+        const harness = buildHarness({
+            session: baseSession({
+                snapshot: JSON.stringify({
+                    lines: [{ item_id: 7, quantity: 2, sale_price: 625 }],
+                    employee_credit: { account_code: 'EMP-42' }
+                })
+            })
+        });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: {
+                idempotency_key: 'employee-credit-001',
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                payment_method: 'employee_credit',
+                payment_handoff_mode: 'internal',
+                employee_credit: { account_code: 'emp-42' },
+                amount: 500
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.allocation).toEqual(expect.objectContaining({
+            status: 'successful',
+            payment_method: 'employee_credit',
+            payment_handoff_mode: 'internal',
+            payment_provider: 'merchant_owned',
+            applied_amount: 500
+        }));
+        expect(result.data.session.paid_amount).toBe(500);
+        expect(result.data.session.remaining_amount).toBe(750);
+    });
+
+    it('rejects an Employee Credit allocation for a different account than the saved session', async () => {
+        const harness = buildHarness({
+            session: baseSession({
+                snapshot: JSON.stringify({
+                    lines: [{ item_id: 7, quantity: 2, sale_price: 625 }],
+                    employee_credit: { account_code: 'EMP-42' }
+                })
+            })
+        });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: {
+                idempotency_key: 'employee-credit-002',
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                payment_method: 'employee_credit',
+                payment_handoff_mode: 'internal',
+                employee_credit: { account_code: 'EMP-99' },
+                amount: 500
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('EMPLOYEE_CREDIT_ACCOUNT_MISMATCH');
+        expect(harness.posRepository.createPosPaymentAllocation).not.toHaveBeenCalled();
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
+    });
+
     it('revalidates inventory before the first allocation and accepts no payment on FIFO drift', async () => {
         const harness = buildHarness({ session: baseSession() });
         const reconciliationError = Object.assign(

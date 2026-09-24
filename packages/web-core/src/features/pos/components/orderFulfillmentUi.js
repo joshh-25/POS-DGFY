@@ -19,6 +19,8 @@ export const PAYMENT_TYPE_LABELS = Object.freeze({
   maya: 'Maya',
   card: 'Card',
   bank_transfer: 'Bank Transfer',
+  employee_credit: 'Employee Credit',
+  other: 'Other',
   qrph: 'QR Ph'
 });
 
@@ -74,6 +76,7 @@ export const isCompletionPaymentPending = (order = {}) => {
   const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
   return (
     (orderMethod === 'pickup' && fulfillmentStatus === 'ready_for_pickup')
+    || (orderMethod === 'dine_in' && fulfillmentStatus === 'ready_for_pickup')
     || (orderMethod === 'delivery' && fulfillmentStatus === 'out_for_delivery' && String(order?.deliveryJob?.status || '').trim().toLowerCase() === 'delivered')
   ) && paymentStatus !== 'paid';
 };
@@ -145,6 +148,14 @@ export const getFulfillmentActionLabel = (status, order = {}) => {
     if (orderMethod === 'pickup') return 'Pickup';
   }
   return FULFILLMENT_ACTION_LABELS[normalizedStatus] || FULFILLMENT_STATUS_LABELS[normalizedStatus] || status;
+};
+
+export const getFulfillmentStatusLabel = (status, order = {}) => {
+  const normalizedStatus = String(status || '').trim();
+  const orderMethod = String(order?.order_method || '').trim();
+  if (normalizedStatus === 'ready_for_pickup' && orderMethod === 'dine_in') return 'Ready to Serve';
+  if (normalizedStatus === 'completed' && orderMethod === 'dine_in') return 'Served';
+  return FULFILLMENT_STATUS_LABELS[normalizedStatus] || status;
 };
 
 // #1492: which voucher(s), if any, an order applied. Handles two shapes so every consumer can call
