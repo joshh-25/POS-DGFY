@@ -78,6 +78,7 @@ import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
+    buildBackOfficeOverviewPath,
     buildBackOfficeLocationsPath,
     buildBackOfficeModulePath,
     MERCHANT_BACKOFFICE_MODULE_META
@@ -1155,7 +1156,7 @@ const InventoryWorkflowLink = ({ rootPath, moduleId, title, description, icon: I
     </GuardedLink>
 );
 
-function InventoryWorkspace({ data, onPageChange, refreshing = false, rootPath = '/business-admin', settingsDirty = false, onLeaveSettings }) {
+function InventoryWorkspace({ data, onPageChange, refreshing = false, rootPath = '/', settingsDirty = false, onLeaveSettings }) {
     const valuation = data?.valuation?.valuation || data?.valuation || {};
     const locations = Array.isArray(valuation.locations) ? valuation.locations : [];
     const lowStock = Array.isArray(data?.lowStock?.rows) ? data.lowStock.rows.slice(0, BUSINESS_ADMIN_INVENTORY_PAGE_SIZE) : [];
@@ -2466,10 +2467,10 @@ export default function BusinessAdminPage() {
         enabledCapabilities,
         disabledCapabilities
     } = useWorkflowMode();
-    // `/` renders the overview directly (issue #2052 follow-up) and resolves section
-    // links under the canonical `/backoffice` root; only the legacy `/business-admin/*`
-    // alias keeps its own root so its relative links keep working.
-    const rootPath = location.pathname.startsWith('/business-admin') ? '/business-admin' : '/backoffice';
+    // OPIS sections live at the origin root. Legacy prefixed URLs are redirected in main.jsx.
+    const rootPath = location.pathname.startsWith('/business-admin')
+        ? '/business-admin'
+        : location.pathname.startsWith('/backoffice') ? '/backoffice' : '/';
     const pathInfo = useMemo(() => parseBusinessAdminPath(location.pathname, rootPath), [location.pathname, rootPath]);
     const pathSegment = pathInfo.activeSection;
     const knownSections = useMemo(() => new Set(Object.keys(BACKOFFICE_SECTION_META)), []);
@@ -3073,10 +3074,10 @@ export default function BusinessAdminPage() {
             && loadedSection === activeSection;
         if (workflowPageName && workflowModeLoading) return <WorkspaceLoading label={`Loading ${meta.title}…`} />;
         if (workflowPageName && !workflowModeResolved) {
-            return <Navigate to={`${rootPath}/overview`} replace />;
+            return <Navigate to={buildBackOfficeOverviewPath(rootPath)} replace />;
         }
         if (workflowPageName && !workflowSectionVisible) {
-            return <Navigate to={`${rootPath}/overview`} replace />;
+            return <Navigate to={buildBackOfficeOverviewPath(rootPath)} replace />;
         }
         if (notificationWorkspaceHasData) {
             return (
@@ -3214,7 +3215,7 @@ export default function BusinessAdminPage() {
                         );
                     });
                     if (!items.length) return null;
-                    return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : (item.key === 'overview' && rootPath === '/backoffice' ? '/' : buildBackOfficeModulePath(rootPath, item.key)))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
+                    return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : (item.key === 'overview' ? buildBackOfficeOverviewPath(rootPath) : buildBackOfficeModulePath(rootPath, item.key)))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
                 })}
                 <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
             </aside>

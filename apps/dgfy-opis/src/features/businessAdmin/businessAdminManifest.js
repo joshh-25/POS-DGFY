@@ -54,7 +54,7 @@ const module = (group, id, label, description, icon, component, options = {}) =>
   description,
   icon,
   component,
-  route: `/business-admin/${id}`,
+  route: options.route || `/${id}`,
   permission: options.permission || BUSINESS_ADMIN_ACCESS_PERMISSION,
   visibility: { type: 'workflow', ...(options.visibility || {}) },
   metadata: { migrated: Boolean(component), owner: 'pos-backoffice', ...(options.metadata || {}) },
@@ -62,7 +62,7 @@ const module = (group, id, label, description, icon, component, options = {}) =>
 });
 
 export const BACKOFFICE_MANIFEST = Object.freeze({
-  overview: module('Overview', 'overview', 'Overview', '', LayoutDashboard, undefined, { navigation: { standalone: true } }),
+  overview: module('Overview', 'overview', 'Overview', '', LayoutDashboard, undefined, { route: '/', navigation: { standalone: true } }),
   sales: module('Sales', 'sales', 'Sales timeline', '', ShoppingBag, SalesPage),
   orders: module('Sales', 'orders', 'Order center', 'Investigate completed, voided, and storefront orders with receipt-safe detail history.', ShoppingBag),
   payments: module('Sales', 'payments', 'Payments', 'Review this business’s online payments and provider refund status.', Wallet),
@@ -119,11 +119,16 @@ export const BACKOFFICE_NAV_GROUPS = Object.freeze(groups.map((label) => ({
 export const getBackOfficeModuleDefinition = (moduleId) => BACKOFFICE_MANIFEST[String(moduleId || '').trim()] || null;
 
 export const buildBackOfficeModulePath = (rootPath, moduleId) => {
-  const root = String(rootPath || '/business-admin').replace(/\/+$/, '') || '/business-admin';
   const definition = getBackOfficeModuleDefinition(moduleId);
-  if (!definition) return root;
-  const suffix = definition.route.replace(/^\/business-admin\/?/, '');
-  return `${root}/${suffix}`;
+  const rawRoot = rootPath === '/' ? '' : String(rootPath || '/business-admin').replace(/\/+$/, '');
+  const root = rawRoot || (rootPath === '/' ? '' : '/business-admin');
+  if (!definition || moduleId === 'overview') return root || '/';
+  return `${root}${definition.route}`;
+};
+
+export const buildBackOfficeOverviewPath = (rootPath) => {
+  const root = rootPath === '/' ? '' : String(rootPath || '/business-admin').replace(/\/+$/, '');
+  return root ? `${root}/overview` : '/';
 };
 
 export const buildBackOfficeLocationsPath = (rootPath, view = 'branches') => {

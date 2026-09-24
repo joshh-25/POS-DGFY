@@ -10,6 +10,7 @@ import {
 } from '../features/businessAdmin/businessAdminManifest.js';
 import { parseBusinessAdminPath } from '../features/businessAdmin/businessAdminSettingsModel.js';
 import { createPageUrl, getPageNameFromPath } from '../utils.js';
+import { canonicalizeOpisPath } from '../opisRoutes.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const mainSource = readFileSync(resolve(here, '../main.jsx'), 'utf8');
@@ -19,10 +20,19 @@ const businessAdminPageSource = readFileSync(
 );
 
 describe('OPIS routes (issue #2052)', () => {
-  it('keeps /backoffice/* canonical with /business-admin/* as an alias', () => {
-    expect(mainSource).toContain('path="/backoffice/*"');
-    expect(mainSource).toContain('path="/business-admin/*"');
-    expect(mainSource).toContain('BusinessAdminAliasRoute');
+  it('serves sections at the origin root and redirects both old prefixes', () => {
+    expect(mainSource).toContain('path="/:section/*" element={<OpisSectionRoute />}');
+    expect(mainSource).toContain('OPIS_BACKOFFICE_SECTIONS.has(section)');
+    expect(mainSource).toContain('path="/backoffice/*" element={<OpisCompatRedirect />}');
+    expect(mainSource).toContain('path="/business-admin/*" element={<OpisCompatRedirect />}');
+    expect(mainSource).toContain('search: location.search ||');
+    expect(mainSource).toContain('hash: location.hash ||');
+    expect(canonicalizeOpisPath('/backoffice/orders')).toBe('/orders');
+    expect(canonicalizeOpisPath('/business-admin/sales')).toBe('/sales');
+    expect(canonicalizeOpisPath('/backoffice/settings/team')).toBe('/settings/team');
+    expect(canonicalizeOpisPath('/backoffice/overview')).toBe('/');
+    expect(canonicalizeOpisPath('/business-admin/overview')).toBe('/');
+    expect(canonicalizeOpisPath('/business-admin')).toBe('/');
   });
 
   it('renders the Back Office overview directly at / with no redirect', () => {
@@ -30,15 +40,14 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).not.toContain('path="/" element={<Navigate to="/backoffice/overview"');
   });
 
-  it('redirects the legacy /backoffice/overview URL to the canonical /', () => {
-    expect(mainSource).toContain('path="/backoffice/overview"');
-    expect(mainSource).toContain('BackofficeOverviewRedirect');
-    expect(mainSource).toContain('to={`/${search}`}');
-  });
-
-  it('resolves a bare / to the overview section under the canonical root', () => {
-    expect(parseBusinessAdminPath('/', '/backoffice').activeSection).toBe('overview');
-    expect(parseBusinessAdminPath('/backoffice/catalog', '/backoffice').activeSection).toBe('catalog');
+  it('resolves both dashboard and section paths at the origin root', () => {
+    expect(parseBusinessAdminPath('/', '/').activeSection).toBe('overview');
+    expect(parseBusinessAdminPath('/catalog', '/').activeSection).toBe('catalog');
+    expect(parseBusinessAdminPath('/orders', '/').activeSection).toBe('orders');
+    expect(parseBusinessAdminPath('/settings/team', '/')).toMatchObject({
+      activeSection: 'settings',
+      settingsSection: 'team'
+    });
   });
 
   it('preserves /receive/:token handling with authorization intact', () => {
@@ -69,11 +78,15 @@ describe('OPIS Back Office manifest', () => {
     expect(ids).toContain('catalog');
     expect(ids).toContain('settings');
     for (const definition of Object.values(BACKOFFICE_MANIFEST)) {
-      expect(definition.route).toMatch(/^\/business-admin\//);
+      expect(definition.route).toMatch(/^\//);
+      expect(definition.route).not.toMatch(/^\/(?:business-admin|backoffice)(?:\/|$)/);
     }
   });
 
-  it('maps modules under an OPIS /backoffice root', () => {
+  it('maps modules to root-level OPIS URLs and preserves explicit alternate roots', () => {
+    expect(buildBackOfficeModulePath('/', 'sales')).toBe('/sales');
+    expect(buildBackOfficeModulePath('/', 'orders')).toBe('/orders');
+    expect(buildBackOfficeModulePath('/', 'overview')).toBe('/');
     expect(buildBackOfficeModulePath('/backoffice', 'catalog')).toBe('/backoffice/catalog');
     expect(getBackOfficeModuleDefinition('sales')?.key).toBe('sales');
     expect(getBackOfficeModuleDefinition('nope')).toBeNull();
@@ -105,9 +118,10 @@ describe('OPIS "Open POS terminal" links (issue #2052 follow-up)', () => {
 
 describe('OPIS page routes', () => {
   it('resolves known pages and falls back to the dashboard', () => {
-    expect(createPageUrl('Sales')).toBe('/backoffice/sales');
+    expect(createPageUrl('Sales')).toBe('/sales');
     expect(createPageUrl('Unknown')).toBe('/');
     expect(createPageUrl('Dashboard')).toBe('/');
+    expect(getPageNameFromPath('/catalog')).toBe('Items');
     expect(getPageNameFromPath('/backoffice/catalog')).toBe('Items');
     expect(getPageNameFromPath('/')).toBe('Dashboard');
     expect(getPageNameFromPath('/nope')).toBe('Dashboard');

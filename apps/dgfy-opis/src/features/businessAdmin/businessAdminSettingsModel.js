@@ -94,12 +94,15 @@ export const resolveBusinessAdminSettingsSectionKey = (requestedKey, rawCapabili
 
 export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') => {
     const normalizedPath = String(pathname || '').replace(/\/+$/, '') || '/';
-    const normalizedRoot = String(rootPath || '/business-admin').replace(/\/+$/, '') || '/business-admin';
-    const suffix = normalizedPath === normalizedRoot
-        ? ''
-        : normalizedPath.startsWith(`${normalizedRoot}/`)
-            ? normalizedPath.slice(normalizedRoot.length + 1)
-            : '';
+    const rawRoot = rootPath === '/' ? '' : String(rootPath || '/business-admin').replace(/\/+$/, '');
+    const normalizedRoot = rawRoot || (rootPath === '/' ? '' : '/business-admin');
+    const suffix = normalizedRoot === ''
+        ? normalizedPath.replace(/^\/+/, '')
+        : normalizedPath === normalizedRoot
+            ? ''
+            : normalizedPath.startsWith(`${normalizedRoot}/`)
+                ? normalizedPath.slice(normalizedRoot.length + 1)
+                : '';
     const segments = suffix.split('/').map((segment) => normalizeKey(segment)).filter(Boolean);
     const requestedSection = segments[0] || 'overview';
     const legacyLocationView = requestedSection === 'registers' ? 'registers' : requestedSection === 'branches' ? 'branches' : '';
@@ -118,9 +121,10 @@ export const parseBusinessAdminPath = (pathname, rootPath = '/business-admin') =
 };
 
 export const buildBusinessAdminSettingsPath = (rootPath, sectionKey = 'profile') => {
-    const root = String(rootPath || '/business-admin').replace(/\/+$/, '') || '/business-admin';
+    const rawRoot = rootPath === '/' ? '' : String(rootPath || '/business-admin').replace(/\/+$/, '');
+    const root = rawRoot || (rootPath === '/' ? '' : '/business-admin');
     const key = getBusinessAdminSettingsSectionDefinition(sectionKey)?.key || 'profile';
-    return `${root}/settings/${key}`;
+    return root ? `${root}/settings/${key}` : `/settings/${key}`;
 };
 
 export const buildPosSettingsOwnerPath = (viewMode = 'settings_profile') => {

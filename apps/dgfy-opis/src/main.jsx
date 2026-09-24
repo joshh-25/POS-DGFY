@@ -11,6 +11,7 @@ import VersionBadge from '../../../packages/web-core/src/components/common/Versi
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
+import { BACKOFFICE_MANIFEST } from './features/businessAdmin/businessAdminManifest.js';
 import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
 import {
@@ -22,6 +23,7 @@ import {
 } from '../../../packages/web-core/src/observability/analyticsClient.js';
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import '../../../packages/web-core/src/index.css';
+import { canonicalizeOpisPath } from './opisRoutes.js';
 
 // Keep OPIS-only body portals (dialogs, menus, and notifications) on the same typography
 // stack as the shell.
@@ -59,20 +61,24 @@ function OpisRouteNotFound() {
   );
 }
 
-function BusinessAdminAliasRoute() {
+function OpisCompatRedirect() {
   const location = useLocation();
-  const suffix = String(location.pathname || '').replace(/^\/business-admin/, '') || '/';
-  const search = location.search || '';
-  return <Navigate to={`/backoffice${suffix === '/' ? '/overview' : suffix}${search}`} replace />;
+  const targetPath = canonicalizeOpisPath(location.pathname);
+  return <Navigate to={{ pathname: targetPath, search: location.search || '', hash: location.hash || '' }} replace />;
 }
 
-// `/` renders the Back Office overview directly (issue #2052 follow-up); the legacy
-// `/backoffice/overview` URL redirects to `/` preserving the query string, mirroring
-// BusinessAdminAliasRoute's pattern above.
-function BackofficeOverviewRedirect() {
+const OPIS_BACKOFFICE_SECTIONS = new Set([
+  ...Object.keys(BACKOFFICE_MANIFEST),
+  'branches',
+  'registers',
+  'activity'
+]);
+
+function OpisSectionRoute() {
   const location = useLocation();
-  const search = location.search || '';
-  return <Navigate to={`/${search}`} replace />;
+  const section = String(location.pathname || '').split('/').filter(Boolean)[0] || '';
+  if (section === 'overview') return <Navigate to="/" replace />;
+  return OPIS_BACKOFFICE_SECTIONS.has(section) ? <BusinessAdminPage /> : <OpisRouteNotFound />;
 }
 
 const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
@@ -158,11 +164,11 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="opis" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
-                  <Route path="/backoffice/*" element={<BusinessAdminPage />} />
-                  <Route path="/backoffice/overview" element={<BackofficeOverviewRedirect />} />
-                  <Route path="/business-admin/*" element={<BusinessAdminAliasRoute />} />
+                  <Route path="/backoffice/*" element={<OpisCompatRedirect />} />
+                  <Route path="/business-admin/*" element={<OpisCompatRedirect />} />
                   <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
                   <Route path="/" element={<BusinessAdminPage />} />
+                  <Route path="/:section/*" element={<OpisSectionRoute />} />
                   <Route path="*" element={<OpisRouteNotFound />} />
                 </Routes>
               </Suspense>
