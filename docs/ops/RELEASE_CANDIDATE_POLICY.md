@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-07
+last_reviewed: 2026-09-24
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1800,3 +1800,20 @@ parity gate verifies each app against its own allocated `rN` from the v2 map
 `.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
 
 PR: (this PR). Closes #2055. Refs #1977.
+
+
+### 2026-09-24: DEV is versionless and optional to promotion; floors move at promotion (#2071, Phase 347)
+
+This amendment supersedes the 2026-09-23 DEV selection mechanics for new candidates. Manual DEV
+builds from `develop` or an experimental/POC branch publish the mutable `dev` tag plus a SHA tag.
+Promotion remains based on a frozen `develop` SHA and builds directly on STAGING. It has no DEV
+deploy, artifact-selection, registry-read, or availability prerequisite. New manifests use
+`sku-release-candidate/v3`, record initial `apps_touched`, and identify initial STAGING artifacts
+with origin `promotion`; validators retain v1/v2 compatibility for in-flight candidates.
+
+Ordinary develop changes and STAGING repairs preserve package floors. At promotion start, changed
+apps receive their next minor floor. Only direct main hotfixes patch-bump. Revision allocation
+scans promotion tags only (`-staging` and neutral production tags), never DEV. The promoter's
+workflow and steps are documented in `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Closes #2071. Refs #2055, #982.

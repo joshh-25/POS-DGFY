@@ -23947,3 +23947,64 @@ Not yet merged — set at merge time.
 
 347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 347 - Decouple shared DEV from release floors and promotion lineage (#2071)
+
+### Initiative and release
+
+Epic #1548 release-versioning follow-up; current release.
+
+### Objective and scope
+
+Replace new DEV artifact tags with one mutable `dev` alias plus SHA identity, usable by manual
+DEV dispatches from `develop` or experimental branches. Keep immutable per-app `rN` tags for
+STAGING/PROD. Build promotion candidates from the frozen `develop` SHA directly on STAGING,
+with no DEV artifact, deployment, server, or availability dependency. Keep package floors steady
+on ordinary develop changes and staging repairs; bump changed apps to their next minor floors at
+promotion start; reserve patch bumps for direct main hotfixes. Preserve v1/v2 candidate validation
+for historical/in-flight manifests while writing v3 manifests for the revised lineage.
+
+### Status
+
+`in_progress` — implementation and local validation are underway; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2071 and the user's 2026-09-24 scope clarification; Phase 346's deployed per-app revision
+implementation (retained for STAGING/PROD and legacy manifest compatibility); ADR 0039; ADR 0081;
+ADR 0082; `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+### Acceptance and validation evidence
+
+- [ ] DEV resolver returns `dev` without reading a package floor or revision; all manually selected
+  branches can move the tag and SHA tags remain available.
+- [ ] DEV skip-plan always rebuilds selected apps so the mutable alias points at the dispatched SHA.
+- [ ] Promotion candidate creation and STAGING dispatch work from a frozen develop SHA without a
+  DEV deploy or DEV artifact lookup; v3 manifests do not contain `dev_artifacts`.
+- [ ] STAGING/PROD revisions are allocated only from release-channel tags; immutable release tag
+  and parity checks remain intact.
+- [ ] Version checks enforce unchanged floors on develop and staging repairs, minor floor bumps at
+  promotion, and patch-only direct main hotfixes.
+- [ ] Focused resolver, revision, candidate, parity, workflow-shape, and version-policy suites pass;
+  docs/architecture/compliance checks and `git diff --check` pass.
+- [ ] PR review, merge, and deployed QA remain outstanding; this phase never deploys.
+
+### Links
+
+- Issue: #2071 (scope clarified in the 2026-09-24 conversation; current issue body still describes
+  the superseded revisioned-DEV approach).
+- Related: #982, #1548, #2055, #2054, #2069.
+- Implementation: `scripts/resolve-release-tags.js`, `scripts/allocate-artifact-revision.js`,
+  `scripts/resolve-build-skip-plan.js`, `scripts/check-app-version-bump.js`,
+  `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`, deployment and
+  promotion workflows/runbook, ADR 0081, release candidate policy.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+348 after Phase 347's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
