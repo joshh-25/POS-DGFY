@@ -1,28 +1,25 @@
 #!/usr/bin/env node
 /**
- * Release tag resolver -- issue #1977 (Phase 342), extended by issue #2055 (Phase 346).
+ * Release tag resolver -- issue #1977 (Phase 342), extended by issues #2055 and #2071.
  *
  * Centralizes the release-version tag matrix so app type and environment cannot drift between
  * workflows. ADR 0081 Decision 1 used to apply `-dev`/`-staging`/bare uniformly to all five
  * images; #1977 amends that contract: `X.Y.Z` remains the per-app production floor while
- * candidate revisions (`rN`) identify the exact artifact that reached production. #2055 extends
- * the revision history back into DEV: revisions are allocated per app (GHCR is the durable
- * source of truth -- see scripts/allocate-artifact-revision.js), so DEV builds carry their own
- * immutable `X.Y.Z-rN-dev` identity instead of colliding on the bare `X.Y.Z-dev` tag.
+ * candidate revisions (`rN`) identify the exact artifact that reached production. #2071 removes
+ * release-version identity from DEV: every manual DEV dispatch publishes the moving `dev` tag
+ * plus an immutable `sha-<7>` tag. Promotions build from their frozen develop source SHA and
+ * allocate artifact revisions on the STAGING/PROD path.
  *
  * Tag matrix (`version` below is always the bare per-app floor from `apps/<app>/package.json`):
  *
- * | Artifact     | DEV (`develop`)      | DEV ad-hoc (feature branch) | STAGING candidate    | PROD                                    |
- * | ---          | ---                  | ---                           | ---                  | ---                                     |
- * | Frontend     | `X.Y.Z-rN-dev`       | `X.Y.Z-<slug>-dev`           | `X.Y.Z-rN-staging`   | `X.Y.Z-rN` + immutable alias `X.Y.Z`    |
- * | API + runner | `X.Y.Z-rN-dev`       | `X.Y.Z-<slug>-dev`           | `X.Y.Z-rN`           | reuse staging `X.Y.Z-rN` digest + alias |
+ * | Artifact     | DEV (any manually selected branch) | STAGING candidate  | PROD                                    |
+ * | ---          | ---                                | ---                | ---                                     |
+ * | Frontend     | `dev` + `sha-<7>`                 | `X.Y.Z-rN-staging` | `X.Y.Z-rN` + immutable alias `X.Y.Z`    |
+ * | API + runner | `dev` + `sha-<7>`                 | `X.Y.Z-rN`         | reuse staging `X.Y.Z-rN` digest + alias |
  *
- * Only a revisioned DEV tag (`X.Y.Z-rN-dev`, built from `develop`) is promotion-eligible --
- * a candidate selects its per-app starting artifacts from those. Ad-hoc DEV tags
- * (`X.Y.Z-pr123-dev` from a PR dispatch, or `X.Y.Z-<branch-slug>-dev` with no PR context)
- * are deliberately non-selectable, so a feature-branch build can never enter the promotion
- * path. The legacy bare `X.Y.Z-dev` still resolves (historical tags are never rewritten or
- * relabeled), but no workflow emits it anymore and it is never candidate-selectable.
+ * DEV tags are never promotion inputs. A candidate builds from the frozen develop source SHA,
+ * so the shared DEV host and moving `dev` alias may be stale or point at an experiment without
+ * affecting STAGING/PROD.
  *
  * Frontends keep environment-qualified tags because they bake `VITE_*` values at build time;
  * `dgfy-api` and `dgfy-migration-runner` bake only `APP_VERSION` (runtime config is external),
@@ -41,12 +38,11 @@
  * (mirroring `check-promotion-candidate.js --resolve-app-shas`'s convention).
  *
  * CLI:
- *   node scripts/resolve-release-tags.js --app <app> --version <X.Y.Z> --environment <DEV|STAGING|PROD> [--revision <rN|N>] [--pr-ref <pr123|branch-name>]
+ *   node scripts/resolve-release-tags.js --app <app> --environment DEV
+ *   node scripts/resolve-release-tags.js --app <app> --version <X.Y.Z> --environment <STAGING|PROD> --revision <rN|N>
  *
- *   `--revision` and `--pr-ref` are mutually exclusive, DEV-only in combination terms:
- *   `--revision` on DEV resolves the promotion-eligible `X.Y.Z-rN-dev`; `--pr-ref` resolves
- *   the non-eligible ad-hoc shape. Neither is accepted for STAGING/PROD (`--pr-ref` there
- *   throws); STAGING/PROD still require `--revision` and fail closed without it.
+ *   DEV ignores the source-tree floor and always resolves to the moving `dev` tag. STAGING/PROD
+ *   require a release floor and per-app revision and fail closed without them.
  */
 
 const FRONTEND_APPS = Object.freeze(['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
@@ -54,14 +50,10 @@ const BACKEND_APPS = Object.freeze(['dgfy-api', 'dgfy-migration-runner']);
 const RELEASE_APPS = Object.freeze([...BACKEND_APPS, ...FRONTEND_APPS]);
 
 const FLOOR_PATTERN = /^(\d+)\.(\d+)\.(\d+)$/;
-// #2055 (Phase 346): revision-qualified DEV (`X.Y.Z-rN-dev`) and ad-hoc DEV
-// (`X.Y.Z-<slug>-dev`, e.g. `X.Y.Z-pr123-dev`) shapes alongside the #1977 matrix.
-const TAG_PATTERN = /^\d+\.\d+\.\d+(-r\d+)?(-[A-Za-z0-9][A-Za-z0-9._-]*)?(-dev|-staging)?$/;
-// Matches one `<floor>-r<N>` tag with an optional `-dev`/`-staging` channel suffix -- the
-// shape scripts/allocate-artifact-revision.js scans when computing max-plus-one. Ad-hoc
-// (`-pr123-`, branch-slug) and legacy bare-dev tags never match, so they never advance the
-// per-app revision counter.
-const REVISION_TAG_PATTERN = /^(\d+\.\d+\.\d+)-r(\d+)(-dev|-staging)?$/;
+const TAG_PATTERN = /^(?:dev|\d+\.\d+\.\d+(-r\d+)?(-[A-Za-z0-9][A-Za-z0-9._-]*)?(-staging)?)$/;
+// Candidate revision history begins at STAGING. Legacy revisioned DEV tags remain historical
+// and do not parse as promotion revisions.
+const REVISION_TAG_PATTERN = /^(\d+\.\d+\.\d+)-r(\d+)(-staging)?$/;
 
 class ReleaseTagsError extends Error {
   constructor(message, code = 'RELEASE_TAGS_INVALID') {
@@ -154,9 +146,8 @@ function sanitizePrRef(prRef) {
 }
 
 /**
- * Parses one `<floor>-r<N>` tag with an optional `-dev`/`-staging` channel suffix (#2055).
- * Returns `{ floor, revision }`, or `null` when the tag is not a revision tag at all
- * (legacy bare `X.Y.Z-dev`, ad-hoc `X.Y.Z-<slug>-dev`, bare floor alias, anything else).
+ * Parses one promotion revision tag (`<floor>-r<N>` with optional `-staging`).
+ * Returns `{ floor, revision }`, or `null` for DEV aliases and legacy DEV tags.
  * Pure -- scripts/allocate-artifact-revision.js maps a tag listing through this to compute
  * the per-app max-plus-one without re-deriving the pattern.
  */
@@ -181,14 +172,10 @@ function assertDockerSafe(tag) {
  *
  * options:
  *   - app (required): one of the five release apps.
- *   - version (required): bare `X.Y.Z` floor.
+ *   - version (required for STAGING/PROD): bare `X.Y.Z` floor.
  *   - environment (required): DEV, STAGING, or PROD.
- *   - revision (required for STAGING/PROD; optional for DEV): per-app artifact revision
- *     (`rN`/`N`). On DEV it resolves the promotion-eligible `X.Y.Z-rN-dev` -- the
- *     allocated per-app revision (#2055), not a Docker build-attempt count.
- *   - prRef (DEV only, mutually exclusive with revision): ad-hoc marker -- a PR number
- *     (`123`/`pr123`) or branch name -- resolving the non-promotion-eligible
- *     `X.Y.Z-<slug>-dev` shape. Rejected for STAGING/PROD.
+ *   - revision (required for STAGING/PROD): per-app artifact revision (`rN`/`N`).
+ *   - prRef: accepted for compatibility but ignored on DEV; rejected for STAGING/PROD.
  *
  * Returns:
  *   { app, frontend, floor, revision, revisionTag, stagingTag, productionTag,
@@ -197,80 +184,36 @@ function assertDockerSafe(tag) {
  * the matrix columns for cross-environment comparison, `revisionTag` is the immutable
  * artifact identity (`APP_VERSION` / `org.opencontainers.image.version`),
  * `canonicalAlias` is the bare floor alias (PROD only, else null), `prRef` is the
- * sanitized ad-hoc marker (ad-hoc DEV only, else null), and `promotionEligible` is true
- * only for revisioned DEV (candidate-selectable) and STAGING/PROD candidate artifacts --
- * legacy bare-dev and ad-hoc DEV tags are never eligible.
+ * and `promotionEligible` is true only for STAGING/PROD candidate artifacts.
  */
 function resolveReleaseTags({ app, version, environment, revision, prRef } = {}) {
   if (!RELEASE_APPS.includes(app)) {
     throw new ReleaseTagsError(`unknown app "${app}" -- expected one of ${RELEASE_APPS.join(', ')}`, 'UNKNOWN_APP');
   }
-  const floor = parseFloorVersion(version);
   const env = String(environment || '').trim().toUpperCase();
   if (env !== 'DEV' && env !== 'STAGING' && env !== 'PROD') {
     throw new ReleaseTagsError(`unknown environment "${environment}" -- expected DEV, STAGING, or PROD`, 'UNKNOWN_ENVIRONMENT');
   }
   const frontend = isFrontendApp(app);
-  const hasRevision = revision !== undefined && revision !== null && String(revision).trim() !== '';
-  const hasPrRef = prRef !== undefined && prRef !== null && String(prRef).trim() !== '';
-
   if (env === 'DEV') {
-    if (hasRevision && hasPrRef) {
-      throw new ReleaseTagsError('revision and pr-ref are mutually exclusive -- a DEV build is either a promotion-eligible revisioned build (X.Y.Z-rN-dev) or an ad-hoc build (X.Y.Z-<slug>-dev), never both', 'CONFLICTING_DEV_IDENTITY');
-    }
-    if (hasRevision) {
-      const revisionNumber = parseReleaseRevision(revision);
-      const revisionTag = assertDockerSafe(`${floor}-r${revisionNumber}`);
-      const tag = assertDockerSafe(`${revisionTag}-dev`);
-      return {
-        app,
-        frontend,
-        floor,
-        revision: revisionNumber,
-        revisionTag,
-        stagingTag: null,
-        productionTag: null,
-        canonicalAlias: null,
-        tag,
-        prRef: null,
-        promotionEligible: true,
-      };
-    }
-    if (hasPrRef) {
-      const slug = sanitizePrRef(prRef);
-      const tag = assertDockerSafe(`${floor}-${slug}-dev`);
-      return {
-        app,
-        frontend,
-        floor,
-        revision: null,
-        revisionTag: null,
-        stagingTag: null,
-        productionTag: null,
-        canonicalAlias: null,
-        tag,
-        prRef: slug,
-        promotionEligible: false,
-      };
-    }
-    // Legacy bare X.Y.Z-dev -- historical tags are never rewritten or relabeled, so the
-    // resolver still resolves the shape, but no workflow emits it anymore and it is never
-    // candidate-selectable (#2055).
-    const tag = assertDockerSafe(`${floor}-dev`);
     return {
       app,
       frontend,
-      floor,
+      floor: null,
       revision: null,
       revisionTag: null,
       stagingTag: null,
       productionTag: null,
       canonicalAlias: null,
-      tag,
+      tag: 'dev',
       prRef: null,
       promotionEligible: false,
     };
   }
+
+  const floor = parseFloorVersion(version);
+  const hasRevision = revision !== undefined && revision !== null && String(revision).trim() !== '';
+  const hasPrRef = prRef !== undefined && prRef !== null && String(prRef).trim() !== '';
 
   if (hasPrRef) {
     throw new ReleaseTagsError(`pr-ref is DEV-only -- ${env} builds carry a per-app artifact revision, never an ad-hoc marker`, 'PR_REF_WRONG_ENVIRONMENT');
@@ -317,8 +260,10 @@ function parseArgs(argv) {
     }
   }
   if (!options.app) throw new ReleaseTagsError('--app is required', 'INVALID_ARGS');
-  if (!options.version) throw new ReleaseTagsError('--version is required', 'INVALID_ARGS');
   if (!options.environment) throw new ReleaseTagsError('--environment is required', 'INVALID_ARGS');
+  if (options.environment.toUpperCase() !== 'DEV' && !options.version) {
+    throw new ReleaseTagsError('--version is required for STAGING/PROD', 'INVALID_ARGS');
+  }
   return options;
 }
 

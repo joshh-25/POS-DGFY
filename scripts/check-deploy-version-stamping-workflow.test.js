@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const {
   checkVersionTagComputation,
   checkReleaseRevisionInput,
-  checkBuilderDevPrRefInput,
+  checkVersionlessDevResolver,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
@@ -123,41 +123,24 @@ test('checkReleaseRevisionInput: missing input/env/outputs are each caught', () 
   assert.equal(problems.filter((p) => /release_revision:.*steps\.meta/.test(p)).length, 1);
 });
 
-// #2055 (Phase 346): builders declare dev_pr_ref, map it into the meta env, and pass
-// --pr-ref to the resolver for ad-hoc DEV dispatches.
+// #2071: DEV resolves to a versionless shared tag, independent of branch/floor/revision.
 
-test('checkBuilderDevPrRefInput: declares the input, maps the env, and passes --pr-ref', () => {
+test('checkVersionlessDevResolver: accepts a versionless DEV resolver and rejects branch suffixes', () => {
   const text = `
-      dev_pr_ref:
-        description: DEV ad-hoc marker
-        required: false
-        type: string
-        default: ''
-          DEV_PR_REF: \${{ inputs.dev_pr_ref }}
-          RESOLVER_ARGS+=(--app dgfy-api --version "1.0.0" --environment "DEV")
-          if [ -n "\${RELEASE_REVISION:-}" ]; then
-            RESOLVER_ARGS+=(--revision "\${RELEASE_REVISION}")
+          if [ "\${ENVIRONMENT}" = "DEV" ]; then
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "\${APP_NAME}" --environment DEV)"
           fi
-          RESOLVER_ARGS+=(--ignored-line)
-          RESOLVER_ARGS+=(--revision "\${RELEASE_REVISION}")
-          RESOLVER_ARGS+=(--pr-ref "\${DEV_PR_REF}")
   `;
-  assert.deepEqual(checkBuilderDevPrRefInput(text, { label: 'fixture.yml' }), []);
+  assert.deepEqual(checkVersionlessDevResolver(text, { label: 'fixture.yml' }), []);
+  assert.equal(checkVersionlessDevResolver('RESOLVER_ARGS+=(--pr-ref "\${DEV_PR_REF}")', { label: 'fixture.yml' }).length, 2);
 });
 
-test('checkBuilderDevPrRefInput: missing input/env/resolver-flag are each caught', () => {
-  const problems = checkBuilderDevPrRefInput('nothing here', { label: 'fixture.yml' });
-  assert.equal(problems.filter((p) => /missing a "dev_pr_ref" string input/.test(p)).length, 1);
-  assert.equal(problems.filter((p) => /missing "DEV_PR_REF/.test(p)).length, 1);
-  assert.equal(problems.filter((p) => /never passes "--pr-ref/.test(p)).length, 1);
-});
-
-test('checkBuilderDevPrRefInput: real builder workflows pass', () => {
+test('checkVersionlessDevResolver: real builder workflows pass', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   for (const file of ['deploy-api.yml', 'deploy-frontend.yml', 'deploy-migration-runner.yml']) {
     const text = fs.readFileSync(path.resolve(__dirname, `../.github/workflows/${file}`), 'utf8');
-    assert.deepEqual(checkBuilderDevPrRefInput(text, { label: file }), []);
+    assert.deepEqual(checkVersionlessDevResolver(text, { label: file }), []);
   }
 });
 
@@ -474,9 +457,9 @@ function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUI
   const inputBlock = withInput
     ? "on:\n  workflow_call:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
-  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${ORCHESTRATOR_REVISION_JOB_KEYS[name]} }}\n      dev_pr_ref: \${{ needs.resolve-build-plan.outputs.dev_pr_ref }}\n    secrets: inherit\n`).join('\n');
+  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${ORCHESTRATOR_REVISION_JOB_KEYS[name]} }}\n    secrets: inherit\n`).join('\n');
   const revisionsStep = withRevisionsStep
-    ? '      - name: Resolve per-app artifact revisions\n        id: revisions\n        run: node scripts/allocate-artifact-revision.js --image img --floor 1.0.0 --revision abc\n'
+    ? '      - name: Resolve per-app artifact revisions\n        id: revisions\n        run: echo \"revisions_json={}\" >> \"$GITHUB_OUTPUT\"\n'
     : '';
   const skipPlan = skipPlanRevision
     ? '  resolve-build-plan:\n    steps:\n      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --environment STAGING --release-revisions-json {"a":"r1"}\n'
@@ -492,13 +475,12 @@ test('checkOrchestratorReleaseRevisionWiring: missing input and missing per-job 
   const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ withInput: false }));
   assert.equal(problems.filter((p) => /missing a "release_revision_api" string input/.test(p)).length, 1);
   const text = orchestratorRevisionFixture().replace(
-    '      release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-api }}\n      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}\n',
+    '      release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-api }}\n',
     '',
   );
   const jobProblems = checkOrchestratorReleaseRevisionWiring(text);
-  assert.equal(jobProblems.length, 2);
+  assert.equal(jobProblems.length, 1);
   assert.match(jobProblems[0], /job "dgfy-api" does not forward/);
-  assert.match(jobProblems[1], /job "dgfy-api" does not forward/);
 });
 
 test('checkOrchestratorReleaseRevisionWiring: missing resolve-build-plan flag is caught', () => {
@@ -508,7 +490,7 @@ test('checkOrchestratorReleaseRevisionWiring: missing resolve-build-plan flag is
 
 test('checkOrchestratorReleaseRevisionWiring: missing revisions allocation step is caught', () => {
   const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ withRevisionsStep: false }));
-  assert.equal(problems.filter((p) => /no "Resolve per-app artifact revisions" step/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /DEV must produce an empty release revision map/.test(p)).length, 1);
 });
 
 test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml passes', () => {

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Per-app artifact revision allocator -- issue #2055 (Phase 346).
+ * Per-app promotion artifact revision allocator -- issues #1977/#2055/#2071.
  *
- * DEV builds (and staging repairs) need an immutable per-app revision identity (`rN`) that
- * exists BEFORE any candidate manifest does -- so no manifest counter can hand one out. GHCR
- * is the durable source of truth instead: at publish time, this script finds the highest
+ * Initial STAGING builds and staging repairs need an immutable per-app revision identity
+ * (`rN`) before the candidate manifest is complete. GHCR is the durable source of truth:
+ * at publish time, this script finds the highest
  * existing `<app>:<floor>-r<N>*` tag across all channels for that app+floor and allocates
  * `N = max + 1`. Scoping the query to `<floor>-r*` means a floor bump naturally resets `N`
  * to 1 for the new floor -- no separate reset logic. No new counter file or ledger.
@@ -15,8 +15,9 @@
  *      a re-dispatch of an already-published build is ADR 0081 Decision 7's idempotent
  *      no-op, not a new allocation. Without this, every retry would burn a new revision
  *      number for byte-identical content.
- *   2. Otherwise max-plus-one across every channel (`-dev`, `-staging`, bare `rN`) -- a
- *      revision identifies the artifact lineage, not the channel it was first published to.
+ *   2. Otherwise max-plus-one across promotion channels (`-staging`, bare `rN`). The moving
+ *      DEV alias and historical DEV revision tags are not candidate inputs and do not consume
+ *      promotion revisions.
  *
  * Concurrency safety net (not implemented here -- enforced by the registry): two builds
  * racing on the same `N` get the loser's push refused by Decision 7's guard (tag exists,
@@ -24,7 +25,7 @@
  * +1, re-push); each dispatch is one bounded attempt, a re-dispatch re-queries from the
  * new max. Same-source retries converge via rule 1 instead of racing.
  *
- * Only revision tags (`<floor>-rN` + optional channel, per
+ * Only promotion revision tags (`<floor>-rN` + optional `-staging`, per
  * `resolve-release-tags.js:parseRevisionTag`) advance the counter. Legacy bare
  * `<floor>-dev` tags and ad-hoc `<floor>-<slug>-dev` tags never match the pattern, so
  * they can neither be reallocated nor collide with the sequence -- they stay historical
@@ -42,26 +43,23 @@
  * CLI:
  *   node scripts/allocate-artifact-revision.js --image <ghcr.io/sieitzz/<app>> --floor <X.Y.Z> --revision <current build's github.sha> [--max-probe <N>]
  *   node scripts/allocate-artifact-revision.js --floor <X.Y.Z> --revision <sha> --tags-json '["1.13.0-r1-dev", ...]' [--image <ref>]
- *   node scripts/allocate-artifact-revision.js --select-dev --image <ghcr.io/sieitzz/<app>> --floor <X.Y.Z> [--max-probe <N>]
  *
  *   `--tags-json` skips the registry probe and allocates from a caller-supplied tag list
  *   (local/promoter use without docker). Label info is unavailable there, so same-source
  *   reuse never applies in that mode -- always max-plus-one, never a collision, at most a
  *   gap on retry. Prints one JSON blob on its own stdout line.
  *
- *   `--select-dev` does not allocate at all: it prints the latest published revisioned DEV
- *   artifact (`{ revision, sha, digest }`) for the promoter's candidate-selection step. No
- *   `--revision` needed (nothing is published); fails when no revisioned DEV tag exists.
+ *   DEV tag selection is not part of candidate preparation anymore: the candidate's frozen
+ *   source SHA is built directly on STAGING.
  */
 
 const { runInspect, isNotFoundError, collectRevisionLabelInfo, REVISION_LABEL } = require('./check-tag-immutability');
 const { parseRevisionTag, parseFloorVersion } = require('./resolve-release-tags');
 
 const DEFAULT_MAX_PROBE = 512;
-// Probe suffixes covering every channel a revision tag can exist on: revisioned DEV,
-// frontend STAGING, and the environment-neutral revision tag backends publish on STAGING
-// and frontends/backends publish on PROD.
-const REVISION_TAG_SUFFIXES = Object.freeze(['-dev', '-staging', '']);
+// Probe promotion tags only: frontend STAGING and the environment-neutral revision tag
+// used by STAGING backends and all PROD images.
+const REVISION_TAG_SUFFIXES = Object.freeze(['-staging', '']);
 
 class ArtifactRevisionError extends Error {
   constructor(message, code = 'ARTIFACT_REVISION_INVALID') {
@@ -193,71 +191,14 @@ function probeExistingSightings({ image, floor, currentRevision, inspectFn = run
  * Full allocation: probe GHCR, then apply the reuse/max-plus-one rules.
  * Returns { revision, reused, maxSeen }.
  */
-function resolveDevRevision({ image, floor, currentRevision, inspectFn = runInspect, maxProbe = DEFAULT_MAX_PROBE } = {}) {
+function allocateArtifactRevision({ image, floor, currentRevision, inspectFn = runInspect, maxProbe = DEFAULT_MAX_PROBE } = {}) {
   const { sightings, maxSeen } = probeExistingSightings({ image, floor, currentRevision, inspectFn, maxProbe });
   const { revision, reused } = allocateRevision({ floor, currentRevision, sightings });
   return { revision, reused, maxSeen };
 }
 
-/**
- * Candidate-selection read: returns the latest published revisioned DEV artifact for
- * one app+floor -- `{ revision, sha, digest }` of the highest `<floor>-rN-dev` tag with
- * a readable revision label. Throws when none exists (a candidate cannot select what was
- * never published -- dispatch a DEV build first). Read-only: only ever runs
- * `docker buildx imagetools inspect`, never a push -- same classification as
- * `check-tag-immutability.js`'s own inspect step.
- *
- * Digest comes from the same inspect output (`parsed.digest`), so the promoter records
- * the exact artifact without a second registry round-trip. Only the `-dev` channel
- * counts: the candidate starts from DEV artifacts, never from a staging repair's tag.
- */
-function selectLatestDevArtifact({ image, floor, inspectFn = runInspect, maxProbe = DEFAULT_MAX_PROBE } = {}) {
-  const normalizedFloor = parseFloorVersion(floor);
-  if (!image || typeof image !== 'string') {
-    throw new ArtifactRevisionError('--image is required (e.g. ghcr.io/sieitzz/dgfy-pos)', 'INVALID_ARGS');
-  }
-  const { sightings } = probeExistingSightings({ image, floor: normalizedFloor, currentRevision: 'selection-only', inspectFn, maxProbe });
-  let best = null;
-  for (const sighting of sightings) {
-    if (!sighting.tag.endsWith('-dev') || !sighting.revision) continue;
-    const parsed = parseRevisionTag(sighting.tag);
-    if (!parsed || parsed.floor !== normalizedFloor) continue;
-    if (!best || parsed.revision > best.revision) {
-      best = { revision: parsed.revision, sha: sighting.revision, tag: sighting.tag };
-    }
-  }
-  if (!best) {
-    throw new ArtifactRevisionError(`no published revisioned DEV tag (${normalizedFloor}-rN-dev with a readable revision label) found for ${image} -- dispatch a DEV build on develop first, then cut the candidate`, 'NO_DEV_ARTIFACT');
-  }
-  const digest = readProbedDigest({ image, tag: best.tag, inspectFn });
-  return { revision: best.revision, sha: best.sha, digest, tag: best.tag };
-}
-
-/**
- * Reads one already-probed ref's image digest out of a fresh inspect (kept separate from
- * the label probe above so the common allocate path never pays for a digest it doesn't
- * need -- only the --select-dev path calls this, once, for the winning tag).
- */
-function readProbedDigest({ image, tag, inspectFn }) {
-  const result = inspectFn(`${image}:${tag}`);
-  if (result.status !== 0) {
-    throw new ArtifactRevisionError(`could not re-inspect ${image}:${tag} for its digest: ${String(result.stderr || '').trim().slice(0, 200)}`, 'INSPECT_FAILED');
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(result.stdout);
-  } catch (error) {
-    throw new ArtifactRevisionError(`could not parse inspect output for ${image}:${tag}: ${error.message}`, 'INSPECT_FAILED');
-  }
-  const digest = typeof parsed.digest === 'string' && parsed.digest.trim() ? parsed.digest.trim() : null;
-  if (!digest) {
-    throw new ArtifactRevisionError(`inspect output for ${image}:${tag} carries no image digest -- refusing to select a digest-less artifact`, 'INSPECT_FAILED');
-  }
-  return digest;
-}
-
 function parseArgs(argv) {
-  const options = { image: '', floor: '', revision: '', maxProbe: `${DEFAULT_MAX_PROBE}`, tagsJson: '', selectDev: false };
+  const options = { image: '', floor: '', revision: '', maxProbe: `${DEFAULT_MAX_PROBE}`, tagsJson: '' };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--image') {
@@ -270,14 +211,12 @@ function parseArgs(argv) {
       options.maxProbe = argv[++index] || '';
     } else if (arg === '--tags-json') {
       options.tagsJson = argv[++index] || '';
-    } else if (arg === '--select-dev') {
-      options.selectDev = true;
     } else {
       throw new ArtifactRevisionError(`Unknown argument: ${arg}`, 'INVALID_ARGS');
     }
   }
   if (!options.floor) throw new ArtifactRevisionError('--floor is required (bare X.Y.Z from apps/<app>/package.json)', 'INVALID_ARGS');
-  if (!options.selectDev && !options.revision) throw new ArtifactRevisionError('--revision is required (current build github.sha)', 'INVALID_ARGS');
+  if (!options.revision) throw new ArtifactRevisionError('--revision is required (current source github.sha)', 'INVALID_ARGS');
   const maxProbe = Number.parseInt(options.maxProbe, 10);
   if (!Number.isSafeInteger(maxProbe) || maxProbe <= 0) {
     throw new ArtifactRevisionError(`--max-probe must be a positive integer (got "${options.maxProbe}")`, 'INVALID_ARGS');
@@ -290,12 +229,6 @@ function main() {
     const options = parseArgs(process.argv.slice(2));
     const floor = parseFloorVersion(options.floor);
     if (!options.image) throw new ArtifactRevisionError('--image is required (e.g. ghcr.io/sieitzz/dgfy-pos)', 'INVALID_ARGS');
-    if (options.selectDev) {
-      if (options.tagsJson) throw new ArtifactRevisionError('--select-dev reads the registry, it cannot combine with --tags-json', 'INVALID_ARGS');
-      const selected = selectLatestDevArtifact({ image: options.image, floor, maxProbe: options.maxProbe });
-      console.log(JSON.stringify({ image: options.image, floor, ...selected }));
-      return;
-    }
     let verdict;
     if (options.tagsJson) {
       let tags;
@@ -312,13 +245,13 @@ function main() {
       verdict = { revision: nextRevisionFromTags(tags, floor), reused: false, maxSeen: null };
     } else {
       if (!options.image) throw new ArtifactRevisionError('--image is required unless --tags-json is given', 'INVALID_ARGS');
-      verdict = resolveDevRevision({ image: options.image, floor, currentRevision: options.revision, maxProbe: options.maxProbe });
+      verdict = allocateArtifactRevision({ image: options.image, floor, currentRevision: options.revision, maxProbe: options.maxProbe });
     }
     console.log(JSON.stringify({
       image: options.image || null,
       floor,
       revision: verdict.revision,
-      devTag: `${floor}-r${verdict.revision}-dev`,
+      revisionTag: `${floor}-r${verdict.revision}`,
       reused: verdict.reused,
     }));
   } catch (error) {
@@ -341,8 +274,6 @@ module.exports = {
   allocateRevision,
   probeRevisionLabel,
   probeExistingSightings,
-  resolveDevRevision,
-  selectLatestDevArtifact,
-  readProbedDigest,
+  allocateArtifactRevision,
   parseArgs,
 };

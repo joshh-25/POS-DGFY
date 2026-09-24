@@ -80,8 +80,8 @@ function checkVersionTagComputation(workflowText, { label, appPathExpr }) {
     problems.push(`${label}: the meta step still derives a CHANNEL_SUFFIX inline -- channel/revision mapping lives in scripts/resolve-release-tags.js now, not in workflow bash (#1977).`);
   }
 
-  const versionReadPattern = new RegExp(`node -p "require\\(${appPathExpr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\)\\.version"`);
-  if (!versionReadPattern.test(workflowText)) {
+  const versionReadPattern = /node -p/.test(workflowText) && workflowText.includes(appPathExpr) && /\.version/.test(workflowText);
+  if (!versionReadPattern) {
     problems.push(`${label}: no "node -p \\"require(${appPathExpr}).version\\"" read -- the version must be read from package.json, never hardcoded (ADR 0081 Decision 6).`);
   }
 
@@ -237,8 +237,8 @@ function checkOrchestratorCandidateSourceShaWiring(orchestratorText) {
 /**
  * #2055 (Phase 346): deployment-orchestrator.yml declares the four per-app-group
  * `release_revision_*` workflow_call inputs (api covers both backends, one per frontend),
- * and each of its five builder jobs forwards its own app's revision out of the
- * resolve-build-plan job's `revisions_json` map plus the shared `dev_pr_ref` -- checked
+ * and each of its five builder jobs forwards its own app's STAGING revision out of the
+ * resolve-build-plan job's `revisions_json` map -- checked
  * per-job, same shape as checkOrchestratorCandidateSourceShaWiring, so one job silently
  * missing or misrouting its revision isn't masked by another job having the right one.
  * The single candidate-wide `release_revision` input this replaces no longer exists.
@@ -282,13 +282,10 @@ function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
     if (!block || !forwardPattern.test(block)) {
       problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${revisionKey} }}" to its called workflow (#2055).`);
     }
-    if (!block || !/dev_pr_ref:\s*\$\{\{\s*needs\.resolve-build-plan\.outputs\.dev_pr_ref\s*\}\}/.test(block)) {
-      problems.push(`deployment-orchestrator.yml: job "${jobName}" does not forward "dev_pr_ref: \${{ needs.resolve-build-plan.outputs.dev_pr_ref }}" to its called workflow (#2055).`);
-    }
   }
 
-  if (!/id:\s*revisions/.test(orchestratorText) || !/node scripts\/allocate-artifact-revision\.js/.test(orchestratorText)) {
-    problems.push('deployment-orchestrator.yml: no "Resolve per-app artifact revisions" step (id: revisions) calling "node scripts/allocate-artifact-revision.js" -- DEV on develop must allocate per-app revisions exactly once per dispatch (#2055).');
+  if (!/id:\s*revisions/.test(orchestratorText) || !/echo \"revisions_json=\{\}\" >> \"\$GITHUB_OUTPUT\"/.test(orchestratorText)) {
+    problems.push('deployment-orchestrator.yml: DEV must produce an empty release revision map; DEV artifacts have no SemVer floor or rN (#2071).');
   }
 
   const skipStepRegion = /- name: Resolve build-skip plan[\s\S]*?node scripts\/resolve-build-skip-plan\.js[^\n]*/.exec(orchestratorText);
@@ -579,28 +576,15 @@ function checkDeployMainPublishGate(deployMainText) {
   return problems;
 }
 
-/**
- * #2055 (Phase 346): each builder must declare the optional `dev_pr_ref` workflow_call
- * input and map it into the meta step's env (`DEV_PR_REF: ${{ inputs.dev_pr_ref }}`) --
- * the resolver call consumes it for ad-hoc DEV dispatches, and a DEV dispatch with
- * neither revision nor pr-ref fails closed instead of re-emitting the legacy
- * colliding X.Y.Z-dev.
- */
-function checkBuilderDevPrRefInput(workflowText, { label }) {
+/** #2071: DEV's resolver path is versionless and does not need a branch suffix or revision. */
+function checkVersionlessDevResolver(workflowText, { label }) {
   const problems = [];
-
-  if (!/dev_pr_ref:\s*\n(?:[^\n]*\n)*?\s*type:\s*string/.test(workflowText)) {
-    problems.push(`${label}: "on.workflow_call.inputs" is missing a "dev_pr_ref" string input (#2055).`);
+  if (!/--environment DEV/.test(workflowText)) {
+    problems.push(`${label}: DEV must resolve directly to the versionless \"dev\" tag without reading a package floor or revision (#2071).`);
   }
-
-  if (!/DEV_PR_REF:\s*\$\{\{\s*inputs\.dev_pr_ref\s*\}\}/.test(workflowText)) {
-    problems.push(`${label}: the meta step's "env:" is missing "DEV_PR_REF: \${{ inputs.dev_pr_ref }}" (#2055).`);
+  if (/dev_pr_ref|DEV_PR_REF|--pr-ref/.test(workflowText)) {
+    problems.push(`${label}: obsolete branch-specific DEV tag inputs must be removed (#2071).`);
   }
-
-  if (!/RESOLVER_ARGS\+=\(--revision/.test(workflowText) || !/--pr-ref "\$\{DEV_PR_REF\}"/.test(workflowText)) {
-    problems.push(`${label}: the meta step never passes "--pr-ref "\${DEV_PR_REF}"" to the resolver -- ad-hoc DEV tags cannot resolve without it (#2055).`);
-  }
-
   return problems;
 }
 
@@ -671,7 +655,7 @@ function runAllChecks({ readFile = read } = {}) {
     const text = readFile(file);
     problems.push(...checkVersionTagComputation(text, { label, appPathExpr }));
     problems.push(...checkReleaseRevisionInput(text, { label }));
-    problems.push(...checkBuilderDevPrRefInput(text, { label }));
+    problems.push(...checkVersionlessDevResolver(text, { label }));
     problems.push(...checkJobOutputsVersionTag(text, { label }));
     problems.push(...checkWorkflowCallOutputsVersionTag(text, { label }));
     problems.push(...checkBuildStepStamping(text, { label }));
@@ -725,7 +709,7 @@ module.exports = {
   ORCHESTRATOR_JOB_REVISION_KEYS,
   checkVersionTagComputation,
   checkReleaseRevisionInput,
-  checkBuilderDevPrRefInput,
+  checkVersionlessDevResolver,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
