@@ -101,7 +101,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(await screen.findByText('Location scope:')).toBeTruthy();
+    // This panel is loaded through React.lazy; give its dynamically imported chunk enough time
+    // to resolve on slower CI workers before asserting the rendered location scope.
+    expect(await screen.findByText('Location scope:', {}, { timeout: 5000 })).toBeTruthy();
     expect(await screen.findByText('East Branch')).toBeTruthy();
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();

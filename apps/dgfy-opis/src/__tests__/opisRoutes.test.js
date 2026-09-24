@@ -40,8 +40,12 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).not.toContain('path="/" element={<Navigate to="/backoffice/overview"');
   });
 
-  it('wires the account menu into the authenticated Back Office topbar', () => {
-    expect(businessAdminPageSource).toContain('<BusinessAdminAccountMenu user={bootstrap.user} business={bootstrap.business} />');
+  it('wires account actions below the POS terminal link in the Back Office sidebar', () => {
+    const posTerminalIndex = businessAdminPageSource.indexOf('aria-label="Open POS terminal"');
+    const accountActionsIndex = businessAdminPageSource.indexOf('<BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />');
+
+    expect(posTerminalIndex).toBeGreaterThanOrEqual(0);
+    expect(accountActionsIndex).toBeGreaterThan(posTerminalIndex);
   });
 
   it('resolves both dashboard and section paths at the origin root', () => {
