@@ -280,6 +280,7 @@ const isDevelopmentOriginAllowed = (origin) => {
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:518[0-9]$/,
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
+    /^https?:\/\/opis\.localhost:517[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:518[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/,
@@ -300,7 +301,10 @@ const isDevelopmentOriginAllowed = (origin) => {
       || host === 'skupervisor.dgfy.ph'
       || host === 'pos.dgfy.ph'
       || host === 'dgfy.ph'
-      || host === 'store.dgfy.ph';
+      || host === 'store.dgfy.ph'
+      || host === 'opis.dgfy.ph'
+      || host === 'opis.dev.dgfy.ph'
+      || host === 'opis.stage.dgfy.ph';
     return Boolean(knownSurface);
   } catch {
     return false;
