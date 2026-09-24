@@ -75,7 +75,7 @@ import {
 } from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
 import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
-import BusinessAdminAccountMenu from './BusinessAdminAccountMenu.jsx';
+import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
@@ -3219,6 +3219,7 @@ export default function BusinessAdminPage() {
                     return <div className={`business-admin-nav-group ${group.standalone ? 'is-standalone' : ''}`.trim()} key={group.label}>{group.standalone ? null : <div className="business-admin-nav-label">{group.label}</div>}{items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={`business-admin-nav-item ${activeSection === item.key ? 'active' : ''}`} aria-label={item.label} title={sidebarCollapsed ? item.label : undefined} aria-current={activeSection === item.key ? 'page' : undefined} onClick={() => navigateBusinessAdmin(item.key === 'settings' ? buildBusinessAdminSettingsPath(rootPath, visibleSettingsSections[0]?.key || 'profile') : (item.key === 'overview' ? buildBackOfficeOverviewPath(rootPath) : buildBackOfficeModulePath(rootPath, item.key)))}><Icon size={16} /> <span className="business-admin-nav-item-label">{item.label}</span>{item.key === 'approvals' && overviewData?.summary?.pending_approvals ? <span className="business-admin-nav-item-badge ml-auto rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">{overviewData.summary.pending_approvals}</span> : null}</button>; })}</div>;
                 })}
                 <div className="business-admin-terminal-link mt-6 border-t border-white/15 pt-4"><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-nav-item" aria-label="Open POS terminal" title={sidebarCollapsed ? 'Open POS terminal' : undefined}><ExternalLink size={16} /> <span className="business-admin-nav-item-label">Open POS terminal</span></GuardedLink></div>
+                <BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />
             </aside>
             {mobileNavOpen ? <button type="button" className="business-admin-mobile-nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} /> : null}
             <main className="business-admin-main">
@@ -3248,7 +3249,7 @@ export default function BusinessAdminPage() {
                             {activeSection !== 'settings' && meta.description ? <p className="business-admin-description">{meta.description}</p> : null}
                         </div>
                     </div>
-                    <div className="business-admin-top-actions"><BusinessAdminAccountMenu user={bootstrap.user} business={bootstrap.business} /><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
+                    <div className="business-admin-top-actions"><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
                 </div>
                 {showDateFilters ? (
                     <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>

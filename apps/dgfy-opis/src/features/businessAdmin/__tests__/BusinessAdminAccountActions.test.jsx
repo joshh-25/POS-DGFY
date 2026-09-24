@@ -4,7 +4,7 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import BusinessAdminAccountMenu from '../BusinessAdminAccountMenu.jsx';
+import BusinessAdminAccountActions from '../BusinessAdminAccountActions.jsx';
 
 const logoutMock = vi.hoisted(() => vi.fn());
 
@@ -17,17 +17,14 @@ const LocationProbe = () => {
     return <output data-testid="location">{location.pathname}</output>;
 };
 
-const renderMenu = () => render(
+const renderActions = (sidebarCollapsed = false) => render(
     <MemoryRouter>
-        <BusinessAdminAccountMenu
-            user={{ username: 'pat@example.test' }}
-            business={{ name: 'DGFY Demo' }}
-        />
+        <BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />
         <LocationProbe />
     </MemoryRouter>
 );
 
-describe('BusinessAdminAccountMenu', () => {
+describe('BusinessAdminAccountActions', () => {
     afterEach(() => cleanup());
 
     beforeEach(() => {
@@ -35,23 +32,32 @@ describe('BusinessAdminAccountMenu', () => {
         logoutMock.mockResolvedValue(undefined);
     });
 
-    it('shows the authenticated user and business, and links to business selection', async () => {
-        renderMenu();
+    it('shows direct Switch business and Logout actions in the sidebar', () => {
+        renderActions();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Account: pat@example.test' }));
+        expect(screen.getByRole('link', { name: 'Switch business' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy();
+    });
 
-        expect(await screen.findByText('Logged in as pat@example.test at DGFY Demo')).toBeTruthy();
-        fireEvent.click(screen.getByText('Switch business'));
+    it('links to business selection without logging out', async () => {
+        renderActions();
+
+        fireEvent.click(screen.getByRole('link', { name: 'Switch business' }));
         await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/dgfy/companies'));
         expect(logoutMock).not.toHaveBeenCalled();
     });
 
     it('clears the OPIS session and redirects to its sign-in route on logout', async () => {
-        renderMenu();
+        renderActions();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Account: pat@example.test' }));
-        fireEvent.click(await screen.findByText('Logout'));
-
+        fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
         await waitFor(() => expect(logoutMock).toHaveBeenCalledWith({ redirectTo: '/dgfy/auth' }));
+    });
+
+    it('keeps action labels available as tooltips when the sidebar is collapsed', () => {
+        renderActions(true);
+
+        expect(screen.getByRole('link', { name: 'Switch business' }).getAttribute('title')).toBe('Switch business');
+        expect(screen.getByRole('button', { name: 'Logout' }).getAttribute('title')).toBe('Logout');
     });
 });
