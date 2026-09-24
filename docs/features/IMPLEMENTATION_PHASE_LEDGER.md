@@ -25640,8 +25640,9 @@ DGFY Back Office fourth frontend app, intermediate integration line (not a promo
 
 Stabilize the deployed OPIS follow-up on the same `feature/2052-opis-split-back-office`
 branch/PR #2054: `/` renders the Back Office overview directly (no redirect);
-`/backoffice/overview` redirects to `/` preserving query; every other section stays
-under `/backoffice/*` with `/business-admin/*` as alias; fix the DEV `dgfy-api`
+sections use root-level paths (for example `/sales` and `/orders`), while
+`/backoffice/*` and `/business-admin/*` redirect to the canonical root-level route
+preserving query/hash; fix the DEV `dgfy-api`
 crash-loop (`posTerminalDeviceService` missing import, every `/api/*` 502ing); repoint
 the dead in-app "Open POS terminal" links (react-router `<Link to="/terminal">` on the
 OPIS origin) at the real POS origin with the settings dirty-guard contract preserved;
@@ -25726,3 +25727,56 @@ Not yet merged — set at merge time.
 
 465 after Phase 464's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 465 - OPIS account actions: logout and switch business (issue #2052, epic #1354)
+
+### Initiative and release
+
+DGFY Back Office fourth frontend app, follow-up on `feature/2052-opis-split-back-office` / PR #2054.
+
+### Objective and scope
+
+Add account actions to the authenticated OPIS topbar: show the current user and business,
+route “Switch business” to the existing `/dgfy/companies` picker, and log out through the
+existing shared session cleanup while returning OPIS users to `/dgfy/auth`. Keep the shared
+`logout()` default at `/login` for existing callers. No API, permission, session-cookie,
+database, or cross-app logout behavior changes.
+
+### Status
+
+`in_progress` — implementation and local validation underway; PR #2054 review/merge and
+authenticated live click-through remain outstanding. Phase 464's PR review/merge gates are
+also still open and remain a dependency for completing this ledger sequence.
+
+### Dependencies
+
+Issue #2052, parent epic #1354, PR #2054; Phase 464 implementation and DEV deployment (done),
+with Phase 464 review/merge still outstanding; ADR 0086 proposed session-isolation clause.
+
+### Acceptance and validation evidence
+
+- [ ] OPIS account menu tests verify identity/business label, company-picker navigation, and
+      OPIS logout redirect option.
+- [ ] Shared auth-service tests verify `/login` remains the default and an override is honored.
+- [ ] `npm run build:opis`, OPIS focused tests, shared auth-service tests, architecture/docs and
+      compliance checks pass; version bump and diff/marker checks pass.
+- [ ] Rendered and authenticated DEV click-through confirms company selection and logout clear
+      the OPIS session and land on `/dgfy/auth`; one existing non-OPIS logout caller is verified.
+
+### Links
+
+- Issue: #2052; PR: #2054.
+- Handoff: `.tmp/plan-2052.md` (planning head `8af54b1f083da31aa69264fa110225bb473223e8`).
+- Implementation: `apps/dgfy-opis/src/features/businessAdmin/BusinessAdminAccountMenu.jsx`,
+  `apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx`,
+  `packages/web-core/src/services/authService.js`.
+- ADR: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`.
+
+### Completion date
+
+Not yet merged; set after required acceptance evidence and PR merge.
+
+### Next eligible phase
+
+466 after Phase 465's acceptance gates pass and Phase 464's outstanding review/merge dependency
+is reconciled.
