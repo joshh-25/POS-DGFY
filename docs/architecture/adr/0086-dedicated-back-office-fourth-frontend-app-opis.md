@@ -3,7 +3,7 @@ status: proposed
 authority_level: authoritative
 owner: architecture
 date: 2026-09-23
-last_reviewed: 2026-09-23
+last_reviewed: 2026-09-24
 review_by: 2027-03-23
 applies_to: repository_layout
 topic: opis_fourth_frontend_app
@@ -40,10 +40,12 @@ its shared-code and app-isolation rules.
 1. The merchant Back Office shell moves from `apps/dgfy-pos` to the new independently
    deployable, independently buildable, independently testable top-level app `apps/dgfy-opis`
    (dev port 5176, container port 8084, image `ghcr.io/sieitzz/dgfy-opis` per ADR 0072's
-   flat naming). Canonical routes are `/backoffice/*` for every section except the
-   overview; `/business-admin/*` is retained as an alias. `/` renders the Back Office
-   overview directly with no redirect; `/backoffice/overview` redirects to `/` as the
-   single canonical overview URL. No other section is flattened to a root path. POS keeps terminal operations only
+   flat naming). The Back Office overview is `/`, and each section is served directly from
+   its own root-level path (`/sales`, `/orders`, `/catalog`, `/settings/profile`, etc.).
+   Existing `/backoffice/*` and `/business-admin/*` links remain compatible by redirecting
+   to the equivalent root-level path while preserving query and hash. `/backoffice/overview`
+   and `/business-admin/overview` redirect to `/`. Reserved OPIS flows (`/dgfy/*`,
+   `/register-company/*`, `/receive/:token`) keep their existing routes. POS keeps terminal operations only
    (checkout, pairing, shifts); its former Back Office routes redirect to OPIS preserving
    path and query, and IMS merchant handoffs retarget to OPIS. `[binding]`
 2. `packages/web-core` remains the **only** shared frontend trunk; no app may fork trunk

@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-15
-last_reviewed: 2026-09-22
+last_reviewed: 2026-09-24
 review_by: 2027-03-14
 applies_to: apps/dgfy-pos, apps/dgfy-api
 topic: business_admin_backoffice_parity
@@ -931,3 +931,11 @@ See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.m
 [ADR 0086](../architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md),
 and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
 seams.
+
+## 2026-09-24 — OPIS root-level section URLs (issue #2052 follow-up)
+
+The dashboard remains at `/`; Back Office sections now use root-level URLs such as
+`/sales`, `/orders`, `/catalog`, and `/settings/profile`. Older `/backoffice/*` and
+`/business-admin/*` links redirect to their root-level equivalent while preserving
+query and hash. OPIS-owned authentication, company registration, and protected receive
+routes keep their reserved paths. See the updated route contract in ADR 0086.
