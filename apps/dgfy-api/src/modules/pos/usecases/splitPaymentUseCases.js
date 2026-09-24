@@ -4,7 +4,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
 
-const PAYMENT_METHODS = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer']);
+const PAYMENT_METHODS = new Set(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit']);
 const ALLOCATION_OUTCOMES = new Set(['pending', 'successful', 'failed']);
 const GOVERNED_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher']);
 const ITEM_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual']);
@@ -593,9 +593,14 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         if (idempotencyKey.length < 8) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key is required.', 422);
         const paymentMethod = String(payload.payment_method || '').trim().toLowerCase();
         if (!PAYMENT_METHODS.has(paymentMethod)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported split-payment method.', 422);
+        const isEmployeeCredit = paymentMethod === 'employee_credit';
+        const employeeCreditAccountCode = String(payload.employee_credit?.account_code || '').trim().toUpperCase();
+        if (isEmployeeCredit && !employeeCreditAccountCode) {
+            throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Employee Credit account is required for this allocation.', 422);
+        }
         const paymentHandoffMode = String(payload.payment_handoff_mode || (paymentMethod === 'cash' ? 'internal' : 'external')).trim().toLowerCase();
         if (!['external', 'internal'].includes(paymentHandoffMode)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported payment handoff mode.', 422);
-        const manualPaymentReceived = paymentMethod !== 'cash' && payload.manual_payment_received === true;
+        const manualPaymentReceived = isEmployeeCredit || (paymentMethod !== 'cash' && payload.manual_payment_received === true);
         const paymentProvider = manualPaymentReceived
             ? 'merchant_owned'
             : String(payload.payment_provider || '').trim().toLowerCase();
@@ -606,7 +611,7 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         if (!outcome) outcome = paymentMethod === 'cash' || manualPaymentReceived ? 'successful' : 'pending';
         if (manualPaymentReceived) outcome = 'successful';
         if (!ALLOCATION_OUTCOMES.has(outcome)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported payment allocation outcome.', 422);
-        if (paymentMethod !== 'cash' && paymentHandoffMode === 'internal') {
+        if (paymentMethod !== 'cash' && paymentHandoffMode === 'internal' && !isEmployeeCredit) {
             throw paymentError(DomainErrorCode.CONFLICT, 'Internal non-cash handoff is unavailable until POS compliance controls are enabled.', 409, { reason_code: 'PAYMENT_HANDOFF_COMPLIANCE_REQUIRED' });
         }
         if (paymentMethod !== 'cash' && outcome === 'successful' && !manualPaymentReceived) {
@@ -621,6 +626,18 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         const loaded = await loadSession(posRepository, normalizedSessionId, { transaction, lock: true });
         if (!loaded) throw paymentError(DomainErrorCode.RESOURCE_NOT_FOUND, 'POS payment session not found.', 404);
         assertSessionScope(loaded.session, scope);
+        if (isEmployeeCredit) {
+            const storedSnapshot = parseStoredSnapshot(loaded.session.snapshot);
+            const sourceSnapshot = isPlainObject(storedSnapshot?.checkout_payload)
+                ? storedSnapshot.checkout_payload
+                : storedSnapshot;
+            const storedAccountCode = String(sourceSnapshot?.employee_credit?.account_code || '').trim().toUpperCase();
+            if (storedAccountCode && storedAccountCode !== employeeCreditAccountCode) {
+                throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit account does not match the payment session.', 409, {
+                    reason_code: 'EMPLOYEE_CREDIT_ACCOUNT_MISMATCH'
+                });
+            }
+        }
 
         const existing = await posRepository.findPosPaymentAllocationByIdempotencyKey(normalizedSessionId, idempotencyKey, { transaction, lock: true });
         const requestHash = hashPayload({
@@ -630,7 +647,8 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
             outcome,
             manual_payment_received: manualPaymentReceived,
             payment_reference: String(payload.payment_reference || '').trim(),
-            payment_provider: paymentProvider
+            payment_provider: paymentProvider,
+            employee_credit_account_code: employeeCreditAccountCode
         });
         if (existing) {
             if (String(existing.request_hash || '') !== requestHash) throw paymentError(DomainErrorCode.CONFLICT, 'Allocation idempotency_key was already used with a different payload.', 409, { reason_code: 'POS_PAYMENT_ALLOCATION_IDEMPOTENCY_CONFLICT' });
