@@ -62,18 +62,15 @@
  * CLI:
  *   node scripts/resolve-build-skip-plan.js --revision <github.sha> [--apps app1,app2,...]
  *     [--project-root <path>] [--environment <DEV|STAGING|PROD>] [--release-revision <rN>]
- *     [--release-revisions-json '{"<app>":"<rN>",...}'] [--dev-pr-ref <pr123|branch>]
+ *     [--release-revisions-json '{"<app>":"<rN>",...}']
  *
  *   `--release-revision` (#1977, Phase 342) is the candidate-wide release revision; when set,
  *   each app's checked tag is its revision-aware matrix tag (frontend `X.Y.Z-rN-staging`,
  *   backend `X.Y.Z-rN`, PROD `X.Y.Z-rN`) instead of the legacy uniform `X.Y.Z[-channel]` tag.
  *   Omit it for DEV/ad-hoc dispatches (unchanged legacy behavior).
  *
- *   `--release-revisions-json` (#2055, Phase 346) is the per-app equivalent: a JSON map of
- *   app name to that app's own allocated revision. An app with an explicit entry checks its
- *   own revision-aware tag; an app without one falls back to `--release-revision`, if set,
- *   else the legacy tag. `--dev-pr-ref` resolves DEV ad-hoc tags (`X.Y.Z-<slug>-dev`) for
- *   apps with no revision entry at all.
+ *   `--release-revisions-json` is the per-app revision map for STAGING/PROD release builds.
+ *   DEV bypasses registry inspection and always rebuilds selected apps to move the shared `dev` alias.
  *
  *   Prints one JSON blob on its own stdout line (mirrors `check-promotion-candidate.js
  *   --resolve-app-shas`'s own "machine-readable, on its own stdout line" convention):
@@ -116,7 +113,7 @@ function deriveChannelSuffix(environment) {
     case '':
       return '';
     case 'DEV':
-      return '-dev';
+      return ''; // DEV uses the moving, versionless `dev` alias.
     case 'STAGING':
       return '-staging';
     case 'PROD':
@@ -296,11 +293,11 @@ async function decideBuildSkip({
  * `X.Y.Z[-channel]` derivation applies unchanged (DEV dispatches and any ad-hoc dispatch
  * outside a tracked candidate never set a revision).
  *
- * #2055 (Phase 346): `prRef` resolves DEV ad-hoc tags (`X.Y.Z-<slug>-dev`) for apps with
- * no allocated revision -- the resolver itself rejects `prRef` outside DEV, so a caller
- * mixing them fails closed rather than checking the wrong tag.
+ * #2071: DEV always resolves to the versionless shared `dev` alias; `prRef` is ignored for
+ * compatibility with callers that have not yet dropped the old optional flag.
  */
 function deriveVersionTag({ version, environment, app, revision, prRef }) {
+  if (String(environment || '').toUpperCase() === 'DEV') return 'dev';
   if (revision === undefined || revision === null || String(revision).trim() === '') {
     if (prRef !== undefined && prRef !== null && String(prRef).trim() !== '') {
       return resolveReleaseTags({ app, version, environment, prRef }).tag;
@@ -326,6 +323,10 @@ async function resolveBuildSkipPlan({
   const plan = {};
   for (const app of apps) {
     try {
+      if (String(environment || '').toUpperCase() === 'DEV') {
+        plan[app] = { skip: false, code: 'dev-moving-tag', detail: 'DEV always rebuilds selected apps so the shared dev tag moves to this dispatch SHA' };
+        continue;
+      }
       const image = IMAGE_NAME_BY_APP(app);
       const rawVersion = readVersionAt(repoRoot, currentRevision, `apps/${app}`);
       if (!rawVersion) {

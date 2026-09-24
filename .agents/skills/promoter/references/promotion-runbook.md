@@ -421,39 +421,14 @@ git push -u origin to-staging/$CANDIDATE_ID
 CANDIDATE_SHA="$TARGET_SHA"
 ```
 
-**Candidate manifest (ADR 0081 Decision 8, #1588; v2 per-app shape since #2055)** — the parity
-gate downstream needs a durable record of this candidate's own frozen source SHA, distinct from
-whatever `github.sha` each environment's merge commit happens to carry, PLUS the per-app DEV
-artifacts the candidate starts from and (at release-cut time) each touched app's latest
-allocated revision. Written locally, never committed (mirrors
-`.tmp/release-gates/<sha>/local_readiness.json`'s own local-artifact convention) — pass its path to
-every `check-promotion-candidate.js`/`check-image-version-parity.js`/`check-staging-candidate-
-observation.js` call below instead of re-deriving the SHA by hand each time.
+**Candidate manifest (ADR 0081 Decision 8, #1588; v3 versionless-DEV shape since #2071)** — promotion is based on the frozen `develop` SHA and builds directly on STAGING. DEV is a shared experimental target and is never read or required here. The manifest records the initial changed-app set, staging repairs, and (at release-cut time) each touched app's revisioned STAGING artifact. Written locally, never committed; pass its path to every candidate/parity/observation check below.
 
-**Select each touched app's starting DEV artifact first (#2055).** A candidate starts from
-already-published, revisioned DEV artifacts — `--select-dev` reads the latest
-`X.Y.Z-rN-dev` (with a readable revision label) straight off GHCR and prints its
-`{ revision, sha, digest }`. It fails when the app was never DEV-built at its current floor
-— dispatch `deploy.yml --ref develop` first (DEV allocation is automatic there), then cut
-the candidate. Legacy bare `X.Y.Z-dev` and ad-hoc `X.Y.Z-<slug>-dev` tags are never
-selected; record only what the command prints:
-
-```bash
-mkdir -p .tmp/release-candidates
-for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
-  FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
-  echo "== $APP@$FLOOR"
-  node scripts/allocate-artifact-revision.js --select-dev --image "ghcr.io/sieitzz/${APP}" --floor "${FLOOR}"
-done
-# (Requires docker login: `echo "$GITHUB_TOKEN" | docker login ghcr.io -u <user> --password-stdin`.
-# Only apps this candidate will actually rebuild need selecting -- an app absent from the
-# manifest keeps its last-published artifact and gets no new tag, by design.)
-```
+**Determine changed apps and prepare floors at promotion start.** Run the existing minor-floor check against the pinned candidate source before cutting the `to-staging` branch; only affected apps advance their package floor. Deploy jobs are selected from the resulting app changes and build from `$CANDIDATE_SHA` on STAGING. No DEV dispatch, DEV tag inspection, or DEV artifact selection is part of promotion. Allocate the immutable per-app `rN` only when building the release artifact; the allocator scans STAGING/PROD revision tags.
 
 ```bash
 cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
 {
-  "schema": "sku-release-candidate/v2",
+  "schema": "sku-release-candidate/v3",
   "candidate_id": "$CANDIDATE_ID",
   "status": "staging_soak",
   "source_develop_sha": "$CANDIDATE_SHA",
@@ -461,9 +436,7 @@ cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
   "staging_head_sha": null,
   "revisions": [
     { "kind": "initial", "sha": "$CANDIDATE_SHA", "parent_sha": null, "branch": "to-staging/$CANDIDATE_ID", "pr": 1234,
-      "dev_artifacts": [
-        { "app": "dgfy-ims", "revision": 4, "sha": "<dev-sha>", "digest": "sha256:<dev-digest>" }
-      ] }
+      "apps_touched": ["dgfy-ims"] }
   ],
   "release_revision": null
 }
@@ -610,8 +583,8 @@ if (dig.state !== 'ok') throw new Error('digest unreadable on ' + ref + ': ' + d
 console.log(JSON.stringify({ revision: Number(process.argv[2]), source_sha: sha.value, digest: dig.digest }));
 " "ghcr.io/sieitzz/${APP}:${STAGING_TAG}" "$N"
 # Record as: "dgfy-pos": { "revision": N, "source_sha": "<printed>", "digest": "<printed>",
-#   "origin": "dev" | "staging_repair" } -- "dev" when the app kept its selected DEV
-#   revision untouched by any repair, "staging_repair" once a repair reallocated it.
+#   "origin": "promotion" | "staging_repair" } -- "promotion" when the artifact was built
+#   from the frozen develop source at promotion start, "staging_repair" after repair.
 ```
 
 Update the manifest's `release_revision` field (`source_staging_sha`, `branch` =
@@ -668,11 +641,9 @@ git rev-list --count origin/staging..origin/main
 
 ```bash
 # STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is not a routine
-# step of this flow (#982) — use `--ref develop` only when DEV is specifically wanted, never
-# as a routine step here. (A DEV dispatch on develop allocates per-app revisions from GHCR
-# automatically; a feature-branch dispatch publishes ad-hoc X.Y.Z-<slug>-dev tags that no
-# candidate can ever select — see ADR 0081's 2026-09-23 amendment. Neither carries a
-# candidate revision input.)
+# step of this flow (#982). Promotion builds the frozen develop source directly on STAGING;
+# there is no DEV artifact or DEV-host prerequisite. A manual DEV dispatch from develop or an
+# experimental branch updates the shared mutable `dev` tag plus that commit's SHA tag.
 # (#1050, 2026-08-25: the old single-select `components` input is gone; the
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
@@ -684,15 +655,13 @@ git rev-list --count origin/staging..origin/main
 # (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
 # promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
-# Per-app artifact revisions (#2055, Phase 346) -- one value per app-group, NOT a shared rN.
-# Initial STAGING dispatch: each app's SELECTED DEV revision, read straight from the manifest
-# this file writes in "Default: develop -> staging -> main" (dev_artifacts[].revision).
-# A staging REPAIR redeploy: freshly allocate each touched app's next revision FIRST
-# (untouched apps keep their existing N -- pass it through unchanged, never reallocate):
+# Per-app artifact revisions (#2071): allocate immutable STAGING/PROD rN identities from
+# promotion-channel tags; the sequence excludes DEV. For initial STAGING, allocate each app
+# built from the frozen develop SHA. For a staging repair, allocate only rebuilt apps:
 #   node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/<app> \
 #     --floor "$(node -p "require('./apps/<app>/package.json').version")" --revision <repair-sha>
-# (Same-source retry reuses its own N -- idempotent, not a new allocation. Requires docker
-# login, same as --select-dev above.)
+# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is
+# required to inspect GHCR revision tags.)
 REV_API=<rN-for-dgfy-api-and-dgfy-migration-runner>
 REV_IMS=<rN-for-dgfy-ims>
 REV_POS=<rN-for-dgfy-pos>

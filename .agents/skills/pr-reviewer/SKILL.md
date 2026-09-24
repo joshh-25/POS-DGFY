@@ -95,12 +95,12 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    minor-floor bump (ADR 0081 Decision 6) is what actually enforces the requirement at promotion
    time, so a missing bump here is a `should-fix`, not a blocker. What this item still catches that
    CI does not, on either base: a proposed level *higher* than what the diff's actual bump satisfies
-   (e.g. the commits look like a `feat` but the PR only bumped patch) — CI's `any-increase` mode (the
-   mode a `develop`-base PR always runs under, and the mode a `release/*`-headed `main`-base PR also
-   runs under) accepts *any* increase regardless of size, so a too-small-but-nonzero bump still
-   passes CI. That mismatch is a **`blocker`** on a promotion-leg PR — with blocking live there, a
-   mismatched level is a real policy gap, not just a style note — and a **`should-fix`** on a
-   `develop`-base PR, since CI doesn't block that leg at all. A proposed level *lower* than the
+   (e.g. the commits look like a `feat` but the PR only bumped patch). CI checks package-floor
+   policy, not Conventional Commit semantic level: develop work and staging repairs require an
+   unchanged floor, promotion requires a minor floor advance for changed apps, and direct main
+   hotfixes require patch-only. Evaluate semantic level from the actual code change separately from
+   that floor policy. A mismatch is a **`blocker`** on a promotion-leg PR and a **`should-fix`** on a
+   `develop`-base PR, since CI's develop result remains advisory. A proposed level *lower* than the
    actual bump is never a finding — bumping more than the diff calls for is never wrong. Add one row
    to the fixed `## Review` table shape for this finding when it fires.
 5. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
