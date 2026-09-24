@@ -40,6 +40,10 @@ describe('OPIS routes (issue #2052)', () => {
     expect(mainSource).not.toContain('path="/" element={<Navigate to="/backoffice/overview"');
   });
 
+  it('wires the account menu into the authenticated Back Office topbar', () => {
+    expect(businessAdminPageSource).toContain('<BusinessAdminAccountMenu user={bootstrap.user} business={bootstrap.business} />');
+  });
+
   it('resolves both dashboard and section paths at the origin root', () => {
     expect(parseBusinessAdminPath('/', '/').activeSection).toBe('overview');
     expect(parseBusinessAdminPath('/catalog', '/').activeSection).toBe('catalog');

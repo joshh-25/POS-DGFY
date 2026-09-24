@@ -75,6 +75,7 @@ import {
 } from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
 import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
+import BusinessAdminAccountMenu from './BusinessAdminAccountMenu.jsx';
 import {
     BACKOFFICE_NAV_GROUPS,
     BACKOFFICE_SECTION_META,
@@ -3247,7 +3248,7 @@ export default function BusinessAdminPage() {
                             {activeSection !== 'settings' && meta.description ? <p className="business-admin-description">{meta.description}</p> : null}
                         </div>
                     </div>
-                    <div className="business-admin-top-actions"><span className="business-admin-chip"><UserRound size={13} /> {bootstrap.user?.username || bootstrap.user?.email || 'User'}</span><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
+                    <div className="business-admin-top-actions"><BusinessAdminAccountMenu user={bootstrap.user} business={bootstrap.business} /><button type="button" className="business-admin-button" onClick={handleBusinessAdminRefresh} disabled={sectionLoading || bootstrapLoading}><RefreshCw size={14} /> Refresh</button><GuardedLink href={buildPosTerminalUrl()} isDirty={settingsDirty} onLeave={() => setSettingsDirty(false)} className="business-admin-button primary"><ExternalLink size={14} /> POS terminal</GuardedLink></div>
                 </div>
                 {showDateFilters ? (
                     <div className={`business-admin-filter-card ${activeSection === 'locations' ? 'business-admin-branches-filter-card' : ''}`}>

@@ -27,7 +27,7 @@ describe('Back Office canonical manifest contract', () => {
         expect(navKeys).toEqual(Object.keys(BACKOFFICE_MANIFEST));
         for (const item of BACKOFFICE_NAV_GROUPS.flatMap((group) => group.items)) {
             expect(item.group).toBe(BACKOFFICE_NAV_GROUPS.find((group) => group.items.includes(item))?.label);
-            expect(item.route).toBe(`/business-admin/${item.id}`);
+            expect(item.route).toBe(item.id === 'overview' ? '/' : `/${item.id}`);
             expect(item.permission).toBe('business_admin:access');
             expect(item.visibility).toBeTruthy();
             expect(item.metadata.owner).toBe('pos-backoffice');
@@ -106,7 +106,7 @@ describe('Back Office canonical manifest contract', () => {
         expect(getBackOfficeModuleDefinition('locations')).toMatchObject({
             id: 'locations',
             label: 'Locations',
-            route: '/business-admin/locations'
+            route: '/locations'
         });
         expect(BACKOFFICE_MANIFEST.branches).toBeUndefined();
         expect(BACKOFFICE_MANIFEST.registers).toBeUndefined();
