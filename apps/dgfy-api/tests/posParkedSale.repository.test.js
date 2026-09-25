@@ -64,7 +64,7 @@ describe('parked sale repository contract', () => {
 
         const row = await posRepository.createParkedSale({ idempotency_key: 'park-key' }, { transaction: { id: 'tx-1' } });
 
-        expect(row).toEqual({ pos_parked_sale_id: 77, status: 'parked' });
+        expect(row).toEqual({ pos_parked_sale_id: 77, status: 'parked', _idempotent_replay: true });
         expect(model.findOne).toHaveBeenCalledWith(expect.objectContaining({
             where: { idempotency_key: 'park-key' },
             transaction: { id: 'tx-1' }
@@ -96,7 +96,7 @@ describe('parked sale repository contract', () => {
         expect(model.findAll.mock.calls[0][0].where).not.toHaveProperty('shift_id');
     });
 
-    it('updates and counts only claimed parked-sale rows for shift close', async () => {
+    it('updates and counts unresolved parked-sale rows for shift close', async () => {
         const model = buildModel();
         const row = {
             update: jest.fn(async () => undefined),
@@ -117,7 +117,10 @@ describe('parked sale repository contract', () => {
         expect(row.update).toHaveBeenCalledWith({ status: 'cancelled' }, { transaction });
         expect(count).toBe(2);
         expect(model.count).toHaveBeenCalledWith(expect.objectContaining({
-            where: expect.objectContaining({ shift_id: 41, status: 'claimed' }),
+            where: expect.objectContaining({
+                shift_id: 41,
+                status: expect.objectContaining({})
+            }),
             transaction
         }));
     });

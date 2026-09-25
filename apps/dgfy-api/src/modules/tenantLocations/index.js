@@ -5,6 +5,7 @@ import {
     buildListTenantLocationsUseCase,
     buildCreateTenantLocationUseCase,
     buildUpdateTenantLocationUseCase,
+    buildUpdateTenantLocationDineInPaymentPolicyUseCase,
     buildDeactivateTenantLocationUseCase,
     buildDeleteTenantLocationUseCase
 } from './usecases/tenantLocationUseCases.js';
@@ -13,6 +14,7 @@ export const listTenantLocationsUseCase = buildListTenantLocationsUseCase({ tena
 const writeDependencies = { tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant, logger };
 export const createTenantLocationUseCase = buildCreateTenantLocationUseCase(writeDependencies);
 export const updateTenantLocationUseCase = buildUpdateTenantLocationUseCase(writeDependencies);
+export const updateTenantLocationDineInPaymentPolicyUseCase = buildUpdateTenantLocationDineInPaymentPolicyUseCase(writeDependencies);
 export const deactivateTenantLocationUseCase = buildDeactivateTenantLocationUseCase(writeDependencies);
 export const deleteTenantLocationUseCase = buildDeleteTenantLocationUseCase(writeDependencies);
 

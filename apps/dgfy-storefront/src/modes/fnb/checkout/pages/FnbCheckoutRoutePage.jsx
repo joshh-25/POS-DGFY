@@ -11,6 +11,7 @@ export function FnbCheckoutRoutePage({
   contentPadding,
   displayFont,
   isDeliveryOrder,
+  orderMethod,
   isMobileViewport,
   isResponsiveFlow,
   onBack,
@@ -23,6 +24,7 @@ export function FnbCheckoutRoutePage({
       <FnbCheckoutStoreHeader
         displayFont={displayFont}
         isDeliveryOrder={isDeliveryOrder}
+        orderMethod={orderMethod}
         isMobileViewport={isMobileViewport}
         isResponsiveFlow={isResponsiveFlow}
         onBack={onBack}

@@ -88,7 +88,7 @@ export function FnbWorkflowPanel({
          <div className="contents">
           {orderMethod === 'dine_in' && (
             <label className="block text-[11px] font-bold text-slate-600">
-              Table # <span className="text-rose-600">*</span>
+              Table # (Optional)
               <input
                 type="text"
                 placeholder="e.g. T-04"
@@ -102,7 +102,7 @@ export function FnbWorkflowPanel({
 
           {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
             <label className={`${orderMethod === 'takeout' && isTabletViewport ? 'col-span-full ' : ''}block text-[11px] font-bold text-slate-600`}>
-              Order Notes (Global) <span className="text-rose-600">*</span>
+              Order Notes (Global)
               <input
                 type="text"
                 placeholder="Applies to the whole order"

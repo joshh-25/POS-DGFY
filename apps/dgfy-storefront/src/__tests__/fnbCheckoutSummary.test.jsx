@@ -87,8 +87,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('desktop detailed variant shows the split rows and the disclosure note', () => {
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} variant="detailed" />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getAllByText('PHP 0.00').length).toBeGreaterThan(0);
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
@@ -98,7 +97,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('desktop compact variant (OrderSummaryCard) shows the same split rows and footnote', () => {
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} variant="compact" />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
@@ -108,7 +107,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     it('mobile summary sheet shows the same split rows and total', () => {
       render(<FnbCheckoutMobileSummaryPanel {...mobileBaseProps} totals={totals} />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();

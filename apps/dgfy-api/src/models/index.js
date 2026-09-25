@@ -36,6 +36,7 @@ import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import PosParkedSale from './PosParkedSale.js';
+import BusinessAdminApprovalRequest from './BusinessAdminApprovalRequest.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
@@ -682,6 +683,9 @@ PosParkedSale.belongsTo(User, { foreignKey: 'cancelled_by', as: 'cancelledByUser
 PosParkedSale.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 PosParkedSale.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosParkedSale.belongsTo(PosTransaction, { foreignKey: 'completed_transaction_id', as: 'completedTransaction' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'requested_by', as: 'requestedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
 PosPaymentSession.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
 PosPaymentSession.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
 PosPaymentSession.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
@@ -705,6 +709,9 @@ User.hasMany(PosParkedSale, { foreignKey: 'claimed_by', as: 'claimedPosParkedSal
 User.hasMany(PosParkedSale, { foreignKey: 'cancelled_by', as: 'cancelledPosParkedSales' });
 PosTransaction.hasMany(PosParkedSale, { foreignKey: 'completed_transaction_id', as: 'parkedSaleCompletions' });
 PosParkedSale.hasMany(PosPaymentSession, { foreignKey: 'parked_sale_id', as: 'paymentSessions' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'requested_by', as: 'requestedBusinessAdminApprovals' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'approved_by', as: 'approvedBusinessAdminApprovals' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'rejected_by', as: 'rejectedBusinessAdminApprovals' });
 PosTransaction.hasMany(PosPaymentSession, { foreignKey: 'completed_transaction_id', as: 'paymentSessions' });
 PosTerminalShift.hasMany(PosPaymentSession, { foreignKey: 'shift_id', as: 'paymentSessions' });
 TenantLocation.hasMany(PosPaymentSession, { foreignKey: 'location_id', as: 'posPaymentSessions' });
@@ -1197,6 +1204,7 @@ const db = {
   DispatchOrderLine,
   PosTransaction,
   PosParkedSale,
+  BusinessAdminApprovalRequest,
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
@@ -1426,6 +1434,7 @@ export {
   DispatchOrderLine,
   PosTransaction,
   PosParkedSale,
+  BusinessAdminApprovalRequest,
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,

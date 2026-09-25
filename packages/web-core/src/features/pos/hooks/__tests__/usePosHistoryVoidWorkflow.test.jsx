@@ -152,6 +152,28 @@ describe('usePosHistoryVoidWorkflow', () => {
         }));
     });
 
+    it('does not treat a pending Back Office request as an executed void', async () => {
+        const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
+        voidPosTransaction.mockResolvedValue({ pending: true, approval_request: { status: 'pending' } });
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: 42,
+            onFinancialMutationCompleted
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                { pos_transaction_id: 7 },
+                'Correct duplicate sale'
+            );
+        });
+
+        expect(onFinancialMutationCompleted).not.toHaveBeenCalled();
+        expect(fetchPosTransactions).toHaveBeenCalled();
+        expect(result.current.voidingTransactionId).toBe(null);
+    });
+
     it('blocks a cashier void when the cashier has no open shift', async () => {
         const { result } = renderHistory({
             canVoidTransactions: true,

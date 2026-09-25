@@ -411,12 +411,8 @@ export default function POSCheckoutTerminal({
             });
             if (message) return message;
         }
-        if (posWorkflow.mode === 'fnb' && orderMethod === 'dine_in') {
-            if (!String(tableNumber || '').trim()) return 'Table number is required for Dine In.';
-            if (!String(kitchenNotes || '').trim()) return 'Order notes are required for Dine In.';
-        }
         return null;
-    }, [kitchenNotes, orderMethod, posWorkflow.mode, safeCart, safeCatalog, tableNumber]);
+    }, [safeCart, safeCatalog]);
     const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
         && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
         && (orderMethod !== 'appointment' || Boolean(servicesDateTime))

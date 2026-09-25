@@ -561,6 +561,7 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
             supports_delivery: plainLocation.supports_delivery !== false,
             supports_pickup: plainLocation.supports_pickup !== false,
             supports_dine_in: plainLocation.supports_dine_in !== false,
+            allow_dine_in_pay_at_store: plainLocation.allow_dine_in_pay_at_store === true,
             scheduling_enabled: plainLocation.scheduling_enabled !== false,
             immediate_fulfillment_enabled: plainLocation.immediate_fulfillment_enabled !== false,
             fulfillment_lead_time_min_days: plainLocation.fulfillment_lead_time_min_days ?? null,
