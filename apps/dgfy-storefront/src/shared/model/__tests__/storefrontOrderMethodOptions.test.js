@@ -4,6 +4,7 @@ import {
   isEnabledStorefrontOrderMethod,
   resolveLocationFulfillmentSupport
 } from '../storefrontOrderMethodOptions.js';
+import { resolveStorefrontFnbFulfillmentOptions } from '../storefrontFulfillmentOptions.js';
 
 // #1093: the storefront never offered fewer than "both delivery and pickup", even at a
 // location whose supports_delivery/supports_pickup columns say otherwise -- the customer
@@ -128,5 +129,33 @@ describe('buildStorefrontOrderMethodOptions', () => {
       supports_dine_in: true
     });
     expect(result.map((o) => o.value)).toEqual(['delivery', 'pickup']);
+  });
+});
+
+describe('resolveStorefrontFnbFulfillmentOptions', () => {
+  it('adds dine-in only to the F&B candidate set and respects location support', () => {
+    expect(resolveStorefrontFnbFulfillmentOptions({
+      supports_delivery: true,
+      supports_pickup: true,
+      supports_dine_in: true,
+      scheduling_enabled: true
+    })).toEqual([
+      { value: 'delivery', label: 'Delivery', available: true },
+      { value: 'pickup', label: 'Pickup', available: true },
+      { value: 'dine_in', label: 'Dine In', available: true }
+    ]);
+  });
+
+  it('keeps dine-in visible but unavailable when scheduling is disabled', () => {
+    expect(resolveStorefrontFnbFulfillmentOptions({
+      supports_delivery: true,
+      supports_pickup: true,
+      supports_dine_in: true,
+      scheduling_enabled: false
+    })[2]).toMatchObject({
+      value: 'dine_in',
+      available: false,
+      unavailableReason: expect.stringContaining('scheduling disabled')
+    });
   });
 });

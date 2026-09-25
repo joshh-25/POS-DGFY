@@ -135,7 +135,8 @@ export const validateParkedSaleResume = ({
     allowedOrderMethods = [],
     discountProfiles = [],
     commercialPromoConfig = [],
-    modifierValidator = null
+    modifierValidator = null,
+    historicalSnapshotPolicy = 'strict'
 } = {}) => {
     const snapshot = parkedSale?.snapshot && typeof parkedSale.snapshot === 'object'
         ? parkedSale.snapshot
@@ -143,6 +144,12 @@ export const validateParkedSaleResume = ({
     const lines = getParkedSaleSnapshotLines(parkedSale);
     const catalogIndexes = buildCatalogIndexes(catalog);
     const conflicts = [];
+    const warnings = [];
+    const allowHistoricalSnapshot = historicalSnapshotPolicy === 'warn';
+    const addCatalogDrift = (message) => {
+        if (allowHistoricalSnapshot) warnings.push(message);
+        else conflicts.push(message);
+    };
 
     if (lines.length === 0) {
         conflicts.push('This parked sale has no cart lines to resume.');
@@ -187,9 +194,11 @@ export const validateParkedSaleResume = ({
         const item = resolved.item;
         const label = lineLabel(line, item);
         if (!item) {
-            conflicts.push(resolved.reason === 'ambiguous_name' || resolved.reason === 'ambiguous_sku'
-                ? `${label} matches multiple current POS catalog items and must be reviewed.`
-                : `${label} is no longer available in the current POS catalog.`);
+            if (resolved.reason === 'ambiguous_name' || resolved.reason === 'ambiguous_sku') {
+                conflicts.push(`${label} matches multiple current POS catalog items and must be reviewed.`);
+            } else {
+                addCatalogDrift(`${label} is no longer available in the current POS catalog; the parked snapshot will be used.`);
+            }
             return;
         }
 
@@ -201,33 +210,34 @@ export const validateParkedSaleResume = ({
         const serviceItem = isServiceCatalogItem(item) || item?.pos_always_available === true;
         const currentStock = Number(item?.current_stock);
         if (!serviceItem && (!Number.isFinite(currentStock) || currentStock < Number(quantity || 0))) {
-            conflicts.push(`${label} no longer has enough stock to resume this quantity.`);
+            addCatalogDrift(`${label} no longer has enough stock to resume this quantity; the parked snapshot will be used.`);
         }
 
         const currentDefaultPrice = Number(item?.default_sale_price);
         if (!Number.isFinite(currentDefaultPrice) || currentDefaultPrice <= 0) {
-            conflicts.push(`${label} no longer has a valid POS selling price.`);
+            addCatalogDrift(`${label} no longer has a valid POS selling price; the parked snapshot price will be honored.`);
         } else {
             const savedBasePrice = Number(line?.base_sale_price);
             const savedSalePrice = Number(line?.sale_price);
             const hasPriceOverrideReason = String(line?.price_override_reason || '').trim().length >= 3;
             if (Number.isFinite(savedBasePrice) && !samePrice(currentDefaultPrice, savedBasePrice)) {
-                conflicts.push(`${label} selling price changed while it was parked.`);
+                addCatalogDrift(`${label} selling price changed while it was parked; the saved price will be honored.`);
             }
             if (!hasPriceOverrideReason && Number.isFinite(savedSalePrice) && !samePrice(currentDefaultPrice, savedSalePrice)) {
-                conflicts.push(`${label} has a stale selling price and must be reviewed.`);
+                addCatalogDrift(`${label} has a stale selling price; the saved price will be honored.`);
             }
         }
 
         if (typeof modifierValidator === 'function') {
             const modifierConflict = modifierValidator({ item, line, locationId });
-            if (modifierConflict) conflicts.push(`${label}: ${modifierConflict}`);
+            if (modifierConflict) addCatalogDrift(`${label}: ${modifierConflict} The parked snapshot will be used.`);
         }
     });
 
     return {
         ok: conflicts.length === 0,
         conflicts,
+        warnings,
         snapshot,
         lines
     };
@@ -258,7 +268,8 @@ export const buildResumedCartLines = ({ parkedSale, catalog = [] } = {}) => {
             service_option_ids: toArray(line?.service_option_ids),
             service_option_details: toArray(line?.service_option_details),
             special_instructions: line?.special_instructions || '',
-            scan_metadata: line?.scan_metadata || null
+            scan_metadata: line?.scan_metadata || null,
+            parked_snapshot_line: true
         };
     });
 };

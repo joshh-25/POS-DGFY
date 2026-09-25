@@ -272,9 +272,12 @@ export const usePosHistoryVoidWorkflow = ({
             };
             if (activeShiftId) voidPayload.shift_id = activeShiftId;
             const voidResult = await voidPosTransaction(posTransactionId, voidPayload);
-            toast.success('POS transaction voided.');
+            const approvalPending = voidResult?.pending === true;
+            toast.success(approvalPending
+                ? 'Void request sent to Back Office. The sale and stock stay unchanged until approval.'
+                : 'POS transaction voided.');
             await loadHistory(historyPage);
-            if (typeof onFinancialMutationCompleted === 'function') {
+            if (!approvalPending && typeof onFinancialMutationCompleted === 'function') {
                 try {
                     await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });
                 } catch {

@@ -436,6 +436,15 @@ const parkedSaleIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+const posExceptionApprovalParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    decision: Joi.string().trim().lowercase().valid('approve', 'reject').required()
+});
+
+const posExceptionApprovalBodySchema = Joi.object({
+    note: Joi.string().trim().max(500).allow('', null).optional()
+}).unknown(false);
+
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
@@ -1400,6 +1409,8 @@ export const validateClaimPosParkedSale = validateSchema(claimPosParkedSaleSchem
 export const validateCancelPosParkedSale = validateSchema(cancelPosParkedSaleSchema, 'body', 'validatedData');
 export const validateReparkPosParkedSale = validateSchema(reparkPosParkedSaleSchema, 'body', 'validatedData');
 export const validateParkedSaleIdParam = validateSchema(parkedSaleIdParamSchema, 'params', 'validatedParams');
+export const validatePosExceptionApprovalParam = validateSchema(posExceptionApprovalParamSchema, 'params', 'validatedParams');
+export const validatePosExceptionApprovalBody = validateSchema(posExceptionApprovalBodySchema, 'body', 'validatedData');
 export const validateCreatePosPaymentSession = validateSchema(createPosPaymentSessionSchema, 'body', 'validatedData');
 export const validateAddPosPaymentAllocation = validateSchema(addPosPaymentAllocationSchema, 'body', 'validatedData');
 export const validateCancelPosPayment = validateSchema(cancelPosPaymentSchema, 'body', 'validatedData');
@@ -1482,6 +1493,7 @@ export const validateDeliveryRunVarianceResolution = validateSchema(deliveryRunV
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateCollectCashDineInOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');

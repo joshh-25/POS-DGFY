@@ -36,6 +36,7 @@ import {
   getDineInScheduleStateLabel,
   isScheduledDineInOrder
 } from '../utils/dineInSchedule.js';
+import { isCashCollectionTimingValid } from '../utils/incomingQueueOrderActions.js';
 
 // Phase 229 (#1289), §2.7. Pure extraction of the Active Queue's order-card grid out of
 // TerminalOperationsPanels.jsx's IncomingQueueWorkspace, so #1288 (view-mode toggle) and #1290
@@ -185,10 +186,12 @@ function OrderCard({
   const nextActions = getNextStatusActions(order, workflowMode);
   const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
   const utilityActions = getIncomingOrderUtilityActions(order);
-  const canCollectCash = order.payment_type === 'cash'
+  const canCollectCash = isCashCollectionTimingValid(order)
+    && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
@@ -200,6 +203,7 @@ function OrderCard({
     && orderBalanceDue > 0
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const deliveryCoords = parseDeliveryCoords(order);
@@ -258,7 +262,11 @@ function OrderCard({
         onClick={() => handleOpenCashCollection?.(order)}
       >
         <Wallet className="mr-2 h-4 w-4 shrink-0" />
-        {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
+        {order.order_method === 'dine_in'
+          ? 'Collect Dine-in Cash'
+          : order.order_method === 'delivery'
+            ? 'Collect Delivery Cash'
+            : 'Collect Cash'}
       </Button>
     );
   }

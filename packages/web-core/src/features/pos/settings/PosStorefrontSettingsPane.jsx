@@ -1307,7 +1307,8 @@ function StoreLocationsSummary({ storefrontForm, storefrontLocations, canEditSet
   const selectedLocation = storefrontLocations.find((location) => location.location_id === selectedLocationId) || storefrontLocations[0] || null;
   const orderMethods = selectedLocation ? [
     selectedLocation.supports_delivery !== false && 'Delivery',
-    selectedLocation.supports_pickup !== false && 'Pickup',
+     selectedLocation.supports_pickup !== false && 'Pickup',
+     selectedLocation.supports_dine_in !== false && 'Dine In',
     selectedLocation.scheduling_enabled !== false && 'Scheduled',
     selectedLocation.immediate_fulfillment_enabled !== false && 'Immediate'
   ].filter(Boolean) : [];
@@ -1439,7 +1440,8 @@ export default function PosStorefrontSettingsPane({
   const [isEditing, setIsEditing] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const handleFulfillmentMethodChange = useCallback((field, value) => {
-    if (value === false && lastFulfillmentMethodLocked) {
+    const isDeliveryOrPickup = field === 'supports_delivery' || field === 'supports_pickup';
+    if (isDeliveryOrPickup && value === false && lastFulfillmentMethodLocked) {
       toast.warning(LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE, {
         duration: FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS
       });
@@ -2075,6 +2077,7 @@ export default function PosStorefrontSettingsPane({
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowOutOfStockSales} description="Sell out-of-stock items" checked={locationForm.allow_out_of_stock_sales === true} disabled={!canEdit} onChange={(value) => setLocationForm((current) => ({ ...current, allow_out_of_stock_sales: value === true }))} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsDelivery} description="Accept delivery orders" checked={locationForm.supports_delivery !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_delivery', value)} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsPickup} description="Accept pickup orders" checked={locationForm.supports_pickup !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_pickup', value)} />
+                      <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsDineIn} description="Accept dine-in orders" checked={locationForm.supports_dine_in !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_dine_in', value)} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowScheduledOrders} description="Offer scheduled orders" checked={locationForm.scheduling_enabled !== false} disabled={!canEditSettings} onChange={(value) => setLocationForm((current) => ({ ...current, scheduling_enabled: value !== false }))} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowImmediateFulfillment} description="Offer immediate fulfillment" checked={locationForm.immediate_fulfillment_enabled !== false} disabled={!canEditSettings} onChange={(value) => setLocationForm((current) => ({ ...current, immediate_fulfillment_enabled: value !== false }))} />
                     </div>

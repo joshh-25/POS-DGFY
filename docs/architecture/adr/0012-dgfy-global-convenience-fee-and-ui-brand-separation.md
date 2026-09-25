@@ -133,3 +133,16 @@ Adopt one mandatory cross-surface fee policy and branding split:
   machinery is introduced; money on a settled order remains unmovable through this endpoint.
 - The totals formula's shape, the `service_fee_amount` policy, POS cashier checkout, and every
   branding/fiscal clause in this ADR are untouched by this amendment.
+
+### 2026-09-24 — Merchant-collected storefront Dine-in orders do not carry the convenience fee
+
+- A Storefront Dine-in order with `payment_type='cash'` (shown to the customer as **Pay in store**)
+  at a location where `allow_dine_in_pay_at_store=true` is merchant-collected and has
+  `service_fee_amount=0`. Its total excludes the DGFY convenience fee.
+- Storefront Dine-in orders paid online, and all other Storefront order methods, retain the
+  `round4(gross_subtotal * 0.01)` convenience fee.
+- This is a forward-only pricing rule. Existing `service_fee_*` columns, labels, and historical
+  transaction values remain unchanged; no migration or historical recomputation is required.
+- Price-only F&B modifier options with no inventory SKU do not create stock effects. Modifier
+  options linked to inventory SKUs, recipe ingredients, and stock-bearing menu lines remain subject
+  to strict reservation and fulfillment validation.

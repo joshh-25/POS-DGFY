@@ -39,7 +39,11 @@ export const buildPaymentModeStorePatch = (catalogData = null) => ({
 // Balance is always collected in person -- ADR 0069 clause 2 [binding], carried forward by ADR
 // 0070 -- so the only wording choice is delivery vs. in-person collection at pickup/dine-in.
 export const resolveDownpaymentBalanceLabel = (orderMethod) => (
-  orderMethod === 'delivery' ? 'Balance due on delivery' : 'Balance due at pickup'
+  orderMethod === 'delivery'
+    ? 'Balance due on delivery'
+    : orderMethod === 'dine_in'
+      ? 'Balance due at dine-in'
+      : 'Balance due at pickup'
 );
 
 const NULL_DISPLAY = Object.freeze({
