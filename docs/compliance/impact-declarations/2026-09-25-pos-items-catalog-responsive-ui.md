@@ -45,3 +45,4 @@ Major. The change is limited to the POS Items/catalog workspace and its responsi
 
 - Full POS test execution is currently limited by repository-local dependency gaps (`jsdom`, React/shared packages) and unrelated stale contract expectations; those failures are documented in the branch change record and are not represented as passing evidence.
 - Browser-level visual verification should still be performed against normal, large, and extra-large text-size settings and portrait/landscape tablet profiles before release.
+- The POS bulk-image worker also remains fail-safe when Redis is unavailable: it idles and retries rather than polling the queue repository, with queued imports recoverable after Redis returns.
