@@ -6,12 +6,22 @@ const DialogContext = createContext(null)
 
 const modalScrollLocks = new Set()
 let bodyOverflowBeforeModal = ''
+let bodyPaddingRightBeforeModal = ''
 
 export const acquireModalScrollLock = () => {
   if (typeof document === 'undefined') return () => {}
 
   const lock = Symbol('modal-scroll-lock')
-  if (modalScrollLocks.size === 0) bodyOverflowBeforeModal = document.body.style.overflow
+  if (modalScrollLocks.size === 0) {
+    bodyOverflowBeforeModal = document.body.style.overflow
+    bodyPaddingRightBeforeModal = document.body.style.paddingRight
+
+    const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth)
+    if (scrollbarWidth > 0) {
+      const currentPaddingRight = window.getComputedStyle(document.body).paddingRight || '0px'
+      document.body.style.paddingRight = `calc(${currentPaddingRight} + ${scrollbarWidth}px)`
+    }
+  }
   modalScrollLocks.add(lock)
   document.body.style.overflow = 'hidden'
 
@@ -20,7 +30,10 @@ export const acquireModalScrollLock = () => {
     if (released) return
     released = true
     modalScrollLocks.delete(lock)
-    if (modalScrollLocks.size === 0) document.body.style.overflow = bodyOverflowBeforeModal
+    if (modalScrollLocks.size === 0) {
+      document.body.style.overflow = bodyOverflowBeforeModal
+      document.body.style.paddingRight = bodyPaddingRightBeforeModal
+    }
   }
 }
 
