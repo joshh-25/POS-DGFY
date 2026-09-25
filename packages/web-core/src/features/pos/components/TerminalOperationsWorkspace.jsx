@@ -49,6 +49,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { GlobalPagination } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
 import CSVImportModal from '@/components/items/CSVImportModal.jsx';
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
@@ -1952,6 +1953,7 @@ function ItemsWorkspace({
   const desktopFilterButtonRef = useRef(null);
   const [desktopFilterPosition, setDesktopFilterPosition] = useState(null);
   const [itemsPage, setItemsPage] = useState(1);
+  const [itemsPageSize, setItemsPageSize] = useState(POS_ITEMS_PAGE_SIZE);
   const deferredItemsSearch = React.useDeferredValue(searchQuery);
   const [editingItemSnapshot, setEditingItemSnapshot] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -2065,7 +2067,7 @@ function ItemsWorkspace({
     } finally {
       if (itemsReadSequence.current === sequence) setLoading(false);
     }
-  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
+  }, [canViewPos, categoryFilter, deferredItemsSearch, itemsPage, itemsPageSize, loadPrimaryBarcodes, locked, operatingLocationId, stockFilter]);
 
   useEffect(() => () => { itemsReadSequence.current++; }, [loadItems]);
   const normalizePosFolders = useCallback((rows = []) => (

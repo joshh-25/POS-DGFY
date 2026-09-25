@@ -38,4 +38,9 @@ describe('POS Current Sale item options contract', () => {
     expect(itemOptionsContent).not.toContain('Apply an item-only discount');
     expect(itemOptionsContent).toContain('Apply discounts from the checkout discount action');
   });
+
+  it('keeps customization actions in one equal-width row', () => {
+    expect(itemOptionsContent).toContain('grid w-full grid-cols-2 items-stretch gap-2');
+    expect(itemOptionsContent).toContain('h-10 w-full min-w-0 px-2');
+  });
 });

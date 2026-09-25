@@ -66,7 +66,7 @@ export default function PosTextSizeControl({
                 aria-controls={`${id}-menu`}
                 title={`Text size: ${selectedLabel}`}
                 onClick={() => setOpen((current) => !current)}
-                className={`inline-flex h-8 w-8 items-center justify-center rounded-xl border-0 bg-transparent text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${desktopLabeled ? 'lg:h-10 lg:w-[12.5rem] lg:justify-between lg:gap-2 lg:rounded-xl lg:border lg:border-slate-200 lg:bg-white lg:px-3 lg:text-[#0F172A]' : 'lg:h-10 lg:w-10'}`}
+                className={`pos-text-size-control__trigger inline-flex h-8 w-8 items-center justify-center rounded-xl border-0 bg-transparent text-[#1A4E8D] shadow-none transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${desktopLabeled ? 'lg:h-10 lg:w-[12.5rem] lg:justify-between lg:gap-2 lg:rounded-xl lg:border lg:border-slate-200 lg:bg-white lg:px-3 lg:text-[#0F172A]' : 'lg:h-10 lg:w-10'}`}
             >
                 <Type className="h-5 w-5 shrink-0 text-[#1A4E8D] lg:h-5 lg:w-5" strokeWidth={2.5} aria-hidden="true" />
                 <span className={`min-w-0 truncate text-[11px] font-extrabold ${desktopLabeled ? 'hidden lg:inline' : 'hidden'}`}>{selectedLabel}</span>
@@ -89,7 +89,7 @@ export default function PosTextSizeControl({
                                 role="option"
                                 aria-selected={isSelected}
                                 onClick={() => handleOptionSelect(optionValue)}
-                                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-extrabold transition-colors ${isSelected
+                                className={`pos-text-size-control__option flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-extrabold transition-colors ${isSelected
                                     ? 'bg-blue-50 text-[#1A4E8D]'
                                     : 'text-[#0F172A] hover:bg-slate-50 hover:text-[#1A4E8D]'}`}
                             >

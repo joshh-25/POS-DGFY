@@ -1,6 +1,113 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* Shared POS pagination follows the mobile wireframe: the range and Go to
+   label share the first row, while page size and navigation share the second. */
+.dgfy-global-pagination__mobile-go-to-label {
+  display: none;
+}
+
+.dgfy-global-pagination__page-size-trigger {
+  border-color: #dbe4f0;
+  background: #ffffff;
+  color: #334155;
+  letter-spacing: -0.01em;
+}
+
+.dgfy-global-pagination__page-size-trigger:hover:not(:disabled) {
+  border-color: rgba(26, 78, 141, 0.5);
+  background: #f8fbff;
+}
+
+.dgfy-global-pagination__page-size-menu {
+  min-width: 100%;
+}
+
+@media (max-width: 767.98px) {
+  .dgfy-global-pagination {
+    display: grid !important;
+    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-rows: auto auto;
+    column-gap: 0.25rem;
+    row-gap: 0.25rem;
+    align-items: center;
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  .dgfy-global-pagination__summary,
+  .dgfy-global-pagination__controls,
+  .dgfy-global-pagination__go-to {
+    display: contents !important;
+  }
+
+  .dgfy-global-pagination__summary-text {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dgfy-global-pagination__page-size {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 5.75rem;
+    max-width: 100%;
+  }
+
+  .dgfy-global-pagination__page-size-trigger {
+    width: 100%;
+    min-width: 5.75rem;
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .dgfy-global-pagination__previous {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__status {
+    grid-column: 3;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .dgfy-global-pagination__next {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__mobile-go-to-label {
+    display: block;
+    grid-column: 5;
+    grid-row: 1;
+    justify-self: end;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none;
+  }
+
+  .dgfy-global-pagination__go-to-input {
+    grid-column: 5;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .dgfy-global-pagination {
+    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
+    column-gap: 0.2rem;
+  }
+}
 
 body {
   margin: 0;
