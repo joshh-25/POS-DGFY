@@ -60,7 +60,8 @@ describe('POS parked-sale resume validation', () => {
                 item_name: 'Coffee',
                 quantity: 2,
                 sale_price: 125,
-                vat_type: 'vatable'
+                vat_type: 'vatable',
+                parked_snapshot_line: true
             })
         ]));
     });
@@ -217,6 +218,51 @@ describe('POS parked-sale resume validation', () => {
         expect(validation.conflicts.join(' ')).toContain('Coffee no longer has enough stock');
         expect(validation.conflicts.join(' ')).toContain('selling price changed');
         expect(validation.conflicts.join(' ')).toContain('Removed item is no longer available');
+    });
+
+    it('downgrades price, stock, and missing-catalog drift to payable snapshot warnings', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    lines: [{
+                        ...parkedSale.snapshot.lines[0],
+                        quantity: 10,
+                        base_sale_price: 100,
+                        sale_price: 100
+                    }, {
+                        item_id: 999,
+                        item_name: 'Removed item',
+                        quantity: 1,
+                        sale_price: 10,
+                        base_sale_price: 10
+                    }]
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.conflicts).toEqual([]);
+        expect(validation.warnings.join(' ')).toContain('Coffee no longer has enough stock');
+        expect(validation.warnings.join(' ')).toContain('saved price will be honored');
+        expect(validation.warnings.join(' ')).toContain('Removed item is no longer available');
+    });
+
+    it('downgrades an invalid current catalog price to a payable snapshot warning', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: [{ ...catalog[0], default_sale_price: null }],
+            allowedOrderMethods: ['takeout'],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.conflicts).toEqual([]);
+        expect(validation.warnings.join(' ')).toContain('parked snapshot price will be honored');
     });
 
     it('blocks a parked order method that the active workflow no longer allows', () => {

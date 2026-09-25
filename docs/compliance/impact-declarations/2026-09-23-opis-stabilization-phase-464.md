@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: engineering
 last_reviewed: 2026-09-23
-related_adr: 0086-dedicated-back-office-fourth-frontend-app-opis.md
+related_adr: 0087-dedicated-back-office-fourth-frontend-app-opis.md
 declaration_id: 2026-09-23-opis-stabilization-phase-464
 classification: major
 surfaces: pos,terminal

@@ -8,7 +8,7 @@ const BusinessAdminApprovalRequest = sequelize.define('BusinessAdminApprovalRequ
         primaryKey: true
     },
     action_type: {
-        type: DataTypes.ENUM('pos_refund', 'force_close_shift'),
+        type: DataTypes.ENUM('pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel'),
         allowNull: false
     },
     entity_type: {

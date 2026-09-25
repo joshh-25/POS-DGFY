@@ -131,7 +131,7 @@ services:
 # it already dials localhost:8081/8082/8083, not a container name.
 #
 # Image tag: ${IMAGE_TAG:-latest} is correct here (no override needed, unlike
-# prod) -- this server's IMAGE_TAG=develop, matching what deploy.yml actually
+# prod) -- this server's IMAGE_TAG=dev, matching what deploy.yml actually
 # pushes for dgfy-ims/dgfy-pos/dgfy-storefront on DEV.
 
 services:

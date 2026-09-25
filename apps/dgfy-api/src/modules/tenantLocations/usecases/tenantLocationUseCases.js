@@ -49,6 +49,7 @@ const normalizePayload = (payload = {}) => ({
     supports_delivery: payload.supports_delivery !== false,
     supports_pickup: payload.supports_pickup !== false,
     supports_dine_in: payload.supports_dine_in !== false,
+    allow_dine_in_pay_at_store: payload.allow_dine_in_pay_at_store === true,
     scheduling_enabled: payload.scheduling_enabled !== false,
     immediate_fulfillment_enabled: payload.immediate_fulfillment_enabled !== false,
     fulfillment_lead_time_min_days: toNullableDayCount(payload.fulfillment_lead_time_min_days),
@@ -383,6 +384,98 @@ export const buildUpdateTenantLocationUseCase = ({ tenantLocationRepository, syn
             return fail(mapTenantLocationUseCaseError(error, 'Failed to update tenant location'));
         }
     };
+};
+
+export const buildUpdateTenantLocationDineInPaymentPolicyUseCase = ({
+    tenantLocationRepository,
+    syncStorefrontDiscoveryIndexForTenant = null,
+    logger = null
+}) => async ({ locationId, payload }) => {
+    const normalizedId = parsePositiveInt(locationId);
+    if (!normalizedId) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'locationId must be a positive integer',
+            { statusCode: 400 }
+        ));
+    }
+
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'payload must be an object',
+            { statusCode: 400 }
+        ));
+    }
+
+    if (typeof payload.allow_dine_in_pay_at_store !== 'boolean') {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'allow_dine_in_pay_at_store must be a boolean',
+            { statusCode: 422 }
+        ));
+    }
+
+    try {
+        const expectedUpdatedAt = parseExpectedUpdateTimestamp(payload);
+        const transaction = await tenantLocationRepository.beginTransaction();
+        try {
+            const existing = await tenantLocationRepository.findById(normalizedId, {
+                transaction,
+                lock: true
+            });
+            if (!existing) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `Tenant location not found: ${normalizedId}`,
+                    { statusCode: 404 }
+                );
+            }
+
+            if (expectedUpdatedAt) {
+                const currentUpdatedAt = new Date(existing.updated_at).toISOString();
+                if (currentUpdatedAt !== expectedUpdatedAt) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Location was updated by another session. Please refresh and try again.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                expected_updated_at: expectedUpdatedAt,
+                                current_updated_at: currentUpdatedAt
+                            }
+                        }
+                    );
+                }
+            }
+
+            const updated = await tenantLocationRepository.updateById(normalizedId, {
+                allow_dine_in_pay_at_store: payload.allow_dine_in_pay_at_store === true
+            }, {
+                transaction,
+                lock: true
+            });
+            if (!updated) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `Tenant location not found: ${normalizedId}`,
+                    { statusCode: 404 }
+                );
+            }
+
+            await transaction.commit();
+            const refreshed = await tenantLocationRepository.findById(normalizedId);
+            await syncDiscoveryIndexBestEffort({ syncStorefrontDiscoveryIndexForTenant, logger });
+            return ok(refreshed || updated);
+        } catch (error) {
+            if (!transaction.finished) {
+                await transaction.rollback();
+            }
+            throw error;
+        }
+    } catch (error) {
+        return fail(mapTenantLocationUseCaseError(error, 'Failed to update the dine-in payment policy'));
+    }
 };
 
 export const buildDeactivateTenantLocationUseCase = ({ tenantLocationRepository, syncStorefrontDiscoveryIndexForTenant = null, logger = null }) => {

@@ -163,10 +163,11 @@ jobs:
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
       should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
-      # #2055 (Phase 346): the per-app revision map (JSON object) and DEV ad-hoc marker the
-      # builder jobs consume -- see the "Resolve per-app artifact revisions" step below.
+      # Per-app release revision map for STAGING/PROD builds; DEV intentionally gets an empty
+      # map except under this integration branch's explicit revisioned_dev_dispatch opt-in
+      # (#2055 Phase 346, temporary to this branch -- see the "Resolve per-app artifact
+      # revisions" step below).
       revisions_json: ${{ steps.revisions.outputs.revisions_json }}
-      dev_pr_ref: ${{ steps.revisions.outputs.dev_pr_ref }}
     steps:
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
         shell: bash
@@ -231,22 +232,22 @@ jobs:
       - name: Install repository dependencies
         run: npm ci
 
-      # #2055 (Phase 346): every build needs exactly one DEV identity before the skip plan
-      # (and the builders) can resolve its tag. Three cases, matching the builder meta
-      # step's own contract:
-      #   - DEV on `develop` -- allocate each app's own revision from GHCR
-      #     (scripts/allocate-artifact-revision.js: max-plus-one per app+floor, same-source
-      #     retry reuses its own N so a re-dispatch converges instead of burning a number).
-      #     The map is emitted as revisions_json for the skip plan AND the builder jobs, so
-      #     both resolve byte-identical tags -- allocation happens exactly once per dispatch.
-      #   - DEV on any other branch -- ad-hoc by default: no allocation, dev_pr_ref carries the
-      #     raw ref (the resolver sanitizes it to X.Y.Z-<slug>-dev, never candidate-selectable).
-      #     A temporary DEV integration ref may opt into the revisioned lane with the explicit
-      #     revisioned_dev_dispatch input; it receives the same promotion-eligible X.Y.Z-rN-dev
-      #     identity as develop and still deploys through its SHA tag rather than the develop alias.
-      #   - STAGING -- revisions arrive per app-group from the dispatch inputs
-      #     (promoter-filled from the candidate manifest's per-app release_revision map);
-      #     groups fan out to apps (api covers both backends).
+      # DEV is a mutable, versionless shared alias by default -- promotion uses the frozen
+      # develop SHA directly on STAGING and never reads or requires a DEV artifact, and an
+      # ordinary DEV dispatch (from `develop` or any other branch) allocates nothing. Two
+      # cases still allocate real per-app revisions:
+      #   - This integration branch's explicit revisioned_dev_dispatch opt-in on DEV (#2055
+      #     Phase 346, temporary to this branch -- do not generalize): allocates each app's
+      #     own revision from GHCR (scripts/allocate-artifact-revision.js: max-plus-one per
+      #     app+floor, same-source retry reuses its own N so a re-dispatch converges instead
+      #     of burning a number). The map is emitted as revisions_json for the skip plan AND
+      #     the builder jobs, so both resolve byte-identical tags -- allocation happens
+      #     exactly once per dispatch. dev_pr_ref carries the sanitized ref (X.Y.Z-<slug>-dev)
+      #     when this opt-in is off, so an ad-hoc feature-branch DEV dispatch still gets a
+      #     stable, non-candidate-selectable tag.
+      #   - STAGING -- revisions arrive per app-group from the dispatch inputs (promoter-filled
+      #     from the candidate manifest's per-app release_revision map); groups fan out to apps
+      #     (api covers both backends).
       - name: Resolve per-app artifact revisions
         id: revisions
         shell: bash
@@ -261,14 +262,8 @@ jobs:
           RELEASE_REVISION_OPIS: ${{ inputs.release_revision_frontend_opis }}
         run: |
           set -euo pipefail
-          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REF_NAME}" != "develop" ] && [ "${REVISIONED_DEV_DISPATCH}" != "true" ]; then
-            echo "[revisions] feature-branch DEV dispatch on '${REF_NAME}' -- ad-hoc tags (X.Y.Z-<slug>-dev), never promotion-eligible (#2055)."
-            echo "revisions_json={}" >> "$GITHUB_OUTPUT"
-            echo "dev_pr_ref=${REF_NAME}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ]; then
-            echo "[revisions] revisioned DEV dispatch on '${REF_NAME}' -- allocating per-app revisions from GHCR (#2055)."
+          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ] && [ "${REVISIONED_DEV_DISPATCH}" = "true" ]; then
+            echo "[revisions] revisioned DEV dispatch on '${REF_NAME}' -- allocating per-app revisions from GHCR (#2055, temporary to this integration branch -- do not generalize)."
             REVISIONS_JSON="$(for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
               FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
               ALLOC="$(node scripts/allocate-artifact-revision.js --image "ghcr.io/sieitzz/${APP}" --floor "${FLOOR}" --revision "${GITHUB_SHA}")"
@@ -280,10 +275,14 @@ jobs:
             echo "dev_pr_ref=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ]; then
+            echo "revisions_json={}" >> "$GITHUB_OUTPUT"
+            echo "dev_pr_ref=${REF_NAME}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
-          echo "[revisions] STAGING dispatch -- per-app revisions from dispatch inputs: ${REVISIONS_JSON}"
+          echo "[revisions] STAGING dispatch -- per-app revisions from promotion inputs: ${REVISIONS_JSON}"
           echo "revisions_json=${REVISIONS_JSON}" >> "$GITHUB_OUTPUT"
-          echo "dev_pr_ref=" >> "$GITHUB_OUTPUT"
 
       - name: Resolve build-skip plan
         id: resolve
@@ -294,9 +293,6 @@ jobs:
           REVISIONS_JSON='${{ steps.revisions.outputs.revisions_json }}'
           if [ -n "${REVISIONS_JSON}" ] && [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
-          fi
-          if [ -n "${{ steps.revisions.outputs.dev_pr_ref }}" ]; then
-            SKIP_ARGS+=(--dev-pr-ref "${{ steps.revisions.outputs.dev_pr_ref }}")
           fi
           node scripts/resolve-build-skip-plan.js "${SKIP_ARGS[@]}"
 
@@ -312,7 +308,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-api }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read
@@ -335,7 +330,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-migration-runner }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read
@@ -356,7 +350,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-ims }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read
@@ -375,7 +368,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-pos }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read
@@ -394,7 +386,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-storefront }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read

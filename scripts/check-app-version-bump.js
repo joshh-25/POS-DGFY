@@ -4,11 +4,10 @@
  *
  * Generalizes scripts/check-pos-receipt-version-bump.js's "did the version change" check
  * to all five deployable apps, with two upgrades that script doesn't have:
- *   1. a real semver *increase* (parsed X.Y.Z tuple compare), not mere inequality;
- *   2. a mode switch on the PR's (base, head) pair -- the required bump level differs
- *      between an ordinary develop PR, a develop->staging promotion, a staging hotfix,
- *      a staging->main release, and a main hotfix. See ADR 0081 (issue #1559, pinned
- *      verbatim in #1560's own body so this file doesn't need that ADR merged first).
+ *   1. parsed X.Y.Z tuple comparisons, including unchanged-floor validation;
+ *   2. a mode switch on the PR's (base, head) pair -- develop work and staging repairs
+ *      keep floors unchanged, promotion raises changed apps to the next minor floor, and
+ *      direct main hotfixes patch-bump. See ADR 0081 Decision 6 and #2071 amendment.
  *
  * "Changed app" is direct apps/<app>/ changes, or a changed packages/<pkg>/ that <app>'s
  * own package.json lists as a `file:` dependency -- read from package.json, never
@@ -61,6 +60,7 @@ const APPS = Object.freeze([
 // PROMOTION_HEAD_PREFIX_BY_BASE (lines ~206-233 there), mapped to a required bump
 // mode instead of an exemption -- per #1560's own pinned copy of ADR 0081's table.
 const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+    develop: /^chore\/release\/bump-/,
     staging: /^to-staging\//,
     main: /^release\//,
 });
@@ -167,19 +167,18 @@ function compareVersionTuples(a, b) {
     return a.patch - b.patch;
 }
 
-// The mode-switch table from #1560's body (verbatim copy of ADR 0081's pinned
-// decision), keyed on the raw GITHUB_BASE_REF / GITHUB_HEAD_REF branch *names* --
+// The mode-switch table from ADR 0081 Decision 6, keyed on the raw GITHUB_BASE_REF / GITHUB_HEAD_REF branch *names* --
 // distinct from baseGitRef/headGitRef, which are the git refs the diff itself runs
-// against. Falls back to the least restrictive mode ('any-increase', develop's own
-// mode) for any base this table doesn't recognize, or when branch names aren't
-// available at all (not a real PR context) -- matching "patch is the expected
-// default, level not policed" rather than inventing a stricter unnamed mode.
+// against. Unknown bases retain the least-restrictive historical any-increase behavior.
 function resolveMode(baseBranchName, headBranchName) {
     const base = String(baseBranchName || '').trim();
     const head = String(headBranchName || '').trim();
 
     if (base === 'staging') {
-        return PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head) ? 'minor-floor' : 'patch-only';
+        return PROMOTION_HEAD_PREFIX_BY_BASE.staging.test(head) ? 'minor-floor' : 'unchanged';
+    }
+    if (base === 'develop') {
+        return PROMOTION_HEAD_PREFIX_BY_BASE.develop.test(head) ? 'minor-floor' : 'unchanged';
     }
     if (base === 'main') {
         return PROMOTION_HEAD_PREFIX_BY_BASE.main.test(head) ? 'any-increase' : 'patch-only';
@@ -190,6 +189,7 @@ function resolveMode(baseBranchName, headBranchName) {
 function describeModeRequirement(mode) {
     if (mode === 'minor-floor') return 'at least a minor bump above the base version (head.major > base.major, or head.minor > base.minor)';
     if (mode === 'patch-only') return 'major and minor unchanged, with patch strictly increased';
+    if (mode === 'unchanged') return 'the package floor must remain unchanged outside a promotion or direct main hotfix';
     return 'a strict semver increase over the base version (any component)';
 }
 
@@ -219,7 +219,9 @@ function evaluateBump(mode, baseVersionRaw, headVersionRaw) {
     }
 
     let ok;
-    if (mode === 'minor-floor') {
+    if (mode === 'unchanged') {
+        ok = compareVersionTuples(head, base) === 0;
+    } else if (mode === 'minor-floor') {
         ok = head.major > base.major || (head.major === base.major && head.minor > base.minor);
     } else if (mode === 'patch-only') {
         ok = head.major === base.major && head.minor === base.minor && head.patch > base.patch;

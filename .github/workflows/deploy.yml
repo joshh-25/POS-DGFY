@@ -102,10 +102,9 @@ on:
           dispatch is part of a to-staging/<candidate_id> promotion (promoter-filled from the
           candidate manifest's per-app release_revision map) -- the builders fail closed
           without them, and the published staging tags carry them (backend X.Y.Z-rN).
-          Leave all four empty for a DEV dispatch (revisions are allocated per app from GHCR
-          on develop, or ad-hoc X.Y.Z-<slug>-dev tags on a feature branch) or any ad hoc
-          STAGING rebuild outside a real promotion (which the builders refuse -- STAGING
-          outside a tracked candidate has no revision to publish under).
+          DEV ignores these release inputs and always publishes the mutable `dev` tag plus
+          the dispatched commit's SHA tag. STAGING candidate builds require per-app revisions;
+          ad hoc STAGING builds outside a tracked candidate are refused.
         type: string
         default: ''
       release_revision_frontend_ims:
@@ -172,21 +171,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # #2055 (Phase 346): feature branches dispatch DEV ad-hoc by default. An explicit
-          # revisioned_dev_dispatch opts a temporary DEV integration ref into per-app X.Y.Z-rN-dev
-          # allocation; either way, the feature ref never moves the `develop` alias. Feature-ref
-          # deployment uses its immutable sha tag via Compose IMAGE_TAG. staging keeps its own;
-          # main is still refused here unconditionally.
+          # Every non-staging branch may update the shared, versionless DEV image alias.
+          # Promotions build directly from their frozen develop SHA on STAGING and do not
+          # require DEV to have been deployed. main is still refused here unconditionally.
+          # An explicit revisioned_dev_dispatch still opts a DEV dispatch into per-app
+          # X.Y.Z-rN-dev allocation instead (#2055 Phase 346) -- see the revisioned_dev_dispatch
+          # handling below; either way the dispatched ref never moves the `develop` alias itself.
           case "${{ github.ref_name }}" in
-            develop) ENV=DEV; TAGS=develop ;;
+            develop) ENV=DEV; TAGS=dev ;;
             staging) ENV=STAGING; TAGS=staging ;;
             main)
               echo "::error::deploy.yml was dispatched against 'main'. This workflow covers DEV/STAGING only -- for main/PROD, use deploy-main.yml instead."
               exit 1
               ;;
             *)
-              ENV=DEV; TAGS=
-              echo "::notice::Branch '${{ github.ref_name }}' is not develop/staging -- ad-hoc DEV dispatch: images publish under X.Y.Z-<slug>-dev + sha tags only (never the moving 'develop' tag, never promotion-eligible). For main/PROD, use deploy-main.yml instead."
+              ENV=DEV; TAGS=dev
+              echo "::notice::Branch '${{ github.ref_name }}' is not develop/staging -- this manual DEV dispatch moves the shared 'dev' image alias to the selected branch SHA. For main/PROD, use deploy-main.yml instead."
               ;;
           esac
           echo "environment=$ENV" >> "$GITHUB_OUTPUT"
@@ -212,9 +212,7 @@ jobs:
       # out (and this job never runs) for main, since main deploys go through
       # deploy-main.yml instead. No 'beta'
       # fallback is needed here anymore (#329/#895).
-      # #2055: ad-hoc DEV (any branch but develop) publishes the sha tag only -- the moving
-      # `develop` tag stays on the develop line, so a feature-branch dispatch can never
-      # redirect the shared DEV target at unreviewed code.
+      # DEV is a manually selected shared target; any selected branch may move its `dev` alias.
       image_tags: ${{ needs.resolve-environment.outputs.image_tags }}
       revisioned_dev_dispatch: ${{ needs.resolve-environment.outputs.revisioned_dev_dispatch == 'true' }}
       image_tag_override: ${{ needs.resolve-environment.outputs.image_tag_override }}

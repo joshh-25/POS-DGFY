@@ -367,6 +367,7 @@ const serializeLocationSummary = (location) => {
         supports_delivery: location.supports_delivery,
         supports_pickup: location.supports_pickup,
         supports_dine_in: location.supports_dine_in,
+        allow_dine_in_pay_at_store: location.allow_dine_in_pay_at_store === true,
         scheduling_enabled: location.scheduling_enabled,
         immediate_fulfillment_enabled: location.immediate_fulfillment_enabled,
         fulfillment_lead_time_min_days: location.fulfillment_lead_time_min_days ?? null,
@@ -737,6 +738,22 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod, sch
             DomainErrorCode.CONFLICT,
             'Selected location is currently closed and cannot accept orders',
             { statusCode: 409 }
+        );
+    }
+
+    const normalizedOrderMethod = String(orderMethod || '').trim().toLowerCase();
+    if (normalizedOrderMethod === 'dine_in' && !scheduledFor) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'scheduled_for is required for dine-in orders',
+            { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_REQUIRED' } }
+        );
+    }
+    if (normalizedOrderMethod === 'dine_in' && scheduledFor.getTime() <= Date.now()) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'scheduled_for must be in the future for dine-in orders',
+            { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_MUST_BE_FUTURE' } }
         );
     }
 
@@ -1807,6 +1824,7 @@ const resolveCheckoutContext = async ({
     storeCustomer = null,
     options = {},
     validateRecipeAvailability = true,
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // #746: a cart-quote preview isn't placing an order -- it's answering "what would my total (and
     // voucher/promo discount) be right now." Neither the discount math (resolveStorefrontPromoApplication
     // / voucher resolution below, cart-content-only) nor deliveryFee (resolveStoreDeliveryFee, a flat
@@ -2679,10 +2697,12 @@ const resolveCheckoutContext = async ({
     // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
     // four money-adjacent call sites untouched (Phase 237 plan §4.1).
     const deliveryFee = delivery.finalFee;
-    // Phase 333: Storefront checkout no longer adds the DGFY convenience fee to the
-    // customer's payable total. Keep the service-fee fields in the response and
-    // transaction header for schema compatibility and historical read contracts.
-    const serviceFeeAmount = 0;
+    const isDineInPayAtStore = orderMethod === 'dine_in'
+        && normalized.payment_type === 'cash'
+        && location?.allow_dine_in_pay_at_store === true;
+    const serviceFeeAmount = revenueSharingEnabled || isDineInPayAtStore
+        ? 0
+        : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
     const totalAmount = round4(
         prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
@@ -3679,6 +3699,7 @@ export const buildDeleteStoreCustomerAddressUseCase = ({ storeRepository }) => {
 
 export const buildStoreCartQuoteUseCase = ({
     storeRepository,
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -3702,6 +3723,7 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
+                revenueSharingEnabled,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false,
                 // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
@@ -3754,7 +3776,8 @@ export const buildStoreCartQuoteUseCase = ({
                     is_active: resolved.location.is_active,
                     supports_delivery: resolved.location.supports_delivery,
                     supports_pickup: resolved.location.supports_pickup,
-                    supports_dine_in: resolved.location.supports_dine_in
+                    supports_dine_in: resolved.location.supports_dine_in,
+                    allow_dine_in_pay_at_store: resolved.location.allow_dine_in_pay_at_store === true
                 } : null,
                 lines: resolved.prepared.preparedLines.map((line) => ({
                     item_id: line.item_id,
@@ -3882,6 +3905,7 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
 
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -3949,6 +3973,7 @@ export const buildStoreCheckoutUseCase = ({
                 tenantId: normalizedTenantId,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
+                revenueSharingEnabled,
                 pinnedDeliveryBreakdown
             });
             const { normalized } = resolved;
@@ -4023,6 +4048,9 @@ export const buildStoreCheckoutUseCase = ({
                 );
             }
 
+            const isDineInPayAtStoreAllowed = normalized.order_method === 'dine_in'
+                && resolved.location?.allow_dine_in_pay_at_store === true;
+
             // Phase 141 (#822, ADR 0070 clause 7 [binding]): this order-placing path is reached
             // two ways -- the webhook finalizer (finalizePaidCommerceSession.js, AFTER real money
             // was captured, which passes capturedPayment) and the direct HTTP handler
@@ -4032,10 +4060,13 @@ export const buildStoreCheckoutUseCase = ({
             // downpayment config; fail closed. Kept CONDITIONAL, not deleted -- deleting it outright
             // is the failure mode this guard exists to prevent (an order claiming "downpayment
             // required" that collected nothing).
-            if (resolved.downpayment.payment_mode === 'downpayment_required' && !capturedPayment) {
+            if (resolved.downpayment.payment_mode === 'downpayment_required'
+                && !capturedPayment
+                && !isDineInPayAtStoreAllowed) {
+                const balanceHandover = normalized.order_method === 'dine_in' ? 'at dine-in' : 'on delivery';
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'This store requires a downpayment. Pay the downpayment online to place this order -- the remaining balance is due on delivery.',
+                    `This store requires a downpayment. Pay the downpayment online to place this order -- the remaining balance is due ${balanceHandover}.`,
                     { statusCode: 422, details: { reason_code: 'DOWNPAYMENT_CAPTURE_NOT_AVAILABLE' } }
                 );
             }
@@ -4045,11 +4076,24 @@ export const buildStoreCheckoutUseCase = ({
             // placement and same `!== false` fail-open comparison as assertGuestCheckoutAllowed
             // below. Reached by both the direct handler and the webhook finalizer, same as that
             // guard (see the Phase 141 comment above).
-            if (normalized.payment_type === 'cash' && resolved.accessPolicy?.cash_payment_enabled === false) {
+            if (normalized.payment_type === 'cash'
+                && resolved.accessPolicy?.cash_payment_enabled === false
+                && !isDineInPayAtStoreAllowed) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'This store does not accept cash on delivery/pickup. Please choose an online payment method.',
                     { statusCode: 422, details: { reason_code: 'STORE_CASH_DISABLED' } }
+                );
+            }
+
+            if (normalized.order_method === 'dine_in'
+                && normalized.payment_type === 'cash'
+                && !capturedPayment
+                && !isDineInPayAtStoreAllowed) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Dine-in orders require online full payment or an online downpayment. Pay in store is not available.',
+                    { statusCode: 422, details: { reason_code: 'DINE_IN_CASH_PAYMENT_NOT_ALLOWED' } }
                 );
             }
 
@@ -4993,10 +5037,11 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const totalAmountCentavos = isDownpaymentCapture
                 ? toCentavos(resolved.downpayment.downpayment_amount)
                 : orderTotalCentavos;
-            // The customer-facing service fee was removed in Phase 333. For the
-            // legacy QR Ph split path, keep DGFY's settlement amount separate from
-            // the captured customer total so removing the checkout row does not
-            // silently remove the configured platform settlement.
+            // For the legacy QR Ph split path (non-revenue-sharing tenants), DGFY's platform
+            // settlement cut is the same DGFY convenience fee already folded into the customer's
+            // collected total (serviceFeeAmount) -- re-derived here from subtotalAmount rather than
+            // read back off `resolved`, so the settlement math stays correct even if the checkout
+            // row itself is ever removed from the response.
             const platformFeeCentavos = tenantRevenueSharingEnabled
                 ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
                 : toCentavos(computeDgfyConvenienceFee(resolved.prepared.subtotalAmount));

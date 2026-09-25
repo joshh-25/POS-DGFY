@@ -945,7 +945,8 @@ const applyCatalogOverrides = async (items, options = {}) => {
                     : {})
             };
         })))
-        .filter((item) => item.pos_visible !== false && item.pos_location_available !== false);
+        .filter((item) => options.includeUnavailable === true
+            || (item.pos_visible !== false && item.pos_location_available !== false));
 };
 
 // ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
@@ -3385,6 +3386,59 @@ export const posRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
                 ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
+        }
+    },
+
+    // Parked-sale settlement may need the sale-time item snapshot even when
+    // the current catalog row is inactive, hidden, or soft-deleted. Ordinary
+    // checkout visibility rules remain unchanged; this method is only used
+    // after the parked-sale claim and snapshot have been authorized.
+    async findParkedSaleItemsByIds(itemIds, options = {}) {
+        const Item = dbStore.get('Item');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
+        const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        if (normalizedItemIds.length === 0) return [];
+
+        const queryOptions = {
+            where: buildVisibleWhere(
+                { item_id: { [Op.in]: normalizedItemIds } },
+                { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true }
+            ),
+            attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
+            include: [
+                ...buildItemFolderInclude(),
+                ...buildServiceDetailInclude(),
+                ...buildFnbCatalogIncludes()
+            ]
+        };
+        if (options.transaction) {
+            queryOptions.transaction = options.transaction;
+            if (options.lock) queryOptions.lock = options.transaction.LOCK.UPDATE;
+        }
+
+        const loadItems = async (attributes = POS_ITEM_ATTRIBUTES_WITH_VAT) => {
+            const rawItems = await Item.findAll({ ...queryOptions, attributes });
+            const catalogItems = await applyCatalogOverrides(
+                attributes.includes('vat_type') ? rawItems : withLegacyVatFallback(rawItems),
+                { ...options, includeUnavailable: true }
+            );
+            const stockMap = await loadItemLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
+                : catalogItems;
+        };
+
+        try {
+            return await loadItems();
+        } catch (error) {
+            if (!isMissingVatTypeColumnError(error)) throw error;
+            return loadItems(BASE_POS_ITEM_ATTRIBUTES);
         }
     },
 
@@ -5870,7 +5924,7 @@ export const posRepository = {
             const created = await PosParkedSale.create(payload, {
                 transaction: options.transaction
             });
-            return toPlain(created);
+            return { ...toPlain(created), _idempotent_replay: false };
         } catch (error) {
             if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
 
@@ -5878,7 +5932,7 @@ export const posRepository = {
                 payload.idempotency_key,
                 options
             );
-            if (existing) return toPlain(existing);
+            if (existing) return { ...toPlain(existing), _idempotent_replay: true };
             throw error;
         }
     },
@@ -5923,6 +5977,67 @@ export const posRepository = {
         return row ? toPlain(row) : null;
     },
 
+    async findParkedSaleByCompletedTransactionId(transactionId, options = {}) {
+        const PosParkedSale = dbStore.get('PosParkedSale');
+        const normalizedId = toPositiveInt(transactionId);
+        if (!normalizedId) return null;
+        const row = await PosParkedSale.findOne({
+            where: { completed_transaction_id: normalizedId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async createBusinessAdminApprovalRequest(payload = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        if (!ApprovalRequest) throw new Error('BusinessAdminApprovalRequest model is unavailable');
+        const row = await ApprovalRequest.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async getBusinessAdminApprovalRequestById(approvalRequestId, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedId = toPositiveInt(approvalRequestId);
+        if (!ApprovalRequest || !normalizedId) return null;
+        const row = await ApprovalRequest.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async findPendingBusinessAdminApprovalRequest({ actionType, entityType, entityId } = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedEntityId = toPositiveInt(entityId);
+        if (!ApprovalRequest || !normalizedEntityId) return null;
+        const row = await ApprovalRequest.findOne({
+            where: {
+                action_type: String(actionType || '').trim(),
+                entity_type: String(entityType || '').trim(),
+                entity_id: normalizedEntityId,
+                status: 'pending'
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            order: [['created_at', 'DESC'], ['business_admin_approval_request_id', 'DESC']]
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async updateBusinessAdminApprovalRequest(approvalRequestId, payload = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedId = toPositiveInt(approvalRequestId);
+        if (!ApprovalRequest || !normalizedId) return null;
+        const row = await ApprovalRequest.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async updateParkedSale(parkedSaleId, payload = {}, options = {}) {
         const PosParkedSale = dbStore.get('PosParkedSale');
         const normalizedId = toPositiveInt(parkedSaleId);
@@ -5945,7 +6060,7 @@ export const posRepository = {
                 // An unclaimed cart is branch-shared handoff work and may outlive
                 // the shift that originally parked it. Only an actively claimed
                 // cart remains an unresolved obligation of this shift.
-                status: 'claimed'
+                status: { [Op.in]: ['claimed', 'cancel_pending'] }
             },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined

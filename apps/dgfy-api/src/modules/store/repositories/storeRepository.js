@@ -1511,6 +1511,7 @@ export const storeRepository = {
                 'supports_delivery',
                 'supports_pickup',
                 'supports_dine_in',
+                'allow_dine_in_pay_at_store',
                 'scheduling_enabled',
                 'immediate_fulfillment_enabled',
                 'fulfillment_lead_time_min_days',

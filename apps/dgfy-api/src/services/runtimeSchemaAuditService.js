@@ -209,7 +209,28 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'origin_shift_id',
         'terminal_id',
         'location_id',
-        'snapshot'
+        'snapshot',
+        'inventory_effects',
+        'inventory_deducted_at'
+    ],
+    business_admin_approval_requests: [
+        'business_admin_approval_request_id',
+        'action_type',
+        'entity_type',
+        'entity_id',
+        'payload',
+        'payload_hash',
+        'status',
+        'reason',
+        'idempotency_key',
+        'requested_by',
+        'approved_by',
+        'rejected_by',
+        'approval_note',
+        'expires_at',
+        'approved_at',
+        'rejected_at',
+        'executed_at'
     ],
     pos_payment_allocations: [
         'pos_payment_allocation_id',

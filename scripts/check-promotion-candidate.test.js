@@ -215,6 +215,36 @@ function candidateV2(overrides = {}) {
   };
 }
 
+function candidateV3(overrides = {}) {
+  const manifest = structuredClone(candidateV2());
+  manifest.schema = 'sku-release-candidate/v3';
+  manifest.revisions[0].apps_touched = ['dgfy-ims', 'dgfy-api', 'dgfy-migration-runner'];
+  delete manifest.revisions[0].dev_artifacts;
+  for (const entry of Object.values(manifest.release_revision.apps)) entry.origin = 'promotion';
+  return { ...manifest, ...overrides };
+}
+
+test('v3: accepts frozen develop source without selecting or requiring DEV artifacts', () => {
+  const manifest = candidateV3();
+  assert.equal(validatePromotionCandidate(manifest).source_develop_sha, SHA('a'));
+  assert.deepEqual(manifest.revisions[0].apps_touched, ['dgfy-ims', 'dgfy-api', 'dgfy-migration-runner']);
+  assert.equal(getAppRevision(manifest, 'dgfy-ims').origin, 'promotion');
+});
+
+test('v3: requires initial apps_touched and rejects DEV-origin artifacts', () => {
+  const missing = candidateV3();
+  delete missing.revisions[0].apps_touched;
+  assert.throws(() => validatePromotionCandidate(missing), /must declare a non-empty apps_touched/);
+
+  const selectedDev = candidateV3();
+  selectedDev.revisions[0].dev_artifacts = [];
+  assert.throws(() => validatePromotionCandidate(selectedDev), /must not select DEV artifacts/);
+
+  const devOrigin = candidateV3();
+  devOrigin.release_revision.apps['dgfy-ims'].origin = 'dev';
+  assert.throws(() => validatePromotionCandidate(devOrigin), /must be one of promotion, staging_repair/);
+});
+
 test('v2: accepts a frozen candidate with per-app revisions, repair_seq branches, and a plain release branch', () => {
   assert.deepEqual(validatePromotionCandidate(candidateV2()), {
     candidate_id: '2026-09-04-01',
@@ -285,6 +315,10 @@ test('v2: rejects release apps with bad digest, bad origin, or unrecognized app'
   badDigest.release_revision.apps['dgfy-ims'].digest = 'not-a-digest';
   assert.throws(() => validatePromotionCandidate(badDigest), /must be a sha256/);
 
+  const badPromotionOrigin = candidateV2();
+  badPromotionOrigin.release_revision.apps['dgfy-ims'].origin = 'promotion';
+  assert.throws(() => validatePromotionCandidate(badPromotionOrigin), /must be one of dev, staging_repair/);
+
   const badOrigin = candidateV2();
   badOrigin.release_revision.apps['dgfy-ims'].origin = 'candidate';
   assert.throws(() => validatePromotionCandidate(badOrigin), /must be one of dev, staging_repair/);
@@ -320,5 +354,5 @@ test('v2: per-app candidate source identity still resolves via apps_touched, unc
 
 test('v1 manifests still validate exactly as before (frozen legacy path)', () => {
   assert.equal(validatePromotionCandidate(candidate()).release_revision, 3);
-  assert.throws(() => validatePromotionCandidate(candidate({ schema: 'sku-release-candidate/v9' })), /must be one of sku-release-candidate\/v1, sku-release-candidate\/v2/);
+  assert.throws(() => validatePromotionCandidate(candidate({ schema: 'sku-release-candidate/v9' })), /must be one of sku-release-candidate\/v1, sku-release-candidate\/v2, sku-release-candidate\/v3/);
 });

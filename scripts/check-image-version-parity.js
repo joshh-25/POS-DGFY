@@ -368,7 +368,10 @@ function inspectImageDigest({ image, tag, inspectFn }) {
   } catch (error) {
     return { ref, state: 'error', reason: `could not parse "docker buildx imagetools inspect" JSON output for ${ref}: ${error.message}` };
   }
-  const digest = typeof parsed.digest === 'string' && parsed.digest.trim() ? parsed.digest.trim() : null;
+  const digest = (typeof parsed.digest === 'string' && parsed.digest.trim())
+    || (parsed.manifest && typeof parsed.manifest.digest === 'string' && parsed.manifest.digest.trim())
+    || (parsed.image && typeof parsed.image.digest === 'string' && parsed.image.digest.trim())
+    || null;
   if (!digest) {
     return { ref, state: 'error', reason: `inspect output for ${ref} carries no image digest -- refusing to compare digests against a digest-less manifest` };
   }
@@ -612,7 +615,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // verified against its OWN allocated revision. Apps absent from the map were never
   // rebuilt by this candidate -- skip, don't fail: their last-published artifact stands.
   const releaseRevision = candidate.release_revision;
-  const perAppRevisions = (manifest.schema === 'sku-release-candidate/v2' && releaseRevision !== null) ? releaseRevision : null;
+  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
   const results = apps.map((app) => {
     if (perAppRevisions) {
       const entry = perAppRevisions[app];

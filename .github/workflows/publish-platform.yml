@@ -171,6 +171,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
             "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
+             if [ \"${{ inputs.environment }}\" = \"DEV\" ]; then export IMAGE_TAG=dev; fi && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'sieitzz/dgfy-migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              if [ \"$PROD_SOPS_PATH\" = 1 ]; then \

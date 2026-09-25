@@ -657,6 +657,7 @@ jobs:
   promote-aliases:
     needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
     if: >-
+      !cancelled() &&
       needs.guard-branch.result == 'success' &&
       needs.resolve-build-plan.result == 'success' &&
       needs.dgfy-api.result != 'failure' &&
@@ -752,6 +753,16 @@ jobs:
             if ! node scripts/promote-image-alias.js --source "${IMAGE}:${SOURCE_TAG}" --target "${IMAGE}:${ALIAS_TAG}" --revision "${APP_REVISION}"; then
               echo "::error::floor-alias promotion failed for ${APP} -- refusing to deploy PROD with an unaliased revision tag."
               FAILURES=$((FAILURES + 1))
+            fi
+            # When backend images are skipped (content-equivalent), deploy-api.yml / deploy-migration-runner.yml
+            # do not run and therefore the latest tag is not updated. Alias latest here so PROD compose
+            # (${IMAGE_TAG:-latest}) pulls the current release:
+            if [ "${APP}" = "dgfy-api" ] || [ "${APP}" = "dgfy-migration-runner" ]; then
+              echo "[promote-aliases] ${APP}: ${SOURCE_TAG} -> latest"
+              if ! docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${SOURCE_TAG}"; then
+                echo "::error::latest-alias promotion failed for ${APP}"
+                FAILURES=$((FAILURES + 1))
+              fi
             fi
           done
           if [ "${FAILURES}" -ne 0 ]; then

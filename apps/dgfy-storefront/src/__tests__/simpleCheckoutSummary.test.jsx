@@ -67,7 +67,7 @@ const mobileBaseProps = {
 afterEach(cleanup);
 
 describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
-  describe('zero-fee scenario -- PHP 94.50 total', () => {
+  describe('zero-fee scenario (revenue sharing) -- PHP 94.50 total', () => {
     const totals = { ...baseTotals, service_fee_amount: 0, total_amount: 94.5 };
 
     it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
@@ -77,7 +77,8 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
     it('desktop shows the split rows and the disclosure note', () => {
       render(<SimpleCheckoutSummaryContent {...desktopBaseProps} totals={totals} />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.getByText('Service Fee')).toBeTruthy();
+      expect(screen.getAllByText('PHP 0.00').length).toBeGreaterThan(0);
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();
@@ -87,7 +88,7 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
     it('mobile summary sheet shows the same split rows and total', () => {
       render(<SimpleCheckoutMobileSummaryPanel {...mobileBaseProps} totals={totals} />);
       expect(screen.queryByText('Fees & Taxes')).toBeNull();
-      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.getByText('Service Fee')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_NOTE)).toBeTruthy();

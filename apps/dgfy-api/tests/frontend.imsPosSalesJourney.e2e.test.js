@@ -2006,7 +2006,12 @@ const checkoutAndOpenSalesReport = async (page, itemName) => {
   return invoiceReference;
 };
 
-const exportSalesCsvFromDialog = async (page) => {
+// Sales-timeline CSV naming contract (packages/web-core/.../SalesPage.jsx runExportCsv):
+// `sales_timeline_${YYYY-MM-DD}.csv`. The release-profile journey must prove a real,
+// correctly named download happened -- a missing dialog or banner must fail, never skip.
+const SALES_EXPORT_FILENAME_PATTERN = /^sales_timeline_\d{4}-\d{2}-\d{2}\.csv$/;
+
+const exportSalesCsvFromDialog = async (page, artifactBase = 'sales-export') => {
   await page.getByRole('heading', { name: 'Sales Timeline' }).waitFor({ timeout: 60000 });
   const exportButtons = page.getByRole('button', { name: /^Export CSV$/ });
   const exportButtonCount = await exportButtons.count();
@@ -2024,18 +2029,38 @@ const exportSalesCsvFromDialog = async (page) => {
   }
 
   const exportDialog = page.locator('[role="dialog"]').filter({ hasText: 'Export Sales CSV' }).first();
-  const dialogVisible = await exportDialog.isVisible({ timeout: 5000 }).catch(() => false);
-  if (dialogVisible) {
-    const dialogExportButton = exportDialog.getByRole('button', { name: /^Export CSV$/ }).first();
-    await dialogExportButton.click();
-  }
+  await exportDialog.waitFor({ state: 'visible', timeout: 15000 });
 
-  const uiConfirmed = await page.waitForFunction(
-    () => document.body?.innerText?.includes('Export complete:'),
-    null,
+  const dialogExportButton = exportDialog.getByRole('button', { name: /^Export CSV$/ }).first();
+  await dialogExportButton.waitFor({ state: 'visible', timeout: 15000 });
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    dialogExportButton.click()
+  ]);
+  const suggestedFilename = String(download.suggestedFilename?.() || '').trim();
+  if (!SALES_EXPORT_FILENAME_PATTERN.test(suggestedFilename)) {
+    throw new Error(
+      `Sales export download filename "${suggestedFilename}" does not match the sales-timeline CSV naming contract (sales_timeline_YYYY-MM-DD.csv).`
+    );
+  }
+  const downloadPath = await download.path().catch(() => null);
+  if (!downloadPath) {
+    throw new Error(
+      `Sales export download "${suggestedFilename}" completed without a readable file path -- enable acceptDownloads on the browser context.`
+    );
+  }
+  await download.saveAs(path.join(ARTIFACT_ROOT, `${artifactBase}-${suggestedFilename}`)).catch((error) => {
+    throw new Error(`Failed to persist sales export download "${suggestedFilename}": ${error.message}`);
+  });
+
+  await page.waitForFunction(
+    (filename) => document.body?.innerText?.includes('Export complete:')
+      && document.body?.innerText?.includes(filename),
+    suggestedFilename,
     { timeout: 30000 }
-  ).then(() => true).catch(() => false);
-  return uiConfirmed;
+  );
+  return suggestedFilename;
 };
 
 const cleanupStartedProcesses = async () => {
@@ -2263,7 +2288,10 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
   }, 360000);
 
   maybeProfileIt(['release'])('completes create item -> POS-ready -> checkout -> history -> sales export', async () => {
-    const context = await createContextForViewportProfile('desktop');
+    // acceptDownloads: the export assertion requires a readable download path, which
+    // Playwright only provides when the context opts in -- without it download.path()
+    // resolves to null and the journey fails closed rather than passing vacuously.
+    const context = await createContextForViewportProfile('desktop', { acceptDownloads: true });
     const artifactBase = buildArtifactBaseName({
       scenario: 'core-journey',
       viewportProfile: 'desktop'
@@ -2303,11 +2331,10 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       const continuityQueryPresent = page.url().includes('source_context=pos_history');
       expect(continuityBannerVisible || continuityQueryPresent).toBe(true);
 
-      const exportUiConfirmed = await exportSalesCsvFromDialog(page);
-      if (exportUiConfirmed) {
-        const exportBanner = await page.locator('div[aria-live="polite"]').first().textContent().catch(() => '');
-        expect(String(exportBanner || '')).toContain('Export complete:');
-      }
+      const exportedFilename = await exportSalesCsvFromDialog(page, artifactBase);
+      const exportBanner = await page.locator('div[aria-live="polite"]').first().textContent().catch(() => '');
+      expect(String(exportBanner || '')).toContain('Export complete:');
+      expect(String(exportBanner || '')).toContain(exportedFilename);
     } catch (error) {
       if (page) {
         await page.screenshot({

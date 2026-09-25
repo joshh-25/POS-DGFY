@@ -1,8 +1,8 @@
 /* @vitest-environment jsdom */
 // #1615: F&B has no existing render-level summary test -- this covers the split fee/VAT rows
 // (replacing the old combined "Fees & Taxes" row) across desktop (both `detailed` and `compact`
-// variants) and mobile. The zero-fee scenario represents the current Storefront contract; the
-// positive-fee scenarios preserve rendering compatibility for older quote/order responses.
+// variants) and mobile, using the issue's own reported numbers (gross subtotal PHP 105, VAT PHP
+// 11.25 already included, zero-fee total PHP 94.50 / 1%-fee total PHP 95.55).
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -77,7 +77,7 @@ const mobileBaseProps = {
 afterEach(cleanup);
 
 describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
-  describe('zero-fee scenario -- PHP 94.50 total', () => {
+  describe('zero-fee scenario (revenue sharing) -- PHP 94.50 total', () => {
     const totals = { ...baseTotals, service_fee_amount: 0, total_amount: 94.5 };
 
     it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {

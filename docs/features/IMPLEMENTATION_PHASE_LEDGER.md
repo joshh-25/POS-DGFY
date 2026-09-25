@@ -25415,7 +25415,7 @@ Create `apps/dgfy-opis` as the independently buildable/deployable DGFY Back Offi
 shell preserving workflows and canonical backend owners; add OPIS independent
 authentication and the isolated `opis_*` browser-session namespace; POS compatibility
 redirects; POS settings refresh on focus/reconnect; app/build/deploy/CI wiring;
-successor ADR 0086 (proposed, tech-lead approval pending); compatibility seams; docs.
+successor ADR 0087 (proposed, tech-lead approval pending); compatibility seams; docs.
 
 ### Status
 
@@ -25425,7 +25425,7 @@ and deployed QA remain outstanding (this phase never merges or deploys itself).
 ### Dependencies
 
 Issue #2052 (`Closes`); parent epic #1354; related #322, #350, #358, #1356, #2026,
-#2051; ADR 0071 (binding three-app decision, superseded in part by proposed ADR 0086),
+#2051; ADR 0071 (binding three-app decision, superseded in part by proposed ADR 0087),
 ADR 0072 (image naming), ADR 0026 (cookie authority), ADR 0035 (seam governance);
 Phases 455–459 contract; Phase 459 remains deferred and does not satisfy this phase's
 acceptance gates; Phase 460 remains in progress.
@@ -25459,7 +25459,7 @@ acceptance gates; Phase 460 remains in progress.
   `apps/dgfy-api` browser-session cookie/CSRF transport;
   `.github/workflows/**`, `scripts/**`, `infrastructure/docker/**`,
   `infrastructure/nginx-host/**`.
-- Successor ADR: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`
+- Successor ADR: `docs/architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md`
   (proposed).
 - Compatibility seams: `opis-pos-backoffice-redirect`, `opis-ims-merchant-handoff`.
 - Compliance declaration:
@@ -25471,7 +25471,7 @@ acceptance gates; Phase 460 remains in progress.
 ### Completion criteria and rollback
 
 Complete only after the acceptance evidence above passes, including the required
-authenticated acceptance and ADR 0086 tech-lead approval. Rollback: revert the Phase 461
+authenticated acceptance and ADR 0087 tech-lead approval. Rollback: revert the Phase 461
 commits by domain (new app → dependents → docs → CI); no data migration to undo; POS
 Back Office redirect and IMS handoff fall back without merchant data effect.
 
@@ -25646,7 +25646,7 @@ preserving query/hash; fix the DEV `dgfy-api`
 crash-loop (`posTerminalDeviceService` missing import, every `/api/*` 502ing); repoint
 the dead in-app "Open POS terminal" links (react-router `<Link to="/terminal">` on the
 OPIS origin) at the real POS origin with the settings dirty-guard contract preserved;
-correct ADR 0086's ambiguous routing clause. Explicit non-goals: no merge/promotion of
+correct ADR 0087's ambiguous routing clause. Explicit non-goals: no merge/promotion of
 PR #2054, no `infrastructure/nginx-host/*.conf` changes, no flattening beyond overview,
 no rewrite of the ~20 other `/backoffice/overview` handoff call sites outside OPIS.
 
@@ -25660,7 +25660,7 @@ deploys itself).
 
 Issue #2052 (`Refs`; the `Closes` linkage stays with Phase 461's app-split scope);
 parent epic #1354; PR #2054 (`feature/2052-opis-split-back-office` →
-`feat/DGFY-459-pos-development-pr-ready`); ADR 0086 (proposed — routing clause
+`feat/DGFY-459-pos-development-pr-ready`); ADR 0087 (proposed — routing clause
 corrected directly, no Amendments block); Phase 461 (app-split foundation);
 Phase 463 (numbering predecessor; its completion gates are independent of this phase).
 
@@ -25702,7 +25702,7 @@ Phase 463 (numbering predecessor; its completion gates are independent of this p
   (`buildPosTerminalUrl`, opis→pos origin mapping);
   `packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js`;
   `packages/web-core/src/features/pos/__tests__/backofficeNavigation.behavior.test.jsx`.
-- Governance: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`
+- Governance: `docs/architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md`
   (routing clause correction, still `proposed`).
 - Compliance declaration:
   `docs/compliance/impact-declarations/2026-09-23-opis-stabilization-phase-464.md`.
@@ -25713,7 +25713,7 @@ Phase 463 (numbering predecessor; its completion gates are independent of this p
 ### Completion criteria and rollback
 
 Complete only after the acceptance evidence above passes, including the DEV redeploy
-with live verification and ADR 0086 tech-lead approval (carried by PR #2054's review).
+with live verification and ADR 0087 tech-lead approval (carried by PR #2054's review).
 Rollback: revert the Phase 464 commits by domain (routing → api fix → links → docs);
 the api crash-loop returns if the import line is reverted (DEV 502s resume); OPIS
 routing/links fall back to the redirect/dead-link behavior with no data migration to
@@ -25737,7 +25737,7 @@ DGFY Back Office fourth frontend app, follow-up on `feature/2052-opis-split-back
 ### Objective and scope
 
 Add account actions to the authenticated OPIS topbar: show the current user and business,
-route “Switch business” to the existing `/dgfy/companies` picker, and log out through the
+route "Switch business" to the existing `/dgfy/companies` picker, and log out through the
 existing shared session cleanup while returning OPIS users to `/dgfy/auth`. Keep the shared
 `logout()` default at `/login` for existing callers. No API, permission, session-cookie,
 database, or cross-app logout behavior changes.
@@ -25751,7 +25751,7 @@ also still open and remain a dependency for completing this ledger sequence.
 ### Dependencies
 
 Issue #2052, parent epic #1354, PR #2054; Phase 464 implementation and DEV deployment (done),
-with Phase 464 review/merge still outstanding; ADR 0086 proposed session-isolation clause.
+with Phase 464 review/merge still outstanding; ADR 0087 proposed session-isolation clause.
 
 ### Acceptance and validation evidence
 
@@ -25770,7 +25770,7 @@ with Phase 464 review/merge still outstanding; ADR 0086 proposed session-isolati
 - Implementation: `apps/dgfy-opis/src/features/businessAdmin/BusinessAdminAccountMenu.jsx`,
   `apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx`,
   `packages/web-core/src/services/authService.js`.
-- ADR: `docs/architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md`.
+- ADR: `docs/architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md`.
 
 ### Completion date
 
@@ -25780,3 +25780,71 @@ Not yet merged; set after required acceptance evidence and PR merge.
 
 466 after Phase 465's acceptance gates pass and Phase 464's outstanding review/merge dependency
 is reconciled.
+
+## Phase 466 - Decouple shared DEV from release floors and promotion lineage (#2071)
+
+### Ledger reconciliation
+
+Originally reserved on `develop` as Phase 347 (continuing that branch's own sequence through
+Phase 346). Recorded here as reconciliation Phase 466, without renumbering this branch's
+already-reserved Phases 464/465 — the same reconciliation pattern Phase 461's own entry used for
+develop's then-current Phases 345/346 (recorded there as 462/463).
+
+### Initiative and release
+
+Epic #1548 release-versioning follow-up; current release.
+
+### Objective and scope
+
+Replace new DEV artifact tags with one mutable `dev` alias plus SHA identity, usable by manual
+DEV dispatches from `develop` or experimental branches. Keep immutable per-app `rN` tags for
+STAGING/PROD. Build promotion candidates from the frozen `develop` SHA directly on STAGING,
+with no DEV artifact, deployment, server, or availability dependency. Keep package floors steady
+on ordinary develop changes and staging repairs; bump changed apps to their next minor floors at
+promotion start; reserve patch bumps for direct main hotfixes. Preserve v1/v2 candidate validation
+for historical/in-flight manifests while writing v3 manifests for the revised lineage.
+
+### Status
+
+`in_progress` — implementation and local validation are underway; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2071 and the user's 2026-09-24 scope clarification; Phase 346's deployed per-app revision
+implementation (retained for STAGING/PROD and legacy manifest compatibility); ADR 0039; ADR 0081;
+ADR 0082; `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+### Acceptance and validation evidence
+
+- [ ] DEV resolver returns `dev` without reading a package floor or revision; all manually selected
+  branches can move the tag and SHA tags remain available.
+- [ ] DEV skip-plan always rebuilds selected apps so the mutable alias points at the dispatched SHA.
+- [ ] Promotion candidate creation and STAGING dispatch work from a frozen develop SHA without a
+  DEV deploy or DEV artifact lookup; v3 manifests do not contain `dev_artifacts`.
+- [ ] STAGING/PROD revisions are allocated only from release-channel tags; immutable release tag
+  and parity checks remain intact.
+- [ ] Version checks enforce unchanged floors on develop and staging repairs, minor floor bumps at
+  promotion, and patch-only direct main hotfixes.
+- [ ] Focused resolver, revision, candidate, parity, workflow-shape, and version-policy suites pass;
+  docs/architecture/compliance checks and `git diff --check` pass.
+- [ ] PR review, merge, and deployed QA remain outstanding; this phase never deploys.
+
+### Links
+
+- Issue: #2071 (scope clarified in the 2026-09-24 conversation; current issue body still describes
+  the superseded revisioned-DEV approach).
+- Related: #982, #1548, #2055, #2054, #2069.
+- Implementation: `scripts/resolve-release-tags.js`, `scripts/allocate-artifact-revision.js`,
+  `scripts/resolve-build-skip-plan.js`, `scripts/check-app-version-bump.js`,
+  `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`, deployment and
+  promotion workflows/runbook, ADR 0081, release candidate policy.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+467 after Phase 466's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).

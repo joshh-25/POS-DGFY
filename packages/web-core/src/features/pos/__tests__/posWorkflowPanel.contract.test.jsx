@@ -40,9 +40,13 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Takeout')).toBeDefined();
     expect(screen.getByText('Pickup')).toBeDefined();
     expect(screen.getByText('Delivery')).toBeDefined();
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)').closest('label').className).not.toContain('col-span-full');
+    const tableInput = screen.getByPlaceholderText('e.g. T-04');
+    const notesInput = screen.getByPlaceholderText('Applies to the whole order');
+    expect(tableInput.closest('label').textContent).toContain('Table # (Optional)');
+    expect(tableInput.closest('label').textContent).not.toContain('*');
+    expect(notesInput.closest('label').textContent).toContain('Order Notes (Global)');
+    expect(notesInput.closest('label').textContent).not.toContain('*');
+    expect(notesInput.closest('label').className).not.toContain('col-span-full');
     expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
     expect(screen.getByText('Payment Type')).toBeDefined();
@@ -95,7 +99,7 @@ describe('POS Workflow Panels Contract', () => {
       />
     );
 
-    expect(screen.getByText('Order Notes (Global)').closest('label').className).toContain('col-span-full');
+    expect(screen.getByPlaceholderText('Applies to the whole order').closest('label').className).toContain('col-span-full');
   });
 
   it('uses direct order-method buttons in the wide checkout presentation', () => {
@@ -166,14 +170,14 @@ describe('POS Workflow Panels Contract', () => {
     };
     const { rerender } = render(<FnbWorkflowPanel key="cart-0" {...panelProps} cartItemCount={0} />);
 
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
+    expect(screen.getByPlaceholderText('Applies to the whole order')).toBeDefined();
 
     rerender(<FnbWorkflowPanel key="cart-1" {...panelProps} cartItemCount={1} />);
 
     expect(screen.getByTestId('pos-checkout-order-method-buttons')).toBeDefined();
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
-    expect(screen.queryByRole('button', { name: /add table & notes|edit table & notes|hide table & notes/i })).toBeNull();
+    expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
+    expect(screen.getByPlaceholderText('Applies to the whole order')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Edit table & notes' })).toBeNull();
   });
 });

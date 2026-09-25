@@ -4060,11 +4060,16 @@ Route mapping note:
 
 **Pricing Contract**
 - Response totals now include:
-  - `service_fee_amount` (retained for compatibility; `0` for new Storefront quotes)
-  - `service_fee_label` (`DGFY convenience fee`, retained as a deterministic compatibility label)
+  - `service_fee_amount`
+  - `service_fee_label` (`DGFY convenience fee`, deterministic even when amount is `0`)
+- Request body accepts `payment_type` (`cash`, `gcash`, `maya`, `card`, `bank_transfer`, `qrph`,
+  `grab_pay`, or `shopeepay`), defaulting to `cash`, so quote pricing uses the selected payment
+  rail.
 - Quote formula:
-  - `service_fee_amount = 0`
-  - `total_amount = subtotal_amount - discount_amount - voucher_discount_amount + delivery_fee`
+  - `service_fee_amount = 0` for a Dine-in quote using `cash` when the selected location has
+    `allow_dine_in_pay_at_store=true`.
+  - Otherwise, `service_fee_amount = round4(subtotal_amount * 0.01)`.
+  - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
 **Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
 added Phase 150, #866)

@@ -30,25 +30,9 @@ on:
         default: ''
       release_revision:
         description: >-
-          Per-app artifact revision (#2055, Phase 346 -- this app's own allocated rN, e.g.
-          "r16" or "16"; #1977's candidate-wide value, Phase 342). Required for a STAGING
-          candidate or PROD dispatch (the meta step fails closed without it); on DEV it
-          selects the promotion-eligible X.Y.Z-rN-dev tag (allocated upstream by
-          deployment-orchestrator.yml's resolve-build-plan job, or passed explicitly on a
-          re-dispatch). Selects the environment-neutral revision tag (X.Y.Z-rN -- this image
-          bakes no VITE_* values, so the same digest promotes from staging to production)
-          and stamps the release-floor/revision labels the parity gate and alias promotion
-          read.
-        required: false
-        type: string
-        default: ''
-      dev_pr_ref:
-        description: >-
-          DEV ad-hoc marker (#2055, Phase 346 -- a PR number like "pr482" or a branch name).
-          Set ONLY for a feature-branch DEV dispatch (deployment-orchestrator.yml derives it
-          from the dispatched ref automatically): resolves the non-promotion-eligible
-          X.Y.Z-<slug>-dev tag, which a candidate can never select. Mutually exclusive with
-          release_revision; rejected for STAGING/PROD.
+          Per-app immutable revision for STAGING/PROD (e.g. r16). Required for those release
+          builds and ignored for DEV, whose image tag is always the moving `dev` alias. Backend tags use environment-neutral X.Y.Z-rN so the same image digest promotes
+          between STAGING and PROD.
         required: false
         type: string
         default: ''
@@ -126,7 +110,6 @@ jobs:
         env:
           ENVIRONMENT: ${{ inputs.environment }}
           RELEASE_REVISION: ${{ inputs.release_revision }}
-          DEV_PR_REF: ${{ inputs.dev_pr_ref }}
           CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
           IMAGE_SERVER_URL: ${{ github.server_url }}
           IMAGE_REPOSITORY: ${{ github.repository }}
@@ -142,31 +125,18 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
-          # ADR 0081 Decisions 1/3 (#1977, Phase 342; #2055, Phase 346): revision-aware
-          # version tag, resolved by the central resolver -- the floor X.Y.Z is read from
-          # apps/dgfy-api/package.json, never written here (Decision 6 -- bumps are
-          # PR-authored); rN is this app's own allocated artifact revision. STAGING/PROD
-          # fail closed here when the revision is missing (the resolver throws). DEV needs
-          # exactly one identity: release_revision (promotion-eligible X.Y.Z-rN-dev,
-          # allocated upstream) or dev_pr_ref (ad-hoc X.Y.Z-<slug>-dev, never
-          # candidate-selectable) -- a DEV dispatch with neither fails closed here instead
-          # of silently re-emitting the legacy colliding X.Y.Z-dev. No channel suffix is
-          # derived in this file anymore -- app type and environment cannot drift between
-          # workflows because only the resolver maps them to tags.
-          APP_PKG_VERSION="$(node -p "require('./apps/dgfy-api/package.json').version")"
-          RESOLVER_ARGS=(--app dgfy-api --version "${APP_PKG_VERSION}" --environment "${ENVIRONMENT}")
-          if [ -n "${RELEASE_REVISION:-}" ]; then
-            RESOLVER_ARGS+=(--revision "${RELEASE_REVISION}")
-          elif [ "${ENVIRONMENT}" = "DEV" ] && [ -n "${DEV_PR_REF:-}" ]; then
-            RESOLVER_ARGS+=(--pr-ref "${DEV_PR_REF}")
-          elif [ "${ENVIRONMENT}" = "DEV" ]; then
-            echo "::error::DEV dispatch for dgfy-api carries neither release_revision nor dev_pr_ref -- a DEV build needs exactly one identity (X.Y.Z-rN-dev via the orchestrator's allocation, or X.Y.Z-<slug>-dev via dev_pr_ref); refusing to re-emit the legacy colliding X.Y.Z-dev (#2055)."
-            exit 1
+          # DEV is versionless and always resolves to the shared `dev` alias. STAGING/PROD
+          # use this app's release floor and immutable per-app rN, required by the resolver.
+          APP_NAME=dgfy-api
+          if [ "${ENVIRONMENT}" = "DEV" ]; then
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP_NAME}" --environment DEV)"
+          else
+            APP_PKG_VERSION="$(node -p "require('./apps/dgfy-api/package.json').version")"
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP_NAME}" --version "${APP_PKG_VERSION}" --environment "${ENVIRONMENT}" --revision "${RELEASE_REVISION}")"
           fi
-          RESOLVED="$(node scripts/resolve-release-tags.js "${RESOLVER_ARGS[@]}")"
           VERSION_TAG="$(node -p "JSON.parse(process.argv[1]).tag" "${RESOLVED}")"
-          RELEASE_FLOOR="$(node -p "JSON.parse(process.argv[1]).floor" "${RESOLVED}")"
-          RELEASE_REVISION_OUT="$(node -e "const r=JSON.parse(process.argv[1]).revision; process.stdout.write(r==null?'':'r'+r)" "${RESOLVED}")"
+          RELEASE_FLOOR="$(node -e "const x=JSON.parse(process.argv[1]).floor;process.stdout.write(x||'')" "${RESOLVED}")"
+          RELEASE_REVISION_OUT="$(node -e "const r=JSON.parse(process.argv[1]).revision;process.stdout.write(r==null?'':'r'+r)" "${RESOLVED}")"
           echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
           echo "release_floor=${RELEASE_FLOOR}" >> "$GITHUB_OUTPUT"
           echo "release_revision=${RELEASE_REVISION_OUT}" >> "$GITHUB_OUTPUT"
@@ -178,15 +148,15 @@ jobs:
           # block below, so a blank input cleanly omits the line instead of stamping an empty label --
           # docker/build-push-action's multi-line labels input is a plain heredoc from this step's own
           # output, same pattern already used for `tags` above.
-          # #1977 (Phase 342): the release floor is stamped unconditionally (runtime consumers must
-          # not infer it from an alias); the revision fragment only when this build carries one
-          # (ad-hoc DEV builds carry no revision -- same omit-when-empty rule as above; revisioned DEV builds stamp theirs like any candidate build, #2055).
+          # STAGING/PROD stamp their release floor and revision as OCI labels. DEV omits both
+          # because its `dev` tag is versionless; org.opencontainers.image.revision still records
+          # the full source SHA for every environment.
           {
             echo "labels<<LABELS_EOF"
             echo "org.opencontainers.image.revision=${GITHUB_SHA}"
             echo "org.opencontainers.image.source=${IMAGE_SERVER_URL}/${IMAGE_REPOSITORY}"
             echo "org.opencontainers.image.version=${VERSION_TAG}"
-            echo "org.dgfy-platform.release-floor=${RELEASE_FLOOR}"
+            if [ -n "${RELEASE_FLOOR:-}" ]; then echo "org.dgfy-platform.release-floor=${RELEASE_FLOOR}"; fi
             if [ -n "${RELEASE_REVISION_OUT:-}" ]; then
               echo "org.dgfy-platform.release-revision=${RELEASE_REVISION_OUT}"
             fi
@@ -247,7 +217,8 @@ jobs:
       # `tags:` list -- that decouples this guard from the moving-tag/sha-tag push, so a refusal
       # here fails this step loudly (Decision 7) without touching the tags Decision 2 says stay
       # unaffected by this ADR ("nothing on the deploy path changes as a result of this ADR alone").
-      - name: Publish version tag, refusing a different-revision overwrite (ADR 0081 Decision 7)
+      - name: Publish immutable release tag, refusing a different-revision overwrite (ADR 0081 Decision 7)
+        if: inputs.environment != 'DEV'
         shell: bash
         run: |
           node scripts/check-tag-immutability.js \

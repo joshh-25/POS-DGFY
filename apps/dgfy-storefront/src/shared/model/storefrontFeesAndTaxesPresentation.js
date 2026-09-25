@@ -8,27 +8,29 @@
 // `vat_amount` (apps/dgfy-api/src/modules/store/usecases/storeUseCases.js) is computed inside
 // prepareOrderLines from the gross vatable line prices -- BEFORE promo/voucher discounts are
 // resolved -- so it always reflects VAT already included in the item prices as originally priced,
-// not a post-discount recomputation. `service_fee_amount` remains a separate, additive, non-VAT
-// compatibility field. New Storefront orders resolve it to zero, so the customer-facing fee row
-// is omitted while the already-inclusive VAT figure remains an informational disclosure.
+// not a post-discount recomputation. `service_fee_amount` is a separate, additive, non-VAT charge
+// (ADR 0012 Decision 1) that legitimately participates in the Subtotal -> Total reconciliation.
+// Combining the two into one row made the additive fee look like it included tax, and made the
+// already-inclusive VAT figure look like it was being added on top of the subtotal a second time.
+// Splitting them, and disclosing the pre-discount VAT basis in the UI, resolves both.
 
 export const VAT_DISCLOSURE_LABEL = 'VAT (included in item prices)';
 
 export const VAT_DISCLOSURE_NOTE = 'VAT shown above is already included in item prices and is calculated before any promo or voucher discount.';
 
 /**
- * OrderSummaryCard/mobile-SummaryRow-shaped rows ({label, value}) replacing the old single
- * combined "Fees & Taxes" row. Positive legacy service-fee amounts remain renderable for older
- * order/quote responses, while the zero-valued Phase 333 Storefront fee is omitted. The VAT row is
- * informational and is never added into the total because it is already included in subtotal_amount.
+ * Two OrderSummaryCard/mobile-SummaryRow-shaped rows ({label, value}) replacing the old single
+ * combined "Fees & Taxes" row: the additive service fee (participates in the Subtotal -> Total
+ * reconciliation, unchanged), and the informational, already-included VAT disclosure (never added
+ * into the total -- it's already inside subtotal_amount). The VAT row is always returned; callers
+ * may omit the service-fee row when the fee is zero while keeping the VAT disclosure visible.
  */
-export const buildFeeAndVatSummaryRows = ({ totals = {}, money } = {}) => {
+export const buildFeeAndVatSummaryRows = ({ totals = {}, money, includeServiceFee = true } = {}) => {
   if (typeof money !== 'function') return [];
   const serviceFeeAmount = Number(totals.service_fee_amount || 0);
   const vatAmount = Number(totals.vat_amount || 0);
-  const rows = serviceFeeAmount > 0
-    ? [{ label: totals.service_fee_label || 'Service Fee', value: money(serviceFeeAmount) }]
-    : [];
-  rows.push({ label: VAT_DISCLOSURE_LABEL, value: money(vatAmount) });
-  return rows;
+  return [
+    ...(includeServiceFee ? [{ label: totals.service_fee_label || 'Service Fee', value: money(serviceFeeAmount) }] : []),
+    { label: VAT_DISCLOSURE_LABEL, value: money(vatAmount) }
+  ];
 };

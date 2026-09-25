@@ -266,6 +266,9 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).toContain('min-h-8 w-full min-w-0 overflow-hidden');
         expect(splitDialogSource).toContain('min-w-0 whitespace-normal break-words');
         expect(splitDialogSource).toContain('px-1.5 py-1 text-center text-[11px]');
+        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit', entryLabel: 'Employee Credit' }");
+        expect(splitDialogSource).toContain('EmployeeCreditPaymentPanel');
+        expect(splitDialogSource).toContain('employee_credit');
         expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-allocations"');
         expect(splitDialogSource).not.toContain('data-testid="pos-quick-two-way-split"');

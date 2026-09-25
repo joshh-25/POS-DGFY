@@ -5,6 +5,7 @@ const ORDER_METHODS = POS_ORDER_METHODS;
 const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
+const PAYMENT_TYPE_FILTERS = [...PAYMENT_TYPES, 'other'];
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
@@ -283,7 +284,7 @@ const listTransactionsQuerySchema = Joi.object({
     cashier_id: Joi.number().integer().positive().optional(),
     cashier_name: Joi.string().trim().max(120).allow('', null).optional(),
     location_id: Joi.number().integer().positive().optional(),
-    payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
+    payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     payment_status: Joi.string().valid(...PAYMENT_STATUSES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
     order_source: Joi.string().valid(...ORDER_SOURCES).optional()
@@ -458,6 +459,15 @@ const splitPaymentAllocationIdParamSchema = Joi.object({
 const parkedSaleIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
+
+const posExceptionApprovalParamSchema = Joi.object({
+    id: Joi.number().integer().positive().required(),
+    decision: Joi.string().trim().lowercase().valid('approve', 'reject').required()
+});
+
+const posExceptionApprovalBodySchema = Joi.object({
+    note: Joi.string().trim().max(500).allow('', null).optional()
+}).unknown(false);
 
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
@@ -701,7 +711,7 @@ const posReportsQuerySchema = Joi.object({
     cashier_id: Joi.number().integer().positive().optional(),
     location_id: Joi.number().integer().positive().optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
-    payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
+    payment_type: Joi.string().valid(...PAYMENT_TYPE_FILTERS).optional(),
     source: Joi.string().valid(...REPORT_SOURCE_FILTERS).optional(),
     category_id: Joi.number().integer().positive().optional(),
     category: Joi.string().trim().max(120).allow('', null).optional(),
@@ -1506,6 +1516,8 @@ export const validateClaimPosParkedSale = validateSchema(claimPosParkedSaleSchem
 export const validateCancelPosParkedSale = validateSchema(cancelPosParkedSaleSchema, 'body', 'validatedData');
 export const validateReparkPosParkedSale = validateSchema(reparkPosParkedSaleSchema, 'body', 'validatedData');
 export const validateParkedSaleIdParam = validateSchema(parkedSaleIdParamSchema, 'params', 'validatedParams');
+export const validatePosExceptionApprovalParam = validateSchema(posExceptionApprovalParamSchema, 'params', 'validatedParams');
+export const validatePosExceptionApprovalBody = validateSchema(posExceptionApprovalBodySchema, 'body', 'validatedData');
 export const validateCreatePosPaymentSession = validateSchema(createPosPaymentSessionSchema, 'body', 'validatedData');
 export const validateAddPosPaymentAllocation = validateSchema(addPosPaymentAllocationSchema, 'body', 'validatedData');
 export const validateCancelPosPayment = validateSchema(cancelPosPaymentSchema, 'body', 'validatedData');
@@ -1598,6 +1610,7 @@ export const validateDeliveryRunVarianceResolution = validateSchema(deliveryRunV
 export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQuerySchema, 'query', 'validatedQuery');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateCollectCashDineInOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');

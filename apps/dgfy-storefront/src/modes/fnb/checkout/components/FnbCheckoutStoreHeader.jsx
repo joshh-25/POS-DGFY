@@ -4,6 +4,7 @@ import { ArrowLeft, MessageCircle } from 'lucide-react';
 export function FnbCheckoutStoreHeader({
   displayFont,
   isDeliveryOrder,
+  orderMethod,
   isMobileViewport,
   isResponsiveFlow,
   onBack,
@@ -27,7 +28,7 @@ export function FnbCheckoutStoreHeader({
             {profileImage ? <img src={profileImage} alt={`${storeName} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>}
           </div>
           <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{isDeliveryOrder ? 'Delivery order' : 'Pickup order'}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{isDeliveryOrder ? 'Delivery order' : orderMethod === 'dine_in' ? 'Dine-in order' : 'Pickup order'}</div>
             <div style={{ fontSize: isResponsiveFlow ? 18 : 20, fontWeight: 900, color: '#1e293b', lineHeight: 1.2, fontFamily: displayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{storeName}</div>
           </div>
         </div>

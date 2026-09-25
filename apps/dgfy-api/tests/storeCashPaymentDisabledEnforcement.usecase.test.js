@@ -32,7 +32,7 @@ describe('#626 cash payment disabled -- product checkout (buildStoreCheckoutUseC
         ({ generateStoreGuestCheckoutProof } = await import('../src/modules/store/utils/storeJwtToken.js'));
     });
 
-    const buildFakeStoreRepository = ({ createdOrderId = 9201, settingRows = [] } = {}) => {
+    const buildFakeStoreRepository = ({ createdOrderId = 9201, settingRows = [], locationOverrides = {} } = {}) => {
         const transaction = {
             finished: false,
             commit: jest.fn(async () => { transaction.finished = 'commit'; }),
@@ -55,7 +55,8 @@ describe('#626 cash payment disabled -- product checkout (buildStoreCheckoutUseC
                 supports_pickup: true,
                 supports_dine_in: true,
                 allow_out_of_stock_sales: false,
-                current_wait_time_minutes: 15
+                current_wait_time_minutes: 15,
+                ...locationOverrides
             }),
             getSettingsByKeys: jest.fn().mockResolvedValue([
                 ...registeredTransactionSettings(settingRows),
@@ -173,5 +174,52 @@ describe('#626 cash payment disabled -- product checkout (buildStoreCheckoutUseC
         expect(repo.createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
         expect(repo.transaction.commit).toHaveBeenCalled();
         expect(repo.transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    test('a Dine-in order may pay in store when the selected branch policy is enabled', async () => {
+        const repo = buildFakeStoreRepository({
+            createdOrderId: 9204,
+            settingRows: [{ setting_key: 'storefront_cash_payment_enabled', setting_value: 'false' }],
+            locationOverrides: { allow_dine_in_pay_at_store: true }
+        });
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: repo });
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({
+                order_method: 'dine_in',
+                scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                idempotency_key: 'dine-in-pay-at-store-enabled-1'
+            }))
+        });
+
+        expect(result.success).toBe(true);
+        expect(repo.createOnlineTransactionWithLines).toHaveBeenCalledTimes(1);
+        expect(repo.transaction.commit).toHaveBeenCalled();
+        expect(repo.transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    test('a Dine-in cash order is rejected when the branch policy is disabled', async () => {
+        const repo = buildFakeStoreRepository({
+            settingRows: [{ setting_key: 'storefront_cash_payment_enabled', setting_value: 'true' }],
+            locationOverrides: { allow_dine_in_pay_at_store: false }
+        });
+        const useCase = buildStoreCheckoutUseCase({ storeRepository: repo });
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            payload: withGuestProof(basePayload({
+                order_method: 'dine_in',
+                scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                idempotency_key: 'dine-in-pay-at-store-disabled-1'
+            }))
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error?.statusCode).toBe(422);
+        expect(result.error?.details?.reason_code).toBe('DINE_IN_CASH_PAYMENT_NOT_ALLOWED');
+        expect(repo.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+        expect(repo.transaction.rollback).toHaveBeenCalled();
+        expect(repo.transaction.commit).not.toHaveBeenCalled();
     });
 });

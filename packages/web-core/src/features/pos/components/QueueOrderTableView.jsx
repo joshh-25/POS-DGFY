@@ -1,10 +1,10 @@
 import React from 'react';
 import { MapPin } from 'lucide-react';
 import {
-  FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
-  DELIVERY_JOB_STATUS_LABELS
+  DELIVERY_JOB_STATUS_LABELS,
+  getFulfillmentStatusLabel
 } from './orderFulfillmentUi.js';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import { getRunAssignEligibility } from '../utils/deliveryRunEligibility.js';
@@ -16,6 +16,10 @@ import {
   resolveOrderDownpaymentSplit,
   parseDeliveryCoords
 } from '../utils/incomingQueueOrderFormatting.js';
+import {
+  getDineInScheduleCountdownLabel,
+  isScheduledDineInOrder
+} from '../utils/dineInSchedule.js';
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
 import PackingEvidenceControl from './PackingEvidenceControl.jsx';
 
@@ -50,8 +54,12 @@ export default function QueueOrderTableView({
   handleDeliveryJobStatusChange = () => {},
   handleIncomingOrderStatusChange = () => {},
   handleOpenIncomingOrderReceipt = () => {},
-  onRequestRejection = () => {}
+  onRequestRejection = () => {},
+  scheduleNow = null
 }) {
+  const [fallbackScheduleNow] = React.useState(() => Date.now());
+  const effectiveScheduleNow = Number.isFinite(Number(scheduleNow)) ? Number(scheduleNow) : fallbackScheduleNow;
+
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200">
       <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
@@ -67,7 +75,7 @@ export default function QueueOrderTableView({
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Payment</th>
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Balance</th>
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Mode</th>
-            <th scope="col" className="px-3 py-2 font-bold text-slate-600">Order Time</th>
+            <th scope="col" className="px-3 py-2 font-bold text-slate-600">Order / Serve Time</th>
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Delivery</th>
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Address</th>
             <th scope="col" className="px-3 py-2 font-bold text-slate-600">Actions</th>
@@ -121,7 +129,7 @@ export default function QueueOrderTableView({
                 <td className="px-3 py-3 font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</td>
                 <td className="whitespace-nowrap px-3 py-3">
                   <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                    {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                    {getFulfillmentStatusLabel(order.fulfillment_status, order) || 'Unknown'}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-3 py-3 text-slate-700">{order.tracking_pin || '-'}</td>
@@ -136,7 +144,10 @@ export default function QueueOrderTableView({
                     : '-'}
                 </td>
                 <td className="whitespace-nowrap px-3 py-3 text-slate-700">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</td>
-                <td className="whitespace-nowrap px-3 py-3 text-slate-700">{formatOrderDateTime(order.created_at)}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-slate-700">
+                  <p>{formatOrderDateTime(isScheduledDineInOrder(order) ? order.scheduled_for : order.created_at)}</p>
+                  {isScheduledDineInOrder(order) ? <p className="mt-0.5 text-[11px] font-semibold text-amber-700">{getDineInScheduleCountdownLabel(order, effectiveScheduleNow)}</p> : null}
+                </td>
                 <td className="px-3 py-3 text-slate-700">
                   {order.order_method === 'delivery'
                     ? `${deliveryJob?.provider || 'Manual'} · ${DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}${deliveryJob?.delivery_personnel_name ? ` — ${deliveryJob.delivery_personnel_name}` : ''}`

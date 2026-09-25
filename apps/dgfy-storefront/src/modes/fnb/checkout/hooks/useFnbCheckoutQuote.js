@@ -52,6 +52,7 @@ export function useFnbCheckoutQuote({
   isDgfyCustomerSignedIn,
   normalizeErrorMessage,
   orderMethod,
+  fnbPaymentType,
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
   // payment_mode='customer_choice' store -- see storefrontPaymentElection.js.
   paymentElection,
@@ -98,6 +99,7 @@ export function useFnbCheckoutQuote({
     fnbSpecialInstructions,
     cart: cartOverride,
     paymentElection,
+    paymentType: fnbPaymentType,
   }), [
     cart,
     checkoutPromoCode,
@@ -110,6 +112,7 @@ export function useFnbCheckoutQuote({
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
+    fnbPaymentType,
     isDeliveryOrder,
     orderMethod,
     paymentElection,

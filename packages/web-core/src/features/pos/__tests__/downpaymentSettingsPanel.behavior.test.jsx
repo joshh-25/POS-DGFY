@@ -4,12 +4,18 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';
+import { listTenantLocations, updateTenantLocationDineInPaymentPolicy } from '@/services/tenantLocationService.js';
 
 const fetchDownpaymentSettings = vi.fn();
 const updateDownpaymentSettings = vi.fn();
 vi.mock('../services/downpaymentSettingsService.js', () => ({
     fetchDownpaymentSettings: (...args) => fetchDownpaymentSettings(...args),
     updateDownpaymentSettings: (...args) => updateDownpaymentSettings(...args)
+}));
+
+vi.mock('@/services/tenantLocationService.js', () => ({
+    listTenantLocations: vi.fn(),
+    updateTenantLocationDineInPaymentPolicy: vi.fn()
 }));
 
 const toastError = vi.fn();
@@ -209,5 +215,40 @@ describe('DownpaymentSettingsPanel', () => {
 
         expect(await screen.findByDisplayValue('20.00')).toBeTruthy();
         expect(screen.getByDisplayValue('50.00')).toBeTruthy();
+    });
+
+    it('loads and updates the selected branch Dine-in payment policy', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        listTenantLocations.mockResolvedValueOnce([{
+            location_id: 1,
+            name: 'Masu Cafe',
+            updated_at: '2026-09-24T10:00:00.000Z',
+            allow_dine_in_pay_at_store: false
+        }]);
+        updateTenantLocationDineInPaymentPolicy.mockResolvedValueOnce({
+            location_id: 1,
+            name: 'Masu Cafe',
+            updated_at: '2026-09-24T10:01:00.000Z',
+            allow_dine_in_pay_at_store: true
+        });
+        const user = userEvent.setup();
+        render(
+            <DownpaymentSettingsPanel
+                terminalUser={adminUser()}
+                sectionId="s"
+                locationOptions={[{ location_id: 1, name: 'Masu Cafe' }]}
+            />
+        );
+
+        const policySwitch = await screen.findByRole('switch', { name: /allow pay in store for dine in/i });
+        expect(policySwitch.getAttribute('aria-checked')).toBe('false');
+        await user.click(policySwitch);
+        await user.click(screen.getByRole('button', { name: /update dine-in policy/i }));
+
+        await waitFor(() => expect(updateTenantLocationDineInPaymentPolicy).toHaveBeenCalledWith(1, {
+            allow_dine_in_pay_at_store: true,
+            expected_updated_at: '2026-09-24T10:00:00.000Z'
+        }));
+        expect(toastSuccess).toHaveBeenCalledWith('Dine-in payment policy updated');
     });
 });

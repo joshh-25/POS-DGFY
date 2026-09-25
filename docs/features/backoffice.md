@@ -926,9 +926,9 @@ moved from `apps/dgfy-pos/src/features/businessAdmin` to `apps/dgfy-opis`
 browser-session namespace, POS external redirects preserving path/query, and IMS
 handoff retargeting. POS terminal operational flows are unaffected. The interim
 "POS is the canonical merchant back-office surface" framing above holds only until
-PR #2026 merges and proposed ADR 0086 is accepted; thereafter OPIS is canonical.
+PR #2026 merges and proposed ADR 0087 is accepted; thereafter OPIS is canonical.
 See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.md),
-[ADR 0086](../architecture/adr/0086-dedicated-back-office-fourth-frontend-app-opis.md),
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
 and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
 seams.
 
@@ -938,4 +938,4 @@ The dashboard remains at `/`; Back Office sections now use root-level URLs such 
 `/sales`, `/orders`, `/catalog`, and `/settings/profile`. Older `/backoffice/*` and
 `/business-admin/*` links redirect to their root-level equivalent while preserving
 query and hash. OPIS-owned authentication, company registration, and protected receive
-routes keep their reserved paths. See the updated route contract in ADR 0086.
+routes keep their reserved paths. See the updated route contract in ADR 0087.
