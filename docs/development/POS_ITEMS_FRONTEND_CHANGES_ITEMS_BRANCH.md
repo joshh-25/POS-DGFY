@@ -68,8 +68,9 @@ The following are the retained branch commits after the rewrite:
 | `a13bb87d9` | `docs(pos): record final Items audit inventory` | Intermediate committed-tree inventory. |
 | `262c8362e` | `fix(pos): complete Items workspace controls` | Pagination primitive, mobile-sheet dialog contract, Item Options footer geometry, text-size/header hooks, and shared Items pagination styling. |
 | `ebe113a9a` | `fix(pos): finish Items mobile control styling` | Touch-safe text-size control behavior and mobile Item Options editor scrolling/footer safe-area behavior found during the final audit. |
+| `3e9a83597` | `docs(pos): finalize Items branch audit` | Final committed manifest, exclusion boundary, corrected test/build evidence, and audit conclusion. |
 
-The documentation-only follow-up remains separate from the product commits above.
+The final documentation commit is intentionally separate from the product commits above.
 
 ## Included files to push
 
@@ -228,8 +229,8 @@ passed for the retained chain:
 
 - `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
 - No conflict markers in the clean rewritten tree.
-- The branch-specific first-parent chain after the comparison base is the ten commits listed in the
-  atomic inventory above; the next commit is this documentation-only update.
+- The branch-specific first-parent chain after the comparison base is the eleven commits listed in
+  the atomic inventory above, with the final entry being documentation-only.
 - Removed history commits are not ancestors of the rewritten branch.
 
 ### Existing functional evidence
@@ -275,7 +276,7 @@ normal, large, and extra-large text sizes in desktop and tablet portrait/landsca
 - Current branch: `codex/pos-frontend-changes-items`.
 - Branch-specific product commits: the ten commits listed above, all scoped to POS Items or direct
   Items dependencies.
-- Branch-specific documentation: the audit, reconciliation, and final inventory update commits.
+- Branch-specific documentation: the audit, reconciliation, final inventory, and final audit commits.
 - Comparison base: `ea06c1a56ebf75994f0c8e319394c21a6424536f`.
 - Recovery ref: `backup/pos-items-before-items-only-rewrite-20260925`.
 - Push status: not pushed.
