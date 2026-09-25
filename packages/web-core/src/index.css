@@ -5519,3 +5519,43 @@ body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .p
     overscroll-behavior: contain;
   }
 }
+
+/* Items-only mobile control hardening retained from the audited worktree. */
+.pos-text-size-control__trigger,
+.pos-text-size-control__option {
+  -webkit-tap-highlight-color: transparent;
+}
+@media (max-width: 1023.98px), (hover: none), (pointer: coarse) {
+  .pos-text-size-control__trigger:hover {
+    background-color: transparent;
+  }
+  .pos-text-size-control__option:not([aria-selected="true"]):hover {
+    background-color: transparent;
+    color: #0f172a;
+  }
+}
+@media (max-width: 767.98px) {
+  .pos-fnb-option-group-editor-header {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+  }
+  .pos-fnb-option-group-editor-body {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px)) !important;
+    scroll-padding-top: 0.75rem;
+    scroll-padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+  }
+  .pos-fnb-option-group-editor-footer {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    padding-bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  }
+}
