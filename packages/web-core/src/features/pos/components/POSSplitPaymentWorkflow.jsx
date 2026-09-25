@@ -73,6 +73,7 @@ const buildCheckoutSnapshot = (context = {}) => ({
     item_id: Number(line?.item_id),
     quantity: Number(line?.quantity),
     sale_price: Number(line?.sale_price),
+    ...(line?.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
     item_discount: line?.item_discount || null,
     item_discount_approval: context.itemDiscountApproval?.get?.(line?.line_key || line?.line_id)
       ? {

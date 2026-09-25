@@ -653,6 +653,7 @@ export const usePosCheckoutWorkflow = ({
             allowedOrderMethods: posWorkflow.allowedMethods,
             discountProfiles: toArray(discountProfiles),
             commercialPromoConfig: toArray(commercialPromoConfig),
+            historicalSnapshotPolicy: 'warn',
             modifierValidator: ({ item, line, locationId }) => {
                 const currentGroups = getFnbModifierGroups(item);
                 const savedModifiers = toArray(line?.line_modifiers);
@@ -676,7 +677,8 @@ export const usePosCheckoutWorkflow = ({
             ok: true,
             resumeContext: {
                 parkedSaleId: Number(parkedSale?.pos_parked_sale_id) || null,
-                catalog: resumeCatalog
+                catalog: resumeCatalog,
+                warnings: validation.warnings
             }
         };
     }, [activeParkedSale?.pos_parked_sale_id, commercialPromoConfig, discountProfiles, posWorkflow, safeCatalog, safeCart.length, selectedLocationId]);
@@ -693,6 +695,12 @@ export const usePosCheckoutWorkflow = ({
         }
         const validatedCatalog = resumeContext.catalog;
         const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
+        const historicalWarningCount = Array.isArray(resumeContext?.warnings)
+            ? resumeContext.warnings.filter(Boolean).length
+            : 0;
+        const historicalWarningDescription = historicalWarningCount > 0
+            ? `${historicalWarningCount} saved-item warning${historicalWarningCount === 1 ? '' : 's'}. Review the cart before checkout.`
+            : '';
         const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
         const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
             ? snapshot.discount_context
@@ -777,9 +785,20 @@ export const usePosCheckoutWorkflow = ({
             setCustomerPaymentAmountAutoFilled(true);
             setCheckoutConfirmModalOpen(true);
             setMobileCheckoutPanelOpen(false);
-            toast.success(`Ready to pay ${formatParkedSaleDisplayName(claimedSale)}. Review the cart before checkout.${approvalResetMessage}`);
+            toast.success(`Ready to pay ${formatParkedSaleDisplayName(claimedSale)}`, {
+                description: [
+                    'Review the cart before checkout.',
+                    approvalResetMessage.trim(),
+                    historicalWarningDescription
+                ].filter(Boolean).join(' ')
+            });
         } else {
-            toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Add items as needed, then checkout.`);
+            toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}`, {
+                description: [
+                    'Add items as needed, then checkout.',
+                    historicalWarningDescription
+                ].filter(Boolean).join(' ')
+            });
         }
     }, [
         cartTotal,
@@ -887,6 +906,7 @@ export const usePosCheckoutWorkflow = ({
                 quantity: Number(line.quantity),
                 base_sale_price: Number(line.base_sale_price || 0),
                 sale_price: Number(line.sale_price),
+                ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                 price_override_reason: line.price_override_reason || null,
                 unit_of_measure: line.unit_of_measure || null,
                 category: line.category || null,
@@ -1355,6 +1375,7 @@ export const usePosCheckoutWorkflow = ({
                 item_id: line.item_id,
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
+                ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                 ...(line.item_discount ? {
                     item_discount: {
                         discount_type: line.item_discount.discount_type || 'manual',

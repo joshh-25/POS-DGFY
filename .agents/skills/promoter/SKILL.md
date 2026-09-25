@@ -36,8 +36,8 @@ role rather than bending either existing one past its charter.
 
 **Default, since #1404 (2026-09-02) — reverses ADR 0074/#980's 2026-08-25 two-stage default; see
 ADR 0074's 2026-09-02 Amendment and `docs/ops/RELEASE_CANDIDATE_POLICY.md`'s matching entry:**
-`feature → develop → to-staging/<candidate_id> → staging → release/<candidate_id>-rN → main`.
-`to-staging/<candidate_id>` cuts fresh from `origin/develop`; `release/<candidate_id>-rN` then
+`feature → develop → to-staging/<candidate_id> → staging → release/<candidate_id> → main`.
+`to-staging/<candidate_id>` cuts fresh from `origin/develop`; `release/<candidate_id>` then
 cuts fresh from the candidate's current `origin/staging`. Every
 promotion branch is a throwaway — cut fresh, no commits of its own, used once as a PR head, never
 reused. Because this leg runs on every ordinary promotion again, `staging` gets refreshed as a
@@ -158,10 +158,10 @@ must not be assumed equal. Both are distinct from whatever
 carry. Written once, right after the candidate branch is cut and pushed, to
 `.tmp/release-candidates/<candidate_id>.json` (never committed — a local artifact, same convention
 as `.tmp/release-gates/<sha>/local_readiness.json`); updated on every staging repair and again when
-`release/<candidate_id>-rN` is cut. See the runbook for the exact JSON shape.
+`release/<candidate_id>` is cut. See the runbook for the exact JSON shape.
 
 Staging failures are repaired against the candidate's latest staging SHA. The normal repair shape
-is `fix/staging/<candidate_id>-rN` cut from `origin/staging`, with a PR into `staging`; redeploy
+is `fix/staging/<candidate_id>-<repair_seq>` cut from `origin/staging`, with a PR into `staging`; redeploy
 and re-observe the same candidate after each merge. An isolated developer fix may be cherry-picked
 with `git cherry-pick -x` after diff review. If it is mixed with newer work, recreate the narrow fix
 on the staging repair branch. Never merge `develop` wholesale into an active candidate.
@@ -205,7 +205,7 @@ means `fix/staging/*` repairs (above), `docs/release/*` note amendments, and
 backport batch, PRs #1668-1674). `scripts/check-promotion-divergence.js`'s provenance audit
 (see "Pre-cut divergence check" above) checks exactly these four patterns and flags anything else.
 
-Only after staging observation passes may the promoter cut `release/<candidate_id>-rN` from the
+Only after staging observation passes may the promoter cut `release/<candidate_id>` from the
 current staging SHA. A pre-main failure returns to the staging repair loop; discard the stale
 release head and recut it after staging changes. A post-main failure uses the incident/hotfix path
 on `main`, then backports the resolved main commit to `develop` once production is stable. Do not
@@ -290,7 +290,7 @@ loop" above, re-run here rather than trusting a staging-leg pass from days or we
 `references/promotion-runbook.md`'s "Compliance preflight — pinned target-ref scan" section,
 parameterized by `TARGET_REF` (RF-4, PR #1672 review) rather than hard-coded, and pinned to a
 per-run checkout at a unique path, never a fixed shared one (RF-6, same review): set `TARGET_REF` to
-`origin/staging` for the default flow's `release/<candidate_id>-rN` cut (the runbook's own
+`origin/staging` for the default flow's `release/<candidate_id>` cut (the runbook's own
 established `origin/staging`-in-place-of-`origin/develop` substitution for this leg — `origin/staging`
 is what `release/<label>` is actually cut from here, and per the frozen-candidate rule newer
 `origin/develop` work was never folded into this candidate, so scanning `develop` instead would risk

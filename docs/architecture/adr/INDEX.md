@@ -106,6 +106,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-04 | 1 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `accepted` | production_release_record_and_release_notes | 2027-03-06 | 2 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
+| 0086 | [POS Parked-Sale Stock and High-Risk Approval Lifecycle](0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md) | `accepted` | pos_parked_sale_stock_and_high_risk_approval_lifecycle | 2027-03-24 | 7 |
 
 ## Renumbered (collision stubs)
 

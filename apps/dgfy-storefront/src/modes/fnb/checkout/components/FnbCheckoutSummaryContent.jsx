@@ -22,13 +22,13 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 /** Shared desktop F&B summary content. The view does not call APIs or mutate checkout state. */
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
-  checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
+  checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError, orderMethod,
   paymentStep = false, promoDiscountSummaryRow, specialInstructions = '', voucherDiscountSummaryRow, promoPanel, scheduleLabel, showFulfillmentSummary = true, totals,
   variant = 'detailed'
 }) {
   const statusRows = [
     ...(showFulfillmentSummary ? [
-      { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
+      { label: 'Fulfillment', value: orderMethod === 'dine_in' ? 'Dine In' : isDeliveryOrder ? 'Delivery' : 'Pickup' },
       { label: 'Schedule', value: scheduleLabel },
     ] : []),
     { label: paymentStep ? 'Status' : 'Items', value: paymentStep ? (checkoutAllowed ? 'Ready to submit' : 'Complete required fields') : `${cartCount} item${cartCount === 1 ? '' : 's'}` }
@@ -49,14 +49,17 @@ export function FnbCheckoutSummaryContent({
   const downpaymentRows = buildDownpaymentTotalsRows({
     display: resolveDownpaymentDisplay({ quoteResult: totals }),
     money,
-    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+    orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup')
   });
+  const showDeliveryFee = orderMethod
+    ? String(orderMethod).trim().toLowerCase() === 'delivery'
+    : isDeliveryOrder;
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
     ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
-    { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    ...buildFeeAndVatSummaryRows({ totals, money }),
+    ...(showDeliveryFee ? [{ label: 'Delivery Fee', value: money(totals.delivery_fee) }] : []),
+    ...buildFeeAndVatSummaryRows({ totals, money, includeServiceFee: Number(totals.service_fee_amount || 0) > 0 }),
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
     ...downpaymentRows
   ];

@@ -122,7 +122,8 @@ const FILTER_OPTIONS = {
         { value: 'maya', label: 'Maya' },
         { value: 'card', label: 'Card' },
         { value: 'bank_transfer', label: 'Bank Transfer' },
-        { value: 'employee_credit', label: 'Employee Credit' }
+        { value: 'employee_credit', label: 'Employee Credit' },
+        { value: 'other', label: 'Other' }
     ],
     orderSource: [
         { value: 'all', label: 'All' },
@@ -1565,7 +1566,7 @@ export default function POSTransactionHistoryPanel({
                     <DialogHeader className="px-6">
                         <DialogTitle>Void Transaction</DialogTitle>
                         <DialogDescription>
-                            This records a void and reverses the transaction stock movements. Enter a reason to continue.
+                            Enter a reason to send this request to Back Office. The transaction and stock will change only after approval.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-2 px-6">
@@ -1597,7 +1598,7 @@ export default function POSTransactionHistoryPanel({
                             onClick={submitVoid}
                             disabled={String(voidReason).trim().length < 3 || voidingTransactionId !== null}
                         >
-                            {voidingTransactionId !== null ? 'Voiding...' : 'Confirm Void'}
+                            {voidingTransactionId !== null ? 'Submitting request...' : 'Request Void Approval'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

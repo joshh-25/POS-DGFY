@@ -79,6 +79,11 @@ export const buildOnlineInventoryEffects = ({
     }
 
     for (const modifier of (Array.isArray(line?.fnb_modifiers_snapshot) ? line.fnb_modifiers_snapshot : [])) {
+      // A modifier option without a SKU is a valid price-only add-on. The
+      // storefront snapshot intentionally stores sku_item_id as null for
+      // those options, so it must not become an inventory effect or make an
+      // otherwise valid order fail closed during reservation.
+      if (modifier?.sku_item_id == null) continue;
       const modifierItemId = positiveInt(modifier?.sku_item_id);
       const quantity = modifierQuantity(line, modifier);
       if (!modifierItemId || !Number.isFinite(quantity) || quantity <= 0) {

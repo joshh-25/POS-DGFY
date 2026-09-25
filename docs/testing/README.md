@@ -30,6 +30,30 @@ npm --prefix apps/dgfy-ims test -- --run packages/web-core/src/<path>/<file>.tes
 App-owned tests run from their own workspace (`npm --prefix apps/dgfy-pos test -- ...`,
 `npm --prefix apps/dgfy-storefront test -- ...`). Every command below already follows this rule.
 
+## Test Cost/Dependency Inventory (#438)
+
+The canonical answer to "what can I run safely by default" lives in
+[`test-cost-inventory.md`](test-cost-inventory.md) (guide) and
+[`test-cost-inventory.json`](test-cost-inventory.json) (generated manifest, one
+record per discovered test file/suite). The `implement` skill's Tier 2 (#436)
+and the real-DB testing work (#372) point at those instead of re-deriving the
+fast/opt-in split per session.
+
+How the pieces relate — don't conflate them:
+
+- **Static classification** (`npm run audit:test-cost:check`): which tier each
+  file belongs to, from runner configs + import/call-shape inspection. Proves
+  nothing executed; it only routes execution.
+- **Measured runtime**: per-record rough buckets (static estimates) anchored
+  by timed full-file samples with provenance in the manifest. Not an SLA.
+- **Backend matrix execution** (`npm run test:backend:matrix`): the proof the
+  API tiers actually pass — the manifest reuses its DB list, it doesn't fork it.
+- **Browser E2E** (Playwright `tests/e2e/**`, backend `RUN_BROWSER_E2E`
+  journeys): opt-in proof of rendered behavior, never part of the default set.
+- **Live-provider evidence**: no active test file provides it (all
+  provider-named suites are mocked or literal-only); only an explicit
+  sandbox/canary run counts.
+
 ## Evidence Classification (Phase 65.2)
 
 Use this table to avoid over-claiming what a green test run proves.
@@ -329,14 +353,16 @@ Use `RUN_BROWSER_E2E=true` only for browser-driven suites. Default backend test 
 For the end-to-end cashier/admin continuity path (create item -> POS-ready -> checkout -> POS history -> Sales export), use:
 
 1. Browser E2E (Chromium, desktop profile):
-   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e`
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e`
 2. Browser E2E matrix with keyboard/screen-reader accessibility pass (desktop + mobile):
-   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e:matrix`
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:matrix`
+3. Release-profile core journey only (the promotion-leg shape: create item -> POS-ready -> checkout -> history -> sales export, with the required export-download assertion):
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:release`
 
-CI enforcement policy:
-1. `main` and `release/*` pushes run the core desktop journey as a release gate before build/deploy stages.
-2. Nightly schedule runs the matrix journey (desktop + mobile) for drift detection.
-3. Failure artifacts (trace/video/screenshot) are uploaded and retained for 14 days (release gate) and 21 days (nightly).
+CI execution and advisory status:
+1. The journey runs as `frontend-ims-pos-sales-e2e-quality` in `.github/workflows/promotion-quality-gate.yml` on the `release/*` -> `main` promotion leg (plus manual `workflow_dispatch` / `workflow_call` runs). The `to-staging/*` -> `staging` leg is skipped entirely -- it runs zero quality jobs.
+2. The job is advisory (`continue-on-error` at job and step level, with real per-step outcomes reported via `record_outcomes`); a red run does not block promotion. The advisory-to-blocking transition is deferred by Pat's call on #1749.
+3. Failure artifacts (trace/video/screenshot, plus the downloaded sales CSV persisted by the export assertion) upload as `ims-pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly E2E workflow; drift detection comes from promotion-leg and manual-dispatch runs.
 4. **New/expanded E2E coverage here is lower priority than POS/Storefront**, per `AGENTS.md`'s
    "Engineering-investment priority" note (#1739) — this existing required journey gate is
    unaffected; the priority note only weighs *additional* investment, not what already runs.

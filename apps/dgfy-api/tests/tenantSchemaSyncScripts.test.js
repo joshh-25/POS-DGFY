@@ -32,6 +32,15 @@ describe('tenant schema sync script contracts', () => {
       .toContain('`sort_order` INTEGER NOT NULL DEFAULT 0');
   });
 
+  it('registers the Dine-in payment policy and handover timing schema', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations).toHaveProperty('allow_dine_in_pay_at_store');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations.allow_dine_in_pay_at_store.sql)
+      .toContain('`allow_dine_in_pay_at_store` TINYINT(1) NOT NULL DEFAULT 0');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions).toHaveProperty('payment_timing');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions.payment_timing.sql)
+      .toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
+  });
+
   it('backfills existing category order deterministically', async () => {
     const connection = {
       query: jest.fn()
@@ -232,6 +241,8 @@ describe('tenant schema sync script contracts', () => {
   it('registers shared parked-sale ownership columns and origin backfill', async () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_cashier_id');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_shift_id');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_effects');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_deducted_at');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
       .toHaveProperty('idx_pos_parked_sales_origin_cashier_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
@@ -546,6 +557,17 @@ describe('tenant schema sync script contracts', () => {
     ]);
 
     expect(repair.sql).toContain("'partially_paid'");
+  });
+
+  it('registers the on_dine_in payment_timing enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.payment_timing;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['on_dine_in']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transactions', column: 'payment_timing', missing_values: ['on_dine_in'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
   });
 
   it('registers pos_transactions.amount_paid and balance_due column repairs', () => {

@@ -37,20 +37,28 @@ export function useFnbCheckoutPresentation({
   fnbScheduledFor,
   hasPinnedDeliveryLocation,
   isDeliveryOrder,
+  orderMethod,
   isDesktopCheckout,
   isFnbMode,
   isFnbOrderSubpage,
   viewportWidth,
 }) {
   const [mobileSummaryState, setMobileSummaryState] = useState({ key: '', visible: false });
+  const [currentTime] = useState(() => Date.now());
   const fnbCustomerStepComplete = hasCustomerName(customerName)
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail });
+  const isDineInOrder = orderMethod === 'dine_in';
+  const hasValidDineInSchedule = Boolean(
+    String(fnbScheduledFor || '').trim()
+    && Number.isFinite(new Date(fnbScheduledFor).getTime())
+    && new Date(fnbScheduledFor).getTime() > currentTime
+  );
   const fnbFulfillmentStepComplete = hasDeliveryAddress({
     isDeliveryOrder,
     hasPinnedDeliveryLocation,
     activePinnedDeliveryAddress,
     usePinnedAddress: true,
-  });
+  }) && (!isDineInOrder || hasValidDineInSchedule);
   const isFnbOrderResponsiveFlow = isFnbOrderSubpage && isFnbMode && !isDesktopCheckout;
   const fnbMobileCheckoutFooterReserve = 'var(--storefront-mobile-checkout-footer-reserve, 196px)';
   const fnbOrderStepRenderKey = `${isFnbOrderResponsiveFlow ? 'responsive' : 'desktop'}-${checkoutResult ? 'complete' : 'open'}-${fnbOrderStep}`;

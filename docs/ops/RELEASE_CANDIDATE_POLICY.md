@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-07
+last_reviewed: 2026-09-24
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -1763,3 +1763,57 @@ This is a `[default]`-tier procedure record under ADR 0039 — no `[binding]` cl
 policy or of any ADR is changed by this entry.
 
 PR: (this PR). Closes #1556. Refs #1124, #1550, #1254, #1063.
+
+### 2026-09-23: Per-app revision history from DEV through PROD; candidate-wide rN retired (#2055, Phase 346)
+
+Not rewritten in place, same convention as every amendment above. ADR 0081's matching 2026-09-23
+Amendment carries the full design statement; this entry is the executable consequence for this
+policy document. Deliberately reverses the 2026-09-19 entry's candidate-wide-uniform-`rN`
+design — DEV builds are inherently per-app and asynchronous, so no smaller change is
+structurally coherent once DEV is folded into the same lineage (full rationale on the issue).
+
+**What changed.** Revisions are allocated per app with GHCR as the durable source of truth
+(`N = max + 1` over `<app>:<floor>-r*` across all channels; same-source retry reuses its own
+`N`; a floor bump resets the sequence). `develop` dispatches publish promotion-eligible
+`X.Y.Z-rN-dev` (allocated once per dispatch by `deployment-orchestrator.yml`'s
+resolve-build-plan job, so the skip plan and every builder resolve byte-identical tags);
+feature-branch dispatches publish ad-hoc `X.Y.Z-<slug>-dev` (sha tag only, never the moving
+`develop` tag, never candidate-selectable). Legacy bare `X.Y.Z-dev` tags stay historical and
+untouched. STAGING/PROD tag *format* is unchanged — only where each app's `N` comes from
+changes. The candidate manifest is `sku-release-candidate/v2` (per-app `release_revision`
+map, cosmetic `repair_seq`, selected DEV artifacts on the initial revision, plain
+`release/<candidate_id>` cut); `v1` still validates but is never written. Branches are
+`fix/staging/<candidate_id>-<repair_seq>` (bare sequence, no `r` prefix) and
+`release/<candidate_id>` (see ADR 0082's matching amendment).
+
+**Executable consequence.** The promoter threads four per-app-group revision inputs
+(`release_revision_api` covering both backends, one per frontend — the same grouping
+`candidate_source_sha_*` already uses) through `deploy.yml` (STAGING candidate) and
+`deploy-main.yml` (PROD, including hotfixes, which allocate the touched app's next `N` via
+`scripts/allocate-artifact-revision.js`), alongside the existing `candidate_source_sha_*`
+inputs; builders fail closed on STAGING/PROD without their app's revision, and a DEV build
+with neither revision nor `dev_pr_ref` fails closed instead of re-emitting the legacy
+colliding `X.Y.Z-dev`. `deploy-main.yml`'s `promote-aliases` job aliases each app-group's
+own revision (unchecked groups skipped, never aliased blind) and still gates `publish`. The
+parity gate verifies each app against its own allocated `rN` from the v2 map
+(`app-not-in-candidate` skips apps the candidate never rebuilt). Full commands:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
+
+PR: (this PR). Closes #2055. Refs #1977.
+
+
+### 2026-09-24: DEV is versionless and optional to promotion; floors move at promotion (#2071, Phase 347)
+
+This amendment supersedes the 2026-09-23 DEV selection mechanics for new candidates. Manual DEV
+builds from `develop` or an experimental/POC branch publish the mutable `dev` tag plus a SHA tag.
+Promotion remains based on a frozen `develop` SHA and builds directly on STAGING. It has no DEV
+deploy, artifact-selection, registry-read, or availability prerequisite. New manifests use
+`sku-release-candidate/v3`, record initial `apps_touched`, and identify initial STAGING artifacts
+with origin `promotion`; validators retain v1/v2 compatibility for in-flight candidates.
+
+Ordinary develop changes and STAGING repairs preserve package floors. At promotion start, changed
+apps receive their next minor floor. Only direct main hotfixes patch-bump. Revision allocation
+scans promotion tags only (`-staging` and neutral production tags), never DEV. The promoter's
+workflow and steps are documented in `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Closes #2071. Refs #2055, #982.

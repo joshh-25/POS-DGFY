@@ -72,7 +72,7 @@ export function FnbWorkflowPanel({
         </label>
       )}
 
-      {hasOptionalDetails && hasCartItems && (
+      {hasOptionalDetails && hasCartItems && orderMethod !== 'dine_in' && (
         <button
           type="button"
           className="col-span-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-left text-[11px] font-extrabold text-slate-700 hover:border-blue-300 hover:bg-blue-50"
@@ -84,7 +84,7 @@ export function FnbWorkflowPanel({
         </button>
       )}
 
-      {(!hasCartItems || optionalDetailsOpen) && (
+      {(orderMethod === 'dine_in' || !hasCartItems || optionalDetailsOpen) && (
          <div className="contents">
           {orderMethod === 'dine_in' && (
             <label className="block text-[11px] font-bold text-slate-600">

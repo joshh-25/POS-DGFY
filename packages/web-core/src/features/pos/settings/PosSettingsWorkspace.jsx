@@ -285,6 +285,7 @@ export default function PosSettingsWorkspace({
   terminalMeta,
   locationsState,
   queueLocationScopeId,
+  locationScopeId = null,
   incomingOrdersState,
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
@@ -1871,6 +1872,8 @@ export default function PosSettingsWorkspace({
           terminalUser={terminalUser}
           locked={locked}
           sectionId={sectionId}
+          locationScopeId={locationScopeId}
+          locationOptions={locations}
         />
       );
     }

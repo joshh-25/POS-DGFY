@@ -1,7 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -10,7 +10,8 @@ import {
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
-  isManualDeliveryJob
+  isManualDeliveryJob,
+  getFulfillmentStatusLabel
 } from './orderFulfillmentUi.js';
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
@@ -39,6 +40,13 @@ import { readQueueViewModePreference, writeQueueViewModePreference, QUEUE_VIEW_M
 import QueueOrderTableView from './QueueOrderTableView.jsx';
 import { deriveQueueSelectionCounts } from '../utils/deriveQueueSelectionCounts.js';
 import { POS_TABLET_MIN_WIDTH_PX } from '../utils/posTabletViewport.js';
+import {
+  getDineInScheduleCountdownLabel,
+  getDineInScheduleState,
+  getDineInScheduleStateLabel,
+  isScheduledDineInOrder,
+  sortDineInScheduleOrders
+} from '../utils/dineInSchedule.js';
 // Phase 211 (#1180)'s own precedent for this gate: orderFulfillmentUi.js:56 reuses this exact
 // normalizeWorkflowMode(...) === 'retail' pattern rather than the WORKFLOW_PAGE_CAPABILITIES nav
 // gate -- the delivery-runs tab is an in-page view over a mode-agnostic API (ADR 0034), not a
@@ -133,7 +141,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
   );
 }
 
-function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
+function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, showDineInSchedule = false, dineInScheduleCount = null, showDeliveryRuns = false, runCount = null, showSplitView = false }) {
   const tabs = [
     {
       key: 'active',
@@ -148,6 +156,14 @@ function OrderWorkspaceTabs({ activeView, onChange, activeCount, historyCount, s
       icon: Receipt
     }
   ];
+  if (showDineInSchedule) {
+    tabs.splice(1, 0, {
+      key: 'dine_in_schedule',
+      label: 'Dine-in Schedule',
+      count: dineInScheduleCount,
+      icon: CalendarClock
+    });
+  }
   // Phase 226 (#1273), widened #1924: third tab for delivery-run-capable modes (retail + fnb) --
   // the caller decides visibility via its isDeliveryRunMode predicate, this component just renders
   // what it's told.
@@ -456,12 +472,24 @@ function IncomingQueueWorkspace({
   const [deliveryRunCount, setDeliveryRunCount] = React.useState(null);
   const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
   const isRetailMode = normalizedWorkflowMode === 'retail';
+  const isFnbMode = normalizedWorkflowMode === 'fnb';
   // #1924: Delivery Runs are available in both retail and F&B modes. Keep the retail-only
   // predicate separate for packed-fulfillment presentation inside the run workspace.
   const isDeliveryRunMode = normalizedWorkflowMode === 'retail' || normalizedWorkflowMode === 'fnb';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const [scheduleNow, setScheduleNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!isFnbMode) return undefined;
+    const timer = window.setInterval(() => setScheduleNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isFnbMode]);
+  const dineInScheduleOrders = React.useMemo(
+    () => sortDineInScheduleOrders(incomingOrders),
+    [incomingOrders]
+  );
+  const isDineInScheduleView = activeView === 'dine_in_schedule' && isFnbMode;
   const sortedIncomingOrders = [...incomingOrders].sort((left, right) => {
     const leftTime = new Date(left?.created_at || left?.order_time || 0).getTime() || 0;
     const rightTime = new Date(right?.created_at || right?.order_time || 0).getTime() || 0;
@@ -779,12 +807,20 @@ function IncomingQueueWorkspace({
   // mode-flip so it never survives into an unsupported mode.
   React.useEffect(() => {
     if ((activeView === 'runs' || activeView === 'split') && !isDeliveryRunMode) setActiveView('active');
+    if (activeView === 'dine_in_schedule' && !isFnbMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
     if (!isDeliveryRunMode) {
       setSelectedOrderIds(new Set());
       setRunFilter(QUEUE_RUN_FILTER_ALL);
     }
-  }, [activeView, isDeliveryRunMode, isSplitViewportEligible]);
+  }, [activeView, isDeliveryRunMode, isFnbMode, isSplitViewportEligible]);
+
+  const displayedIncomingOrders = isDineInScheduleView
+    ? dineInScheduleOrders
+    : visibleIncomingOrders;
+  const displayedQueueIsEmpty = isDineInScheduleView
+    ? displayedIncomingOrders.length === 0
+    : incomingOrders.length === 0;
 
   if (activeView === 'history') {
     return (
@@ -794,6 +830,8 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDineInSchedule={isFnbMode}
+          dineInScheduleCount={dineInScheduleOrders.length}
           showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
           showSplitView={isDeliveryRunMode && isSplitViewportEligible}
@@ -821,6 +859,8 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDineInSchedule={isFnbMode}
+          dineInScheduleCount={dineInScheduleOrders.length}
           showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
           showSplitView={isDeliveryRunMode && isSplitViewportEligible}
@@ -866,6 +906,8 @@ function IncomingQueueWorkspace({
           onChange={setActiveView}
           activeCount={incomingOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDineInSchedule={isFnbMode}
+          dineInScheduleCount={dineInScheduleOrders.length}
           showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
           showSplitView={isDeliveryRunMode && isSplitViewportEligible}
@@ -1000,11 +1042,13 @@ function IncomingQueueWorkspace({
         onChange={setActiveView}
         activeCount={incomingOrders.length}
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+        showDineInSchedule={isFnbMode}
+        dineInScheduleCount={dineInScheduleOrders.length}
         showDeliveryRuns={isDeliveryRunMode}
         runCount={deliveryRunCount}
         showSplitView={isDeliveryRunMode && isSplitViewportEligible}
       />
-      {isDeliveryRunMode ? (
+      {isDeliveryRunMode && !isDineInScheduleView ? (
         <QueueRunAssignBar
           orders={visibleIncomingOrders}
           selectedCount={visibleSelectedCount}
@@ -1028,12 +1072,15 @@ function IncomingQueueWorkspace({
             <MapPinned className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm leading-5 text-[#475569]">Location scope:</p>
+            <p className="text-sm leading-5 text-[#475569]">{isDineInScheduleView ? 'Scheduled dine-in service:' : 'Location scope:'}</p>
             <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
+            {isDineInScheduleView ? (
+              <p className="mt-1 text-xs font-semibold text-slate-500">Sorted by serving time · {dineInScheduleOrders.length} active schedule{dineInScheduleOrders.length === 1 ? '' : 's'}</p>
+            ) : null}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isDeliveryRunMode ? (
+          {isDeliveryRunMode && !isDineInScheduleView ? (
             <QueueRunFilterControl
               value={runFilter}
               onChange={setRunFilter}
@@ -1047,7 +1094,7 @@ function IncomingQueueWorkspace({
           ) : null}
           <div
             role="group"
-            aria-label="Active Queue view mode"
+            aria-label={`${isDineInScheduleView ? 'Dine-in Schedule' : 'Active Queue'} view mode`}
             className="flex h-10 items-center rounded-lg border border-slate-200 bg-white p-0.5"
           >
             <button
@@ -1073,18 +1120,20 @@ function IncomingQueueWorkspace({
               Table
             </button>
           </div>
-          <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
-            Sort
-            <select
-              value={orderSort}
-              onChange={(event) => setOrderSort(event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-blue-100"
-              aria-label="Sort incoming orders"
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-            </select>
-          </label>
+          {!isDineInScheduleView ? (
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+              Sort
+              <select
+                value={orderSort}
+                onChange={(event) => setOrderSort(event.target.value)}
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 focus:border-[#2563EB] focus:outline-none focus:ring-2 focus:ring-blue-100"
+                aria-label="Sort incoming orders"
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </label>
+          ) : null}
           <Button
             type="button"
             onClick={() => refreshIncomingOrders?.()}
@@ -1092,10 +1141,19 @@ function IncomingQueueWorkspace({
             className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
           >
             <RefreshCcw className="mr-2 h-4 w-4" />
-            {incomingOrdersState?.loading ? 'Refreshing...' : 'Refresh Queue'}
+            {incomingOrdersState?.loading ? 'Refreshing...' : (isDineInScheduleView ? 'Refresh Schedule' : 'Refresh Queue')}
           </Button>
         </div>
       </div>
+
+      {isDineInScheduleView ? (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm leading-5 text-[#334155]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+            <CalendarClock className="h-4 w-4" />
+          </span>
+          <p>Scheduled dine-in orders are sorted by serving time. Prepare them before the scheduled time and use <strong>Ready to Serve</strong> when the order reaches the handover stage.</p>
+        </div>
+      ) : null}
 
       {!isOnline ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -1105,7 +1163,7 @@ function IncomingQueueWorkspace({
 
       {queueAccessNotice ? (
         queueAccessNotice
-      ) : incomingOrders.length === 0 ? (
+      ) : displayedQueueIsEmpty ? (
         <div className="grid min-h-[11rem] grid-cols-1 items-center gap-5 rounded-lg border border-slate-200 bg-white px-5 py-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)]">
           <div className="flex justify-center md:border-r md:border-slate-200">
             <div className="relative grid h-32 w-40 place-items-end">
@@ -1121,20 +1179,20 @@ function IncomingQueueWorkspace({
             </div>
           </div>
           <div>
-            <p className="text-xl font-black tracking-tight text-[#0F172A]">No online orders in active queue.</p>
+            <p className="text-xl font-black tracking-tight text-[#0F172A]">{isDineInScheduleView ? 'No scheduled dine-in orders.' : 'No online orders in active queue.'}</p>
             <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
                 <Info className="h-4 w-4" />
               </span>
               <p>
-                Completed paid sales move to Sales History. Rejected, cancelled, or unpaid online orders move to Order History.
-                <br />
-                Incoming Queue shows active fulfillment statuses only.
+                {isDineInScheduleView
+                  ? 'New scheduled dine-in orders for this branch will appear here automatically.'
+                  : <>Completed paid sales move to Sales History. Rejected, cancelled, or unpaid online orders move to Order History.<br />Incoming Queue shows active fulfillment statuses only.</>}
               </p>
             </div>
           </div>
         </div>
-      ) : visibleIncomingOrders.length === 0 ? (
+      ) : !isDineInScheduleView && visibleIncomingOrders.length === 0 ? (
         // Phase 231 (#1290): a distinct filtered-empty state -- never the illustrated "no online
         // orders" branch above, which would misleadingly read as a data outage rather than "your
         // filter matched nothing." Applies regardless of view mode (card or table).
@@ -1153,8 +1211,8 @@ function IncomingQueueWorkspace({
         // table view must respect the run filter exactly like the card view below, or switching
         // to Table would silently bypass it.
         <QueueOrderTableView
-          orders={visibleIncomingOrders}
-          isDeliveryRunMode={isDeliveryRunMode}
+          orders={displayedIncomingOrders}
+          isDeliveryRunMode={isDeliveryRunMode && !isDineInScheduleView}
           selectedOrderIds={selectedOrderIds}
           toggleOrderSelection={toggleOrderSelection}
           bulkAssignSubmitting={bulkAssignSubmitting}
@@ -1173,10 +1231,11 @@ function IncomingQueueWorkspace({
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           onRequestRejection={setPendingRejectionOrderId}
+          scheduleNow={scheduleNow}
         />
       ) : (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {visibleIncomingOrders.map((order) => {
+          {displayedIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
@@ -1185,6 +1244,8 @@ function IncomingQueueWorkspace({
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
+            const scheduledDineIn = isScheduledDineInOrder(order);
+            const dineInScheduleState = getDineInScheduleState(order, scheduleNow);
 
             // Phase 230 (#1288): the ~150-line per-order button-eligibility construction that used
             // to live inline here now lives in incomingQueueOrderActions.js, shared verbatim with
@@ -1216,7 +1277,7 @@ function IncomingQueueWorkspace({
                 <div>
                   <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
-                      {isDeliveryRunMode ? (
+                      {isDeliveryRunMode && !isDineInScheduleView ? (
                         <QueueOrderSelectCheckbox
                           orderId={orderId}
                           checked={selectedOrderIds.has(orderId)}
@@ -1235,8 +1296,17 @@ function IncomingQueueWorkspace({
                         </span>
                       ) : null}
                       <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-                        {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+                        {getFulfillmentStatusLabel(order.fulfillment_status, order) || 'Unknown'}
                       </span>
+                      {scheduledDineIn ? (
+                        <span className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${dineInScheduleState === 'late'
+                          ? 'border-rose-200 bg-rose-50 text-rose-700'
+                          : dineInScheduleState === 'ready'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                          {getDineInScheduleStateLabel(dineInScheduleState)}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1354,10 +1424,22 @@ function IncomingQueueWorkspace({
                           <Calendar className="h-4 w-4" />
                         </div>
                         <div className="flex items-center flex-1 min-w-0">
-                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Order Time</span>
-                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(order.created_at)}</span>
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">{scheduledDineIn ? 'Serve By' : 'Order Time'}</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(scheduledDineIn ? order.scheduled_for : order.created_at)}</span>
                         </div>
                       </div>
+
+                      {scheduledDineIn ? (
+                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                            <CalendarClock className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{getDineInScheduleCountdownLabel(order, scheduleNow)}</span>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {order.order_method === 'delivery' && (
                         <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">

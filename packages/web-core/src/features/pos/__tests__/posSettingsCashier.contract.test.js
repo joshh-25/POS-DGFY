@@ -604,10 +604,17 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('const lastFulfillmentMethodLocked = effectiveMode === \'transaction\'');
     expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDelivery}');
     expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsPickup}');
+    expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}');
     expect(storefrontPaneSource).toContain('checked={locationForm.supports_delivery !== false}');
     expect(storefrontPaneSource).toContain('checked={locationForm.supports_pickup !== false}');
+    expect(storefrontPaneSource).toContain('checked={locationForm.supports_dine_in !== false}');
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_delivery', value)");
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_pickup', value)");
+    expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_dine_in', value)");
+    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
+      .toBeGreaterThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsPickup}'));
+    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
+      .toBeLessThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.allowScheduledOrders}'));
     expect(workspaceSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
     expect(tenantSetupModalSource).toContain('Label>Supports Delivery</Label>');
     expect(tenantSetupModalSource).toContain('Label>Supports Pickup</Label>');
@@ -628,7 +635,8 @@ describe('regular POS Setup cashier management contract', () => {
   it('shows the fulfillment requirement as a readable warning toast', () => {
     expect(storefrontPaneSource).toContain("import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';");
     expect(storefrontPaneSource).toContain('const FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS = 10000;');
-    expect(storefrontPaneSource).toContain('if (value === false && lastFulfillmentMethodLocked)');
+    expect(storefrontPaneSource).toContain("const isDeliveryOrPickup = field === 'supports_delivery' || field === 'supports_pickup';");
+    expect(storefrontPaneSource).toContain('if (isDeliveryOrPickup && value === false && lastFulfillmentMethodLocked)');
     expect(storefrontPaneSource).toContain('toast.warning(LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE, {');
     expect(storefrontPaneSource).toContain('duration: FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS');
     expect(storefrontPaneSource).not.toContain('text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}');

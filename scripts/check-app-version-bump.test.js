@@ -128,13 +128,13 @@ test('no apps changed: skips cleanly', async () => {
     }
 });
 
-// --- develop mode (any-increase) --------------------------------------------
+// --- develop mode (unchanged floor) ------------------------------------------
 
-test('develop: one app changed with a correct bump passes', async () => {
+test('develop: code changes keep the app floor unchanged', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
-            'apps/dgfy-api/package.json': pkgJson('1.0.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+            'apps/dgfy-api/package.json': pkgJson('1.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
         },
     });
     try {
@@ -142,7 +142,7 @@ test('develop: one app changed with a correct bump passes', async () => {
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, true);
-        assert.equal(result.mode, 'any-increase');
+        assert.equal(result.mode, 'unchanged');
         assert.equal(result.appResults.length, 1);
         const api = findApp(result, 'dgfy-api');
         assert.equal(api.reason, 'direct');
@@ -152,9 +152,12 @@ test('develop: one app changed with a correct bump passes', async () => {
     }
 });
 
-test('develop: one app changed with no bump fails', async () => {
+test('develop: an app floor bump before promotion fails', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
-        headFiles: { 'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n' },
+        headFiles: {
+            'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
+            'apps/dgfy-api/package.json': pkgJson('1.0.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        },
     });
     try {
         const result = await runCheck({
@@ -169,13 +172,8 @@ test('develop: one app changed with no bump fails', async () => {
     }
 });
 
-test('develop: packages/shared-constants change fans out to all five apps', async () => {
-    // Only the shared package changes -- no app bumps its own version here -- so this
-    // isolates fan-out *detection* (all 5 apps flagged as changed via the dependency
-    // map read from their own package.json, not a hardcoded list) from the separate
-    // question of whether any given app's bump then satisfies the mode. Every app
-    // correctly fails here, since none actually bumped -- matching the issue's own
-    // rule that a file: dependency change obligates every dependent app to bump too.
+test('develop: shared package change fans out without requiring floor bumps', async () => {
+    // Shared package fan-out remains visible, but package floors change only at promotion.
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: { 'packages/shared-constants/index.js': 'module.exports = { changed: true };\n' },
     });
@@ -183,14 +181,13 @@ test('develop: packages/shared-constants change fans out to all five apps', asyn
         const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
-        assert.equal(result.ok, false);
+        assert.equal(result.ok, true);
         assert.equal(result.appResults.length, 5);
         const appNames = result.appResults.map((entry) => entry.app).sort();
         assert.deepEqual(appNames, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos', 'dgfy-storefront']);
         for (const entry of result.appResults) {
             assert.equal(entry.reason, 'fan-out:packages/shared-constants');
-            assert.equal(entry.ok, false);
-            assert.equal(entry.code, 'insufficient-bump');
+            assert.equal(entry.ok, true);
         }
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
@@ -217,7 +214,27 @@ test('develop: unparseable head version fails with a clear message', async () =>
     }
 });
 
-test('develop: a version that changed but decreased fails', async () => {
+test('develop: promoter floor-bump PR advances the app to a minor floor', async () => {
+    const { root, baseGitRef, headGitRef } = setupScenario({
+        baseVersions: { 'dgfy-api': '1.2.1' },
+        headFiles: {
+            'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
+            'apps/dgfy-api/package.json': pkgJson('1.3.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        },
+    });
+    try {
+        const result = await runCheck({
+            repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'chore/release/bump-2026-09-24-01',
+        });
+        assert.equal(result.mode, 'minor-floor');
+        assert.equal(result.ok, true);
+        assert.equal(findApp(result, 'dgfy-api').ok, true);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('develop: any floor change before promotion fails', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -244,7 +261,7 @@ test('staging <- to-staging/*: a patch-only bump fails the minor floor', async (
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
             'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
-            'apps/dgfy-api/package.json': pkgJson('1.2.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+            'apps/dgfy-api/package.json': pkgJson('1.2.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
         },
     });
     try {
@@ -357,7 +374,7 @@ test('staging <- to-staging/* (#1802): backported staging repairs do not fail ru
 
 // --- staging mode: any other head -> patch-only -----------------------------
 
-test('staging <- fix/staging/*: a minor bump fails patch-only', async () => {
+test('staging <- fix/staging/*: a minor bump fails unchanged-floor mode', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
@@ -369,7 +386,7 @@ test('staging <- fix/staging/*: a minor bump fails patch-only', async () => {
         const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
         });
-        assert.equal(result.mode, 'patch-only');
+        assert.equal(result.mode, 'unchanged');
         assert.equal(result.ok, false);
         assert.equal(findApp(result, 'dgfy-api').code, 'insufficient-bump');
     } finally {
@@ -377,19 +394,19 @@ test('staging <- fix/staging/*: a minor bump fails patch-only', async () => {
     }
 });
 
-test('staging <- fix/staging/*: a patch bump passes patch-only', async () => {
+test('staging <- fix/staging/*: unchanged floor passes', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: { 'dgfy-api': '1.2.0' },
         headFiles: {
             'apps/dgfy-api/src/index.js': 'module.exports = { changed: true };\n',
-            'apps/dgfy-api/package.json': pkgJson('1.2.1', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+            'apps/dgfy-api/package.json': pkgJson('1.2.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
         },
     });
     try {
         const result = await runCheck({
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'staging', headBranchName: 'fix/staging/2026-09-04-01-r2',
         });
-        assert.equal(result.mode, 'patch-only');
+        assert.equal(result.mode, 'unchanged');
         assert.equal(result.ok, true);
         assert.equal(findApp(result, 'dgfy-api').ok, true);
     } finally {
@@ -989,7 +1006,7 @@ test("runCheck(): return shape is unchanged once resolved (now genuinely async),
         });
         assert.equal(typeof resultPromise.then, 'function'); // genuinely async now, not a plain object
         const result = await resultPromise;
-        assert.equal(result.ok, false);
+        assert.equal(result.ok, true);
         assert.equal(result.appResults.length, 5);
         assert.equal(result.repoRoot, root);
         assert.deepEqual(result.changedFiles, ['packages/shared-constants/index.js']);

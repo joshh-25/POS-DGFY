@@ -35,6 +35,7 @@ export const StockCommandServiceNamedCommands = Object.freeze([
     'returnStockForVoidedSale',
     // #1931: one-time reversal of a Retail online order's accept-time goods-issue.
     'reverseOnlineOrderGoodsIssue',
+    'reverseParkedSaleGoodsIssue',
     'receivePurchasedStock',
     'transferStock',
     'adjustStock',

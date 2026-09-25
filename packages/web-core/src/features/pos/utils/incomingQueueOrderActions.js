@@ -25,6 +25,19 @@ import { getActiveRunMembership } from './deliveryRunEligibility.js';
 // and `deps`, and returns a fresh array of <Button> elements on every call. It does not read any
 // component state directly.
 
+const CASH_COLLECTION_TIMING_BY_ORDER_METHOD = Object.freeze({
+  pickup: 'on_pickup',
+  delivery: 'on_delivery',
+  dine_in: 'on_dine_in'
+});
+
+export const isCashCollectionTimingValid = (order = {}) => {
+  const orderMethod = String(order?.order_method || '').trim().toLowerCase();
+  const expectedPaymentTiming = CASH_COLLECTION_TIMING_BY_ORDER_METHOD[orderMethod];
+  if (!expectedPaymentTiming) return true;
+  return String(order?.payment_timing || '').trim().toLowerCase() === expectedPaymentTiming;
+};
+
 const getStatusIcon = (statusName) => {
   switch (statusName) {
   case 'confirmed':
@@ -72,10 +85,12 @@ export function buildIncomingQueueOrderActions(order = {}, {
   // Both predicates below are pure functions of `order` alone -- moved in from
   // IncomingQueueWorkspace's per-order .map() body verbatim (Phase 148/#825, Phase 204/#965)
   // rather than threaded through `deps`, so card and table can never drift on eligibility.
-  const canCollectCash = order.payment_type === 'cash'
+  const canCollectCash = isCashCollectionTimingValid(order)
+    && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const orderBalanceDue = Number(order.balance_due || 0);
@@ -83,6 +98,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     && orderBalanceDue > 0
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   // Phase 229 (#1291): once an order is a member of an active (not completed/cancelled) delivery
@@ -105,7 +121,11 @@ export function buildIncomingQueueOrderActions(order = {}, {
           onClick: () => handleOpenCashCollection?.(order)
         },
         React.createElement(Wallet, { className: 'mr-2 h-4 w-4 shrink-0' }),
-        order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'
+        order.order_method === 'dine_in'
+          ? 'Collect Dine-in Cash'
+          : order.order_method === 'delivery'
+            ? 'Collect Delivery Cash'
+            : 'Collect Cash'
       )
     );
   }

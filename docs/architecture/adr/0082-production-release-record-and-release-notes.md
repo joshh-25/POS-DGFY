@@ -1,10 +1,10 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-06
-last_reviewed: 2026-09-06
-review_by: 2027-03-06
+last_reviewed: 2026-09-23
+review_by: 2027-03-23
 applies_to: development_to_production_release_flow, release_notes
 topic: production_release_record_and_release_notes
 ---
@@ -168,6 +168,25 @@ release record. That gap is what this ADR closes.
      script. Mechanically closing this (extending the script, or adding a base-`main`,
      non-`release/*` gate) is Follow-up 3 below, named as outstanding scope rather than implied
      already solved.
+
+## Amendments
+
+### 2026-09-23 — Release branches drop the `-rN` suffix; `fix/staging` repairs use a bare sequence (#2055, Phase 346)
+
+ADR 0081's 2026-09-23 amendment retires the candidate-wide `rN` counter that `release/<id>-rN`
+and `fix/staging/<id>-rN` both named — revisions are per-app now, so no single number exists
+for a branch suffix to carry. The promotion branches become `release/<candidate_id>` (plain;
+one cut per candidate — a failed pre-main cut is deleted and re-cut under the same name) and
+`fix/staging/<candidate_id>-<repair_seq>` (bare cosmetic sequence, no `r` prefix, so it can
+never be mistaken for an artifact revision). Decision 6's and Decision 8's `release/<id>-rN`
+literals above now read as the historical shape; `scripts/check-release-notes.js` resolves
+both (plain preferred, `-rN` accepted for history). The #1007 exception's
+`release/<label>` shorthand is unaffected — it already named "whatever the release branch is
+called," which is now literally true.
+
+`[default]` tier — Decisions 6 and 8 are amended in place via ADR 0039's dated-Amendment
+path; Decision 3 (`[binding]`) is untouched. Full detail: issue #2055,
+[ADR 0081](0081-per-app-container-semantic-versioning.md)'s matching 2026-09-23 amendment.
 
 ## Consequences
 

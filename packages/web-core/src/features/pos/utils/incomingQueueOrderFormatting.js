@@ -33,7 +33,11 @@ export const resolveOrderDownpaymentSplit = (order) => {
 // 0070. Mirrors the storefront's own resolveDownpaymentBalanceLabel so both surfaces word it the
 // same way.
 export const resolveBalanceCollectionLabel = (orderMethod) => (
-  orderMethod === 'delivery' ? 'Collect on delivery' : 'Collect at pickup'
+  orderMethod === 'delivery'
+    ? 'Collect on delivery'
+    : orderMethod === 'dine_in'
+      ? 'Collect at service'
+      : 'Collect at pickup'
 );
 
 export const parseDeliveryCoords = (order = {}) => {

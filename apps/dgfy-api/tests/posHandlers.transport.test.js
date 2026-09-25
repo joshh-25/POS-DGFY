@@ -51,6 +51,7 @@ const mockListActiveDeliveryPersonnelUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockCollectCashDeliveryOrderUseCase = jest.fn();
+const mockCollectCashDineInOrderUseCase = jest.fn();
 // Phase 148 (#825): the module mock enumerates every export posHandlers.js imports, so a new use
 // case has to be declared here too -- otherwise the whole suite fails to link, not just the tests
 // that exercise it.
@@ -145,6 +146,7 @@ const posHandlersBarrelOverrides = {
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
+    collectCashDineInOrderUseCase: mockCollectCashDineInOrderUseCase,
     recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
@@ -213,6 +215,7 @@ let getAdminLocationMonitor;
 let listActiveDeliveryPersonnel;
 let listOnlineOrderHistory;
 let collectCashDeliveryOrder;
+let collectCashDineInOrder;
 let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
@@ -240,6 +243,7 @@ beforeAll(async () => {
     listActiveDeliveryPersonnel = mod.listActiveDeliveryPersonnel;
     listOnlineOrderHistory = mod.listOnlineOrderHistory;
     collectCashDeliveryOrder = mod.collectCashDeliveryOrder;
+    collectCashDineInOrder = mod.collectCashDineInOrder;
     assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
@@ -1215,6 +1219,57 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Cash payment collected for delivery order.',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('collectCashDineInOrder returns the dine-in cash collection contract', async () => {
+        mockCollectCashDineInOrderUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                collection: { order_method: 'dine_in', payment_timing: 'on_dine_in' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 90 },
+            params: { id: 90 },
+            validatedData: {
+                idempotency_key: 'dine-in-cash-20260409-90',
+                terminal_id: 'COUNTER-01',
+                cash_received: 200
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            ip: '127.0.0.1',
+            get: jest.fn(() => 'test-agent'),
+            requestId: 'req-pos-dine-in-cash'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await collectCashDineInOrder(req, res, next);
+
+        expect(mockCollectCashDineInOrderUseCase).toHaveBeenCalledWith({
+            posTransactionId: 90,
+            payload: req.validatedData,
+            user: req.user,
+            auditContext: {
+                ipAddress: '127.0.0.1',
+                userAgent: 'test-agent'
+            }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Cash payment collected for dine-in order.',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

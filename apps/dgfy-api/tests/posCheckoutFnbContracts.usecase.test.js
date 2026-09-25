@@ -91,6 +91,242 @@ beforeAll(async () => {
     } = await import('../src/modules/pos/usecases/posUseCases.js'));
 });
 
+describe('POS historical parked-sale settlement', () => {
+    const buildHistoricalRepository = ({ checkoutLine, parkedLine, item }) => {
+        let createdTransaction = null;
+        const parkedSale = {
+            pos_parked_sale_id: 2201,
+            status: 'claimed',
+            claimed_by: 12,
+            claimed_terminal_id: 'TERM-01',
+            shift_id: 901,
+            location_id: 3,
+            snapshot: { lines: [parkedLine] }
+        };
+        return {
+            parkedSale,
+            createdTransaction: () => createdTransaction,
+            repository: {
+                getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+                findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+                getParkedSaleById: jest.fn().mockResolvedValue(parkedSale),
+                findSellableItemsByIds: jest.fn().mockResolvedValue([]),
+                findParkedSaleItemsByIds: jest.fn().mockResolvedValue(item ? [item] : []),
+                listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+                findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+                getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift()),
+                nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-PARKED-HISTORICAL-001'),
+                getFnbTableById: jest.fn(),
+                createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                    createdTransaction = { pos_transaction_id: 2201, ...header, lines };
+                    return 2201;
+                }),
+                createFnbServiceChargeSnapshot: jest.fn(),
+                settleFnbCheck: jest.fn(),
+                createAuditLog: jest.fn().mockResolvedValue(null),
+                incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+                getTransactionById: jest.fn(async () => createdTransaction)
+            },
+            checkoutLine,
+            parkedLine
+        };
+    };
+
+    it('charges the parked price and records a note-only settlement when the item is no longer sellable', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-1',
+            item_id: 71,
+            item_name: 'Old Burger',
+            sku_code: 'BURGER-OLD',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            checkoutLine: {
+                line_ref: 'parked-line-1',
+                item_id: 71,
+                quantity: 1,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: {
+                item_id: 71,
+                name: 'Burger (archived)',
+                sku_code: 'BURGER-OLD',
+                category: 'product',
+                status: 'inactive',
+                pos_visible: false,
+                pos_location_available: false,
+                current_stock: 0,
+                cost_per_unit: 40,
+                default_sale_price: 150,
+                fifo_enabled: false,
+                vat_type: 'vatable'
+            }
+        });
+        const inventoryCommandService = { createStockMovement: jest.fn() };
+        const completeClaimedPosParkedSaleUseCase = jest.fn().mockResolvedValue({ status: 'completed' });
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-historical-settlement-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.repository.findSellableItemsByIds).toHaveBeenCalledWith([71], expect.any(Object));
+        expect(harness.repository.findParkedSaleItemsByIds).toHaveBeenCalledWith([71], expect.any(Object));
+        expect(harness.createdTransaction().lines[0]).toEqual(expect.objectContaining({
+            item_id: 71,
+            item_name: 'Old Burger',
+            item_name_snapshot: 'Old Burger',
+            sale_price: 100,
+            stock_effect_type: 'stock_exempt',
+            stock_exempt_reason: 'historical_parked_sale'
+        }));
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+        expect(harness.repository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_parked_sale_snapshot_settlement',
+            changes: expect.objectContaining({
+                parked_sale_id: 2201,
+                policy: 'original_parked_snapshot_price'
+            })
+        }), expect.any(Object));
+        expect(completeClaimedPosParkedSaleUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            parkedSaleId: 2201,
+            transactionId: 2201
+        }));
+    });
+
+    it('rejects a changed line that tries to claim the historical-price marker', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-2',
+            item_id: 72,
+            item_name: 'Coffee',
+            quantity: 1,
+            sale_price: 100,
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            checkoutLine: {
+                line_ref: 'parked-line-2',
+                item_id: 72,
+                quantity: 2,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: {
+                item_id: 72,
+                name: 'Coffee',
+                category: 'product',
+                current_stock: 10,
+                default_sale_price: 150,
+                fifo_enabled: false,
+                vat_type: 'vatable'
+            }
+        });
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-historical-marker-tamper',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('PARKED_SALE_SNAPSHOT_LINE_MISMATCH');
+        expect(harness.repository.findSellableItemsByIds).not.toHaveBeenCalled();
+    });
+
+    it('settles from the parked snapshot when the catalog row is physically missing', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-missing',
+            item_id: 73,
+            item_name: 'Discontinued Combo',
+            quantity: 1,
+            base_sale_price: 125,
+            sale_price: 125,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            checkoutLine: {
+                line_ref: 'parked-line-missing',
+                item_id: 73,
+                quantity: 1,
+                sale_price: 125,
+                parked_snapshot_line: true
+            },
+            item: null
+        });
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            completeClaimedPosParkedSaleUseCase: jest.fn().mockResolvedValue({ status: 'completed' })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-historical-missing-row',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.createdTransaction().lines[0]).toEqual(expect.objectContaining({
+            item_id: 73,
+            item_name: 'Discontinued Combo',
+            sale_price: 125,
+            stock_effect_type: 'stock_exempt',
+            stock_exempt_reason: 'historical_parked_sale'
+        }));
+    });
+});
+
 const buildCheckoutContractUseCase = (dependencies) => buildCheckoutPosUseCase({
     ...dependencies,
     resolveIdentityStatus: mockResolveIdentityStatus
@@ -136,6 +372,15 @@ const stableStringify = (value) => {
 };
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
+
+const approvedVoidExecution = (transactionId, approvedBy) => ({
+    action_type: 'pos_void',
+    status: 'approved',
+    entity_id: transactionId,
+    approval_request_id: 5000 + transactionId,
+    requested_by: approvedBy === 12 ? 99 : 12,
+    approved_by: approvedBy
+});
 
 const createOpenShift = ({
     shiftId = 901,
@@ -1641,7 +1886,70 @@ describe('POS checkout F&B contracts', () => {
         }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
-    it('voids a fiscal transaction through lifecycle state and fiscal event evidence', async () => {
+    it('submits a void request to Back Office without changing transaction or stock before approval', async () => {
+        const transactionRow = {
+            pos_transaction_id: 176,
+            invoice_number: 'INV-REQUEST-001',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const updateTransactionLifecycle = jest.fn();
+        const createPosTransactionAdjustment = jest.fn();
+        const createBusinessAdminApprovalRequest = jest.fn(async (payload) => ({
+            business_admin_approval_request_id: 777,
+            ...payload
+        }));
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901 })),
+            findPendingBusinessAdminApprovalRequest: jest.fn().mockResolvedValue(null),
+            createBusinessAdminApprovalRequest,
+            createAuditLog: jest.fn().mockResolvedValue(null),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{ movement_id: 1, item_id: 4, quantity: -1 }]),
+            updateTransactionLifecycle,
+            createPosTransactionAdjustment
+        };
+        const returnStockForVoidedSale = jest.fn();
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 176,
+            payload: {
+                reason: 'Duplicate sale entered by cashier',
+                shift_id: 901,
+                terminal_id: 'TERM-01'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({
+            pending: true,
+            approval_request: { status: 'pending', business_admin_approval_request_id: 777 }
+        });
+        expect(createBusinessAdminApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+            action_type: 'pos_void',
+            entity_type: 'pos_transaction',
+            entity_id: 176,
+            reason: 'Duplicate sale entered by cashier',
+            payload: expect.objectContaining({ transaction_id: 176, requested_by: 12 })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+        expect(createPosTransactionAdjustment).not.toHaveBeenCalled();
+        expect(returnStockForVoidedSale).not.toHaveBeenCalled();
+        expect(posRepository.listStockMovementsForPosTransaction).not.toHaveBeenCalled();
+    });
+
+    it('voids a fiscal transaction through lifecycle state and fiscal event evidence after approval', async () => {
         const fiscalTransaction = {
             pos_transaction_id: 177,
             invoice_number: 'INV-000001',
@@ -1686,7 +1994,8 @@ describe('POS checkout F&B contracts', () => {
                 shift_id: 901,
                 terminal_id: 'TERM-CURRENT'
             },
-            user: { user_id: 12 }
+            user: { user_id: 12 },
+            approvalExecution: approvedVoidExecution(177, 12)
         }));
 
         expect(result.success).toBe(true);
@@ -1719,10 +2028,7 @@ describe('POS checkout F&B contracts', () => {
             status: 'succeeded',
             reason: 'Customer returned all items'
         }), expect.objectContaining({ transaction: expect.any(Object) }));
-        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(901, expect.objectContaining({
-            transaction: expect.any(Object),
-            lock: true
-        }));
+        expect(posRepository.getTerminalShiftById).not.toHaveBeenCalled();
     });
 
     it('allows an administrator to void without a shift while preserving the original cashier shift attribution', async () => {
@@ -1764,11 +2070,12 @@ describe('POS checkout F&B contracts', () => {
                 reason: 'Admin correction after cashier close',
                 terminal_id: 'TERM-01'
             },
-            user: { user_id: 99, role: 'admin' }
+            user: { user_id: 99, role: 'admin' },
+            approvalExecution: approvedVoidExecution(178, 99)
         }));
 
         expect(result.success).toBe(true);
-        expect(result.data.authorization_mode).toBe('admin_shift_bypass');
+        expect(result.data.authorization_mode).toBe('back_office_approval');
         expect(result.data.transaction_shift_id).toBe(901);
         expect(getTerminalShiftById).not.toHaveBeenCalled();
         expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
@@ -1778,7 +2085,7 @@ describe('POS checkout F&B contracts', () => {
                 transaction_shift_id: 901,
                 actor_shift_id: null,
                 original_cashier_id: 12,
-                authorization_mode: 'admin_shift_bypass',
+                authorization_mode: 'back_office_approval',
                 adjustment_reference: 'POS-VOID-178'
             })
         }), expect.objectContaining({ transaction: expect.any(Object) }));
@@ -1830,7 +2137,8 @@ describe('POS checkout F&B contracts', () => {
                 terminal_id: 'TERM-01',
                 terminal_location_id: 9
             },
-            user: { user_id: 99, role: 'admin' }
+            user: { user_id: 99, role: 'admin' },
+            approvalExecution: approvedVoidExecution(179, 99)
         }));
 
         expect(result.success).toBe(false);
@@ -1882,7 +2190,8 @@ describe('POS checkout F&B contracts', () => {
                 reason: 'Admin correction',
                 terminal_id: 'TERM-01'
             },
-            user: { user_id: 99, role: 'admin' }
+            user: { user_id: 99, role: 'admin' },
+            approvalExecution: approvedVoidExecution(180, 99)
         }));
 
         expect(result.success).toBe(false);
@@ -1934,7 +2243,8 @@ describe('POS checkout F&B contracts', () => {
                     shift_id: 901,
                     terminal_id: 'TERM-01'
                 },
-                user: { user_id: 12, role: 'cashier' }
+                user: { user_id: 12, role: 'cashier' },
+                approvalExecution: approvedVoidExecution(181, 12)
             });
         });
 
@@ -1954,7 +2264,7 @@ describe('POS checkout F&B contracts', () => {
         });
 
         expect(result.success).toBe(false);
-        expect(result.error.message).toBe('An active shift is required to void a POS transaction');
+        expect(result.error.message).toBe('An active shift is required to request a POS void');
     });
 
     it('projects sanitized void adjustment evidence and the latest financial outcome on transaction reads', async () => {
@@ -2659,7 +2969,8 @@ describe('POS checkout F&B contracts', () => {
                     shift_id: 901,
                     terminal_id: 'TERM-01'
                 },
-                user: { user_id: 12 }
+                user: { user_id: 12 },
+                approvalExecution: approvedVoidExecution(1977, 12)
             }));
 
             expect(result.success).toBe(true);
@@ -2720,7 +3031,8 @@ describe('POS checkout F&B contracts', () => {
                     shift_id: 901,
                     terminal_id: 'TERM-01'
                 },
-                user: { user_id: 12 }
+                user: { user_id: 12 },
+                approvalExecution: approvedVoidExecution(1978, 12)
             });
 
             const first = await runInTenantContext(() => useCase(voidInput()));
@@ -2774,7 +3086,8 @@ describe('POS checkout F&B contracts', () => {
                     shift_id: 901,
                     terminal_id: 'TERM-01'
                 },
-                user: { user_id: 12 }
+                user: { user_id: 12 },
+                approvalExecution: approvedVoidExecution(1979, 12)
             }));
 
             expect(result.success).toBe(true);
