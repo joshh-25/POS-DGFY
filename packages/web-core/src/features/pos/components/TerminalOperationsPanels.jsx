@@ -1207,9 +1207,8 @@ function IncomingQueueWorkspace({
           </Button>
         </div>
       ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
-        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
-        // table view must respect the run filter exactly like the card view below, or switching
-        // to Table would silently bypass it.
+        // Both views use displayedIncomingOrders: run-filtered active orders, or the separately
+        // sorted dine-in schedule when that tab is selected.
         <QueueOrderTableView
           orders={displayedIncomingOrders}
           isDeliveryRunMode={isDeliveryRunMode && !isDineInScheduleView}
