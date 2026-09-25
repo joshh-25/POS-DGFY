@@ -1,58 +1,74 @@
-# POS Items Frontend Changes — Items Branch Audit
+# POS Items Frontend Changes — Items-Only Branch Audit
 
-Status: audited and committed locally; not pushed
+Status: audited, rewritten, and committed locally; not pushed
 Branch: `codex/pos-frontend-changes-items`
 Audit date: 2026-09-25
-Scope: POS Items/catalog UI and its directly required shared catalog primitives
+Scope: POS Items/catalog UI and directly required catalog/import/image support
+Comparison base: `ea06c1a56ebf75994f0c8e319394c21a6424536f`
+Recovery ref: `backup/pos-items-before-items-only-rewrite-20260925`
 
-## Executive Summary
+## Executive summary
 
-This document records the POS Items/catalog changes committed during the Items branch audit. The
-work covers the Items workspace, Categories, Item Options, item add/edit flows, image and QR
-primitives used by those flows, responsive POS presentation, text-size handling, pagination, and
-the POS bulk-image import worker's Redis-unavailable behavior.
+This branch was rewritten so its branch-specific commit history contains only the POS Items/catalog
+change set. The earlier broad POS synchronization, checkout/history work, tablet catalog-badge work,
+and history handoff documentation are no longer reachable from
+`codex/pos-frontend-changes-items`.
 
-No push, pull request, merge, or deployment was performed.
+The retained work covers the Items workspace, Categories, Item Options, item add/edit flows, image
+and QR primitives used by those flows, responsive POS presentation, text-size handling, pagination,
+and the POS bulk-image import worker's Redis-unavailable behavior.
 
-The supplied screenshots were treated as visual references only. They were not treated as
-repository instructions, code, or acceptance criteria beyond the UI problems described by the
-user.
+No push, pull request, merge, deployment, or remote branch update was performed.
 
-## Critical Scope Assessment
+The supplied screenshots were treated as visual references only. They were not treated as repository
+instructions, code, or acceptance criteria beyond the UI problems described by the user.
 
-The worktree contained a mixed set of POS Items/catalog, checkout, transaction-history, IMS/F&B,
-cache-marker, and local-agent files. The shared `packages/web-core/src/index.css` also contained
-interleaved Items and non-Items rules. Staging the whole worktree would have violated the requested
-Items-only push boundary.
+## Critical scope assessment
 
-The branch also already contained earlier history and synchronization commits. Git pushes commits,
-not individual files, so pushing the whole branch will include those pre-existing commits even
-though they were not created by this audit. That history was not rewritten because rewriting it
-would risk deleting or changing the user's existing work.
+The original branch contained two separate risks:
+
+1. The worktree was mixed: POS Items/catalog, checkout, transaction History, IMS/F&B, cache-marker,
+   compliance, and local-agent changes were present together.
+2. The branch history itself contained a broad `chore(sync): synchronize POS branch with develop`
+   merge and earlier checkout/history/catalog-badge commits. Staging only Items files would not have
+   been sufficient because pushing a branch pushes all reachable commits.
+
+The safe correction was therefore a history rewrite from the develop-side parent of the sync merge,
+followed by cherry-picking only the Items commits. A local recovery branch was created before the
+rewrite. The current dirty worktree was preserved with a mixed reset; removed historical content is
+therefore visible as uncommitted changes and is not part of the branch's committed history.
 
 ## Recommendation
 
-The four new Items-scoped commits listed below are locally valid and should be reviewed as the
-intended Items change set. Before pushing the branch, review the pre-existing branch history and
-decide whether the branch should be rebased or rebuilt from the intended comparison base. This
-audit did not perform that history rewrite and did not push.
+The branch is now suitable for an Items-only review and eventual push. Before pushing, review the
+included file list below and use the committed-tree audit commands in the validation section. Do not
+stage the excluded worktree files or the recovery ref.
 
-## Atomic Commit Inventory
+## Atomic commit inventory
+
+The original Items commits were replayed onto the clean comparison base, so their hashes changed.
+The following are the retained branch commits after the rewrite:
 
 | Commit | Subject | Scope |
 | --- | --- | --- |
-| `d225e2706` | `feat(pos): refine Items catalog workspace` | POS Items workspace, responsive catalog layout, Categories, Item Options, modal sizing, pagination, text-size layout, scoped Items CSS, focused contracts, and compliance declaration. |
-| `d94cabfe8` | `fix(pos): align Items import and image primitives` | CSV import, image gallery, QR, wizard navigation, QR scanner footer, storefront info tooltip, shared catalog contracts, and scoped shared CSS. |
-| `66d188b7f` | `fix(pos): keep catalog image worker idle without Redis` | POS bulk-image worker guard so an unavailable optional Redis dependency does not cause repeated queue polling failures. |
-| `e55cfda05` | `test(pos): align edit image contract` | Corrects the POS edit-image contract test to assert the current deferred gallery flow rather than the retired drag/drop-only expectations. |
+| `c4d34e51b` | `feat(pos): refine Items catalog workspace` | POS Items workspace, responsive catalog layout, Categories, Item Options, item modals, pagination, text-size layout, scoped Items CSS, focused contracts, and compliance declaration. |
+| `64efedfef` | `fix(pos): align Items import and image primitives` | CSV import, image gallery, QR, wizard navigation, QR scanner footer, storefront info tooltip, shared catalog contracts, and scoped shared CSS. |
+| `50b857ab2` | `fix(pos): keep catalog image worker idle without Redis` | POS bulk-image worker guard so an unavailable optional Redis dependency does not cause repeated queue polling failures. |
+| `7bff4ac7b` | `test(pos): align edit image contract` | Aligns the POS edit-image contract with the current deferred gallery queue, local previews, multi-file input, and saved-gallery actions. |
+| `bdf614f0d` | `docs(pos): document Items branch audit` | Adds the Items branch audit and documentation baseline. |
 
-The compliance declaration is intentionally carried/updated with the sensitive POS commits because
-the repository pre-commit guardrail requires a declaration whenever POS-sensitive files are
-changed.
+The final history-reconciliation documentation commit is intentionally a documentation-only follow-up
+to this inventory. Its hash is available with `git log -1 --oneline` after the audit.
 
-## Included Files to Push
+## Included files to push
 
-These are the files changed by the four new commits above, grouped by purpose.
+The authoritative committed file list is produced by:
+
+```powershell
+git diff --name-status ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD
+```
+
+The included files are grouped below by purpose.
 
 ### POS Items workspace and responsive shell
 
@@ -66,15 +82,15 @@ These are the files changed by the four new commits above, grouped by purpose.
 - `packages/web-core/src/features/pos/components/PosFnbSelect.jsx`
 - `packages/web-core/src/features/pos/settings/StorefrontSectionInfo.jsx`
 
-The workspace changes provide the Items catalog shell, Items/Categories/Item Options tabs, item
-search and filters, item cards, two-column catalog presentation where the viewport supports it,
-category management, option-group management, add/edit item dialogs, item image galleries, QR
-support, import entry points, pagination, and the tablet/landscape responsive handoff. The shell
-also keeps the profile details and header controls available while text-size settings change.
+These changes provide the Items catalog shell, Items/Categories/Item Options tabs, item search and
+filters, item cards, two-column catalog presentation where the viewport supports it, category
+management, option-group management, add/edit item dialogs, item image galleries, QR support,
+import entry points, pagination, and tablet/landscape responsive handling. The shared shell keeps
+profile details and header controls available while text-size settings change.
 
-The modal changes use the shared smaller form width and aligned top/bottom spacing, constrain
-long option lists to their own scroll region, preserve image corner radius, and keep footer actions
-consistent with the POS button language. The extra-large text-size path receives explicit compact
+The modal changes use the shared smaller form width and aligned top/bottom spacing, constrain long
+option lists to their own scroll region, preserve image corner radius, and keep footer actions
+consistent with the POS button language. The extra-large text-size path receives compact
 header/dropdown constraints so the label does not overflow its control.
 
 ### POS Items tests
@@ -92,9 +108,6 @@ header/dropdown constraints so the label does not overflow its control.
 - `packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js`
 - `packages/web-core/src/features/pos/__tests__/editItemImageSave.contract.test.js`
 
-The edit-image contract was corrected during the final audit to match the implementation's current
-deferred gallery queue, local previews, multi-file input, and saved-gallery actions.
-
 ### Shared catalog primitives used by POS Items
 
 - `packages/web-core/Components/items/CSVImportModal.jsx`
@@ -105,153 +118,145 @@ deferred gallery queue, local previews, multi-file input, and saved-gallery acti
 - `packages/web-core/src/features/inventory/__tests__/csvImportWorkflowMode.contract.test.js`
 - `packages/web-core/src/features/inventory/__tests__/itemProductWizard.contract.test.js`
 
-These changes add the compact POS-compatible CSV import presentation, controlled wizard labels and
-compact states, image-gallery removal/primary controls, full-width QR layout support, and aligned
-scanner actions. Their defaults remain compatible with non-POS consumers; the POS-specific behavior
-is opt-in through props or scoped classes.
+These shared changes are POS-compatible and opt-in through props or scoped classes; they are retained
+because the POS Items flows directly use these catalog primitives.
 
 ### Shared stylesheet changes
 
 - `packages/web-core/src/index.css`
 
-Only the Items/catalog, POS text-size/header, modal, wizard, CSV import, image/QR, and related
-responsive rules were staged into the new commits. The worktree still contains unrelated CSS
-changes for checkout/history and other POS surfaces; those unstaged changes are excluded from this
-Items change set. Because the stylesheet was mixed, the committed Items rules are represented as a
-scoped CSS overlay rather than staging the entire current stylesheet.
+Only the committed Items/catalog, POS text-size/header, modal, wizard, CSV import, image/QR, and
+related responsive rules are in the retained commit chain. The worktree still contains additional
+unstaged stylesheet changes from excluded checkout/history and other POS work.
 
 ### POS catalog image import reliability
 
 - `apps/dgfy-api/src/workers/posBulkImageImportWorker.js`
 
-The worker now waits while optional Redis is unavailable instead of repeatedly invoking the queue
+The worker waits while optional Redis is unavailable instead of repeatedly invoking the queue
 repository and logging a failure on every poll. Queued image imports remain recoverable when Redis
-returns. This is a POS catalog reliability fix and is isolated in its own commit.
+returns. This is an Items/catalog reliability fix and is isolated in its own commit.
 
-### Compliance declaration
+### Compliance and branch documentation
 
 - `docs/compliance/impact-declarations/2026-09-25-pos-items-catalog-responsive-ui.md`
+- `docs/development/POS_ITEMS_FRONTEND_CHANGES_ITEMS_BRANCH.md`
 
-The declaration records the major POS/terminal classification, affected surfaces, compliance
-preconditions, rollback note, focused evidence, and residual risks required by the repository
-guardrail.
+The declaration records the affected POS/terminal surfaces, compliance preconditions, rollback note,
+focused evidence, and residual risks required by the repository guardrail.
 
-## Explicitly Excluded Files
+## Excluded files and changes
 
-These files remain outside the new Items commits and are still dirty in the worktree. They should
-not be included in an Items-only push.
+The following are not part of the rewritten branch commits and must not be staged for an Items-only
+push.
 
-### Global POS cache/service-worker markers
+### Removed committed history
 
-- `apps/dgfy-pos/index.html`
-- `apps/dgfy-pos/src/main.jsx`
+These commits were reachable from the old branch but are no longer reachable from the rewritten
+Items branch:
 
-These are application cache/version or service-worker marker changes, not Items UI changes.
+- `72a5858a3` — `chore(sync): synchronize POS branch with develop`
+- `5e390ff4b` — `fix(pos): stabilize availability badge in tablet portrait`
+- `edfa8f823` — `fix(pos): refine tablet portrait catalog badges`
+- `3c0a317bc` — `docs(pos): refresh history branch PR handoff`
+- The older first-parent checkout/history/release commits before the sync merge, including
+  `a125ae286`, `1963b6c99`, `160fb973d`, `dc10eaef3`, `6719e949e`, and `b9f9a15c0`.
 
-### IMS/F&B and non-POS catalog changes
+The develop-side baseline commit `ea06c1a56` remains the comparison base; its existing repository
+history is not a branch-specific change introduced by this Items branch.
 
-- `packages/web-core/src/features/inventory/pages/ItemsPage.jsx`
-- `packages/web-core/src/features/fnb/pages/FnbPage.jsx`
-- `packages/web-core/src/features/fnb/__tests__/fnbMode.contract.test.js`
+### Current dirty worktree
 
-These changes target IMS or the shared F&B page rather than the POS Items workspace.
+The mixed reset deliberately left excluded content in the worktree so no user changes were deleted.
+This includes:
 
-### Checkout, Sell, and transaction History changes
+- `apps/dgfy-pos/index.html`, `apps/dgfy-pos/src/main.jsx`, and `apps/dgfy-pos/vite.config.js`
+  cache/version and app-shell changes.
+- Dated compliance declarations from the removed sync/history/release work.
+- IMS/F&B files such as `packages/web-core/src/features/inventory/pages/ItemsPage.jsx` and
+  `packages/web-core/src/features/fnb/**`.
+- Checkout, Sell, transaction History, terminal lock, current-sale, delivery/settings, and other
+  non-Items POS files under `packages/web-core/src/features/pos/**`.
+- The non-Items remainder of `packages/web-core/src/index.css`.
+- `docs/development/POS_FRONTEND_CHANGES_HISTORY_BRANCH.md` and the shared pagination files created
+  by the removed history work.
+- `.agents/skills/pos-frontend-consistency/`, which is local agent material and not product code.
 
-- `packages/web-core/src/features/pos/components/POSBarcodeScanner.jsx`
-- `packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx`
-- `packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx`
-- `packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx`
-- `packages/web-core/src/features/pos/components/PosCurrentSaleActions.jsx`
-- `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`
-- `packages/web-core/src/features/pos/__tests__/posCurrentSaleActions.behavior.test.jsx`
-- `packages/web-core/src/features/pos/__tests__/posTransactionHistory.contract.test.js`
+For the complete exact list at any time, run:
 
-These files belong to checkout, Sell, or transaction History behavior and were deliberately left
-unstaged.
+```powershell
+git status --short
+git diff --name-only
+git ls-files --others --exclude-standard
+```
 
-### Mixed stylesheet remainder
+No excluded file was staged by the rewrite or by the final documentation commit.
 
-- `packages/web-core/src/index.css` — only the scoped Items-related rules are included; the
-  remaining unstaged changes in this file are excluded because they belong to checkout/history or
-  other non-Items surfaces.
+## Local audit evidence
 
-### Local agent material
+### Committed-tree checks
 
-- `.agents/skills/pos-frontend-consistency/`
+The committed tree was built in a clean temporary worktree during the rewrite. The following checks
+passed for the retained chain:
 
-This is a local skill copy used to guide the audit. It is not product code and must not be pushed.
+- `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
+- No conflict markers in the clean rewritten tree.
+- The only branch-specific commits after the comparison base are the five retained Items commits
+  listed above, plus the final documentation reconciliation commit.
+- Removed history commits are not ancestors of the rewritten branch.
 
-## Pre-existing Branch History Caveat
+### Existing functional evidence
 
-The branch was not created cleanly from a minimal Items-only base. Before the four new commits, it
-already contained at least the following commits:
-
-- `72a5858a3` — `chore(sync): synchronize POS branch with develop`; this is a broad synchronization
-  commit and includes many unrelated repository changes.
-- `5e390ff4b` — `fix(pos): stabilize availability badge in tablet portrait`.
-- `edfa8f823` — `fix(pos): refine tablet portrait catalog badges`.
-- `3c0a317bc` — `docs(pos): refresh history branch PR handoff`.
-
-The two tablet catalog commits may be related to earlier POS catalog work, while the synchronization
-and handoff commits are not part of the new Items audit. They were preserved. Pushing the branch as
-one ref will expose all commits reachable from the remote comparison base, not only the four new
-commits listed here.
-
-## Local Audit Evidence
-
-### Passed
-
-- `git diff --check` for staged Items commit candidates and final commit candidates.
-- Repository commit-marker scan for every staged commit candidate: no markers found.
-- Repository compliance guardrail and API-contract guardrail through the pre-commit hooks.
-- `npm run lint:docs` — PASS; 30 governed docs validated.
-- `npm run check:adr` — PASS; 90 ADRs validated.
+- `npm run lint:docs` — PASS; governed docs validated.
+- `npm run check:adr` — PASS; ADR validation completed.
 - `node --check apps/dgfy-api/src/workers/posBulkImageImportWorker.js` — PASS.
-- Focused POS Items audit:
+- Focused POS Items audit — PASS: 8 test files, 44 tests.
+- `npm run build:pos` — PASS; Vite production build completed.
+- `git diff --check` — PASS for the retained changes.
+- Repository commit-marker scan — no forbidden commit markers in retained staged files.
 
-  ```text
-  npx vitest run \
-    packages/web-core/src/features/pos/__tests__/categoryManagement.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/itemsAddModal.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/itemsButtonConsistency.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/itemsPagination.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/posTextSizeIntegration.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/posTextSizeLayout.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js \
-    packages/web-core/src/features/pos/__tests__/editItemImageSave.contract.test.js
-  ```
+The focused test command was:
 
-  Result: 8 test files passed, 44 tests passed.
+```powershell
+npx vitest run `
+  packages/web-core/src/features/pos/__tests__/categoryManagement.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/itemsAddModal.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/itemsButtonConsistency.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/itemsPagination.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/posTextSizeIntegration.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/posTextSizeLayout.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/editItemImageSave.contract.test.js `
+  --reporter=dot
+```
 
-- `npm run build:pos` — PASS; Vite production build completed successfully.
+Known limitation: the broader POS-directory Vitest run was not clean because this local environment
+was missing dependencies such as `jsdom`, React/shared packages, and other workspace modules, and it
+also included unrelated stale contract expectations. It is not represented as passing evidence.
+No browser screenshot or visual-diff run is claimed; manual verification is still recommended for
+normal, large, and extra-large text sizes in desktop and tablet portrait/landscape profiles.
 
-### Warnings and limitations
-
-- The POS build reports an existing dynamic-import/static-import chunking warning for the image
-  encoding rollout module and warns about large minified chunks. The build still succeeds.
-- A broader POS-directory Vitest run was attempted earlier and did not provide a clean repository
-  baseline: it reported missing local/runtime dependencies such as `jsdom`, React/shared packages,
-  and other workspace modules, plus unrelated stale contract expectations. It was not represented as
-  passing evidence.
-- No browser screenshot or visual-diff run was claimed in this audit. The evidence is source
-  contract coverage plus a successful production build; manual visual verification should still be
-  performed for normal, large, and extra-large text sizes in desktop and tablet portrait/landscape
-  profiles.
-
-## Final Repository State
+## Final repository state
 
 - Current branch: `codex/pos-frontend-changes-items`.
-- New Items commits: `d225e2706`, `d94cabfe8`, `66d188b7f`, `e55cfda05`.
+- Branch-specific product commits: the four rewritten Items commits listed above.
+- Branch-specific documentation: the audit commit and this reconciliation update.
+- Comparison base: `ea06c1a56ebf75994f0c8e319394c21a6424536f`.
+- Recovery ref: `backup/pos-items-before-items-only-rewrite-20260925`.
 - Push status: not pushed.
 - Pull request status: none created.
 - Deployment status: none performed.
-- Remaining dirty files are excluded worktree changes listed above; they were not included in the
-  four new Items commits.
+- Excluded changes: preserved as uncommitted worktree changes and not staged.
 
-## Rollback Boundary
+## Rollback boundary
 
-The four new commits can be reverted individually in reverse order if needed. The shared catalog
-primitive commit should be reverted together with its corresponding scoped CSS and tests. The
-worker commit is independent and can be reverted separately. Do not use a destructive reset or
-checkout against the remaining dirty worktree without first preserving the excluded files.
+The pre-rewrite branch state is recoverable from:
+
+```powershell
+git show-ref backup/pos-items-before-items-only-rewrite-20260925
+```
+
+Do not delete that recovery ref until the rewritten branch has been reviewed and the excluded
+worktree changes have been handled. The four product commits can be reverted individually in reverse
+order if needed. The shared catalog primitive commit should be reverted together with its scoped CSS
+and tests; the worker commit is independent and can be reverted separately.
