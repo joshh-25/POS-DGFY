@@ -41,6 +41,7 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     tenant_locations: Object.freeze({
+        allow_dine_in_pay_at_store: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `allow_dine_in_pay_at_store` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Per-location: customer may pay in store for dine-in'" }),
         scheduling_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `scheduling_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may pick a scheduled fulfillment date/time'" }),
         immediate_fulfillment_enabled: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `immediate_fulfillment_enabled` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Per-location: customer may choose immediate (NOW) fulfillment'" }),
         fulfillment_lead_time_min_days: Object.freeze({ sql: "ALTER TABLE `tenant_locations` ADD COLUMN `fulfillment_lead_time_min_days` INT NULL COMMENT 'Merchant-set minimum fulfillment lead time in days'" }),
@@ -183,7 +184,7 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `change_amount` DECIMAL(14,4) NULL AFTER `cash_received`"
         }),
         payment_timing: Object.freeze({
-            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery') NOT NULL DEFAULT 'upfront' AFTER `payment_type`"
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery','on_dine_in') NOT NULL DEFAULT 'upfront' AFTER `payment_type`"
         }),
         // Phase 137 (#819) -- ADR 0069 clause 4a. Flat DEFAULT, no CASE backfill, matching the
         // payment_timing repair entry above -- a repaired tenant's historical rows land on the
@@ -368,6 +369,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         })
     }),
     pos_parked_sales: Object.freeze({
+        inventory_effects: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `inventory_effects` JSON NULL COMMENT 'Server-resolved stock effects deducted when this parked-sale revision was saved'"
+        }),
+        inventory_deducted_at: Object.freeze({
+            sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `inventory_deducted_at` DATETIME NULL COMMENT 'Evidence that Inventory deducted stock for this parked sale before payment'"
+        }),
         revision: Object.freeze({
             sql: "ALTER TABLE `pos_parked_sales` ADD COLUMN `revision` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`"
         }),
@@ -826,7 +833,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `park_reference` varchar(40) NOT NULL,\n"
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
-            + "  `status` enum('parked','claimed','completed','cancelled') NOT NULL DEFAULT 'parked',\n"
+            + "  `status` enum('parked','claimed','completed','cancel_pending','cancelled') NOT NULL DEFAULT 'parked',\n"
             + "  `revision` int unsigned NOT NULL DEFAULT 1,\n"
             + "  `cashier_id` int NOT NULL,\n"
             + "  `shift_id` int NOT NULL,\n"
@@ -839,6 +846,8 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `quantity_total` decimal(24,12) NOT NULL DEFAULT 0,\n"
             + "  `subtotal_amount` decimal(14,4) NOT NULL DEFAULT 0,\n"
             + "  `total_amount` decimal(14,4) NOT NULL DEFAULT 0,\n"
+            + "  `inventory_effects` json DEFAULT NULL,\n"
+            + "  `inventory_deducted_at` datetime DEFAULT NULL,\n"
             + "  `claimed_by` int DEFAULT NULL,\n"
             + "  `claimed_terminal_id` varchar(100) DEFAULT NULL,\n"
             + "  `claimed_at` datetime DEFAULT NULL,\n"
@@ -868,6 +877,37 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_parked_sales_ibfk_6` FOREIGN KEY (`claimed_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_7` FOREIGN KEY (`completed_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
             + "  CONSTRAINT `pos_parked_sales_ibfk_8` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // High-risk POS actions are tenant-local approval evidence. Keep this
+    // minimal table in the schema repair registry so parked-sale cancellation
+    // works for tenants provisioned before the approval workflow shipped.
+    business_admin_approval_requests: Object.freeze({
+        sql: "CREATE TABLE `business_admin_approval_requests` (\n"
+            + "  `business_admin_approval_request_id` int unsigned NOT NULL AUTO_INCREMENT,\n"
+            + "  `action_type` enum('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL,\n"
+            + "  `entity_type` varchar(60) NOT NULL,\n"
+            + "  `entity_id` int unsigned NOT NULL,\n"
+            + "  `payload` json NOT NULL,\n"
+            + "  `payload_hash` char(64) NOT NULL,\n"
+            + "  `status` enum('pending','approved','rejected','executed','expired','cancelled') NOT NULL DEFAULT 'pending',\n"
+            + "  `reason` varchar(500) NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) NOT NULL,\n"
+            + "  `requested_by` int unsigned NOT NULL,\n"
+            + "  `approved_by` int unsigned DEFAULT NULL,\n"
+            + "  `rejected_by` int unsigned DEFAULT NULL,\n"
+            + "  `approval_note` varchar(500) DEFAULT NULL,\n"
+            + "  `expires_at` datetime DEFAULT NULL,\n"
+            + "  `approved_at` datetime DEFAULT NULL,\n"
+            + "  `rejected_at` datetime DEFAULT NULL,\n"
+            + "  `executed_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`business_admin_approval_request_id`),\n"
+            + "  UNIQUE KEY `uq_business_admin_approval_action_idempotency` (`action_type`,`idempotency_key`),\n"
+            + "  KEY `idx_business_admin_approval_status_created` (`status`,`created_at`),\n"
+            + "  KEY `idx_business_admin_approval_entity_created` (`entity_type`,`entity_id`,`created_at`),\n"
+            + "  KEY `idx_business_admin_approval_requested_created` (`requested_by`,`created_at`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Created by migration 20260812000006-create-pos-split-payment-sessions.cjs.
@@ -925,7 +965,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `idempotency_key` varchar(120) NOT NULL,\n"
             + "  `request_hash` varchar(64) NOT NULL,\n"
             + "  `status` enum('pending','successful','failed','cancelled','reversed') NOT NULL DEFAULT 'pending',\n"
-            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL,\n"
+            + "  `payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL,\n"
             + "  `payment_handoff_mode` enum('external','internal') DEFAULT NULL,\n"
             + "  `applied_amount` decimal(14,4) NOT NULL,\n"
             + "  `cash_tendered` decimal(14,4) DEFAULT NULL,\n"
@@ -2429,7 +2469,7 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
 
 const quoteIdentifier = (value) => `\`${String(value).replace(/`/g, '``')}\``;
 
-const queryWithReplacements = (connection, sql, replacements = []) => {
+export const queryWithReplacements = (connection, sql, replacements = []) => {
     const isSequelizeConnection = typeof connection?.getDialect === 'function'
         && typeof connection?.getQueryInterface === 'function';
     return isSequelizeConnection
@@ -2588,6 +2628,10 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             enumValues: Object.freeze(['unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_status` ENUM('unpaid','payment_pending','paid','partially_paid','failed','refund_pending','partial_refunded','refunded') NOT NULL DEFAULT 'paid'"
         }),
+        payment_timing: Object.freeze({
+            enumValues: Object.freeze(['upfront', 'on_pickup', 'on_delivery', 'on_dine_in']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery','on_dine_in') NOT NULL DEFAULT 'upfront'"
+        }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `order_method` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NOT NULL DEFAULT 'dine_in'"
@@ -2610,8 +2654,8 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     }),
     pos_payment_allocations: Object.freeze({
         payment_method: Object.freeze({
-            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']),
-            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque') NOT NULL"
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit']),
+            sql: "ALTER TABLE `pos_payment_allocations` MODIFY COLUMN `payment_method` ENUM('cash','gcash','maya','card','bank_transfer','cheque','employee_credit') NOT NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({
@@ -2637,7 +2681,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-14.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-24.2';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
@@ -2702,9 +2746,17 @@ export function createSyncFailureRecord(tenant, error) {
         error_message: String(error?.message || error || 'Unknown error'),
         normalized_message: signature.normalized_message,
         fingerprint: signature.fingerprint,
+        // #2027: missing_tables/missing_indexes/missing_seeds and repair_attempted were added
+        // alongside missing_columns/missing_enum_values/repair_sql below -- previously only the
+        // latter three were captured here, silently dropping table/index/seed detail even from
+        // the pre-existing report-mode failure path.
+        missing_tables: Array.isArray(error?.missing_tables) ? error.missing_tables : undefined,
         missing_columns: Array.isArray(error?.missing_columns) ? error.missing_columns : undefined,
+        missing_indexes: Array.isArray(error?.missing_indexes) ? error.missing_indexes : undefined,
+        missing_seeds: Array.isArray(error?.missing_seeds) ? error.missing_seeds : undefined,
         missing_enum_values: Array.isArray(error?.missing_enum_values) ? error.missing_enum_values : undefined,
-        repair_sql: Array.isArray(error?.repair_sql) ? error.repair_sql : undefined
+        repair_sql: Array.isArray(error?.repair_sql) ? error.repair_sql : undefined,
+        repair_attempted: typeof error?.repair_attempted === 'boolean' ? error.repair_attempted : undefined
     };
 }
 
@@ -2712,7 +2764,8 @@ function parseArgs(argv = process.argv.slice(2)) {
     const options = {
         reportFile: '',
         failOnError: false,
-        mode: process.env.TENANT_SCHEMA_SYNC_MODE || 'report'
+        mode: process.env.TENANT_SCHEMA_SYNC_MODE || 'report',
+        tenantDb: ''
     };
 
     for (let i = 0; i < argv.length; i += 1) {
@@ -2729,6 +2782,15 @@ function parseArgs(argv = process.argv.slice(2)) {
         if (arg === '--mode') {
             options.mode = argv[i + 1] || options.mode;
             i += 1;
+            continue;
+        }
+        // #2027: scopes report/repair-dry-run/repair-apply to exactly one tenant (matched by
+        // db_name, with no status filter -- this must also work on a pending/archived tenant,
+        // not just an active one) so production remediation no longer requires an unscoped
+        // write across every active tenant.
+        if (arg === '--tenant-db') {
+            options.tenantDb = argv[i + 1] || '';
+            i += 1;
         }
     }
     return options;
@@ -2736,7 +2798,8 @@ function parseArgs(argv = process.argv.slice(2)) {
 
 export async function inspectRequiredTenantSchemaColumns(connection, tenantDb) {
     const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_COLUMNS);
-    const [rows] = await connection.query(
+    const [rows] = await queryWithReplacements(
+        connection,
         `SELECT TABLE_NAME, COLUMN_NAME
            FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = ?
@@ -2771,7 +2834,8 @@ export async function inspectRequiredTenantSchemaTables(connection, tenantDb) {
     const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
     if (tableNames.length === 0) return [];
 
-    const [rows] = await connection.query(
+    const [rows] = await queryWithReplacements(
+        connection,
         `SELECT TABLE_NAME
            FROM INFORMATION_SCHEMA.TABLES
           WHERE TABLE_SCHEMA = ?
@@ -2814,7 +2878,8 @@ export async function resolveTenantSchemaRepairCollation(connection, tenantDb) {
         return 'utf8mb4_0900_ai_ci';
     }
 
-    const [schemaRows] = await connection.query(
+    const [schemaRows] = await queryWithReplacements(
+        connection,
         `SELECT DEFAULT_COLLATION_NAME
            FROM INFORMATION_SCHEMA.SCHEMATA
           WHERE SCHEMA_NAME = ?`,
@@ -2822,7 +2887,8 @@ export async function resolveTenantSchemaRepairCollation(connection, tenantDb) {
     );
     const schemaCollation = String(schemaRows?.[0]?.DEFAULT_COLLATION_NAME || '').trim();
     if (/^utf8mb4_[A-Za-z0-9_]+$/.test(schemaCollation)) {
-        const [supportedSchemaCollations] = await connection.query(
+        const [supportedSchemaCollations] = await queryWithReplacements(
+            connection,
             'SHOW COLLATION WHERE Collation = ?',
             [schemaCollation]
         );
@@ -2842,7 +2908,8 @@ export async function inspectRequiredTenantSchemaIndexes(connection, tenantDb) {
     if (declared.length === 0) return [];
 
     const tableNames = [...new Set(declared.map((entry) => entry.table))];
-    const [rows] = await connection.query(
+    const [rows] = await queryWithReplacements(
+        connection,
         `SELECT TABLE_NAME, INDEX_NAME
            FROM INFORMATION_SCHEMA.STATISTICS
           WHERE TABLE_SCHEMA = ?
@@ -2869,7 +2936,8 @@ export async function inspectRequiredTenantSchemaSeeds(connection, tenantDb) {
     const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_SEEDS);
     if (tableNames.length === 0) return [];
 
-    const [existingRows] = await connection.query(
+    const [existingRows] = await queryWithReplacements(
+        connection,
         `SELECT TABLE_NAME
            FROM INFORMATION_SCHEMA.TABLES
           WHERE TABLE_SCHEMA = ?
@@ -2907,7 +2975,8 @@ export async function inspectRequiredTenantSchemaEnumContracts(connection, tenan
     const tableNames = Object.keys(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS);
     if (tableNames.length === 0) return [];
 
-    const [rows] = await connection.query(
+    const [rows] = await queryWithReplacements(
+        connection,
         `SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE
            FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = ?
@@ -2944,6 +3013,161 @@ export function buildTenantSchemaEnumRepairSql(missingEnumEntries = []) {
         .filter((entry) => entry.sql);
 }
 
+// #2027: canonical per-tenant schema reconciliation. Runs the five-pass inspect -> repair ->
+// re-inspect sequence (tables -> columns -> indexes -> seeds -> enum contracts, an order that
+// mirrors real FK/generated-column dependencies -- see relaxPosShiftCashierForeignKey's own
+// ordering comment) against ONE tenant database. Shared by the fleet CLI's runTenantSchemaSync
+// loop below and by tenant-provisioning's post-sync hard precondition
+// (tenantSchemaBootstrap.js's applyPostSyncTenantSchema) -- the one canonical path #2027 asks
+// for, instead of provisioning re-deriving its own subset of this registry.
+//
+// `connection` may be a raw mysql2 connection (as runTenantSchemaSync's shared landlord
+// connection is) or a Sequelize instance already scoped to `tenantDb` (as provisioning's own
+// tenantSequelize is) -- every read/write below goes through queryWithReplacements, which
+// already duck-types both shapes.
+//
+// Never throws for "issues found" -- only for a genuine connection/SQL error. Callers decide
+// what "issues found" means for them: runTenantSchemaSync throws in report/repair-apply-
+// incomplete mode (see the bug fix below) and records a result row in repair-dry-run mode;
+// provisioning throws unconditionally on any remaining issue.
+export async function reconcileTenantSchema(connection, tenantDb, mode) {
+    const normalizedMode = String(mode || 'report').trim().toLowerCase();
+    if (!['report', 'repair-dry-run', 'repair-apply'].includes(normalizedMode)) {
+        throw new Error(`reconcileTenantSchema: unsupported mode "${mode}"`);
+    }
+    const isRepairApply = normalizedMode === 'repair-apply';
+    const useTenantDb = () => connection.query(`USE ${quoteIdentifier(tenantDb)}`);
+
+    // Order matters: tables before columns/indexes that might reference them (e.g.
+    // pos_transaction_discounts FKs into pos_discount_rules), columns before the index that
+    // depends on a column existing, tables before their seed rows.
+    const missingTables = await inspectRequiredTenantSchemaTables(connection, tenantDb);
+    const tableRepairCollation = await resolveTenantSchemaRepairCollation(connection, tenantDb);
+    const tableRepairSql = buildTenantSchemaTableRepairSql(missingTables)
+        .map((repair) => ({
+            ...repair,
+            sql: normalizeTenantSchemaTableRepairSql(repair.sql, tableRepairCollation)
+        }));
+    if (isRepairApply) {
+        for (const repair of tableRepairSql) {
+            await useTenantDb();
+            await connection.query(repair.sql);
+        }
+    }
+
+    const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenantDb);
+    const columnRepairSql = buildTenantSchemaRepairSql(missingColumns);
+    if (isRepairApply) {
+        // Must precede the loop below: it adds pos_terminal_shifts.active_operator_user_id as a
+        // STORED generated column, which MySQL refuses while cashier_id's FK still carries ON
+        // UPDATE CASCADE (see relaxPosShiftCashierForeignKey for why).
+        await relaxPosShiftCashierForeignKey(connection, tenantDb);
+        for (const repair of columnRepairSql) {
+            await useTenantDb();
+            await connection.query(repair.sql);
+        }
+        if (missingColumns.some((entry) => (
+            entry.table === 'item_folders' && entry.column === 'sort_order'
+        ))) {
+            await backfillItemFolderSortOrder(connection, tenantDb);
+        }
+        await repairItemFolderCategoryLifecycleSchema(connection, tenantDb);
+        if (missingColumns.some((entry) => (
+            entry.table === 'pos_parked_sales'
+            && ['origin_cashier_id', 'origin_shift_id'].includes(entry.column)
+        ))) {
+            await repairPosParkedSaleOriginOwnership(connection, tenantDb);
+        }
+    }
+
+    const missingIndexes = await inspectRequiredTenantSchemaIndexes(connection, tenantDb);
+    const indexRepairSql = buildTenantSchemaIndexRepairSql(missingIndexes);
+    if (isRepairApply) {
+        for (const repair of indexRepairSql) {
+            await useTenantDb();
+            await connection.query(repair.sql);
+        }
+    }
+
+    const missingSeeds = await inspectRequiredTenantSchemaSeeds(connection, tenantDb);
+    const seedRepairSql = buildTenantSchemaSeedRepairSql(missingSeeds);
+    if (isRepairApply) {
+        for (const repair of seedRepairSql) {
+            await useTenantDb();
+            await connection.query(repair.sql);
+        }
+    }
+
+    const missingEnumEntries = await inspectRequiredTenantSchemaEnumContracts(connection, tenantDb);
+    const enumRepairSql = buildTenantSchemaEnumRepairSql(missingEnumEntries);
+    if (isRepairApply) {
+        for (const repair of enumRepairSql) {
+            await useTenantDb();
+            await connection.query(repair.sql);
+        }
+    }
+
+    const repairSql = [...tableRepairSql, ...columnRepairSql, ...indexRepairSql, ...seedRepairSql, ...enumRepairSql];
+
+    const remainingTables = isRepairApply
+        ? await inspectRequiredTenantSchemaTables(connection, tenantDb)
+        : missingTables;
+    const remainingColumns = isRepairApply
+        ? await inspectRequiredTenantSchemaColumns(connection, tenantDb)
+        : missingColumns;
+    const remainingIndexes = isRepairApply
+        ? await inspectRequiredTenantSchemaIndexes(connection, tenantDb)
+        : missingIndexes;
+    const remainingSeeds = isRepairApply
+        ? await inspectRequiredTenantSchemaSeeds(connection, tenantDb)
+        : missingSeeds;
+    const remainingEnumEntries = isRepairApply
+        ? await inspectRequiredTenantSchemaEnumContracts(connection, tenantDb)
+        : missingEnumEntries;
+
+    const hasRemainingIssues = remainingTables.length > 0
+        || remainingColumns.length > 0
+        || remainingIndexes.length > 0
+        || remainingSeeds.length > 0
+        || remainingEnumEntries.length > 0;
+
+    return {
+        mode: normalizedMode,
+        tenantDb,
+        missing: {
+            tables: missingTables,
+            columns: missingColumns,
+            indexes: missingIndexes,
+            seeds: missingSeeds,
+            enumEntries: missingEnumEntries
+        },
+        remaining: {
+            tables: remainingTables,
+            columns: remainingColumns,
+            indexes: remainingIndexes,
+            seeds: remainingSeeds,
+            enumEntries: remainingEnumEntries
+        },
+        repairSql,
+        hasRemainingIssues
+    };
+}
+
+// Builds the same human-readable "table:x, y.z, ..." parts used for both the CLI's report-mode
+// failure message and provisioning's postcondition error -- shared so the two can never drift
+// apart the way two independently-written summaries eventually would.
+export function summarizeTenantSchemaReconciliation(missingLike) {
+    return [
+        ...missingLike.tables.map((table) => `table:${table}`),
+        ...missingLike.columns.map((entry) => `${entry.table}.${entry.column}`),
+        ...missingLike.indexes.map((entry) => `${entry.table}.${entry.indexName} (index)`),
+        ...missingLike.seeds.map((entry) => `${entry.table} (seed data)`),
+        ...missingLike.enumEntries.map((entry) => (
+            `${entry.table}.${entry.column} (missing enum values: ${entry.missing_values.join(', ')})`
+        ))
+    ];
+}
+
 async function writeReport(reportFile, payload) {
     if (!reportFile) {
         return;
@@ -2952,7 +3176,7 @@ async function writeReport(reportFile, payload) {
     await fs.writeFile(reportFile, JSON.stringify(payload, null, 2), 'utf8');
 }
 
-export async function runTenantSchemaSync({ reportFile = '', failOnError = false, mode = 'report' } = {}) {
+export async function runTenantSchemaSync({ reportFile = '', failOnError = false, mode = 'report', tenantDb = '' } = {}) {
     const normalizedMode = String(mode || 'report').trim().toLowerCase();
     if (!['report', 'repair-dry-run', 'repair-apply', 'alter'].includes(normalizedMode)) {
         throw new Error(`Invalid tenant schema sync mode: ${mode}`);
@@ -2983,14 +3207,29 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
     });
 
     try {
-        console.log(`[TenantSchemaSync] fetching active tenants from ${MAIN_DB}`);
         await connection.query(`USE ${MAIN_DB}`);
-        const [tenants] = await connection.query(
-            `SELECT id, name, db_name, company_token FROM tenants WHERE status = 'active'`
-        );
+        const tenantDbFilter = String(tenantDb || '').trim();
+        let tenants;
+        if (tenantDbFilter) {
+            // #2027: no status filter here -- scoped remediation/audit must also be able to
+            // target a pending/archived tenant, not just an active one.
+            console.log(`[TenantSchemaSync] fetching tenant db_name=${tenantDbFilter} from ${MAIN_DB}`);
+            [tenants] = await connection.query(
+                `SELECT id, name, db_name, company_token, status FROM tenants WHERE db_name = ?`,
+                [tenantDbFilter]
+            );
+            if (tenants.length === 0) {
+                throw new Error(`No tenant found with db_name="${tenantDbFilter}" in ${MAIN_DB}.tenants`);
+            }
+        } else {
+            console.log(`[TenantSchemaSync] fetching active tenants from ${MAIN_DB}`);
+            [tenants] = await connection.query(
+                `SELECT id, name, db_name, company_token, status FROM tenants WHERE status = 'active'`
+            );
+        }
 
         report.summary.tenants_total = tenants.length;
-        console.log(`[TenantSchemaSync] active tenants=${tenants.length}`);
+        console.log(`[TenantSchemaSync] tenants=${tenants.length}`);
 
         for (const tenant of tenants) {
             const tenantSequelize = new Sequelize(tenant.db_name, DB_USER, DB_PASSWORD, {
@@ -3005,119 +3244,28 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     await tenantSequelize.sync({ alter: true });
                 } else {
                     await tenantSequelize.authenticate();
-                    const useTenantDb = () => connection.query(`USE \`${tenant.db_name.replace(/`/g, '``')}\``);
 
-                    // Order matters: tables before columns/indexes that might reference them (e.g.
-                    // pos_transaction_discounts FKs into pos_discount_rules), columns before the
-                    // index that depends on a column existing, tables before their seed rows.
-                    const missingTables = await inspectRequiredTenantSchemaTables(connection, tenant.db_name);
-                    const tableRepairCollation = await resolveTenantSchemaRepairCollation(
-                        connection,
-                        tenant.db_name
-                    );
-                    const tableRepairSql = buildTenantSchemaTableRepairSql(missingTables)
-                        .map((repair) => ({
-                            ...repair,
-                            sql: normalizeTenantSchemaTableRepairSql(repair.sql, tableRepairCollation)
-                        }));
-                    if (normalizedMode === 'repair-apply') {
-                        for (const repair of tableRepairSql) {
-                            await useTenantDb();
-                            await connection.query(repair.sql);
-                        }
-                    }
+                    const reconciliation = await reconcileTenantSchema(connection, tenant.db_name, normalizedMode);
+                    const { remaining, repairSql, hasRemainingIssues } = reconciliation;
 
-                    const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenant.db_name);
-                    const columnRepairSql = buildTenantSchemaRepairSql(missingColumns);
-                    if (normalizedMode === 'repair-apply') {
-                        // Must precede the loop below: it adds pos_terminal_shifts.active_operator_user_id
-                        // as a STORED generated column, which MySQL refuses while cashier_id's FK still
-                        // carries ON UPDATE CASCADE (see relaxPosShiftCashierForeignKey for why).
-                        await relaxPosShiftCashierForeignKey(connection, tenant.db_name);
-                        for (const repair of columnRepairSql) {
-                            await useTenantDb();
-                            await connection.query(repair.sql);
-                        }
-                        if (missingColumns.some((entry) => (
-                            entry.table === 'item_folders' && entry.column === 'sort_order'
-                        ))) {
-                            await backfillItemFolderSortOrder(connection, tenant.db_name);
-                        }
-                        await repairItemFolderCategoryLifecycleSchema(connection, tenant.db_name);
-                        if (missingColumns.some((entry) => (
-                            entry.table === 'pos_parked_sales'
-                            && ['origin_cashier_id', 'origin_shift_id'].includes(entry.column)
-                        ))) {
-                            await repairPosParkedSaleOriginOwnership(connection, tenant.db_name);
-                        }
-                    }
-
-                    const missingIndexes = await inspectRequiredTenantSchemaIndexes(connection, tenant.db_name);
-                    const indexRepairSql = buildTenantSchemaIndexRepairSql(missingIndexes);
-                    if (normalizedMode === 'repair-apply') {
-                        for (const repair of indexRepairSql) {
-                            await useTenantDb();
-                            await connection.query(repair.sql);
-                        }
-                    }
-
-                    const missingSeeds = await inspectRequiredTenantSchemaSeeds(connection, tenant.db_name);
-                    const seedRepairSql = buildTenantSchemaSeedRepairSql(missingSeeds);
-                    if (normalizedMode === 'repair-apply') {
-                        for (const repair of seedRepairSql) {
-                            await useTenantDb();
-                            await connection.query(repair.sql);
-                        }
-                    }
-
-                    const missingEnumEntries = await inspectRequiredTenantSchemaEnumContracts(connection, tenant.db_name);
-                    const enumRepairSql = buildTenantSchemaEnumRepairSql(missingEnumEntries);
-                    if (normalizedMode === 'repair-apply') {
-                        for (const repair of enumRepairSql) {
-                            await useTenantDb();
-                            await connection.query(repair.sql);
-                        }
-                    }
-
-                    const repairSql = [...tableRepairSql, ...columnRepairSql, ...indexRepairSql, ...seedRepairSql, ...enumRepairSql];
-
-                    const remainingMissingTables = normalizedMode === 'repair-apply'
-                        ? await inspectRequiredTenantSchemaTables(connection, tenant.db_name)
-                        : missingTables;
-                    const remainingMissingColumns = normalizedMode === 'repair-apply'
-                        ? await inspectRequiredTenantSchemaColumns(connection, tenant.db_name)
-                        : missingColumns;
-                    const remainingMissingIndexes = normalizedMode === 'repair-apply'
-                        ? await inspectRequiredTenantSchemaIndexes(connection, tenant.db_name)
-                        : missingIndexes;
-                    const remainingMissingSeeds = normalizedMode === 'repair-apply'
-                        ? await inspectRequiredTenantSchemaSeeds(connection, tenant.db_name)
-                        : missingSeeds;
-                    const remainingMissingEnumEntries = normalizedMode === 'repair-apply'
-                        ? await inspectRequiredTenantSchemaEnumContracts(connection, tenant.db_name)
-                        : missingEnumEntries;
-
-                    const hasRemainingIssues = remainingMissingTables.length > 0
-                        || remainingMissingColumns.length > 0
-                        || remainingMissingIndexes.length > 0
-                        || remainingMissingSeeds.length > 0
-                        || remainingMissingEnumEntries.length > 0;
-
-                    if (hasRemainingIssues && normalizedMode === 'report') {
-                        const messageParts = [
-                            ...remainingMissingTables.map((table) => `table:${table}`),
-                            ...remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`),
-                            ...remainingMissingIndexes.map((entry) => `${entry.table}.${entry.indexName} (index)`),
-                            ...remainingMissingSeeds.map((entry) => `${entry.table} (seed data)`),
-                            ...remainingMissingEnumEntries.map((entry) => `${entry.table}.${entry.column} (missing enum values: ${entry.missing_values.join(', ')})`)
-                        ];
+                    // #2027 bug fix: `repair-apply` used to have no branch here at all, so a
+                    // tenant still broken after an attempted repair fell through to the generic
+                    // success push below and was recorded status:'ok' -- exactly the "silently
+                    // appears successful" failure mode this issue exists to close. Routing it
+                    // through the same throw as `report` mode reuses the existing catch block's
+                    // status:'failed' record, so check-tenant-schema-sync-regressions.js's
+                    // getFailedRows (status === 'failed' only) and tenantSchemaReadinessService.js
+                    // keep working unchanged -- no new status value needed.
+                    if (hasRemainingIssues && (normalizedMode === 'report' || normalizedMode === 'repair-apply')) {
+                        const messageParts = summarizeTenantSchemaReconciliation(remaining);
                         const error = new Error(`Missing required tenant schema objects: ${messageParts.join(', ')}`);
-                        error.missing_tables = remainingMissingTables;
-                        error.missing_columns = remainingMissingColumns;
-                        error.missing_indexes = remainingMissingIndexes;
-                        error.missing_seeds = remainingMissingSeeds;
-                        error.missing_enum_values = remainingMissingEnumEntries;
+                        error.missing_tables = remaining.tables;
+                        error.missing_columns = remaining.columns;
+                        error.missing_indexes = remaining.indexes;
+                        error.missing_seeds = remaining.seeds;
+                        error.missing_enum_values = remaining.enumEntries;
                         error.repair_sql = repairSql;
+                        error.repair_attempted = normalizedMode === 'repair-apply';
                         throw error;
                     }
 
@@ -3129,14 +3277,14 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                             tenant_db: tenant.db_name,
                             status: 'repair_required',
                             mode: normalizedMode,
-                            missing_tables: remainingMissingTables,
-                            missing_columns: remainingMissingColumns,
-                            missing_indexes: remainingMissingIndexes,
-                            missing_seeds: remainingMissingSeeds,
-                            missing_enum_values: remainingMissingEnumEntries,
+                            missing_tables: remaining.tables,
+                            missing_columns: remaining.columns,
+                            missing_indexes: remaining.indexes,
+                            missing_seeds: remaining.seeds,
+                            missing_enum_values: remaining.enumEntries,
                             repair_sql: repairSql
                         });
-                        console.warn(`[TenantSchemaSync] repair_required tenant=${tenant.db_name} missing_tables=${remainingMissingTables.join(',')} missing_columns=${remainingMissingColumns.map((entry) => `${entry.table}.${entry.column}`).join(',')}`);
+                        console.warn(`[TenantSchemaSync] repair_required tenant=${tenant.db_name} missing_tables=${remaining.tables.join(',')} missing_columns=${remaining.columns.map((entry) => `${entry.table}.${entry.column}`).join(',')}`);
                         continue;
                     }
                 }

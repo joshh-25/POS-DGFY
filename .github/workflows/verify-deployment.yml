@@ -117,16 +117,29 @@ jobs:
           DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
           POLL_MINUTES: ${{ inputs.poll_minutes }}
         run: |
-          set -euo pipefail
+          set -uo pipefail   # not -e: individual SSH calls are expected to fail transiently without aborting the step
 
-          # Written to a file rather than inlined into the ssh command: this loop is long enough
-          # that a single-quoted heredoc (no local expansion) reads far more clearly than an
-          # escaped one-liner. DOCKER_DIR/POLL_MINUTES cross the SSH boundary as remote env vars
-          # in the command line below, not by local expansion into this heredoc.
-          cat > /tmp/remote-verify.sh <<'REMOTE_SCRIPT'
-          set -uo pipefail
-          cd "$DOCKER_DIR" || exit 1
+          # #1783: this step previously held ONE long-lived foreground SSH session open for the
+          # whole poll window (`ssh ... "DOCKER_DIR=... bash -s" < /tmp/remote-verify.sh`) and
+          # derived PASS/FAIL from that session's own exit status (later, from a result file only
+          # that same session could write). It false-failed three times while the environment was
+          # genuinely healthy -- STAGING candidate 2026-09-10-01 (run 34463240998), PROD hotfix
+          # #2000 (run 35425631339), STAGING candidate 2026-09-21-01 (run 35600984371) -- each with
+          # a clean 15/15-poll transcript stopping right after the last poll, never reaching the
+          # script's own `--- final ---` verdict: the connection was cut before the remote script
+          # could return it. Every poll below is now its own short, independent SSH call (a few
+          # seconds each), so no single connection needs to survive more than one poll and a
+          # mid-window drop can no longer discard an already-clean result. A single unreachable
+          # poll is logged as a transient warning, not a FAIL; only zero reachable polls across
+          # the whole window still fails closed.
+          SSH_OPTS=(-i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          OUTPUT_LOG=/tmp/verify-output.log
+          : > "$OUTPUT_LOG"
 
+          run_remote() { ssh "${SSH_OPTS[@]}" "$SSH_TARGET" "$1"; }
+
+          # 1. One short call: discover services and capture the restart-count baseline.
+          #
           # SERVICES was previously a hardcoded "mysql redis dgfy-api frontend nginx" -- stale
           # after ADR 0071 (#322/#915) retired `frontend` in favor of dgfy-ims/dgfy-pos/dgfy-
           # storefront, and also wrong on DEV/STAGING even before that split: they've never run a
@@ -145,67 +158,78 @@ jobs:
           # in SERVICES turned every dispatch into a false FAIL ("no container at poll start")
           # regardless of actual health -- caught in review (RF-2, PR #513). If a second one-shot
           # service is ever added, extend this filter rather than re-deriving it from restart
-          # policy -- that needs jq, which nothing else in this remote script currently depends on.
-          SERVICES="$(docker compose config --services | grep -vx dgfy-migration-runner)"
-
-          POLLS=$(( POLL_MINUTES * 3 ))  # ~20s apart
-          FAIL=0
+          # policy -- that needs jq, which nothing else in this remote command currently depends on.
+          BASELINE_RAW="$(run_remote "cd '$DOCKER_DIR' && SERVICES=\$(docker compose config --services | grep -vx dgfy-migration-runner); for s in \$SERVICES; do cid=\$(docker compose ps -q \"\$s\"); if [ -n \"\$cid\" ]; then echo \"\$s \$(docker inspect --format '{{.RestartCount}}' \"\$cid\")\"; else echo \"\$s missing\"; fi; done")" \
+            || { echo "::error::could not reach the remote host to capture the restart-count baseline" | tee -a "$OUTPUT_LOG"
+                 echo "result=FAIL" >> "$GITHUB_OUTPUT"
+                 echo "detail=Could not establish an SSH connection to capture the initial baseline -- treated as FAIL (fail-closed)." >> "$GITHUB_OUTPUT"
+                 cat "$OUTPUT_LOG"
+                 exit 0; }
+          echo "$BASELINE_RAW" | tee -a "$OUTPUT_LOG"
 
           declare -A START_RC
-          for s in $SERVICES; do
-            cid="$(docker compose ps -q "$s")"
-            if [ -n "$cid" ]; then
-              START_RC[$s]="$(docker inspect --format '{{.RestartCount}}' "$cid")"
-            else
-              START_RC[$s]="missing"
-              echo "::error::service $s has no container at poll start"
+          FAIL=0
+          while read -r s rc; do
+            [ -z "$s" ] && continue
+            START_RC["$s"]="$rc"
+            if [ "$rc" = "missing" ]; then
+              echo "::error::service $s has no container at poll start" | tee -a "$OUTPUT_LOG"
               FAIL=1
             fi
-          done
+          done <<< "$BASELINE_RAW"
 
+          POLLS=$(( POLL_MINUTES * 3 ))   # unchanged: ~20s apart
+          SUCCESSFUL_POLLS=0
+          SERVICE_LIST="${!START_RC[*]}"   # keys joined on IFS: service names contain no spaces
+
+          # 2. The poll loop: each poll is one short SSH call (a few seconds), with one
+          # immediate retry. A poll that still can't reach the host is a transient warning,
+          # not a health failure by itself.
           for i in $(seq 1 "$POLLS"); do
-            echo "--- poll $i/$POLLS ---"
-            docker compose ps
-
-            for s in $SERVICES; do
-              cid="$(docker compose ps -q "$s")"
-              if [ -z "$cid" ]; then
-                echo "::error::service $s has no running container"
-                FAIL=1
-                continue
+            echo "--- poll $i/$POLLS ---" | tee -a "$OUTPUT_LOG"
+            POLL_OUT=""
+            for attempt in 1 2; do
+              if POLL_OUT="$(run_remote "cd '$DOCKER_DIR' && docker compose ps && for s in $SERVICE_LIST; do cid=\$(docker compose ps -q \"\$s\"); if [ -z \"\$cid\" ]; then echo \"RC:\$s:MISSING\"; else echo \"RC:\$s:\$(docker inspect --format '{{.RestartCount}}' \"\$cid\")\"; fi; done; if docker compose exec -T dgfy-api curl -fsS http://localhost:5100/api/v1/health; then echo HEALTH:OK; else echo HEALTH:FAIL; fi" 2>>"$OUTPUT_LOG")"; then
+                break
               fi
-              rc="$(docker inspect --format '{{.RestartCount}}' "$cid")"
-              echo "$s RestartCount=$rc (started at ${START_RC[$s]})"
-              if [ "$rc" != "${START_RC[$s]}" ]; then
-                echo "::error::service $s RestartCount increased during the poll window (${START_RC[$s]} -> $rc) -- crash-loop signature"
-                FAIL=1
-              fi
+              POLL_OUT=""
+              [ "$attempt" -lt 2 ] && sleep 3
             done
 
-            if docker compose exec -T dgfy-api curl -fsS http://localhost:5100/api/v1/health; then
-              echo "dgfy-api /health: OK"
+            if [ -z "$POLL_OUT" ]; then
+              echo "::warning::poll $i/$POLLS: could not reach the remote host (transient) -- skipped, not counted as a health failure by itself" | tee -a "$OUTPUT_LOG"
             else
-              echo "::warning::dgfy-api /health did not return 200 on this poll"
+              SUCCESSFUL_POLLS=$((SUCCESSFUL_POLLS + 1))
+              echo "$POLL_OUT" | tee -a "$OUTPUT_LOG"
+              while IFS=: read -r tag s rc; do
+                [ "$tag" = "RC" ] || continue
+                if [ "$rc" = "MISSING" ]; then
+                  echo "::error::service $s has no running container" | tee -a "$OUTPUT_LOG"; FAIL=1
+                elif [ "$rc" != "${START_RC[$s]:-}" ]; then
+                  echo "::error::service $s RestartCount increased during the poll window (${START_RC[$s]:-?} -> $rc) -- crash-loop signature" | tee -a "$OUTPUT_LOG"
+                  FAIL=1
+                fi
+              done <<< "$POLL_OUT"
+              echo "$POLL_OUT" | grep -q '^HEALTH:FAIL$' && echo "::warning::dgfy-api /health did not return 200 on this poll" | tee -a "$OUTPUT_LOG"
             fi
 
-            if [ "$i" -lt "$POLLS" ]; then
-              sleep 20
-            fi
+            [ "$i" -lt "$POLLS" ] && sleep 17   # ~20s apart once the SSH round-trip is included
           done
 
-          echo "--- final ---"
-          docker compose ps
-          exit "$FAIL"
-          REMOTE_SCRIPT
-
-          if ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-               "DOCKER_DIR='$DOCKER_DIR' POLL_MINUTES='$POLL_MINUTES' bash -s" \
-               < /tmp/remote-verify.sh > /tmp/verify-output.log 2>&1; then
-            echo "result=PASS" >> "$GITHUB_OUTPUT"
-          else
+          # 3. Verdict: only a real crash-loop/missing-container signature observed on a
+          # reachable poll fails the run. Zero reachable polls across the whole window is
+          # inconclusive -- fail closed, same intent as before.
+          if [ "$SUCCESSFUL_POLLS" -eq 0 ]; then
             echo "result=FAIL" >> "$GITHUB_OUTPUT"
+            echo "detail=INCONCLUSIVE: every poll in the window failed to reach the remote host -- could not confirm health at all. Treated as FAIL (fail-closed)." >> "$GITHUB_OUTPUT"
+          elif [ "$FAIL" = "1" ]; then
+            echo "result=FAIL" >> "$GITHUB_OUTPUT"
+            echo "detail=A real crash-loop/missing-container signature was observed ($SUCCESSFUL_POLLS/$POLLS polls reached the host)." >> "$GITHUB_OUTPUT"
+          else
+            echo "result=PASS" >> "$GITHUB_OUTPUT"
+            echo "detail=$SUCCESSFUL_POLLS/$POLLS polls reached the host with no crash-loop signature. No single long-lived SSH session was used, so a transient connection drop can no longer produce a false failure." >> "$GITHUB_OUTPUT"
           fi
-          cat /tmp/verify-output.log
+          cat "$OUTPUT_LOG"
 
       - name: Write step summary
         if: always()
@@ -214,6 +238,7 @@ jobs:
             echo "### Deploy verification -- ${{ inputs.environment }}"
             echo ""
             echo "**Result: ${{ steps.poll.outputs.result || 'FAIL (no result recorded -- workflow error before the poll step completed)' }}**"
+            echo "${{ steps.poll.outputs.detail || '' }}"
             echo ""
             echo "<details><summary>Raw poll transcript</summary>"
             echo ""

@@ -108,6 +108,25 @@ describe('POS downpayment balance settlement', () => {
         expect(repository.audit).toHaveLength(1);
     });
 
+    it('settles a dine-in balance when the order is ready to serve', async () => {
+        const repository = buildRepository({
+            order_method: 'dine_in',
+            payment_timing: 'on_dine_in',
+            fulfillment_status: 'ready_for_pickup'
+        });
+        const useCase = buildRecordOrderBalancePaymentUseCase({ posRepository: repository });
+
+        const result = await run(() => useCase({
+            posTransactionId: 77,
+            payload: cashPayload({ idempotency_key: 'balance-dine-in-001' }),
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(repository.order.payment_status).toBe('paid');
+        expect(repository.order.balance_due).toBe(0);
+    });
+
     it('records the balance settled, never the cash tendered, on the ledger row', async () => {
         const repository = buildRepository();
         const useCase = buildRecordOrderBalancePaymentUseCase({ posRepository: repository });

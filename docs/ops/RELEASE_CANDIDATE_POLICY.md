@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-09-07
+last_reviewed: 2026-09-24
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -222,8 +222,10 @@ authoritative runbook for that gate — see #375. Do not propose rebuilding it
 
 ### 2026-08-18: Hotfix and back-port
 
-A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow — the
-P0-production-outage case, e.g. #664/PR #665) creates a real risk: `main` now contains a fix that
+A hotfix that lands directly on `main` (bypassing the normal `develop → staging → main` flow —
+originally the P0-production-outage case, e.g. #664/PR #665; since #2006 the manual `/hotfix` path
+may also use this procedure whenever the open issue documents that waiting for the next scheduled
+promotion is unacceptable) creates a real risk: `main` now contains a fix that
 `develop` and `staging` don't, and the next ordinary promotion can silently overwrite it if the same
 line is touched upstream. This happened for real with PR #665 — its own body flagged the gap and
 promised a follow-up, closed by #675.
@@ -1668,3 +1670,150 @@ superseding ADR needed). ADR 0081's own matching 2026-09-10 Amendment carries th
 statement; not restated here beyond this operational summary.
 
 PR: (this PR). Closes #1807. Refs #1548, #1610, #1611, #1740, #1802.
+
+### 2026-09-19: Manual `/hotfix` direct-`main` eligibility relaxation (#2006)
+
+The 2026-08-18 "Hotfix and back-port" entry above framed direct-`main` hotfixes as the
+P0-production-outage case. Since #2006, the manual `/hotfix` path
+(`.agents/skills/incident-responder/SKILL.md`) may also land directly on `main` whenever the open
+issue documents that waiting for the next scheduled promotion is unacceptable — independent of
+same-day discovery or fix timing, and without requiring an actively open incident. The
+back-port procedure in that entry is unchanged: every direct-`main` hotfix still back-ports to
+`develop` via a cut branch off fresh `origin/develop` before the incident is considered closed
+(`staging` still inherits on the next promotion, no separate back-port). Review, Merge Safety,
+release-note (ADR 0082), compliance-preflight reconciliation (#1700), and fresh-issue back-port
+controls all remain in force; autonomous monitor-triggered handling remains
+actively-incident-only. #2005 is the calibration reference and is not rerouted by this change.
+
+PR: (this PR). Refs #2006.
+
+### 2026-09-19: Preserve the release floor; staging revisions separate from production patches (#1977, Phase 342)
+
+Not rewritten in place, same convention as every amendment above. ADR 0081's matching 2026-09-19
+Amendment carries the full design statement; this entry is the executable consequence for this
+policy document.
+
+**What changed.** `X.Y.Z` remains each app's production floor; the candidate-wide
+`release_revision.revision` (`rN`, one greater than the latest staging repair revision) names the
+exact artifact. Frontends publish `X.Y.Z-rN-staging` (STAGING candidate) and `X.Y.Z-rN` (PROD,
+built with production `VITE_*` values) plus the immutable alias `X.Y.Z` on the same digest;
+`dgfy-api` and `dgfy-migration-runner` publish the environment-neutral `X.Y.Z-rN` once (STAGING
+candidate) and PROD reuses that digest plus the alias — never an environment-specific backend
+rebuild. Tags contain no `+` (Docker forbids it). DEV behavior is unchanged (`X.Y.Z-dev`, no
+revision). A direct production hotfix increments the patch and uses the same paired
+revision/canonical tags with no staging predecessor. Existing published tags are historical and
+are never rewritten.
+
+**Executable consequence.** The promoter threads `-f release_revision=<rN>` through
+`deploy.yml` (STAGING candidate) and `deploy-main.yml` (PROD, including hotfixes) alongside the
+existing per-app-group `candidate_source_sha_*` inputs; builders fail closed on STAGING/PROD
+without it. `deploy-main.yml`'s `promote-aliases` job creates each app's bare floor alias from
+its revision-tag digest (`scripts/promote-image-alias.js` — refuses a different digest or
+revision) and gates `publish`: a failed alias promotion blocks the PROD deploy. The parity gate
+now compares frontend `X.Y.Z-rN-staging` to `X.Y.Z-rN`, the backend digest reused across
+environments, and each bare alias against its revision tag
+(`scripts/check-image-version-parity.js --manifest` reads `rN` from the manifest;
+`--source-sha` accepts an optional `--revision` for the hotfix pairing). Full commands:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
+
+PR: (this PR). Refs #1977.
+
+### 2026-09-21: No Playwright/e2e coverage before the `release/*→main` leg — accepted tradeoff (#1556)
+
+Not rewritten in place, same convention as every amendment above. This entry records the
+decision #1556's own acceptance criterion requires — fix the gap, or explicitly accept it with
+a stated reason — not a mechanism change. Nothing about what any workflow runs changes here.
+
+**Verified shape being accepted.** `pr-checks.yml` runs only `changes` plus per-deployable
+Docker build checks on every `develop`/`staging`/`main` PR — no Playwright step by design
+(#1018's deliberate separation: the promotion gate lives in its own workflow file precisely so
+it never becomes a row on ordinary feature PRs). `promotion-quality-gate.yml`'s `gate` job
+scopes that workflow to promotion PRs only, and every quality job carries
+`needs.gate.outputs.is_staging_leg != 'true'` — the `to-staging/*→staging` leg runs zero
+quality jobs, exactly as the 2026-08-31 #1253 entry restored. The only point in the pipeline
+where `test:e2e:fnb-contract` (`run_fnb_browser_contract`,
+`frontend-storefront-quality`, `apps/dgfy-storefront/playwright.fnb-contract.config.js` —
+single-spec F&B conditional-modifiers contract, workers 1) actually runs is therefore the
+`release/*→main` leg (and the `staging→main` leg of the optional soak), advisory-only
+(`continue-on-error` at job and step level, #1063/#1066 mechanism).
+
+**Why accepted, stated explicitly rather than left implicit.** The `to-staging/*→staging`
+leg optimizes for promotion speed, not for quality-gate signal — Pat's verbatim direction
+behind #1254/#1253 ("ease up promotion to staging, only heavy checks on main/prod"), driven
+by the real ~20 min serial cost of the full quality suite on the single self-hosted runner
+for a result nobody acted on. Re-adding even a 3–5 min Playwright smoke to that leg
+reintroduces the cost that decision removed, and running e2e inside `pr-checks.yml` gated to
+frontend paths reintroduces the every-PR cost #416 removed and #1018 deliberately kept out.
+Separately, the last-leg e2e signal itself is not currently a candidate for earlier promotion:
+#1063's advisory-temp still holds for the gate overall, and #1550 root-causes that exact
+`run_fnb_browser_contract` step failing deterministically on the most recent real promotion
+(run `33789462561`, PR #1547) — moving a currently-red, untriaged browser test earlier would
+produce earlier red noise, not earlier useful signal. Advisory-failure evidence continues to
+land on #1124, not silently dropped.
+
+**Consequence, said plainly.** A frontend-only change of the #1550 class (commit `2ab68238`,
+`fix(storefront): format customer amounts as grouped pesos` — landed on `develop`, soaked
+through `to-staging/*` and `staging` with zero browser coverage, caught only at the
+`release/*→main` gate) can travel `develop → staging` unexercised by any e2e suite. That is
+the accepted cost of the speed tradeoff above, not an undiscovered gap. If early browser
+signal is ever wanted back, that is new scope (e.g. a cheap advisory path-filtered smoke
+subset, triaged green first per #1550) — not a reopen of this decision.
+
+This is a `[default]`-tier procedure record under ADR 0039 — no `[binding]` clause of this
+policy or of any ADR is changed by this entry.
+
+PR: (this PR). Closes #1556. Refs #1124, #1550, #1254, #1063.
+
+### 2026-09-23: Per-app revision history from DEV through PROD; candidate-wide rN retired (#2055, Phase 346)
+
+Not rewritten in place, same convention as every amendment above. ADR 0081's matching 2026-09-23
+Amendment carries the full design statement; this entry is the executable consequence for this
+policy document. Deliberately reverses the 2026-09-19 entry's candidate-wide-uniform-`rN`
+design — DEV builds are inherently per-app and asynchronous, so no smaller change is
+structurally coherent once DEV is folded into the same lineage (full rationale on the issue).
+
+**What changed.** Revisions are allocated per app with GHCR as the durable source of truth
+(`N = max + 1` over `<app>:<floor>-r*` across all channels; same-source retry reuses its own
+`N`; a floor bump resets the sequence). `develop` dispatches publish promotion-eligible
+`X.Y.Z-rN-dev` (allocated once per dispatch by `deployment-orchestrator.yml`'s
+resolve-build-plan job, so the skip plan and every builder resolve byte-identical tags);
+feature-branch dispatches publish ad-hoc `X.Y.Z-<slug>-dev` (sha tag only, never the moving
+`develop` tag, never candidate-selectable). Legacy bare `X.Y.Z-dev` tags stay historical and
+untouched. STAGING/PROD tag *format* is unchanged — only where each app's `N` comes from
+changes. The candidate manifest is `sku-release-candidate/v2` (per-app `release_revision`
+map, cosmetic `repair_seq`, selected DEV artifacts on the initial revision, plain
+`release/<candidate_id>` cut); `v1` still validates but is never written. Branches are
+`fix/staging/<candidate_id>-<repair_seq>` (bare sequence, no `r` prefix) and
+`release/<candidate_id>` (see ADR 0082's matching amendment).
+
+**Executable consequence.** The promoter threads four per-app-group revision inputs
+(`release_revision_api` covering both backends, one per frontend — the same grouping
+`candidate_source_sha_*` already uses) through `deploy.yml` (STAGING candidate) and
+`deploy-main.yml` (PROD, including hotfixes, which allocate the touched app's next `N` via
+`scripts/allocate-artifact-revision.js`), alongside the existing `candidate_source_sha_*`
+inputs; builders fail closed on STAGING/PROD without their app's revision, and a DEV build
+with neither revision nor `dev_pr_ref` fails closed instead of re-emitting the legacy
+colliding `X.Y.Z-dev`. `deploy-main.yml`'s `promote-aliases` job aliases each app-group's
+own revision (unchecked groups skipped, never aliased blind) and still gates `publish`. The
+parity gate verifies each app against its own allocated `rN` from the v2 map
+(`app-not-in-candidate` skips apps the candidate never rebuilt). Full commands:
+`.agents/skills/promoter/references/promotion-runbook.md`'s "Deploy dispatch" section.
+
+PR: (this PR). Closes #2055. Refs #1977.
+
+
+### 2026-09-24: DEV is versionless and optional to promotion; floors move at promotion (#2071, Phase 347)
+
+This amendment supersedes the 2026-09-23 DEV selection mechanics for new candidates. Manual DEV
+builds from `develop` or an experimental/POC branch publish the mutable `dev` tag plus a SHA tag.
+Promotion remains based on a frozen `develop` SHA and builds directly on STAGING. It has no DEV
+deploy, artifact-selection, registry-read, or availability prerequisite. New manifests use
+`sku-release-candidate/v3`, record initial `apps_touched`, and identify initial STAGING artifacts
+with origin `promotion`; validators retain v1/v2 compatibility for in-flight candidates.
+
+Ordinary develop changes and STAGING repairs preserve package floors. At promotion start, changed
+apps receive their next minor floor. Only direct main hotfixes patch-bump. Revision allocation
+scans promotion tags only (`-staging` and neutral production tags), never DEV. The promoter's
+workflow and steps are documented in `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Closes #2071. Refs #2055, #982.

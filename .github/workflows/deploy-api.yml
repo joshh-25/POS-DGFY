@@ -28,11 +28,23 @@ on:
         required: false
         type: string
         default: ''
+      release_revision:
+        description: >-
+          Per-app immutable revision for STAGING/PROD (e.g. r16). Required for those release
+          builds and ignored for DEV, whose image tag is always the moving `dev` alias. Backend tags use environment-neutral X.Y.Z-rN so the same image digest promotes
+          between STAGING and PROD.
+        required: false
+        type: string
+        default: ''
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
       version_tag:
         value: ${{ jobs.build-and-push.outputs.version_tag }}
+      release_floor:
+        value: ${{ jobs.build-and-push.outputs.release_floor }}
+      release_revision:
+        value: ${{ jobs.build-and-push.outputs.release_revision }}
 
 permissions:
   contents: read
@@ -49,6 +61,8 @@ jobs:
     outputs:
       sha_tag: ${{ steps.meta.outputs.sha_tag }}
       version_tag: ${{ steps.meta.outputs.version_tag }}
+      release_floor: ${{ steps.meta.outputs.release_floor }}
+      release_revision: ${{ steps.meta.outputs.release_revision }}
     steps:
       # workspace-hygiene v1 -- keep byte-identical at every site, immediately above this job's
       # actions/checkout. Enforced by scripts/check-workspace-hygiene.js. Deliberately inline and
@@ -95,6 +109,7 @@ jobs:
         shell: bash
         env:
           ENVIRONMENT: ${{ inputs.environment }}
+          RELEASE_REVISION: ${{ inputs.release_revision }}
           CANDIDATE_SOURCE_SHA: ${{ inputs.candidate_source_sha }}
           IMAGE_SERVER_URL: ${{ github.server_url }}
           IMAGE_REPOSITORY: ${{ github.repository }}
@@ -104,25 +119,27 @@ jobs:
           {
             echo "tags<<EOF"
             IFS=',' read -ra TAG_ARR <<< "${{ inputs.image_tags }}"
-            for t in "${TAG_ARR[@]}"; do echo "${IMAGE_NAME}:${t}"; done
+            for t in "${TAG_ARR[@]}"; do [ -n "$t" ] && echo "${IMAGE_NAME}:${t}"; done
             echo "${IMAGE_NAME}:${SHA_TAG}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           echo "sha_tag=${SHA_TAG}" >> "$GITHUB_OUTPUT"
 
-          # ADR 0081 Decisions 1/3: X.Y.Z[-channel] version tag, read from apps/dgfy-api/
-          # package.json, never written here (Decision 6 -- bumps are PR-authored). Channel suffix
-          # keyed off this workflow's own `environment` input, which is always DEV (deploy.yml),
-          # STAGING (deploy.yml), or PROD (deploy-main.yml) -- see deployment-orchestrator.yml.
-          case "$ENVIRONMENT" in
-            DEV) CHANNEL_SUFFIX="-dev" ;;
-            STAGING) CHANNEL_SUFFIX="-staging" ;;
-            PROD) CHANNEL_SUFFIX="" ;;
-            *) echo "::error::Unknown environment '$ENVIRONMENT' -- expected DEV, STAGING, or PROD (ADR 0081 Decision 1's channel derivation)." >&2; exit 1 ;;
-          esac
-          APP_PKG_VERSION="$(node -p "require('./apps/dgfy-api/package.json').version")"
-          VERSION_TAG="${APP_PKG_VERSION}${CHANNEL_SUFFIX}"
+          # DEV is versionless and always resolves to the shared `dev` alias. STAGING/PROD
+          # use this app's release floor and immutable per-app rN, required by the resolver.
+          APP_NAME=dgfy-api
+          if [ "${ENVIRONMENT}" = "DEV" ]; then
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP_NAME}" --environment DEV)"
+          else
+            APP_PKG_VERSION="$(node -p "require('./apps/dgfy-api/package.json').version")"
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "${APP_NAME}" --version "${APP_PKG_VERSION}" --environment "${ENVIRONMENT}" --revision "${RELEASE_REVISION}")"
+          fi
+          VERSION_TAG="$(node -p "JSON.parse(process.argv[1]).tag" "${RESOLVED}")"
+          RELEASE_FLOOR="$(node -e "const x=JSON.parse(process.argv[1]).floor;process.stdout.write(x||'')" "${RESOLVED}")"
+          RELEASE_REVISION_OUT="$(node -e "const r=JSON.parse(process.argv[1]).revision;process.stdout.write(r==null?'':'r'+r)" "${RESOLVED}")"
           echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_floor=${RELEASE_FLOOR}" >> "$GITHUB_OUTPUT"
+          echo "release_revision=${RELEASE_REVISION_OUT}" >> "$GITHUB_OUTPUT"
 
           # ADR 0081 Decision 8 (#1588, epic #1548 Wave 4, Phase 279): stamp the candidate source
           # identity as its own label, distinct from org.opencontainers.image.revision (Decision 1/7's
@@ -131,11 +148,18 @@ jobs:
           # block below, so a blank input cleanly omits the line instead of stamping an empty label --
           # docker/build-push-action's multi-line labels input is a plain heredoc from this step's own
           # output, same pattern already used for `tags` above.
+          # STAGING/PROD stamp their release floor and revision as OCI labels. DEV omits both
+          # because its `dev` tag is versionless; org.opencontainers.image.revision still records
+          # the full source SHA for every environment.
           {
             echo "labels<<LABELS_EOF"
             echo "org.opencontainers.image.revision=${GITHUB_SHA}"
             echo "org.opencontainers.image.source=${IMAGE_SERVER_URL}/${IMAGE_REPOSITORY}"
             echo "org.opencontainers.image.version=${VERSION_TAG}"
+            if [ -n "${RELEASE_FLOOR:-}" ]; then echo "org.dgfy-platform.release-floor=${RELEASE_FLOOR}"; fi
+            if [ -n "${RELEASE_REVISION_OUT:-}" ]; then
+              echo "org.dgfy-platform.release-revision=${RELEASE_REVISION_OUT}"
+            fi
             if [ -n "${CANDIDATE_SOURCE_SHA:-}" ]; then
               echo "org.dgfy-platform.candidate-source-sha=${CANDIDATE_SOURCE_SHA}"
             fi
@@ -172,6 +196,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             APP_VERSION=${{ steps.meta.outputs.version_tag }}
+            APP_RELEASE_FLOOR=${{ steps.meta.outputs.release_floor }}
+            APP_RELEASE_REVISION=${{ steps.meta.outputs.release_revision }}
           labels: ${{ steps.meta.outputs.labels }}
           # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
           # was added in #415 as "reachable from either runner type," a
@@ -191,7 +217,8 @@ jobs:
       # `tags:` list -- that decouples this guard from the moving-tag/sha-tag push, so a refusal
       # here fails this step loudly (Decision 7) without touching the tags Decision 2 says stay
       # unaffected by this ADR ("nothing on the deploy path changes as a result of this ADR alone").
-      - name: Publish version tag, refusing a different-revision overwrite (ADR 0081 Decision 7)
+      - name: Publish immutable release tag, refusing a different-revision overwrite (ADR 0081 Decision 7)
+        if: inputs.environment != 'DEV'
         shell: bash
         run: |
           node scripts/check-tag-immutability.js \

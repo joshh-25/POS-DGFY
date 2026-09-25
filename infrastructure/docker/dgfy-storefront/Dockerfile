@@ -49,6 +49,16 @@ ARG VITE_SENTRY_ENABLED=false
 ARG VITE_SENTRY_DSN_STORE=""
 ARG VITE_SENTRY_ENVIRONMENT=""
 ARG VITE_SENTRY_RELEASE=""
+# #1977 (Phase 342): release floor (bare X.Y.Z) + candidate revision (rN). The VITE_-
+# prefixed ENV spellings feed the build-stamp plugin at `npm run build` time; the plain
+# spellings ride into the runtime stage below. Empty defaults keep a local `docker build`
+# with no --build-arg working unchanged (see scripts/deploy-local.sh).
+ARG APP_RELEASE_FLOOR=""
+ENV APP_RELEASE_FLOOR=${APP_RELEASE_FLOOR}
+ARG APP_RELEASE_REVISION=""
+ENV APP_RELEASE_REVISION=${APP_RELEASE_REVISION}
+ENV VITE_APP_RELEASE_FLOOR=${APP_RELEASE_FLOOR}
+ENV VITE_APP_RELEASE_REVISION=${APP_RELEASE_REVISION}
 ARG VITE_SENTRY_TRACES_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
@@ -114,6 +124,13 @@ FROM nginx:alpine AS runtime
 # no --build-arg working unchanged (see scripts/deploy-local.sh).
 ARG APP_VERSION=""
 ENV APP_VERSION=${APP_VERSION}
+# #1977 (Phase 342): explicit release floor + candidate revision metadata -- same contract as
+# infrastructure/docker/dgfy-api/Dockerfile (see the comment there). nginx doesn't consume
+# these itself; they are inspectable image metadata for the parity/alias tooling.
+ARG APP_RELEASE_FLOOR=""
+ENV APP_RELEASE_FLOOR=${APP_RELEASE_FLOOR}
+ARG APP_RELEASE_REVISION=""
+ENV APP_RELEASE_REVISION=${APP_RELEASE_REVISION}
 RUN apk add --no-cache curl
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY infrastructure/docker/dgfy-storefront/nginx.conf /etc/nginx/conf.d/default.conf

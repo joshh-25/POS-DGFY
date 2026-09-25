@@ -1,4 +1,9 @@
-import { createStockMovement, validateStockIssueAvailability as validateStockIssue, voidOnlineOrderGoodsIssue } from '../../../services/stockMovementService.js';
+import {
+  createStockMovement,
+  validateStockIssueAvailability as validateStockIssue,
+  voidOnlineOrderGoodsIssue,
+  voidParkedSaleGoodsIssue
+} from '../../../services/stockMovementService.js';
 import { assertStockCommandServiceContract, StockCommandServiceNamedCommands } from '../contracts/stockCommandService.contract.js';
 
 const withMovementDefaults = (movementData = {}, defaults = {}) => ({
@@ -67,6 +72,16 @@ export const reverseOnlineOrderGoodsIssue = (movementData = {}, userId, transact
     orderId: movementData?.order_id,
     userId,
     reason: movementData?.reason || `Reversal of online order goods-issue for order ${movementData?.order_id}`,
+    transaction
+  })
+);
+
+export const reverseParkedSaleGoodsIssue = (movementData = {}, userId, transaction = null) => (
+  voidParkedSaleGoodsIssue({
+    parkedSaleId: movementData?.parked_sale_id,
+    userId,
+    reason: movementData?.reason || `Reversal of parked POS sale ${movementData?.parked_sale_id}`,
+    preserveItemIds: movementData?.preserve_item_ids,
     transaction
   })
 );
@@ -146,6 +161,7 @@ const stockCommandService = {
   issueStockForDispatch,
   returnStockForVoidedSale,
   reverseOnlineOrderGoodsIssue,
+  reverseParkedSaleGoodsIssue,
   receivePurchasedStock,
   transferStock,
   adjustStock,

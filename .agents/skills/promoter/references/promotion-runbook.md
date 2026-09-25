@@ -8,7 +8,7 @@ points at — don't duplicate the reasoning here, just the commands.
 Every call site below needs the identical check before its next branch is cut, but against
 different target refs: the `#1007`-gated exception's direct `release/<label>` cut and the default
 flow's `to-staging/<candidate_id>` cut both scan `origin/develop`; the default flow's own
-`release/<candidate_id>-rN` cut scans `origin/staging` instead — that's what `release/<label>` is
+`release/<candidate_id>` cut scans `origin/staging` instead — that's what `release/<label>` is
 actually cut from on that leg (see the substitution note where that call site sends you here). Set
 `TARGET_REF` **before** this block, then run the rest of this section unmodified — never hard-code
 the ref inline, that's exactly the gap RF-4 (PR #1672 review) found in this section's first version,
@@ -208,13 +208,13 @@ CANDIDATE_ID=$(date +%Y-%m-%d)-01
 # origin/develop` here: re-reading the ref after the scan would reopen the exact gap the pinned scan
 # exists to close, if develop advanced in the interim.
 CANDIDATE_SOURCE_SHA="$TARGET_SHA"
-git switch -c release/$CANDIDATE_ID-r1 "$TARGET_SHA"
-git push -u origin release/$CANDIDATE_ID-r1
+git switch -c release/$CANDIDATE_ID "$TARGET_SHA"
+git push -u origin release/$CANDIDATE_ID
 
 gh pr create \
   --base main \
-  --head release/$CANDIDATE_ID-r1 \
-  --title "chore: promote candidate $CANDIDATE_ID to main (r1)" \
+  --head release/$CANDIDATE_ID \
+  --title "chore: promote candidate $CANDIDATE_ID to main" \
   --body "## Summary
 
 Promotes \`develop\` to \`main\` at $(git rev-parse --short "$TARGET_SHA").
@@ -353,7 +353,7 @@ note-only branch/PR if no app was below floor), before the candidate branch is c
 `package.json`. `production_commit` gets the literal sentinel `pending` — an exact, checkable
 string, not a bracketed placeholder — since the real `main` merge-commit SHA does not exist yet at
 this point (ADR 0082 Decisions 4/8's two-stage lifecycle: `pending` is valid and expected all the
-way through the `release/<candidate_id>-rN → main` PR itself). "Publish the GitHub Release" below
+way through the `release/<candidate_id> → main` PR itself). "Publish the GitHub Release" below
 finalizes it to the real 40-hex SHA post-deploy:
 
 ```bash
@@ -421,25 +421,22 @@ git push -u origin to-staging/$CANDIDATE_ID
 CANDIDATE_SHA="$TARGET_SHA"
 ```
 
-**Candidate manifest (ADR 0081 Decision 8, #1588)** — the parity gate downstream needs a durable
-record of this candidate's own frozen source SHA, distinct from whatever `github.sha` each
-environment's merge commit happens to carry. Written locally, never committed (mirrors
-`.tmp/release-gates/<sha>/local_readiness.json`'s own local-artifact convention) — pass its path to
-every `check-promotion-candidate.js`/`check-image-version-parity.js`/`check-staging-candidate-
-observation.js` call below instead of re-deriving the SHA by hand each time:
+**Candidate manifest (ADR 0081 Decision 8, #1588; v3 versionless-DEV shape since #2071)** — promotion is based on the frozen `develop` SHA and builds directly on STAGING. DEV is a shared experimental target and is never read or required here. The manifest records the initial changed-app set, staging repairs, and (at release-cut time) each touched app's revisioned STAGING artifact. Written locally, never committed; pass its path to every candidate/parity/observation check below.
+
+**Determine changed apps and prepare floors at promotion start.** Run the existing minor-floor check against the pinned candidate source before cutting the `to-staging` branch; only affected apps advance their package floor. Deploy jobs are selected from the resulting app changes and build from `$CANDIDATE_SHA` on STAGING. No DEV dispatch, DEV tag inspection, or DEV artifact selection is part of promotion. Allocate the immutable per-app `rN` only when building the release artifact; the allocator scans STAGING/PROD revision tags.
 
 ```bash
-mkdir -p .tmp/release-candidates
 cat > .tmp/release-candidates/$CANDIDATE_ID.json <<JSON
 {
-  "schema": "sku-release-candidate/v1",
+  "schema": "sku-release-candidate/v3",
   "candidate_id": "$CANDIDATE_ID",
   "status": "staging_soak",
   "source_develop_sha": "$CANDIDATE_SHA",
   "current_staging_sha": "$CANDIDATE_SHA",
   "staging_head_sha": null,
   "revisions": [
-    { "kind": "initial", "sha": "$CANDIDATE_SHA", "parent_sha": null, "branch": "to-staging/$CANDIDATE_ID" }
+    { "kind": "initial", "sha": "$CANDIDATE_SHA", "parent_sha": null, "branch": "to-staging/$CANDIDATE_ID", "pr": 1234,
+      "apps_touched": ["dgfy-ims"] }
   ],
   "release_revision": null
 }
@@ -476,7 +473,7 @@ provenance, while the former is the Git SHA from which the release branch is phy
 GitHub may fast-forward a `--merge` PR when the target is already an ancestor, so these values
 are not guaranteed to match.
 
-Then cut `release/<candidate_id>-rN` from `origin/staging` instead of `origin/develop`: set
+Then cut `release/<candidate_id>` from `origin/staging` instead of `origin/develop`: set
 `TARGET_REF` accordingly and run the identical commands from the "#1007-gated exception" section
 above. After the RF-10 (PR #1672 review) fix, those commands already read `$TARGET_SHA` rather than a
 literal `origin/develop` — there is no text left in them to substitute; only the `TARGET_REF`
@@ -502,11 +499,11 @@ code-level staging failure, create the repair branch from the current staging he
 
 ```bash
 git fetch origin staging
-git switch -c fix/staging/$CANDIDATE_ID-r1 origin/staging
+git switch -c fix/staging/$CANDIDATE_ID-1 origin/staging
 # implement only the repair, or cherry-pick -x one reviewed isolated fix commit
-git push -u origin fix/staging/$CANDIDATE_ID-r1
-gh pr create --base staging --head fix/staging/$CANDIDATE_ID-r1 \
-  --title "fix(release): repair candidate $CANDIDATE_ID (r1)" \
+git push -u origin fix/staging/$CANDIDATE_ID-1
+gh pr create --base staging --head fix/staging/$CANDIDATE_ID-1 \
+  --title "fix(release): repair candidate $CANDIDATE_ID (repair 1)" \
   --body "## Summary
 
 Repairs frozen release candidate $CANDIDATE_ID at the current staging SHA.
@@ -520,9 +517,11 @@ Record the repair issue and PR in the candidate manifest (`.tmp/release-candidat
 — append a `staging_repair` entry to `revisions`, with `parent_sha` pointing at the previous
 candidate SHA, and advance `current_staging_sha` to match; `check-promotion-candidate.js` validates
 the whole chain, including this parent-pointer requirement), merge into `staging` with `--merge`,
-redeploy/observe, and increment the repair revision. If the repair is live DB, secrets, SSH, or
-infrastructure work, stop and hand it to Pat. If a developer already made the fix on `develop`,
-cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be recreated narrowly.
+redeploy/observe (see "Deploy dispatch" below for the per-app revision inputs this repair's
+STAGING redeploy needs), and increment the repair sequence. If the repair is live DB, secrets,
+SSH, or infrastructure work, stop and hand it to Pat. If a developer already made the fix on
+`develop`, cherry-pick only an isolated, reviewed commit with `-x`; mixed commits must be
+recreated narrowly.
 
 **Amend the release note in this same repair PR (#1278, ADR 0082)** — edit
 `docs/releases/notes/$CANDIDATE_ID.md` directly (this branch carries its own commits, unlike
@@ -538,10 +537,16 @@ touch will silently claim the wrong candidate identity at PROD dispatch time —
 #1610 was filed for. Example, a repair that only rebuilt `dgfy-ims`:
 
 ```json
-{ "kind": "staging_repair", "revision": 1, "sha": "<sha>", "parent_sha": "<prev-sha>",
-  "branch": "fix/staging/$CANDIDATE_ID-r1", "pr": 1234, "issue": 1233,
+{ "kind": "staging_repair", "repair_seq": 1, "sha": "<sha>", "parent_sha": "<prev-sha>",
+  "branch": "fix/staging/$CANDIDATE_ID-1", "pr": 1234, "issue": 1233,
   "apps_touched": ["dgfy-ims"] }
 ```
+
+`repair_seq` is a cosmetic ordinal only — branch-naming and ordering, never an artifact
+identity (the bare `-<seq>`, no `r` prefix, is deliberate: per-app artifact revisions are
+`rN` everywhere, and reusing the prefix would conflate the two again). The manifest never
+stores a repair's allocated artifact revision; GHCR is the source of truth for that (read
+back at release-cut time, below).
 
 `check-promotion-candidate.js` now rejects a `staging_repair` revision missing `apps_touched`
 entirely, so this isn't optional — validate right after editing:
@@ -550,17 +555,40 @@ entirely, so this isn't optional — validate right after editing:
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
 ```
 
-When observation passes, cut the next release revision from the latest staging head:
+When observation passes, cut the release from the latest staging head:
 
 ```bash
-RELEASE_REVISION=2
-git switch -c release/$CANDIDATE_ID-r$RELEASE_REVISION origin/staging
-git push -u origin release/$CANDIDATE_ID-r$RELEASE_REVISION
+git switch -c release/$CANDIDATE_ID origin/staging
+git push -u origin release/$CANDIDATE_ID
 ```
 
 Set `release_revision.source_staging_sha` to the recorded `staging_head_sha` (the exact SHA from
-which the release branch was cut), then update the manifest's `release_revision` field (`revision`,
-`source_staging_sha`, `branch`, `pr`) before validating and building release evidence:
+which the release branch was cut). Then populate the manifest's per-app `release_revision.apps`
+map from GHCR — each touched app's latest allocated revision, read off that app's STAGING
+revision tag (the registry is the source of truth, not the manifest). For each touched app:
+
+```bash
+APP=dgfy-pos; N=<allocated-rN-for-this-app>; FLOOR="$(node -p "require('./apps/${APP}/package.json').version")"
+STAGING_TAG="$(node scripts/resolve-release-tags.js --app "$APP" --version "$FLOOR" --environment STAGING --revision "$N" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).stagingTag")"
+node -e "
+const { execFileSync } = require('node:child_process');
+const { inspectImageLabel, inspectImageDigest, CANDIDATE_SOURCE_LABEL } = require('./scripts/check-image-version-parity');
+const ref = process.argv[1];
+const inspectFn = (r) => { try { return { status: 0, stdout: execFileSync('docker', ['buildx', 'imagetools', 'inspect', r, '--format', '{{json .}}'], { encoding: 'utf8' }), stderr: '' }; } catch (e) { return { status: 1, stdout: '', stderr: String((e && e.message) || e) }; } };
+const [image, tag] = ref.split(/:(?=[^:]+$)/);
+const sha = inspectImageLabel({ image, tag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
+const dig = inspectImageDigest({ image, tag, inspectFn });
+if (sha.state !== 'ok') throw new Error('candidate-source label unreadable on ' + ref + ': ' + sha.state);
+if (dig.state !== 'ok') throw new Error('digest unreadable on ' + ref + ': ' + dig.state);
+console.log(JSON.stringify({ revision: Number(process.argv[2]), source_sha: sha.value, digest: dig.digest }));
+" "ghcr.io/sieitzz/${APP}:${STAGING_TAG}" "$N"
+# Record as: "dgfy-pos": { "revision": N, "source_sha": "<printed>", "digest": "<printed>",
+#   "origin": "promotion" | "staging_repair" } -- "promotion" when the artifact was built
+#   from the frozen develop source at promotion start, "staging_repair" after repair.
+```
+
+Update the manifest's `release_revision` field (`source_staging_sha`, `branch` =
+`release/$CANDIDATE_ID`, `pr`, `apps`) before validating and building release evidence:
 
 ```bash
 node scripts/check-promotion-candidate.js --manifest .tmp/release-candidates/$CANDIDATE_ID.json
@@ -612,9 +640,10 @@ git rev-list --count origin/staging..origin/main
 (it has no staging leg) — skip straight to "PROD dispatch" below if that's the flow in progress.
 
 ```bash
-# STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is dropped from this
-# default flow entirely (#982) — use `--ref develop` only when DEV is specifically wanted, never
-# as a routine step here.
+# STAGING — unattended, per ../SKILL.md's checkpoint table. DEV dispatch is not a routine
+# step of this flow (#982). Promotion builds the frozen develop source directly on STAGING;
+# there is no DEV artifact or DEV-host prerequisite. A manual DEV dispatch from develop or an
+# experimental branch updates the shared mutable `dev` tag plus that commit's SHA tag.
 # (#1050, 2026-08-25: the old single-select `components` input is gone; the
 # four build_* booleans below all default true, so omitting them builds/pushes
 # everything, same as the old components=all)
@@ -626,8 +655,29 @@ git rev-list --count origin/staging..origin/main
 # (from origin/develop directly, no manifest) -- the PROD dispatch below reuses whichever one the
 # promoter's actual flow set, without re-deriving it.
 CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID.json').current_staging_sha")
-gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" --ref staging
+# Per-app artifact revisions (#2071): allocate immutable STAGING/PROD rN identities from
+# promotion-channel tags; the sequence excludes DEV. For initial STAGING, allocate each app
+# built from the frozen develop SHA. For a staging repair, allocate only rebuilt apps:
+#   node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/<app> \
+#     --floor "$(node -p "require('./apps/<app>/package.json').version")" --revision <repair-sha>
+# (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is
+# required to inspect GHCR revision tags.)
+REV_API=<rN-for-dgfy-api-and-dgfy-migration-runner>
+REV_IMS=<rN-for-dgfy-ims>
+REV_POS=<rN-for-dgfy-pos>
+REV_STOREFRONT=<rN-for-dgfy-storefront>
+gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" \
+  -f release_revision_api="$REV_API" -f release_revision_frontend_ims="$REV_IMS" \
+  -f release_revision_frontend_pos="$REV_POS" -f release_revision_frontend_storefront="$REV_STOREFRONT" \
+  --ref staging
 ```
+
+Frontends publish `X.Y.Z-rN-staging` on this dispatch (baked `VITE_*` differ per environment),
+each under its OWN allocated `rN`; `dgfy-api`/`dgfy-migration-runner` publish the
+environment-neutral `X.Y.Z-rN` under the shared api-group value (same digest promotes to PROD
+later -- never rebuilt environment-specific). Builders fail closed here when their app-group's
+revision is missing; an ad-hoc STAGING rebuild outside a tracked candidate has no revision to
+publish under and is refused.
 
 **PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
 source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
@@ -647,7 +697,9 @@ needing to change. Nothing below needs editing for this; it's automatic and safe
 `scripts/resolve-build-skip-plan.js`'s own header comment, ADR 0081's 2026-09-05 Amendment.
 
 **Default flow** (candidate manifest exists): resolve each app's own value via
-`resolveCandidateSourceShaByApp()` rather than reusing `$CANDIDATE_SOURCE_SHA` uniformly:
+`resolveCandidateSourceShaByApp()` rather than reusing `$CANDIDATE_SOURCE_SHA` uniformly.
+Per-app revisions come from the manifest's `release_revision.apps` map (populated at
+release-cut time, above) — one value per group, never a shared rN:
 
 ```bash
 eval "$(node -e "
@@ -658,6 +710,12 @@ console.log('CANDIDATE_SOURCE_SHA_API=' + byApp['dgfy-api']);
 console.log('CANDIDATE_SOURCE_SHA_IMS=' + byApp['dgfy-ims']);
 console.log('CANDIDATE_SOURCE_SHA_POS=' + byApp['dgfy-pos']);
 console.log('CANDIDATE_SOURCE_SHA_STOREFRONT=' + byApp['dgfy-storefront']);
+const apps = manifest.release_revision.apps;
+const rev = (a) => (apps[a] ? apps[a].revision : '');
+console.log('REV_API=' + rev('dgfy-api'));
+console.log('REV_IMS=' + rev('dgfy-ims'));
+console.log('REV_POS=' + rev('dgfy-pos'));
+console.log('REV_STOREFRONT=' + rev('dgfy-storefront'));
 ")"
 
 gh workflow run deploy-main.yml -f deploy=true \
@@ -665,8 +723,21 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA_IMS" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
+  -f release_revision_api="${REV_API:+r$REV_API}" \
+  -f release_revision_frontend_ims="${REV_IMS:+r$REV_IMS}" \
+  -f release_revision_frontend_pos="${REV_POS:+r$REV_POS}" \
+  -f release_revision_frontend_storefront="${REV_STOREFRONT:+r$REV_STOREFRONT}" \
   --ref main
 ```
+(An app the candidate never rebuilt is absent from the map — its input stays empty and its
+build is skipped by the build-skip plan, keeping its last-published artifact. `dgfy-api` and
+`dgfy-migration-runner` are always present together — the paired-unit rule.)
+
+`deploy-main.yml`'s `promote-aliases` job then creates each app's bare `X.Y.Z` floor alias from
+its `X.Y.Z-rN` revision-tag digest (refusing a different digest or revision) and gates `publish`
+-- backend PROD is alias-only (the revision tag already exists from the STAGING dispatch above
+and the build-skip plan skips rebuilding it), frontends build first with production `VITE_*`
+values and alias the fresh digest.
 
 **#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
 `$CANDIDATE_SOURCE_SHA` captured in that section (set equal to `$TARGET_SHA`, the compliance-scanned
@@ -678,7 +749,27 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
+  -f release_revision_api="$REV_API" \
+  -f release_revision_frontend_ims="$REV_IMS" \
+  -f release_revision_frontend_pos="$REV_POS" \
+  -f release_revision_frontend_storefront="$REV_STOREFRONT" \
   --ref main
+```
+
+On the #1007 path there is no manifest, so each app-group's revision is allocated here, at
+release-cut time — one `allocate-artifact-revision.js` call per touched app-group (a direct
+production hotfix increments the patch and uses the same paired revision/canonical tags
+without a staging predecessor — it still threads a revision here). Untouched groups stay
+empty (their builds skip, their artifacts stand):
+
+```bash
+# Per touched app (example: dgfy-pos at its bumped floor):
+REV_POS="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dgfy-pos \
+  --floor "$(node -p "require('./apps/dgfy-pos/package.json').version")" \
+  --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
+REV_POS="r$REV_POS"
+# ... repeat per touched app-group into REV_API / REV_IMS / REV_POS / REV_STOREFRONT,
+# leaving untouched groups empty.
 ```
 
 ```bash
@@ -691,9 +782,13 @@ gh run view <id> --json conclusion
 A `conclusion: failure` here has no rollback to fall back on (#495 open) — report and escalate,
 don't retry blindly.
 
-**Promotion parity gate (ADR 0081 Decision 8, #1588)** — after `deploy-main.yml` has actually built
-and pushed the PROD images (only then does the bare `X.Y.Z` tag exist to compare against), confirm
-every changed app's PROD image traces back to the candidate it should. Read-only (`docker buildx
+**Promotion parity gate (ADR 0081 Decision 8, #1588; revision-aware since #1977, Phase 342)** —
+after `deploy-main.yml` has actually built
+and pushed the PROD images (only then do the `X.Y.Z-rN` revision tags and bare `X.Y.Z` aliases
+exist to compare against), confirm
+every changed app's PROD image traces back to the candidate it should. Frontend STAGING
+`X.Y.Z-rN-staging` is compared to PROD `X.Y.Z-rN`; backend the staging `X.Y.Z-rN` digest is
+reused; each bare alias must reference its revision tag's digest. Read-only (`docker buildx
 imagetools inspect` only), unattended, same tier as `verify-deployment.yml`. Two invocation forms,
 matching whichever flow actually ran (RF-2, PR #1590 review — the CLI itself refuses to run without
 exactly one of these two flags):
@@ -704,8 +799,10 @@ node scripts/check-image-version-parity.js --manifest .tmp/release-candidates/$C
 
 # #1007-gated exception instead — no manifest exists; compares PROD's own label directly against
 # the develop SHA release/<label> was cut from (the same $CANDIDATE_SOURCE_SHA captured in that
-# section):
-node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA"
+# section), plus the paired bare alias when a revision was threaded (one --revision per
+# touched app is NOT supported here -- thread the single touched app's revision; a multi-app
+# #1007 release verifies each app in its own --source-sha run):
+node scripts/check-image-version-parity.js --source-sha "$CANDIDATE_SOURCE_SHA" --revision "$REV_POS"
 ```
 
 `PASS` includes both a real label match and a documented "no predecessor"/"no candidate identity"
@@ -715,12 +812,16 @@ published for this candidate does not actually trace back to where it should, or
 specifically) that STAGING's own label-stamping regressed — report and escalate either way, do not
 deploy past it or dismiss it as noise.
 
-**Per app now, not one shared value (ADR 0081 Decision 8 amendment, #1610).** `--manifest` mode
-resolves and compares each app against its OWN candidate source identity (the SHA of the last
-revision that actually rebuilt it — see the `apps_touched` note in "Candidate repair after the
-staging merge" above), not the manifest's single `current_staging_sha` — an app a repair never
-touched is expected to keep matching its earlier identity, not the candidate's latest one. Each
-printed `[PASS]`/`[FAIL]` line now also shows the `candidate_source_sha` it was actually compared
+**Per app now, not one shared value (ADR 0081 Decision 8 amendment, #1610; per-app revisions
+since #2055).** `--manifest` mode resolves and compares each app against its OWN candidate
+source identity (the SHA of the last revision that actually rebuilt it — see the `apps_touched`
+note in "Candidate repair after the staging merge" above) AND its OWN allocated revision from
+the manifest's per-app `release_revision.apps` map — not the manifest's single
+`current_staging_sha`, and never one shared `rN`. An app a repair never touched is expected to
+keep matching its earlier identity, not the candidate's latest one; an app absent from the
+`apps` map was never rebuilt by this candidate and reports `skip/app-not-in-candidate`
+(nothing new to verify — its last-published artifact stands). Each printed `[PASS]`/`[FAIL]`
+line now also shows the `candidate_source_sha` and `revision` it was actually compared
 against, so a genuine mismatch is legible without cross-referencing the manifest by hand.
 
 ## Publish the GitHub Release (#1278, ADR 0082)

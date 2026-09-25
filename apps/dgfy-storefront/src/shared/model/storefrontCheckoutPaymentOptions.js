@@ -55,9 +55,14 @@ export const isEnabledStorefrontCheckoutPaymentType = (paymentType, paymentCapab
 // cash off for the store. Fail-open: a capabilities object with no `cash` key (every existing
 // caller, every existing test, before this store advertises the key) resolves `!== false` to
 // `true`, so cash stays on for every store that hasn't opted out.
-export const buildStorefrontCheckoutPaymentOptions = (paymentCapabilities = null, { hideCash = false } = {}) => (
+export const buildStorefrontCheckoutPaymentOptions = (
+  paymentCapabilities = null,
+  { hideCash = false, cashLabel = null, allowCash = false } = {}
+) => (
   ALL_STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
-    .filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value, paymentCapabilities))
+    .filter((option) => option.value === 'cash'
+      ? allowCash || isEnabledStorefrontCheckoutPaymentType(option.value, paymentCapabilities)
+      : isEnabledStorefrontCheckoutPaymentType(option.value, paymentCapabilities))
     .filter((option) => !(hideCash && option.value === 'cash'))
     .map((option) => (
       option.value !== 'cash' && (
@@ -66,7 +71,9 @@ export const buildStorefrontCheckoutPaymentOptions = (paymentCapabilities = null
           : paymentCapabilities?.[option.value]?.environment === 'test'
         )
         ? { ...option, label: `${PAYMONGO_TEST_LABELS[option.value] || option.label} (PayMongo test)` }
-        : option
+        : option.value === 'cash' && cashLabel
+          ? { ...option, label: cashLabel }
+          : option
     ))
 );
 

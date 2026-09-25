@@ -27,11 +27,11 @@ const formatDateTime = (value) => {
 };
 
 const normalizeTerminalId = (value) => String(value || '').trim().toUpperCase();
-const PARKED_SALE_AUTO_CANCEL_REASON = 'Cancelled from Parked Sales';
 
 const statusClassName = {
     parked: 'border-amber-200 bg-amber-50 text-amber-800',
-    claimed: 'border-blue-200 bg-blue-50 text-blue-800'
+    claimed: 'border-blue-200 bg-blue-50 text-blue-800',
+    cancel_pending: 'border-violet-200 bg-violet-50 text-violet-800'
 };
 
 export default function POSParkedSalesDialog({
@@ -54,12 +54,13 @@ export default function POSParkedSalesDialog({
     const [claimAction, setClaimAction] = useState(null);
     const [cancelLoadingId, setCancelLoadingId] = useState(null);
     const [cancelTarget, setCancelTarget] = useState(null);
+    const [cancelReason, setCancelReason] = useState('');
     const [error, setError] = useState('');
     const [actionError, setActionError] = useState('');
 
     const normalizedTerminalId = normalizeTerminalId(terminalId);
     const activeRows = useMemo(
-        () => (Array.isArray(rows) ? rows : []).filter((row) => ['parked', 'claimed'].includes(String(row?.status || '').toLowerCase())),
+        () => (Array.isArray(rows) ? rows : []).filter((row) => ['parked', 'claimed', 'cancel_pending'].includes(String(row?.status || '').toLowerCase())),
         [rows]
     );
 
@@ -137,6 +138,10 @@ export default function POSParkedSalesDialog({
             setActionError('POS transact permission is required to cancel a parked sale.');
             return;
         }
+        if (cancelReason.trim().length < 3) {
+            setActionError('Enter a cancellation reason (at least 3 characters).');
+            return;
+        }
         setCancelLoadingId(parkedSaleId);
         setActionError('');
         try {
@@ -144,10 +149,11 @@ export default function POSParkedSalesDialog({
                 shift_id: Number(activeShiftId),
                 terminal_id: normalizedTerminalId,
                 location_id: selectedLocationId ? Number(selectedLocationId) : undefined,
-                reason: PARKED_SALE_AUTO_CANCEL_REASON
+                reason: cancelReason.trim()
             });
-            await onCancelled(cancelled);
+            await onCancelled(cancelled?.parked_sale || cancelled);
             setCancelTarget(null);
+            setCancelReason('');
             await loadParkedSales();
         } catch (requestError) {
             setActionError(requestError?.response?.data?.message || requestError?.message || 'Unable to cancel this parked sale.');
@@ -160,6 +166,7 @@ export default function POSParkedSalesDialog({
         if (claimLoadingId !== null || cancelLoadingId !== null) return;
         setActionError('');
         setCancelTarget(null);
+        setCancelReason('');
         onOpenChange(false);
     };
 
@@ -215,6 +222,7 @@ export default function POSParkedSalesDialog({
                             {activeRows.map((row) => {
                                 const parkedSaleId = Number(row?.pos_parked_sale_id);
                                 const status = String(row?.status || 'parked').toLowerCase();
+                                const cancellationPending = status === 'cancel_pending';
                                 const claimedByAnotherUser = Boolean(row?.claimed_by)
                                     && Number(row.claimed_by) !== Number(currentUserId);
                                 const claimedElsewhere = status === 'claimed'
@@ -245,10 +253,10 @@ export default function POSParkedSalesDialog({
                                                 <Button
                                                     type="button"
                                                     onClick={() => handleClaim(row, 'pay')}
-                                                    disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || !normalizedTerminalId}
+                                                    disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || cancellationPending || !normalizedTerminalId}
                                                     className="rounded-lg bg-[#1A4E8D] px-4 text-xs font-extrabold text-white hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-pay-${parkedSaleId}`}
-                                                    title={claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined}
+                                                    title={cancellationPending ? 'This sale is awaiting Back Office cancellation approval.' : (claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined)}
                                                 >
                                                     {loadingThisRow && claimAction === 'pay' ? 'Opening...' : claimedElsewhere ? 'In use' : 'Pay'}
                                                 </Button>
@@ -256,10 +264,10 @@ export default function POSParkedSalesDialog({
                                                     type="button"
                                                     variant="outline"
                                                     onClick={() => handleClaim(row, 'resume')}
-                                                    disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || !normalizedTerminalId}
+                                                    disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || cancellationPending || !normalizedTerminalId}
                                                     className="rounded-lg border-blue-200 px-4 text-xs font-extrabold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-resume-${parkedSaleId}`}
-                                                    title={claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined}
+                                                    title={cancellationPending ? 'This sale is awaiting Back Office cancellation approval.' : (claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined)}
                                                 >
                                                     {loadingThisRow && claimAction === 'resume' ? 'Resuming...' : 'Resume'}
                                                 </Button>
@@ -268,29 +276,43 @@ export default function POSParkedSalesDialog({
                                                     variant="outline"
                                                     onClick={() => {
                                                         setCancelTarget(row);
+                                                        setCancelReason('');
                                                         setActionError('');
                                                     }}
-                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || cancellationLocked || !normalizedTerminalId}
+                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || cancellationLocked || status === 'cancel_pending' || !normalizedTerminalId}
                                                     className="rounded-lg border-rose-200 px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}
                                                     title={cancellationLocked ? 'Only the current cashier can cancel this parked sale.' : undefined}
                                                 >
-                                                    <Ban className="mr-1.5 h-3.5 w-3.5" />
-                                                    Cancel
+                                                    {status === 'cancel_pending' ? null : <Ban className="mr-1.5 h-3.5 w-3.5" />}
+                                                    {status === 'cancel_pending' ? 'Awaiting approval' : 'Cancel'}
                                                 </Button>
                                             </div>
                                         </div>
+                                        {status === 'cancel_pending' && <p className="mt-3 text-xs font-semibold text-violet-800">Cancellation is awaiting Back Office approval. Stock remains deducted until approved.</p>}
                                         {cancelTarget && Number(cancelTarget?.pos_parked_sale_id) === parkedSaleId && (
                                             <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
-                                                <p className="text-xs font-extrabold text-rose-900">Cancel this parked sale?</p>
+                                                <p className="text-xs font-extrabold text-rose-900">Request cancellation approval</p>
+                                                <p className="mt-1 text-xs text-rose-800">Stock was deducted when this sale was parked. It will be restored only if Back Office approves this request.</p>
+                                                <label className="mt-2 block text-xs font-semibold text-rose-900" htmlFor={`parked-cancel-reason-${parkedSaleId}`}>Reason</label>
+                                                <textarea
+                                                    id={`parked-cancel-reason-${parkedSaleId}`}
+                                                    value={cancelReason}
+                                                    onChange={(event) => setCancelReason(event.target.value)}
+                                                    maxLength={255}
+                                                    rows={2}
+                                                    placeholder="Why should this parked sale be cancelled?"
+                                                    disabled={cancelLoadingId !== null}
+                                                    className="mt-1 w-full rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-rose-400"
+                                                />
                                                 <div className="mt-2 flex justify-end">
                                                     <Button
                                                         type="button"
                                                         onClick={() => handleCancel(row)}
-                                                        disabled={cancelLoadingId !== null}
+                                                        disabled={cancelLoadingId !== null || cancelReason.trim().length < 3}
                                                         className="h-9 shrink-0 bg-rose-700 px-3 text-xs font-extrabold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
                                                     >
-                                                        {cancelLoadingId === parkedSaleId ? 'Cancelling...' : 'Confirm cancel'}
+                                                        {cancelLoadingId === parkedSaleId ? 'Submitting...' : 'Request approval'}
                                                     </Button>
                                                 </div>
                                             </div>

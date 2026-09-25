@@ -270,7 +270,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         defaultValue: 'cash'
     },
     payment_timing: {
-        type: DataTypes.ENUM('upfront', 'on_pickup', 'on_delivery'),
+        type: DataTypes.ENUM('upfront', 'on_pickup', 'on_delivery', 'on_dine_in'),
         allowNull: false,
         defaultValue: 'upfront'
     },

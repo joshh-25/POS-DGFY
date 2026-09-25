@@ -151,6 +151,43 @@ test('decideImmutability: tag exists, different revision -> refuse (the ADR 0081
   assert.equal(verdict.existingRevision, 'sha-old');
 });
 
+// Issue #2055 (Phase 346) -- the guard is tag-shape-agnostic, but revisioned DEV tags are
+// its new hot path (allocator race retries converge here). Pin the three outcomes on the
+// exact shapes the DEV dispatch publishes: same-source retry is an idempotent push, a
+// different source refuses, and a legacy bare-dev tag with an unreadable label refuses
+// rather than risking a silent overwrite of history.
+test('decideImmutability (#2055): same-source retry of a revisioned DEV tag -> push, not a new allocation', () => {
+  const verdict = decideImmutability({
+    inspectStatus: 0,
+    inspectStdout: JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.revision': 'sha-current' } } } }),
+    inspectStderr: '',
+    currentRevision: 'sha-current',
+  });
+  assert.equal(verdict.action, 'push');
+  assert.match(verdict.reason, /idempotent re-dispatch/);
+});
+
+test('decideImmutability (#2055): different source on a revisioned DEV tag -> refuse (allocator race loser)', () => {
+  const verdict = decideImmutability({
+    inspectStatus: 0,
+    inspectStdout: JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.revision': 'sha-winner' } } } }),
+    inspectStderr: '',
+    currentRevision: 'sha-loser',
+  });
+  assert.equal(verdict.action, 'refuse');
+  assert.match(verdict.reason, /already published for revision sha-winner/);
+});
+
+test('decideImmutability (#2055): legacy bare-dev tag with no readable revision -> refuse, never relabeled', () => {
+  const verdict = decideImmutability({
+    inspectStatus: 0,
+    inspectStdout: JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.source': 'x' } } } }),
+    inspectStderr: '',
+    currentRevision: 'sha-current',
+  });
+  assert.equal(verdict.action, 'refuse');
+});
+
 test('decideImmutability: tag exists but revision label unreadable -> refuse, not push', () => {
   const verdict = decideImmutability({
     inspectStatus: 0,

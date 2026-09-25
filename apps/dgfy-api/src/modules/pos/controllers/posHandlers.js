@@ -57,6 +57,7 @@ import {
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    collectCashDineInOrderUseCase,
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
@@ -84,6 +85,7 @@ import {
     claimPosParkedSaleUseCase,
     reparkPosParkedSaleUseCase,
     cancelPosParkedSaleUseCase,
+    decidePosExceptionApprovalUseCase,
     createPosPaymentSessionUseCase,
     getPosPaymentSessionUseCase,
     getActivePosPaymentSessionUseCase,
@@ -1042,6 +1044,29 @@ export const reparkParkedSale = async (req, res, next) => {
     }
 };
 
+export const decidePosExceptionApproval = async (req, res, next) => {
+    try {
+        const result = await decidePosExceptionApprovalUseCase({
+            approvalRequestId: req.validatedParams?.id || req.params.id,
+            decision: req.validatedParams?.decision || req.params.decision,
+            note: req.validatedData?.note || req.body?.note,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS approval decision recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createPaymentSession = async (req, res, next) => {
     try {
         const result = await createPosPaymentSessionUseCase({
@@ -1287,7 +1312,9 @@ export const voidTransaction = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
-                message: 'POS transaction voided',
+                message: result.data?.pending
+                    ? 'POS void request submitted for Back Office approval'
+                    : 'POS transaction voided',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -2132,6 +2159,32 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectCashDineInOrder = async (req, res, next) => {
+    try {
+        const result = await collectCashDineInOrderUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash payment collected for dine-in order.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

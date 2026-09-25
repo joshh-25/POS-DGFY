@@ -4062,8 +4062,13 @@ Route mapping note:
 - Response totals now include:
   - `service_fee_amount`
   - `service_fee_label` (`DGFY convenience fee`, deterministic even when amount is `0`)
+- Request body accepts `payment_type` (`cash`, `gcash`, `maya`, `card`, `bank_transfer`, `qrph`,
+  `grab_pay`, or `shopeepay`), defaulting to `cash`, so quote pricing uses the selected payment
+  rail.
 - Quote formula:
-  - `service_fee_amount = round4(subtotal_amount * 0.01)`
+  - `service_fee_amount = 0` for a Dine-in quote using `cash` when the selected location has
+    `allow_dine_in_pay_at_store=true`.
+  - Otherwise, `service_fee_amount = round4(subtotal_amount * 0.01)`.
   - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
 
 **Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
@@ -6517,7 +6522,9 @@ Update tenant status. The legacy `plan` field remains accepted for transport com
 Permanently delete a tenant and their isolated database. **IRREVERSIBLE**.
 
 **Request**
-No body required.
+No body required. The optional `forceDeleteRegistrationHistory=true` query parameter allows an
+admin to delete the tenant's company-registration application and its workflow history when no
+platform invoices reference that application.
 
 **Response (200)**
 ```json
@@ -6526,6 +6533,21 @@ No body required.
   "message": "Tenant and database permanently deleted"
 }
 ```
+
+**Response (409)**
+```json
+{
+  "success": false,
+  "message": "Tenant cannot be deleted because registration application <id> ..."
+}
+```
+
+The endpoint returns `409 Conflict` when the tenant has a company-registration application and
+the force query parameter is absent or not `true`. The response identifies the application and
+its review status and explains how to opt in to deleting its registration history. If any
+platform invoice references the application, deletion is always blocked with `409 Conflict`,
+including when the force parameter is `true`; platform invoices and their financial/audit history
+are never cascaded.
 
 **Side Effects**:
 - Removes the landlord `storefront_discovery_index` row before database deletion. If discovery cleanup fails, the request returns `500` and does not drop the tenant database. If database deletion fails after index cleanup, the backend best-effort restores the discovery row before returning the failure.

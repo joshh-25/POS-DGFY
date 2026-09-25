@@ -498,7 +498,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain('bare={isSettingsView}');
+    expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
   });
@@ -509,11 +509,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode(settingsTargetViewMode)}");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Yearly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Sales Comparison');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('POS Profit/Loss');
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Comparison'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Top Selling Items'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Profit/Loss'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -583,11 +584,15 @@ describe('POS terminal view-mode contracts', () => {
   it('adds keyboard and semantic accessibility affordances in POS history table', () => {
     expect(posCheckoutTerminalContent).toContain('POSTransactionHistoryPanel');
     expect(posHistoryPanelContent).toContain('aria-label="POS transaction history table"');
-    expect(posHistoryPanelContent).toContain('All Sources');
+    expect(posHistoryPanelContent).toContain("orderSource: [");
+    expect(posHistoryPanelContent).toContain("{ value: 'all', label: 'All' }");
+    expect(posHistoryPanelContent).toContain('Transaction sources');
+    expect(posHistoryPanelContent).toContain('testId: `pos-history-source-tab-${sourceTab.value}`');
+    expect(posHistoryPanelContent).not.toContain('testId="pos-history-filter-source"');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
     expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment and transaction status plus separate receipt actions</caption>');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment and transaction status; mobile rows open details and actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
   });
 
@@ -623,8 +628,8 @@ describe('POS terminal view-mode contracts', () => {
     // Phase 229 (#1289), §2.7: the empty-queue lifecycle copy moved into
     // IncomingQueueOrderList.jsx's pure extraction.
     expect(incomingQueueOrderListContent).toContain('Completed paid sales move to Sales History.');
-    expect(terminalOperationsPanelsContent).toContain('Previous order history page');
-    expect(terminalOperationsPanelsContent).toContain('Next order history page');
+    expect(terminalOperationsPanelsContent).toContain('<GlobalPagination');
+    expect(terminalOperationsPanelsContent).toContain('testId="online-order-history-pagination"');
     expect(terminalOperationsPanelsContent).toContain("if (activeView !== 'history') return;");
     expect(terminalOperationsPanelsContent).not.toContain("if (activeView !== 'history' || orderHistoryState?.accessState !== 'idle') return;");
     expect(posServiceContent).toContain("api.get('/pos/order-history'");
@@ -713,15 +718,17 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 231 (#1290): the tab view's grid maps over visibleIncomingOrders (the run-filtered
-    // view of sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders
-    // itself is still the sort's own output, feeding the filter rather than the render.
-    expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');
-    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
-    // Phase 232 (#1289), §2.7: the split view's own render of the (also now run-filtered) list --
-    // including its own empty-state branch -- lives in IncomingQueueOrderList.jsx's pure
-    // extraction; see terminalOperationsPanelsContent above for the tab view's own render.
-    expect(terminalOperationsPanelsContent).toContain('orders={visibleIncomingOrders}');
+    // The active queue uses the run-filtered list; the dine-in schedule view substitutes its
+    // separately sorted schedule list before either table or card rendering.
+    expect(terminalOperationsPanelsContent).toContain('const displayedIncomingOrders = isDineInScheduleView');
+    expect(terminalOperationsPanelsContent).toContain(': visibleIncomingOrders;');
+    expect(terminalOperationsPanelsContent).toContain('const displayedQueueIsEmpty = isDineInScheduleView');
+    expect(terminalOperationsPanelsContent).toContain(': incomingOrders.length === 0;');
+    expect(terminalOperationsPanelsContent).toContain('displayedQueueIsEmpty ? (');
+    expect(terminalOperationsPanelsContent).toContain('{displayedIncomingOrders.map((order) => {');
+    // The split view uses its own unassigned candidate list; regular table/card views share the
+    // selected active-queue or scheduled list above.
+    expect(terminalOperationsPanelsContent).toContain('orders={displayedIncomingOrders}');
     expect(incomingQueueOrderListContent).toContain('orders.length === 0');
   });
 
@@ -738,7 +745,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutWorkflowContent).toContain('enqueueTerminalOperationIntent');
     expect(posCheckoutWorkflowContent).toContain('TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED');
     expect(terminalPageContent).toContain(".filter((candidate) => String(candidate?.operation || '').trim() !== 'checkout')");
-    expect(posHistoryPanelContent).toContain('Sync All Pending Records');
+    expect(posHistoryPanelContent).toContain('data-testid="pos-history-sync-button"');
+    expect(posHistoryPanelContent).toContain('pendingSyncLabel');
     expect(posHistoryPanelContent).toContain('universalPendingSyncCount');
     expect(terminalPageContent).toContain('consumeManualPosSyncAttempt');
     expect(terminalPageContent).not.toContain('requestBackgroundQueueReplay');
@@ -827,8 +835,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).not.toContain("../utils/skupervisorHandoff.js");
     expect(posHistoryPanelContent).not.toContain('data-testid="pos-history-open-sales-report"');
     expect(posHistoryPanelContent).not.toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<span>View</span>');
-    expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
+    expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
+    expect(posHistoryPanelContent).toContain('title="View receipt"');
+    expect(posHistoryPanelContent).not.toContain('<span>View</span>');
+    expect(posHistoryPanelContent).not.toContain('<span>Receipt</span>');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-view-receipt"');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print"');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-print-order"');

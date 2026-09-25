@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-09
-review_by: 2027-03-04
+last_reviewed: 2026-09-24
+review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
 ---
@@ -23,9 +23,8 @@ Accepted (2026-09-04)
 ## Context
 
 Epic #1548 asks for per-app SemVer on the five containers (`dgfy-api`, `dgfy-migration-runner`,
-`dgfy-ims`, `dgfy-pos`, `dgfy-storefront`), enforced at PR time (patch by default on `develop`, at
-least a minor bump per changed app on promotion to `staging`, patch-only on staging repair and main
-hotfix), stamped on published images, and observable at runtime. No ADR governs image *tags* today
+`dgfy-ims`, `dgfy-pos`, `dgfy-storefront`), enforced at PR time (unchanged floors on `develop` and staging repair, at least a minor floor
+bump per changed app on promotion to `staging`, patch-only on direct `main` hotfix), stamped on published images, and observable at runtime. No ADR governs image *tags* today
 — only names ([ADR 0072](0072-ghcr-container-image-naming.md)). Per
 `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s decision procedure, a new cross-boundary decision
 with no ADR covering it means: create an ADR. This is that ADR, filed as #1559.
@@ -574,6 +573,136 @@ cutting the release branch.
 candidate identity and per-app provenance semantics are unchanged. No production deploy is
 authorized from a manifest that fails this validation.
 
+### 2026-09-19 — Preserve the release floor and separate staging revisions from production patches (#1977, Phase 342)
+
+Decision 1 applied `-dev`/`-staging`/bare uniformly to all five images, and Decision 8 compared
+`X.Y.Z-staging` with bare `X.Y.Z`. That pairing conflates two things the release process needs
+apart: the per-app production floor (the `X.Y.Z` the version-bump rules in Decision 6 reason
+about) and the identity of the exact artifact that reached production. A frontend STAGING image
+and its PROD image are different digests by construction (baked `VITE_*` values); stamping both
+`1.13.0` pretends otherwise. Backend images bake nothing environment-specific, so rebuilding
+them per environment manufactures a distinction their content does not have.
+
+**Resolution: `X.Y.Z` remains the per-app production floor; candidate revisions identify the
+exact artifact.** `rN` is the candidate-wide `release_revision.revision`
+(`scripts/check-promotion-candidate.js`'s manifest — one greater than the latest staging repair
+revision), not a Docker build-attempt count. The tag matrix:
+
+| Artifact | DEV (unchanged) | STAGING candidate | PROD |
+| --- | --- | --- | --- |
+| Frontend apps | `X.Y.Z-dev` | `X.Y.Z-rN-staging` | `X.Y.Z-rN` plus immutable alias `X.Y.Z` |
+| API and migration runner | `X.Y.Z-dev` | `X.Y.Z-rN` | Reuse the staging `X.Y.Z-rN` digest plus immutable alias `X.Y.Z` |
+
+Docker tags forbid `+`, so the separator is `-rN`, never `+` build metadata. The production
+alias and revision tag reference the same digest. Existing published tags are historical and are
+never rewritten. The immutable revision tag is the artifact identity used for `APP_VERSION` and
+`org.opencontainers.image.version` (Decision 4's "runtime version equals the published image
+tag" now means the revision tag, never the bare alias); `APP_RELEASE_FLOOR`/`APP_RELEASE_REVISION`
+build-args, `org.dgfy-platform.release-floor`/`org.dgfy-platform.release-revision` OCI labels,
+`/health` fields, and frontend `version.json`/build-stamp fields carry the floor and revision
+explicitly so runtime consumers never infer the floor from an alias. Direct production hotfixes
+increment the patch and use the same paired revision/canonical tags without a staging parity
+predecessor. Tag resolution is centralized in `scripts/resolve-release-tags.js` (shared by the
+workflows, the parity gate, and the build-skip plan); backend PROD digest reuse and alias
+creation go through `scripts/promote-image-alias.js`, which refuses an existing target with a
+different digest or revision. Per-service compose `IMAGE_TAG` changes stay #495 scope; image
+naming (ADR 0072), package-version bump ownership (Decision 6), and production deployment
+approval are unchanged.
+
+`[default]` tier — Decisions 1, 3, 4, and 8 are amended in place via ADR 0039's dated-Amendment
+path (`status: amended`, no superseding ADR); Decision 7 (`[binding]`) is untouched — the alias
+promotion's refuse-on-mismatch is a second, narrower guard alongside it, not a restatement of it.
+Full detail: issue #1977, `scripts/resolve-release-tags.js`, `scripts/promote-image-alias.js`,
+`scripts/check-image-version-parity.js`, `scripts/resolve-build-skip-plan.js`,
+`.github/workflows/deploy-main.yml`'s `promote-aliases` job.
+
+### 2026-09-23 — Per-app revision history from DEV through PROD; the candidate-wide rN is retired (#2055, Phase 346)
+
+The 2026-09-19 amendment above left DEV at bare `X.Y.Z-dev` with no revision, while STAGING/PROD
+carried a candidate-wide `rN` assigned only at release-cut time. Two consequences collided in
+production: a DEV rebuild at an already-published floor tripped Decision 7's guard (Build &
+Deploy Platform run 35841999065 — four images refused to overwrite their `X.Y.Z-dev` tags
+while the run had already published mutable channel aliases), and no record anywhere linked a
+DEV artifact to the candidate later cut from it. The example lifecycle the issue offered
+(`X.Y.Z-r14-dev` → same `rN` through STAGING → higher `rN` for repairs) does not work as-is:
+`release_revision.revision` was a single integer assigned when a candidate was cut, but DEV
+builds happen per-app and continuously on `develop`, before any candidate exists — and a
+candidate can bundle repairs touching several apps under one shared value with no coherent
+single "driving" app. The resolution below was recorded on the issue first
+(#2055, decided 2026-09-23) and deliberately reverses Phase 342's candidate-wide-uniform-`rN`
+design in favor of a per-app map — a larger change than the issue's own Notes implied, chosen
+because no smaller change is structurally coherent once DEV (inherently per-app, async) is
+folded into the same lineage. The rejected alternatives (a global platform-wide counter —
+gappy, meaningless-per-app numbering; keeping the counter candidate-wide — structurally
+incompatible with pre-candidate DEV builds) are recorded on the issue, not repeated here.
+
+**Resolution — per-app revision counter, spanning DEV → STAGING → PROD:**
+
+1. **DEV eligibility.** `develop` dispatches publish promotion-eligible DEV artifacts;
+   feature-branch dispatches publish ad-hoc DEV artifacts under a distinct,
+   non-promotion-eligible shape (`X.Y.Z-pr<PR#>-dev`, branch-slug fallback with no PR
+   context) that a candidate can never select. Ad-hoc dispatches publish the sha tag only,
+   never the moving `develop` tag, so a feature-branch build can never redirect the shared
+   DEV target at unreviewed code. Already-published bare `X.Y.Z-dev` tags are historical:
+   never retroactively revisioned, never overwritten, never candidate-selectable.
+2. **Allocation and source of truth.** At publish time (an eligible DEV build on `develop`,
+   or a staging repair touching app X): query GHCR for the highest existing
+   `<app>:X.Y.Z-r<N>*` tag across all channels for that app+floor (`docker buildx
+   imagetools inspect`, the same primitive `scripts/check-tag-immutability.js` already
+   uses — `scripts/allocate-artifact-revision.js`) → allocate `N = max + 1` → push. GHCR
+   is the durable source of truth; no counter file or ledger. A same-source retry reuses
+   its own `N` (Decision 7's existing idempotent no-op, not a new allocation). A race
+   landing two builds on the same `N` gets the loser's push refused by Decision 7's
+   unchanged guard; each dispatch is one bounded attempt and a re-dispatch re-queries
+   from the new max. Scoping to `<app>:<floor>-r*` resets `N` to 1 on a floor bump with
+   no separate reset logic. A revision is an artifact-lineage identity, never a Docker
+   build-attempt count.
+3. **Tag shapes.** DEV-eligible (`develop`): `X.Y.Z-rN-dev`. STAGING/PROD tag *format* is
+   unchanged (frontend `X.Y.Z-rN-staging` / `X.Y.Z-rN` + alias `X.Y.Z`; backend
+   environment-neutral `X.Y.Z-rN` + alias) — only where `N` comes from changes, from
+   candidate-wide `repair_count+1` to the per-app GHCR-sourced sequence above. Runtime
+   version (`APP_VERSION` / `org.opencontainers.image.version`) is the revision tag;
+   floor and revision travel explicitly (`APP_RELEASE_FLOOR`/`APP_RELEASE_REVISION`,
+   `org.dgfy-platform.release-floor`/`release-revision`, `/health` fields, frontend
+   `version.json`/build-stamp) — revisioned DEV builds stamp theirs like any candidate
+   build; ad-hoc DEV builds omit the revision exactly as before.
+4. **Candidate manifest (`sku-release-candidate/v2`).** A candidate selects
+   already-published DEV artifacts per app (by SHA/digest) as its starting point;
+   `revisions[0]` (`initial`) records them (`dev_artifacts: [{ app, revision, sha,
+   digest }]`). The old sequential `revision` counting is renamed to a cosmetic
+   `repair_seq` ordinal — branch-naming/ordering only (`fix/staging/<candidate_id>-<seq>`,
+   bare `-<seq>` with no `r` prefix, so it can never be mistaken for an artifact `rN`),
+   no longer doubling as an artifact-identity claim. `release_revision` becomes the
+   per-app map `{ "<app>": { revision, source_sha, digest, origin: "dev"|"staging_repair"
+   } }`, populated at release-cut time from each touched app's latest allocated revision
+   (read off GHCR, not derived in-manifest); apps the candidate never rebuilds are absent
+   and keep their last-published artifact unchanged. The release branch itself is the
+   plain `release/<candidate_id>` (one cut per candidate; a failed pre-main cut is
+   deleted and re-cut under the same name, recorded by the updated `source_staging_sha`).
+   `v1` manifests still validate (frozen legacy path) but are never written anymore.
+5. **Parity and promotion mechanics.** Decision 8's parity gate compares per-app: each app
+   against its OWN allocated `rN` from the v2 map (an app absent from the map reports
+   skip — nothing new to verify). Dispatch threading is per-app-group throughout
+   (`release_revision_api` covering both backends, one per frontend — the same grouping
+   `candidate_source_sha_*` already established); the build-skip plan checks each app's
+   own revision-aware tag. Partial publication stays per-app atomic: each app's version
+   tag lands only through Decision 7's unchanged guard, so a failed dispatch can never
+   leave aliases claiming an unqualified set as a successful deployment.
+6. **Partial-failure/legacy handling.** Unchanged tags are never relabeled; legacy
+   `X.Y.Z-dev` is excluded from allocation (it never matches the `-rN` pattern) and from
+   selection. Frontend environment-specific digests still cannot reuse the DEV digest in
+   STAGING/PROD (source lineage is carried, content is rebuilt); backend images keep
+   their environment-neutral digest-reuse semantics.
+
+`[default]` tier — Decisions 1, 3, 4, and 8 are amended in place via ADR 0039's
+dated-Amendment path (`status: amended`, already set); Decision 7 (`[binding]`) is
+untouched. Full detail: issue #2055, `.tmp/plan-2055.md` (planner handoff),
+`scripts/resolve-release-tags.js`, `scripts/allocate-artifact-revision.js`,
+`scripts/check-promotion-candidate.js` (v2), `scripts/check-image-version-parity.js`,
+`scripts/resolve-build-skip-plan.js`, `.github/workflows/deploy.yml` /
+`deployment-orchestrator.yml` / `deploy-main.yml` (+ the three builders),
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, `.agents/skills/promoter/references/promotion-runbook.md`.
+
 ## Alternatives considered
 
 - **Build each frontend once and inject environment config at container start**, so one digest
@@ -632,3 +761,30 @@ authorized from a manifest that fails this validation.
   this ADR's scheme deliberately does not fold `packages/pos-receipt` into.
 - Sieitzz/dgfy-mobile#78, #79 — the sibling repo's versioning policy cited for pattern reuse in
   "Alternatives considered," not adopted wholesale.
+
+
+### 2026-09-24 — Versionless shared DEV and promotion-owned floors (#2071, Phase 347)
+
+This amendment supersedes the 2026-09-23 DEV artifact-selection path from Phase 346. DEV is an
+experimental shared target that may be updated manually from `develop` or any non-main branch;
+all such builds publish the moving `dev` alias and a SHA tag. DEV has no SemVer floor, artifact
+revision, candidate eligibility, or promotion role. CI always rebuilds selected DEV apps so a
+previously published alias cannot cause a false skip. The DEV compose deployment explicitly uses
+`IMAGE_TAG=dev`.
+
+Promotion is frozen to a `develop` SHA and builds changed apps directly on STAGING. It does not
+dispatch DEV, inspect DEV tags, select DEV digests, or depend on DEV availability. At promotion
+start, changed apps receive their next minor package floor; ordinary `develop` changes keep their
+floors unchanged. STAGING repairs also keep the floor unchanged and allocate the next immutable
+artifact revision (`rN`) without a patch bump. Only a direct `main` hotfix advances an app's patch
+floor. Promotion revisions are allocated from STAGING/PROD tags only; DEV tags do not participate.
+Frontend STAGING tags retain `X.Y.Z-rN-staging`; backend and PROD revision tags retain their
+existing neutral `X.Y.Z-rN` forms.
+
+New candidate manifests use `sku-release-candidate/v3`: the initial revision records
+`apps_touched` and the frozen develop SHA, without `dev_artifacts`; per-app release lineage uses
+origin `promotion` or `staging_repair`. The validator continues accepting v1/v2 manifests for
+already-created candidates. ADR 0081 Decisions 1, 3, 4, 6, and 8 are amended in place at the
+`[default]` tier. Decision 7's `[binding]` immutability rule is unchanged.
+
+PR: (this PR). Closes #2071. Refs #2055.

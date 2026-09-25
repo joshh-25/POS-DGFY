@@ -786,7 +786,7 @@ const applyCatalogOverrides = async (items, options = {}) => {
                     : {})
             };
         })
-        .filter((item) => item.pos_visible !== false);
+        .filter((item) => options.includeUnavailable === true || item.pos_visible !== false);
 };
 
 // ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
@@ -1418,12 +1418,12 @@ const buildReportInclude = () => ([
     }
 ]);
 
-// spanDays uses the same toDateStart(dateTo)+1day exclusive boundary as
-// resolveReportDateRange above (not toDateEnd) so a single-day range yields
-// spanDays=1, not 2.
+// Use business-date midnights so the previous range is adjacent to the
+// selected range; a single-day range yields spanDays=1, not 2.
 const buildComparisonRange = ({ dateFrom, dateTo }) => {
-    const currentStart = toDateStart(dateFrom);
-    const currentEndExclusive = new Date(toDateStart(dateTo).getTime() + (24 * 60 * 60 * 1000));
+    const currentStart = new Date(`${normalizeBusinessDateValue(dateFrom)}T00:00:00.000Z`);
+    const currentEndExclusive = new Date(`${normalizeBusinessDateValue(dateTo)}T00:00:00.000Z`);
+    currentEndExclusive.setUTCDate(currentEndExclusive.getUTCDate() + 1);
     const spanDays = Math.max(1, Math.round((currentEndExclusive.getTime() - currentStart.getTime()) / (24 * 60 * 60 * 1000)));
     const previousEnd = addDays(currentStart, -1);
     const previousStart = addDays(previousEnd, -(spanDays - 1));
@@ -1573,6 +1573,80 @@ const buildTimeSeries = (rows = [], granularity = 'daily') => {
                 ...summary
             };
         });
+};
+
+const buildRangePeriodKeys = (range = {}, granularity = 'daily') => {
+    const dateFrom = normalizeBusinessDateValue(range.dateFrom);
+    const dateTo = normalizeBusinessDateValue(range.dateTo);
+    if (!dateFrom || !dateTo || dateFrom > dateTo) return [];
+
+    const normalizedGranularity = ['weekly', 'monthly', 'yearly'].includes(granularity) ? granularity : 'daily';
+    const rangeStart = new Date(`${dateFrom}T00:00:00.000Z`);
+    const rangeEnd = new Date(`${dateTo}T00:00:00.000Z`);
+    let cursor = normalizedGranularity === 'weekly'
+        ? startOfWeekMondayUtc(rangeStart)
+        : normalizedGranularity === 'monthly'
+            ? new Date(Date.UTC(rangeStart.getUTCFullYear(), rangeStart.getUTCMonth(), 1, 0, 0, 0, 0))
+            : normalizedGranularity === 'yearly'
+                ? new Date(Date.UTC(rangeStart.getUTCFullYear(), 0, 1, 0, 0, 0, 0))
+                : rangeStart;
+    const periods = [];
+
+    for (let index = 0; cursor <= rangeEnd && index < 4000; index += 1) {
+        const period = normalizedGranularity === 'yearly'
+            ? String(cursor.getUTCFullYear())
+            : normalizedGranularity === 'monthly'
+                ? `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`
+                : normalizedGranularity === 'weekly'
+                    ? cursor.toISOString().slice(0, 10)
+                    : cursor.toISOString().slice(0, 10);
+        if (periods[periods.length - 1] !== period) periods.push(period);
+        cursor = normalizedGranularity === 'yearly'
+            ? addMonthsUtc(cursor, 12)
+            : normalizedGranularity === 'monthly'
+                ? addMonthsUtc(cursor, 1)
+                : addDays(cursor, normalizedGranularity === 'weekly' ? 7 : 1);
+    }
+
+    return periods;
+};
+
+const buildRangeTimeSeries = (rows = [], range = {}, granularity = 'daily') => {
+    const keySelector = granularity === 'yearly'
+        ? (row) => toYearKey(row.created_at)
+        : granularity === 'monthly'
+            ? (row) => toMonthKey(row.created_at)
+            : granularity === 'weekly'
+                ? (row) => toWeekKey(row.created_at)
+                : (row) => toManilaDateKey(row.created_at);
+    const groups = groupRowsBy(rows, keySelector);
+    return buildRangePeriodKeys(range, granularity).map((period) => ({
+        period,
+        label: period,
+        ...serializeReportSummary(groups.get(period) || [])
+    }));
+};
+
+const buildFlexibleComparisonTrend = (currentRows = [], previousRows = [], currentRange = {}, previousRange = {}, granularity = 'daily') => {
+    const currentSeries = buildRangeTimeSeries(currentRows, currentRange, granularity);
+    const previousSeries = buildRangeTimeSeries(previousRows, previousRange, granularity);
+    return currentSeries.map((current, index) => {
+        const previous = previousSeries[index] || {};
+        return {
+            period_index: index,
+            label: current.label,
+            current_period: current.period,
+            previous_period: previous.period || null,
+            current_net_sales: round4(current.net_sales),
+            previous_net_sales: round4(previous.net_sales),
+            current_gross_sales: round4(current.gross_sales),
+            previous_gross_sales: round4(previous.gross_sales),
+            current_pos_profit_loss: round4(current.pos_profit_loss),
+            previous_pos_profit_loss: round4(previous.pos_profit_loss),
+            current_total_transactions: Number(current.total_transactions || 0),
+            previous_total_transactions: Number(previous.total_transactions || 0)
+        };
+    });
 };
 
 const buildPaymentBreakdown = (rows = []) => {
@@ -1819,12 +1893,14 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
             gross_sales: 0,
             net_sales: 0,
             discount_amount: 0,
-            refund_amount: 0
+            refund_amount: 0,
+            pos_profit_loss: 0
         };
         current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
         current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
         current.discount_amount = round4(current.discount_amount + Number(row.discount_amount || 0));
         current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
+        current.pos_profit_loss = round4(current.pos_profit_loss + Number(row.pos_profit_loss || 0));
         lineSummaryByTransaction.set(key, current);
     });
 
@@ -1850,7 +1926,8 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 gross_sales: round4(summary.gross_sales),
                 net_sales: round4(summary.net_sales),
                 discount_amount: round4(summary.discount_amount),
-                refund_amount: round4(summary.refund_amount)
+                refund_amount: round4(summary.refund_amount),
+                pos_profit_loss: round4(summary.pos_profit_loss)
             };
         });
 };
@@ -2177,23 +2254,53 @@ const buildShiftSummary = (rows = []) => {
     })).sort((left, right) => Number(right.summary.net_sales || 0) - Number(left.summary.net_sales || 0));
 };
 
-const buildTopItems = (rows = [], limit = 10) => {
+const buildTopItems = (rows = [], limit = 10, totalNetSales = 0) => {
+    const normalizedTotalNetSales = Number(totalNetSales || 0);
     const groups = groupRowsBy(rows, (row) => String(row.item_id || ''));
     return Array.from(groups.entries())
-        .map(([itemId, entries]) => ({
-            item_id: Number(itemId),
-            item_name: entries[0]?.item_name || `Item #${itemId}`,
-            sku_code: entries[0]?.sku_code || null,
-            category: entries[0]?.category || null,
-            quantity: sumBy(entries, (row) => row.quantity),
-            gross_sales: sumBy(entries, (row) => row.gross_sales),
-            net_sales: sumBy(entries, (row) => row.net_sales),
-            cogs: sumBy(entries, (row) => row.cogs),
-            pos_profit_loss: round4(sumBy(entries, (row) => row.net_sales) - sumBy(entries, (row) => row.cogs))
-        }))
+        .map(([itemId, entries]) => {
+            const quantity = sumBy(entries, (row) => row.quantity);
+            const netSales = sumBy(entries, (row) => row.net_sales);
+            const cogs = sumBy(entries, (row) => row.cogs);
+            const orderIds = new Set(entries.map((row) => row.transaction_id).filter((transactionId) => transactionId != null));
+            return {
+                item_id: Number(itemId),
+                item_name: entries[0]?.item_name || `Item #${itemId}`,
+                sku_code: entries[0]?.sku_code || null,
+                category: entries[0]?.category || null,
+                quantity,
+                quantity_sold: quantity,
+                gross_sales: sumBy(entries, (row) => row.gross_sales),
+                net_sales: netSales,
+                sales_share_percentage: normalizedTotalNetSales > 0 ? round4((netSales / normalizedTotalNetSales) * 100) : 0,
+                average_price: quantity > 0 ? round4(netSales / quantity) : 0,
+                orders: orderIds.size,
+                cogs,
+                pos_profit_loss: round4(netSales - cogs)
+            };
+        })
         .sort((left, right) => Number(right.net_sales || 0) - Number(left.net_sales || 0))
         .slice(0, limit);
 };
+
+const buildProfitLossRows = (rows = []) => buildTopItems(rows, Number.MAX_SAFE_INTEGER).map((entry, index) => {
+    const profitLoss = round4(entry.pos_profit_loss);
+    const netSales = Number(entry.net_sales || 0);
+    return {
+        rank: index + 1,
+        item_id: entry.item_id,
+        item_name: entry.item_name,
+        category: entry.category,
+        item_sold: entry.quantity_sold,
+        gross_sales: round4(entry.gross_sales),
+        cogs: round4(entry.cogs),
+        net_sales: round4(netSales),
+        net_profit: round4(Math.max(0, profitLoss)),
+        loss: round4(Math.max(0, -profitLoss)),
+        profit_margin: netSales > 0 ? round4((profitLoss / netSales) * 100) : 0,
+        pos_profit_loss: profitLoss
+    };
+});
 
 const buildDiscountBreakdown = (rows = []) => {
     const groups = groupRowsBy(
@@ -2426,9 +2533,11 @@ const buildReportPayloadFromTransactions = (
     categoryOptions = [],
     cashierReconciliation = new Map(),
     adjustments = [],
-    cashierLifecycle = null
+    cashierLifecycle = null,
+    previousTransactions = []
 ) => {
     const normalizedLines = normalizeReportLineRows(transactions, filters);
+    const previousNormalizedLines = normalizeReportLineRows(previousTransactions, filters);
     const adjustmentRows = normalizeReportAdjustmentRows(adjustments);
     const adjustmentSummary = summarizeReportAdjustments(adjustmentRows);
     const summary = serializeReportSummary(normalizedLines);
@@ -2436,9 +2545,9 @@ const buildReportPayloadFromTransactions = (
     const monthlySeries = buildTimeSeries(normalizedLines, 'monthly');
     const yearlySeries = buildTimeSeries(normalizedLines, 'yearly');
     const weeklySeries = buildTimeSeries(normalizedLines, 'weekly');
-    const topItems = buildTopItems(normalizedLines, 10);
-    const monthlyTopItems = buildTopItems(normalizedLines, 10);
-    const yearlyTopItems = buildTopItems(normalizedLines, 12);
+    const topItems = buildTopItems(normalizedLines, 10, summary.net_sales);
+    const monthlyTopItems = buildTopItems(normalizedLines, 10, summary.net_sales);
+    const yearlyTopItems = buildTopItems(normalizedLines, 12, summary.net_sales);
 
     const currentYear = yearlySeries[yearlySeries.length - 1]?.period || getManilaDateParts(new Date()).year;
     const currentYearMonthlyBreakdown = monthlySeries.filter((entry) => entry.period.startsWith(currentYear));
@@ -2446,19 +2555,16 @@ const buildReportPayloadFromTransactions = (
     const currentYearSummary = serializeReportSummary(normalizedLines.filter((row) => toYearKey(row.created_at) === currentYear));
     const previousYearSummary = serializeReportSummary(normalizedLines.filter((row) => toYearKey(row.created_at) === previousYear));
 
-    const flexibleComparisonRange = buildComparisonRange(resolveReportDateRange(filters));
-    const flexibleCurrent = serializeReportSummary(
-        normalizedLines.filter((row) => {
-            const key = toManilaDateKey(row.created_at);
-            return key >= flexibleComparisonRange.current.dateFrom && key <= flexibleComparisonRange.current.dateTo;
-        })
-    );
-    const flexiblePrevious = serializeReportSummary(
-        normalizedLines.filter((row) => {
-            const key = toManilaDateKey(row.created_at);
-            return key >= flexibleComparisonRange.previous.dateFrom && key <= flexibleComparisonRange.previous.dateTo;
-        })
-    );
+    const resolvedReportRange = resolveReportDateRange(filters);
+    const flexibleComparisonRange = buildComparisonRange(resolvedReportRange);
+    const linesInRange = (rows, range) => rows.filter((row) => {
+        const key = toManilaDateKey(row.created_at);
+        return key >= range.dateFrom && key <= range.dateTo;
+    });
+    const flexibleCurrentLines = linesInRange(normalizedLines, flexibleComparisonRange.current);
+    const flexiblePreviousLines = linesInRange(previousNormalizedLines, flexibleComparisonRange.previous);
+    const flexibleCurrent = serializeReportSummary(flexibleCurrentLines);
+    const flexiblePrevious = serializeReportSummary(flexiblePreviousLines);
 
     const comparisons = buildFixedComparisonPeriods(resolveReportDateRange(filters)).map((period) => {
         const current = serializeReportSummary(normalizedLines.filter((row) => {
@@ -2538,14 +2644,26 @@ const buildReportPayloadFromTransactions = (
             top_items: yearlyTopItems
         },
         sales_comparison: {
-            flexible_range: buildPeriodComparisonMetrics(flexibleCurrent, flexiblePrevious),
+            flexible_range: {
+                ...buildPeriodComparisonMetrics(flexibleCurrent, flexiblePrevious),
+                current_range: flexibleComparisonRange.current,
+                previous_range: flexibleComparisonRange.previous
+            },
             fixed_periods: comparisons,
+            flexible_trend: buildFlexibleComparisonTrend(
+                flexibleCurrentLines,
+                flexiblePreviousLines,
+                flexibleComparisonRange.current,
+                flexibleComparisonRange.previous,
+                resolvedReportRange.granularity
+            ),
             weekly_trend: weeklySeries,
             monthly_trend: monthlySeries
         },
         profit_loss: {
             ...summary,
-            label: 'POS Profit/Loss'
+            label: 'POS Profit/Loss',
+            rows: buildProfitLossRows(normalizedLines)
         }
     };
 };
@@ -2613,6 +2731,28 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         rows.push(['POS Profit/Loss']);
         rows.push([]);
         pushSummaryRows(payload?.profit_loss || {});
+        return rows;
+    }
+
+    if (normalizedSection === 'sales') {
+        rows.push(['Sales Transactions']);
+        rows.push([]);
+        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
+        (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
+            rows.push([
+                entry.created_at || '',
+                entry.invoice_number || entry.pos_transaction_id,
+                entry.cashier_name || '',
+                Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
+                    ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
+                    : (entry.payment_type || ''),
+                entry.order_method || '',
+                round4(entry.discount_amount),
+                round4(entry.gross_sales),
+                round4(entry.net_sales),
+                round4(entry.pos_profit_loss)
+            ]);
+        });
         return rows;
     }
 
@@ -2938,6 +3078,59 @@ export const posRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
                 ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
                 : catalogItems;
+        }
+    },
+
+    // Parked-sale settlement may need the sale-time item snapshot even when
+    // the current catalog row is inactive, hidden, or soft-deleted. Ordinary
+    // checkout visibility rules remain unchanged; this method is only used
+    // after the parked-sale claim and snapshot have been authorized.
+    async findParkedSaleItemsByIds(itemIds, options = {}) {
+        const Item = dbStore.get('Item');
+        const normalizedLocationId = Number.parseInt(options.locationId, 10);
+        const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+            .map((itemId) => Number.parseInt(itemId, 10))
+            .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
+        if (normalizedItemIds.length === 0) return [];
+
+        const queryOptions = {
+            where: buildVisibleWhere(
+                { item_id: { [Op.in]: normalizedItemIds } },
+                { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true }
+            ),
+            attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
+            include: [
+                ...buildItemFolderInclude(),
+                ...buildServiceDetailInclude(),
+                ...buildFnbCatalogIncludes()
+            ]
+        };
+        if (options.transaction) {
+            queryOptions.transaction = options.transaction;
+            if (options.lock) queryOptions.lock = options.transaction.LOCK.UPDATE;
+        }
+
+        const loadItems = async (attributes = POS_ITEM_ATTRIBUTES_WITH_VAT) => {
+            const rawItems = await Item.findAll({ ...queryOptions, attributes });
+            const catalogItems = await applyCatalogOverrides(
+                attributes.includes('vat_type') ? rawItems : withLegacyVatFallback(rawItems),
+                { ...options, includeUnavailable: true }
+            );
+            const stockMap = await loadItemLocationStockMap(
+                catalogItems.map((item) => Number(item.item_id)),
+                normalizedLocationId,
+                options
+            );
+            return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && stockMap.locationScopeResolved
+                ? applyItemLocationStockMap(catalogItems, stockMap.stockMap)
+                : catalogItems;
+        };
+
+        try {
+            return await loadItems();
+        } catch (error) {
+            if (!isMissingVatTypeColumnError(error)) throw error;
+            return loadItems(BASE_POS_ITEM_ATTRIBUTES);
         }
     },
 
@@ -3863,11 +4056,45 @@ export const posRepository = {
         return rows.map(toPlain);
     },
 
+    async getFirstReportTransactionDate(filters = {}, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        if (!PosTransaction || typeof PosTransaction.findOne !== 'function') return null;
+
+        const where = buildPosReportWhere(
+            {
+                ...filters,
+                date_from: '1970-01-01',
+                date_to: '2999-12-31'
+            },
+            {
+                startAt: new Date('1970-01-01T00:00:00.000Z'),
+                endAtExclusive: new Date('3000-01-01T00:00:00.000Z'),
+                sequelize: PosTransaction.sequelize || dbStore.getStore()?.sequelize || dbStore.get('sequelize')
+            }
+        );
+        const row = await PosTransaction.findOne({
+            where,
+            attributes: ['created_at'],
+            order: [['created_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            raw: true,
+            transaction: options.transaction
+        });
+        return toManilaDateKey(row?.created_at);
+    },
+
     async getReportsOverview(filters = {}, options = {}) {
-        const [transactions, categoryOptions, adjustments] = await Promise.all([
+        const previousComparisonRange = buildComparisonRange(resolveReportDateRange(filters)).previous;
+        const previousComparisonFilters = {
+            ...filters,
+            date_from: previousComparisonRange.dateFrom,
+            date_to: previousComparisonRange.dateTo
+        };
+        const [transactions, previousTransactions, categoryOptions, adjustments, firstTransactionDate] = await Promise.all([
             this.listReportTransactions(filters, options),
+            this.listReportTransactions(previousComparisonFilters, options),
             this.listActiveReportCategories(options),
-            this.listReportTransactionAdjustments(filters, options)
+            this.listReportTransactionAdjustments(filters, options),
+            this.getFirstReportTransactionDate(filters, options)
         ]);
         const cashierReconciliation = await loadReportCashierReconciliation({
             transactions,
@@ -3885,8 +4112,13 @@ export const posRepository = {
             categoryOptions,
             cashierReconciliation,
             adjustments,
-            cashierLifecycle
+            cashierLifecycle,
+            previousTransactions
         );
+        payload.date_bounds = {
+            first_transaction_date: firstTransactionDate || null,
+            today: getManilaDateParts(new Date()).date
+        };
         const cashierNetSales = round4((payload.daily_report?.cashier_summary || []).reduce(
             (total, row) => total + Number(row.summary?.net_sales || 0),
             0
@@ -5200,7 +5432,7 @@ export const posRepository = {
             const created = await PosParkedSale.create(payload, {
                 transaction: options.transaction
             });
-            return toPlain(created);
+            return { ...toPlain(created), _idempotent_replay: false };
         } catch (error) {
             if (error?.name !== 'SequelizeUniqueConstraintError') throw error;
 
@@ -5208,7 +5440,7 @@ export const posRepository = {
                 payload.idempotency_key,
                 options
             );
-            if (existing) return toPlain(existing);
+            if (existing) return { ...toPlain(existing), _idempotent_replay: true };
             throw error;
         }
     },
@@ -5253,6 +5485,67 @@ export const posRepository = {
         return row ? toPlain(row) : null;
     },
 
+    async findParkedSaleByCompletedTransactionId(transactionId, options = {}) {
+        const PosParkedSale = dbStore.get('PosParkedSale');
+        const normalizedId = toPositiveInt(transactionId);
+        if (!normalizedId) return null;
+        const row = await PosParkedSale.findOne({
+            where: { completed_transaction_id: normalizedId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async createBusinessAdminApprovalRequest(payload = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        if (!ApprovalRequest) throw new Error('BusinessAdminApprovalRequest model is unavailable');
+        const row = await ApprovalRequest.create(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async getBusinessAdminApprovalRequestById(approvalRequestId, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedId = toPositiveInt(approvalRequestId);
+        if (!ApprovalRequest || !normalizedId) return null;
+        const row = await ApprovalRequest.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async findPendingBusinessAdminApprovalRequest({ actionType, entityType, entityId } = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedEntityId = toPositiveInt(entityId);
+        if (!ApprovalRequest || !normalizedEntityId) return null;
+        const row = await ApprovalRequest.findOne({
+            where: {
+                action_type: String(actionType || '').trim(),
+                entity_type: String(entityType || '').trim(),
+                entity_id: normalizedEntityId,
+                status: 'pending'
+            },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined,
+            order: [['created_at', 'DESC'], ['business_admin_approval_request_id', 'DESC']]
+        });
+        return row ? toPlain(row) : null;
+    },
+
+    async updateBusinessAdminApprovalRequest(approvalRequestId, payload = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        const normalizedId = toPositiveInt(approvalRequestId);
+        if (!ApprovalRequest || !normalizedId) return null;
+        const row = await ApprovalRequest.findByPk(normalizedId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
     async updateParkedSale(parkedSaleId, payload = {}, options = {}) {
         const PosParkedSale = dbStore.get('PosParkedSale');
         const normalizedId = toPositiveInt(parkedSaleId);
@@ -5275,7 +5568,7 @@ export const posRepository = {
                 // An unclaimed cart is branch-shared handoff work and may outlive
                 // the shift that originally parked it. Only an actively claimed
                 // cart remains an unresolved obligation of this shift.
-                status: 'claimed'
+                status: { [Op.in]: ['claimed', 'cancel_pending'] }
             },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
@@ -5364,6 +5657,34 @@ export const posRepository = {
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return rows.map(toPlainPaymentSession);
+    },
+
+    async cancelEmptyInFlightPaymentSessionsForShift(shiftId, options = {}) {
+        const sessions = await this.listInFlightPaymentSessionsForShift(shiftId, options);
+        const cancelled = [];
+        const cancelledBy = toPositiveInt(options.cancelledBy);
+
+        for (const session of sessions) {
+            if (Number(session.paid_amount || 0) > 0) continue;
+
+            const allocations = await this.listPosPaymentAllocationsForSession(
+                session.pos_payment_session_id,
+                options
+            );
+            if (allocations.length > 0) continue;
+
+            const updated = await this.updatePosPaymentSession(session.pos_payment_session_id, {
+                status: 'cancelled',
+                cancelled_by: cancelledBy || null,
+                cancelled_at: new Date(),
+                cancel_reason: 'Automatically cancelled empty split-payment session before shift close.',
+                paid_amount: 0,
+                remaining_amount: Number(session.remaining_amount ?? session.total_amount ?? 0)
+            }, options);
+            if (updated) cancelled.push(updated);
+        }
+
+        return cancelled;
     },
 
     async findInFlightOperatorMutationForShift(shiftId, { staleBefore, transaction, lock = false } = {}) {

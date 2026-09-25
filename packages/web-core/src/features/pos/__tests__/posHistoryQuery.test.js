@@ -1,13 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { buildPosHistoryQuery } from '../utils/posHistoryQuery.js';
+import {
+    buildPosHistoryQuery,
+    normalizePosHistoryPageSize
+} from '../utils/posHistoryQuery.js';
 
 describe('buildPosHistoryQuery', () => {
     it('limits the default sales view to paid completed transactions', () => {
         expect(buildPosHistoryQuery({ historyStatus: 'all', page: 2 })).toMatchObject({
             page: 2,
+            limit: 20,
             status: 'completed',
             payment_status: 'paid'
         });
+    });
+
+    it('preserves the selected page size for server-side pagination', () => {
+        expect(buildPosHistoryQuery({ historyStatus: 'all', page: 3, limit: 50 })).toMatchObject({
+            page: 3,
+            limit: 50
+        });
+    });
+
+    it('normalizes page-size selections to supported history options', () => {
+        expect(normalizePosHistoryPageSize('10')).toBe(10);
+        expect(normalizePosHistoryPageSize('50')).toBe(50);
+        expect(normalizePosHistoryPageSize('25')).toBe(20);
     });
 
     it('keeps voided transactions searchable without treating them as current sales', () => {

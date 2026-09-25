@@ -47,10 +47,18 @@ describe('POS printer availability and post-checkout receipt view', () => {
 
     it('lets the cashier toggle between Order Preview and the receipt render after checkout', () => {
         const source = readCheckoutRenderSource();
+        const receiptDialogsSource = read('../components/POSCheckoutTerminalReceiptDialogs.jsx');
         const workflowSource = read('../hooks/usePosReceiptHardwareWorkflow.js');
 
         expect(source).toContain("receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'");
         expect(source).toContain("{receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}");
+        expect(receiptDialogsSource).toContain('w-[calc(100vw-1.5rem)] max-w-xl flex-col');
+        expect(receiptDialogsSource).toContain("receiptPreviewSource === 'order_preview' ? 'bg-white' : 'bg-slate-50'");
+        expect(receiptDialogsSource).not.toContain('max-w-3xl');
+        expect(source).toContain('sm:flex-nowrap');
+        expect(source).toContain('flex min-w-0 w-full items-center gap-2 sm:max-w-none');
+        expect(source.match(/h-10 min-w-0 flex-1/g)?.length).toBeGreaterThanOrEqual(3);
+        expect(source).toContain('whitespace-nowrap rounded-lg border border-[#1A4E8D]');
         // Resets on close so the next checkout opens on Order Preview again.
         expect(workflowSource).toContain("setReceiptPreviewSource('receipt_preview');");
     });
@@ -58,6 +66,7 @@ describe('POS printer availability and post-checkout receipt view', () => {
     it('keeps receipt and drawer orchestration behind the reusable hardware workflow boundary', () => {
         const source = readCheckoutRenderSource();
         const workflowSource = read('../hooks/usePosReceiptHardwareWorkflow.js');
+        const viewSource = read('../components/POSCheckoutTerminalView.jsx');
 
         expect(source).toContain('usePosReceiptHardwareWorkflow');
         expect(source).toContain('} = usePosReceiptHardwareWorkflow({');
@@ -72,5 +81,8 @@ describe('POS printer availability and post-checkout receipt view', () => {
         expect(source).toContain('id="pos-drawer-authorization-form"');
         expect(source).toContain('type="submit"');
         expect(source).toContain('form="pos-drawer-authorization-form"');
+        expect(viewSource).toContain('className="grid w-full grid-cols-1 items-stretch gap-2 border-t border-slate-200 px-5 py-4 sm:grid-cols-2 sm:gap-2"');
+        expect(viewSource).toContain('className="order-2 h-10 w-full min-w-0 px-2 sm:order-1"');
+        expect(viewSource).toContain('className="order-1 h-10 w-full min-w-0 bg-[#1A4E8D] px-2 text-white hover:bg-[#143F73] sm:order-2"');
     });
 });

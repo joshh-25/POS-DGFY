@@ -1,7 +1,10 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { GlobalPagination } from '@/components/ui/pagination';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+
+const SKUPERVISOR_HISTORY_PAGE_SIZE_OPTIONS = [20, 40, 60];
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
@@ -38,7 +41,9 @@ export default function POSTransactionHistoryPanel({
     printHistoryReceipt,
     loadHistory,
     historyPage,
-    historyPagination
+    historyPagination,
+    historyPageSize = 20,
+    setHistoryPageSize
 }) {
     return (
         <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
@@ -166,14 +171,23 @@ export default function POSTransactionHistoryPanel({
                     </tbody>
                 </table>
             </div>
-            <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => loadHistory(Math.max(1, historyPage - 1))} disabled={historyLoading || historyPage <= 1}>
-                    Previous
-                </Button>
-                <Button type="button" variant="outline" onClick={() => loadHistory(historyPage + 1)} disabled={historyLoading || !historyPagination || historyPage >= (historyPagination.totalPages || 1)}>
-                    Next
-                </Button>
-            </div>
+            <GlobalPagination
+                testId="skupervisor-pos-history-pagination"
+                ariaLabel="SKUpervisor POS history pagination"
+                currentPage={historyPage}
+                totalPages={historyPagination?.totalPages || historyPagination?.total_pages || 1}
+                totalItems={historyPagination?.total || historyRows.length}
+                pageSize={historyPageSize}
+                pageSizeOptions={SKUPERVISOR_HISTORY_PAGE_SIZE_OPTIONS}
+                itemLabel="transactions"
+                loading={historyLoading}
+                onPageChange={(nextPage) => loadHistory(nextPage)}
+                onPageSizeChange={(nextPageSize) => {
+                    if (!Number.isInteger(nextPageSize) || nextPageSize <= 0) return;
+                    setHistoryPageSize?.(nextPageSize);
+                    loadHistory(1, nextPageSize);
+                }}
+            />
         </section>
     );
 }

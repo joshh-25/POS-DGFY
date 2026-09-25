@@ -2,12 +2,69 @@
 status: reference
 authority_level: reference
 owner: engineering
-last_reviewed: 2026-08-15
+last_reviewed: 2026-09-22
 applies_to: deploy_operations
 topic: tenant_schema_sync_residual_risk
 ---
 
 # Tenant Schema Sync Residual Risk Tracker
+
+## 2026-09-22 finding and fix: Eagle Spoon activated without full schema parity (#2027)
+
+Production tenant "Eagle Spoon, Inc." (`sku_tenant_eaglespooninc_23c85b4c`) was created and
+activated 2026-09-21, missing 2 generated columns + their unique indexes on
+`pos_terminal_shifts`, 19 other indexes, and `pos_discount_rules` seed data. Caught only because
+a promotion happened to trigger a manual `tenant-schema-report.yml` dispatch — nothing else would
+have caught it. Full incident narrative, evidence, and the already-completed operational repair
+(backup, scoped repair script, verified `46/46` production report via two independent checks) are
+recorded on issue #2027 — not repeated here.
+
+### Root cause
+
+`provisionTenant` (`apps/dgfy-api/src/services/tenantProvisioningService.js`) ran a plain
+`Sequelize.sync()` plus only the two Phase-157 bootstrap migrations
+(`applyPostSyncTenantSchema`) — it never ran the general `REQUIRED_TENANT_SCHEMA_TABLES/COLUMNS/
+INDEXES/SEEDS`/enum-contract registry that `apps/dgfy-api/scripts/sync-tenant-schemas.js`'s
+report/repair-apply modes already check for *existing* tenants. That registry only ever reached a
+tenant via `infrastructure/docker/dgfy-api/entrypoint.sh`'s non-blocking `repair-apply` step,
+which only runs on container start/restart and only against `status='active'` tenants — so a
+tenant provisioned between restarts could go live broken and stay that way indefinitely. The two
+missing generated columns/indexes on `pos_terminal_shifts` were already registered in
+`REQUIRED_TENANT_SCHEMA_COLUMNS`/`REQUIRED_TENANT_SCHEMA_INDEXES` at the time of the incident —
+routing provisioning through the existing registry-driven repair, with no registry content
+changes, was sufficient to prevent this specific incident.
+
+A separate, previously-unnoticed bug in the repair engine compounded the risk: `repair-apply`
+mode had no branch for "post-repair re-inspection still finds missing objects" — it silently fell
+through to the generic success path and recorded `status:'ok'` even when real drift remained,
+undermining the only automated non-blocking-startup signal that existed for this class of gap.
+
+### Fix
+
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`: extracted the five-pass inspect → repair →
+  re-inspect reconciliation sequence into one exported `reconcileTenantSchema(connection,
+  tenantDb, mode)`, reused by both the existing fleet CLI and tenant-provisioning — the single
+  canonical path this incident's fix required. Fixed the `repair-apply` silent-success bug as
+  part of the same refactor (reuses the existing `status:'failed'` value, no new status
+  introduced, so `check-tenant-schema-sync-regressions.js`'s deploy-time regression gate and
+  `tenantSchemaReadinessService.js` needed no changes). Added a `--tenant-db <db_name>` CLI flag
+  so a single tenant can be reported on or repaired without an unscoped run across every active
+  tenant.
+- `apps/dgfy-api/src/services/tenantSchemaBootstrap.js`: `applyPostSyncTenantSchema` now calls
+  `reconcileTenantSchema` in `repair-apply` mode and throws if any issue remains, before
+  `provisionTenant` ever reaches the tenant's `status:'active'` update — a hard postcondition, not
+  a warning. `provisionTenant`'s existing catch-block compensating transaction (reset landlord
+  status, drop the zombie database) already covered this failure mode with no changes needed.
+- `apps/dgfy-api/scripts/alert-on-tenant-schema-sync-failures.js` (new) +
+  `infrastructure/docker/dgfy-api/entrypoint.sh`: the non-blocking startup repair step now also
+  raises a Sentry event (via the app's own `initSentry()`, with an explicit fingerprint so
+  repeated/identical drift collapses into one grouped issue rather than paging every restart)
+  whenever any tenant is left unresolved, instead of only an ASCII stdout banner.
+- Regression coverage: `apps/dgfy-api/tests/tenantSchemaBootstrap.integration.test.js` gained a
+  real-MySQL test provisioning a fresh tenant and independently re-verifying zero missing tables,
+  columns, indexes, seeds, and enum values via the registry's own inspector functions.
+  `apps/dgfy-api/tests/tenantSchemaSyncScripts.test.js` gained unit coverage for the
+  `repair-apply` bug fix directly.
 
 ## 2026-08-15 finding and fix: unrepairable F&B modifier gap (#539)
 

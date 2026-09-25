@@ -76,7 +76,9 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
         expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
-        expect(splitDialogSource).toContain('sessionOpenAttemptRef');
+        expect(splitDialogSource).toContain('sessionRecoveryAttemptRef');
+        expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback');
+        expect(splitDialogSource).toContain('if (!sessionId) {');
         expect(checkoutSource).toContain('data-testid="pos-split-payment-cancel-dialog"');
         expect(checkoutSource).toContain('handleCancelCheckout');
         expect(checkoutWorkflowSource).toContain('cancelPosPaymentAllocation');
@@ -141,7 +143,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('Review the items and enter the customer payment before finalizing this sale.');
         expect(checkoutSource).not.toContain('data-testid="pos-checkout-add-discount"');
         expect(checkoutSource).toContain('data-testid="pos-checkout-discount-type-buttons"');
-        expect(checkoutSource).toContain('className="grid min-w-[720px] grid-cols-6 gap-2"');
+        expect(checkoutSource).toContain('className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5"');
         expect(checkoutSource).not.toContain('grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6');
         expect(checkoutSource).toContain('data-testid={`pos-checkout-discount-type-${option.value}`}');
         expect(checkoutSource).toContain('data-testid="pos-edit-checkout-discount"');
@@ -181,7 +183,7 @@ describe('POS split-payment UI contract', () => {
     it('shows the amount field and five additive cash suggestions in one horizontal row', () => {
         expect(checkoutSource).toContain('const CASH_PAYMENT_SUGGESTIONS = [50, 100, 200, 500, 1000];');
         expect(checkoutSource).toContain("data-testid={isCashPayment ? 'pos-cash-payment-suggestions' : undefined}");
-        expect(checkoutSource).toContain('grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(80px,1fr))]');
+        expect(checkoutSource).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
         expect(checkoutSource).toContain('const currentAmount = paymentAmountAutoFilled ? 0 : normalizePaymentAmount(paymentAmountInput);');
         expect(checkoutSource).toContain('selectPaymentAmount(String(round4(currentAmount + amount)))');
         expect(checkoutSource).toContain('addSuggestedPaymentAmount(amount)');
@@ -204,7 +206,7 @@ describe('POS split-payment UI contract', () => {
         expect(discountControlsIndex).toBeGreaterThan(paymentEntryIndex);
         expect(checkoutSource).toContain('content-start gap-0 overflow-x-hidden overflow-y-auto overscroll-contain');
         expect(checkoutSource).toContain('space-y-0 py-[25px] lg:col-span-2" data-testid="pos-checkout-payment-group"');
-        expect(checkoutSource).toContain('space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount"');
+        expect(checkoutSource).toContain('pos-checkout-discount-types w-full min-w-0 max-w-full space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount"');
     });
 
     it('does not auto-focus Total Payment when checkout confirmation opens', () => {
@@ -258,7 +260,10 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-dialog"');
         expect(splitDialogSource).toContain('max-w-2xl');
         expect(splitDialogSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x');
-        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-5 gap-1.5 overflow-visible sm:w-full');
+        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-6 gap-1.5 overflow-visible sm:w-full');
+        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit' }");
+        expect(splitDialogSource).toContain('EmployeeCreditPaymentPanel');
+        expect(splitDialogSource).toContain('employee_credit');
         expect(splitDialogSource).toContain('h-8 min-w-[7.25rem] whitespace-nowrap');
         expect(splitDialogSource).toContain('px-2 text-center text-[11px]');
         expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');

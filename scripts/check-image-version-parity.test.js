@@ -4,14 +4,20 @@ const test = require('node:test');
 const {
   CANDIDATE_SOURCE_LABEL,
   inspectImageLabel,
+  inspectImageDigest,
+  inspectImageRevision,
   decideParity,
   decideDirectParity,
+  decideRevisionParity,
   checkApp,
+  checkAppRevision,
   checkAppDirect,
   runParityCheck,
   runDirectParityCheck,
   parseArgs,
 } = require('./check-image-version-parity');
+
+const { RELEASE_REVISION_LABEL } = require('./promote-image-alias');
 
 // #1588 (epic #1548 Wave 4, Phase 279) -- ADR 0081 Decision 8's promotion parity gate. Every case
 // here mocks `docker buildx imagetools inspect` output directly (status/stdout/stderr fixtures) via
@@ -285,6 +291,26 @@ test('checkAppDirect: an app whose version cannot be read at the given source SH
 // candidate SHA (a real, resolvable commit) so readVersionAt succeeds, with every docker inspect
 // call still fixture-injected -- no live registry call, no live docker daemon required.
 
+// #1977 (Phase 342): a manifest WITH a release_revision takes the revision-aware path --
+// frontend staging X.Y.Z-rN-staging vs production X.Y.Z-rN (backend: env-neutral X.Y.Z-rN
+// both sides), plus the bare floor alias on the same digest. The fixture below carries the
+// full Phase 342 label set on every ref, so staging/prod/alias all agree.
+function revisionFixture({ sourceSha, digest = 'sha256:revision-fixture-digest', revision = 'r1', floor = '9.9.9' }) {
+  return JSON.stringify({
+    digest,
+    Image: {
+      Config: {
+        Labels: {
+          [CANDIDATE_SOURCE_LABEL]: sourceSha,
+          'org.opencontainers.image.version': `${floor}-${revision}`,
+          'org.dgfy-platform.release-floor': floor,
+          [RELEASE_REVISION_LABEL]: revision,
+        },
+      },
+    },
+  });
+}
+
 test('runParityCheck: validates the manifest and reports one entry per app, all pass on a fully matching fixture', () => {
   const { execSync } = require('node:child_process');
   const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
@@ -306,15 +332,18 @@ test('runParityCheck: validates the manifest and reports one entry per app, all 
     manifest,
     repoRoot: __dirname + '/..',
     apps: ['dgfy-api'],
-    inspectFn: inspectFixture({ stdout: agreeingLabelJson(headSha) }),
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r1' }) }),
   });
 
   assert.equal(result.mode, 'manifest');
   assert.equal(result.candidate_id, '2026-09-04-01');
   assert.equal(result.candidate_source_sha, headSha);
+  assert.equal(result.release_revision, 1);
   assert.equal(result.ok, true);
   assert.equal(result.results.length, 1);
   assert.equal(result.results[0].verdict, 'pass');
+  assert.equal(result.results[0].code, 'match');
+  assert.equal(result.results[0].revision, 1);
 });
 
 // PR #1612 review RF-2's explicitly requested end-to-end fixture: an unlabeled PROD image must not
@@ -338,14 +367,15 @@ test('runParityCheck: an unlabeled PROD image cannot pass, even with a real stag
     release_revision: { revision: 1, source_staging_sha: headSha, branch: 'release/2026-09-04-01-r1', pr: 9001 },
   };
 
-  // Branches on the ref being inspected: the staging tag gets a real, agreeing label; the PROD tag
-  // (no '-staging' suffix) gets no candidate-source label at all -- simulating a normal-dispatch run
-  // with an empty/incorrect candidate_source_sha input.
+  // #1977: dgfy-api is a backend app, so its staging and production tags are the SAME
+  // environment-neutral revision tag -- the branch below keys on the revision fragment instead:
+  // revision-tag refs get no candidate-source label at all (simulating a normal-dispatch run
+  // with an empty/incorrect candidate_source_sha input); the bare floor alias is labeled.
   const inspectFn = (ref) => ({
     status: 0,
-    stdout: ref.includes('-staging')
-      ? agreeingLabelJson(headSha)
-      : JSON.stringify({ Image: { Config: { Labels: { 'org.opencontainers.image.revision': 'x' } } } }),
+    stdout: /-r1$/.test(ref)
+      ? JSON.stringify({ digest: 'sha256:unlabeled-prod', Image: { Config: { Labels: { 'org.opencontainers.image.revision': 'x' } } } })
+      : revisionFixture({ sourceSha: headSha, revision: 'r1' }),
     stderr: '',
   });
 
@@ -365,7 +395,7 @@ test('runParityCheck: an unlabeled PROD image cannot pass, even with a real stag
 test('runParityCheck: an invalid manifest throws PromotionCandidateError, same validation as check-promotion-candidate.js', () => {
   assert.throws(
     () => runParityCheck({ manifest: { schema: 'not-the-right-schema' } }),
-    /Candidate manifest schema must be sku-release-candidate\/v1/,
+    /Candidate manifest schema must be one of sku-release-candidate\/v1, sku-release-candidate\/v2/,
   );
 });
 
@@ -414,6 +444,136 @@ test('runParityCheck: an app untouched by a repair is compared against ITS OWN p
   // Top-level candidate_source_sha stays the manifest's overall latest identity -- context only, not
   // what every app was actually compared against (see each entry's own field instead).
   assert.equal(result.candidate_source_sha, headSha);
+});
+
+// #2055 (Phase 346) -- v2 manifests verify each app against its OWN allocated revision from
+// the per-app release_revision map, and skip apps the candidate never rebuilt.
+
+function candidateV2Manifest({ headSha, initialSha, apps }) {
+  return {
+    schema: 'sku-release-candidate/v2',
+    candidate_id: '2026-09-23-01',
+    status: 'qualified',
+    source_develop_sha: initialSha,
+    current_staging_sha: headSha,
+    staging_head_sha: headSha,
+    revisions: [
+      {
+        kind: 'initial', sha: initialSha, parent_sha: null, branch: 'to-staging/2026-09-23-01', pr: 9101,
+        dev_artifacts: Object.values(apps).map((entry) => ({ app: entry.app, revision: entry.devRevision, sha: initialSha, digest: entry.digest })),
+      },
+      { kind: 'staging_repair', repair_seq: 1, sha: headSha, parent_sha: initialSha, branch: 'fix/staging/2026-09-23-01-1', pr: 9102, issue: 9103, apps_touched: ['dgfy-api', 'dgfy-migration-runner'] },
+    ],
+    release_revision: {
+      source_staging_sha: headSha,
+      branch: 'release/2026-09-23-01',
+      pr: 9104,
+      apps: Object.fromEntries(Object.values(apps).map((entry) => [entry.app, { revision: entry.revision, source_sha: entry.sourceSha, digest: entry.digest, origin: entry.origin }])),
+    },
+  };
+}
+
+test('runParityCheck (v2): each app is verified against its own allocated revision', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+      ims: { app: 'dgfy-ims', devRevision: 4, revision: 4, sourceSha: initialSha, digest: `sha256:${'2'.repeat(64)}`, origin: 'dev' },
+    },
+  });
+
+  // The fixture answers every inspected ref with a fully agreeing label set -- keyed per
+  // app, since the revision EXPECTED differs per app (r8 for dgfy-api, r4 for dgfy-ims). A
+  // candidate-wide check would compare both against one shared rN and fail one of them.
+  // (Keyed per app rather than parsed off the ref because the bare floor alias carries no
+  // rN fragment itself -- its revision label is what the gate compares.)
+  const inspectFn = (ref) => {
+    const revision = ref.includes('dgfy-api') ? 'r8' : 'r4';
+    const expectedSha = ref.includes('dgfy-api') ? headSha : initialSha;
+    const appFloor = '9.9.9';
+    return {
+      status: 0,
+      stdout: JSON.stringify({
+        digest: 'sha256:v2-per-app-fixture',
+        Image: { Config: { Labels: {
+          [CANDIDATE_SOURCE_LABEL]: expectedSha,
+          'org.opencontainers.image.version': `${appFloor}-${revision}`,
+          'org.dgfy-platform.release-floor': appFloor,
+          [RELEASE_REVISION_LABEL]: revision,
+        } } },
+      }),
+      stderr: '',
+    };
+  };
+
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-api', 'dgfy-ims'], inspectFn });
+
+  assert.equal(result.mode, 'manifest');
+  const apiEntry = result.results.find((entry) => entry.app === 'dgfy-api');
+  const imsEntry = result.results.find((entry) => entry.app === 'dgfy-ims');
+  assert.equal(apiEntry.revision, 8);
+  assert.equal(imsEntry.revision, 4);
+  assert.equal(apiEntry.candidate_source_sha, headSha);
+  assert.equal(imsEntry.candidate_source_sha, initialSha);
+  assert.equal(result.ok, true);
+});
+
+test('runParityCheck (v2): an app absent from the per-app map is skipped, not failed', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+    },
+  });
+
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api', 'dgfy-pos'],
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r8' }) }),
+  });
+
+  const posEntry = result.results.find((entry) => entry.app === 'dgfy-pos');
+  assert.equal(posEntry.verdict, 'skip');
+  assert.equal(posEntry.code, 'app-not-in-candidate');
+  assert.equal(result.ok, true);
+});
+
+test('runParityCheck (v2): a revision-label mismatch against the app\u2019s own allocated rN fails', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const initialSha = execSync('git rev-parse HEAD~1', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = candidateV2Manifest({
+    headSha,
+    initialSha,
+    apps: {
+      api: { app: 'dgfy-api', devRevision: 7, revision: 8, sourceSha: headSha, digest: `sha256:${'1'.repeat(64)}`, origin: 'staging_repair' },
+    },
+  });
+
+  // Every ref claims r7 while the manifest released r8 for dgfy-api -- a different
+  // candidate revision's artifact, even though digests line up.
+  const result = runParityCheck({
+    manifest,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api'],
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r7' }) }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.results[0].verdict, 'fail');
+  assert.equal(result.results[0].code, 'revision-label-mismatch');
 });
 
 // runDirectParityCheck (--source-sha mode, RF-2) -- the #1007/hotfix entrypoint that never needs a
@@ -483,4 +643,224 @@ test('parseArgs: parses --source-sha', () => {
   assert.equal(options.sourceSha, SHA('a'));
   assert.equal(options.manifestPath, '');
   assert.deepEqual(options.apps, ['dgfy-api']);
+});
+
+// #1977 (Phase 342) -- revision-aware parity: the release floor stays X.Y.Z while rN
+// identifies the exact artifact. Frontend staging X.Y.Z-rN-staging vs production X.Y.Z-rN;
+// backend the environment-neutral X.Y.Z-rN on both sides (same digest reused); every bare
+// floor alias references its revision tag's digest with agreeing revision labels.
+
+test('inspectImageDigest: digest present -> ok', () => {
+  const result = inspectImageDigest({
+    image: 'ghcr.io/sieitzz/dgfy-pos',
+    tag: '1.13.0-r16',
+    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: SHA('a') }) }),
+  });
+  assert.deepEqual(result, { ref: 'ghcr.io/sieitzz/dgfy-pos:1.13.0-r16', state: 'ok', digest: 'sha256:revision-fixture-digest' });
+});
+
+test('inspectImageDigest: tag not found -> not-found; other errors and digest-less output -> error', () => {
+  assert.equal(inspectImageDigest({ image: 'x', tag: 't', inspectFn: inspectFixture({ status: 1, stderr: 'manifest unknown' }) }).state, 'not-found');
+  assert.equal(inspectImageDigest({ image: 'x', tag: 't', inspectFn: inspectFixture({ status: 1, stderr: '401 Unauthorized' }) }).state, 'error');
+  assert.equal(inspectImageDigest({ image: 'x', tag: 't', inspectFn: inspectFixture({ stdout: JSON.stringify({ Image: {} }) }) }).state, 'error');
+});
+
+test('inspectImageRevision: agreed label -> ok; missing -> no-label; disagreeing -> inconsistent', () => {
+  const ok = inspectImageRevision({ image: 'x', tag: 't', inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: SHA('a'), revision: 'r16' }) }) });
+  assert.deepEqual(ok, { ref: 'x:t', state: 'ok', value: 'r16' });
+  const missing = inspectImageRevision({ image: 'x', tag: 't', inspectFn: inspectFixture({ stdout: agreeingLabelJson(SHA('a')) }) });
+  assert.equal(missing.state, 'no-label');
+  const disagreeing = inspectImageRevision({
+    image: 'x',
+    tag: 't',
+    inspectFn: inspectFixture({
+      stdout: JSON.stringify({
+        Image: {
+          'linux/amd64': { config: { Labels: { [RELEASE_REVISION_LABEL]: 'r16' } } },
+          'linux/arm64': { config: { Labels: { [RELEASE_REVISION_LABEL]: 'r15' } } },
+        },
+      }),
+    }),
+  });
+  assert.equal(disagreeing.state, 'inconsistent');
+});
+
+function revisionVerdictInput(overrides = {}) {
+  const base = {
+    prod: { ref: 'img:1.13.0-r16', state: 'ok', value: SHA('a') },
+    staging: { ref: 'img:1.13.0-r16-staging', state: 'ok', value: SHA('a') },
+    prodDigest: { ref: 'img:1.13.0-r16', state: 'ok', digest: 'sha256:aaa' },
+    aliasDigest: { ref: 'img:1.13.0', state: 'ok', digest: 'sha256:aaa' },
+    prodRevision: { ref: 'img:1.13.0-r16', state: 'ok', value: 'r16' },
+    aliasRevision: { ref: 'img:1.13.0', state: 'ok', value: 'r16' },
+    expectedRevision: 'r16',
+  };
+  return { ...base, ...overrides };
+}
+
+test('decideRevisionParity: full agreement incl. alias digest -> pass/match', () => {
+  assert.deepEqual(decideRevisionParity(revisionVerdictInput()), {
+    verdict: 'pass',
+    code: 'match',
+    detail: `img:1.13.0-r16-staging and img:1.13.0-r16 share candidate-source-sha ${SHA('a')}; alias img:1.13.0 references the same digest sha256:aaa (r16).`,
+  });
+});
+
+test('decideRevisionParity: missing alias -> fail alias-not-found (never a silent pass)', () => {
+  const result = decideRevisionParity(revisionVerdictInput({ aliasDigest: { ref: 'img:1.13.0', state: 'not-found', reason: 'no such tag' } }));
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.code, 'alias-not-found');
+});
+
+test('decideRevisionParity: alias on a different digest -> fail alias-digest-mismatch', () => {
+  const result = decideRevisionParity(revisionVerdictInput({ aliasDigest: { ref: 'img:1.13.0', state: 'ok', digest: 'sha256:bbb' } }));
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.code, 'alias-digest-mismatch');
+});
+
+test('decideRevisionParity: conflicting alias revision label -> fail alias-revision-mismatch', () => {
+  const result = decideRevisionParity(revisionVerdictInput({ aliasRevision: { ref: 'img:1.13.0', state: 'ok', value: 'r15' } }));
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.code, 'alias-revision-mismatch');
+});
+
+test('decideRevisionParity: prod stamped with a different candidate revision -> fail revision-label-mismatch', () => {
+  const result = decideRevisionParity(revisionVerdictInput({
+    prodRevision: { ref: 'img:1.13.0-r16', state: 'ok', value: 'r15' },
+    aliasRevision: { ref: 'img:1.13.0', state: 'ok', value: 'r15' },
+  }));
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.code, 'revision-label-mismatch');
+});
+
+test('decideRevisionParity: frontend staging/prod label mismatch still fails as mismatch', () => {
+  const result = decideRevisionParity(revisionVerdictInput({ staging: { ref: 'img:1.13.0-r16-staging', state: 'ok', value: SHA('b') } }));
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.code, 'mismatch');
+});
+
+test('decideRevisionParity: prod not published yet -> skip (nothing to verify)', () => {
+  const result = decideRevisionParity(revisionVerdictInput({ prod: { ref: 'img:1.13.0-r16', state: 'not-found', reason: 'x' } }));
+  assert.equal(result.verdict, 'skip');
+});
+
+test('runParityCheck: frontend/backend matrix -- staging tags differ by app type, prod tags agree', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-19-01',
+    status: 'qualified',
+    source_develop_sha: headSha,
+    current_staging_sha: headSha,
+    staging_head_sha: headSha,
+    revisions: [
+      { kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-09-19-01' },
+    ],
+    release_revision: { revision: 1, source_staging_sha: headSha, branch: 'release/2026-09-19-01-r1', pr: 9100 },
+  };
+
+  const seenRefs = [];
+  const inspectFn = (ref) => {
+    seenRefs.push(ref);
+    return { status: 0, stdout: revisionFixture({ sourceSha: headSha, revision: 'r1' }), stderr: '' };
+  };
+
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-api', 'dgfy-pos'], inspectFn });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.release_revision, 1);
+  // Frontend staging is environment-qualified; backend staging is the env-neutral revision tag.
+  assert.ok(seenRefs.some((ref) => ref.endsWith(':1.20.2-r1-staging') || /dgfy-pos:.*-r1-staging$/.test(ref)), `expected a dgfy-pos staging ref, saw: ${seenRefs.join(', ')}`);
+  assert.ok(seenRefs.some((ref) => /dgfy-api:.*-r1$/.test(ref) && !ref.endsWith('-staging')), `expected a dgfy-api revision ref, saw: ${seenRefs.join(', ')}`);
+  for (const entry of result.results) {
+    assert.equal(entry.verdict, 'pass');
+    assert.equal(entry.revision, 1);
+  }
+});
+
+test('runParityCheck: conflicting alias digest fails the candidate (alias-digest-mismatch)', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const manifest = {
+    schema: 'sku-release-candidate/v1',
+    candidate_id: '2026-09-19-02',
+    status: 'qualified',
+    source_develop_sha: headSha,
+    current_staging_sha: headSha,
+    staging_head_sha: headSha,
+    revisions: [
+      { kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-09-19-02' },
+    ],
+    release_revision: { revision: 1, source_staging_sha: headSha, branch: 'release/2026-09-19-02-r1', pr: 9101 },
+  };
+
+  // Bare floor alias (no -r fragment) points at a STALE digest; everything else agrees.
+  const inspectFn = (ref) => ({
+    status: 0,
+    stdout: /-r1(-staging)?$/.test(ref)
+      ? revisionFixture({ sourceSha: headSha, revision: 'r1', digest: 'sha256:new-digest' })
+      : revisionFixture({ sourceSha: headSha, revision: 'r1', digest: 'sha256:stale-digest' }),
+    stderr: '',
+  });
+
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-api'], inspectFn });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.results[0].verdict, 'fail');
+  assert.equal(result.results[0].code, 'alias-digest-mismatch');
+});
+
+test('runDirectParityCheck: with --revision, the paired bare alias must share the revision digest', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+
+  const passing = runDirectParityCheck({
+    sourceSha: headSha,
+    revision: 3,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api'],
+    inspectFn: (ref) => ({
+      status: 0,
+      stdout: revisionFixture({ sourceSha: headSha, revision: 'r3' }),
+      stderr: '',
+    }),
+  });
+  assert.equal(passing.ok, true);
+  assert.equal(passing.results[0].verdict, 'pass');
+
+  const missingAlias = runDirectParityCheck({
+    sourceSha: headSha,
+    revision: 3,
+    repoRoot: __dirname + '/..',
+    apps: ['dgfy-api'],
+    inspectFn: (ref) => (/[0-9]-r3$/.test(ref) || /-r3-staging$/.test(ref)
+      ? { status: 0, stdout: revisionFixture({ sourceSha: headSha, revision: 'r3' }), stderr: '' }
+      : { status: 1, stdout: '', stderr: 'manifest unknown' }),
+  });
+  assert.equal(missingAlias.ok, false);
+  assert.equal(missingAlias.results[0].code, 'alias-not-found');
+});
+
+test('checkAppRevision: unreadable floor version -> error, not a crash', () => {
+  const result = checkAppRevision({
+    repoRoot: __dirname + '/..',
+    app: 'dgfy-api',
+    revision: 16,
+    candidateSha: SHA('9'),
+    inspectFn: inspectFixture({ status: 1, stderr: 'not found' }),
+  });
+  assert.equal(result.verdict, 'error');
+  assert.equal(result.code, 'version-unreadable');
+});
+
+test('parseArgs: --revision requires --source-sha (manifest mode is authoritative for its own revision)', () => {
+  assert.throws(
+    () => parseArgs(['--manifest', 'candidate.json', '--revision', 'r16']),
+    /only valid with --source-sha/,
+  );
+  const options = parseArgs(['--source-sha', SHA('a'), '--revision', 'r16']);
+  assert.equal(options.revision, 'r16');
 });

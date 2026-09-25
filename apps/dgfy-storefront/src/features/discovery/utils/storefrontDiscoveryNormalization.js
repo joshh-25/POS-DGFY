@@ -144,7 +144,8 @@ export const normalizeProfileLocations = (profile = {}) => (
       is_primary_storefront: location.is_primary_storefront === true,
       supports_delivery: location.supports_delivery !== false,
       supports_pickup: location.supports_pickup !== false,
-      supports_dine_in: location.supports_dine_in !== false
+      supports_dine_in: location.supports_dine_in !== false,
+      allow_dine_in_pay_at_store: location.allow_dine_in_pay_at_store === true
     }))
     .filter((location) => location.location_id != null)
 );

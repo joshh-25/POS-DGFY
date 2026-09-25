@@ -151,6 +151,30 @@ test('unconditional: a relevant .github/workflows/ file change triggers every fr
     }
 });
 
+// #1748: the shared develop-PR lint workflow is an unconditional trigger for all three frontend
+// apps -- a PR changing only pr-frontend-lint-checks.yml must not silently skip the POS/
+// Storefront lint callers it feeds (fail-open trigger gap). Mirrors shared-changed-paths.yml's
+// own per-app patterns, which list this workflow for every app.
+test('unconditional: a shared lint-workflow change triggers every frontend app, not just dgfy-ims', async () => {
+    const root = makeGitRepo();
+    const baseGitRef = baseFixture(root);
+    try {
+        writeFiles(root, { '.github/workflows/pr-frontend-lint-checks.yml': 'name: PR Frontend Lint Check\n# changed\n' });
+        const headGitRef = commitAll(root, 'shared lint workflow change');
+
+        const result = await resolveFrontendBuildTriggers({ repoRoot: root, baseGitRef, headGitRef });
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+            assert.equal(result[app].trigger, true, `expected ${app} to trigger`);
+            assert.equal(result[app].reason, 'unconditional');
+        }
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+            assert.match(UNCONDITIONAL_TRIGGER_PATTERNS[app].source, /pr-frontend-lint-checks/);
+        }
+    } finally {
+        cleanup(root);
+    }
+});
+
 test('reachability-narrowed: a packages/web-core change unreachable from dgfy-storefront does not trigger it, but does trigger dgfy-ims/dgfy-pos (the PR #1689 shape)', async () => {
     const root = makeGitRepo();
     const baseGitRef = baseFixture(root);

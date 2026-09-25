@@ -17,7 +17,9 @@ import {
   repairItemFolderCategoryLifecycleSchema,
   repairPosParkedSaleOriginOwnership,
   normalizeTenantSchemaTableRepairSql,
-  resolveTenantSchemaRepairCollation
+  resolveTenantSchemaRepairCollation,
+  reconcileTenantSchema,
+  summarizeTenantSchemaReconciliation
 } from '../scripts/sync-tenant-schemas.js';
 
 const require = createRequire(import.meta.url);
@@ -28,6 +30,15 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders).toHaveProperty('sort_order');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders.sort_order.sql)
       .toContain('`sort_order` INTEGER NOT NULL DEFAULT 0');
+  });
+
+  it('registers the Dine-in payment policy and handover timing schema', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations).toHaveProperty('allow_dine_in_pay_at_store');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations.allow_dine_in_pay_at_store.sql)
+      .toContain('`allow_dine_in_pay_at_store` TINYINT(1) NOT NULL DEFAULT 0');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions).toHaveProperty('payment_timing');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions.payment_timing.sql)
+      .toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
   });
 
   it('backfills existing category order deterministically', async () => {
@@ -230,6 +241,8 @@ describe('tenant schema sync script contracts', () => {
   it('registers shared parked-sale ownership columns and origin backfill', async () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_cashier_id');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_shift_id');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_effects');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_deducted_at');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
       .toHaveProperty('idx_pos_parked_sales_origin_cashier_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
@@ -546,6 +559,17 @@ describe('tenant schema sync script contracts', () => {
     expect(repair.sql).toContain("'partially_paid'");
   });
 
+  it('registers the on_dine_in payment_timing enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.payment_timing;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['on_dine_in']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transactions', column: 'payment_timing', missing_values: ['on_dine_in'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
+  });
+
   it('registers pos_transactions.amount_paid and balance_due column repairs', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_transactions', column: 'amount_paid' },
@@ -617,5 +641,73 @@ describe('tenant schema sync script contracts', () => {
     for (const [, options] of connection.query.mock.calls) {
       expect(options).toEqual({ replacements: ['sku_tenant_grandmatador_test'] });
     }
+  });
+
+  describe('reconcileTenantSchema (#2027)', () => {
+    it('report mode: reflects the first inspection pass directly and never issues a mutating statement', async () => {
+      // An empty result set for every SELECT makes every registered table/column/index entry
+      // read as "missing" -- report mode must surface that as-is without attempting any repair.
+      const connection = { query: jest.fn().mockResolvedValue([[], {}]) };
+
+      const result = await reconcileTenantSchema(connection, 'sku_tenant_test', 'report');
+
+      expect(result.hasRemainingIssues).toBe(true);
+      expect(result.remaining.tables.length).toBeGreaterThan(0);
+      expect(result.remaining.columns.length).toBeGreaterThan(0);
+      // remaining === missing in report mode -- nothing was re-inspected after a repair, because
+      // no repair was ever attempted.
+      expect(result.remaining).toEqual(result.missing);
+      for (const [sql] of connection.query.mock.calls) {
+        expect(sql.toUpperCase()).not.toMatch(/^ALTER TABLE|^CREATE TABLE|^INSERT INTO/);
+      }
+    });
+
+    // #2027 bug fix regression: repair-apply mode used to have no branch for "post-repair
+    // re-inspection still finds something missing" -- it fell through to a generic success path.
+    // A connection double that never actually converges (every SELECT keeps returning empty, as
+    // if none of the ALTER/CREATE/INSERT repair statements took effect) simulates exactly that
+    // non-convergent case: repair-apply issues every repair statement, but the post-repair
+    // re-inspection sees the same "everything missing" result as before.
+    it('repair-apply mode: hasRemainingIssues stays true when post-repair re-inspection still finds missing objects', async () => {
+      const connection = { query: jest.fn().mockResolvedValue([[], {}]) };
+
+      const result = await reconcileTenantSchema(connection, 'sku_tenant_test', 'repair-apply');
+
+      expect(result.hasRemainingIssues).toBe(true);
+      expect(result.remaining.tables.length).toBeGreaterThan(0);
+      expect(result.remaining.columns.length).toBeGreaterThan(0);
+      // repair-apply DID attempt repairs (unlike report mode above) -- at least one mutating
+      // statement must have been issued despite the end result still being incomplete.
+      const issuedMutatingSql = connection.query.mock.calls.some(
+        ([sql]) => typeof sql === 'string' && /^ALTER TABLE|^CREATE TABLE|^INSERT INTO/i.test(sql)
+      );
+      expect(issuedMutatingSql).toBe(true);
+    });
+
+    it('rejects an unsupported mode rather than silently defaulting', async () => {
+      const connection = { query: jest.fn().mockResolvedValue([[], {}]) };
+      await expect(reconcileTenantSchema(connection, 'sku_tenant_test', 'alter'))
+        .rejects.toThrow(/unsupported mode/);
+    });
+  });
+
+  describe('summarizeTenantSchemaReconciliation (#2027)', () => {
+    it('builds the same human-readable parts shape used by both the CLI and provisioning error messages', () => {
+      const parts = summarizeTenantSchemaReconciliation({
+        tables: ['fnb_modifier_groups'],
+        columns: [{ table: 'items', column: 'tracking_mode' }],
+        indexes: [{ table: 'pos_terminal_shifts', indexName: 'uq_pos_terminal_shifts_active_operator' }],
+        seeds: [{ table: 'pos_discount_rules' }],
+        enumEntries: [{ table: 'items', column: 'category', missing_values: ['service'] }]
+      });
+
+      expect(parts).toEqual([
+        'table:fnb_modifier_groups',
+        'items.tracking_mode',
+        'pos_terminal_shifts.uq_pos_terminal_shifts_active_operator (index)',
+        'pos_discount_rules (seed data)',
+        'items.category (missing enum values: service)'
+      ]);
+    });
   });
 });

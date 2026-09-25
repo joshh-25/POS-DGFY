@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ClipboardCheck, RefreshCcw, Search, ShieldAlert } from 'lucide-react';
 import { fetchAuditLogs } from '../services/auditService.js';
+import { GlobalPagination } from '@/components/ui/pagination';
 
 const HUMAN_EVENT_LABELS = Object.freeze({
     shift_opened: 'Shift opened',
@@ -212,6 +213,7 @@ const AUDIT_DETAIL_KEY_LABELS = Object.freeze({
 
 const AUDIT_MONEY_KEY_PATTERN = /(amount|price|fee|cash|subtotal|total|discount|balance|variance|sales|tax)/i;
 const AUDIT_RATE_KEY_PATTERN = /(^|_)rate$/i;
+const AUDIT_PAGE_SIZE_OPTIONS = [25, 50, 100];
 const AUDIT_IDENTIFIER_KEY_PATTERN = /(^|_)id$/i;
 const AUDIT_CASHIER_ID_PATTERN = /^(origin_|previous_)?cashier_id$/i;
 const AUDIT_SENSITIVE_KEY_PATTERN = /(password|passwd|pin|token|secret|authorization|access[_-]?token|refresh[_-]?token)/i;
@@ -600,6 +602,7 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
     const [appliedFilters, setAppliedFilters] = useState(filters);
     const [data, setData] = useState({ logs: [], pagination: { page: 1, limit: 25, total: 0, total_pages: 1 } });
     const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(25);
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
 
@@ -610,7 +613,7 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
         try {
             const result = await fetchAuditLogs({
                 page,
-                limit: 25,
+                limit: pageSize,
                 ...Object.fromEntries(Object.entries(appliedFilters).filter(([, value]) => String(value || '').trim()))
             });
             setData(result);
@@ -619,7 +622,7 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
         } finally {
             setLoading(false);
         }
-    }, [appliedFilters, canViewAudit, isOnline, locked, page]);
+    }, [appliedFilters, canViewAudit, isOnline, locked, page, pageSize]);
 
     useEffect(() => {
         loadAudit();
@@ -627,14 +630,8 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
 
     const pagination = data?.pagination || {};
     const logs = Array.isArray(data?.logs) ? data.logs : [];
-    const canGoPrevious = page > 1;
-    const canGoNext = page < Number(pagination.total_pages || 1);
-    const rangeLabel = useMemo(() => {
-        if (!pagination.total) return 'No audit entries';
-        const start = ((page - 1) * Number(pagination.limit || 25)) + 1;
-        const end = Math.min(Number(pagination.total), page * Number(pagination.limit || 25));
-        return `${start}-${end} of ${pagination.total} entries`;
-    }, [page, pagination.limit, pagination.total]);
+    const totalPages = Math.max(1, Number(pagination.total_pages || 1));
+    const totalItems = Math.max(0, Number(pagination.total || logs.length || 0));
 
     if (!canViewAudit) {
         return (
@@ -683,7 +680,7 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
                 {errorMessage ? <div className="mt-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />{errorMessage}</div> : null}
                 <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
                     <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-500">
-                        <span>{loading ? 'Loading audit history...' : rangeLabel}</span>
+                        <span>{loading ? 'Loading audit history...' : (totalItems ? 'Newest entries first' : 'No audit entries')}</span>
                         <span>Newest first</span>
                     </div>
                     {logs.length === 0 && !loading ? <div className="p-8 text-center text-sm text-slate-500">No audit entries match these filters.</div> : null}
@@ -735,11 +732,24 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
                         })}
                     </div>
                 </div>
-                <div className="mt-4 flex items-center justify-between gap-3">
-                    <button type="button" disabled={!canGoPrevious || loading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-40">Previous</button>
-                    <span className="text-xs font-bold text-slate-500">Page {page} of {pagination.total_pages || 1}</span>
-                    <button type="button" disabled={!canGoNext || loading} onClick={() => setPage((value) => value + 1)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-40">Next</button>
-                </div>
+                <GlobalPagination
+                    testId="pos-audit-pagination"
+                    ariaLabel="POS audit pagination"
+                    currentPage={page}
+                    totalPages={totalPages}
+                    totalItems={totalItems}
+                    pageSize={pageSize}
+                    pageSizeOptions={AUDIT_PAGE_SIZE_OPTIONS}
+                    itemLabel="entries"
+                    loading={loading}
+                    disabled={locked || !isOnline}
+                    onPageChange={setPage}
+                    onPageSizeChange={(nextPageSize) => {
+                        setPageSize(nextPageSize);
+                        setPage(1);
+                    }}
+                    className="mt-4"
+                />
             </div>
         </section>
     );

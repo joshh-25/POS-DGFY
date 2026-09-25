@@ -248,7 +248,8 @@ describe('EmployeeManagementPanel', () => {
     const heading = await screen.findByRole('heading', { name: 'Employees', exact: true });
     const refreshButton = screen.getByRole('button', { name: 'Refresh', exact: true });
 
-    expect(refreshButton.className).toContain('h-9');
+    expect(refreshButton.className).toContain('h-11');
+    expect(refreshButton.className).toContain('min-[1200px]:h-10');
     expect(refreshButton.className).toContain('sm:w-auto');
     fireEvent.click(refreshButton);
     await waitFor(() => expect(fetchEmployees).toHaveBeenCalledTimes(2));
@@ -283,17 +284,41 @@ describe('EmployeeManagementPanel', () => {
 
     expect((await screen.findAllByText('Juan Dela Cruz')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Maria Santos').length).toBeGreaterThan(0);
+
+    const expectActionButtonStyle = (button, iconColorClass) => {
+      expect(button.className).toContain('h-9 w-9');
+      expect(button.className).toContain('rounded-lg');
+      expect(button.className).toContain('pos-table-action-button');
+      expect(button.className).toContain('bg-white');
+      expect(button.className).toContain('shadow-sm');
+      expect(button.className).toContain(iconColorClass);
+      expect(button.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4');
+    };
+
+    const disableActions = screen.getAllByRole('button', { name: 'Disable Juan Dela Cruz' });
+    expect(disableActions).toHaveLength(2);
+    disableActions.forEach((button) => expectActionButtonStyle(button, 'text-[#DC2626]'));
+
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search employees' }), { target: { value: 'maria' } });
 
     expect(screen.queryByText('Juan Dela Cruz')).toBeNull();
     expect(screen.getAllByText('Maria Santos').length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Edit Maria Santos' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Enable Maria Santos' }).length).toBeGreaterThan(0);
+    const editActions = screen.getAllByRole('button', { name: 'Edit Maria Santos' });
+    const enableActions = screen.getAllByRole('button', { name: 'Enable Maria Santos' });
+    expect(editActions).toHaveLength(2);
+    expect(enableActions).toHaveLength(2);
+    editActions.forEach((button) => expectActionButtonStyle(button, 'text-[#1A4E8D]'));
+    enableActions.forEach((button) => expectActionButtonStyle(button, 'text-[#1A4E8D]'));
     expect(screen.queryByText('Edit')).toBeNull();
     expect(screen.queryByText('Disable')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    const filterTrigger = screen.getByRole('button', { name: 'Filters' });
+    expect(filterTrigger.getAttribute('aria-haspopup')).toBeNull();
+    expect(filterTrigger.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(filterTrigger);
     const filterPopover = await screen.findByRole('region', { name: 'Filter employees' });
+    expect(filterTrigger.getAttribute('aria-expanded')).toBe('true');
+    expect(filterTrigger.getAttribute('aria-controls')).toBe(filterPopover.id);
     expect(screen.queryByRole('dialog', { name: 'Filter employees' })).toBeNull();
     expect(screen.queryByRole('combobox', { name: 'Filter employees by location' })).toBeNull();
     const allButton = within(filterPopover).getByRole('button', { name: 'All' });
@@ -311,6 +336,8 @@ describe('EmployeeManagementPanel', () => {
     fireEvent.click(enabledButton);
     fireEvent.click(within(filterPopover).getByRole('button', { name: 'Done' }));
     expect(screen.queryByRole('region', { name: 'Filter employees' })).toBeNull();
+    expect(document.activeElement).toBe(filterTrigger);
+    expect(filterTrigger.getAttribute('aria-controls')).toBeNull();
     expect(screen.queryByText('Maria Santos')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
@@ -321,8 +348,10 @@ describe('EmployeeManagementPanel', () => {
     expect(screen.queryByRole('region', { name: 'Filter employees' })).toBeNull();
     expect(screen.queryByText('Maria Santos')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
+    fireEvent.click(filterTrigger);
+    within(screen.getByRole('region', { name: 'Filter employees' })).getByRole('button', { name: 'All' }).focus();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('region', { name: 'Filter employees' })).toBeNull();
+    expect(document.activeElement).toBe(filterTrigger);
   });
 });

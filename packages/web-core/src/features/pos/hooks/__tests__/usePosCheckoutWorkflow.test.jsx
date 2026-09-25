@@ -122,6 +122,7 @@ const createBaseProps = (overrides = {}) => ({
     setReceiptPreviewSource: vi.fn(),
     setReceiptPreviewModalOpen: vi.fn(),
     setCheckoutConfirmModalOpen: vi.fn(),
+    setCheckoutOpenedFromCurrentSale: vi.fn(),
     setSplitPaymentDialogOpen: vi.fn(),
     setSplitPaymentSession: vi.fn(),
     setSplitPaymentWorkflowVersion: vi.fn(),
@@ -247,6 +248,19 @@ describe('usePosCheckoutWorkflow', () => {
 
         expect(posToast.error).toHaveBeenCalledWith(validationMessage);
         expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalled();
+        expect(props.setCheckoutOpenedFromCurrentSale).not.toHaveBeenCalled();
+    });
+
+    it('marks the current-sale checkout handoff so the checkout sheet opens without motion', async () => {
+        const { result, props } = renderCheckout();
+
+        await act(async () => {
+            await result.current.openCheckoutConfirmModal();
+        });
+
+        expect(props.setCheckoutOpenedFromCurrentSale).toHaveBeenCalledWith(true);
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(true);
+        expect(props.setMobileCheckoutPanelOpen).toHaveBeenCalledWith(false);
     });
 
     it('maps a stale backend price-override error to the cashier-facing message', async () => {
@@ -522,7 +536,8 @@ describe('usePosCheckoutWorkflow', () => {
             ok: true,
             resumeContext: {
                 parkedSaleId: 27,
-                catalog: expect.any(Array)
+                catalog: expect.any(Array),
+                warnings: []
             }
         });
 
@@ -530,8 +545,16 @@ describe('usePosCheckoutWorkflow', () => {
             await result.current.handleParkedSaleClaimed(parkedSale, 'resume', validation.resumeContext);
         });
         expect(props.setCart).toHaveBeenCalledWith([
-            expect.objectContaining({ item_id: 7, item_name: 'Coffee', quantity: 1 })
+            expect.objectContaining({
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                parked_snapshot_line: true
+            })
         ]);
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
+            description: 'Add items as needed, then checkout.'
+        });
     });
 
     it('rejects local parked-sale blockers before fetching the catalog', async () => {
@@ -589,7 +612,7 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
-    it('does not fall back to stale catalog data when a refreshed parked item is no longer returned', async () => {
+    it('keeps a parked line payable when a refreshed catalog no longer returns it', async () => {
         fetchPosCatalog.mockResolvedValue([]);
         const { result } = renderCheckout({
             safeCart: [],
@@ -620,8 +643,29 @@ describe('usePosCheckoutWorkflow', () => {
             }, 'resume');
         });
 
-        expect(validation.ok).toBe(false);
-        expect(validation.message).toContain('Coffee is no longer available');
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Coffee is no longer available');
+
+        await act(async () => {
+            await result.current.handleParkedSaleClaimed({
+                pos_parked_sale_id: 27,
+                snapshot: {
+                    order_method: 'dine_in',
+                    lines: [{
+                        item_id: 7,
+                        item_name: 'Coffee',
+                        sku_code: 'COF-01',
+                        quantity: 1,
+                        base_sale_price: 125,
+                        sale_price: 125
+                    }]
+                }
+            }, 'resume', validation.resumeContext);
+        });
+
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
+            description: 'Add items as needed, then checkout. 1 saved-item warning. Review the cart before checkout.'
+        });
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

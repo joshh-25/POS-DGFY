@@ -40,8 +40,13 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Takeout')).toBeDefined();
     expect(screen.getByText('Pickup')).toBeDefined();
     expect(screen.getByText('Delivery')).toBeDefined();
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    const tableInput = screen.getByPlaceholderText('e.g. T-04');
+    const notesInput = screen.getByPlaceholderText('Applies to the whole order');
+    expect(tableInput.closest('label').textContent).toContain('Table # (Optional)');
+    expect(tableInput.closest('label').textContent).not.toContain('*');
+    expect(notesInput.closest('label').textContent).toContain('Order Notes (Global)');
+    expect(notesInput.closest('label').textContent).not.toContain('*');
+    expect(notesInput.closest('label').className).not.toContain('col-span-full');
     expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
     expect(screen.getByText('Payment Type')).toBeDefined();
@@ -81,6 +86,20 @@ describe('POS Workflow Panels Contract', () => {
     expect(textContent).not.toContain('Table #');
     expect(textContent).not.toContain('Guest Count');
     expect(textContent).not.toContain('Kitchen Notes');
+  });
+
+  it('expands global order notes for tablet Takeout', () => {
+    render(
+      <FnbWorkflowPanel
+        orderMethod="takeout"
+        setOrderMethod={vi.fn()}
+        kitchenNotes="No spice"
+        setKitchenNotes={vi.fn()}
+        isTabletViewport
+      />
+    );
+
+    expect(screen.getByPlaceholderText('Applies to the whole order').closest('label').className).toContain('col-span-full');
   });
 
   it('uses direct order-method buttons in the wide checkout presentation', () => {
@@ -140,7 +159,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(desktopView.container.querySelector('label').className).not.toContain('col-span-full');
   });
 
-  it('collapses optional table and kitchen details after an item is added', () => {
+  it('keeps optional table and kitchen details visible after an item is added', () => {
     const panelProps = {
       orderMethod: 'dine_in',
       setOrderMethod: vi.fn(),
@@ -151,22 +170,14 @@ describe('POS Workflow Panels Contract', () => {
     };
     const { rerender } = render(<FnbWorkflowPanel key="cart-0" {...panelProps} cartItemCount={0} />);
 
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
+    expect(screen.getByPlaceholderText('Applies to the whole order')).toBeDefined();
 
     rerender(<FnbWorkflowPanel key="cart-1" {...panelProps} cartItemCount={1} />);
 
     expect(screen.getByTestId('pos-checkout-order-method-buttons')).toBeDefined();
-    expect(screen.queryByText('Table # (Optional)')).toBeNull();
-    expect(screen.queryByText('Order Notes (Global)')).toBeNull();
-
-    const detailsToggle = screen.getByRole('button', { name: 'Edit table & notes' });
-    expect(detailsToggle.getAttribute('aria-expanded')).toBe('false');
-
-    fireEvent.click(detailsToggle);
-
-    expect(screen.getByText('Table # (Optional)')).toBeDefined();
-    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
-    expect(detailsToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
+    expect(screen.getByPlaceholderText('Applies to the whole order')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Edit table & notes' })).toBeNull();
   });
 });

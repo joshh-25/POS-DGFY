@@ -12,7 +12,11 @@
 // loosely enough to let the code reach that far. Folding both concerns into one function here means
 // a test can mock this single seam instead of the migration internals underneath it, and the next
 // repair/migration this tenant-bootstrap path needs gets one call site to add it to, not three.
-import { repairItemFolderCategoryLifecycleSchema } from '../../scripts/sync-tenant-schemas.js';
+import {
+    repairItemFolderCategoryLifecycleSchema,
+    reconcileTenantSchema,
+    summarizeTenantSchemaReconciliation
+} from '../../scripts/sync-tenant-schemas.js';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
@@ -40,4 +44,34 @@ export async function applyPostSyncTenantSchema(tenantSequelize, SequelizeNamesp
     // immediately after the model graph is created so a brand-new tenant has the same constraints
     // as an existing tenant repaired by the migration runner.
     await applyTenantBootstrapMigrations(tenantSequelize.getQueryInterface(), SequelizeNamespace);
+
+    // #2027: hard precondition. Reconcile against the full canonical schema-capability registry
+    // (tables/columns/indexes/seeds/enum contracts) -- the same registry sync-tenant-schemas.js's
+    // report/repair-apply modes check for EXISTING tenants -- so a freshly-provisioned tenant can
+    // never reach `active` with less schema than an existing, repaired tenant. This is exactly
+    // what a prior version of provisioning skipped: it ran only the two steps above, never this
+    // registry, which is how a production tenant was once activated missing several generated
+    // columns, indexes, and seed rows the registry already covered.
+    //
+    // Deliberately calls reconcileTenantSchema directly rather than going through
+    // runTenantSchemaSync/the CLI, bypassing assertTenantSchemaMutationModeAllowed/
+    // TENANT_SCHEMA_MUTATION_APPROVED (that gate is only invoked once, at the top of
+    // runTenantSchemaSync -- reconcileTenantSchema itself never calls it). That's correct, not an
+    // accidental gap: the gate exists to stop an operator's copy-pasted command or deploy
+    // configuration from silently mutating an EXISTING active tenant's database. It does not apply
+    // here -- this repairs a brand-new, not-yet-active database that provisionTenant itself
+    // created moments ago and will drop entirely via its own catch-block compensating transaction
+    // on any failure from this point on. There is no existing production data for that gate to
+    // protect.
+    //
+    // Passes tenantSequelize directly (not a fresh raw mysql2 connection) -- every inspect/repair
+    // function reconcileTenantSchema calls is connection-shape-agnostic via queryWithReplacements,
+    // and tenantSequelize is already scoped to `dbName`.
+    const reconciliation = await reconcileTenantSchema(tenantSequelize, dbName, 'repair-apply');
+    if (reconciliation.hasRemainingIssues) {
+        throw new Error(
+            `Tenant schema capability postcondition failed for ${dbName}: `
+            + summarizeTenantSchemaReconciliation(reconciliation.remaining).join(', ')
+        );
+    }
 }

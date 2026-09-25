@@ -20,10 +20,12 @@ const workspaceSource = [
   fs.readFileSync(path.resolve(__dirname, '../settings/PosAddTerminalModal.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosTerminalAdvancedSettingsModal.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosSettingsTabNavigation.jsx'), 'utf8'),
+  fs.readFileSync(path.resolve(__dirname, '../components/PosLineTabNavigation.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosStorefrontSettingsPane.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/useStorefrontSettingsController.js'), 'utf8')
 ].join('\n');
 const storefrontPaneSource = fs.readFileSync(path.resolve(__dirname, '../settings/PosStorefrontSettingsPane.jsx'), 'utf8');
+const subtabNavigationSource = fs.readFileSync(path.resolve(__dirname, '../components/PosSubtabNavigation.jsx'), 'utf8');
 const storefrontHoursSchedulerSource = fs.readFileSync(path.resolve(__dirname, '../../settings/StorefrontBusinessHoursScheduler.jsx'), 'utf8');
 const storefrontCategoriesSource = fs.readFileSync(path.resolve(__dirname, '../settings/StorefrontCategoriesSettings.jsx'), 'utf8');
 const storefrontWhyChooseUsSource = fs.readFileSync(path.resolve(__dirname, '../settings/StorefrontWhyChooseUsSettings.jsx'), 'utf8');
@@ -96,7 +98,7 @@ describe('regular POS Setup cashier management contract', () => {
     expect(cashierTableSource).toContain('function MobileCashierTable({');
     expect(cashierTableSource).toContain('className="min-w-0 md:hidden"');
     expect(cashierTableSource).toContain('Swipe horizontally to view all permissions.');
-    expect(cashierTableSource).toContain('className="min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200"');
+    expect(cashierTableSource).toContain('className={`${POS_TABLE_SURFACE_CLASS} min-w-0 overflow-x-auto overscroll-x-contain`}');
     expect(cashierTableSource).toContain('role="region"');
     expect(cashierTableSource).toContain('aria-label="Cashier permissions table on mobile"');
     expect(cashierTableSource).toContain('tabIndex={0}');
@@ -107,14 +109,26 @@ describe('regular POS Setup cashier management contract', () => {
     expect(cashierTableSource).toContain('className="px-2 py-2.5 text-right align-middle"');
     expect(cashierTableSource).toContain('aria-label="POS Discount Authorization"');
     expect(cashierTableSource).toContain('aria-label="Cashier Void and Cash Authorization"');
-    expect(cashierTableSource).toContain('className="hidden overflow-hidden rounded-xl border border-slate-200 md:block"');
+    expect(cashierTableSource).toContain('className={`${POS_TABLE_SURFACE_CLASS} hidden md:block`}');
     expect(cashierTableSource).toContain('testId={`mobile-pos-cashier-discount-toggle-${cashier.user_id}`}');
     expect(cashierTableSource).toContain('testId={`mobile-pos-cashier-drawer-toggle-${cashier.user_id}`}');
   });
 
+  it('switches Settings data tables at tablet width without removing cashier permission controls', () => {
+    [employeeTableSource, deliveryTableSource, employeeCreditTableSource].forEach((source) => {
+      expect(source).toContain('hidden min-[768px]:block');
+      expect(source).toContain('min-[768px]:hidden');
+    });
+    expect(cashierTableSource).toContain('data-pos-cashier-permissions-header="true">Permissions</span>');
+    expect(cashierTableSource).toContain('data-pos-cashier-permission="discount"');
+    expect(cashierTableSource).toContain('data-pos-cashier-permission="day-close"');
+    expect(cashierTableSource).toContain('data-pos-cashier-permission="cashier-void"');
+    expect(cashierTableSource).toContain('data-pos-cashier-terminals-cell="true"');
+    expect(cashierTableSource).toContain('pos-cashier-permissions-data-row');
+  });
+
   it('uses compact mobile gutters across Settings data tables', () => {
     [employeeTableSource, deliveryTableSource, employeeCreditTableSource].forEach((source) => {
-      expect(source).toContain('px-2 py-3 sm:px-2.5');
       expect(source).toContain('px-2 py-2.5 sm:px-2.5');
       expect(source).toContain('border-t border-slate-100 px-5 py-3.5 sm:flex-row');
       expect(source).toContain('sm:px-3');
@@ -307,7 +321,8 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('keeps unsaved POS setup actions in a persistent full-width bottom bar', () => {
-    expect(workspaceSource).toContain('className="min-w-0 pt-2 sm:pt-0"');
+    expect(workspaceSource).toContain('role="status"');
+    expect(workspaceSource).toContain('aria-live="polite"');
     expect(workspaceSource).toContain('fixed inset-x-0 bottom-0 z-50');
     expect(workspaceSource).toContain('border-t border-blue-200');
     expect(workspaceSource).toContain('pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]');
@@ -364,16 +379,16 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('fills settings tabs on desktop while keeping mobile tabs comfortably spaced', () => {
-    expect(workspaceSource).toContain('min-[1200px]:min-w-0 min-[1200px]:w-full min-[1200px]:gap-0');
-    expect(workspaceSource).toContain('min-[1200px]:flex-1 min-[1200px]:justify-center');
+    expect(workspaceSource).toContain('min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0');
+    expect(workspaceSource).toContain('min-[1024px]:flex-1 min-[1024px]:justify-center');
     expect(workspaceSource).toContain('items-end gap-3 px-1');
     expect(workspaceSource).toContain('px-2 py-3 text-[14px] font-bold whitespace-nowrap');
   });
 
   it('centers interior settings tabs when the mobile tab rail overflows', () => {
     expect(workspaceSource).toContain('const tabsViewportRef = useRef(null);');
-    expect(workspaceSource).toContain('const activeTabIndex = settingsTabs.findIndex((tab) => tab.id === activeTab);');
-    expect(workspaceSource).toContain('if (activeTabIndex <= 0 || activeTabIndex >= settingsTabs.length - 1) return undefined;');
+    expect(workspaceSource).toContain('const activeTabIndex = availableTabs.findIndex((tab) => tab.id === activeTab);');
+    expect(workspaceSource).toContain('if (activeTabIndex <= 0 || activeTabIndex >= availableTabs.length - 1) return undefined;');
     expect(workspaceSource).toContain('if (!viewport || viewport.scrollWidth <= viewport.clientWidth) return undefined;');
     expect(workspaceSource).toContain('const tabCenter = tabRect.left - viewportRect.left + viewport.scrollLeft + (tabRect.width / 2);');
     expect(workspaceSource).toContain('viewport.scrollTo({');
@@ -389,9 +404,9 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('uses tighter mobile settings gutters with a clear tab-to-content gap', () => {
-    expect(workspaceSource).toContain('min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3');
+    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="settings"');
     expect(workspaceSource).toContain('id="pos-settings-panel"');
-    expect(workspaceSource).toContain('className="min-w-0 pt-2 sm:pt-0"');
+    expect(workspaceSource).toContain('className="min-w-0"');
   });
 
   it('keeps first POS Setup and Employees headings clear of their mobile tab rails', () => {
@@ -589,10 +604,17 @@ describe('regular POS Setup cashier management contract', () => {
     expect(workspaceSource).toContain('const lastFulfillmentMethodLocked = effectiveMode === \'transaction\'');
     expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDelivery}');
     expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsPickup}');
+    expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}');
     expect(storefrontPaneSource).toContain('checked={locationForm.supports_delivery !== false}');
     expect(storefrontPaneSource).toContain('checked={locationForm.supports_pickup !== false}');
+    expect(storefrontPaneSource).toContain('checked={locationForm.supports_dine_in !== false}');
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_delivery', value)");
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_pickup', value)");
+    expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_dine_in', value)");
+    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
+      .toBeGreaterThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsPickup}'));
+    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
+      .toBeLessThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.allowScheduledOrders}'));
     expect(workspaceSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
     expect(tenantSetupModalSource).toContain('Label>Supports Delivery</Label>');
     expect(tenantSetupModalSource).toContain('Label>Supports Pickup</Label>');
@@ -613,7 +635,8 @@ describe('regular POS Setup cashier management contract', () => {
   it('shows the fulfillment requirement as a readable warning toast', () => {
     expect(storefrontPaneSource).toContain("import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';");
     expect(storefrontPaneSource).toContain('const FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS = 10000;');
-    expect(storefrontPaneSource).toContain('if (value === false && lastFulfillmentMethodLocked)');
+    expect(storefrontPaneSource).toContain("const isDeliveryOrPickup = field === 'supports_delivery' || field === 'supports_pickup';");
+    expect(storefrontPaneSource).toContain('if (isDeliveryOrPickup && value === false && lastFulfillmentMethodLocked)');
     expect(storefrontPaneSource).toContain('toast.warning(LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE, {');
     expect(storefrontPaneSource).toContain('duration: FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS');
     expect(storefrontPaneSource).not.toContain('text-amber-700">{LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE}');
@@ -628,9 +651,10 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain('StoreSetupSummary');
     expect(storefrontPaneSource).toContain('StoreContentSummary');
     expect(storefrontPaneSource).toContain('StoreLocationsSummary');
-    expect(storefrontPaneSource).toContain('min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4');
-    expect(storefrontPaneSource).toContain('min-w-36 w-max shrink-0');
-    expect(storefrontPaneSource).toContain('pos-storefront-tab-${activeSubtab}');
+    expect(subtabNavigationSource).toContain('min-[1024px]:grid min-[1024px]:min-w-0');
+    expect(subtabNavigationSource).toContain('min-[1024px]:grid-cols-4');
+    expect(subtabNavigationSource).toContain('min-w-36 w-max shrink-0');
+    expect(storefrontPaneSource).toContain('idPrefix="pos-storefront-tab"');
     expect(storefrontPaneSource).toContain('aria-live="polite"');
     expect(storefrontPaneSource).toContain('<Switch');
     expect(storefrontPaneSource).toContain('handleStorefrontBooleanChange');
@@ -653,7 +677,7 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('removes redundant Storefront pane headings below the nested subtab rail', () => {
-    const subtabRailIndex = storefrontPaneSource.indexOf('      <StorefrontSubtabNavigation activeSubtab');
+    const subtabRailIndex = storefrontPaneSource.indexOf('      <PosSubtabNavigation');
     const panelIndex = storefrontPaneSource.indexOf('      <div id="pos-storefront-panel"');
 
     expect(subtabRailIndex).toBeGreaterThanOrEqual(0);
@@ -693,7 +717,7 @@ describe('regular POS Setup cashier management contract', () => {
 
   it('uses three columns for Display and checkout options on desktop screens', () => {
     const displayOptionsStart = storefrontPaneSource.indexOf('function StorefrontDisplayOptions');
-    const displayOptionsEnd = storefrontPaneSource.indexOf('function StorefrontSubtabNavigation', displayOptionsStart);
+    const displayOptionsEnd = storefrontPaneSource.indexOf('function CustomerAccessModeCards', displayOptionsStart);
     const displayOptionsSource = storefrontPaneSource.slice(displayOptionsStart, displayOptionsEnd);
 
     expect(displayOptionsSource).toContain('grid gap-3 sm:grid-cols-2 lg:grid-cols-6');

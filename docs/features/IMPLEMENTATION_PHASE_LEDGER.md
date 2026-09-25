@@ -23538,3 +23538,473 @@ and `references/low-level-topology.md`); #331/Phase 264 Conduct topology; issue 
 ### Next eligible phase
 
 341 after Phase 340's implementation, review, merge, and required deployed QA evidence are complete (re-check the ledger before reserving it).
+
+## Phase 341 - Relax manual `/hotfix` same-day eligibility to an issue-backed necessity test (#2006)
+
+### Initiative and release
+
+Incident-responder process policy, current release.
+
+### Objective and scope
+
+Relax the manual `/hotfix` direct-`main` eligibility rule from the same-day/active-incident gate
+to an issue-backed necessity test: explicit `/hotfix` plus an open issue documenting the affected
+production or production-relevant behavior, why waiting for the next scheduled promotion is
+unacceptable, expected harm/risk from delay, and timing context. No same-day discovery or fix
+requirement applies. Scope: `.agents/skills/incident-responder/SKILL.md` (manual-entry procedure,
+manual/autonomous authorization boundary, restate-and-log discipline), `AGENTS.md`
+(incident-responder role summaries), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-08-18 framing
+correction plus a dated 2026-09-19 amendment; back-port procedure unchanged). No application
+runtime, API, database, frontend, deployment, board, ADR, or compliance-declaration change; no
+change to #2005's issue or board state.
+
+### Status
+
+`in_progress` — implementation and local validation are complete; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2006 (decision); #861 (manual `/hotfix` entry point); #546 (incident-responder loop);
+#1700 (compliance-preflight reconciliation, unchanged); ADR 0082 (release-note obligation,
+unchanged); #2005 as calibration reference only (not rerouted).
+
+### Acceptance and validation evidence
+
+- [x] A defect discovered days after deployment can qualify for manual direct-`main` hotfix
+      handling when the open issue documents why waiting is unacceptable; no same-day gate
+      remains on the manual path.
+- [x] Missing open issue or missing explicit `/hotfix` still stops the manual path (propose
+      only).
+- [x] Autonomous monitor-triggered handling remains actively-incident-only; the relaxation does
+      not leak into the autonomous loop or its `main`-merge override.
+- [x] Direct-`main` hotfixes still require review, Merge Safety, release notes, compliance
+      reconciliation, and back-porting; #2005 is calibration only and untouched.
+- [x] `npm run lint:docs` passes (30 governed docs; ADR lint 90 ADRs).
+- [x] `npm run check:agent-surfaces` passes (13 canonical roles, 10 shims).
+- [x] `npm run check:architecture` passes (55 modules / 595 code files; 98 controller files).
+- [x] Targeted search confirms no contradictory `same-day` eligibility gate remains on the
+      manual path (remaining mentions are the explicit negation plus unrelated history).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #2006 (`Refs`; calibration reference #2005, not rerouted).
+- Handoff: `.tmp/plan-2006.md` (planning head `1c6bf202da8b41fa47a755d269b0ec37dfe8199b`).
+- Implementation: `.agents/skills/incident-responder/SKILL.md`, `AGENTS.md`,
+  `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+- Completion date: not yet merged — set at merge time.
+
+## Phase 342 - Preserve the release floor and separate staging revisions from production patches (#1977)
+
+### Initiative and release
+
+Release versioning (ADR 0081), current release.
+
+### Objective and scope
+
+Amend the release-version contract so `X.Y.Z` remains the per-app production floor while
+candidate revisions (`rN`, the candidate-wide `release_revision.revision`) identify the exact
+artifact that reached production. Frontends publish `X.Y.Z-rN-staging` (STAGING candidate) and
+`X.Y.Z-rN` plus immutable alias `X.Y.Z` (PROD); `dgfy-api` and `dgfy-migration-runner` publish
+the environment-neutral `X.Y.Z-rN` once and PROD reuses that digest plus the alias. Scope:
+`scripts/resolve-release-tags.js` (+ tests, the central tag resolver),
+`scripts/promote-image-alias.js` (+ tests, digest-based alias promotion with mismatch refusal),
+`scripts/check-image-version-parity.js` (+ tests, revision-aware parity incl. alias equality),
+`scripts/resolve-build-skip-plan.js` (+ tests, `--release-revision` matrix-tag checks),
+`scripts/check-deploy-version-stamping-workflow.js` (+ tests, floor/revision shape checks),
+`.github/workflows/deploy.yml`/`deployment-orchestrator.yml`/`deploy-api.yml`/
+`deploy-migration-runner.yml`/`deploy-frontend.yml`/`deploy-main.yml` (revision threading,
+floor/revision labels and build-args, `promote-aliases` job gating `publish`), the five
+`infrastructure/docker/*` Dockerfiles (`APP_RELEASE_FLOOR`/`APP_RELEASE_REVISION`),
+`apps/dgfy-api/src/services/healthService.js` (+ tests, floor/revision in `/health`),
+`packages/web-core/vite/buildStampPlugin.js` (+ tests) and the three apps' `vite.config.js`
+(floor/revision in `version.json`/meta tags/`VITE_APP_RELEASE_*`), ADR 0081's 2026-09-19
+Amendment, `docs/ops/RELEASE_CANDIDATE_POLICY.md`, `docs/testing/release-go-no-go-checklist.md`,
+`docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`, `docs/deployment/PWA_SURFACE_CONTRACT.md`, and the
+promoter runbook dispatch commands. No migration, no API boundary change, no #495 compose change,
+no deployment execution.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+ADR 0081 (Decisions 1, 3, 4, 8 as amended 2026-09-19; Decision 7 `[binding]` unchanged),
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, `scripts/check-promotion-candidate.js` (candidate-wide
+`release_revision.revision` as the authoritative `rN`), Phase 341 (#2006, sequence predecessor;
+Phase 343 becomes eligible only after this phase's implementation, review, merge, and deployed QA).
+
+### Acceptance and validation evidence
+
+- [x] `npm run test:release-tags` passes (tag matrix, revision validation, hotfix tags, no `+`).
+- [x] `npm run test:image-alias` passes (aliasing, mismatch refusal, historical-tag preservation).
+- [x] `npm run test:deploy-version-stamping` passes (workflow-shape incl. revision threading).
+- [x] `npm run test:tag-immutability` passes unchanged (Decision 7 guard untouched).
+- [x] `npm run test:promotion-candidate` passes unchanged (manifest `rN` stays authoritative).
+- [x] `npm run test:app-versions` passes (per-app bumps for the touched apps).
+- [x] `npm run lint:docs` passes (amended ADR/policy/checklist/mapping/runbook/ledger).
+- [x] `npm run check:architecture` passes.
+- [x] `npm run check:compliance` passes (no new declaration required).
+- [ ] PR review, merge, and deployed QA remain outstanding.
+
+### Links
+
+- Issue: #1977.
+- Handoff: `.tmp/plan-1977.md` (planning head `1c6bf202da8b41fa47a755d269b0ec37dfe8199b`).
+- Implementation: `scripts/resolve-release-tags.js`, `scripts/promote-image-alias.js`,
+  `scripts/check-image-version-parity.js`, `scripts/resolve-build-skip-plan.js`,
+  `scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy*.yml`,
+  `.github/workflows/deployment-orchestrator.yml`, `infrastructure/docker/*/Dockerfile`,
+  `apps/dgfy-api/src/services/healthService.js`,
+  `packages/web-core/vite/buildStampPlugin.js`.
+- Prior release-versioning work: #1548 (epic), #1559/#1575/#1588/#1590/#1610/#1612 (Waves 3-4).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+343 after Phase 342's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 343 - Blocking develop-PR lint coverage for apps/dgfy-pos and apps/dgfy-storefront (#1748)
+
+### Initiative and release
+
+CI quality gates, current release.
+
+### Objective and scope
+
+Extend the ordinary `develop`-PR lint gate (#1712) from IMS-only to all three frontend apps:
+parameterize `.github/workflows/pr-frontend-lint-checks.yml` with a required `app` input,
+add `frontend-pos-lint-check` and `frontend-storefront-lint-check` caller jobs to
+`.github/workflows/pr-checks.yml` behind the existing `frontend_pos`/`frontend_storefront`
+changed-path outputs, synchronize the shared lint workflow into the POS/Storefront
+unconditional trigger patterns in `.github/workflows/shared-changed-paths.yml` and
+`scripts/resolve-frontend-build-triggers.js`, guard the three caller jobs and their app
+mappings in `scripts/check-pr-quality-workflow.js`, and record the new enforcement truth in
+ADR 0067. Lint-only; no Docker/Vite builds, no rule changes, no `--max-warnings`, no
+`packages/web-core` scope broadening for POS/Storefront, no promotion-gate changes, no app
+version bumps, no runtime/API/database/frontend change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #1748 (decision); #1712 (the IMS-only develop-PR lint gate this extends); #918/#1433
+(web-core lint coverage and error baseline); ADR 0067 (2026-09-08 amendment's residual gap,
+superseded for develop-PR purposes by the 2026-09-22 amendment); ADR 0071 Decision 4
+`[binding]` (web-core lint stays IMS-run, unchanged); Phase 342 (#1977, sequence predecessor —
+still `in_progress` at reservation time, as is Phase 341, so this entry records the next free
+continuous number per the ledger rule rather than a completed-predecessor chain; Phase 344
+becomes eligible only after this phase's implementation, review, merge, and deployed QA).
+
+### Acceptance and validation evidence
+
+- [x] Live lint baseline on already-installed locked dependencies (2026-09-22): `apps/dgfy-pos`
+      `npm run lint` exits 0 with no reported problems; `apps/dgfy-storefront` exits 0 with
+      135 warnings / 0 errors — the warning-tolerant blocking contract rests on this evidence.
+- [x] `node scripts/check-pr-quality-workflow.js` passes against the real workflows, including
+      the new develop-PR lint mapping check (all three caller jobs call the shared workflow
+      with the intended app input, condition, and light-runner routing; no `continue-on-error`).
+- [x] `npm run test:pr-quality-workflow` passes (58/58, incl. 7 new mapping regression cases).
+- [x] `npm run test:frontend-build-triggers` passes (11/11, incl. the shared lint-workflow
+      unconditional-trigger case).
+- [x] `node --check` passes on both changed scripts; `git diff --check` clean.
+- [x] `npm run lint:docs` passes (amended ADR 0067 + this ledger entry).
+- [x] `npm run check:compliance`, `npm run check:architecture`, and
+      `npm run check:workspace-hygiene` pass as applicable to the changed workflow/docs/script
+      surfaces.
+- [ ] PR review, merge, and deployed QA remain outstanding (first CI run's check names and
+      conclusions to be reported after the PR opens; no merge/deploy is part of this phase).
+
+### Links
+
+- Issue: #1748 (`Closes`).
+- Handoff: `.tmp/plan-1748.md` (planning head `4bb0e2e892e9780dd413ec9b22838f2e0e3ffab2`).
+- Implementation: `.github/workflows/pr-frontend-lint-checks.yml`,
+  `.github/workflows/pr-checks.yml`, `.github/workflows/shared-changed-paths.yml`,
+  `scripts/resolve-frontend-build-triggers.js` (+ tests),
+  `scripts/check-pr-quality-workflow.js` (+ tests),
+  `docs/architecture/adr/0067-frontend-browser-support-baseline-and-es-compat-guardrail.md`.
+- Prior lint-gate work: #1712 (develop-PR IMS gate), #918 (web-core coverage), #1433 (error baseline).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+344 after Phase 343's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 344 - Reusable Linux real-DB testing agent for local release evidence (#372)
+
+### Initiative and release
+
+Local release-quality verification and evidence, current release.
+
+### Objective and scope
+
+Provide a canonical `testing-agent` skill and thin tested wrapper for running the existing
+`gate:release:local` command in a disposable Linux Docker checkout against verified MySQL 8 and
+Redis 7 test services. The wrapper performs resource/service/database preflight, preserves gate
+exit status, copies only SHA-bound release evidence back, renders a concise summary, and cleans up
+the scratch checkout. Focused runs are explicitly partial/advisory. No new test runner, CI change,
+merge authority, deployment, VM lifecycle manager, migration, or runtime/API change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #372; #331 Worker caller; #366 PR Reviewer caller; #375 existing release gate; authoritative
+`docs/testing/release-go-no-go-checklist.md`; Phase 343 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:testing-agent` passes, including argument, resource, test-DB, cleanup, artifact,
+      exit-status, scope-label, and summary coverage.
+- [ ] `npm run check:agent-surfaces`, `npm run lint:docs`, `npm run check:architecture`, and
+      `npm run check:compliance` pass; `node --check scripts/run-testing-agent.js` and
+      `git diff --check` are clean.
+- [ ] Real Linux execution against MySQL 8 and Redis 7 reaches the existing gate/matrix, produces
+      SHA-bound artifacts/counts, and leaves no scratch checkout or host dependency mutation.
+- [ ] Resource/service failure produces an actionable non-green report and never claims a full pass.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #372 (`Closes`).
+- Handoff: `.tmp/plan-372.md` (planning head `a01ae36ad57d99707069a57157d2becd86a61017`).
+- Implementation: `.agents/skills/testing-agent/SKILL.md`, `scripts/run-testing-agent.js` (+ test),
+  `docs/testing/release-go-no-go-checklist.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; within existing tooling boundary).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+345 after Phase 344's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 345 - Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
+
+### Initiative and release
+
+Test-tier routing evidence for Worker Tier 2 and real-DB testing, current release.
+
+### Objective and scope
+
+Provide one durable, generated, checkable inventory of every existing unit/component test
+file across `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`,
+`packages/web-core` (via the IMS Vitest invocation, ADR 0071), and the migration-runner's
+operational commands — each classified `fast-pure`, `fast-mocked-external`, `db-required`,
+`redis-required`, `network/provider-required`, `browser-e2e`, or `opt-in/legacy` — plus a
+concise guide defining the default fast subset, opt-in tiers, decision rules, refresh/check
+commands, and the #378 cross-reference. Reuses the backend DB manifest/matrix as execution
+source of truth; creates no competing DB list, no new test runner, no CI gate change, no
+migration, no runtime/API change.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #438; #436 Worker Tier 2 consumer; #372 real-DB consumer; #378 baseline-failure
+cross-reference; #344 (location/structure question — explicitly not this issue);
+authoritative `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+`docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0071, `docs/architecture/apps-layout-migration.md`,
+`docs/testing/README.md`; Phase 344 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:audit-test-cost` passes (discovery, stale-record, runner-exclusion,
+      manifest-reuse, classification, safe-subset coverage).
+- [ ] `npm run audit:test-cost:check` passes against the real checkout (1334 records current,
+      no stale/missing entries, all #378 basenames matched).
+- [ ] Default-subset proof: backend fast file, IMS web-core file, and Storefront file timed
+      and passing with no DB/Redis/network/browser service.
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #438 (`Closes`).
+- Handoff: `.tmp/plan-438.md` (planning head `de26008bb82db0a1a0423d8ab16e263ba35be45c`).
+- Implementation: `scripts/audit-test-cost-inventory.js` (+ test),
+  `docs/testing/test-cost-inventory.json`, `docs/testing/test-cost-inventory.md`,
+  `docs/testing/README.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; testing
+  documentation/tooling within existing boundaries).
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 346 - Trace container revisions from DEV through PROD, per app (#2055)
+
+### Initiative and release
+
+Epic #1548 follow-up (reverses Phase 342's candidate-wide-uniform-`rN` design); current release.
+
+### Objective and scope
+
+Give eligible DEV container builds immutable per-app revision identities (`X.Y.Z-rN-dev`,
+GHCR-sourced max-plus-one per app+floor, same-source retry reuse, Decision 7 race net) that
+a frozen v2 promotion candidate selects (`dev_artifacts`) and carries through staging
+repairs (fresh allocation per touched app, cosmetic `repair_seq`, `fix/staging/<id>-<seq>`
+branches) to PROD (per-app `release_revision` map, plain `release/<id>` cut), preserving
+each app's `X.Y.Z` floor, ADR 0081 Decision 7 (`[binding]`, untouched), frontend
+environment-qualified vs backend environment-neutral artifact distinctions, and legacy
+bare `X.Y.Z-dev` tags as untouched history. Feature-branch DEV dispatches publish
+non-promotion-eligible `X.Y.Z-<slug>-dev` (sha tag only, never the moving `develop` tag).
+Out of scope: per-app floor bump policy, routine DEV deployment defaults (#982),
+app/package version ownership, production approval gates, unrelated container naming.
+
+### Status
+
+`in_progress` — implementation and local validation are in progress; PR review, merge, and
+deployed QA remain outstanding.
+
+### Dependencies
+
+Issue #2055 (with the 2026-09-23 revision-allocation decision recorded on it);
+`.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`);
+ADR 0039 (amendment path), ADR 0081 (2026-09-23 amendment, Decisions 1/3/4/8),
+ADR 0082 (2026-09-23 amendment, Decisions 6/8); Phase 342 (reversed design);
+Phase 345 (continuous ledger predecessor).
+
+### Acceptance and validation evidence
+
+- [ ] `npm run test:release-tags` passes (revisioned/ad-hoc/legacy DEV, `parseRevisionTag`,
+      `sanitizePrRef`, unchanged STAGING/PROD matrix).
+- [ ] `npm run test:artifact-revision` passes (max-plus-one, same-source reuse, fail-closed
+      probe, `--select-dev` selection).
+- [ ] `npm run test:promotion-candidate` passes (v2 manifest, `repair_seq`, per-app map,
+      frozen v1 legacy path).
+- [ ] `npm run test:tag-immutability`, `npm run test:image-alias`, `npm run test:release-notes`
+      pass (revisioned-DEV guard cases, unchanged alias creation, plain `release/<id>`).
+- [ ] Parity/build-skip/workflow-shape suites pass (per-app revision verification,
+      `app-not-in-candidate` skip, `--release-revisions-json`/`--dev-pr-ref`, grouped
+      workflow wiring, `dev_pr_ref` builder contract).
+- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
+      `git diff --check` clean.
+- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+
+### Links
+
+- Issue: #2055 (`Closes`).
+- Handoff: `.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`).
+- Implementation: `scripts/resolve-release-tags.js` (+ test),
+  `scripts/allocate-artifact-revision.js` (+ test),
+  `scripts/check-promotion-candidate.js` (+ test),
+  `scripts/check-image-version-parity.js` (+ test),
+  `scripts/resolve-build-skip-plan.js` (+ test),
+  `scripts/check-deploy-version-stamping-workflow.js` (+ test),
+  `scripts/check-release-notes.js` (+ test),
+  `scripts/check-tag-immutability.test.js`,
+  `scripts/build-release-candidate-evidence.test.js`,
+  `.github/workflows/deploy.yml` / `deployment-orchestrator.yml` / `deploy-main.yml` /
+  `deploy-api.yml` / `deploy-frontend.yml` / `deploy-migration-runner.yml` /
+  `promotion-quality-gate.yml`,
+  `.agents/skills/promoter/SKILL.md` /
+  `.agents/skills/promoter/references/promotion-runbook.md`.
+- Authoritative architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0081 (2026-09-23 amendment),
+  ADR 0082 (2026-09-23 amendment), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-23 entry),
+  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).
+
+## Phase 347 - Decouple shared DEV from release floors and promotion lineage (#2071)
+
+### Initiative and release
+
+Epic #1548 release-versioning follow-up; current release.
+
+### Objective and scope
+
+Replace new DEV artifact tags with one mutable `dev` alias plus SHA identity, usable by manual
+DEV dispatches from `develop` or experimental branches. Keep immutable per-app `rN` tags for
+STAGING/PROD. Build promotion candidates from the frozen `develop` SHA directly on STAGING,
+with no DEV artifact, deployment, server, or availability dependency. Keep package floors steady
+on ordinary develop changes and staging repairs; bump changed apps to their next minor floors at
+promotion start; reserve patch bumps for direct main hotfixes. Preserve v1/v2 candidate validation
+for historical/in-flight manifests while writing v3 manifests for the revised lineage.
+
+### Status
+
+`in_progress` — implementation and local validation are underway; PR review, merge, and deployed
+QA remain outstanding.
+
+### Dependencies
+
+Issue #2071 and the user's 2026-09-24 scope clarification; Phase 346's deployed per-app revision
+implementation (retained for STAGING/PROD and legacy manifest compatibility); ADR 0039; ADR 0081;
+ADR 0082; `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+
+### Acceptance and validation evidence
+
+- [ ] DEV resolver returns `dev` without reading a package floor or revision; all manually selected
+  branches can move the tag and SHA tags remain available.
+- [ ] DEV skip-plan always rebuilds selected apps so the mutable alias points at the dispatched SHA.
+- [ ] Promotion candidate creation and STAGING dispatch work from a frozen develop SHA without a
+  DEV deploy or DEV artifact lookup; v3 manifests do not contain `dev_artifacts`.
+- [ ] STAGING/PROD revisions are allocated only from release-channel tags; immutable release tag
+  and parity checks remain intact.
+- [ ] Version checks enforce unchanged floors on develop and staging repairs, minor floor bumps at
+  promotion, and patch-only direct main hotfixes.
+- [ ] Focused resolver, revision, candidate, parity, workflow-shape, and version-policy suites pass;
+  docs/architecture/compliance checks and `git diff --check` pass.
+- [ ] PR review, merge, and deployed QA remain outstanding; this phase never deploys.
+
+### Links
+
+- Issue: #2071 (scope clarified in the 2026-09-24 conversation; current issue body still describes
+  the superseded revisioned-DEV approach).
+- Related: #982, #1548, #2055, #2054, #2069.
+- Implementation: `scripts/resolve-release-tags.js`, `scripts/allocate-artifact-revision.js`,
+  `scripts/resolve-build-skip-plan.js`, `scripts/check-app-version-bump.js`,
+  `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`, deployment and
+  promotion workflows/runbook, ADR 0081, release candidate policy.
+
+### Completion date
+
+Not yet merged — set at merge time.
+
+### Next eligible phase
+
+348 after Phase 347's implementation, review, merge, and deployed QA evidence are complete
+(re-check the ledger before reserving it).

@@ -2006,7 +2006,12 @@ const checkoutAndOpenSalesReport = async (page, itemName) => {
   return invoiceReference;
 };
 
-const exportSalesCsvFromDialog = async (page) => {
+// Sales-timeline CSV naming contract (packages/web-core/.../SalesPage.jsx runExportCsv):
+// `sales_timeline_${YYYY-MM-DD}.csv`. The release-profile journey must prove a real,
+// correctly named download happened -- a missing dialog or banner must fail, never skip.
+const SALES_EXPORT_FILENAME_PATTERN = /^sales_timeline_\d{4}-\d{2}-\d{2}\.csv$/;
+
+const exportSalesCsvFromDialog = async (page, artifactBase = 'sales-export') => {
   await page.getByRole('heading', { name: 'Sales Timeline' }).waitFor({ timeout: 60000 });
   const exportButtons = page.getByRole('button', { name: /^Export CSV$/ });
   const exportButtonCount = await exportButtons.count();
@@ -2024,18 +2029,38 @@ const exportSalesCsvFromDialog = async (page) => {
   }
 
   const exportDialog = page.locator('[role="dialog"]').filter({ hasText: 'Export Sales CSV' }).first();
-  const dialogVisible = await exportDialog.isVisible({ timeout: 5000 }).catch(() => false);
-  if (dialogVisible) {
-    const dialogExportButton = exportDialog.getByRole('button', { name: /^Export CSV$/ }).first();
-    await dialogExportButton.click();
-  }
+  await exportDialog.waitFor({ state: 'visible', timeout: 15000 });
 
-  const uiConfirmed = await page.waitForFunction(
-    () => document.body?.innerText?.includes('Export complete:'),
-    null,
+  const dialogExportButton = exportDialog.getByRole('button', { name: /^Export CSV$/ }).first();
+  await dialogExportButton.waitFor({ state: 'visible', timeout: 15000 });
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    dialogExportButton.click()
+  ]);
+  const suggestedFilename = String(download.suggestedFilename?.() || '').trim();
+  if (!SALES_EXPORT_FILENAME_PATTERN.test(suggestedFilename)) {
+    throw new Error(
+      `Sales export download filename "${suggestedFilename}" does not match the sales-timeline CSV naming contract (sales_timeline_YYYY-MM-DD.csv).`
+    );
+  }
+  const downloadPath = await download.path().catch(() => null);
+  if (!downloadPath) {
+    throw new Error(
+      `Sales export download "${suggestedFilename}" completed without a readable file path -- enable acceptDownloads on the browser context.`
+    );
+  }
+  await download.saveAs(path.join(ARTIFACT_ROOT, `${artifactBase}-${suggestedFilename}`)).catch((error) => {
+    throw new Error(`Failed to persist sales export download "${suggestedFilename}": ${error.message}`);
+  });
+
+  await page.waitForFunction(
+    (filename) => document.body?.innerText?.includes('Export complete:')
+      && document.body?.innerText?.includes(filename),
+    suggestedFilename,
     { timeout: 30000 }
-  ).then(() => true).catch(() => false);
-  return uiConfirmed;
+  );
+  return suggestedFilename;
 };
 
 const cleanupStartedProcesses = async () => {
@@ -2263,7 +2288,10 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
   }, 360000);
 
   maybeProfileIt(['release'])('completes create item -> POS-ready -> checkout -> history -> sales export', async () => {
-    const context = await createContextForViewportProfile('desktop');
+    // acceptDownloads: the export assertion requires a readable download path, which
+    // Playwright only provides when the context opts in -- without it download.path()
+    // resolves to null and the journey fails closed rather than passing vacuously.
+    const context = await createContextForViewportProfile('desktop', { acceptDownloads: true });
     const artifactBase = buildArtifactBaseName({
       scenario: 'core-journey',
       viewportProfile: 'desktop'
@@ -2303,11 +2331,10 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       const continuityQueryPresent = page.url().includes('source_context=pos_history');
       expect(continuityBannerVisible || continuityQueryPresent).toBe(true);
 
-      const exportUiConfirmed = await exportSalesCsvFromDialog(page);
-      if (exportUiConfirmed) {
-        const exportBanner = await page.locator('div[aria-live="polite"]').first().textContent().catch(() => '');
-        expect(String(exportBanner || '')).toContain('Export complete:');
-      }
+      const exportedFilename = await exportSalesCsvFromDialog(page, artifactBase);
+      const exportBanner = await page.locator('div[aria-live="polite"]').first().textContent().catch(() => '');
+      expect(String(exportBanner || '')).toContain('Export complete:');
+      expect(String(exportBanner || '')).toContain(exportedFilename);
     } catch (error) {
       if (page) {
         await page.screenshot({
@@ -2613,4 +2640,241 @@ describe('Frontend Real Browser E2E - IMS -> POS -> Sales Journey', () => {
       await context.close();
     }
   }, 120000);
+
+  // #1750: the first high-value browser journey beyond the #1698 load-regression check --
+  // POS admin item CRUD through ItemsWorkspace's own modals (create -> real catalog refresh
+  // -> edit -> real refresh -> delete -> real refresh/absence), exercising the real UI/API
+  // boundary that static contracts and mocked component tests cannot prove.
+  //
+  // Scoping evidence for the surfaces deliberately NOT covered here: pagination/page-size
+  // contracts (itemsPagination.contract.test.js), filter/catalog-request shaping
+  // (categoryPlacement.behavior.test.jsx), CSV/gallery entry wiring
+  // (posItemsGalleryAndCsvImport.contract.test.js), import-modal behavior
+  // (MenuImportBatchModal.behavior.test.jsx + the inventory CSV suites), and shared wizard
+  // contracts (itemProductWizard.contract.test.js). Browser E2E covers only the stateful
+  // CRUD path those cheaper layers cannot prove -- filters, pagination matrices, CSV/PDF
+  // imports, images, and barcode-provider behavior stay out of scope.
+  maybeProfileIt()('covers POS admin item create -> edit -> delete through ItemsWorkspace modals', async () => {
+    const context = await createContextForViewportProfile('desktop');
+    const artifactBase = buildArtifactBaseName({
+      scenario: 'pos-items-workspace-crud',
+      viewportProfile: 'desktop'
+    });
+    let tracePersisted = false;
+    let page = null;
+    const pageErrors = [];
+    const itemName = `POS E2E CRUD Item ${TEST_USER_SUFFIX}-${Date.now()}`;
+    const editedItemName = `${itemName} Edited`;
+    let createdViaUi = false;
+    let uiDeleteCompleted = false;
+    await context.tracing.start({
+      screenshots: true,
+      snapshots: true,
+      sources: true
+    });
+    try {
+      // Resolve an active existing POS category from the live fixture. Fail loudly when the
+      // fixture has none -- never silently create permanent category data to make this pass.
+      const folderResponse = await callTenantApi('/items/folders');
+      const folderRows = Array.isArray(folderResponse)
+        ? folderResponse
+        : Array.isArray(folderResponse?.folders)
+          ? folderResponse.folders
+          : Array.isArray(folderResponse?.data)
+            ? folderResponse.data
+            : [];
+      const activeCategory = folderRows
+        .filter((folder) => folder?.is_active !== false && folder?.show_in_pos_filter !== false)
+        .map((folder) => String(folder?.name || '').trim())
+        .filter(Boolean)
+        .sort((left, right) => left.localeCompare(right))[0];
+      if (!activeCategory) {
+        throw new Error(
+          'POS Items CRUD E2E requires at least one active POS-visible category in the original-tenant fixture (GET /items/folders returned none). Refusing to create permanent category data just to make this test pass.'
+        );
+      }
+
+      page = await context.newPage();
+      page.on('pageerror', (error) => {
+        pageErrors.push(error?.message || String(error));
+      });
+
+      await loginViaUi(page);
+      await saveBusinessModeViaSettings(page, 'manufacturing');
+      await page.goto(`${FRONTEND_BASE}/terminal`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('heading', { name: /DGFY Terminal Workspace/i }).waitFor({ timeout: 60000 });
+      await unlockTerminalFromDrawer(page, DEFAULT_E2E_TERMINAL_ID);
+
+      const itemsNavButton = page.getByRole('button', { name: /^Items$/ }).first();
+      await itemsNavButton.waitFor({ state: 'visible', timeout: 30000 });
+      await itemsNavButton.click();
+
+      const itemsPanel = page.locator('#pos-items-items-panel[role="tabpanel"]');
+      await itemsPanel.waitFor({ state: 'visible', timeout: 30000 });
+      await page.getByText('Loading POS-visible IMS items...').first().waitFor({ state: 'hidden', timeout: 30000 }).catch(() => {});
+
+      const catalogLoadErrorBanner = page.getByText('Failed to load POS-visible IMS items.').first();
+      expect(await catalogLoadErrorBanner.isVisible().catch(() => false)).toBe(false);
+
+      const fillLabeledInput = async (dialog, labelText, value) => {
+        const input = dialog.locator(`xpath=.//label[contains(normalize-space(.), "${labelText}")]/following::input[1]`);
+        await input.waitFor({ state: 'visible', timeout: 30000 });
+        await input.fill(value);
+      };
+      const clickFirstVisibleButton = async (buttons) => {
+        const count = await buttons.count();
+        for (let index = 0; index < count; index += 1) {
+          const button = buttons.nth(index);
+          if (await button.isVisible().catch(() => false) && await button.isEnabled().catch(() => false)) {
+            await button.click();
+            return true;
+          }
+        }
+        return false;
+      };
+
+      // ---- Create: Add Item -> unique product -> real create/post-create refresh ----
+      // Images and external barcode lookup stay empty so this stays a CRUD scenario.
+      if (!await clickFirstVisibleButton(itemsPanel.getByRole('button', { name: /^Add Item$/ }))) {
+        throw new Error('No visible Add Item button found in the POS Items workspace.');
+      }
+      const createDialog = page.getByRole('dialog', { name: /Add POS Item/ }).first();
+      await createDialog.waitFor({ state: 'visible', timeout: 30000 });
+
+      await createDialog.getByPlaceholder('Classic Milk Tea').fill(itemName);
+
+      const createCategoryInput = createDialog.locator('#pos-items-create-category');
+      if (await createCategoryInput.count()) {
+        await createCategoryInput.waitFor({ state: 'visible', timeout: 30000 });
+        await createCategoryInput.click();
+        await createCategoryInput.fill(activeCategory);
+        const categoryOption = createDialog.getByRole('option', { name: activeCategory }).first();
+        await categoryOption.waitFor({ state: 'visible', timeout: 15000 });
+        await categoryOption.click();
+      } else {
+        const createCategorySelect = createDialog.locator('select').first();
+        await createCategorySelect.waitFor({ state: 'visible', timeout: 30000 });
+        await createCategorySelect.selectOption({ label: activeCategory });
+      }
+
+      await fillLabeledInput(createDialog, 'Stock Quantity', '7');
+      await fillLabeledInput(createDialog, 'Selling Price', '149');
+      await fillLabeledInput(createDialog, 'Cost Price', '99');
+
+      // The SKU is auto-suggested from the item name (POS rule) -- wait for it so the save
+      // cannot trip the "SKU is not ready yet" guard.
+      const skuInput = createDialog.locator('input[readonly]').first();
+      await skuInput.waitFor({ state: 'visible', timeout: 30000 });
+      await page.waitForFunction(
+        (node) => Boolean(node && node.value && String(node.value).trim()),
+        await skuInput.elementHandle(),
+        { timeout: 30000 }
+      );
+
+      await createDialog.getByRole('button', { name: /^Save Item$/ }).first().click();
+
+      const createdModalTitle = page.locator('#pos-items-saved-modal-title').first();
+      await createdModalTitle.waitFor({ state: 'visible', timeout: 120000 });
+      createdViaUi = true;
+      expect(String(await createdModalTitle.textContent().catch(() => ''))).toContain('Item created successfully');
+      const createdDialog = page.getByRole('dialog', { name: /Item created successfully/ }).first();
+      expect(String(await createdDialog.textContent().catch(() => ''))).toContain(`${itemName} was created in IMS and added to POS.`);
+      await createdDialog.getByRole('button', { name: /^Got it$/ }).first().click();
+      await createdModalTitle.waitFor({ state: 'hidden', timeout: 30000 });
+
+      // Real refresh: search isolates the unique card after loadItems() refetches.
+      const itemsSearch = itemsPanel.locator('#pos-items-search').first();
+      await itemsSearch.waitFor({ state: 'visible', timeout: 30000 });
+      await itemsSearch.fill(itemName);
+      const createdCard = itemsPanel.getByText(itemName, { exact: true }).first();
+      await createdCard.waitFor({ state: 'visible', timeout: 60000 });
+      expect(await catalogLoadErrorBanner.isVisible().catch(() => false)).toBe(false);
+
+      // ---- Edit: rename the persisted item -> real refresh reflects the new name ----
+      const editButton = itemsPanel.getByTitle(`Edit ${itemName}`).first();
+      await editButton.waitFor({ state: 'visible', timeout: 30000 });
+      await editButton.click();
+
+      const editDialog = page.getByRole('dialog', { name: /^Edit Item/ }).first();
+      await editDialog.waitFor({ state: 'visible', timeout: 30000 });
+      await fillLabeledInput(editDialog, 'Item Name', editedItemName);
+      await editDialog.getByRole('button', { name: /^Save Item$/ }).first().click();
+
+      const savedModalTitle = page.locator('#pos-items-saved-modal-title').first();
+      await savedModalTitle.waitFor({ state: 'visible', timeout: 120000 });
+      expect(String(await savedModalTitle.textContent().catch(() => ''))).toContain('Item saved successfully');
+      const savedDialog = page.getByRole('dialog', { name: /Item saved successfully/ }).first();
+      expect(String(await savedDialog.textContent().catch(() => ''))).toContain(`${editedItemName} was updated in POS and IMS.`);
+      await savedDialog.getByRole('button', { name: /^Got it$/ }).first().click();
+      await savedModalTitle.waitFor({ state: 'hidden', timeout: 30000 });
+
+      await itemsSearch.fill(editedItemName);
+      const editedCard = itemsPanel.getByText(editedItemName, { exact: true }).first();
+      await editedCard.waitFor({ state: 'visible', timeout: 60000 });
+      expect(await catalogLoadErrorBanner.isVisible().catch(() => false)).toBe(false);
+      const renamedRecord = await resolveItemRecordByName(editedItemName);
+      if (!renamedRecord?.item_id) {
+        throw new Error(`Renamed item "${editedItemName}" was not found in the tenant DB after the UI save.`);
+      }
+
+      // ---- Delete: confirm -> soft-delete confirmation -> catalog absence ----
+      const deleteButton = itemsPanel.getByTitle(`Delete ${editedItemName}`).first();
+      await deleteButton.waitFor({ state: 'visible', timeout: 30000 });
+      await deleteButton.click();
+
+      const deleteConfirmDialog = page.getByRole('dialog', { name: /Delete item\?/ }).first();
+      await deleteConfirmDialog.waitFor({ state: 'visible', timeout: 30000 });
+      expect(String(await deleteConfirmDialog.textContent().catch(() => ''))).toContain(`${editedItemName} will be removed from POS and IMS.`);
+      await deleteConfirmDialog.getByRole('button', { name: /^Delete Item$/ }).first().click();
+
+      const deletedModalTitle = page.locator('#pos-items-deleted-modal-title').first();
+      await deletedModalTitle.waitFor({ state: 'visible', timeout: 60000 });
+      expect(String(await deletedModalTitle.textContent().catch(() => ''))).toContain('Item deleted');
+      const deletedDialog = page.getByRole('dialog', { name: /Item deleted/ }).first();
+      expect(String(await deletedDialog.textContent().catch(() => ''))).toContain(`${editedItemName} was removed from POS and IMS.`);
+      await deletedDialog.getByRole('button', { name: /^OK$/ }).first().click();
+      await deletedModalTitle.waitFor({ state: 'hidden', timeout: 30000 });
+      uiDeleteCompleted = true;
+
+      await itemsSearch.fill(editedItemName);
+      await itemsPanel.getByText('No matching items').first().waitFor({ state: 'visible', timeout: 60000 });
+      expect(await itemsPanel.getByText(editedItemName, { exact: true }).count()).toBe(0);
+
+      expect(pageErrors).toEqual([]);
+    } catch (error) {
+      if (page) {
+        await page.screenshot({
+          path: path.join(ARTIFACT_ROOT, `${artifactBase}.png`),
+          fullPage: true
+        }).catch(() => {});
+      }
+      await context.tracing.stop({
+        path: path.join(ARTIFACT_ROOT, `${artifactBase}.trace.zip`)
+      }).catch(() => {});
+      tracePersisted = true;
+      throw error;
+    } finally {
+      if (!tracePersisted) {
+        await context.tracing.stop().catch(() => {});
+      }
+      // Hygiene only (never a substitute for the UI assertions above): remove the unique
+      // item via the already-authenticated tenant API when the UI delete did not complete.
+      // Tolerates an already-soft-deleted row -- a DELETE against one is a no-op here.
+      if (createdViaUi && !uiDeleteCompleted) {
+        try {
+          const editedRecord = await resolveItemRecordByName(editedItemName).catch(() => null);
+          const originalRecord = editedRecord?.item_id
+            ? null
+            : await resolveItemRecordByName(itemName).catch(() => null);
+          const targetId = Number(editedRecord?.item_id || originalRecord?.item_id || 0);
+          if (targetId > 0) {
+            await callTenantApi(`/items/${targetId}`, { method: 'DELETE' }).catch(() => {});
+          }
+        } catch {
+          // Best-effort cleanup -- the original error (if any) is what fails the test.
+        }
+      }
+      await context.close();
+    }
+  }, 360000);
 });

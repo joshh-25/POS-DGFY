@@ -22,13 +22,15 @@ export const buildFnbCheckoutPayload = ({
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, only meaningful at a
   // payment_mode='customer_choice' store -- storeValidator.js ignores it otherwise. Defaults to
   // 'full' so every pre-#866 caller of this shared builder (which never passes this) is unaffected.
-  paymentElection = 'full'
+  paymentElection = 'full',
+  paymentType = 'cash'
 }) => ({
   location_id: selectedLocationId ?? selectedStore?.location_id,
   order_method: orderMethod,
   customer_name: String(customerName || '').trim(),
   customer_phone: String(customerPhone || '').trim(),
   customer_email: String(customerEmail || '').trim(),
+  payment_type: String(paymentType || 'cash').trim().toLowerCase(),
   payment_election: paymentElection === 'downpayment' ? 'downpayment' : 'full',
   promo_code: String(promoCode || '').trim().toUpperCase(),
   // #672: voucher_code is a separate field from promo_code -- the two are independent checkout
@@ -38,7 +40,12 @@ export const buildFnbCheckoutPayload = ({
   delivery_address: String(deliveryAddress || '').trim(),
   delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
-  scheduled_for: fnbScheduleMode === 'schedule' && fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
+  // Dine-in is always scheduled. The route keeps fnbScheduleMode in sync for presentation,
+  // but the payload remains defensive so a restored/stale mode cannot silently drop the
+  // required handover time.
+  scheduled_for: (fnbScheduleMode === 'schedule' || orderMethod === 'dine_in') && fnbScheduledFor
+    ? new Date(fnbScheduledFor).toISOString()
+    : null,
   special_instructions: String(fnbSpecialInstructions || '').trim(),
   lines: (Array.isArray(cart) ? cart : []).map((line) => ({
     item_id: Number(line.item_id),
