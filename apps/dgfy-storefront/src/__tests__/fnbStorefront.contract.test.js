@@ -255,7 +255,8 @@ describe('Food & Beverage storefront contract', () => {
   it('hides cash for a customer_choice store regardless of the current election', () => {
     const checkoutRouteContainer = checkoutRouteContainerSource();
 
-    expect(checkoutRouteContainer).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
+    expect(checkoutRouteContainer).toContain('hideCash: (downpaymentDisplay.active');
+    expect(checkoutRouteContainer).toContain('allowCash: isDineInOrder && allowDineInPayAtStore');
   });
 
   it('provides a development-only PayMongo sandbox confirmation control', () => {

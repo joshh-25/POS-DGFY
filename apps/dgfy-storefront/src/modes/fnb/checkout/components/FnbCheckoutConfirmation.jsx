@@ -15,6 +15,7 @@ export function FnbCheckoutConfirmation({
   isMobileViewport,
   money,
   mutedTextColor,
+  orderMethod,
   onBackToMenu,
   onDownload,
   onOpenTracking,
@@ -40,7 +41,9 @@ export function FnbCheckoutConfirmation({
         <div style={{ fontSize: 14, color: mutedTextColor, lineHeight: 1.6 }}>
           {isDeliveryOrder
             ? 'Delivery orders move from confirmation to preparing, then out for delivery.'
-            : 'Pickup orders move from confirmation to preparing, then ready for pickup.'}
+            : orderMethod === 'dine_in'
+              ? 'Dine-in orders move from confirmation to preparing, then ready to serve.'
+              : 'Pickup orders move from confirmation to preparing, then ready for pickup.'}
         </div>
         <div style={{ fontSize: 13, color: brandDark, fontWeight: 700 }}>Next update: Confirmed by store</div>
       </div>
@@ -51,7 +54,7 @@ export function FnbCheckoutConfirmation({
         {downpaymentDisplay.active && (
           <>
             <div>Paid now: <strong>{money(downpaymentDisplay.downpaymentAmount)}</strong></div>
-            <div>{resolveDownpaymentBalanceLabel(isDeliveryOrder ? 'delivery' : 'pickup')}: <strong>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
+            <div>{resolveDownpaymentBalanceLabel(orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup'))}: <strong>{money(downpaymentDisplay.balanceDueAmount)}</strong></div>
           </>
         )}
       </div>

@@ -22,16 +22,15 @@ export const VAT_DISCLOSURE_NOTE = 'VAT shown above is already included in item 
  * Two OrderSummaryCard/mobile-SummaryRow-shaped rows ({label, value}) replacing the old single
  * combined "Fees & Taxes" row: the additive service fee (participates in the Subtotal -> Total
  * reconciliation, unchanged), and the informational, already-included VAT disclosure (never added
- * into the total -- it's already inside subtotal_amount). Always returns both rows, including the
- * zero-fee (revenue-sharing) and zero-VAT (VAT-exempt) cases -- there is nothing to hide, only
- * numbers to show correctly.
+ * into the total -- it's already inside subtotal_amount). The VAT row is always returned; callers
+ * may omit the service-fee row when the fee is zero while keeping the VAT disclosure visible.
  */
-export const buildFeeAndVatSummaryRows = ({ totals = {}, money } = {}) => {
+export const buildFeeAndVatSummaryRows = ({ totals = {}, money, includeServiceFee = true } = {}) => {
   if (typeof money !== 'function') return [];
   const serviceFeeAmount = Number(totals.service_fee_amount || 0);
   const vatAmount = Number(totals.vat_amount || 0);
   return [
-    { label: totals.service_fee_label || 'Service Fee', value: money(serviceFeeAmount) },
+    ...(includeServiceFee ? [{ label: totals.service_fee_label || 'Service Fee', value: money(serviceFeeAmount) }] : []),
     { label: VAT_DISCLOSURE_LABEL, value: money(vatAmount) }
   ];
 };
