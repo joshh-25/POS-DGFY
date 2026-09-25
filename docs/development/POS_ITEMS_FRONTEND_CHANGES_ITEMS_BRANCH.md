@@ -53,7 +53,7 @@ stage the excluded worktree files or the recovery ref.
 ## Atomic commit inventory
 
 The original Items commits were replayed onto the clean comparison base, so their hashes changed.
-The following are the retained branch commits after the rewrite:
+The following are the retained branch commits through the completed audit snapshot:
 
 | Commit | Subject | Scope |
 | --- | --- | --- |
@@ -72,7 +72,8 @@ The following are the retained branch commits after the rewrite:
 | `862116506` | `docs(pos): correct final audit inventory` | Corrects the final commit count and records the completed documentation audit. |
 | `5bec54308` | `docs(pos): record completed Items audit` | Records the completed final audit state and confirms the Items-only branch is ready to push. |
 
-The final documentation commit is intentionally separate from the product commits above.
+Documentation metadata corrections after the completed audit snapshot are intentionally separate
+from the product commits above and do not change the retained product scope.
 
 ## Included files to push
 
@@ -231,8 +232,9 @@ passed for the retained chain:
 
 - `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
 - No conflict markers in the clean rewritten tree.
-- The branch-specific first-parent chain after the comparison base is the thirteen commits listed in
-  the atomic inventory above, with the final entry being documentation-only.
+- The branch-specific first-parent chain through the completed audit snapshot is the thirteen
+  commits listed in the atomic inventory above. Any later commits are documentation-only metadata
+  corrections and add no product scope.
 - Removed history commits are not ancestors of the rewritten branch.
 
 ### Existing functional evidence
