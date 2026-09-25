@@ -7,6 +7,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS edit-item image save flow', () => {
+  it('inherits the Add Item modal shell and compact DGFY visual system', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).toContain('id="pos-items-edit-modal-title" className="text-sm font-black text-white"');
+    expect(workspace).toContain('shared Add/Edit three-column layout');
+    expect(workspace).toContain('min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg');
+    expect(workspace).toContain('grid min-w-0 grid-cols-2 gap-2');
+    expect(workspace.match(/max-w-\[54rem\]/g)).toHaveLength(2);
+    expect(workspace.match(/rounded-t-\[17px\] border-b border-\[#143F73\] bg-\[#1A4E8D\]/g)).toHaveLength(2);
+  });
+
   it('keeps selection local and queues edited images only when the item is saved', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     const saveStart = workspace.indexOf('const handleSave = async () => {');

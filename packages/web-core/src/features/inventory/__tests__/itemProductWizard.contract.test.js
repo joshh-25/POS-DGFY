@@ -357,7 +357,7 @@ describe('Item/Product wizard contracts', () => {
     expect(selectedImageCarouselSource).toContain('aria-label={`Next ${imageLabel} image`}');
     expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
     expect(selectedImageCarouselSource).toContain("combinedGallery ? 'Item' : 'Selected item'");
-    expect(selectedImageCarouselSource).toContain('Remove current image');
+    expect(selectedImageCarouselSource).toContain('Remove image');
     expect(selectedImageCarouselSource).toContain('aria-label={`Focus ${imageLabel} image ${index + 1}`}');
   });
 

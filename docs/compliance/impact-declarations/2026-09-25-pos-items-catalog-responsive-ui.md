@@ -39,6 +39,7 @@ Major. The change is limited to the POS Items/catalog workspace and its responsi
 - Focused POS Items/catalog contract suites passed: 7 files, 40 tests.
 - `npm run build:pos` is required before finalizing the branch audit.
 - The repository compliance guardrail is run by the pre-commit hook and this declaration is included with the sensitive POS commit.
+- Shared catalog primitives (CSV import, image gallery, QR, wizard navigation, and storefront info) retain their existing non-POS defaults; the responsive additions are opt-in through POS-scoped props/classes.
 
 ## Residual Risk
 
