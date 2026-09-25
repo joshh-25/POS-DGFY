@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Ban, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ClipboardList, Eye, Globe, ListFilter, RefreshCcw, RotateCcw, Search, Store, Undo2, UserRound, X } from 'lucide-react';
+import { Ban, CalendarDays, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { GlobalPagination } from '@/components/ui/pagination';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import {
     Dialog,
     DialogContent,
@@ -11,7 +11,7 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { getPaymentStatusLabel } from '../utils/posHistoryStatus.js';
+import { getPaymentStatusClassName, getPaymentStatusLabel } from '../utils/posHistoryStatus.js';
 import {
     formatPosVoidTimestamp,
     isVoidedPosTransaction,
@@ -23,6 +23,25 @@ import { POS_HISTORY_PAGE_SIZE_OPTIONS } from '../utils/posHistoryQuery.js';
 import { ORDER_METHOD_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import PosTableSurface from './PosTableSurface.jsx';
+import PosTableActionButton from './PosTableActionButton.jsx';
+import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
+import PosCashierFilterControl from './PosCashierFilterControl.jsx';
+import PosDateRangePicker from './PosDateRangePicker.jsx';
+import PosFilterCountBadge from './PosFilterCountBadge.jsx';
+import PosPageFrame from './PosPageFrame.jsx';
+import { POS_MOBILE_PAGE_STACK_CLASS } from './PosPageSpacing.js';
+import {
+    PosFilterChoiceGroup,
+    PosFilterDialogFooter,
+    PosFilterDialogHeader
+} from './PosFilterDialogParts.jsx';
+import PosFilterDialogShell from './PosFilterDialogShell.jsx';
+import PosLineTabNavigation from './PosLineTabNavigation.jsx';
+import PosAppliedFilterChips from './PosAppliedFilterChips.jsx';
+import PosSearchField from './PosSearchField.jsx';
+import { POS_FILTER_TRIGGER_HEIGHT_CLASS, POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
+import { formatPosDateRangeLabel } from './posFilterLabelUtils.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 
@@ -44,8 +63,7 @@ const formatDateTime = (value) => {
 
 const fieldLabelClassName = 'text-[13px] font-semibold text-[#334155]';
 const POS_HISTORY_MOBILE_MAX_WIDTH_PX = 767;
-const POS_HISTORY_OPTION_TWO_COLUMN_MIN = 7;
-const POS_HISTORY_OPTION_TWO_COLUMN_MAX = 12;
+const POS_HISTORY_TABLET_MAX_WIDTH_PX = 1199;
 
 const isPosHistoryMobileViewport = (windowObj = typeof window !== 'undefined' ? window : null) => (
     Boolean(windowObj)
@@ -81,258 +99,6 @@ const isPosHistoryLandscapePanelViewport = (panelElement) => {
         && width <= 1024
         && height <= 500;
 };
-
-const CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const CALENDAR_PRESETS = [
-    { value: 'today', label: 'Today' },
-    { value: 'yesterday', label: 'Yesterday' },
-    { value: 'last_7_days', label: 'Last 7 Days' },
-    { value: 'this_month', label: 'This Month' },
-    { value: 'last_month', label: 'Last Month' }
-];
-
-const parseDateInput = (value) => {
-    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!match) return null;
-    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-    return date.getFullYear() === Number(match[1])
-        && date.getMonth() === Number(match[2]) - 1
-        && date.getDate() === Number(match[3])
-        ? date
-        : null;
-};
-
-const dateToInput = (date) => {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
-    return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
-};
-
-const getManilaDateInput = () => {
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'Asia/Manila',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).formatToParts(new Date());
-    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-    return `${values.year}-${values.month}-${values.day}`;
-};
-
-const addCalendarDays = (date, days) => {
-    const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    next.setDate(next.getDate() + days);
-    return next;
-};
-
-const getMonthRange = (date, monthOffset = 0) => {
-    const first = new Date(date.getFullYear(), date.getMonth() + monthOffset, 1);
-    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
-    return { from: dateToInput(first), to: dateToInput(last) };
-};
-
-const getDatePresetRange = (preset) => {
-    const today = parseDateInput(getManilaDateInput()) || new Date();
-    const todayInput = dateToInput(today);
-    if (preset === 'today') return { from: todayInput, to: todayInput };
-    if (preset === 'yesterday') {
-        const yesterday = dateToInput(addCalendarDays(today, -1));
-        return { from: yesterday, to: yesterday };
-    }
-    if (preset === 'last_7_days') return { from: dateToInput(addCalendarDays(today, -6)), to: todayInput };
-    if (preset === 'this_month') return { from: dateToInput(new Date(today.getFullYear(), today.getMonth(), 1)), to: todayInput };
-    if (preset === 'last_month') return getMonthRange(today, -1);
-    return { from: '', to: '' };
-};
-
-const getCalendarDays = (monthDate) => {
-    const firstOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-    const calendarStart = new Date(
-        firstOfMonth.getFullYear(),
-        firstOfMonth.getMonth(),
-        1 - firstOfMonth.getDay()
-    );
-    return Array.from({ length: 42 }, (_, index) => addCalendarDays(calendarStart, index));
-};
-
-const dateRangesEqual = (left, right) => left?.from === right?.from && left?.to === right?.to;
-
-function CalendarRangePicker({ from = '', to = '', onChange, onPreset, mobile = false }) {
-    const initialMonth = parseDateInput(from) || parseDateInput(to) || new Date();
-    const [monthDate, setMonthDate] = useState(() => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1));
-    const [customRangeActive, setCustomRangeActive] = useState(false);
-    const calendarDays = getCalendarDays(monthDate);
-    const fromDate = parseDateInput(from);
-    const toDate = parseDateInput(to);
-    const fromKey = dateToInput(fromDate);
-    const toKey = dateToInput(toDate);
-    const todayKey = getManilaDateInput();
-    const hasCompleteRange = Boolean(fromKey && toKey);
-    const hasMultiDayRange = hasCompleteRange && fromKey !== toKey;
-    const activePreset = CALENDAR_PRESETS.find((preset) => dateRangesEqual(
-        { from, to },
-        getDatePresetRange(preset.value)
-    ))?.value;
-    const isCustomRange = customRangeActive || (Boolean(fromKey || toKey) && !activePreset);
-    const rangeTrackClassName = mobile ? 'before:inset-y-2' : 'before:inset-y-1';
-
-    const selectDate = (date) => {
-        const selectedKey = dateToInput(date);
-        setCustomRangeActive(true);
-        if (date.getMonth() !== monthDate.getMonth() || date.getFullYear() !== monthDate.getFullYear()) {
-            setMonthDate(new Date(date.getFullYear(), date.getMonth(), 1));
-        }
-        if (!fromKey || toKey) {
-            onChange(selectedKey, '');
-            return;
-        }
-        if (selectedKey < fromKey) onChange(selectedKey, fromKey);
-        else onChange(fromKey, selectedKey);
-    };
-
-    const applyPreset = (preset) => {
-        const range = getDatePresetRange(preset);
-        setCustomRangeActive(false);
-        onPreset?.(preset);
-        onChange(range.from, range.to);
-        const anchor = parseDateInput(range.from);
-        if (anchor) setMonthDate(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
-    };
-
-    const activateCustomRange = () => {
-        setCustomRangeActive(true);
-        onChange('', '');
-    };
-
-    return (
-        <div className={`grid ${mobile ? 'gap-3' : 'gap-2'}`} data-testid="pos-history-calendar-picker">
-            <div className={`grid grid-cols-2 ${mobile ? 'gap-2.5' : 'gap-1.5'}`} role="group" aria-label="Date presets">
-                {CALENDAR_PRESETS.map((preset) => {
-                    const selected = activePreset === preset.value;
-                    return (
-                        <button
-                            key={preset.value}
-                            type="button"
-                            data-testid={`pos-history-calendar-preset-${preset.value}`}
-                            aria-pressed={selected}
-                            onClick={() => applyPreset(preset.value)}
-                            className={`${mobile ? 'h-11 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
-                                ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
-                                : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
-                                }`}
-                        >
-                            {preset.label}
-                        </button>
-                    );
-                })}
-                <button
-                    type="button"
-                    data-testid="pos-history-calendar-preset-custom"
-                    aria-pressed={isCustomRange}
-                    onClick={activateCustomRange}
-                    className={`inline-flex ${mobile ? 'h-11 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 items-center justify-center gap-1 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isCustomRange
-                        ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
-                        : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
-                        }`}
-                >
-                    Custom Range
-                    <CalendarDays className={`${mobile ? 'h-5 w-5' : 'h-3.5 w-3.5'} shrink-0`} aria-hidden="true" />
-                </button>
-            </div>
-
-            <div className={`${mobile ? 'rounded-xl border-0 bg-transparent px-0 py-1' : 'rounded-lg border border-slate-100 bg-slate-50/40 px-2 py-1.5'}`}>
-                <div className={`flex items-center justify-between gap-2 ${mobile ? 'px-0' : 'px-1'}`}>
-                    <button
-                        type="button"
-                        data-testid="pos-history-calendar-previous-month"
-                        aria-label="Previous month"
-                        onClick={() => setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
-                        className={`grid ${mobile ? 'h-10 w-10 rounded-xl' : 'h-7 w-7 rounded-lg'} place-items-center text-slate-500 transition hover:bg-white hover:text-[#1A4E8D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100`}
-                    >
-                        <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <p className={`${mobile ? 'text-[15px]' : 'text-[12px]'} font-black text-[#0F172A]`}>
-                        {monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </p>
-                    <button
-                        type="button"
-                        data-testid="pos-history-calendar-next-month"
-                        aria-label="Next month"
-                        onClick={() => setMonthDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
-                        className={`grid ${mobile ? 'h-10 w-10 rounded-xl' : 'h-7 w-7 rounded-lg'} place-items-center text-slate-500 transition hover:bg-white hover:text-[#1A4E8D] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100`}
-                    >
-                        <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                </div>
-                <div className={`${mobile ? 'mt-2' : 'mt-1'} grid grid-cols-7 text-center`} role="row" aria-label="Days of the week">
-                    {CALENDAR_WEEKDAYS.map((weekday) => (
-                        <span key={weekday} className={`${mobile ? 'py-1 text-[11px]' : 'py-0.5 text-[9px]'} font-bold text-slate-400`}>{weekday}</span>
-                    ))}
-                </div>
-                <div className="grid grid-cols-7" role="grid" aria-label="Calendar dates">
-                    {calendarDays.map((date) => {
-                        const dateKey = dateToInput(date);
-                        const isOutsideMonth = date.getMonth() !== monthDate.getMonth();
-                        const isStart = dateKey === fromKey;
-                        const isEnd = dateKey === toKey;
-                        const isInRange = hasCompleteRange && dateKey > fromKey && dateKey < toKey;
-                        const isSelected = isStart || isEnd;
-                        const isRangeStart = hasMultiDayRange && isStart;
-                        const isRangeEnd = hasMultiDayRange && isEnd;
-                        const isRangeSegment = hasMultiDayRange && (isInRange || isRangeStart || isRangeEnd);
-                        const rangeTrackStartClassName = isRangeStart ? 'before:left-1/2' : 'before:left-0';
-                        const rangeTrackEndClassName = isRangeEnd ? 'before:right-1/2' : 'before:right-0';
-                        return (
-                            <button
-                                key={dateKey}
-                                type="button"
-                                role="gridcell"
-                                data-testid={`pos-history-calendar-day-${dateKey}`}
-                                aria-label={date.toLocaleDateString('en-US', { dateStyle: 'full' })}
-                                aria-pressed={isSelected || isInRange}
-                                onClick={() => selectDate(date)}
-                                 className={`relative z-0 flex ${mobile ? 'h-10 text-[13px]' : 'h-7 text-[11px]'} min-w-0 items-center justify-center rounded-full transition focus-visible:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${isRangeSegment ? `before:absolute ${rangeTrackClassName} ${rangeTrackStartClassName} ${rangeTrackEndClassName} before:z-0 before:bg-[#C7DCF3]` : ''} ${isRangeStart ? 'before:rounded-l-full' : ''} ${isRangeEnd ? 'before:rounded-r-full' : ''} ${isOutsideMonth ? 'text-slate-300' : 'text-slate-700'} hover:bg-blue-50`}
-                            >
-                                <span className={`relative z-10 grid ${mobile ? 'h-8 w-8' : 'h-6 w-6'} place-items-center rounded-full ${isSelected
-                                    ? 'bg-[#1A4E8D] font-black text-white shadow-sm'
-                                    : dateKey === todayKey
-                                        ? 'font-black text-[#1A4E8D] ring-1 ring-[#8AA8CD]'
-                                        : 'font-semibold'
-                                    }`}>
-                                    {date.getDate()}
-                                </span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
-
-            <div className="sr-only" aria-hidden="false">
-                <label htmlFor="pos-history-calendar-from">Date from</label>
-                <input
-                    id="pos-history-calendar-from"
-                    data-testid="pos-history-calendar-from"
-                    type="date"
-                    value={from}
-                    onChange={(event) => {
-                        setCustomRangeActive(true);
-                        onChange(event.target.value, to);
-                    }}
-                />
-                <label htmlFor="pos-history-calendar-to">Date to</label>
-                <input
-                    id="pos-history-calendar-to"
-                    data-testid="pos-history-calendar-to"
-                    type="date"
-                    value={to}
-                    onChange={(event) => {
-                        setCustomRangeActive(true);
-                        onChange(from, event.target.value);
-                    }}
-                />
-            </div>
-        </div>
-    );
-}
 
 const getPaymentStatusTextClassName = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -390,16 +156,17 @@ const resolveAllowedOrderMethod = (value, options) => {
 };
 
 const SOURCE_TABS = [
-    { value: 'all', label: 'All Sources' },
-    { value: 'in_store', label: 'In-Store' },
-    { value: 'online_store', label: 'Online Store' }
+    { value: 'all', label: 'All Sources', icon: List },
+    { value: 'in_store', label: 'In-Store', icon: Store },
+    { value: 'online_store', label: 'Online Store', icon: Globe }
 ];
 
 const getFilterOptionLabel = (filterKey, value, options = FILTER_OPTIONS[filterKey] || []) => (
     options.find((option) => option.value === value)?.label || value
 );
 
-const getActiveFilterSummaries = ({
+const getActiveFilterChips = ({
+    historySearch,
     historyStatus,
     historyPaymentType,
     historyOrderMethod,
@@ -408,70 +175,98 @@ const getActiveFilterSummaries = ({
     historyDateTo,
     orderMethodOptions
 }) => [
-    historyStatus !== 'all' ? `Sales: ${getFilterOptionLabel('status', historyStatus)}` : null,
-    historyPaymentType !== 'all' ? `Payment: ${getFilterOptionLabel('paymentType', historyPaymentType)}` : null,
-    historyOrderMethod !== 'all' ? `Method: ${getFilterOptionLabel('orderMethod', historyOrderMethod, orderMethodOptions)}` : null,
-    String(historyCashierName || '').trim() ? `Cashier: ${String(historyCashierName).trim()}` : null,
-    historyDateFrom ? `From: ${historyDateFrom}` : null,
-    historyDateTo ? `To: ${historyDateTo}` : null
+    historyStatus !== 'all' ? { key: 'status', label: `Sales: ${getFilterOptionLabel('status', historyStatus)}` } : null,
+    historyPaymentType !== 'all' ? { key: 'payment', label: `Payment: ${getFilterOptionLabel('paymentType', historyPaymentType)}` } : null,
+    historyOrderMethod !== 'all' ? { key: 'method', label: `Method: ${getFilterOptionLabel('orderMethod', historyOrderMethod, orderMethodOptions)}` } : null,
+    String(historyCashierName || '').trim() ? { key: 'cashier', label: `Cashier: ${String(historyCashierName).trim()}` } : null,
+    historyDateFrom || historyDateTo
+        ? { key: 'date', label: `Date: ${formatPosDateRangeLabel(historyDateFrom, historyDateTo)}` }
+        : null,
+    String(historySearch || '').trim() ? { key: 'search', label: `Search: ${String(historySearch).trim()}` } : null
 ].filter(Boolean);
 
-function FilterChoiceGroup({ label, value, options, onChange, testId, compact = false, mobile = false }) {
-    const optionGroupClassName = compact
-        ? 'mt-1.5 grid min-w-0 max-w-full grid-cols-4 gap-2'
-        : mobile
-        ? 'dgfy-pos-history-horizontal-scroll mt-1 flex min-w-0 max-w-full flex-nowrap gap-2 overflow-x-auto overscroll-x-contain scroll-smooth pb-1 touch-pan-x'
-            : 'mt-2 flex min-w-0 max-w-full flex-wrap gap-2';
-    const optionClassName = compact
-        ? 'h-8 w-full min-w-0 px-2 py-1 text-[10px]'
-        : mobile
-            ? 'h-11 w-[6.5rem] min-w-[6.5rem] shrink-0 px-2 py-1 text-[11px]'
-            : 'min-h-9 w-max min-w-0 shrink-0 px-3 py-1.5 text-[12px]';
+const getHistoryOrderMethodLabel = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return ORDER_METHOD_LABELS[normalized]
+        || normalized.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+        || '—';
+};
 
-    return (
-        <fieldset className="min-w-0">
-            <legend className={fieldLabelClassName}>{label}</legend>
-            <div className={optionGroupClassName} role="group" aria-label={`${label} options`}>
-                {options.map((option) => {
-                    const selected = value === option.value;
-                    return (
-                        <button
-                            key={option.value}
-                            type="button"
-                            data-testid={`${testId}-${option.value}`}
-                            aria-pressed={selected}
-                            onClick={() => onChange(option.value)}
-                            className={`inline-flex items-center justify-center whitespace-nowrap rounded-lg border text-center font-extrabold leading-none transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${optionClassName} ${selected
-                                ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
-                                : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
-                                }`}
-                        >
-                            {option.label}
-                        </button>
-                    );
-                })}
-            </div>
-        </fieldset>
-    );
-}
+const getHistoryDiscountLabel = (row) => {
+    if (row?.discount) {
+        const label = row.discount.discount_type || row.discount_label_snapshot || 'Discount';
+        const rate = row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : '';
+        return `${label}${rate}`;
+    }
+    if (row?.discount_label_snapshot) {
+        const rate = row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : '';
+        return `${row.discount_label_snapshot}${rate}`;
+    }
+    return '—';
+};
 
-function IconInput({ icon: Icon, children, mobileIconAlign = 'left', className = '' }) {
-    const iconPositionClassName = mobileIconAlign === 'right'
-        ? 'right-4 sm:right-auto sm:left-4'
-        : 'left-4';
-    return (
-        <div className={`relative min-w-0 max-w-full ${className || 'mt-2'}`}>
-            <Icon className={`pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 ${iconPositionClassName}`} />
-            {children}
-        </div>
-    );
-}
+const buildHistoryDetailsSections = (row) => {
+    const dateTime = formatDateTime(row?.created_at);
+    const sourceKey = row?.order_source === 'online_store' ? 'online_store' : 'in_store';
+    const isVoided = isVoidedPosTransaction(row);
+    const isOfflinePending = row?.offline_sync_state === 'pending_sync';
+    const appliedVouchers = resolveAppliedVouchers(row);
+    const itemVoucherCode = appliedVouchers.find((voucher) => voucher.benefit_target !== 'delivery')?.code || null;
+    const deliveryVoucherLabel = row?.delivery_fee_waiver_label_snapshot
+        || appliedVouchers.find((voucher) => voucher.benefit_target === 'delivery')?.code
+        || null;
+    const cashier = row?.cashier?.username || row?.acceptedByUser?.username || '-';
 
-function MobileHistoryField({ label, children, className = '' }) {
+    return [
+        {
+            key: 'transaction-information',
+            title: 'Transaction Information',
+            fields: [
+                { key: 'created-at', label: 'Date & Time', value: dateTime === '-' ? '—' : `${dateTime.date}, ${dateTime.time}` },
+                { key: 'invoice', label: 'Transaction/Invoice', value: row?.invoice_number || row?.pos_transaction_id || '—' },
+                { key: 'cashier', label: 'Cashier', value: cashier },
+                {
+                    key: 'source',
+                    label: 'Source',
+                    value: <span className="inline-flex items-center gap-1.5 text-[#1A4E8D]"><span aria-hidden="true">{sourceKey === 'online_store' ? <Globe className="h-4 w-4" /> : <Store className="h-4 w-4" />}</span>{ORDER_SOURCE_LABELS[sourceKey]}</span>
+                },
+                { key: 'payment', label: 'Payment Method', value: formatPosTransactionPaymentMethods(row) },
+                { key: 'payment-status', label: 'Payment Status', value: <span className={getPaymentStatusTextClassName(row?.payment_status)}>{getPaymentStatusLabel(row?.payment_status)}</span> },
+                { key: 'order-method', label: 'Order Method', value: getHistoryOrderMethodLabel(row?.order_method) },
+                { key: 'sync-state', label: 'Sync State', value: isOfflinePending ? 'Pending Sync' : 'Synced' }
+            ]
+        },
+        {
+            key: 'sales-summary',
+            title: 'Sales Summary',
+            fields: [
+                { key: 'discount', label: 'Discount', value: getHistoryDiscountLabel(row) },
+                { key: 'fee', label: 'Fee', value: `₱${money(row?.service_fee_amount)}` },
+                { key: 'restaurant-charge', label: 'Restaurant Charge', value: `₱${money(row?.restaurant_service_charge_amount)}` },
+                { key: 'vat', label: 'VAT', value: `₱${money(row?.vat_amount)}` },
+                { key: 'vatable', label: 'Vatable Sales', value: `₱${money(row?.vatable_sales)}` },
+                { key: 'total', label: 'Total', value: `₱${money(row?.total_amount)}`, valueClassName: 'text-base font-black text-[#1A4E8D]' },
+                itemVoucherCode ? { key: 'item-voucher', label: 'Item Voucher', value: itemVoucherCode } : null,
+                deliveryVoucherLabel ? { key: 'delivery-voucher', label: 'Delivery Voucher', value: deliveryVoucherLabel } : null
+            ].filter(Boolean)
+        },
+        isVoided ? {
+            key: 'void-audit',
+            title: 'Void Audit',
+            fields: [
+                { key: 'void-reason', label: 'Reason', value: resolvePosVoidReason(row) },
+                { key: 'void-actor', label: 'Voided By', value: resolvePosVoidActorLabel(row) },
+                { key: 'voided-at', label: 'Voided At', value: formatPosVoidTimestamp(row?.voided_at) }
+            ]
+        } : null
+    ].filter(Boolean);
+};
+
+function MobileHistoryDetailRow({ label, children, className = '', valueClassName = '' }) {
     return (
-        <div className={`min-w-0 ${className}`}>
-            <p className="text-[10px] font-semibold leading-4 text-slate-500">{label}</p>
-            <div className="mt-0.5 min-h-4 min-w-0 text-[11px] font-medium leading-4 text-[#334155]">{children}</div>
+        <div className={`flex items-start justify-between gap-4 text-[11px] leading-4 ${className}`}>
+            <dt className="shrink-0 text-slate-500">{label}</dt>
+            <dd className={`min-w-0 max-w-[68%] break-words text-right font-medium text-[#334155] ${valueClassName}`}>{children}</dd>
         </div>
     );
 }
@@ -500,146 +295,134 @@ function MobileHistoryCard({
     onOpenRefundWorkflow,
     onToggleExpanded
 }) {
-    const stopPropagation = (event) => event.stopPropagation();
     const toggleDetails = () => onToggleExpanded(row.pos_transaction_id);
-    const handleKeyDown = (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggleDetails();
-    };
-    const actionButtonClassName = 'pos-history-action-button pos-history-action-button--standard grid h-9 w-9 min-h-0 min-w-0 shrink-0 aspect-square place-items-center rounded-lg border border-slate-200 bg-white p-0 shadow-sm transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200';
-    const discountLabel = row.discount
-        ? `${row.discount.discount_type || row.discount_label_snapshot || 'Discount'}${row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : ''}`
-        : row.discount_label_snapshot
-            ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-            : '–';
+    const detailsId = `pos-history-mobile-details-${row.pos_transaction_id}`;
+    const discountLabel = getHistoryDiscountLabel(row);
+    const paymentStatusLabel = isVoided ? 'Voided' : getPaymentStatusLabel(row.payment_status);
+    const paymentStatusClassName = isVoided
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : getPaymentStatusClassName(row.payment_status);
 
     return (
         <article
             data-testid={`pos-history-mobile-card-${row.pos_transaction_id}`}
-            className="border-b border-slate-200 bg-white text-slate-700 transition-colors last:border-b-0"
-            tabIndex={0}
-            aria-expanded={expanded}
-            aria-label={`${expanded ? 'Hide' : 'Show'} details for ${row.invoice_number || row.pos_transaction_id}`}
-            onClick={toggleDetails}
-            onKeyDown={handleKeyDown}
+            className="overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm"
         >
-            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-black leading-4 text-[#0F172A]">{row.invoice_number}</p>
-                    {isOfflinePending && (
-                        <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-wide text-amber-700">Pending Sync</span>
-                    )}
-                    <div data-testid={`pos-history-mobile-date-time-${row.pos_transaction_id}`} className="mt-0.5 flex min-w-0 gap-1 text-[10px] leading-3 text-slate-500">
-                        <span className="truncate">{dateTime.date}</span>
-                        <span aria-hidden="true">•</span>
-                        <span className="truncate">{dateTime.time}</span>
+            <div className="px-2.5 py-2">
+                <div className="flex min-w-0 items-start gap-2">
+                    <div className="min-w-0 flex-1 pt-0.5">
+                        <p className="truncate text-[12px] font-black leading-4 text-[#0F172A]">{row.invoice_number || row.pos_transaction_id}</p>
+                        {isOfflinePending && (
+                            <span className="mt-0.5 block truncate text-[9px] font-bold uppercase tracking-wide text-amber-700">Pending Sync</span>
+                        )}
+                        <div data-testid={`pos-history-mobile-date-time-${row.pos_transaction_id}`} className="mt-0.5 flex min-w-0 gap-1 text-[10px] leading-3 text-slate-500">
+                            <span className="truncate">{dateTime.date}</span>
+                            <span aria-hidden="true">•</span>
+                            <span className="truncate">{dateTime.time}</span>
+                        </div>
                     </div>
-                </div>
 
-                <div className="flex shrink-0 items-center gap-1" aria-label={`Actions for ${row.invoice_number || row.pos_transaction_id}`}>
-                    <button
-                        type="button"
-                        className={`${actionButtonClassName} pos-history-view-action bg-slate-50 text-slate-600 hover:bg-slate-100`}
-                        onClick={(event) => {
-                            stopPropagation(event);
-                            openHistoryDetail(row);
-                        }}
+                    <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label={`Actions for ${row.invoice_number || row.pos_transaction_id}`}>
+                    <PosTableActionButton
+                        icon={ClipboardList}
+                        onClick={() => openHistoryDetail(row)}
                         disabled={historyDetailLoading}
                         aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                         title="View receipt"
-                    >
-                        <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                    </button>
+                    />
                     {canVoidRow && (
-                        <button
-                            type="button"
-                            className={`${actionButtonClassName} pos-history-void-action text-rose-700 hover:text-rose-800`}
-                            onClick={(event) => {
-                                stopPropagation(event);
+                        <PosTableActionButton
+                            icon={Ban}
+                            tone="danger"
+                            onClick={() => {
                                 setVoidTarget(row);
                                 setVoidReason('');
                             }}
                             disabled={voidingTransactionId !== null}
                             aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
                             title="Void transaction"
-                        >
-                            <Ban className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                        />
                     )}
                     {canRefundRow && (
-                        <button
-                            type="button"
-                            className={`${actionButtonClassName} text-amber-800 hover:text-amber-900`}
-                            onClick={(event) => {
-                                stopPropagation(event);
-                                onOpenRefundWorkflow(row);
-                            }}
+                        <PosTableActionButton
+                            icon={Undo2}
+                            onClick={() => onOpenRefundWorkflow(row)}
                             disabled={refundWorkflowLoading || refundWorkflowSubmitting}
                             aria-label={`Resolve refund for ${row.invoice_number || row.pos_transaction_id}`}
                             title="Resolve refund"
-                        >
-                            <Undo2 className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                        />
                     )}
-                    <button
-                        type="button"
-                        className={`${actionButtonClassName} text-slate-600`}
-                        onClick={(event) => {
-                            stopPropagation(event);
-                            toggleDetails();
-                        }}
-                        aria-expanded={expanded}
-                        aria-label={`${expanded ? 'Hide' : 'Show'} transaction details for ${row.invoice_number || row.pos_transaction_id}`}
-                        title={`${expanded ? 'Hide' : 'Show'} transaction details`}
-                    >
-                        <Eye className="h-4 w-4" aria-hidden="true" />
-                    </button>
+                        <PosTableActionButton
+                            icon={Eye}
+                            className={expanded ? 'bg-blue-50' : undefined}
+                            onClick={toggleDetails}
+                            aria-expanded={expanded}
+                            aria-controls={detailsId}
+                            aria-label={`${expanded ? 'Hide' : 'Show'} transaction details for ${row.invoice_number || row.pos_transaction_id}`}
+                            title={`${expanded ? 'Hide' : 'Show'} transaction details`}
+                    />
+                    </div>
+                </div>
+
+                <div className="mt-1.5 flex min-w-0 items-center gap-2.5">
+                    <span className={`inline-flex min-w-0 items-center gap-1 text-[10px] font-semibold ${sourceKey === 'online_store' ? 'text-sky-700' : 'text-emerald-700'}`}>
+                        {sourceKey === 'online_store' ? <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+                        <span className="truncate">{ORDER_SOURCE_LABELS[sourceKey]}</span>
+                    </span>
+                    <span className={`inline-flex shrink-0 rounded border px-1.5 py-0.5 text-[9px] font-black uppercase leading-3 tracking-wide ${paymentStatusClassName}`}>
+                        {paymentStatusLabel}
+                    </span>
                 </div>
             </div>
 
-            {expanded && (
-                <div
-                    data-testid={`pos-history-mobile-details-${row.pos_transaction_id}`}
-                    className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-slate-100 bg-slate-50/70 px-3 py-3"
-                >
-                    <MobileHistoryField label="Source">
-                        <span className={`inline-flex max-w-full items-center gap-1 text-[11px] font-semibold ${sourceKey === 'online_store' ? 'text-sky-700' : 'text-emerald-700'}`}>
-                            {sourceKey === 'online_store' ? <Globe className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
-                            <span className="truncate">{ORDER_SOURCE_LABELS[sourceKey]}</span>
-                        </span>
-                    </MobileHistoryField>
-                    <MobileHistoryField label="Payment">
-                        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                            <span className="truncate">{formatPosTransactionPaymentMethods(row)}</span>
-                            <span className={`font-black uppercase tracking-wide ${getPaymentStatusTextClassName(row.payment_status)}`}>{getPaymentStatusLabel(row.payment_status)}</span>
+            <div
+                id={detailsId}
+                data-testid={`pos-history-mobile-details-${row.pos_transaction_id}`}
+                role="region"
+                aria-label={`Details for ${row.invoice_number || row.pos_transaction_id}`}
+                hidden={!expanded}
+                className="border-t border-slate-100 px-3 py-2.5"
+            >
+                    <dl className="space-y-2 text-[11px] leading-4">
+                        <MobileHistoryDetailRow label="Payment">
+                            {formatPosTransactionPaymentMethods(row)}
+                        </MobileHistoryDetailRow>
+                        <MobileHistoryDetailRow label="Cashier">
+                            {row.cashier?.username || row.acceptedByUser?.username || '—'}
+                        </MobileHistoryDetailRow>
+                        <MobileHistoryDetailRow label="Discount">
+                            <span>{discountLabel}</span>
+                            {itemVoucherCode && <span className="mt-0.5 block font-semibold text-emerald-700">Voucher: {itemVoucherCode}</span>}
+                            {deliveryVoucherLabel && <span className="mt-0.5 block font-semibold text-emerald-700">Delivery voucher: {deliveryVoucherLabel}</span>}
+                        </MobileHistoryDetailRow>
+                        <MobileHistoryDetailRow label="Rest. charge">
+                            ₱{money(row.restaurant_service_charge_amount)}
+                        </MobileHistoryDetailRow>
+
+                        <div className="space-y-2 border-t border-slate-200 pt-2">
+                            <MobileHistoryDetailRow label="VAT">₱{money(row.vat_amount)}</MobileHistoryDetailRow>
+                            <MobileHistoryDetailRow label="Vatable">₱{money(row.vatable_sales)}</MobileHistoryDetailRow>
+                            <MobileHistoryDetailRow label="Fee">₱{money(row.service_fee_amount)}</MobileHistoryDetailRow>
                         </div>
-                    </MobileHistoryField>
-                    <MobileHistoryField label="Cashier">
-                        <span className="block truncate">{row.cashier?.username || row.acceptedByUser?.username || '-'}</span>
-                    </MobileHistoryField>
-                    <MobileHistoryField label="Discount">
-                        <span className="block truncate">{discountLabel}</span>
-                        {itemVoucherCode && <span className="block truncate text-[10px] font-semibold text-emerald-700">Voucher: {itemVoucherCode}</span>}
-                        {deliveryVoucherLabel && <span className="block truncate text-[10px] font-semibold text-emerald-700">Delivery voucher: {deliveryVoucherLabel}</span>}
-                    </MobileHistoryField>
-                    <MobileHistoryField label="Fee">₱{money(row.service_fee_amount)}</MobileHistoryField>
-                    <MobileHistoryField label="Rest. charge">₱{money(row.restaurant_service_charge_amount)}</MobileHistoryField>
-                    <MobileHistoryField label="VAT">₱{money(row.vat_amount)}</MobileHistoryField>
-                    <MobileHistoryField label="Vatable">₱{money(row.vatable_sales)}</MobileHistoryField>
-                    <MobileHistoryField label="Total" className="rounded-lg bg-[#E8F1FB] px-2 py-1.5">
-                        <span className="block text-[14px] font-black text-[#1A4E8D]">₱{money(row.total_amount)}</span>
-                    </MobileHistoryField>
+
+                        <MobileHistoryDetailRow
+                            label="Total"
+                            className="rounded-lg bg-[#E8F1FB] px-2 py-1.5"
+                            valueClassName="text-[13px] font-black text-[#1A4E8D]"
+                        >
+                            ₱{money(row.total_amount)}
+                        </MobileHistoryDetailRow>
+                    </dl>
+
                     {isVoided && (
-                        <div className="col-span-3 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[10px] leading-4 text-rose-800">
+                        <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-[10px] leading-4 text-rose-800">
                             <p className="font-black uppercase tracking-wide">Voided transaction</p>
                             <p>Reason: {voidReason}</p>
                             <p>Voided by: {voidActorLabel}</p>
                             <p>Voided at: {voidedAtLabel}</p>
                         </div>
                     )}
-                </div>
-            )}
+            </div>
         </article>
     );
 }
@@ -700,6 +483,11 @@ export default function POSTransactionHistoryPanel({
             windowObj: window
         })
     ));
+    const [isTabletTableViewport, setIsTabletTableViewport] = useState(() => (
+        typeof window !== 'undefined'
+        && window.innerWidth > POS_HISTORY_MOBILE_MAX_WIDTH_PX
+        && window.innerWidth <= POS_HISTORY_TABLET_MAX_WIDTH_PX
+    ));
     const [isTabletPortraitViewport, setIsTabletPortraitViewport] = useState(() => (
         typeof window !== 'undefined' && isPosTabletPortraitViewport({
             viewportWidth: window.innerWidth,
@@ -726,6 +514,7 @@ export default function POSTransactionHistoryPanel({
     const filterApplyPendingRef = useRef(false);
     const [voidTarget, setVoidTarget] = useState(null);
     const [voidReason, setVoidReason] = useState('');
+    const [historyDetailsRow, setHistoryDetailsRow] = useState(null);
     const totalEntries = Number(historyPagination?.total || historyRows.length || 0);
     const pageSize = Number(historyPageSize || historyPagination?.limit || historyRows.length || 10);
     const pageStart = totalEntries === 0 ? 0 : ((Math.max(1, historyPage) - 1) * pageSize) + 1;
@@ -744,20 +533,23 @@ export default function POSTransactionHistoryPanel({
         historyDateFrom,
         historyDateTo
     };
-    const activeFilterSummaries = getActiveFilterSummaries({ ...currentFilterValues, orderMethodOptions });
-    const activeFilterCount = activeFilterSummaries.length;
+    const activeFilterChips = getActiveFilterChips({ ...currentFilterValues, historySearch, orderMethodOptions });
+    const activeFilterCount = activeFilterChips.length;
     const hasActiveDateFilter = Boolean(historyDateFrom || historyDateTo);
-    const isMobileViewport = Boolean(isMobileViewportProp) || detectedMobileViewport || isTabletPortraitViewport;
+    const isMobileViewport = Boolean(isMobileViewportProp) || detectedMobileViewport;
     const isLandscapeMobileViewport = (isMobileViewport && detectedLandscapeViewport)
         || isPosHistoryNarrowLandscapeMobileViewport()
         || detectedLandscapePanelViewport;
-    // Tablet portrait inherits the phone's complete card/detail interaction so
-    // the narrow portrait surface stays readable. Tablet landscape and desktop
-    // keep the full financial table. Tablet portrait uses the desktop dialog
-    // shell for Filter and Calendar, centered within the viewport.
+    // Keep the phone's existing card interaction below 768px. Tablet tables
+    // progressively expose more fields as the available width increases.
     const isCompactHistoryViewport = isMobileViewport;
-    const isDesktopHistoryViewport = !isMobileViewport;
-    const historyVisibleColumnCount = isMobileViewport ? 3 : 12;
+    const isDesktopHistoryViewport = !isMobileViewport && !isTabletTableViewport;
+    const isTabletLandscapeTableViewport = isTabletTableViewport && !isTabletPortraitViewport;
+    const historyVisibleColumnCount = isMobileViewport
+        ? 3
+        : isTabletTableViewport
+            ? (isTabletPortraitViewport ? 5 : 6)
+            : 8;
     const isTabletPortraitDialog = isTabletPortraitViewport;
     const isMobileDialog = isMobileViewport && !isTabletPortraitDialog;
     const isDesktopDialog = !isMobileDialog;
@@ -766,29 +558,27 @@ export default function POSTransactionHistoryPanel({
         ...historyRows.flatMap((row) => [row?.cashier?.username, row?.acceptedByUser?.username]),
         historyCashierName
     ].map((value) => String(value ?? '').trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right));
-    const cashierSearchValue = String(filterDraft?.historyCashierName ?? historyCashierName ?? '').trim();
-    const visibleCashierOptions = cashierOptions.filter((cashier) => (
-        !cashierSearchValue || cashier.toLowerCase().includes(cashierSearchValue.toLowerCase())
-    ));
-    // Count the rendered list, including the always-present "All Cashiers" row,
-    // so the layout thresholds match what the operator actually sees.
-    const cashierListOptionCount = visibleCashierOptions.length + 1;
-    const cashierListUsesTwoColumns = cashierListOptionCount >= POS_HISTORY_OPTION_TWO_COLUMN_MIN
-        && cashierListOptionCount <= POS_HISTORY_OPTION_TWO_COLUMN_MAX;
-    const cashierListIsScrollable = cashierListOptionCount > POS_HISTORY_OPTION_TWO_COLUMN_MAX;
     const pendingSyncLabel = universalPendingSyncCount > 0
         ? `Sync ${universalPendingSyncCount} pending POS record${universalPendingSyncCount === 1 ? '' : 's'}`
         : 'Sync pending POS records';
     const historyActionColumnClassName = isMobileViewport
         ? 'pos-history-action-column min-w-0 w-[28%]'
         : 'pos-history-action-column min-w-0';
-    const historyActionButtonClassName = isMobileViewport
-        ? 'h-10 w-10'
-        : 'h-9 w-9';
-    const historyActionSizeClassName = isMobileViewport
-        ? 'pos-history-action-button--large'
-        : 'pos-history-action-button--standard';
-    const historyActionSquareClassName = `${historyActionButtonClassName} pos-history-action-button ${historyActionSizeClassName} min-h-0 min-w-0 aspect-square`;
+    const historyTableSurfaceClassName = isMobileViewport
+        ? 'w-full min-w-0 max-w-full overscroll-x-contain overflow-visible rounded-none border-0 bg-transparent shadow-none'
+        : `w-full min-w-0 max-w-full overscroll-x-contain ${isTabletViewport ? 'overflow-x-auto' : 'overflow-x-hidden'}`;
+    const historyDetailsIsVoided = historyDetailsRow ? isVoidedPosTransaction(historyDetailsRow) : false;
+    const historyDetailsIsOfflinePending = historyDetailsRow?.offline_sync_state === 'pending_sync';
+    const historyDetailsPaymentStatus = String(historyDetailsRow?.payment_status || '').trim().toLowerCase();
+    const historyDetailsCanVoid = Boolean(historyDetailsRow)
+        && canVoidTransactions
+        && !historyDetailsIsOfflinePending
+        && !historyDetailsIsVoided;
+    const historyDetailsCanRefund = Boolean(historyDetailsRow)
+        && canVoidTransactions
+        && !historyDetailsIsOfflinePending
+        && historyDetailsIsVoided
+        && ['paid', 'refund_pending', 'partial_refunded'].includes(historyDetailsPaymentStatus);
 
     useEffect(() => {
         const selectedOrderMethod = resolveAllowedOrderMethod(historyOrderMethod, orderMethodOptions);
@@ -896,6 +686,32 @@ export default function POSTransactionHistoryPanel({
         }));
     };
 
+    const removeHistoryFilter = (filterKey) => {
+        if (filterKey !== 'search') filterApplyPendingRef.current = true;
+
+        if (filterKey === 'status') setHistoryStatus('all');
+        if (filterKey === 'payment') setHistoryPaymentType('all');
+        if (filterKey === 'method') setHistoryOrderMethod('all');
+        if (filterKey === 'cashier') setHistoryCashierName('');
+        if (filterKey === 'date') {
+            setHistoryDateFrom('');
+            setHistoryDateTo('');
+        }
+        if (filterKey === 'search') setHistorySearch('');
+    };
+
+    const clearAllHistoryFilters = () => {
+        filterApplyPendingRef.current = true;
+        setHistorySearch('');
+        setHistoryStatus('all');
+        setHistoryPaymentType('all');
+        setHistoryOrderMethod('all');
+        setHistoryOrderSource('all');
+        setHistoryCashierName('');
+        setHistoryDateFrom('');
+        setHistoryDateTo('');
+    };
+
     const applyDraftFilters = () => {
         const draftValues = filterDraft || currentFilterValues;
         const draftDateFrom = draftValues.historyDateFrom || '';
@@ -926,6 +742,22 @@ export default function POSTransactionHistoryPanel({
         filterApplyPendingRef.current = true;
         setHistoryOrderSource(value);
     };
+
+    const sourceTabNavigation = (
+        <PosLineTabNavigation
+            tabs={SOURCE_TABS.map((sourceTab) => ({
+                id: sourceTab.value,
+                label: sourceTab.label,
+                icon: sourceTab.icon,
+                testId: `pos-history-source-tab-${sourceTab.value}`
+            }))}
+            activeTab={historyOrderSource}
+            onTabChange={selectSourceTab}
+            ariaLabel="Transaction sources"
+            idPrefix="pos-history-source-tab"
+            panelId="pos-history-table-panel"
+        />
+    );
 
     useEffect(() => {
         if (!filterApplyPendingRef.current) return;
@@ -989,15 +821,24 @@ export default function POSTransactionHistoryPanel({
             isDgfyPosSurface: IS_DGFY_POS_SURFACE,
             windowObj: window
         }));
+        const syncTabletTable = () => setIsTabletTableViewport(
+            window.innerWidth > POS_HISTORY_MOBILE_MAX_WIDTH_PX
+            && window.innerWidth <= POS_HISTORY_TABLET_MAX_WIDTH_PX
+        );
         sync();
         syncPortrait();
+        syncTabletTable();
         window.addEventListener('resize', sync);
         window.addEventListener('resize', syncPortrait);
+        window.addEventListener('resize', syncTabletTable);
         window.addEventListener('orientationchange', syncPortrait);
+        window.addEventListener('orientationchange', syncTabletTable);
         return () => {
             window.removeEventListener('resize', sync);
             window.removeEventListener('resize', syncPortrait);
+            window.removeEventListener('resize', syncTabletTable);
             window.removeEventListener('orientationchange', syncPortrait);
+            window.removeEventListener('orientationchange', syncTabletTable);
         };
     }, []);
 
@@ -1046,7 +887,13 @@ export default function POSTransactionHistoryPanel({
     }, []);
 
     return (
-        <section ref={historyPanelRef} data-pos-history-panel="true" className="dgfy-pos-history-panel flex h-full min-h-0 min-w-0 max-w-full flex-col gap-0 overflow-x-hidden rounded-xl bg-white p-1 lg:p-0">
+        <PosPageFrame page="history" className="flex h-full min-h-0 flex-col">
+        <section ref={historyPanelRef} data-pos-history-panel="true" className="dgfy-pos-history-panel flex h-full min-h-0 min-w-0 max-w-full flex-col gap-0 overflow-x-hidden rounded-xl bg-white">
+            {isMobileViewport && (
+                <div data-testid="pos-history-source-tabs" className="dgfy-pos-scrollbar-hidden mb-4 min-w-0 max-w-full shrink-0 overflow-x-hidden">
+                    {sourceTabNavigation}
+                </div>
+            )}
             {/* History controls and transaction rows scroll in the flexible middle region;
                 pagination stays in the fixed panel footer below it.
                 A tall stacked mobile filter grid can therefore scroll with the content
@@ -1054,47 +901,51 @@ export default function POSTransactionHistoryPanel({
                 had its own scroll area, so overflow above it
                 (see Fix: History Catalog Mobile Filter Clipping) was cut off by the ancestor
                 overflow-hidden containers in POSCheckoutTerminal.jsx instead of scrolling. */}
-            <div data-testid="pos-history-scroll-region" className="dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
-                <div data-testid="pos-history-toolbar" className={`${isMobileViewport ? 'flex flex-nowrap gap-2' : 'flex flex-wrap gap-2 lg:gap-3'} ${isMobileViewport ? 'flex-row w-full px-0' : ''} items-center pb-4 pt-2 lg:px-4`}>
-                    <IconInput icon={Search} className={`mt-0 min-w-0 flex-1 ${isMobileViewport ? 'basis-0' : 'basis-[18rem]'}`}>
-                            <Input
-                                value={historySearch}
-                                onChange={(event) => setHistorySearch(event.target.value)}
-                                placeholder="Search all transaction fields..."
-                                className={`${isMobileViewport ? 'h-10 pl-10 pr-3 text-[11px]' : 'h-11 pl-12 pr-4 text-[13px]'} pos-history-toolbar-control rounded-xl border-slate-200 bg-white text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100`}
-                            />
-                    </IconInput>
+            <div data-testid="pos-history-scroll-region" className={`dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y ${isMobileViewport ? POS_MOBILE_PAGE_STACK_CLASS : ''}`} style={{ WebkitOverflowScrolling: 'touch' }}>
+                {!isMobileViewport && (
+                    <div data-testid="pos-history-source-tabs" className="dgfy-pos-scrollbar-hidden mb-2 min-w-0 max-w-full overflow-x-auto">
+                        {sourceTabNavigation}
+                    </div>
+                )}
+
+                <div data-testid="pos-history-toolbar" className={`${isMobileViewport ? 'flex flex-nowrap gap-2 flex-row w-full px-0 py-0' : 'flex flex-nowrap gap-2 lg:gap-3 items-center pb-4 pt-2'}`}>
+                    <PosSearchField
+                        ariaLabel="Search all transaction fields"
+                        value={historySearch}
+                        onChange={(event) => setHistorySearch(event.target.value)}
+                        placeholder="Search all transaction fields..."
+                        inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
+                        className={`flex-1 ${isMobileViewport ? 'basis-0' : 'basis-[18rem]'}`}
+                    />
                     <div className="flex shrink-0 items-center gap-2">
                             <Button
                                 type="button"
                                 data-testid="pos-history-filter-button"
                                 ref={filterButtonRef}
                             onClick={openFilterDialog}
-                            aria-expanded={filterDialogOpen}
+                            aria-haspopup="dialog"
+                            aria-expanded={filterDialogOpen && filterDialogMode === 'filters'}
                             aria-controls="pos-history-filter-dialog"
                             variant="outline"
-                            className={`${isMobileViewport ? 'relative h-10 w-10 min-w-0 px-0' : 'h-11 min-w-[6.25rem] px-4'} pos-history-toolbar-control shrink-0 rounded-xl border-[#1A4E8D] bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] hover:text-white`}
+                            className={`${isMobileViewport ? 'relative w-11 min-w-0 px-0' : 'relative min-w-[6.25rem] px-4'} ${POS_FILTER_TRIGGER_HEIGHT_CLASS} shrink-0 rounded-xl border-[#1A4E8D] bg-[#1A4E8D] text-[13px] font-extrabold text-white hover:bg-[#143F73] hover:text-white`}
                         >
-                            <ListFilter className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
+                            <Filter className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
                             {isMobileViewport ? <span className="sr-only">Filter</span> : 'Filter'}
-                            {activeFilterCount > 0 && (
-                                <span className={`${isMobileViewport ? 'absolute -right-1 -top-1' : 'ml-2'} grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] leading-none text-[#1A4E8D]`}>
-                                    {activeFilterCount}
-                                </span>
-                            )}
+                            <PosFilterCountBadge count={activeFilterCount} />
                         </Button>
                         <Button
                             type="button"
                             data-testid="pos-history-calendar-button"
                             ref={calendarButtonRef}
                             onClick={openCalendarDialog}
+                            aria-haspopup="dialog"
                             aria-expanded={filterDialogOpen && filterDialogMode === 'calendar'}
                             aria-controls="pos-history-calendar-dialog"
                             variant="outline"
-                            className={`${isMobileViewport ? 'h-10 w-10 min-w-0 px-0' : 'h-11 min-w-[6.25rem] px-4'} pos-history-toolbar-control shrink-0 rounded-xl border-[#1A4E8D] text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 ${hasActiveDateFilter ? 'bg-blue-50' : 'bg-white'}`}
+                            className={`${isMobileViewport ? 'w-11 min-w-0 px-0' : 'min-w-[8.75rem] px-4'} ${POS_FILTER_TRIGGER_HEIGHT_CLASS} shrink-0 whitespace-nowrap rounded-xl border-[#1A4E8D] text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 ${hasActiveDateFilter ? 'bg-blue-50' : 'bg-white'}`}
                         >
                             <CalendarDays className={`${isMobileViewport ? '' : 'mr-2'} h-4 w-4`} aria-hidden="true" />
-                            {isMobileViewport ? <span className="sr-only">Calendar</span> : 'Calendar'}
+                            {isMobileViewport ? <span className="sr-only">Filter by Date</span> : 'Filter by Date'}
                         </Button>
                         <Button
                             type="button"
@@ -1104,7 +955,7 @@ export default function POSTransactionHistoryPanel({
                             size="icon"
                             aria-label={pendingSyncLabel}
                             title={pendingSyncLabel}
-                            className={`${isMobileViewport ? 'h-10 w-10' : 'h-11 w-11'} pos-history-toolbar-control shrink-0 rounded-xl bg-[#1A4E8D] p-0 text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60`}
+                            className={`${isMobileViewport ? 'w-11' : 'w-10'} ${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} shrink-0 rounded-xl bg-[#1A4E8D] p-0 text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60`}
                         >
                             <RefreshCcw className={`h-4 w-4 ${syncingPendingTransactions ? 'animate-spin' : ''}`} aria-hidden="true" />
                         </Button>
@@ -1120,75 +971,40 @@ export default function POSTransactionHistoryPanel({
                     </p>
                 </div>
 
-                <div className={`dgfy-pos-scrollbar-hidden flex min-w-0 max-w-full ${isMobileViewport ? 'mb-0 overflow-x-hidden px-3' : 'mb-2 overflow-x-auto px-3 lg:px-4'}`} role="tablist" aria-label="Transaction sources">
-                    {SOURCE_TABS.map((sourceTab) => {
-                        const selected = historyOrderSource === sourceTab.value;
-                        return (
-                            <button
-                                key={sourceTab.value}
-                                type="button"
-                                role="tab"
-                                aria-selected={selected}
-                                data-testid={`pos-history-source-tab-${sourceTab.value}`}
-                                onClick={() => selectSourceTab(sourceTab.value)}
-                                className={`relative ${isMobileViewport ? 'min-w-0 px-2 py-2 text-[11px]' : 'min-w-[8rem] px-4 py-3 text-[12px]'} flex-1 whitespace-nowrap font-extrabold transition focus-visible:z-10 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
-                                    ? `text-[#1A4E8D] after:absolute ${isMobileViewport ? 'after:bottom-1' : 'after:bottom-0'} after:h-0.5 after:rounded-full after:bg-[#1A4E8D] ${isMobileViewport ? 'after:inset-x-0' : 'after:inset-x-4'}`
-                                    : 'text-slate-500 hover:bg-slate-50 hover:text-[#1A4E8D]'
-                                    }`}
-                            >
-                                {sourceTab.label}
-                            </button>
-                        );
-                    })}
-                </div>
+                <PosAppliedFilterChips
+                    activeFilters={activeFilterChips}
+                    onRemoveFilter={removeHistoryFilter}
+                    onClearAllFilters={clearAllHistoryFilters}
+                    groupLabel="Applied history filters"
+                    clearAllAriaLabel="Clear all history filters"
+                    className={isMobileViewport
+                        ? 'dgfy-pos-history-horizontal-scroll flex-nowrap overflow-x-auto overscroll-x-contain touch-pan-x px-3 py-0'
+                        : 'flex-wrap px-3 py-3 lg:px-4'}
+                />
 
-                {activeFilterSummaries.length > 0 && (
-                    <div className={`${isMobileViewport ? 'dgfy-pos-history-horizontal-scroll flex-nowrap overflow-x-auto overscroll-x-contain touch-pan-x' : 'flex-wrap'} flex items-center gap-2 px-3 py-3 lg:px-4`} aria-label="Applied history filters">
-                        <span className={`${isMobileViewport ? 'sr-only' : 'mr-1'} text-[12px] font-black uppercase tracking-wide text-slate-500`}>Applied</span>
-                        {activeFilterSummaries.map((summary) => (
-                            <span key={summary} className="inline-flex h-7 max-w-full shrink-0 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-0 text-[11px] font-bold leading-none text-emerald-800">
-                                {summary}
-                            </span>
-                        ))}
-                    </div>
-                )}
-
-                <Dialog
+                <PosFilterDialogShell
                     open={filterDialogOpen}
-                    onOpenChange={(open) => !open && closeFilterDialog()}
-                    overlayClassName={isMobileDialog || isTabletPortraitDialog ? 'bg-slate-950/60 backdrop-blur-sm' : 'bg-transparent backdrop-blur-none'}
+                    onClose={closeFilterDialog}
+                    mode={filterDialogMode}
+                    mobile={isMobileDialog}
+                    tabletPortrait={isTabletPortraitDialog}
+                    landscapeMobile={isLandscapeMobileViewport}
+                    position={filterDialogPosition}
+                    id={filterDialogMode === 'calendar' ? 'pos-history-calendar-dialog' : 'pos-history-filter-dialog'}
+                    ariaLabelledBy={filterDialogMode === 'calendar' ? 'pos-history-calendar-title' : 'pos-history-filter-title'}
+                    ariaDescribedBy={filterDialogMode === 'calendar' ? 'pos-history-calendar-description' : 'pos-history-filter-description'}
                 >
-                    <DialogContent
-                        id={filterDialogMode === 'calendar' ? 'pos-history-calendar-dialog' : 'pos-history-filter-dialog'}
-                        className={`flex ${filterDialogMode === 'calendar' ? 'max-h-[min(90vh,40rem)] dgfy-pos-history-calendar-dialog max-w-none rounded-xl' : 'max-h-[min(90vh,48rem)]'} ${isMobileDialog
-                            ? 'dgfy-pos-history-mobile-sheet max-w-none rounded-t-2xl'
-                            : filterDialogMode === 'calendar'
-                                ? ''
-                                : isDesktopFilterDialog
-                                    ? 'dgfy-pos-history-filter-dialog w-auto max-w-none rounded-xl'
-                                : 'max-w-2xl'} ${isTabletPortraitDialog ? 'dgfy-pos-history-tablet-portrait-dialog' : ''} ${isLandscapeMobileViewport ? 'dgfy-pos-history-mobile-landscape-dialog' : ''} flex-col overflow-hidden border border-slate-300 p-0 shadow-[0_12px_30px_rgba(15,23,42,0.2)]`}
-                        style={isDesktopDialog && !isTabletPortraitDialog && filterDialogPosition
-                            ? {
-                                position: 'fixed',
-                                left: `${filterDialogPosition.left}px`,
-                                top: `${filterDialogPosition.top}px`,
-                                width: `${filterDialogPosition.width}px`,
-                                maxWidth: `${filterDialogPosition.width}px`,
-                                maxHeight: `${filterDialogPosition.maxHeight}px`,
-                                boxSizing: 'border-box'
-                            }
-                            : undefined}
-                    >
-                        <DialogHeader className={`shrink-0 flex-row items-start justify-between gap-4 border-b border-slate-200 ${isMobileDialog ? 'px-4 py-3' : filterDialogMode === 'calendar' ? 'px-4 py-2.5' : isDesktopDialog ? 'px-4 py-3' : 'px-5 py-4 sm:px-6 sm:py-5'} dgfy-pos-history-dialog-header`}>
-                            <div>
-                                <DialogTitle className="text-xl font-black text-[#0F172A] dgfy-pos-history-dialog-title">{filterDialogMode === 'calendar' ? 'Select Date' : 'Filter'}</DialogTitle>
-                                <DialogDescription className="mt-0.5 text-[12px] text-slate-500">
-                                    {filterDialogMode === 'calendar'
-                                        ? 'Choose a date range for the transaction history.'
-                                        : isMobileDialog ? 'Refine your Transaction History' : 'Select the transaction history you want to review.'}
-                                </DialogDescription>
-                            </div>
-                            {filterDialogMode === 'calendar' ? (
+                        <PosFilterDialogHeader
+                            title={filterDialogMode === 'calendar' ? 'Select Date' : 'Filter'}
+                            description={filterDialogMode === 'calendar'
+                                ? 'Choose a date range for the transaction history.'
+                                : isMobileDialog ? 'Refine your Transaction History' : 'Select the transaction history you want to review.'}
+                            titleId={filterDialogMode === 'calendar' ? 'pos-history-calendar-title' : 'pos-history-filter-title'}
+                            descriptionId={filterDialogMode === 'calendar' ? 'pos-history-calendar-description' : 'pos-history-filter-description'}
+                            onClose={filterDialogMode === 'calendar' ? undefined : closeFilterDialog}
+                            closeLabel="Close history filters"
+                            mobile={isMobileDialog}
+                            headerAction={filterDialogMode === 'calendar' ? (
                                 <Button
                                     type="button"
                                     variant="ghost"
@@ -1201,26 +1017,20 @@ export default function POSTransactionHistoryPanel({
                                 >
                                     <RotateCcw className="h-4 w-4" aria-hidden="true" />
                                 </Button>
-                            ) : (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={closeFilterDialog}
-                                    aria-label="Close history filters"
-                                    className={`${isMobileDialog ? 'h-11 w-11 rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50' : 'h-9 w-9'} shrink-0 text-slate-500 hover:text-slate-800`}
-                                >
-                                    <X className="h-5 w-5" />
-                                </Button>
-                            )}
-                        </DialogHeader>
+                            ) : null}
+                            titleClassName="text-xl font-black text-[#0F172A]"
+                            descriptionClassName="mt-0.5 text-[12px] text-slate-500"
+                            className={`${isMobileDialog ? 'px-4 py-3' : filterDialogMode === 'calendar' ? 'px-4 py-2.5' : isDesktopDialog ? 'px-4 py-3' : 'px-5 py-4 sm:px-6 sm:py-5'} dgfy-pos-history-dialog-header`}
+                        />
 
                         <div className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain ${isMobileDialog ? 'px-4 py-3' : filterDialogMode === 'calendar' ? 'px-4 py-2' : isDesktopFilterDialog ? 'px-4 py-2.5' : 'px-5 py-5 sm:px-6'} dgfy-pos-history-dialog-body`}>
                             {filterDialogMode === 'calendar' ? (
-                                <CalendarRangePicker
+                                <PosDateRangePicker
                                     from={filterDraft?.historyDateFrom ?? historyDateFrom}
                                     to={filterDraft?.historyDateTo ?? historyDateTo}
                                     mobile={isMobileDialog}
+                                    testIdPrefix="pos-history-calendar"
+                                    timeZone="Asia/Manila"
                                     onChange={(from, to) => setFilterDraft((current) => ({
                                         ...(current || currentFilterValues),
                                         historyDateFrom: from,
@@ -1229,7 +1039,7 @@ export default function POSTransactionHistoryPanel({
                                 />
                             ) : (
                                 <div className={`grid min-w-0 ${isDesktopFilterDialog ? 'gap-4' : isMobileDialog ? 'gap-3' : 'gap-5'}`}>
-                                    <FilterChoiceGroup
+                                    <PosFilterChoiceGroup
                                         label="Sales View"
                                         value={filterDraft?.historyStatus || historyStatus}
                                         options={FILTER_OPTIONS.status}
@@ -1238,7 +1048,7 @@ export default function POSTransactionHistoryPanel({
                                         compact={isDesktopFilterDialog}
                                         mobile={isMobileViewport}
                                     />
-                                    <FilterChoiceGroup
+                                    <PosFilterChoiceGroup
                                         label="Payment Method"
                                         value={filterDraft?.historyPaymentType || historyPaymentType}
                                         options={FILTER_OPTIONS.paymentType}
@@ -1247,7 +1057,7 @@ export default function POSTransactionHistoryPanel({
                                         compact={isDesktopFilterDialog}
                                         mobile={isMobileViewport}
                                     />
-                                    <FilterChoiceGroup
+                                    <PosFilterChoiceGroup
                                         label="Order Method"
                                         value={filterDraft?.historyOrderMethod || historyOrderMethod}
                                         options={orderMethodOptions}
@@ -1257,133 +1067,44 @@ export default function POSTransactionHistoryPanel({
                                         mobile={isMobileViewport}
                                     />
 
-                                    <div className="block min-w-0">
-                                        <span className={fieldLabelClassName}>Cashier</span>
-                                            <div className={`${isMobileDialog ? 'relative mt-1.5' : 'relative mt-2'}`}>
-                                            <IconInput icon={UserRound} className="mt-0">
-                                            <Input
-                                                id="pos-history-cashier-search"
-                                                type="search"
-                                                value={filterDraft?.historyCashierName ?? historyCashierName}
-                                                onFocus={() => setCashierPickerOpen(true)}
-                                                onChange={(event) => {
-                                                    setCashierPickerOpen(true);
-                                                    updateFilterDraft('historyCashierName', event.target.value);
-                                                }}
-                                                placeholder="Search Cashier"
-                                                aria-label="Search Cashier"
-                                                className={`${isDesktopFilterDialog ? 'h-10' : 'h-11'} rounded-xl border-slate-200 bg-white pl-12 pr-12 text-[13px] text-[#334155] shadow-sm shadow-slate-100 focus-visible:border-[#2563EB] focus-visible:ring-4 focus-visible:ring-blue-100`}
-                                            />
-                                            </IconInput>
-                                            <button
-                                                type="button"
-                                                data-testid="pos-history-cashier-dropdown-toggle"
-                                                onClick={() => setCashierPickerOpen((open) => !open)}
-                                                aria-expanded={cashierPickerOpen}
-                                                aria-controls="pos-history-cashier-options"
-                                                aria-label={`${cashierPickerOpen ? 'Collapse' : 'Expand'} cashier options`}
-                                                className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-lg text-[#1A4E8D] hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
-                                            >
-                                                <ChevronDown className={`h-4 w-4 transition-transform ${cashierPickerOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
-                                            </button>
-                                        </div>
-                                        {cashierPickerOpen && (
-                                        <div className="mt-5 min-w-0" data-testid="pos-history-cashier-picker">
-                                            <h3 className={fieldLabelClassName}>Select Cashier</h3>
-                                            <div
-                                                id="pos-history-cashier-options"
-                                                className={`dgfy-pos-scrollbar-hidden mt-2 grid w-full min-w-0 gap-1 ${cashierListUsesTwoColumns ? 'grid-cols-2' : 'grid-cols-1'} ${cashierListIsScrollable ? 'max-h-52 overflow-y-auto overscroll-contain touch-pan-y pr-1' : ''}`}
-                                                role="radiogroup"
-                                                aria-label="Cashier options"
-                                                data-testid="pos-history-cashier-options"
-                                            >
-                                                <label className={`flex min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg px-2 text-[#334155] hover:bg-blue-50 ${isDesktopFilterDialog ? 'py-1 text-[11px]' : 'py-1.5 text-[12px]'}`}>
-                                                    <span className="flex min-w-0 items-center gap-2">
-                                                        <input
-                                                            type="radio"
-                                                            name="pos-history-cashier"
-                                                            value=""
-                                                            checked={!cashierSearchValue}
-                                                            onChange={() => {
-                                                                updateFilterDraft('historyCashierName', '');
-                                                                setCashierPickerOpen(false);
-                                                            }}
-                                                            className="sr-only"
-                                                            data-testid="pos-history-cashier-option-all"
-                                                        />
-                                                        <span className={`${isDesktopFilterDialog ? 'h-5 w-5' : 'h-6 w-6'} grid shrink-0 place-items-center rounded-full bg-white text-[#1A4E8D]`}>
-                                                            <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
-                                                        </span>
-                                                        <span className="truncate font-semibold">All Cashiers</span>
-                                                    </span>
-                                                    <span className={`h-3.5 w-3.5 shrink-0 rounded-full border ${!cashierSearchValue ? 'border-[#1A4E8D] bg-[#1A4E8D] shadow-[inset_0_0_0_3px_white]' : 'border-[#1A4E8D] bg-white'}`} aria-hidden="true" />
-                                                </label>
-                                                {visibleCashierOptions.map((cashier) => {
-                                                    const selected = cashierSearchValue === cashier;
-                                                    const initials = cashier.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-                                                    return (
-                                                        <label key={cashier} className={`flex min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg px-2 text-[#334155] hover:bg-blue-50 ${isDesktopFilterDialog ? 'py-1 text-[11px]' : 'py-1.5 text-[12px]'}`}>
-                                                            <span className="flex min-w-0 items-center gap-2">
-                                                                <input
-                                                                    type="radio"
-                                                                    name="pos-history-cashier"
-                                                                    value={cashier}
-                                                                    checked={selected}
-                                                                    onChange={() => {
-                                                                        updateFilterDraft('historyCashierName', cashier);
-                                                                        setCashierPickerOpen(false);
-                                                                    }}
-                                                                    className="sr-only"
-                                                                    data-testid={`pos-history-cashier-option-${cashier.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
-                                                                />
-                                                                <span className={`${isDesktopFilterDialog ? 'h-5 w-5' : 'h-6 w-6'} grid shrink-0 place-items-center rounded-full bg-[#1683F4] text-[10px] font-black text-white`}>
-                                                                    {initials}
-                                                                </span>
-                                                                <span className="truncate font-semibold">{cashier}</span>
-                                                            </span>
-                                                            <span className={`h-3.5 w-3.5 shrink-0 rounded-full border ${selected ? 'border-[#1A4E8D] bg-[#1A4E8D] shadow-[inset_0_0_0_3px_white]' : 'border-[#1A4E8D] bg-white'}`} aria-hidden="true" />
-                                                        </label>
-                                                    );
-                                                })}
-                                                {cashierSearchValue && visibleCashierOptions.length === 0 && (
-                                                    <p className="px-2 py-2 text-[12px] text-slate-500">No matching cashiers.</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        )}
-                                    </div>
+                                    <PosCashierFilterControl
+                                        value={filterDraft?.historyCashierName ?? historyCashierName}
+                                        searchValue={filterDraft?.historyCashierName ?? historyCashierName}
+                                        options={cashierOptions.map((cashier) => ({ value: cashier, label: cashier }))}
+                                        onSearchChange={(value) => updateFilterDraft('historyCashierName', value)}
+                                        onChange={(value) => updateFilterDraft('historyCashierName', value)}
+                                        expanded={cashierPickerOpen}
+                                        onExpandedChange={setCashierPickerOpen}
+                                        compact={isDesktopFilterDialog}
+                                        mobile={isMobileDialog}
+                                        id="pos-history-cashier-search"
+                                        testIdPrefix="pos-history-cashier"
+                                        optionName="pos-history-cashier"
+                                    />
                                 </div>
                             )}
                         </div>
 
-                        <DialogFooter className={`shrink-0 flex-row justify-between ${isMobileDialog ? 'gap-3 px-4 py-3' : filterDialogMode === 'calendar' ? 'gap-2 px-4 py-2' : isDesktopFilterDialog ? 'gap-2 px-4 py-2.5' : 'gap-3 px-5 py-4 sm:px-6 sm:py-4'} border-t border-slate-200 dgfy-pos-history-dialog-footer`}>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={filterDialogMode === 'calendar' ? closeFilterDialog : resetDraftFilters}
-                                data-testid={filterDialogMode === 'calendar' ? 'pos-history-cancel-dates' : 'pos-history-reset-filters'}
-                                className={`${isMobileDialog ? 'h-12' : filterDialogMode === 'calendar' ? 'h-9' : isDesktopFilterDialog ? 'h-10' : 'h-11'} min-w-0 flex-1 rounded-xl border-rose-300 bg-rose-50/40 text-[13px] font-extrabold text-rose-700 shadow-sm shadow-rose-100/70 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-800`}
-                            >
-                                {filterDialogMode === 'calendar' ? 'Cancel' : <><RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />Reset All</>}
-                            </Button>
-                            <Button
-                                type="button"
-                                onClick={applyDraftFilters}
-                                data-testid={filterDialogMode === 'calendar' ? 'pos-history-apply-dates' : 'pos-history-apply-filters'}
-                                className={`${isMobileDialog ? 'h-12' : filterDialogMode === 'calendar' ? 'h-9' : isDesktopFilterDialog ? 'h-10' : 'h-11'} min-w-0 flex-1 rounded-xl bg-[#1A4E8D] text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]`}
-                            >
-                                {filterDialogMode === 'calendar'
-                                    ? <CalendarDays className="mr-2 h-4 w-4" aria-hidden="true" />
-                                    : <ListFilter className="mr-2 h-4 w-4" aria-hidden="true" />}
-                                Apply Filters
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                        <PosFilterDialogFooter
+                            onCancel={filterDialogMode === 'calendar' ? closeFilterDialog : undefined}
+                            onReset={filterDialogMode === 'calendar' ? undefined : resetDraftFilters}
+                            onApply={applyDraftFilters}
+                            resetLabel="Reset All"
+                            cancelLabel="Cancel"
+                            resetTestId="pos-history-reset-filters"
+                            cancelTestId="pos-history-cancel-dates"
+                            applyTestId={filterDialogMode === 'calendar' ? 'pos-history-apply-dates' : 'pos-history-apply-filters'}
+                            applyIcon={filterDialogMode === 'calendar' ? CalendarDays : ListFilter}
+                            mobile={isMobileDialog}
+                            className={`${isMobileDialog ? 'gap-3 px-4 py-3' : filterDialogMode === 'calendar' ? 'gap-2 px-4 py-2' : isDesktopFilterDialog ? 'gap-2 px-4 py-2.5' : 'gap-3 px-5 py-4 sm:px-6 sm:py-4'} dgfy-pos-history-dialog-footer`}
+                            leftButtonClassName={`${isMobileDialog ? 'h-9' : filterDialogMode === 'calendar' ? 'h-9' : isDesktopFilterDialog ? 'h-10' : 'h-11'} border-rose-300 bg-rose-50/40 text-[13px] font-extrabold text-rose-700 shadow-sm shadow-rose-100/70 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-800`}
+                            applyButtonClassName={`${isMobileDialog ? 'h-9' : filterDialogMode === 'calendar' ? 'h-9' : isDesktopFilterDialog ? 'h-10' : 'h-11'} text-[13px]`}
+                        />
+                </PosFilterDialogShell>
 
-                <div className={`w-full min-w-0 max-w-full overscroll-x-contain ${isTabletViewport && !isMobileViewport ? 'overflow-x-auto' : 'overflow-x-hidden'} border-t border-slate-200`} aria-busy={historyLoading}>
+                <PosTableSurface id="pos-history-table-panel" className={historyTableSurfaceClassName} aria-busy={historyLoading}>
                     {isMobileViewport ? (
-                        <div data-testid="pos-history-mobile-list" className="divide-y divide-slate-200 bg-white">
+                        <div data-testid="pos-history-mobile-list" className="flex flex-col gap-1.5 bg-white py-2">
                             {historyLoading ? (
                                 <div className="px-4 py-10 text-center text-[12px] text-slate-500" aria-live="polite">
                                     Loading transactions...
@@ -1441,29 +1162,38 @@ export default function POSTransactionHistoryPanel({
                             )}
                         </div>
                     ) : (
-                    <table className={`dgfy-pos-history-table w-full whitespace-nowrap ${isMobileViewport ? 'text-[12px] min-w-0 table-fixed dgfy-pos-history-table--mobile' : isTabletViewport ? 'text-[12px] min-w-[1180px] table-fixed dgfy-pos-history-table--tablet dgfy-pos-history-table--tablet-landscape' : 'text-[13px] min-w-0 table-fixed dgfy-pos-history-table--single-view'}`} aria-label="POS transaction history table">
+                    <table className={`dgfy-pos-history-table w-full whitespace-nowrap ${isMobileViewport ? 'text-[12px] min-w-0 table-fixed dgfy-pos-history-table--mobile' : isTabletTableViewport ? `text-[12px] min-w-0 table-fixed dgfy-pos-history-table--tablet ${isTabletPortraitViewport ? 'dgfy-pos-history-table--tablet-portrait' : 'dgfy-pos-history-table--tablet-landscape'}` : 'text-[13px] min-w-0 table-fixed dgfy-pos-history-table--single-view'}`} aria-label="POS transaction history table">
                             <caption className="sr-only">POS transaction history with payment and transaction status; mobile rows open details and actions</caption>
                             <colgroup>
-                                {isMobileViewport ? (
-                                    <>
-                                        <col className="w-[34%]" />
-                                        <col className="w-[36%]" />
-                                        <col className="w-[30%]" />
-                                    </>
+                                {isTabletTableViewport ? (
+                                    isTabletPortraitViewport ? (
+                                        <>
+                                            <col className="w-[18%]" />
+                                            <col className="w-[20%]" />
+                                            <col className="w-[19%]" />
+                                            <col className="w-[18%]" />
+                                            <col className="w-[25%]" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <col className="w-[15%]" />
+                                            <col className="w-[15%]" />
+                                            <col className="w-[16%]" />
+                                            <col className="w-[16%]" />
+                                            <col className="w-[16%]" />
+                                            <col className="w-[22%]" />
+                                        </>
+                                    )
                                 ) : (
                                     <>
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
-                                        <col className="w-[8.3333%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
+                                        <col className="w-[12.5%]" />
                                     </>
                                 )}
                             </colgroup>
@@ -1472,12 +1202,8 @@ export default function POSTransactionHistoryPanel({
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Invoice</th>
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Date &amp; Time</th>
                                     <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Source</th>
-                                    {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Payment</th>}
+                                    {(!isTabletTableViewport || isTabletLandscapeTableViewport) && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Payment</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Cashier</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Discount</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Fee</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell dgfy-pos-history-header--wrap px-2.5 py-4 text-left text-[13px] font-black">Rest. charge</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">VAT</th>}
                                     {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Vatable</th>}
                                     {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black text-[#1A4E8D]">Total</th>}
                                     {!isMobileViewport && <th scope="col" className={`${historyActionColumnClassName} dgfy-pos-history-header-cell px-2.5 py-4 text-center text-[13px] font-black`}>Action</th>}
@@ -1555,7 +1281,7 @@ export default function POSTransactionHistoryPanel({
                                                         </span>
                                                     </div>
                                                 </td>
-                                                {!isMobileViewport && <td className="px-2.5 py-4 text-[#334155]">
+                                                {(!isTabletTableViewport || isTabletLandscapeTableViewport) && <td className="px-2.5 py-4 text-[#334155]">
                                                     <div
                                                         data-testid={`pos-history-payment-${row.pos_transaction_id}`}
                                                         className="pos-history-row-content pos-history-row-content--column min-w-0 max-w-full gap-0.5 leading-tight"
@@ -1570,47 +1296,12 @@ export default function POSTransactionHistoryPanel({
                                                     </div>
                                                 </td>}
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-[#334155]"><div className="pos-history-row-content">{row.cashier?.username || row.acceptedByUser?.username || '-'}</div></td>}
-                                                {isDesktopHistoryViewport && (
-                                                    <td className="px-2.5 py-4 text-[#334155]">
-                                                        <div className="pos-history-row-content">
-                                                            {row.discount ? (
-                                                                <div>
-                                                                    <div className="font-semibold">
-                                                                        {row.discount.discount_type || row.discount_label_snapshot || 'Discount'}
-                                                                        {row.discount.discount_rate != null ? ` (${money(row.discount.discount_rate)}%)` : ''}
-                                                                    </div>
-                                                                    <div className="text-[11px] text-rose-700">₱{money(row.discount.discount_amount || row.discount_amount)}</div>
-                                                                    {row.discount.discount_type === 'voucher' ? (
-                                                                        itemVoucherCode && (
-                                                                            <div className="text-[11px] font-semibold text-emerald-700">Voucher: {itemVoucherCode}</div>
-                                                                        )
-                                                                    ) : (
-                                                                        <div className="text-[11px] text-slate-500">
-                                                                            Authorized by {row.discount.approvedBy?.username || `employee #${row.discount.manager_approval_id || 'unknown'}`}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ) : row.discount_label_snapshot
-                                                                ? `${row.discount_label_snapshot}${row.discount_rate_snapshot != null ? ` (${money(row.discount_rate_snapshot)}%)` : ''}`
-                                                                : '–'}
-                                                            {deliveryVoucherLabel && (
-                                                                <div className="mt-0.5 text-[11px] font-semibold text-emerald-700">Delivery voucher: {deliveryVoucherLabel}</div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                )}
-                                                {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.service_fee_amount)}</div></td>}
-                                                {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.restaurant_service_charge_amount)}</div></td>}
-                                                {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.vat_amount)}</div></td>}
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.vatable_sales)}</div></td>}
                                                 {!isMobileViewport && <td className="px-2.5 py-4 text-left font-black text-[#1A4E8D]"><div className="pos-history-row-content">₱{money(row.total_amount)}</div></td>}
                                                 {!isMobileViewport && <td className={`${historyActionColumnClassName} px-2.5 py-4 text-center`}>
-                                                    <div className={`pos-history-row-content flex-nowrap ${isTabletViewport && !isMobileViewport ? 'justify-start' : 'justify-center'} ${isMobileViewport ? 'gap-1' : 'gap-2'}`}>
-                                                        <Button
-                                                            type="button"
-                                                            size="icon"
-                                                            variant="outline"
-                                                             className={`${historyActionSquareClassName} pos-history-view-action shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0 text-slate-600 shadow-sm hover:bg-slate-100`}
+                                                    <div className={`pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? 'gap-1' : 'gap-2'}`}>
+                                                        <PosTableActionButton
+                                                            icon={ClipboardList}
                                                             onClick={(event) => {
                                                                 event.stopPropagation();
                                                                 openHistoryDetail(row);
@@ -1618,15 +1309,11 @@ export default function POSTransactionHistoryPanel({
                                                             disabled={historyDetailLoading}
                                                             aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                             title="View receipt"
-                                                        >
-                                                            <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                                                        </Button>
+                                                        />
                                                         {canVoidRow && (
-                                                            <Button
-                                                                type="button"
-                                                                size="icon"
-                                                                variant="outline"
-                                                                 className={`${historyActionSquareClassName} pos-history-void-action shrink-0 rounded-md border border-slate-200 bg-white p-0 text-rose-700 shadow-sm hover:bg-slate-100 hover:text-rose-800`}
+                                                            <PosTableActionButton
+                                                                icon={Ban}
+                                                                tone="danger"
                                                                 onClick={(event) => {
                                                                     event.stopPropagation();
                                                                     setVoidTarget(row);
@@ -1635,16 +1322,11 @@ export default function POSTransactionHistoryPanel({
                                                                 disabled={voidingTransactionId !== null}
                                                                 aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
                                                                 title="Void transaction"
-                                                            >
-                                                                <Ban className="h-4 w-4" aria-hidden="true" />
-                                                            </Button>
+                                                            />
                                                         )}
                                                         {canRefundRow && (
-                                                            <Button
-                                                                type="button"
-                                                                size="icon"
-                                                                variant="outline"
-                                                                 className={`${historyActionSquareClassName} shrink-0 rounded-md border-0 bg-transparent p-0 text-amber-800 shadow-none hover:bg-transparent hover:text-amber-900`}
+                                                            <PosTableActionButton
+                                                                icon={Undo2}
                                                                 onClick={(event) => {
                                                                     event.stopPropagation();
                                                                     onOpenRefundWorkflow(row);
@@ -1652,16 +1334,12 @@ export default function POSTransactionHistoryPanel({
                                                                 disabled={refundWorkflowLoading || refundWorkflowSubmitting}
                                                                 aria-label={`Resolve refund for ${row.invoice_number || row.pos_transaction_id}`}
                                                                 title="Resolve refund"
-                                                            >
-                                                                <Undo2 className="h-4 w-4" aria-hidden="true" />
-                                                            </Button>
+                                                            />
                                                         )}
                                                         {isCompactHistoryViewport && (
-                                                            <Button
-                                                                type="button"
-                                                                size="icon"
-                                                                variant="outline"
-                                                                 className={`${historyActionSquareClassName} shrink-0 rounded-md border-0 bg-transparent p-0 text-slate-600 shadow-none hover:bg-transparent`}
+                                                            <PosTableActionButton
+                                                                icon={Eye}
+                                                                className={expanded ? 'bg-blue-50' : undefined}
                                                                 onClick={(event) => {
                                                                     event.stopPropagation();
                                                                     setExpandedRowId((current) => current === row.pos_transaction_id ? null : row.pos_transaction_id);
@@ -1669,16 +1347,25 @@ export default function POSTransactionHistoryPanel({
                                                                 aria-expanded={expanded}
                                                                 aria-label={`${expanded ? 'Hide' : 'Show'} transaction details for ${row.invoice_number || row.pos_transaction_id}`}
                                                                 title={`${expanded ? 'Hide' : 'Show'} transaction details`}
-                                                            >
-                                                                <Eye className="h-4 w-4" aria-hidden="true" />
-                                                            </Button>
+                                                            />
+                                                        )}
+                                                        {!isCompactHistoryViewport && (
+                                                            <PosTableActionButton
+                                                                icon={Eye}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    setHistoryDetailsRow(row);
+                                                                }}
+                                                                aria-label={"View details for " + (row.invoice_number || row.pos_transaction_id)}
+                                                                title="View details"
+                                                            />
                                                         )}
                                                     </div>
                                                 </td>}
                                             </tr>
                                             {isCompactHistoryViewport && expanded && (
                                                 <tr className="border-b border-slate-100 bg-slate-50/70 whitespace-normal">
-                                                    <td colSpan={isMobileViewport ? 3 : 12} className={isMobileViewport ? 'px-3 py-3' : 'px-6 py-4'}>
+                                                    <td colSpan={historyVisibleColumnCount} className={isMobileViewport ? 'px-3 py-3' : 'px-6 py-4'}>
                                                         <div className={`grid grid-cols-2 ${isMobileViewport ? 'gap-2 text-[11px]' : 'gap-3 text-[12px]'} text-[#334155]`}>
                                                             {isMobileViewport && (
                                                                 <div>
@@ -1734,11 +1421,8 @@ export default function POSTransactionHistoryPanel({
                                                             )}
                                                             {isMobileViewport && (
                                                                 <div className="col-span-2 flex items-center justify-end gap-2 border-t border-slate-200 pt-2">
-                                                                    <Button
-                                                                        type="button"
-                                                                        size="icon"
-                                                                        variant="outline"
-                                                                        className={`${historyActionSquareClassName} pos-history-view-action shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0 text-slate-600 shadow-sm hover:bg-slate-100`}
+                                                                    <PosTableActionButton
+                                                                        icon={ClipboardList}
                                                                         onClick={(event) => {
                                                                             event.stopPropagation();
                                                                             openHistoryDetail(row);
@@ -1746,15 +1430,11 @@ export default function POSTransactionHistoryPanel({
                                                                         disabled={historyDetailLoading}
                                                                         aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}
                                                                         title="View receipt"
-                                                                    >
-                                                                        <ClipboardList className="h-5 w-5" aria-hidden="true" />
-                                                                    </Button>
+                                                                    />
                                                                     {canVoidRow && (
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="icon"
-                                                                            variant="outline"
-                                                                            className={`${historyActionSquareClassName} pos-history-void-action shrink-0 rounded-md border border-slate-200 bg-white p-0 text-rose-700 shadow-sm hover:bg-slate-100 hover:text-rose-800`}
+                                                                        <PosTableActionButton
+                                                                            icon={Ban}
+                                                                            tone="danger"
                                                                             onClick={(event) => {
                                                                                 event.stopPropagation();
                                                                                 setVoidTarget(row);
@@ -1763,16 +1443,11 @@ export default function POSTransactionHistoryPanel({
                                                                             disabled={voidingTransactionId !== null}
                                                                             aria-label={`Void transaction ${row.invoice_number || row.pos_transaction_id}`}
                                                                             title="Void transaction"
-                                                                        >
-                                                                            <Ban className="h-4 w-4" aria-hidden="true" />
-                                                                        </Button>
+                                                                        />
                                                                     )}
                                                                     {canRefundRow && (
-                                                                        <Button
-                                                                            type="button"
-                                                                            size="icon"
-                                                                            variant="outline"
-                                                                            className={`${historyActionSquareClassName} shrink-0 rounded-md border border-slate-200 bg-white p-0 text-amber-800 shadow-sm hover:bg-slate-100 hover:text-amber-900`}
+                                                                        <PosTableActionButton
+                                                                            icon={Undo2}
                                                                             onClick={(event) => {
                                                                                 event.stopPropagation();
                                                                                 onOpenRefundWorkflow(row);
@@ -1780,9 +1455,7 @@ export default function POSTransactionHistoryPanel({
                                                                             disabled={refundWorkflowLoading || refundWorkflowSubmitting}
                                                                             aria-label={`Resolve refund for ${row.invoice_number || row.pos_transaction_id}`}
                                                                             title="Resolve refund"
-                                                                        >
-                                                                            <Undo2 className="h-4 w-4" aria-hidden="true" />
-                                                                        </Button>
+                                                                        />
                                                                     )}
                                                                 </div>
                                                             )}
@@ -1808,7 +1481,7 @@ export default function POSTransactionHistoryPanel({
                             </tbody>
                         </table>
                     )}
-                </div>
+                </PosTableSurface>
 
             </div>
             <GlobalPagination
@@ -1830,7 +1503,62 @@ export default function POSTransactionHistoryPanel({
                     if (typeof setHistoryPageSize === 'function') setHistoryPageSize(nextPageSize);
                     if (typeof loadHistory === 'function') loadHistory(1, nextPageSize);
                 }}
-                className="dgfy-pos-history-pagination-footer shrink-0 rounded-none border-0 border-t border-slate-200 px-6 py-2.5 shadow-none"
+                className={POS_PAGINATION_FOOTER_CLASS}
+            />
+            <PosTableDetailsDialog
+                open={Boolean(historyDetailsRow)}
+                onOpenChange={(open) => !open && setHistoryDetailsRow(null)}
+                title="Transaction Details"
+                subtitle={historyDetailsRow ? (historyDetailsRow.invoice_number || historyDetailsRow.pos_transaction_id || '') : ''}
+                sections={historyDetailsRow ? buildHistoryDetailsSections(historyDetailsRow) : []}
+                testId="pos-history-details-dialog"
+                footer={historyDetailsRow ? (
+                    <div className="flex w-full flex-wrap items-center justify-end gap-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10 min-w-[8rem] border-slate-300 text-slate-700 hover:bg-slate-50"
+                            onClick={() => {
+                                const selectedRow = historyDetailsRow;
+                                setHistoryDetailsRow(null);
+                                openHistoryDetail(selectedRow);
+                            }}
+                            disabled={historyDetailLoading}
+                        >
+                            View receipt
+                        </Button>
+                        {historyDetailsCanVoid ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 min-w-[7rem] border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                onClick={() => {
+                                    setVoidTarget(historyDetailsRow);
+                                    setVoidReason('');
+                                    setHistoryDetailsRow(null);
+                                }}
+                                disabled={voidingTransactionId !== null}
+                            >
+                                Void transaction
+                            </Button>
+                        ) : null}
+                        {historyDetailsCanRefund ? (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 min-w-[7rem] border-amber-200 text-amber-800 hover:bg-amber-50 hover:text-amber-900"
+                                onClick={() => {
+                                    const selectedRow = historyDetailsRow;
+                                    setHistoryDetailsRow(null);
+                                    onOpenRefundWorkflow(selectedRow);
+                                }}
+                                disabled={refundWorkflowLoading || refundWorkflowSubmitting}
+                            >
+                                Resolve refund
+                            </Button>
+                        ) : null}
+                    </div>
+                ) : null}
             />
             <Dialog open={Boolean(voidTarget)} onOpenChange={(open) => !open && closeVoidDialog()}>
                 <DialogContent className="pos-history-void-dialog sm:max-w-md">
@@ -1887,5 +1615,6 @@ export default function POSTransactionHistoryPanel({
                 />
             ) : null}
         </section>
+        </PosPageFrame>
     );
 }
