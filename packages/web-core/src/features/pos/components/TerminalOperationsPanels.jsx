@@ -116,9 +116,8 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
     );
   }
 
-  // Settings already owns its inner cards and navigation surfaces. Keep the shell
-  // spacing for consistent content alignment, while removing the redundant card
-  // chrome that constrains small viewports.
+  // Bare workspaces own their page frame, so the caller controls their outer
+  // spacing while this shell removes only the redundant card chrome.
   if (bare) {
     return (
       <section className={`min-w-0 max-w-full ${className}`}>

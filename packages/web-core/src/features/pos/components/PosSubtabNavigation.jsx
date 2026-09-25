@@ -14,7 +14,8 @@ export default function PosSubtabNavigation({
   idPrefix = 'pos-subtab',
   panelId,
   disabled = false,
-  desktopColumns = 4
+  desktopColumns = 4,
+  compactMobile = false
 }) {
   const availableTabs = Array.isArray(tabs) ? tabs : [];
   const tabsViewportRef = useRef(null);
@@ -67,7 +68,7 @@ export default function PosSubtabNavigation({
   };
 
   return (
-    <div ref={tabsViewportRef} role="tablist" aria-label={ariaLabel} className="-mx-1 overflow-x-auto">
+    <div ref={tabsViewportRef} role="tablist" aria-label={ariaLabel} className={`-mx-1 overflow-x-auto ${compactMobile ? 'max-[767px]:pt-2' : ''}`}>
       <div className={`flex min-w-max gap-2 px-1 min-[1024px]:grid min-[1024px]:min-w-0 ${desktopGridClass} min-[1024px]:px-0`}>
         {availableTabs.map((tab) => {
           const Icon = tab.icon;
@@ -84,7 +85,7 @@ export default function PosSubtabNavigation({
               onKeyDown={(event) => handleKeyDown(event, tab.id)}
               disabled={disabled}
               onClick={() => onTabChange(tab.id)}
-              className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 sm:px-3 min-[1024px]:min-h-9 min-[1024px]:w-full min-[1024px]:shrink min-[1024px]:whitespace-normal min-[1024px]:px-4 min-[1024px]:py-0 ${active ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'} disabled:cursor-not-allowed disabled:opacity-60`}
+              className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 ${compactMobile ? 'max-[767px]:min-h-9 max-[767px]:py-1.5' : ''} sm:px-3 min-[1024px]:min-h-9 min-[1024px]:w-full min-[1024px]:shrink min-[1024px]:whitespace-normal min-[1024px]:px-4 min-[1024px]:py-0 ${active ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'} disabled:cursor-not-allowed disabled:opacity-60`}
             >
               {Icon ? <Icon className="h-4 w-4 shrink-0" aria-hidden="true" /> : null}
               <span className="min-w-0">{tab.label}</span>

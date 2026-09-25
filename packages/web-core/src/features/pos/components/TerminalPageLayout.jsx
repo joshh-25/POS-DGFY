@@ -25,6 +25,22 @@ const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);
 const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
 const AuditWorkspacePanel = lazyWithChunkRetry(loadAuditWorkspacePanel);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
+const STANDARD_POS_PAGE_FRAME_MODES = new Set([
+  'history',
+  'location_scope',
+  'reports',
+  'settings_pos',
+  'settings_profile',
+  'settings_storefront',
+  'terminal_setup'
+]);
+const REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES = new Set([
+  'reports',
+  'settings_pos',
+  'settings_profile',
+  'settings_storefront'
+]);
+const MSME_SETTINGS_SHIFT_FALLBACK_MODES = new Set(['location_scope', 'terminal_setup']);
 const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
 // A prefetch failure must be silent -- this isn't a real load, it's an idle
 // or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
@@ -392,12 +408,21 @@ export default function TerminalPageLayout({
   const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
+  // History, Reports, and Settings own their page-level gutters through
+  // PosPageFrame. Keep the generic shell padding for every other workspace.
+  // MSME-restricted settings modes are remapped to Shift Controls by the
+  // operations workspace and must retain the generic shell geometry.
+  const usesStandardPosPageFrame = IS_DGFY_POS_SURFACE
+    && STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
+    && !(isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode));
+  const hidesWorkspaceScrollbar = usesStandardPosPageFrame
+    && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const workspacePaneClassName = isCheckoutWorkspaceMode
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
-    : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
+    : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
-    : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
+    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden ${usesStandardPosPageFrame ? 'p-0' : `p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`}`
+    : `grid min-w-0 max-w-full grid-cols-1 gap-2 ${usesStandardPosPageFrame ? 'p-0' : 'p-2'}`;
   const workspaceSectionClassName = isCheckoutWorkspaceMode
     ? 'h-full min-h-0 min-w-0 max-w-full overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
@@ -744,7 +769,7 @@ export default function TerminalPageLayout({
               data-testid="pos-header-park-slot"
               className={posViewMode === 'history'
                 ? 'hidden'
-                : 'relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'}
+                : `relative h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5 ${posViewMode === 'checkout' ? 'flex' : 'hidden lg:flex'}`}
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}

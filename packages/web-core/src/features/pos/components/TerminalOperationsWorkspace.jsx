@@ -5303,6 +5303,12 @@ export default function TerminalOperationsWorkspace({
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
+  const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
+  const workspacePaddingClassName = usesOwnPageFrame
+    ? 'p-0'
+    : effectiveViewMode === 'items'
+      ? 'px-5 pb-5 pt-2'
+      : 'p-5';
   const canImportItems = IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
@@ -5690,8 +5696,8 @@ export default function TerminalOperationsWorkspace({
       subtitle={modeMeta.subtitle}
       terminalUser={terminalUser}
       locked={locked}
-      bare={isSettingsView || effectiveViewMode === 'reports'}
-      className={effectiveViewMode === 'items' ? 'px-5 pb-5 pt-2' : 'p-5'}
+      bare={usesOwnPageFrame}
+      className={workspacePaddingClassName}
     >
       <div key={effectiveViewMode} className="catalog-slide-enter">
         {content}
