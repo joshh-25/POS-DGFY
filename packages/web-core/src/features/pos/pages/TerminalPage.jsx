@@ -31,6 +31,7 @@ import {
   recordCashDrawerEvent,
   collectCashPickupOrder,
   collectCashDeliveryOrder,
+  collectCashDineInOrder,
   recordOrderBalancePayment,
   uploadOrderBalancePaymentProof,
   fetchOrderBalancePaymentProof,
@@ -5790,20 +5791,29 @@ export default function TerminalPage() {
     setCashCollectionSaving(true);
     try {
       const isDeliveryOrder = cashCollectionOrder?.order_method === 'delivery';
-      const collectCash = isDeliveryOrder ? collectCashDeliveryOrder : collectCashPickupOrder;
+      const isDineInOrder = cashCollectionOrder?.order_method === 'dine_in';
+      const collectCash = isDineInOrder
+        ? collectCashDineInOrder
+        : isDeliveryOrder
+          ? collectCashDeliveryOrder
+          : collectCashPickupOrder;
       await collectCash(orderId, {
         terminal_id: terminalId,
         cash_received: cashReceived,
-        idempotency_key: createIdempotencyKey(isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash')
+        idempotency_key: createIdempotencyKey(
+          isDineInOrder ? 'pos-dine-in-cash' : isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash'
+        )
       });
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });
       } catch (printError) {
         toast.message(printError?.response?.data?.message || 'Cash collected, but the online order receipt still needs printing.');
       }
-      toast.success(isDeliveryOrder
-        ? 'Delivery cash payment collected. You can now complete the order after delivery.'
-        : 'Cash payment collected. You can now mark the order as picked up.');
+      toast.success(isDineInOrder
+        ? 'Dine-in cash payment collected. You can now mark the order as served.'
+        : isDeliveryOrder
+          ? 'Delivery cash payment collected. You can now complete the order after delivery.'
+          : 'Cash payment collected. You can now mark the order as picked up.');
       setCashCollectionOrder(null);
       await refreshIncomingOrders({ silent: true });
     } catch (error) {

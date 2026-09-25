@@ -42,10 +42,10 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Delivery')).toBeDefined();
     const tableInput = screen.getByPlaceholderText('e.g. T-04');
     const notesInput = screen.getByPlaceholderText('Applies to the whole order');
-    expect(tableInput.closest('label').textContent).toContain('Table #');
-    expect(tableInput.closest('label').textContent).toContain('*');
+    expect(tableInput.closest('label').textContent).toContain('Table # (Optional)');
+    expect(tableInput.closest('label').textContent).not.toContain('*');
     expect(notesInput.closest('label').textContent).toContain('Order Notes (Global)');
-    expect(notesInput.closest('label').textContent).toContain('*');
+    expect(notesInput.closest('label').textContent).not.toContain('*');
     expect(notesInput.closest('label').className).not.toContain('col-span-full');
     expect(screen.queryByText(/Use an item note for a request that applies to only one item/)).toBeNull();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
@@ -159,7 +159,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(desktopView.container.querySelector('label').className).not.toContain('col-span-full');
   });
 
-  it('keeps required table and kitchen details visible after an item is added', () => {
+  it('keeps optional table and kitchen details visible after an item is added', () => {
     const panelProps = {
       orderMethod: 'dine_in',
       setOrderMethod: vi.fn(),

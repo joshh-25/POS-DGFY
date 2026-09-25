@@ -23,6 +23,11 @@ export const updateTenantLocation = async (locationId, payload = {}) => {
   return response.data?.data;
 };
 
+export const updateTenantLocationDineInPaymentPolicy = async (locationId, payload = {}) => {
+  const response = await api.put(`/tenant-locations/${locationId}/dine-in-payment-policy`, payload);
+  return response.data?.data;
+};
+
 export const deactivateTenantLocation = async (locationId) => {
   const response = await api.delete(`/tenant-locations/${locationId}`);
   return response.data?.data;
@@ -45,6 +50,7 @@ export default {
   listTenantLocationsWithMeta,
   createTenantLocation,
   updateTenantLocation,
+  updateTenantLocationDineInPaymentPolicy,
   deactivateTenantLocation,
   deleteTenantLocation,
   reactivateTenantLocation

@@ -28,6 +28,21 @@ const DOWNPAYMENT_ORDER = {
   created_at: '2026-08-22T10:00:00Z'
 };
 
+const UNPAID_DINE_IN_ORDER = {
+  pos_transaction_id: 904,
+  invoice_number: 'INV-000904',
+  tracking_pin: 'SK-DINE01',
+  fulfillment_status: 'ready_for_pickup',
+  order_method: 'dine_in',
+  payment_type: 'cash',
+  payment_timing: 'on_dine_in',
+  payment_status: 'unpaid',
+  total_amount: 130,
+  customer_name: 'Admin User',
+  created_at: '2026-09-24T10:00:00Z',
+  scheduled_for: '2026-09-24T14:00:00Z'
+};
+
 const renderQueue = (orders, overrides = {}) => render(
   <IncomingQueueWorkspace
     canViewPos
@@ -71,6 +86,24 @@ const renderDialog = (overrides = {}) => render(
 );
 
 describe('POS balance settlement action (Phase 148, #825)', () => {
+  it('offers dine-in cash collection and keeps Served blocked until payment is recorded', () => {
+    const handleOpenCashCollection = vi.fn();
+    renderQueue([UNPAID_DINE_IN_ORDER], { handleOpenCashCollection });
+
+    expect(screen.getByRole('button', { name: /collect dine-in cash/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /collect dine-in cash/i }));
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(UNPAID_DINE_IN_ORDER);
+  });
+
+  it('enables Served after a dine-in cash payment is paid', () => {
+    renderQueue([{ ...UNPAID_DINE_IN_ORDER, payment_status: 'paid' }]);
+
+    expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: /collect dine-in cash/i })).toBeNull();
+  });
+
   it('offers Settle Balance on a partially-paid order at handover', () => {
     renderQueue([DOWNPAYMENT_ORDER]);
 

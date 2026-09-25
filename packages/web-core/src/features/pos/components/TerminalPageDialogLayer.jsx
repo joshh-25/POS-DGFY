@@ -190,8 +190,14 @@ export default function TerminalPageDialogLayer({ model }) {
 <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-lg font-black text-slate-950">Collect Cash</DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-slate-600">Record payment before completing this order. Change is calculated by the POS.</DialogDescription>
+              <DialogTitle className="text-lg font-black text-slate-950">
+                {cashCollectionOrder?.order_method === 'dine_in' ? 'Collect Dine-in Cash' : 'Collect Cash'}
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                {cashCollectionOrder?.order_method === 'dine_in'
+                  ? 'Record payment before marking this dine-in order as served. Change is calculated by the POS.'
+                  : 'Record payment before completing this order. Change is calculated by the POS.'}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
@@ -205,7 +211,13 @@ export default function TerminalPageDialogLayer({ model }) {
             </div>
             <DialogFooter className="gap-2 sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setCashCollectionOrder(null)} disabled={cashCollectionSaving}>Cancel</Button>
-              <Button type="button" onClick={handleCollectCash} disabled={cashCollectionSaving}>{cashCollectionSaving ? 'Collecting...' : 'Collect Cash'}</Button>
+              <Button type="button" onClick={handleCollectCash} disabled={cashCollectionSaving}>
+                {cashCollectionSaving
+                  ? 'Collecting...'
+                  : cashCollectionOrder?.order_method === 'dine_in'
+                    ? 'Collect Dine-in Cash'
+                    : 'Collect Cash'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
