@@ -185,6 +185,7 @@ export const POS_OPERATION_KEYS = Object.freeze({
     ORDER_STATUS_UPDATE: 'terminal.order_status_update',
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
+    DINE_IN_CASH_COLLECTION: 'terminal.dine_in_cash_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
     ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
@@ -223,7 +224,8 @@ export const POS_OPERATION_KEYS = Object.freeze({
 const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']);
 const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
     pickup: 'ready_for_pickup',
-    delivery: 'out_for_delivery'
+    delivery: 'out_for_delivery',
+    dine_in: 'ready_for_pickup'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -2351,7 +2353,8 @@ const validatePosInventoryIssues = async ({
     recipeMovementPlanByPreparedLine,
     locationId,
     userId,
-    transaction
+    transaction,
+    allowArchivedItems = false
 }) => {
     const validate = inventoryCommandService?.validateStockIssueAvailability;
     if (typeof validate !== 'function') {
@@ -2369,12 +2372,18 @@ const validatePosInventoryIssues = async ({
         const normalizedLocationId = parsePositiveInt(movementLocationId) || parsePositiveInt(locationId);
         if (!normalizedItemId || !Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return;
         const key = `${normalizedLocationId || 0}:${normalizedItemId}`;
-        const current = quantitiesByScope.get(key) || { item_id: normalizedItemId, location_id: normalizedLocationId, quantity: 0 };
+        const current = quantitiesByScope.get(key) || {
+            item_id: normalizedItemId,
+            location_id: normalizedLocationId,
+            quantity: 0,
+            ...(allowArchivedItems ? { allow_archived_item: true } : {})
+        };
         current.quantity = round4(current.quantity + normalizedQuantity);
         quantitiesByScope.set(key, current);
     };
 
     preparedLines.forEach((line, lineIndex) => {
+        if (line?.inventory_preissued === true) return;
         const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
         if (recipeMovements.length > 0) {
             recipeMovements.forEach((movement) => add(movement.ingredient_item_id, movement.quantity));
@@ -2398,6 +2407,147 @@ const validatePosInventoryIssues = async ({
     for (const movementData of issues) {
         await validate(movementData, userId, transaction);
     }
+};
+
+// Build one deterministic inventory command list for checkout and parked-sale
+// planning. Pre-issued parked lines are deliberately omitted so resuming a
+// parked sale never deducts the same stock twice.
+const buildPosInventoryIssuePlan = ({
+    preparedLines = [],
+    recipeMovementPlanByPreparedLine = [],
+    locationId = null,
+    referenceType = 'POS',
+    referenceId = null,
+    sourceLabel = 'POS checkout',
+    allowArchivedItems = false
+} = {}) => {
+    const movements = [];
+    const add = ({ itemId, quantity, movementLocationId = locationId, notes }) => {
+        const normalizedItemId = parsePositiveInt(itemId);
+        const normalizedQuantity = Number(quantity);
+        if (!normalizedItemId || !Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return;
+        movements.push({
+            item_id: normalizedItemId,
+            quantity: round4(normalizedQuantity),
+            movement_type: 'goods_issue',
+            location_id: parsePositiveInt(movementLocationId) || parsePositiveInt(locationId),
+            reference_type: referenceType,
+            reference_id: referenceId == null ? null : String(referenceId),
+            notes,
+            ...(allowArchivedItems ? { allow_archived_item: true } : {})
+        });
+    };
+
+    preparedLines.forEach((line, lineIndex) => {
+        if (line?.inventory_preissued === true) return;
+        const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
+        if (recipeMovements.length > 0) {
+            recipeMovements.forEach((movement) => add({
+                itemId: movement.ingredient_item_id,
+                quantity: movement.quantity,
+                notes: `F&B recipe consumption for ${movement.product_name || line.item_name || `item ${line.item_id}`} on ${sourceLabel}`
+            }));
+        } else if (line.stock_effect_type !== 'stock_exempt') {
+            add({ itemId: line.item_id, quantity: line.quantity, notes: sourceLabel });
+        }
+        (line.fnb_modifiers_snapshot || []).forEach((modifier) => {
+            const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
+            if (!linkedItemId) return;
+            add({
+                itemId: linkedItemId,
+                quantity: Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                movementLocationId: modifier?.location_id,
+                notes: `F&B modifier consumption for ${modifier.option_name || `item ${linkedItemId}`} on ${sourceLabel}`
+            });
+        });
+    });
+    return movements;
+};
+
+const PARKED_SALE_PRICE_EPSILON = 0.0001;
+const sameParkedSaleNumber = (left, right) => (
+    Number.isFinite(Number(left))
+    && Number.isFinite(Number(right))
+    && Math.abs(Number(left) - Number(right)) <= PARKED_SALE_PRICE_EPSILON
+);
+
+const parkedSaleLineConfigurationFingerprint = (line = {}) => stableStringify({
+    course: normalizeFnbCourse(line?.course) || 'main',
+    modifiers: (normalizeFnbModifiersSnapshot(line?.line_modifiers || line?.modifiers) || [])
+        .map((modifier) => ({
+            modifier_group_id: parsePositiveInt(modifier.modifier_group_id),
+            modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
+            quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
+        }))
+        .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
+    selected_option_ids: normalizeServiceOptionIds(line?.selected_option_ids),
+    special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
+});
+
+const parkedSaleSnapshotLineMatches = (snapshotLine, checkoutLine) => {
+    const snapshotLineRef = String(snapshotLine?.line_key || snapshotLine?.line_ref || '').trim();
+    const checkoutLineRef = String(checkoutLine?.line_ref || '').trim();
+    if (snapshotLineRef && checkoutLineRef && snapshotLineRef !== checkoutLineRef) return false;
+    const snapshotItemId = parsePositiveInt(snapshotLine?.item_id);
+    const checkoutItemId = parsePositiveInt(checkoutLine?.item_id);
+    if (!snapshotLineRef && snapshotItemId && checkoutItemId && snapshotItemId !== checkoutItemId) return false;
+    if (!sameParkedSaleNumber(snapshotLine?.quantity, checkoutLine?.quantity)) return false;
+    if (checkoutLine?.sale_price != null && snapshotLine?.sale_price != null
+        && !sameParkedSaleNumber(snapshotLine.sale_price, checkoutLine.sale_price)) return false;
+    return parkedSaleLineConfigurationFingerprint(snapshotLine) === parkedSaleLineConfigurationFingerprint(checkoutLine);
+};
+
+const resolveParkedSaleSnapshotLines = ({ parkedSale, lines = [] } = {}) => {
+    const snapshot = normalizeJsonObject(parkedSale?.snapshot, {});
+    const snapshotLines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+    const consumedSnapshotIndexes = new Set();
+    const historicalLinesByCheckoutIndex = new Map();
+    lines.forEach((line, index) => {
+        if (line?.parked_snapshot_line !== true) return;
+        const snapshotIndex = snapshotLines.findIndex((snapshotLine, candidateIndex) => (
+            !consumedSnapshotIndexes.has(candidateIndex) && parkedSaleSnapshotLineMatches(snapshotLine, line)
+        ));
+        if (snapshotIndex < 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'A parked-sale line changed after it was claimed. Review the original parked line before checkout.',
+                { statusCode: 409, details: { reason_code: 'PARKED_SALE_SNAPSHOT_LINE_MISMATCH', item_id: parsePositiveInt(line?.item_id) } }
+            );
+        }
+        consumedSnapshotIndexes.add(snapshotIndex);
+        historicalLinesByCheckoutIndex.set(index, snapshotLines[snapshotIndex]);
+    });
+    return { snapshot, historicalLinesByCheckoutIndex };
+};
+
+const buildHistoricalParkedSaleItem = (snapshotLine = {}) => {
+    const itemId = parsePositiveInt(snapshotLine.item_id);
+    if (!itemId) return null;
+    const savedBasePrice = Number(snapshotLine.base_sale_price);
+    const savedSalePrice = Number(snapshotLine.sale_price);
+    const fallbackPrice = Number.isFinite(savedBasePrice) && savedBasePrice > 0
+        ? savedBasePrice
+        : (Number.isFinite(savedSalePrice) && savedSalePrice > 0 ? savedSalePrice : 0);
+    const snapshotVatType = String(snapshotLine.vat_type || '').trim();
+    return {
+        item_id: itemId,
+        name: String(snapshotLine.item_name || '').trim() || `Item #${itemId}`,
+        sku_code: String(snapshotLine.sku_code || snapshotLine.item_sku || snapshotLine.sku || '').trim() || null,
+        category: String(snapshotLine.category || '').trim() || 'product',
+        status: 'inactive',
+        pos_visible: false,
+        pos_location_available: false,
+        pos_always_available: false,
+        current_stock: 0,
+        default_sale_price: fallbackPrice,
+        cost_per_unit: null,
+        fifo_enabled: false,
+        parked_snapshot_fallback: true,
+        vat_type: ['vatable', 'vat_exempt', 'zero_rated'].includes(snapshotVatType) ? snapshotVatType : 'vatable',
+        senior_pwd_discount_eligible: snapshotLine.senior_pwd_discount_eligible === true,
+        unit_of_measure: String(snapshotLine.unit_of_measure || '').trim() || null,
+        fnbModifierGroups: []
+    };
 };
 
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
@@ -3140,7 +3290,9 @@ export const buildCheckoutPosUseCase = ({
         trustedDiscountApproval = null,
         trustedOfflineStatutoryPolicy = null,
         itemDiscountApprovals = null,
-        trustedItemDiscountApprovals = null
+        trustedItemDiscountApprovals = null,
+        inventoryEffectsOnly = false,
+        parkedSaleInventoryReconciliation = false
     }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -3230,6 +3382,13 @@ export const buildCheckoutPosUseCase = ({
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'parked_sale_id must be a positive integer when provided',
+                { statusCode: 422 }
+            ));
+        }
+        if (lines.some((line) => line?.parked_snapshot_line === true) && !parkedSaleId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'parked_snapshot_line requires parked_sale_id',
                 { statusCode: 422 }
             ));
         }
@@ -3353,6 +3512,7 @@ export const buildCheckoutPosUseCase = ({
                         ? { selected_option_ids: normalizeServiceOptionIds(line.selected_option_ids) }
                         : {}),
                     scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null,
+                    ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                     ...(isPlainObject(line.item_discount)
                         ? {
                             item_discount: {
@@ -3654,12 +3814,67 @@ export const buildCheckoutPosUseCase = ({
                 });
             }
 
+            let parkedSaleSettlement = null;
+            if (parkedSaleId) {
+                const parkedSale = await posRepository.getParkedSaleById(parkedSaleId, { transaction, lock: true });
+                if (!parkedSale) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'Parked POS sale not found.',
+                        { statusCode: 404, details: { reason_code: 'PARKED_SALE_NOT_FOUND', parked_sale_id: parkedSaleId } }
+                    );
+                }
+                if (
+                    String(parkedSale.status || '').trim().toLowerCase() !== 'claimed'
+                    || parsePositiveInt(parkedSale.claimed_by) !== normalizedUserId
+                    || sanitizeTerminalId(parkedSale.claimed_terminal_id) !== normalizedTerminalId
+                    || parsePositiveInt(parkedSale.shift_id) !== normalizedShiftId
+                    || parsePositiveInt(parkedSale.location_id) !== enforcedCheckoutLocationId
+                ) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Only the parked sale claimed by this cashier and terminal can use its saved item prices.',
+                        { statusCode: 409, details: { reason_code: 'PARKED_SALE_SNAPSHOT_SCOPE_DENIED' } }
+                    );
+                }
+                parkedSaleSettlement = {
+                    parkedSale,
+                    ...resolveParkedSaleSnapshotLines({ parkedSale, lines })
+                };
+            }
+
             const itemIds = [...new Set(lines.map((line) => Number.parseInt(line.item_id, 10)))];
-            const items = await posRepository.findSellableItemsByIds(itemIds, {
+            let items = await posRepository.findSellableItemsByIds(itemIds, {
                 transaction,
                 lock: true,
                 locationId: enforcedCheckoutLocationId
             });
+            const historicalItemIds = [...new Set(
+                [...(parkedSaleSettlement?.historicalLinesByCheckoutIndex?.values() || [])]
+                    .map((line) => parsePositiveInt(line?.item_id))
+                    .filter(Boolean)
+            )];
+            if (historicalItemIds.length > 0 && typeof posRepository.findParkedSaleItemsByIds === 'function') {
+                const historicalItems = await posRepository.findParkedSaleItemsByIds(historicalItemIds, {
+                    transaction,
+                    lock: true,
+                    locationId: enforcedCheckoutLocationId
+                });
+                const mergedItems = new Map(items.map((item) => [Number(item.item_id), item]));
+                historicalItems.forEach((item) => mergedItems.set(Number(item.item_id), item));
+                items = [...mergedItems.values()];
+            }
+            const historicalFallbackItems = [...(parkedSaleSettlement?.historicalLinesByCheckoutIndex?.values() || [])]
+                .map(buildHistoricalParkedSaleItem)
+                .filter((item) => item && !items.some((candidate) => Number(candidate?.item_id) === Number(item.item_id)));
+            if (historicalFallbackItems.length > 0) items = [...items, ...historicalFallbackItems];
+            const inventoryPreissuedLineIndexes = parkedSaleSettlement?.parkedSale?.inventory_deducted_at
+                && parkedSaleInventoryReconciliation !== true
+                ? new Set(parkedSaleSettlement.historicalLinesByCheckoutIndex.keys())
+                : new Set();
+            const recipePlanLines = lines.map((line, index) => (
+                inventoryPreissuedLineIndexes.has(index) ? { ...line, quantity: 0 } : line
+            ));
             const itemMap = new Map(items.map((item) => [item.item_id, item]));
             const compositionItemIds = items
                 .filter((item) => isStockBearingItem(item))
@@ -3675,7 +3890,7 @@ export const buildCheckoutPosUseCase = ({
                 })
                 : [];
             const recipePlan = buildFnbRecipeConsumptionPlan({
-                lines,
+                lines: recipePlanLines,
                 itemMap,
                 compositions: productCompositions,
                 locationId: enforcedCheckoutLocationId
@@ -3696,11 +3911,13 @@ export const buildCheckoutPosUseCase = ({
             let subtotalAmount = 0;
             const preparedLines = [];
             const recipeMovementPlanByPreparedLine = [];
+            const historicalSettlementAuditLines = [];
 
-            for (const line of lines) {
+            for (const [lineIndex, line] of lines.entries()) {
                 const itemId = Number.parseInt(line.item_id, 10);
                 const quantity = Number(line.quantity);
                 const item = itemMap.get(itemId);
+                const historicalSnapshotLine = parkedSaleSettlement?.historicalLinesByCheckoutIndex?.get(lineIndex) || null;
 
                 if (line.scan_metadata?.code) {
                     const replayScan = await posRepository.resolveCatalogScan({
@@ -3742,7 +3959,27 @@ export const buildCheckoutPosUseCase = ({
 
                 const descriptor = resolveStockBearingDescriptor(item);
                 const isStockExemptLine = !descriptor.tracks_quantity;
-                if (descriptor.is_toggle_available === false) {
+                const currentItemIsSellable = String(item.status || '').trim().toLowerCase() !== 'inactive'
+                    && item.pos_visible !== false
+                    && item.pos_location_available !== false
+                    && descriptor.is_toggle_available !== false;
+                const historicalStockShortfall = Boolean(
+                    historicalSnapshotLine
+                    && !isStockExemptLine
+                    && descriptor.blocks_on_shortfall
+                    && (Number(item.current_stock) || 0) + 0.000001 < quantity
+                );
+                const canReconcileHistoricalInventory = Boolean(
+                    parkedSaleInventoryReconciliation === true
+                    && historicalSnapshotLine
+                    && item?.parked_snapshot_fallback !== true
+                );
+                const historicalNeedsStockExemption = Boolean(
+                    historicalSnapshotLine
+                    && !canReconcileHistoricalInventory
+                    && (!currentItemIsSellable || historicalStockShortfall)
+                );
+                if (descriptor.is_toggle_available === false && !historicalSnapshotLine) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `"${item.name}" is currently marked unavailable`,
@@ -3750,8 +3987,13 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
                 const currentStock = Number(item.current_stock) || 0;
-                const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
-                if (descriptor.blocks_on_shortfall && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
+                const lineRecipeMovements = historicalNeedsStockExemption
+                    ? []
+                    : (recipePlan.movementsByLineIndex[lineIndex] || []);
+                if (!historicalSnapshotLine
+                    && descriptor.blocks_on_shortfall
+                    && lineRecipeMovements.length === 0
+                    && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -3759,26 +4001,33 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                const modifierResolution = resolveFnbLineModifiers({
-                    item,
-                    line,
-                    hasFnbCheckoutContext,
-                    locationId: enforcedCheckoutLocationId
-                });
+                const modifierResolution = historicalSnapshotLine
+                    ? {
+                        modifierPriceDelta: 0,
+                        modifiersSnapshot: normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || []
+                    }
+                    : resolveFnbLineModifiers({
+                        item,
+                        line,
+                        hasFnbCheckoutContext,
+                        locationId: enforcedCheckoutLocationId
+                    });
                 const selectedServiceOptionIds = normalizeServiceOptionIds(line.selected_option_ids);
                 let serviceOptionResolution = {
                     priceDelta: 0,
                     snapshot: null
                 };
                 const isServiceLine = isStockExemptServiceItem(item);
-                if (selectedServiceOptionIds.length > 0 && !isServiceLine) {
+                if (selectedServiceOptionIds.length > 0 && !isServiceLine && !historicalSnapshotLine) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Service options can only be selected for service item ${item.item_id}`,
                         { statusCode: 422, details: { item_id: item.item_id } }
                     );
                 }
-                if (isServiceLine && typeof calculateServiceQuoteUseCase?.calculateQuote === 'function') {
+                if (isServiceLine
+                    && !historicalSnapshotLine
+                    && typeof calculateServiceQuoteUseCase?.calculateQuote === 'function') {
                     const quoteResult = await calculateServiceQuoteUseCase.calculateQuote({
                         serviceItemId: item.item_id,
                         selectedOptionIds: selectedServiceOptionIds,
@@ -3799,15 +4048,25 @@ export const buildCheckoutPosUseCase = ({
                         snapshot: buildServiceOptionsSnapshot(quote.selected_options)
                     };
                 }
-                const baseSalePrice = requireExplicitSalePrice(item, 'POS checkout');
+                const liveBaseSalePrice = Number(item.default_sale_price);
+                const baseSalePrice = inventoryEffectsOnly
+                    ? 1
+                    : (historicalSnapshotLine
+                        ? (Number.isFinite(liveBaseSalePrice) ? liveBaseSalePrice : 0)
+                        : requireExplicitSalePrice(item, 'POS checkout'));
                 const defaultSalePrice = round4(
                     baseSalePrice
                     + modifierResolution.modifierPriceDelta
                     + serviceOptionResolution.priceDelta
                 );
-                const resolvedPrice = line.sale_price == null
-                    ? defaultSalePrice
-                    : Number(line.sale_price);
+                const historicalSalePrice = historicalSnapshotLine?.sale_price == null
+                    ? null
+                    : Number(historicalSnapshotLine.sale_price);
+                const resolvedPrice = inventoryEffectsOnly
+                    ? 1
+                    : (historicalSnapshotLine
+                        ? historicalSalePrice
+                        : (line.sale_price == null ? defaultSalePrice : Number(line.sale_price)));
 
                 if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
                     throw new DomainError(
@@ -3817,7 +4076,9 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                const salePriceOverridden = line.sale_price != null
+                const salePriceOverridden = !inventoryEffectsOnly
+                    && !historicalSnapshotLine
+                    && line.sale_price != null
                     && Math.abs(round4(resolvedPrice) - round4(defaultSalePrice)) > 0.0001;
                 const priceOverrideReason = String(line.price_override_reason || '').trim();
                 if (salePriceOverridden) {
@@ -3848,24 +4109,38 @@ export const buildCheckoutPosUseCase = ({
                     // an uncategorized item matches no category rate and falls to the tenant
                     // default, which is correct, not an error.
                     folder_id_snapshot: Number.isInteger(item.folder_id) ? item.folder_id : null,
-                    item_name: item.name,
-                    item_name_snapshot: item.name || null,
-                    sku_snapshot: item.sku_code || null,
+                    item_name: historicalSnapshotLine?.item_name || item.name,
+                    item_name_snapshot: historicalSnapshotLine?.item_name || item.name || null,
+                    sku_snapshot: historicalSnapshotLine?.sku_code || item.sku_code || null,
                     quantity: round4(quantity),
-                    unit_of_measure: item.unit_of_measure,
+                    unit_of_measure: historicalSnapshotLine?.unit_of_measure || item.unit_of_measure,
                     // Only a true service has no cost to report; an untracked/toggle
                     // physical item is movement-exempt but still carries a real cost
                     // (resolveStockBearingDescriptor's carries_cost).
                     cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,
-                    stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
-                    stock_exempt_reason: resolveStockExemptReason(item, descriptor),
+                    stock_effect_type: isStockExemptLine || historicalNeedsStockExemption ? 'stock_exempt' : 'inventory_issue',
+                    inventory_preissued: Boolean(
+                        historicalSnapshotLine
+                        && parkedSaleSettlement?.parkedSale?.inventory_deducted_at
+                        && parkedSaleInventoryReconciliation !== true
+                    ),
+                    stock_exempt_reason: historicalNeedsStockExemption
+                        ? 'historical_parked_sale'
+                        : resolveStockExemptReason(item, descriptor),
                     sale_price: round4(resolvedPrice),
-                    sale_price_overridden: salePriceOverridden,
-                    price_override_reason: salePriceOverridden ? priceOverrideReason : null,
+                    sale_price_overridden: historicalSnapshotLine
+                        ? Boolean(String(historicalSnapshotLine.price_override_reason || '').trim())
+                        : salePriceOverridden,
+                    price_override_reason: historicalSnapshotLine
+                        ? String(historicalSnapshotLine.price_override_reason || '').trim() || null
+                        : (salePriceOverridden ? priceOverrideReason : null),
                     line_subtotal: lineSubtotal,
-                    vat_type_snapshot: item.vat_type || 'vatable',
+                    vat_type_snapshot: ['vatable', 'vat_exempt', 'zero_rated'].includes(String(historicalSnapshotLine?.vat_type || '').trim())
+                        ? historicalSnapshotLine.vat_type
+                        : (item.vat_type || 'vatable'),
                     vat_rate_snapshot: VAT_RATE,
-                    senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
+                    senior_pwd_discount_eligible: historicalSnapshotLine?.senior_pwd_discount_eligible === true
+                        || isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                     fnb_course_snapshot: normalizeFnbCourse(line.course),
                     fnb_modifiers_snapshot: serviceOptionResolution.snapshot?.length > 0
                         ? serviceOptionResolution.snapshot
@@ -3877,6 +4152,28 @@ export const buildCheckoutPosUseCase = ({
                     item_discount_draft: line.item_discount || null,
                     item_discount_snapshot: null
                 });
+                if (historicalSnapshotLine) {
+                    const currentPrice = Number(item.default_sale_price);
+                    const savedSalePrice = Number(historicalSnapshotLine.sale_price);
+                    const driftReasons = [];
+                    if (!currentItemIsSellable) driftReasons.push('item_not_currently_sellable');
+                    if (historicalStockShortfall) driftReasons.push('stock_shortfall');
+                    if (Number.isFinite(currentPrice)
+                        && Number.isFinite(Number(historicalSnapshotLine.base_sale_price))
+                        && !sameParkedSaleNumber(currentPrice, historicalSnapshotLine.base_sale_price)) {
+                        driftReasons.push('catalog_price_changed');
+                    }
+                    if (!Number.isFinite(currentPrice) || currentPrice <= 0) driftReasons.push('current_price_missing');
+                    historicalSettlementAuditLines.push({
+                        line_ref: String(line.line_ref || '').trim() || null,
+                        item_id: item.item_id,
+                        item_name: historicalSnapshotLine.item_name || item.name || null,
+                        saved_sale_price: Number.isFinite(savedSalePrice) ? round4(savedSalePrice) : null,
+                        current_sale_price: Number.isFinite(currentPrice) ? round4(currentPrice) : null,
+                        drift_reasons: driftReasons,
+                        inventory_effect: historicalNeedsStockExemption ? 'stock_exempt' : 'inventory_issue'
+                    });
+                }
                 recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
             }
 
@@ -4268,6 +4565,33 @@ export const buildCheckoutPosUseCase = ({
             });
             const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
+
+            if (inventoryEffectsOnly) {
+                if (validateInventoryAvailability) {
+                    await validatePosInventoryIssues({
+                        inventoryCommandService: stockCommands,
+                        preparedLines,
+                        recipeMovementPlanByPreparedLine,
+                        locationId: enforcedCheckoutLocationId,
+                        userId: normalizedUserId,
+                        transaction,
+                        allowArchivedItems: parkedSaleInventoryReconciliation === true
+                    });
+                }
+                const inventoryEffects = buildPosInventoryIssuePlan({
+                    preparedLines,
+                    recipeMovementPlanByPreparedLine,
+                    locationId: enforcedCheckoutLocationId,
+                    allowArchivedItems: parkedSaleInventoryReconciliation === true
+                }).map(({ item_id, quantity, location_id, allow_archived_item }) => ({
+                    item_id,
+                    quantity,
+                    location_id,
+                    ...(allow_archived_item ? { allow_archived_item: true } : {})
+                }));
+                if (ownsTransaction) await transaction.commit();
+                return ok({ inventory_effects: inventoryEffects });
+            }
 
             if (quoteOnly) {
                 if (validateInventoryAvailability) {
@@ -4758,6 +5082,7 @@ export const buildCheckoutPosUseCase = ({
             const stockChangedItemIds = new Set();
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
+                if (line.inventory_preissued === true) continue;
                 // Recipe consumption always fires when the line has one, regardless
                 // of the finished item's own stock_effect_type: an untracked/toggle/
                 // service dish still physically consumes real ingredients. Only the
@@ -4838,6 +5163,30 @@ export const buildCheckoutPosUseCase = ({
                 posTransactionId,
                 { transaction }
             );
+
+            if (
+                parkedSaleId
+                && historicalSettlementAuditLines.length > 0
+                && typeof posRepository.createAuditLog === 'function'
+            ) {
+                await posRepository.createAuditLog({
+                    user_id: normalizedUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: posTransactionId,
+                    action: 'CREATE',
+                    event_type: 'pos_parked_sale_snapshot_settlement',
+                    terminal_id: normalizedTerminalId,
+                    shift_id: normalizedShiftId,
+                    location_id: enforcedCheckoutLocationId,
+                    changes: {
+                        event: 'pos_parked_sale_snapshot_settlement',
+                        parked_sale_id: parkedSaleId,
+                        transaction_id: posTransactionId,
+                        policy: 'original_parked_snapshot_price',
+                        lines: historicalSettlementAuditLines
+                    }
+                }, { transaction });
+            }
 
             await runCheckoutBeforeCommit({
                 transactionId: posTransactionId,
@@ -5031,7 +5380,14 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
-    return async ({ posTransactionId, payload = {}, user = {}, trustedMobileReplay = false } = {}) => {
+    return async ({
+        posTransactionId,
+        payload = {},
+        user = {},
+        trustedMobileReplay = false,
+        transaction: providedTransaction = null,
+        approvalExecution = null
+    } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
         const operatorSessionId = parsePositiveInt(user?.operator_session_id);
@@ -5046,6 +5402,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
         const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
         const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
+        const approvalAuthorized = Boolean(
+            approvalExecution
+            && approvalExecution.action_type === 'pos_void'
+            && approvalExecution.status === 'approved'
+            && parsePositiveInt(approvalExecution.entity_id) === normalizedTransactionId
+            && parsePositiveInt(approvalExecution.approved_by) === actorUserId
+            && parsePositiveInt(approvalExecution.requested_by)
+        );
+        if (approvalExecution && !approvalAuthorized) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'A valid Back Office approval is required to execute this POS void.',
+                { statusCode: 403, details: { reason_code: 'POS_VOID_APPROVAL_INVALID' } }
+            ));
+        }
         if (!normalizedTransactionId) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -5074,16 +5445,17 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 { statusCode: 422 }
             ));
         }
-        if (!activeShiftId && !adminShiftBypass && !trustedMobileReplay) {
+        if (!activeShiftId && !adminShiftBypass && !trustedMobileReplay && !approvalAuthorized) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                'An active shift is required to void a POS transaction',
+                'An active shift is required to request a POS void',
                 { statusCode: 422 }
             ));
         }
 
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        const transaction = await sequelize.transaction();
+        const ownsTransaction = providedTransaction == null;
+        const transaction = providedTransaction || await sequelize.transaction();
         try {
             const existing = await posRepository.getTransactionById(normalizedTransactionId, { transaction, lock: true });
             if (!existing) {
@@ -5094,7 +5466,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 );
             }
 
-            if (activeShiftId && !trustedMobileReplay) {
+            if (activeShiftId && !trustedMobileReplay && !approvalAuthorized) {
                 await assertOpenShiftForPosMutation({
                     posRepository,
                     cashierId: actorUserId,
@@ -5123,9 +5495,92 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 });
             }
             const auditShiftId = transactionShiftId || activeShiftId || null;
-            const authorizationMode = trustedMobileReplay
-                ? 'mobile_offline_replay'
-                : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift');
+            const authorizationMode = approvalAuthorized
+                ? 'back_office_approval'
+                : (trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift'));
+            if (!approvalAuthorized) {
+                if (String(existing.status || '').trim().toLowerCase() === 'voided') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'POS transaction is not available for voiding',
+                        { statusCode: 409, details: { reason_code: 'POS_TRANSACTION_ALREADY_VOIDED' } }
+                    );
+                }
+                const existingRequest = await posRepository.findPendingBusinessAdminApprovalRequest({
+                    actionType: 'pos_void',
+                    entityType: 'pos_transaction',
+                    entityId: normalizedTransactionId
+                }, { transaction, lock: true });
+                const currentServerVersion = existing.updated_at instanceof Date
+                    ? existing.updated_at.toISOString()
+                    : String(existing.updated_at || '').trim() || null;
+                const approvalPayload = {
+                    transaction_id: normalizedTransactionId,
+                    invoice_number: existing.invoice_number || null,
+                    amount: round4(Number(existing.total_amount || 0)),
+                    location_id: transactionLocationId,
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    shift_id: activeShiftId || transactionShiftId || null,
+                    expected_status: expectedStatus || String(existing.status || '').trim().toLowerCase() || null,
+                    expected_server_version: expectedServerVersion || currentServerVersion,
+                    reason,
+                    requested_by: actorUserId
+                };
+                const approvalPayloadHash = hashPayload(approvalPayload);
+                if (existingRequest) {
+                    if (Number(existingRequest.requested_by) !== actorUserId
+                        || String(existingRequest.payload_hash || '') !== approvalPayloadHash) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'A POS void approval request is already pending for this transaction.',
+                            { statusCode: 409, details: { reason_code: 'POS_VOID_APPROVAL_ALREADY_PENDING' } }
+                        );
+                    }
+                    if (ownsTransaction) await transaction.commit();
+                    return ok({
+                        approval_request: existingRequest,
+                        pending: true,
+                        idempotent_replay: true
+                    }, 'POS void request is awaiting Back Office approval');
+                }
+                const approvalRequest = await posRepository.createBusinessAdminApprovalRequest({
+                    action_type: 'pos_void',
+                    entity_type: 'pos_transaction',
+                    entity_id: normalizedTransactionId,
+                    payload: approvalPayload,
+                    payload_hash: approvalPayloadHash,
+                    status: 'pending',
+                    reason,
+                    idempotency_key: `pos-void:${normalizedTransactionId}:${crypto.randomUUID()}`,
+                    requested_by: actorUserId
+                }, { transaction });
+                await posRepository.createAuditLog({
+                    user_id: actorUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: normalizedTransactionId,
+                    action: 'UPDATE',
+                    event_type: 'pos_transaction_void_requested',
+                    terminal_id: activeTerminalId || existing.terminal_id || null,
+                    shift_id: auditShiftId,
+                    location_id: transactionLocationId,
+                    reason,
+                    changes: {
+                        event: 'pos_transaction_void_requested',
+                        approval_request_id: approvalRequest.business_admin_approval_request_id,
+                        invoice_number: existing.invoice_number || null,
+                        amount: round4(Number(existing.total_amount || 0)),
+                        requested_by: actorUserId,
+                        reason,
+                        authorization_mode: trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift')
+                    }
+                }, { transaction });
+                if (ownsTransaction) await transaction.commit();
+                return ok({
+                    approval_request: approvalRequest,
+                    pending: true,
+                    idempotent_replay: false
+                }, 'POS void request submitted for Back Office approval');
+            }
             const originalCashierId = parsePositiveInt(existing.cashier_id);
             const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
             const paymentStatusBeforeVoid = String(existing.payment_status || 'unknown').trim().toLowerCase() || 'unknown';
@@ -5162,7 +5617,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                         { statusCode: 409 }
                     );
                 }
-                await transaction.commit();
+                if (ownsTransaction) await transaction.commit();
                 return ok({
                     transaction: toSerializable(existing),
                     stock_reversals: [],
@@ -5230,6 +5685,33 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 });
             }
 
+            const linkedParkedSale = typeof posRepository.findParkedSaleByCompletedTransactionId === 'function'
+                ? await posRepository.findParkedSaleByCompletedTransactionId(normalizedTransactionId, { transaction, lock: true })
+                : null;
+            if (linkedParkedSale?.inventory_deducted_at) {
+                const reverseParkedSaleGoodsIssue = stockCommands?.reverseParkedSaleGoodsIssue;
+                if (typeof reverseParkedSaleGoodsIssue !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Inventory reversal command is unavailable for this parked sale.',
+                        { statusCode: 503, details: { reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_UNAVAILABLE' } }
+                    );
+                }
+                const parkedReversals = await reverseParkedSaleGoodsIssue({
+                    parked_sale_id: linkedParkedSale.pos_parked_sale_id,
+                    reason: `POS void reversal for ${existing.invoice_number || `transaction ${normalizedTransactionId}`}`
+                }, actorUserId, transaction);
+                for (const reversal of Array.isArray(parkedReversals) ? parkedReversals : []) {
+                    const reversedItemId = parsePositiveInt(reversal.item_id);
+                    if (reversedItemId) voidStockChangedItemIds.add(reversedItemId);
+                    stockReversals.push({
+                        source: 'parked_sale',
+                        original_movement_id: reversal.original_movement_id || null,
+                        reversal_movement_id: reversal.reversal_movement_id || null
+                    });
+                }
+            }
+
             const fiscalEvent = existing.document_type === 'fiscal_invoice' && typeof posRepository.createFiscalEvent === 'function'
                 ? await posRepository.createFiscalEvent({
                     pos_transaction_id: normalizedTransactionId,
@@ -5294,6 +5776,9 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     evidence_scope: 'internal_void_only',
                     operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
+                    approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                    approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
+                    approved_by: approvalAuthorized ? actorUserId : null,
                     payment_status_before_void: paymentStatusBeforeVoid,
                     transaction_shift_id: transactionShiftId,
                     actor_shift_id: activeShiftId || null,
@@ -5331,6 +5816,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     original_cashier_id: originalCashierId,
                     voided_by: actorUserId,
                     authorization_mode: authorizationMode,
+                    approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                    approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
                     terminal_id: activeTerminalId || existing.terminal_id || null,
                     location_id: existing.location_id || null,
                         stock_reversals: stockReversals,
@@ -5340,31 +5827,37 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 }
             }, { transaction });
 
-            await transaction.commit();
-
-            // #1952: void owns its transaction, so post-commit publication is
-            // safe here. Idempotent replays return earlier with no reversal and
-            // never reach this path. Best-effort: never fails the committed void.
-            await publishPosStockChange({
-                publishCatalogChange,
-                tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
-                reason: 'pos_void_stock_changed',
-                itemIds: [...voidStockChangedItemIds]
-            });
-
-            // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
-            // sale - must never fail the void that already succeeded.
-            try {
-                const voidTenantId = String(dbStore.getStore()?.tenantId || '').trim();
-                await reverseAffiliateCommissionForOrder({
-                    tenantId: voidTenantId,
-                    orderReference: String(normalizedTransactionId)
+            const afterVoidCommit = async () => {
+                // #1952: void owns its transaction, so post-commit publication is
+                // safe here. With an approval transaction, defer until the outer
+                // transaction commits so cache invalidation never precedes stock.
+                await publishPosStockChange({
+                    publishCatalogChange,
+                    tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
+                    reason: 'pos_void_stock_changed',
+                    itemIds: [...voidStockChangedItemIds]
                 });
-            } catch (reversalError) {
-                logger.warn('[PosUseCases] Failed to reverse affiliate commission for voided transaction', {
-                    posTransactionId: normalizedTransactionId,
-                    error: reversalError?.message
-                });
+
+                // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
+                // sale - must never fail the void that already succeeded.
+                try {
+                    const voidTenantId = String(dbStore.getStore()?.tenantId || '').trim();
+                    await reverseAffiliateCommissionForOrder({
+                        tenantId: voidTenantId,
+                        orderReference: String(normalizedTransactionId)
+                    });
+                } catch (reversalError) {
+                    logger.warn('[PosUseCases] Failed to reverse affiliate commission for voided transaction', {
+                        posTransactionId: normalizedTransactionId,
+                        error: reversalError?.message
+                    });
+                }
+            };
+            if (ownsTransaction) {
+                await transaction.commit();
+                await afterVoidCommit();
+            } else if (typeof transaction.afterCommit === 'function') {
+                transaction.afterCommit(afterVoidCommit);
             }
 
             return ok({
@@ -5375,7 +5868,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 financial_outcome: financialOutcome
             });
         } catch (error) {
-            if (!transaction.finished) {
+            if (ownsTransaction && !transaction.finished) {
                 await transaction.rollback();
             }
             return fail(mapPosUseCaseError(error, 'Failed to void POS transaction'));
@@ -9595,6 +10088,16 @@ export const buildCollectCashDeliveryOrderUseCase = ({ posRepository }) => build
     fulfillmentLabel: 'out for delivery'
 });
 
+export const buildCollectCashDineInOrderUseCase = ({ posRepository }) => buildCollectCashOnlineOrderUseCase({
+    posRepository,
+    orderMethod: 'dine_in',
+    paymentTiming: 'on_dine_in',
+    requiredFulfillmentStatus: 'ready_for_pickup',
+    operationKey: POS_OPERATION_KEYS.DINE_IN_CASH_COLLECTION,
+    orderLabel: 'dine-in',
+    fulfillmentLabel: 'ready to serve'
+});
+
 // Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance at
 // handover -- the missing middle of epic #815/#273. Phase 141 (#822) captures the downpayment
 // online and leaves the order `partially_paid`; Phase 144 (#824) shows staff how much is still
@@ -9732,7 +10235,7 @@ export const buildRecordOrderBalancePaymentUseCase = ({ posRepository }) => {
             if (!requiredFulfillmentStatus) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
-                    'Balance settlement is available only for pickup and delivery orders.',
+                    'Balance settlement is available only for pickup, delivery, and dine-in orders.',
                     { statusCode: 409, details: { reason_code: 'BALANCE_SETTLEMENT_ORDER_METHOD_UNSUPPORTED' } }
                 );
             }

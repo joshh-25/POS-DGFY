@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import {
     buildCreateTenantLocationUseCase,
     buildUpdateTenantLocationUseCase,
+    buildUpdateTenantLocationDineInPaymentPolicyUseCase,
     buildDeactivateTenantLocationUseCase,
     buildDeleteTenantLocationUseCase
 } from '../src/modules/tenantLocations/usecases/tenantLocationUseCases.js';
@@ -236,6 +237,56 @@ describe('tenantLocation use-cases primary storefront behavior', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
         expect(result.error.statusCode).toBe(409);
+    });
+
+    it('updates only the branch-scoped Dine-in pay-in-store policy', async () => {
+        const transaction = createTransactionMock();
+        const existing = {
+            location_id: 51,
+            updated_at: '2026-09-23T00:00:00.000Z',
+            allow_dine_in_pay_at_store: false
+        };
+        const updated = {
+            ...existing,
+            updated_at: '2026-09-23T00:01:00.000Z',
+            allow_dine_in_pay_at_store: true
+        };
+        const repository = {
+            beginTransaction: jest.fn().mockResolvedValue(transaction),
+            findById: jest.fn()
+                .mockResolvedValueOnce(existing)
+                .mockResolvedValueOnce(updated),
+            updateById: jest.fn().mockResolvedValue(updated)
+        };
+
+        const useCase = buildUpdateTenantLocationDineInPaymentPolicyUseCase({
+            tenantLocationRepository: repository
+        });
+
+        const result = await useCase({
+            locationId: 51,
+            payload: {
+                allow_dine_in_pay_at_store: true,
+                expected_updated_at: existing.updated_at
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(repository.findById).toHaveBeenNthCalledWith(1, 51, {
+            transaction,
+            lock: true
+        });
+        expect(repository.updateById).toHaveBeenCalledWith(
+            51,
+            { allow_dine_in_pay_at_store: true },
+            { transaction, lock: true }
+        );
+        expect(transaction.commit).toHaveBeenCalledTimes(1);
+        expect(transaction.rollback).not.toHaveBeenCalled();
+        expect(result.data).toMatchObject({
+            location_id: 51,
+            allow_dine_in_pay_at_store: true
+        });
     });
 
     it('permanently deletes an unused inactive non-primary location pin', async () => {

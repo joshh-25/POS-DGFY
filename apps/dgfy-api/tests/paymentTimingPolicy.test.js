@@ -11,8 +11,13 @@ describe('payment timing policy', () => {
         expect(isCodDelivery({ orderMethod: 'pickup', paymentType: 'cash', paymentTiming: 'on_pickup' })).toBe(false);
     });
 
+    it('classifies dine-in handover timing separately from pickup', () => {
+        expect(resolvePaymentTiming({ orderMethod: 'dine_in', paymentType: 'cash' })).toBe('on_dine_in');
+        expect(isCodDelivery({ orderMethod: 'dine_in', paymentType: 'cash', paymentTiming: 'on_dine_in' })).toBe(false);
+    });
+
     it('keeps non-cash and in-store tenders upfront', () => {
         expect(resolvePaymentTiming({ orderMethod: 'delivery', paymentType: 'qrph' })).toBe('upfront');
-        expect(resolvePaymentTiming({ orderMethod: 'dine_in', paymentType: 'cash' })).toBe('upfront');
+        expect(resolvePaymentTiming({ orderMethod: 'dine_in', paymentType: 'qrph' })).toBe('upfront');
     });
 });
