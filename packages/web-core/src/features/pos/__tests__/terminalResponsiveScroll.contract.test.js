@@ -17,6 +17,7 @@ const posCatalogWorkflowPath = path.resolve(__dirname, '../hooks/usePosCatalogWo
 const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurrentSaleActions.jsx');
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
+const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
 const appStylesPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS terminal responsive scroll contracts', () => {
@@ -27,8 +28,9 @@ describe('POS terminal responsive scroll contracts', () => {
   let posCatalogWorkflowContent = '';
   let posCurrentSaleActionsContent = '';
   let posHistoryContent = '';
-  let terminalSidebarContent = '';
-  let appStylesContent = '';
+ let terminalSidebarContent = '';
+  let terminalPageContent = '';
+ let appStylesContent = '';
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
@@ -42,8 +44,9 @@ describe('POS terminal responsive scroll contracts', () => {
     posCatalogWorkflowContent = fs.readFileSync(posCatalogWorkflowPath, 'utf8');
     posCurrentSaleActionsContent = fs.readFileSync(posCurrentSaleActionsPath, 'utf8');
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
-    terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
-    appStylesContent = fs.readFileSync(appStylesPath, 'utf8');
+   terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
+    terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
+   appStylesContent = fs.readFileSync(appStylesPath, 'utf8');
   });
 
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {

@@ -13,7 +13,7 @@ const tabletViewportSource = readPosSource('utils/posTabletViewport.js');
 
 describe('POS tablet viewport ownership', () => {
   it('uses one classifier for the shell, item catalog, and transaction history', () => {
-    expect(terminalPageSource).toContain("import { isPosTabletViewport } from '../utils/posTabletViewport.js';");
+    expect(terminalPageSource).toContain("import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';");
     expect(catalogWorkflowSource).toContain("import { isPosTabletViewport } from '../utils/posTabletViewport.js';");
     expect(historySource).toContain("import { isPosTabletViewport } from '../utils/posTabletViewport.js';");
     expect(tabletViewportSource).toContain('isIminWrapperRuntime(windowObj)');

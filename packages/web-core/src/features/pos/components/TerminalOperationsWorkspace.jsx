@@ -2048,7 +2048,7 @@ function ItemsWorkspace({
       const data = await fetchPosCatalogPage({
         search: deferredItemsSearch,
         page: itemsPage,
-        page_size: POS_ITEMS_PAGE_SIZE,
+        page_size: itemsPageSize,
         category_filter: categoryFilter,
         stock_filter: stockFilter,
         ...(operatingLocationId ? { location_id: operatingLocationId } : {})

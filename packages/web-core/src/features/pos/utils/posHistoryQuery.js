@@ -1,6 +1,18 @@
 const SALES_STATUS = 'completed';
 const SALES_PAYMENT_STATUS = 'paid';
 
+// Keep the page-size choices shared by the query owner and the history footer so
+// the control always requests a supported server page size.
+export const POS_HISTORY_PAGE_SIZE_OPTIONS = [10, 20, 50];
+export const DEFAULT_POS_HISTORY_PAGE_SIZE = 20;
+
+export const normalizePosHistoryPageSize = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return POS_HISTORY_PAGE_SIZE_OPTIONS.includes(parsed)
+        ? parsed
+        : DEFAULT_POS_HISTORY_PAGE_SIZE;
+};
+
 /**
  * Build the server query for the POS Sales History view.
  *
