@@ -69,6 +69,7 @@ The following are the retained branch commits after the rewrite:
 | `262c8362e` | `fix(pos): complete Items workspace controls` | Pagination primitive, mobile-sheet dialog contract, Item Options footer geometry, text-size/header hooks, and shared Items pagination styling. |
 | `ebe113a9a` | `fix(pos): finish Items mobile control styling` | Touch-safe text-size control behavior and mobile Item Options editor scrolling/footer safe-area behavior found during the final audit. |
 | `3e9a83597` | `docs(pos): finalize Items branch audit` | Final committed manifest, exclusion boundary, corrected test/build evidence, and audit conclusion. |
+| `862116506` | `docs(pos): correct final audit inventory` | Corrects the final commit count and records the completed documentation audit. |
 
 The final documentation commit is intentionally separate from the product commits above.
 
@@ -229,7 +230,7 @@ passed for the retained chain:
 
 - `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
 - No conflict markers in the clean rewritten tree.
-- The branch-specific first-parent chain after the comparison base is the eleven commits listed in
+- The branch-specific first-parent chain after the comparison base is the twelve commits listed in
   the atomic inventory above, with the final entry being documentation-only.
 - Removed history commits are not ancestors of the rewritten branch.
 
