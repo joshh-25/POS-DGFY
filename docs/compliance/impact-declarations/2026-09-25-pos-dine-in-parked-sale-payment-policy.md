@@ -60,3 +60,5 @@ permission, inventory-authority, and payment settlement boundaries.
   submitting a financial payment.
 - Shared POS behavior fixtures include the explicit delivery cash timing
   contract required by the payment-timing guard.
+- API route coverage verifies branch-scoped dine-in payment-policy updates
+  honor UserLocationGrant access without relying on an undefined permission group.
