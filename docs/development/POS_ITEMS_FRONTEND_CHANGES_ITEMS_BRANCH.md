@@ -71,9 +71,11 @@ The following are the retained branch commits through the completed audit snapsh
 | `3e9a83597` | `docs(pos): finalize Items branch audit` | Final committed manifest, exclusion boundary, corrected test/build evidence, and audit conclusion. |
 | `862116506` | `docs(pos): correct final audit inventory` | Corrects the final commit count and records the completed documentation audit. |
 | `5bec54308` | `docs(pos): record completed Items audit` | Records the completed final audit state and confirms the Items-only branch is ready to push. |
+| `255e79313` | `chore(pos): sync Items branch with develop` | Adds the current `origin/develop` as a merge parent without expanding the net Items-only diff. |
 
-Documentation metadata corrections after the completed audit snapshot are intentionally separate
-from the product commits above and do not change the retained product scope.
+The synchronization merge is intentionally separate from the product commits above. It makes the
+current `origin/develop` an ancestor so the branch is not behind its base while preserving the
+audited Items tree and net diff. Any later commits are documentation-only metadata corrections.
 
 ## Included files to push
 
@@ -233,8 +235,8 @@ passed for the retained chain:
 - `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
 - No conflict markers in the clean rewritten tree.
 - The branch-specific first-parent chain through the completed audit snapshot is the thirteen
-  commits listed in the atomic inventory above. Any later commits are documentation-only metadata
-  corrections and add no product scope.
+  commits listed in the atomic inventory above, followed by the synchronization merge recorded
+  above. Any later commits are documentation-only metadata corrections and add no product scope.
 - Removed history commits are not ancestors of the rewritten branch.
 
 ### Existing functional evidence
