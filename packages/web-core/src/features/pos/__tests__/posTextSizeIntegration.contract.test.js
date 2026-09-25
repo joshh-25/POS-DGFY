@@ -37,6 +37,7 @@ describe('POS text-size integration contracts', () => {
         expect(terminalLayoutSource).toContain('desktopLabeled');
         expect(terminalLayoutSource).toContain("className={posViewMode === 'history'");
         expect(terminalLayoutSource).toContain("? 'hidden'");
+        expect(terminalLayoutSource).toContain("posViewMode === 'checkout' ? 'flex' : 'hidden lg:flex'");
         expect(terminalLayoutSource.indexOf('<PosTextSizeControl')).toBeLessThan(
             terminalLayoutSource.indexOf('data-testid="pos-header-park-slot"')
         );

@@ -36,6 +36,8 @@ import PosReportsComparisonPanel from './PosReportsComparisonPanel.jsx';
 import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
 import PosSubtabNavigation from './PosSubtabNavigation.jsx';
+import PosPageFrame from './PosPageFrame.jsx';
+import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
@@ -213,6 +215,7 @@ function PosReportsAnalyticsWorkspace({
     !section.permission || terminalUser?.is_master_admin === true || resolveUserPermissionList(terminalUser).includes(section.permission)
   )), [terminalUser]);
   const selectedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0], [activeTab]);
+  const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;
   const clearReportPanelAnimationTimers = useCallback(() => {
     reportPanelAnimationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
     reportPanelAnimationTimersRef.current = [];
@@ -286,14 +289,22 @@ function PosReportsAnalyticsWorkspace({
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
-    granularity,
+    granularity: displayGranularity,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
     cashierId,
     paymentType,
     source,
     categoryId
-  }), [categoryId, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, source]);
+  }), [
+    categoryId,
+    cashierId,
+    displayGranularity,
+    normalizedDateRange.dateFrom,
+    normalizedDateRange.dateTo,
+    paymentType,
+    source
+  ]);
 
   const handleTabChange = (tabId) => {
     const nextTab = String(tabId || 'overview').trim() || 'overview';
@@ -301,9 +312,6 @@ function PosReportsAnalyticsWorkspace({
     if (selectedTab.id === activeTab) return;
     transitionReportPanel(selectedTab.id, operationSection);
     setActiveTab(selectedTab.id);
-    setGranularity(selectedTab.granularity);
-    setDateRange(defaultDisplayDateRange);
-    setReportDateFilterApplied(false);
     setOverviewSearchQuery('');
   };
 
@@ -331,7 +339,7 @@ function PosReportsAnalyticsWorkspace({
 
   const handleClearAllFilters = () => {
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
-    setGranularity(selectedTab.granularity);
+    if (activeTab === 'comparison') setGranularity(selectedTab.granularity);
     setDateRange(defaultDisplayDateRange);
     setReportDateFilterApplied(false);
     setCashierId('');
@@ -355,7 +363,7 @@ function PosReportsAnalyticsWorkspace({
       setSource('');
     } else if (filterKey === 'category') {
       setCategoryId('');
-    } else if (filterKey === 'granularity') {
+    } else if (filterKey === 'granularity' && activeTab === 'comparison') {
       setGranularity(selectedReportTab.granularity);
     } else if (filterKey === 'search') {
       setOverviewSearchQuery('');
@@ -412,7 +420,7 @@ function PosReportsAnalyticsWorkspace({
       }
       try {
         const payload = await fetchPosReportsOverview({
-          granularity,
+          granularity: displayGranularity,
           date_from: normalizedDateRange.dateFrom,
           date_to: normalizedDateRange.dateTo,
           cashier_id: cashierId || undefined,
@@ -440,7 +448,19 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [categoryId, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
+  }, [
+    categoryId,
+    cashierId,
+    displayGranularity,
+    isOnline,
+    normalizedDateRange.dateFrom,
+    normalizedDateRange.dateTo,
+    offlineReportKey,
+    offlineSnapshotScope,
+    paymentType,
+    reportRefreshKey,
+    source
+  ]);
 
   const summaryCards = reportData?.summary_cards || {};
   const selectedTender = summaryCards.selected_tender || null;
@@ -455,10 +475,10 @@ function PosReportsAnalyticsWorkspace({
     if (activeTab === 'comparison') {
       return comparisonReport.flexible_trend || [];
     }
-    if (granularity === 'monthly') return monthlyReport.sales_trend || [];
-    if (granularity === 'yearly') return yearlyReport.monthly_breakdown || [];
+    if (displayGranularity === 'monthly') return monthlyReport.sales_trend || [];
+    if (displayGranularity === 'yearly') return yearlyReport.monthly_breakdown || [];
     return dailyReport.trend || [];
-  }, [activeTab, comparisonReport.flexible_trend, dailyReport.trend, granularity, monthlyReport.sales_trend, yearlyReport.monthly_breakdown]);
+  }, [activeTab, comparisonReport.flexible_trend, dailyReport.trend, displayGranularity, monthlyReport.sales_trend, yearlyReport.monthly_breakdown]);
 
   const paymentChartRows = (dailyReport.payment_breakdown || []).map((entry, index) => ({
     ...entry,
@@ -503,7 +523,7 @@ function PosReportsAnalyticsWorkspace({
   const activeReportFilterChips = useMemo(() => buildPosReportsActiveFilters({
     dateFilterApplied: reportDateFilterApplied,
     dateRange: normalizedDateRange,
-    granularity,
+    granularity: displayGranularity,
     defaultGranularity: selectedReportTab.granularity,
     cashierLabel: cashierId ? reportCashierLabel : '',
     paymentLabel: selectedPaymentLabel,
@@ -513,7 +533,7 @@ function PosReportsAnalyticsWorkspace({
   }), [
     categoryId,
     cashierId,
-    granularity,
+    displayGranularity,
     normalizedDateRange,
     overviewSearchQuery,
     reportCashierLabel,
@@ -528,7 +548,7 @@ function PosReportsAnalyticsWorkspace({
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
     const { blob, filename } = await exportPosReportCsv({
       section: activeTab === 'operations' ? operationSection : selectedTab.exportSection,
-      granularity,
+      granularity: displayGranularity,
       date_from: normalizedDateRange.dateFrom,
       date_to: normalizedDateRange.dateTo,
       cashier_id: cashierId || undefined,
@@ -706,7 +726,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderReportFilterPanel = () => (
       <PosReportsFilterPanel
-      key={reportFiltersOpen ? 'open' : 'closed'}
+      key={reportFiltersOpen ? 'reports-filter-open' : 'reports-filter-closed'}
       open={reportFiltersOpen}
       onClose={() => setReportFiltersOpen(false)}
       onApplyFilters={handleApplyReportFilters}
@@ -724,7 +744,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderReportDateFilterPanel = () => (
     <PosReportsDateFilterPanel
-      key={reportDateFilterOpen ? 'open' : 'closed'}
+      key={reportDateFilterOpen ? 'reports-date-open' : 'reports-date-closed'}
       open={reportDateFilterOpen}
       onClose={() => setReportDateFilterOpen(false)}
         onApplyDateRange={handleApplyReportDateRange}
@@ -755,7 +775,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderTrendAndPaymentBreakdown = () => (
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : granularity === 'yearly' ? 'Yearly Breakdown' : granularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
+      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={trendSeries}>
@@ -794,10 +814,13 @@ function PosReportsAnalyticsWorkspace({
   );
 
   return (
-    <div id={sectionId} className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3">
+    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">
       {renderReportFilterPanel()}
       {renderReportDateFilterPanel()}
-      <div className="flex min-w-0 max-w-full flex-col gap-4 sm:gap-6">
+      <div
+        data-testid="pos-reports-sticky-content"
+        className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}
+      >
       <div className="min-w-0">
         <PosReportsKpiCards
           summaryCards={summaryCards}
@@ -807,7 +830,10 @@ function PosReportsAnalyticsWorkspace({
           selectedTender={selectedTender}
         />
       </div>
-      <div className="min-w-0">
+      <div
+        data-testid="pos-reports-sticky-tabs"
+        className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}
+      >
         <PosLineTabNavigation
           tabs={REPORT_TABS}
           activeTab={activeTab}
@@ -816,9 +842,7 @@ function PosReportsAnalyticsWorkspace({
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
-      </div>
-      {shouldShowOperationsSubtabs ? (
-        <div className="min-w-0">
+        {shouldShowOperationsSubtabs ? (
           <PosSubtabNavigation
             tabs={operationSections}
             activeTab={operationSection}
@@ -827,12 +851,12 @@ function PosReportsAnalyticsWorkspace({
             idPrefix={`${sectionId || 'pos-reports'}-operations`}
             panelId={`${sectionId || 'pos-reports'}-panel`}
             desktopColumns={operationSections.length === 6 ? 6 : 5}
+            compactMobile
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
       <div className="min-w-0">
         {renderReportToolbar()}
-      </div>
       </div>
 
       {showInlineError ? (
@@ -946,13 +970,13 @@ function PosReportsAnalyticsWorkspace({
               />
               <PosReportsResponsiveTable
                 columns={[
-                  { key: 'event_at', label: 'Event Time', required: true, render: (row) => printDateTime(row.event_at) },
-                  { key: 'event_type', label: 'Event', render: (row) => String(row.event_type || '').replace(/_/g, ' ') },
-                  { key: 'outgoing_operator_name', label: 'Outgoing', render: (row) => row.outgoing_operator_name || '-' },
-                  { key: 'incoming_operator_name', label: 'Incoming', render: (row) => row.incoming_operator_name || '-' },
-                  { key: 'custody_mode', label: 'Custody', render: (row) => String(row.custody_mode || '').replace(/_/g, ' ') },
-                  { key: 'counted_cash_amount', label: 'Counted', align: 'right', render: (row) => row.counted_cash_amount == null ? 'Not counted' : money(row.counted_cash_amount, currencySymbol) },
-                  { key: 'variance_amount', label: 'Variance', align: 'right', render: (row) => row.variance_amount == null ? 'Not attributed' : money(row.variance_amount, currencySymbol) }
+                  { key: 'event_at', label: 'Event Time', align: 'left', required: true, render: (row) => printDateTime(row.event_at) },
+                  { key: 'event_type', label: 'Event', align: 'left', render: (row) => String(row.event_type || '').replace(/_/g, ' ') },
+                  { key: 'outgoing_operator_name', label: 'Outgoing', align: 'left', render: (row) => row.outgoing_operator_name || '-' },
+                  { key: 'incoming_operator_name', label: 'Incoming', align: 'left', render: (row) => row.incoming_operator_name || '-' },
+                  { key: 'custody_mode', label: 'Custody', align: 'center', render: (row) => String(row.custody_mode || '').replace(/_/g, ' ') },
+                  { key: 'counted_cash_amount', label: 'Counted', valueTone: (row) => row.counted_cash_amount == null ? 'muted' : 'secondary', align: 'left', render: (row) => row.counted_cash_amount == null ? 'Not counted' : money(row.counted_cash_amount, currencySymbol) },
+                  { key: 'variance_amount', label: 'Variance', valueTone: (row) => row.variance_amount == null ? 'muted' : Number(row.variance_amount) < 0 ? 'danger' : 'secondary', align: 'left', render: (row) => row.variance_amount == null ? 'Not attributed' : money(row.variance_amount, currencySymbol) }
                 ]}
                 rows={cashierLifecycle.handoffs?.rows || []}
                 searchQuery={overviewSearchQuery}
@@ -1014,7 +1038,7 @@ function PosReportsAnalyticsWorkspace({
             </div>
           ) : null}
 
-          {renderedTab === 'sales' && granularity === 'yearly' ? (
+          {renderedTab === 'sales' && displayGranularity === 'yearly' ? (
             <SectionCard title="Year-over-Year">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -1033,9 +1057,9 @@ function PosReportsAnalyticsWorkspace({
 
           {renderedTab === 'top_items' ? (
             <PosReportsTopItemsTable
-              rows={granularity === 'yearly'
+              rows={displayGranularity === 'yearly'
                 ? (yearlyReport.top_items || [])
-                : granularity === 'monthly'
+                : displayGranularity === 'monthly'
                   ? (monthlyReport.top_items || [])
                   : (dailyReport.top_items || [])}
               currencySymbol={currencySymbol}
@@ -1046,7 +1070,8 @@ function PosReportsAnalyticsWorkspace({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PosPageFrame>
   );
 }
 

@@ -9,6 +9,8 @@ import {
   YAxis
 } from 'recharts';
 import PosReportsDropdown from './PosReportsDropdown.jsx';
+import PosMobileDataCard from './PosMobileDataCard.jsx';
+import { getPosReportSignedValueTone, getPosReportValueToneClass } from './posReportValueTones.js';
 
 const COMPARISON_GRANULARITIES = [
   { value: 'daily', label: 'Daily' },
@@ -59,16 +61,17 @@ const COMPARISON_METRICS = [
 ];
 
 const resolveMetric = (summary = {}, key) => Number(summary?.[key] || 0);
+const metricValueTone = (value, emphasis = false) => getPosReportSignedValueTone(value, emphasis ? 'brand' : 'secondary');
 
 const DeltaValue = ({ value, currencySymbol, isCurrency = true }) => {
   const numericValue = Number(value || 0);
-  const positive = numericValue >= 0;
-  const Icon = positive ? ArrowUpRight : ArrowDownRight;
+  const tone = numericValue > 0 ? 'positive' : numericValue < 0 ? 'danger' : 'secondary';
+  const Icon = numericValue > 0 ? ArrowUpRight : numericValue < 0 ? ArrowDownRight : null;
   return (
-    <span className={`inline-flex items-center gap-1 font-black ${positive ? 'text-emerald-600' : 'text-rose-600'}`}>
-      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+    <span className={`inline-flex items-center gap-1 font-black ${getPosReportValueToneClass(tone)}`}>
+      {Icon ? <Icon className="h-3.5 w-3.5" aria-hidden="true" /> : null}
       <span>{isCurrency ? money(numericValue, currencySymbol) : formatNumber(numericValue)}</span>
-      <span className="sr-only">{positive ? 'increase' : 'decrease'}</span>
+      <span className="sr-only">{numericValue > 0 ? 'increase' : numericValue < 0 ? 'decrease' : 'no change'}</span>
     </span>
   );
 };
@@ -102,6 +105,17 @@ export default function PosReportsComparisonPanel({
     ...entry,
     label: formatTrendLabel(entry.label, granularity)
   }));
+  const getMetricComparison = (metric) => {
+    const currentValue = resolveMetric(current, metric.key);
+    const previousValue = resolveMetric(previous, metric.key);
+    return {
+      currentValue,
+      previousValue,
+      delta: currentValue - previousValue,
+      deltaPercent: percentageDelta(currentValue, previousValue),
+      isCurrency: metric.key !== 'total_transactions'
+    };
+  };
 
   return (
     <div className="space-y-4">
@@ -130,42 +144,65 @@ export default function PosReportsComparisonPanel({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/60" aria-labelledby="sales-comparison-summary-title">
-        <div className="border-b border-slate-200 px-4 py-3">
+      <section className="min-w-0 min-[1200px]:overflow-hidden min-[1200px]:rounded-xl min-[1200px]:border min-[1200px]:border-slate-200 min-[1200px]:bg-white min-[1200px]:shadow-sm min-[1200px]:shadow-slate-200/60" aria-labelledby="sales-comparison-summary-title">
+        <div className="mb-2 min-[1200px]:mb-0 min-[1200px]:border-b min-[1200px]:border-slate-200 min-[1200px]:px-4 min-[1200px]:py-3">
           <h3 id="sales-comparison-summary-title" className="text-sm font-black text-slate-900">Sales Comparison Summary</h3>
           <p className="mt-1 text-[11px] font-semibold text-slate-500">Key performance comparison for the selected periods.</p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px] table-fixed text-[13px]">
+        <div className="hidden overflow-x-auto min-[768px]:block">
+          <table className="pos-reports-comparison-table w-full min-w-[700px] table-fixed text-[13px]">
             <thead className="border-b border-slate-200 bg-[#F7FAFF] text-[11px] text-[#0F172A]">
               <tr>
                 <th scope="col" className="w-[27%] px-4 py-3 text-left font-black">Metric</th>
                 <th scope="col" className="w-[24%] px-4 py-3 text-right font-black">Current Period</th>
                 <th scope="col" className="w-[24%] px-4 py-3 text-right font-black">Comparison Period</th>
-                <th scope="col" className="w-[15%] px-4 py-3 text-right font-black">Change</th>
-                <th scope="col" className="w-[10%] px-4 py-3 text-right font-black">Change %</th>
+                <th scope="col" className="hidden w-[15%] px-4 py-3 text-right font-black min-[1200px]:table-cell">Change</th>
+                <th scope="col" className="hidden w-[10%] px-4 py-3 text-right font-black min-[1200px]:table-cell">Change %</th>
+                <th scope="col" className="w-[25%] px-3 py-3 text-right font-black min-[1200px]:hidden">Change / %</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {COMPARISON_METRICS.map((metric) => {
-                const currentValue = resolveMetric(current, metric.key);
-                const previousValue = resolveMetric(previous, metric.key);
-                const delta = currentValue - previousValue;
-                const deltaPercent = percentageDelta(currentValue, previousValue);
-                const isCurrency = metric.key !== 'total_transactions';
+                const { currentValue, previousValue, delta, deltaPercent, isCurrency } = getMetricComparison(metric);
                 return (
                   <tr key={metric.key} className="odd:bg-white even:bg-[#F8FBFF] text-slate-700 transition-colors hover:bg-[#EEF5FF]">
                     <th scope="row" className="px-4 py-2.5 text-left font-black text-[#0F172A]">{metric.label}</th>
-                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-[#334155]">{metric.format(currentValue, currencySymbol)}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-[#334155]">{metric.format(previousValue, currencySymbol)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums"><DeltaValue value={delta} currencySymbol={currencySymbol} isCurrency={isCurrency} /></td>
-                    <td className="px-4 py-2.5 text-right font-black tabular-nums"><DeltaValue value={deltaPercent} currencySymbol={currencySymbol} isCurrency={false} />%</td>
+                    <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${getPosReportValueToneClass(metricValueTone(currentValue, true))}`}>{metric.format(currentValue, currencySymbol)}</td>
+                    <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${getPosReportValueToneClass(metricValueTone(previousValue))}`}>{metric.format(previousValue, currencySymbol)}</td>
+                    <td className="hidden px-4 py-2.5 text-right tabular-nums min-[1200px]:table-cell"><DeltaValue value={delta} currencySymbol={currencySymbol} isCurrency={isCurrency} /></td>
+                    <td className="hidden px-4 py-2.5 text-right font-black tabular-nums min-[1200px]:table-cell"><DeltaValue value={deltaPercent} currencySymbol={currencySymbol} isCurrency={false} />%</td>
+                    <td className="px-3 py-2.5 text-right font-black tabular-nums min-[1200px]:hidden">
+                      <span className="inline-flex flex-wrap justify-end gap-x-1">
+                        <DeltaValue value={delta} currencySymbol={currencySymbol} isCurrency={isCurrency} />
+                        <span className="font-semibold text-slate-500">(<DeltaValue value={deltaPercent} currencySymbol={currencySymbol} isCurrency={false} />%)</span>
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+        <ul className="grid min-w-0 gap-2 min-[768px]:hidden" data-testid="pos-comparison-summary-mobile" aria-label="Sales comparison summary cards">
+          {COMPARISON_METRICS.map((metric) => {
+            const { currentValue, previousValue, delta, deltaPercent, isCurrency } = getMetricComparison(metric);
+            return (
+              <li key={metric.key} className="min-w-0">
+                <PosMobileDataCard
+                  titleLabel="Metric"
+                  title={metric.label}
+                  titleClassName={getPosReportValueToneClass('primary')}
+                  fields={[
+                    { key: 'current-period', label: 'Current Period', value: metric.format(currentValue, currencySymbol), valueClassName: getPosReportValueToneClass(metricValueTone(currentValue, true)), align: 'right', numeric: true },
+                    { key: 'comparison-period', label: 'Comparison Period', value: metric.format(previousValue, currencySymbol), valueClassName: getPosReportValueToneClass(metricValueTone(previousValue)), align: 'right', numeric: true },
+                    { key: 'change', label: 'Change', value: <DeltaValue value={delta} currencySymbol={currencySymbol} isCurrency={isCurrency} />, valueClassName: getPosReportValueToneClass(delta > 0 ? 'positive' : delta < 0 ? 'danger' : 'secondary'), align: 'right', numeric: true },
+                    { key: 'change-percent', label: 'Change %', value: <span className="inline-flex items-center gap-1"><DeltaValue value={deltaPercent} currencySymbol={currencySymbol} isCurrency={false} />%</span>, valueClassName: getPosReportValueToneClass(deltaPercent > 0 ? 'positive' : deltaPercent < 0 ? 'danger' : 'secondary'), align: 'right', numeric: true }
+                  ]}
+                />
+              </li>
+            );
+          })}
+        </ul>
       </section>
 
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60" aria-labelledby="sales-comparison-trend-title">

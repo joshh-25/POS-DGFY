@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import PosReportsComparisonPanel from '../components/PosReportsComparisonPanel.jsx';
@@ -39,11 +39,48 @@ describe('POS reports comparison panel', () => {
     render(<PosReportsComparisonPanel comparison={comparison} />);
 
     expect(screen.getByText('Sales Comparison Summary')).toBeTruthy();
-    expect(screen.getByText('Net Sales')).toBeTruthy();
-    expect(screen.getByText('₱17,910.00')).toBeTruthy();
-    expect(screen.getByText('₱16,420.00')).toBeTruthy();
+    const mobileSummary = screen.getByTestId('pos-comparison-summary-mobile');
+    expect(mobileSummary.querySelectorAll('li')).toHaveLength(4);
+    expect(mobileSummary.className).toContain('min-[768px]:hidden');
+    const summaryTable = screen.getByRole('table');
+    expect(within(summaryTable).getByRole('columnheader', { name: 'Change' }).className).toContain('min-[1200px]:table-cell');
+    expect(within(summaryTable).getByRole('columnheader', { name: 'Change / %' }).className).toContain('min-[1200px]:hidden');
+    expect(within(mobileSummary).getByText('Net Sales')).toBeTruthy();
+    expect(within(mobileSummary).getByText('₱17,910.00')).toBeTruthy();
+    expect(within(mobileSummary).getByText('₱16,420.00')).toBeTruthy();
     expect(screen.getByText('Aug 27, 2026 – Aug 28, 2026 vs Aug 25, 2026 – Aug 26, 2026')).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Line chart comparing current and previous period net sales' })).toBeTruthy();
+  });
+
+  it('uses the shared hierarchy for selected values and semantic comparison deltas', () => {
+    const { container, unmount } = render(<PosReportsComparisonPanel comparison={comparison} />);
+    const table = screen.getByRole('table');
+    const firstRow = table.querySelector('tbody tr');
+    const metricLabel = firstRow.querySelector('th');
+    const values = firstRow.querySelectorAll('td');
+
+    expect(metricLabel.className).toContain('text-[#0F172A]');
+    expect(values[0].className).toContain('text-[#15579B]');
+    expect(values[1].className).toContain('text-[#475569]');
+    expect(values[2].querySelector('span').className).toContain('text-[#059669]');
+
+    const mobileCard = container.querySelector('[data-testid="pos-comparison-summary-mobile"] article');
+    expect(within(mobileCard).getByText('Net Sales').className).toContain('text-[#0F172A]');
+    expect(mobileCard.querySelectorAll('dd')[0].className).toContain('text-[#15579B]');
+    expect(mobileCard.querySelectorAll('dd')[1].className).toContain('text-[#475569]');
+    unmount();
+
+    const decliningComparison = {
+      ...comparison,
+      flexible_range: {
+        ...comparison.flexible_range,
+        current: { ...comparison.flexible_range.current, net_sales: 100 },
+        previous: { ...comparison.flexible_range.previous, net_sales: 200 }
+      }
+    };
+    render(<PosReportsComparisonPanel comparison={decliningComparison} />);
+    const decliningDelta = screen.getByRole('table').querySelector('tbody tr td:nth-of-type(3) span');
+    expect(decliningDelta.className).toContain('text-[#DC2626]');
   });
 
   it('uses the shared Reports dropdown so comparison granularity changes in one interaction', async () => {
