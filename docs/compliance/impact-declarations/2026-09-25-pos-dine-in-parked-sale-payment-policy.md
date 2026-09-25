@@ -58,3 +58,5 @@ permission, inventory-authority, and payment settlement boundaries.
 - Local browser verification covers the scheduled dine-in queue, repaired
   payment timing, cash-collection modal, and hidden page/API errors without
   submitting a financial payment.
+- Shared POS behavior fixtures include the explicit delivery cash timing
+  contract required by the payment-timing guard.

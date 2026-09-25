@@ -20,6 +20,7 @@ const DOWNPAYMENT_ORDER = {
   fulfillment_status: 'out_for_delivery',
   order_method: 'delivery',
   payment_type: 'cash',
+  payment_timing: 'on_delivery',
   payment_status: 'partially_paid',
   amount_paid: 200,
   balance_due: 800,
