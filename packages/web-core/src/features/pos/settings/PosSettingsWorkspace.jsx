@@ -43,6 +43,7 @@ import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSett
 import PosEmployeesSettingsPane from './PosEmployeesSettingsPane.jsx';
 import PosProfileSettingsPane from './PosProfileSettingsPane.jsx';
 import PosSettingsTabNavigation from './PosSettingsTabNavigation.jsx';
+import PosPageFrame from '../components/PosPageFrame.jsx';
 import usePosSetupSettingsController from './usePosSetupSettingsController.js';
 import useStorefrontSettingsController from './useStorefrontSettingsController.js';
 import PosSetupSettingsPane from './PosSetupSettingsPane.jsx';
@@ -1900,7 +1901,7 @@ export default function PosSettingsWorkspace({
   };
 
   return (
-    <div id={sectionId} data-pos-settings-workspace="true" className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3">
+    <PosPageFrame id={sectionId} page="settings" className="max-[767px]:overflow-x-clip" data-pos-settings-workspace="true">
       <PosSettingsTabNavigation
         tabs={SETTINGS_TABS}
         activeTab={activeTab}
@@ -1911,7 +1912,7 @@ export default function PosSettingsWorkspace({
         role="tabpanel"
         aria-labelledby={`pos-settings-tab-${renderedTab}`}
         tabIndex={-1}
-        className="min-w-0 pt-2 sm:pt-0"
+        className="min-w-0"
         style={paneInlineStyle}
       >
         {renderPane()}
@@ -2147,6 +2148,6 @@ export default function PosSettingsWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PosPageFrame>
   );
 }

@@ -23,6 +23,7 @@ import StorefrontGallerySettings from './StorefrontGallerySettings.jsx';
 import StorefrontDeliveryPartnersSettings from './StorefrontDeliveryPartnersSettings.jsx';
 import StorefrontReviewsSettings from './StorefrontReviewsSettings.jsx';
 import { STOREFRONT_TYPOGRAPHY } from './StorefrontSectionPrimitives.jsx';
+import PosSubtabNavigation from '../components/PosSubtabNavigation.jsx';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -166,88 +167,6 @@ function StorefrontDisplayOptions({ storefrontForm, canInteract, storefrontBoole
         />
       </div>
     </section>
-  );
-}
-
-function StorefrontSubtabNavigation({ activeSubtab, onChange, disabled }) {
-  const sectionsViewportRef = useRef(null);
-  const activeSubtabIndex = STOREFRONT_SUBTABS.findIndex((tab) => tab.id === activeSubtab);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (activeSubtabIndex <= 0 || activeSubtabIndex >= STOREFRONT_SUBTABS.length - 1) return undefined;
-
-    const viewport = sectionsViewportRef.current;
-    if (!viewport || viewport.scrollWidth <= viewport.clientWidth) return undefined;
-
-    const activeSectionElement = document.getElementById(`pos-storefront-tab-${activeSubtab}`);
-    if (!activeSectionElement || !viewport.contains(activeSectionElement)) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      const viewportRect = viewport.getBoundingClientRect();
-      const sectionRect = activeSectionElement.getBoundingClientRect();
-      const sectionCenter = sectionRect.left - viewportRect.left + viewport.scrollLeft + (sectionRect.width / 2);
-      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      viewport.scrollTo({
-        left: Math.min(maxScrollLeft, Math.max(0, sectionCenter - (viewport.clientWidth / 2))),
-        behavior: 'smooth'
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeSubtab, activeSubtabIndex]);
-
-  const handleKeyDown = (event) => {
-    const currentIndex = STOREFRONT_SUBTABS.findIndex((tab) => tab.id === activeSubtab);
-    if (currentIndex < 0) return;
-
-    let nextIndex = null;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (currentIndex + 1) % STOREFRONT_SUBTABS.length;
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (currentIndex - 1 + STOREFRONT_SUBTABS.length) % STOREFRONT_SUBTABS.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = STOREFRONT_SUBTABS.length - 1;
-    }
-
-    if (nextIndex === null) return;
-
-    event.preventDefault();
-    onChange(STOREFRONT_SUBTABS[nextIndex].id);
-    window.requestAnimationFrame(() => {
-      document.getElementById(`pos-storefront-tab-${STOREFRONT_SUBTABS[nextIndex].id}`)?.focus();
-    });
-  };
-
-  return (
-    <div ref={sectionsViewportRef} role="tablist" aria-label="Storefront settings sections" className="-mx-1 overflow-x-auto">
-      <div className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4 min-[1200px]:px-0">
-        {STOREFRONT_SUBTABS.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeSubtab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              id={`pos-storefront-tab-${tab.id}`}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-controls="pos-storefront-panel"
-              tabIndex={active ? 0 : -1}
-              onKeyDown={handleKeyDown}
-              disabled={disabled}
-              onClick={() => onChange(tab.id)}
-              className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 sm:px-3 min-[1200px]:min-h-9 min-[1200px]:w-full min-[1200px]:shrink min-[1200px]:whitespace-normal min-[1200px]:px-4 min-[1200px]:py-0 ${active ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'} disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0">{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -1563,7 +1482,16 @@ export default function PosStorefrontSettingsPane({
 
   return (
     <div className={`grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
-      <StorefrontSubtabNavigation activeSubtab={activeSubtab} onChange={handleSubtabChange} disabled={isEditing} />
+      <PosSubtabNavigation
+        tabs={STOREFRONT_SUBTABS}
+        activeTab={activeSubtab}
+        onTabChange={handleSubtabChange}
+        ariaLabel="Storefront settings sections"
+        idPrefix="pos-storefront-tab"
+        panelId="pos-storefront-panel"
+        disabled={isEditing}
+        desktopColumns={4}
+      />
       <p className="sr-only" aria-live="polite">
         {Object.values(storefrontBooleanState).some((status) => status === 'saving')
           ? 'Saving Storefront setting.'

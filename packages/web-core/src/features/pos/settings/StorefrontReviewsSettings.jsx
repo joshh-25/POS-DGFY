@@ -6,7 +6,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import PosSettingsPagination from './PosSettingsPagination.jsx';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
+import PosTableSurface from '../components/PosTableSurface.jsx';
 import {
   STOREFRONT_TYPOGRAPHY,
   StorefrontEmptyState,
@@ -230,7 +231,7 @@ function ReviewSummary({ summary, reviews }) {
 
 function ReviewList({ reviews, hasOrderReferences }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white" data-testid="storefront-reviews-list" role="table" aria-label="Customer reviews">
+    <PosTableSurface data-testid="storefront-reviews-list" role="table" aria-label="Customer reviews">
       <div className={`hidden border-b border-slate-100 bg-slate-50 px-3 py-2.5 text-[11px] font-extrabold uppercase tracking-[0.06em] text-[#64748B] sm:grid ${hasOrderReferences ? 'grid-cols-[minmax(130px,1.1fr)_minmax(90px,0.65fr)_minmax(220px,2fr)_minmax(110px,0.7fr)_minmax(140px,0.85fr)]' : 'grid-cols-[minmax(130px,1.1fr)_minmax(90px,0.65fr)_minmax(220px,2fr)_minmax(140px,0.85fr)]'}`} role="row">
         <span role="columnheader">Customer</span><span role="columnheader">Rating</span><span role="columnheader">Review</span>{hasOrderReferences ? <span role="columnheader">Order</span> : null}<span role="columnheader">Date</span>
       </div>
@@ -243,7 +244,7 @@ function ReviewList({ reviews, hasOrderReferences }) {
           <div className="text-[11px] leading-4 text-slate-500" role="cell">{formatDateTime(review.submittedAt)}</div>
         </div>
       ))}
-    </div>
+    </PosTableSurface>
   );
 }
 
@@ -383,11 +384,11 @@ export default function StorefrontReviewsSettings({ tenantId = '' }) {
           </div>
           {!hasReviews ? <StorefrontEmptyState icon={Star} title="No reviews yet." description="Customer reviews will appear here once they are submitted through your storefront." className="bg-white py-10" /> : filteredReviews.length === 0 ? <ReviewFilteredEmptyState onClear={clearFilters} /> : <>
             {view === 'list' ? <ReviewList reviews={visibleReviews} hasOrderReferences={hasOrderReferences} /> : <ReviewGrid reviews={visibleReviews} />}
-            <PosSettingsPagination
-              page={safePage}
+            <GlobalPagination
+              currentPage={safePage}
               totalPages={totalPages}
               pageSize={pageSize}
-              total={filteredReviews.length}
+              totalItems={filteredReviews.length}
               itemLabel="reviews"
               pageSizeOptions={PAGE_SIZE_OPTIONS}
               pageSizeLabel="Reviews per page"
@@ -397,7 +398,8 @@ export default function StorefrontReviewsSettings({ tenantId = '' }) {
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
               disabled={loading}
-              className="mt-3"
+              ariaLabel="Reviews pagination"
+              className={`${POS_PAGINATION_FOOTER_CLASS} mt-3`}
             />
           </>}
         </>
