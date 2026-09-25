@@ -275,6 +275,7 @@ export default function TerminalPageLayout({
     };
     return titles[posViewMode] || 'POS Catalog';
   }, [posViewMode]);
+  const activeHeaderSubtitle = posViewMode === 'items' ? 'Catalog Description' : '';
   const notifications = useMemo(() => {
     const items = [];
     if (incomingOrders.length > 0) {
@@ -341,16 +342,17 @@ export default function TerminalPageLayout({
   const isFloatingSidebarLayout = IS_DGFY_POS_SURFACE
     ? (isTabletLayout || !isDesktopWide)
     : !isDesktopWide;
+  const isItemsView = posViewMode === 'items';
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
     ? (isTabletLayout
       ? 'md:grid md:grid-cols-[68px_minmax(0,1fr)]'
       : `lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`)
     : `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`;
-  const persistentSidebarClassName = isTabletLayout
+  const persistentSidebarClassName = `${isTabletLayout
     ? 'flex min-h-0 overflow-hidden'
     : IS_DGFY_POS_SURFACE
       ? 'hidden lg:flex lg:min-h-0 lg:overflow-hidden'
-    : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden';
+    : 'hidden xl:flex xl:min-h-0 xl:overflow-hidden'} ${isItemsView ? 'pos-items-persistent-sidebar' : ''}`;
   const persistentSidebarFallbackClassName = isTabletLayout
     ? 'block bg-white p-2 text-sm text-slate-500'
     : IS_DGFY_POS_SURFACE
@@ -392,14 +394,17 @@ export default function TerminalPageLayout({
   const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  const workspacePaneClassName = isCheckoutWorkspaceMode
+  const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
+  const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
   const workspaceContentClassName = isCheckoutWorkspaceMode
     ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
-    : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
-  const workspaceSectionClassName = isCheckoutWorkspaceMode
-    ? 'h-full min-h-0 min-w-0 max-w-full overflow-hidden transition'
+    : isItemsCatalogWorkspace
+      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ''}`
+      : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
+  const workspaceSectionClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
+    ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
 
   useEffect(() => {
@@ -546,7 +551,7 @@ export default function TerminalPageLayout({
   );
 
   const renderCompanyProfileMenu = (className, mutedEmailClassName) => (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className} dgfy-pos-header-profile`}>
       <button
         type="button"
         onClick={() => setCompanyMenuOpen((open) => !open)}
@@ -558,8 +563,8 @@ export default function TerminalPageLayout({
           <UserRound size={22} className="text-white" />
         </span>
         <span className="min-w-0 leading-tight">
-          <span className="block truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</span>
-          <span className={`block truncate text-[11px] ${mutedEmailClassName}`}>{terminalUser?.email || 'Sign in required'}</span>
+          <span className="block truncate text-[12px] font-extrabold dgfy-pos-header-profile-name">{terminalUser?.username || 'Locked'}</span>
+          <span className={`block truncate text-[11px] ${mutedEmailClassName} dgfy-pos-header-profile-email`}>{terminalUser?.email || 'Sign in required'}</span>
         </span>
       </button>
       {companyMenuOpen && (
@@ -623,7 +628,11 @@ export default function TerminalPageLayout({
   );
 
   return (
-    <div className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}>
+    <div
+      className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}
+      data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}
+      data-pos-items-view={isItemsView ? 'true' : undefined}
+    >
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
         <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>
@@ -676,8 +685,8 @@ export default function TerminalPageLayout({
         key={locked ? 'terminal-header-locked' : 'terminal-header-unlocked'}
         className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName} dgfy-pos-topbar`}
       >
-        <div className={headerShellClassName}>
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className={`${headerShellClassName} dgfy-pos-header-shell`}>
+          <div className="flex min-w-0 flex-1 items-center gap-3 dgfy-pos-header-main">
             <button
               type="button"
               onClick={() => {
@@ -695,12 +704,17 @@ export default function TerminalPageLayout({
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 dgfy-pos-header-title">
               <div className="flex min-w-0 items-center gap-2 lg:gap-3">
                 <div className="min-w-0 flex-1">
                   <h1 className="min-w-0 truncate text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]">
                     {activeHeaderTitle}
                   </h1>
+                  {activeHeaderSubtitle ? (
+                    <p className="hidden truncate text-xs font-medium leading-4 text-[#64748B] sm:block">
+                      {activeHeaderSubtitle}
+                    </p>
+                  ) : null}
                   <div
                     className="mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
                     data-testid="pos-mobile-terminal-indicator"
@@ -717,10 +731,11 @@ export default function TerminalPageLayout({
                     </span>
                   </div>
                 </div>
-                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex">
+                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal">
                   <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                   <span className="text-[11px] font-extrabold text-slate-800">
-                    Terminal: {normalizedActiveTerminalId || 'COUNTER-01'}
+                    <span className="dgfy-pos-header-terminal-prefix">Terminal: </span>
+                    {normalizedActiveTerminalId || 'COUNTER-01'}
                   </span>
                   <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
                     • {isOnline ? 'Online' : 'Offline'}
@@ -729,7 +744,7 @@ export default function TerminalPageLayout({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4 dgfy-pos-header-actions">
             <PosTextSizeControl
               id="pos-text-size-header"
               value={posTextSize}
@@ -738,7 +753,9 @@ export default function TerminalPageLayout({
             />
             <div
               data-testid="pos-header-park-slot"
-              className="relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5"
+              className={posViewMode === 'checkout'
+                ? 'relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'
+                : 'hidden'}
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
@@ -962,7 +979,12 @@ export default function TerminalPageLayout({
           )}
 
           {isOperationsWorkspaceMode && (
-            <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
+            <div
+              key="operations-workspace"
+              className={posViewMode === 'items'
+                ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col catalog-slide-enter'
+                : 'min-w-0 max-w-full catalog-slide-enter'}
+            >
             {posViewMode === 'audit' ? (
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading audit history...</div>}>
                 <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} locations={locationsState?.locations || []} />

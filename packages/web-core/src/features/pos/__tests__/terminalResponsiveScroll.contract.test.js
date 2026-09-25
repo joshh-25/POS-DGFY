@@ -61,6 +61,24 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
   });
 
+  it('uses the portrait tablet shell only and lets landscape tablets inherit desktop layout', () => {
+    expect(terminalPageContent).toContain("import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';");
+    expect(terminalPageContent).toContain('return isPosTabletPortraitViewport({');
+    expect(terminalPageContent).toContain('setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletPortraitViewport({');
+    expect(appStylesContent).toContain('@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px)');
+    expect(appStylesContent).toContain('(orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse)');
+    expect(appStylesContent).toContain('.pos-items-desktop-card-grid');
+    expect(appStylesContent).toContain('grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr);');
+    expect(appStylesContent).toContain('grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 7.5rem);');
+    expect(appStylesContent).toContain('grid-auto-rows: minmax(11rem, auto);');
+    expect(appStylesContent).toContain('min-height: 11rem;');
+    expect(appStylesContent).toContain('grid-template-rows: auto auto;');
+    expect(appStylesContent).toContain('grid-column: 1 / -1 !important;');
+    expect(appStylesContent).toContain('flex: 1 1 0%;');
+    expect(appStylesContent).toContain('.dgfy-pos-history-pagination-footer');
+    expect(appStylesContent).toContain('.pos-categories-mobile-grid');
+  });
+
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {
     expect(terminalLayoutContent).toContain("const documentScrollLockClassName = 'dgfy-pos-document-scroll-lock';");
     expect(terminalLayoutContent).toContain('document.documentElement.classList.add(documentScrollLockClassName);');
@@ -97,9 +115,10 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
     expect(terminalLayoutContent).toContain(": 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y'");
     expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2');
-    expect(terminalLayoutContent).toContain('h-full min-h-0 min-w-0 max-w-full overflow-hidden transition');
+    expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
-    expect(terminalLayoutContent).toContain('className="min-w-0 max-w-full catalog-slide-enter"');
+    expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
+    expect(terminalLayoutContent).toContain("'flex h-full min-h-0 min-w-0 max-w-full flex-col catalog-slide-enter'");
     expect(terminalLayoutContent).toContain('data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter"');
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
   });
@@ -351,7 +370,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll:hover::-webkit-scrollbar-thumb,');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar {');
     expect(appStylesContent).not.toContain(".dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {");
-    expect(appStylesContent).not.toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
+    expect(appStylesContent).not.toMatch(/\.dgfy-pos-current-sale-actions\[data-has-parked-sale-controls=["']true["']\][^{]*\{[^}]*grid-template-columns:/s);
     expect(appStylesContent).toContain('@media (min-width: 640px) and (max-width: 1023.98px)');
     expect(appStylesContent).toContain('.dgfy-pos-tablet-action-grid > button {');
     expect(appStylesContent).toContain('min-height: 54px;');

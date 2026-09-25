@@ -97,7 +97,7 @@ function useSplitViewportEligible() {
   return isEligible;
 }
 
-function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false, borderless = false }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -127,7 +127,9 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
   }
 
   return (
-    <section className={`min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
+    <section className={`${borderless
+      ? 'min-w-0 max-w-full rounded-xl bg-white shadow-sm shadow-slate-200/70'
+      : 'min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70'} ${className}`}>
       {children}
     </section>
   );
