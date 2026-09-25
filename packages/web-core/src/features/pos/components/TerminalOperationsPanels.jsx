@@ -124,9 +124,8 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
     );
   }
 
-  // Settings already owns its inner cards and navigation surfaces. Keep the shell
-  // spacing for consistent content alignment, while removing the redundant card
-  // chrome that constrains small viewports.
+  // Bare workspaces own their page frame, so the caller controls their outer
+  // spacing while this shell removes only the redundant card chrome.
   if (bare) {
     return (
       <section className={`min-w-0 max-w-full ${className}`}>
@@ -1208,9 +1207,8 @@ function IncomingQueueWorkspace({
           </Button>
         </div>
       ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
-        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
-        // table view must respect the run filter exactly like the card view below, or switching
-        // to Table would silently bypass it.
+        // Both views use displayedIncomingOrders: run-filtered active orders, or the separately
+        // sorted dine-in schedule when that tab is selected.
         <QueueOrderTableView
           orders={displayedIncomingOrders}
           isDeliveryRunMode={isDeliveryRunMode && !isDineInScheduleView}

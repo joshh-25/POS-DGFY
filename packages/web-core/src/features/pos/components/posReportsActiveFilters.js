@@ -1,20 +1,10 @@
+import { formatPosDateRangeLabel } from './posFilterLabelUtils.js';
+
 const GRANULARITY_LABELS = {
   daily: 'Daily',
   weekly: 'Weekly',
   monthly: 'Monthly',
   yearly: 'Yearly'
-};
-
-const formatDate = (value) => {
-  const raw = String(value || '').trim();
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return raw;
-
-  const [, year, month, day] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day));
-  return Number.isNaN(date.getTime())
-    ? raw
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 export function buildPosReportsActiveFilters({
@@ -31,12 +21,7 @@ export function buildPosReportsActiveFilters({
   const filters = [];
 
   if (dateFilterApplied) {
-    const dateFrom = formatDate(dateRange.dateFrom);
-    const dateTo = formatDate(dateRange.dateTo);
-    const dateLabel = dateFrom && dateTo
-      ? (dateFrom === dateTo ? dateFrom : `${dateFrom} – ${dateTo}`)
-      : dateFrom || dateTo || 'Custom range';
-    filters.push({ key: 'date', label: `Date: ${dateLabel}` });
+    filters.push({ key: 'date', label: `Date: ${formatPosDateRangeLabel(dateRange.dateFrom, dateRange.dateTo)}` });
   }
 
   if (cashierLabel) filters.push({ key: 'cashier', label: `Cashier: ${cashierLabel}` });

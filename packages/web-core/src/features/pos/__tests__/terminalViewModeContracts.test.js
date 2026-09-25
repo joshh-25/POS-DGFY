@@ -498,7 +498,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain('bare={isSettingsView}');
+    expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
   });
@@ -509,11 +509,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode(settingsTargetViewMode)}");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Yearly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Sales Comparison');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('POS Profit/Loss');
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Comparison'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Top Selling Items'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Profit/Loss'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -586,7 +587,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain("orderSource: [");
     expect(posHistoryPanelContent).toContain("{ value: 'all', label: 'All' }");
     expect(posHistoryPanelContent).toContain('Transaction sources');
-    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-source-tab-${sourceTab.value}`}');
+    expect(posHistoryPanelContent).toContain('testId: `pos-history-source-tab-${sourceTab.value}`');
     expect(posHistoryPanelContent).not.toContain('testId="pos-history-filter-source"');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
@@ -717,15 +718,17 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 231 (#1290): the tab view's grid maps over visibleIncomingOrders (the run-filtered
-    // view of sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders
-    // itself is still the sort's own output, feeding the filter rather than the render.
-    expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');
-    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
-    // Phase 232 (#1289), §2.7: the split view's own render of the (also now run-filtered) list --
-    // including its own empty-state branch -- lives in IncomingQueueOrderList.jsx's pure
-    // extraction; see terminalOperationsPanelsContent above for the tab view's own render.
-    expect(terminalOperationsPanelsContent).toContain('orders={visibleIncomingOrders}');
+    // The active queue uses the run-filtered list; the dine-in schedule view substitutes its
+    // separately sorted schedule list before either table or card rendering.
+    expect(terminalOperationsPanelsContent).toContain('const displayedIncomingOrders = isDineInScheduleView');
+    expect(terminalOperationsPanelsContent).toContain(': visibleIncomingOrders;');
+    expect(terminalOperationsPanelsContent).toContain('const displayedQueueIsEmpty = isDineInScheduleView');
+    expect(terminalOperationsPanelsContent).toContain(': incomingOrders.length === 0;');
+    expect(terminalOperationsPanelsContent).toContain('displayedQueueIsEmpty ? (');
+    expect(terminalOperationsPanelsContent).toContain('{displayedIncomingOrders.map((order) => {');
+    // The split view uses its own unassigned candidate list; regular table/card views share the
+    // selected active-queue or scheduled list above.
+    expect(terminalOperationsPanelsContent).toContain('orders={displayedIncomingOrders}');
     expect(incomingQueueOrderListContent).toContain('orders.length === 0');
   });
 

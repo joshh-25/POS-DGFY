@@ -3,6 +3,7 @@ import { Banknote, CreditCard, RotateCcw, TrendingUp } from 'lucide-react';
 import { fetchEmployeeCreditReport } from '../services/employeeCreditService.js';
 import { PosReportsKpiCard } from './PosReportsKpiCards.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
+import { getPosReportSignedValueTone } from './posReportValueTones.js';
 
 const money = (value, symbol = '₱') => `${String(symbol).toUpperCase() === 'PHP' ? '₱' : symbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const formatDateTime = (value) => value ? new Date(value).toLocaleString() : '-';
@@ -23,6 +24,7 @@ const buildColumns = (currencySymbol) => [
   {
     key: 'employee',
     label: 'Employee',
+    valueTone: 'primary',
     widthClass: 'min-w-[12rem]',
     render: (entry) => employeeName(entry),
     getSortValue: (entry) => employeeName(entry)
@@ -30,6 +32,7 @@ const buildColumns = (currencySymbol) => [
   {
     key: 'entry_type',
     label: 'Type',
+    align: 'center',
     widthClass: 'min-w-[10rem]',
     render: (entry) => entryTypeLabel(entry),
     getSortValue: (entry) => entryTypeLabel(entry)
@@ -37,7 +40,8 @@ const buildColumns = (currencySymbol) => [
   {
     key: 'amount',
     label: 'Amount',
-    align: 'right',
+    valueTone: (entry) => getPosReportSignedValueTone(entry?.amount),
+    align: 'left',
     widthClass: 'min-w-[8rem]',
     render: (entry) => money(entry.amount, currencySymbol),
     getSortValue: (entry) => Number(entry.amount || 0)
@@ -45,7 +49,8 @@ const buildColumns = (currencySymbol) => [
   {
     key: 'balance_after',
     label: 'Outstanding After',
-    align: 'right',
+    valueTone: (entry) => getPosReportSignedValueTone(entry?.balance_after),
+    align: 'left',
     widthClass: 'min-w-[10rem]',
     render: (entry) => money(entry.balance_after, currencySymbol),
     getSortValue: (entry) => Number(entry.balance_after || 0)
@@ -60,6 +65,8 @@ const buildColumns = (currencySymbol) => [
   {
     key: 'authorization_reference',
     label: 'Reference',
+    valueTone: 'muted',
+    align: 'center',
     widthClass: 'min-w-[12rem]',
     render: (entry) => entry.authorization_reference || '-',
     getSortValue: (entry) => entry.authorization_reference || ''

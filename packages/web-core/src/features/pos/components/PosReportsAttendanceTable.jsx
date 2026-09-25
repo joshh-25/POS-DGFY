@@ -14,18 +14,18 @@ const getWorkedHours = (row) => getWorkedMinutes(row) / 60;
 const hasOpenBreak = (row) => Array.isArray(row?.breaks) && row.breaks.some((breakRow) => String(breakRow?.status || '').toLowerCase() === 'open');
 const getStatus = (row) => { if (hasOpenBreak(row)) return 'On Break'; const status = String(row?.status || '').trim().toLowerCase(); if (status === 'closed' || row?.ended_at) return 'Completed'; if (status === 'open') return 'Active'; return status ? status.replace(/[_-]+/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase()) : 'Unknown'; };
 const formatHours = (value) => Number(value || 0).toFixed(2);
-const statusTone = (status) => status === 'Completed' ? 'text-emerald-600' : status === 'On Break' || status === 'Active' ? 'text-amber-600' : 'text-slate-500';
+const statusTone = (status) => status === 'Completed' ? 'positive' : status === 'Active' ? 'brand' : status === 'On Break' ? 'secondary' : 'muted';
 
 export default function PosReportsAttendanceTable({ rows = [], searchQuery = '' }) {
   const columns = useMemo(() => [
-    { key: 'date', label: 'Date', widthClass: 'w-[135px]', required: true, getValue: (row) => parseDate(row?.started_at)?.getTime() || -Infinity, render: (row) => formatDate(row?.started_at) },
-    { key: 'cashier_name', label: 'Cashier', widthClass: 'w-[160px]', required: true, getValue: getCashier, render: getCashier },
-    { key: 'duty_type', label: 'Duty/Role', widthClass: 'w-[135px]', defaultVisible: false, getValue: getDutyType, render: getDutyType },
-    { key: 'status', label: 'Status', widthClass: 'w-[130px]', required: true, getValue: getStatus, render: (row) => <span className={`font-black ${statusTone(getStatus(row))}`}>{getStatus(row)}</span> },
-    { key: 'started_at', label: 'Time In', widthClass: 'w-[120px]', defaultVisible: true, getValue: (row) => parseDate(row?.started_at)?.getTime() || -Infinity, render: (row) => formatTime(row?.started_at) },
-    { key: 'ended_at', label: 'Time Out', widthClass: 'w-[120px]', defaultVisible: true, getValue: (row) => parseDate(row?.ended_at)?.getTime() || -Infinity, render: (row) => formatTime(row?.ended_at) },
-    { key: 'break_minutes', label: 'Break (Hours)', align: 'right', widthClass: 'w-[125px]', defaultVisible: false, getValue: getBreakHours, render: (row) => formatHours(getBreakHours(row)) },
-    { key: 'worked_minutes', label: 'Worked (Hours)', align: 'right', widthClass: 'w-[135px]', required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: getWorkedHours, render: (row) => formatHours(getWorkedHours(row)) }
+    { key: 'date', label: 'Date', align: 'left', widthClass: 'w-[135px]', required: true, getValue: (row) => parseDate(row?.started_at)?.getTime() || -Infinity, render: (row) => formatDate(row?.started_at) },
+    { key: 'cashier_name', label: 'Cashier', align: 'left', widthClass: 'w-[160px]', required: true, getValue: getCashier, render: getCashier },
+    { key: 'duty_type', label: 'Duty/Role', align: 'left', widthClass: 'w-[135px]', defaultVisible: false, getValue: getDutyType, render: getDutyType },
+    { key: 'status', label: 'Status', valueTone: (row) => statusTone(getStatus(row)), align: 'center', widthClass: 'w-[130px]', required: true, getValue: getStatus, render: (row) => <span className="font-black">{getStatus(row)}</span> },
+    { key: 'started_at', label: 'Time In', align: 'center', widthClass: 'w-[120px]', defaultVisible: true, getValue: (row) => parseDate(row?.started_at)?.getTime() || -Infinity, render: (row) => formatTime(row?.started_at) },
+    { key: 'ended_at', label: 'Time Out', align: 'center', widthClass: 'w-[120px]', defaultVisible: true, getValue: (row) => parseDate(row?.ended_at)?.getTime() || -Infinity, render: (row) => formatTime(row?.ended_at) },
+    { key: 'break_minutes', label: 'Break (Hours)', align: 'center', widthClass: 'w-[125px]', defaultVisible: false, getValue: getBreakHours, render: (row) => formatHours(getBreakHours(row)) },
+    { key: 'worked_minutes', label: 'Worked (Hours)', align: 'center', widthClass: 'w-[135px]', required: true, visibility: { mobile: false, tabletPortrait: false, tabletLandscape: true, desktop: true }, getValue: getWorkedHours, render: (row) => formatHours(getWorkedHours(row)) }
   ], []);
   return <PosReportsResponsiveTable rows={rows} columns={columns} searchQuery={searchQuery} getSearchValue={(row) => [formatDate(row?.started_at), getCashier(row), getDutyType(row), getStatus(row), formatTime(row?.started_at), getBreakHours(row), getWorkedHours(row)].join(' ')} initialSort={{ key: 'date', direction: 'desc' }} title="Attendance sessions" ariaLabel="Attendance sessions table" caption="Attendance sessions showing date, cashier, duty or role, status, time in, time out, break hours, and worked hours." emptyMessage="No attendance sessions were recorded for these filters." searchEmptyMessage="No attendance rows match your search." idPrefix="pos-reports-attendance" resultLabel="attendance sessions" />;
 }

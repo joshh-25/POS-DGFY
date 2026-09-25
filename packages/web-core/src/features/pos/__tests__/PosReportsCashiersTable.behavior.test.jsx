@@ -23,12 +23,12 @@ describe('POS reports cashiers table', () => {
   it('renders the proposed cashier columns from the nested backend summary', () => {
     render(<PosReportsCashiersTable rows={rows} />);
 
-    ['Rank', 'Cashier', 'Transactions', 'Gross Sales (₱)', 'Discounts (₱)', 'Net Sales (₱)'].forEach((label) => {
+    ['Rank', 'Cashier', 'Transactions', 'Gross Sales (₱)', 'Net Sales (₱)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Maya S.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱4,820.00').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('₱2,980.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–2 of 2 cashiers')).toBeTruthy();
   });
 

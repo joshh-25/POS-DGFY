@@ -23,13 +23,13 @@ describe('POS reports top-selling items table', () => {
   it('renders the proposed columns and supported aggregate values', () => {
     render(<PosReportsTopItemsTable rows={rows} totalSales={25185} />);
 
-    ['Rank', 'Items', 'Category', 'Quantity Sold', 'Net Sales (₱)', '% of Total Sales', 'Average Price (₱)', 'Orders'].forEach((label) => {
+    ['Rank', 'Items', 'Quantity Sold', 'Net Sales (₱)', '% of Total Sales', 'Average Price (₱)', 'Orders'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
     });
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     const tableRegion = screen.getByRole('region', { name: 'Top-selling items table' });
     expect(within(tableRegion).getByText('1')).toBeTruthy();
     expect(screen.getAllByText('Coca Cola 1.5L').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Beverages').length).toBeGreaterThan(0);
     expect(screen.getAllByText('15').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱3,400.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('13.5%').length).toBeGreaterThan(0);
@@ -39,15 +39,27 @@ describe('POS reports top-selling items table', () => {
 
     const firstRowCells = tableRegion.querySelectorAll('tbody tr:first-child td');
     const headers = tableRegion.querySelectorAll('thead th');
-    const expectedAlignments = ['center', 'left', 'left', 'center', 'left', 'right', 'left', 'center'];
+    const expectedAlignments = ['center', 'left', 'center', 'left', 'right', 'left', 'center', 'center'];
     expectedAlignments.forEach((alignment, index) => {
       expect(headers[index].className).toContain(`text-${alignment}`);
       expect(firstRowCells[index].className).toContain(`text-${alignment}`);
     });
-    [4, 6].forEach((index) => {
+    [2, 3, 4, 5, 6].forEach((index) => {
       expect(firstRowCells[index].className).toContain('font-semibold');
       expect(firstRowCells[index].className).toContain('tabular-nums');
     });
+  });
+
+  it('right-aligns item names and net sales on mobile', () => {
+    render(<PosReportsTopItemsTable rows={rows} totalSales={25185} />);
+
+    const mobileCard = screen.getByTestId('pos-reports-top-items-mobile-view').querySelector('article');
+    const itemValue = within(mobileCard).getByText('Items', { selector: 'dt' }).nextElementSibling;
+    const netSalesValue = within(mobileCard).getByText('Net Sales (₱)', { selector: 'dt' }).nextElementSibling;
+
+    expect(itemValue.className).toContain('text-right');
+    expect(itemValue.firstElementChild.className).toContain('max-[767px]:justify-end');
+    expect(netSalesValue.className).toContain('text-right');
   });
 
   it('keeps the table usable when there are no top items', () => {

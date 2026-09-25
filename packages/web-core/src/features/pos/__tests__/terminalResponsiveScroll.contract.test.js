@@ -100,8 +100,11 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('locks the checkout workspace while preserving scrolling for other modes', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
-    expect(terminalLayoutContent).toContain(": 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y'");
-    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2');
+    expect(terminalLayoutContent).toContain('dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ?');
+    expect(terminalLayoutContent).toContain("? 'dgfy-pos-scrollbar-hidden' : ''}");
+    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden ${usesStandardPosPageFrame');
+    expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0' : `p-2");
+    expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0' : 'p-2'");
     expect(terminalLayoutContent).toContain('h-full min-h-0 min-w-0 max-w-full overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain('className="min-w-0 max-w-full catalog-slide-enter"');
@@ -266,7 +269,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('@media (max-width: 639.98px)');
     expect(appStylesContent).toContain('row-gap: 0.25rem;');
     expect(appStylesContent).toContain('padding: 0.25rem 0.5rem !important;');
-    expect(appStylesContent).toContain('min-width: 5.75rem;');
+    expect(appStylesContent).toContain('min-width: 3.25rem;');
     expect(appStylesContent).toContain('.dgfy-global-pagination__page-size-trigger');
     expect(appStylesContent).toContain('font-size: 0.75rem;');
     expect(appStylesContent).toContain('.dgfy-pos-shell .dgfy-global-pagination__go-to-input');
@@ -493,7 +496,7 @@ describe('POS terminal responsive scroll contracts', () => {
     // row and the table can still pan horizontally when needed.
     expect(posHistoryContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col gap-0 overflow-x-hidden');
     expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y');
-    expect(posHistoryContent).toContain("w-full min-w-0 max-w-full overscroll-x-contain ${isTabletViewport && !isMobileViewport ? 'overflow-x-auto' : 'overflow-x-hidden'} border-t border-slate-200");
+    expect(posHistoryContent).toMatch(/const historyTableSurfaceClassName = isMobileViewport[\s\S]*?isTabletViewport \? 'overflow-x-auto' : 'overflow-x-hidden'/);
     expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 
