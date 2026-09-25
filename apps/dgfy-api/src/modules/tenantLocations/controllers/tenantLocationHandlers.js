@@ -2,6 +2,7 @@ import {
     listTenantLocationsUseCase,
     createTenantLocationUseCase,
     updateTenantLocationUseCase,
+    updateTenantLocationDineInPaymentPolicyUseCase,
     deactivateTenantLocationUseCase,
     deleteTenantLocationUseCase
 } from '../index.js';
@@ -160,6 +161,27 @@ export const updateTenantLocation = async (req, res, next) => {
     }
 };
 
+export const updateDineInPaymentPolicy = async (req, res, next) => {
+    try {
+        const result = await updateTenantLocationDineInPaymentPolicyUseCase({
+            locationId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Dine-in payment policy updated successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const deactivateTenantLocation = async (req, res, next) => {
     try {
         const result = await deactivateTenantLocationUseCase({
@@ -252,6 +274,7 @@ export default {
     listTenantLocations,
     createTenantLocation,
     updateTenantLocation,
+    updateDineInPaymentPolicy,
     deactivateTenantLocation,
     deleteTenantLocation
 };

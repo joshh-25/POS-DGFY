@@ -59,6 +59,9 @@ const storeQuoteSchema = Joi.object({
     delivery_longitude: Joi.number().min(-180).max(180).allow(null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
     special_instructions: Joi.string().trim().max(2000).allow('', null).optional(),
+    // Quote totals depend on the selected rail because merchant-collected
+    // dine-in payments do not carry the online convenience fee.
+    payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
     // Phase 150 (#866): the customer's checkout-time pay-in-full-vs-downpayment choice, meaningful
     // only at a payment_mode='customer_choice' store -- ignored otherwise (see
     // downpaymentPolicy.js's resolveDownpaymentForTotal). Named payment_election, not payment_mode,

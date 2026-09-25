@@ -1,4 +1,4 @@
-const PAYMENT_TIMING_VALUES = Object.freeze(['upfront', 'on_pickup', 'on_delivery']);
+const PAYMENT_TIMING_VALUES = Object.freeze(['upfront', 'on_pickup', 'on_delivery', 'on_dine_in']);
 
 export const PAYMENT_TIMINGS = PAYMENT_TIMING_VALUES;
 
@@ -11,6 +11,9 @@ export const resolvePaymentTiming = ({ orderMethod, paymentType } = {}) => {
     }
     if (normalizedOrderMethod === 'pickup' && normalizedPaymentType === 'cash') {
         return 'on_pickup';
+    }
+    if (normalizedOrderMethod === 'dine_in' && normalizedPaymentType === 'cash') {
+        return 'on_dine_in';
     }
     return 'upfront';
 };

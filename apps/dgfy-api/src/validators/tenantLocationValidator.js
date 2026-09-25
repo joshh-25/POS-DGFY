@@ -34,6 +34,10 @@ const tenantLocationBaseSchema = Joi.object({
     supports_delivery: Joi.boolean().default(true),
     supports_pickup: Joi.boolean().default(true),
     supports_dine_in: Joi.boolean().default(true),
+    // Dine-in pay-at-store is edited through its own branch-scoped endpoint. It is
+    // intentionally not defaulted here so a generic location PUT cannot silently
+    // reset the separate payment policy when an older client omits the field.
+    allow_dine_in_pay_at_store: Joi.boolean(),
     scheduling_enabled: Joi.boolean().default(true),
     immediate_fulfillment_enabled: Joi.boolean().default(true),
     fulfillment_lead_time_min_days: Joi.number().integer().min(0).max(365).allow(null),
@@ -80,6 +84,11 @@ const updateTenantLocationSchema = tenantLocationBaseSchema
         'object.min': 'At least one field is required for update'
     });
 
+const dineInPaymentPolicySchema = Joi.object({
+    allow_dine_in_pay_at_store: Joi.boolean().strict().required(),
+    expected_updated_at: Joi.date().iso()
+}).unknown(false);
+
 const tenantLocationsQuerySchema = Joi.object({
     include_inactive: Joi.boolean().truthy('true').truthy('1').falsy('false').falsy('0').default(true)
 });
@@ -112,4 +121,5 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 export const validateTenantLocationIdParam = validateSchema(tenantLocationIdParamSchema, 'params', 'validatedParams');
 export const validateCreateTenantLocation = validateSchema(createTenantLocationSchema, 'body', 'validatedData');
 export const validateUpdateTenantLocation = validateSchema(updateTenantLocationSchema, 'body', 'validatedData');
+export const validateDineInPaymentPolicyUpdate = validateSchema(dineInPaymentPolicySchema, 'body', 'validatedData');
 export const validateTenantLocationsQuery = validateSchema(tenantLocationsQuerySchema, 'query', 'validatedQuery');
