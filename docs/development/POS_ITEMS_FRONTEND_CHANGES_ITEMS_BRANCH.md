@@ -2,7 +2,7 @@
 
 Status: audited, rewritten, and committed locally; not pushed
 Branch: `codex/pos-frontend-changes-items`
-Audit date: 2026-09-25
+Audit date: 2026-09-26
 Scope: POS Items/catalog UI and directly required catalog/import/image support
 Comparison base: `ea06c1a56ebf75994f0c8e319394c21a6424536f`
 Recovery ref: `backup/pos-items-before-items-only-rewrite-20260925`
@@ -13,6 +13,12 @@ This branch was rewritten so its branch-specific commit history contains only th
 change set. The earlier broad POS synchronization, checkout/history work, tablet catalog-badge work,
 and history handoff documentation are no longer reachable from
 `codex/pos-frontend-changes-items`.
+
+The first “all Items changes are committed” statement was premature. The final working-tree audit
+found two additional net Items-specific CSS contracts that were still unstaged: touch-safe text-size
+control behavior and mobile Item Options editor body/footer behavior. Those changes are now isolated
+in `ebe113a9a`. The remaining dirty files are excluded non-Items work or shared-file changes whose
+net scope belongs to Checkout, Sell, History, Delivery, Settings, IMS, F&B, or local tooling.
 
 The retained work covers the Items workspace, Categories, Item Options, item add/edit flows, image
 and QR primitives used by those flows, responsive POS presentation, text-size handling, pagination,
@@ -59,8 +65,11 @@ The following are the retained branch commits after the rewrite:
 | `62e9a5ea5` | `docs(pos): reconcile Items-only branch history` | Records the history rewrite, recovery ref, excluded worktree state, and committed scope. |
 | `ce740caa0` | `fix(pos): complete Items responsive contracts` | Completes the Items-only responsive CSS/helper/test contracts, restores shared History pagination options for Items, and validates the production build. |
 
-The documentation-only follow-ups are intentionally separate from the five product commits above.
-The final inventory update is identified by the last commit on this branch after this audit.
+| `a13bb87d9` | `docs(pos): record final Items audit inventory` | Intermediate committed-tree inventory. |
+| `262c8362e` | `fix(pos): complete Items workspace controls` | Pagination primitive, mobile-sheet dialog contract, Item Options footer geometry, text-size/header hooks, and shared Items pagination styling. |
+| `ebe113a9a` | `fix(pos): finish Items mobile control styling` | Touch-safe text-size control behavior and mobile Item Options editor scrolling/footer safe-area behavior found during the final audit. |
+
+The documentation-only follow-up remains separate from the product commits above.
 
 ## Included files to push
 
@@ -118,6 +127,9 @@ header/dropdown constraints so the label does not overflow its control.
 - `packages/web-core/Components/items/CSVImportModal.jsx`
 - `packages/web-core/Components/items/SelectedItemImageCarousel.jsx`
 - `packages/web-core/Components/items/StorefrontItemQrCard.jsx`
+- `packages/web-core/Components/ui/dialog.jsx`
+- `packages/web-core/Components/ui/pagination.jsx`
+- `packages/web-core/Components/ui/__tests__/pagination.test.jsx`
 - `packages/web-core/src/components/common/WizardStepNavigator.jsx`
 - `packages/web-core/src/features/inventory/components/ProductQrScannerModal.jsx`
 - `packages/web-core/src/features/inventory/__tests__/csvImportWorkflowMode.contract.test.js`
@@ -125,6 +137,10 @@ header/dropdown constraints so the label does not overflow its control.
 
 These shared changes are POS-compatible and opt-in through props or scoped classes; they are retained
 because the POS Items flows directly use these catalog primitives.
+
+The pagination primitive is consumed by the Items workspace and is covered by its own contract test.
+The dialog change supplies the mobile-sheet behavior used by the Items modal flow. These are shared
+dependencies of Items, not unrelated screen changes.
 
 ### Shared stylesheet changes
 
@@ -173,7 +189,7 @@ history is not a branch-specific change introduced by this Items branch.
 ### Current dirty worktree
 
 The mixed reset deliberately left excluded content in the worktree so no user changes were deleted.
-This includes:
+At the final audit it contained 99 unstaged or untracked paths. This includes:
 
 - `apps/dgfy-pos/index.html`, `apps/dgfy-pos/src/main.jsx`, and `apps/dgfy-pos/vite.config.js`
   cache/version and app-shell changes.
@@ -187,6 +203,11 @@ This includes:
   The shared pagination utility is retained only where the Items workspace imports the same page-size
   contract used by History; unrelated History UI files remain excluded.
 - `.agents/skills/pos-frontend-consistency/`, which is local agent material and not product code.
+
+The complete excluded snapshot is intentionally read from the worktree rather than copied into this
+document, because it changes as the user continues working. The audit snapshot and categories above
+are the boundary used for the current commit decision; the exact live list is always available from
+the three commands below.
 
 For the complete exact list at any time, run:
 
@@ -207,8 +228,8 @@ passed for the retained chain:
 
 - `git diff --check ea06c1a56ebf75994f0c8e319394c21a6424536f..HEAD`
 - No conflict markers in the clean rewritten tree.
-- The only branch-specific commits after the comparison base are the five retained Items commits
-  listed above, plus the final documentation reconciliation commit.
+- The branch-specific first-parent chain after the comparison base is the ten commits listed in the
+  atomic inventory above; the next commit is this documentation-only update.
 - Removed history commits are not ancestors of the rewritten branch.
 
 ### Existing functional evidence
@@ -216,15 +237,16 @@ passed for the retained chain:
 - `npm run lint:docs` — PASS; governed docs validated.
 - `npm run check:adr` — PASS; ADR validation completed.
 - `node --check apps/dgfy-api/src/workers/posBulkImageImportWorker.js` — PASS.
-- Focused POS Items audit — PASS: 8 test files, 38 tests.
+- Focused POS Items audit — PASS: 10 test files, 45 tests.
+- Final mobile-control check — PASS: 3 test files, 14 tests.
 - `npm run build:pos` — PASS; Vite production build completed.
 - `git diff --check` — PASS for the retained changes.
-- Repository commit-marker scan — no forbidden commit markers in retained staged files.
+- Repository commit-marker scan — no forbidden commit-marker match in retained staged candidates.
 
 The focused test command was:
 
 ```powershell
-npx vitest run `
+node apps/dgfy-pos/node_modules/vitest/vitest.mjs --root . --config apps/dgfy-pos/vite.config.js run `
   packages/web-core/src/features/pos/__tests__/itemsPagination.contract.test.js `
   packages/web-core/src/features/pos/__tests__/itemsButtonConsistency.contract.test.js `
   packages/web-core/src/features/pos/__tests__/itemsAddModal.contract.test.js `
@@ -232,8 +254,15 @@ npx vitest run `
   packages/web-core/src/features/pos/__tests__/posTextSizeIntegration.contract.test.js `
   packages/web-core/src/features/pos/__tests__/posTextSizeCss.contract.test.js `
   packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js `
-  packages/web-core/src/features/pos/__tests__/posTabletViewport.contract.test.js
+  packages/web-core/src/features/pos/__tests__/posItemOptions.contract.test.js `
+  packages/web-core/src/features/pos/__tests__/posTextSizeControl.test.jsx `
+  packages/web-core/Components/ui/__tests__/pagination.test.jsx
 ```
+
+The final focused run reported 10 test files and 45 passing tests. The final mobile-control run
+reported 3 test files and 14 passing tests. The JSX run needed temporary local dependency junctions
+because this checkout’s shared workspace links are incomplete; those junctions were removed after
+the run and no package or dependency file was changed.
 
 Known limitation: the broader POS-directory Vitest run was not clean because this local environment
 was missing dependencies such as `jsdom`, React/shared packages, and other workspace modules, and it
@@ -244,14 +273,17 @@ normal, large, and extra-large text sizes in desktop and tablet portrait/landsca
 ## Final repository state
 
 - Current branch: `codex/pos-frontend-changes-items`.
-- Branch-specific product commits: the five rewritten Items commits listed above.
+- Branch-specific product commits: the ten commits listed above, all scoped to POS Items or direct
+  Items dependencies.
 - Branch-specific documentation: the audit, reconciliation, and final inventory update commits.
 - Comparison base: `ea06c1a56ebf75994f0c8e319394c21a6424536f`.
 - Recovery ref: `backup/pos-items-before-items-only-rewrite-20260925`.
 - Push status: not pushed.
 - Pull request status: none created.
 - Deployment status: none performed.
-- Excluded changes: preserved as uncommitted worktree changes and not staged.
+- Committed branch manifest: 42 paths in the comparison diff.
+- Excluded worktree snapshot: 99 paths at the final audit, preserved as uncommitted changes and not
+  staged.
 
 ## Rollback boundary
 
@@ -262,6 +294,6 @@ git show-ref backup/pos-items-before-items-only-rewrite-20260925
 ```
 
 Do not delete that recovery ref until the rewritten branch has been reviewed and the excluded
-worktree changes have been handled. The five product commits can be reverted individually in reverse
+worktree changes have been handled. The product commits can be reverted individually in reverse
 order if needed. The shared catalog primitive commit should be reverted together with its scoped CSS
 and tests; the worker commit is independent and can be reverted separately.
