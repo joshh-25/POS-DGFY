@@ -12,8 +12,8 @@ verification_evidence: focused Storefront/API checkout suites, payment-finalizat
 rollback_note: Revert the Phase 333 Storefront fee calculation, payment metadata, summary rendering, tests, documentation, and declaration together; existing historical transaction and payment rows require no data rollback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T20:50:00+08:00
-preflight_request_ref: NOT-EXECUTED-STOREFRONT-CONVENIENCE-FEE-PHASE-333-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-STOREFRONT-CONVENIENCE-FEE-PHASE-333
 ---
 
 # Storefront customer convenience fee retirement

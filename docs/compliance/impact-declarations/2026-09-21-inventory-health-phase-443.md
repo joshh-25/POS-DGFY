@@ -11,9 +11,9 @@ policy_version: 2026.09.21
 verification_evidence: Inventory Health contract tests; valuation and affected API suites; API lint; architecture guardrails; POS inventory contract; documentation and git diff checks
 rollback_note: Remove the read-only inventory-health classification adapters, canonical valuation projection adapter, focused tests, documentation, and ledger entry; no inventory, catalog, movement, recipe, tenant, or financial row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: INVENTORY_READ_MODEL
-preflight_run_at: 2026-09-21T19:15:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-443-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-21-INVENTORY-HEALTH-PHASE-443
 ---
 
 # Inventory Health consolidation — Phase 443

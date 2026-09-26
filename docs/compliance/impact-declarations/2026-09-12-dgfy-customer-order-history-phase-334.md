@@ -12,8 +12,8 @@ verification_evidence: focused DGFY/store history tests, Storefront branch-scope
 rollback_note: Revert the Phase 334 history filters, location snapshot column/migration, Storefront scope labeling, tests, documentation, and declaration together; no historical ownership or order rows are rewritten.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T22:20:00+08:00
-preflight_request_ref: NOT-EXECUTED-DGFY-CUSTOMER-ORDER-HISTORY-PHASE-334-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-DGFY-CUSTOMER-ORDER-HISTORY-PHASE-334
 ---
 
 # DGFY customer order-history branch scoping

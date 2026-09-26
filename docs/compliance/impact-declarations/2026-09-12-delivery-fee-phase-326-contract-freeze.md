@@ -12,8 +12,8 @@ verification_evidence: delivery-fee and road-distance regression witnesses,MapPi
 rollback_note: Revert the Phase 326 test, documentation, and declaration changes together. This phase adds contract witnesses and records a read-only inventory; it does not change runtime behavior, tenant data, payment amounts, or database schema.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-DELIVERY-FEE-PHASE-326-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.554Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-DELIVERY-FEE-PHASE-326-CONTRACT-FREEZE
 ---
 
 # Delivery-fee, radius, and distance-cache contract freeze

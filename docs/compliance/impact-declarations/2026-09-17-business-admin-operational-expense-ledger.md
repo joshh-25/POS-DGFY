@@ -11,9 +11,9 @@ policy_version: 2026.09.17
 verification_evidence: Business Admin expense use-case contracts; POS expense workspace contract; tenant schema registry and additive migration checks; API/POS syntax and production build; architecture, documentation, compliance, and git diff checks
 rollback_note: Revert the expense route/use-case/repository/model, POS workspace, permissions, additive migration, schema registry entry, tests, documentation, and declaration together; do not drop tenant expense evidence after records are created without a governed data-retention decision.
 preflight_result: no_breach
-preflight_reason_code: BUSINESS_ADMIN_FINANCIAL_EVIDENCE
-preflight_run_at: 2026-09-17T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-388-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-17-BUSINESS-ADMIN-OPERATIONAL-EXPENSE-LEDGER
 ---
 
 # POS Business Admin operational expense ledger

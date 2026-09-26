@@ -12,9 +12,9 @@ policy_version: 2026.09.21
 verification_evidence: split-payment use-case contracts; Employee Credit ledger contracts; checkout payment-breakdown contracts; tenant-schema migration contracts; API source lint; POS shared UI contracts; POS production build; documentation and git diff checks
 rollback_note: Revert the Employee Credit split-tender UI, allocation/completion handling, additive migration, focused contracts, ADR, and ledger entry together; no historical transaction, ledger, tenant, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: EMPLOYEE_CREDIT_SPLIT_TENDER
-preflight_run_at: 2026-09-21T20:05:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-445-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-21-POS-EMPLOYEE-CREDIT-SPLIT-TENDER
 ---
 
 # POS Employee Credit mixed split tender

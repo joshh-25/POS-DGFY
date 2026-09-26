@@ -10,9 +10,9 @@ policy_version: 2026.09.24
 verification_evidence: focused backend tests 121/121; shared POS tests 14/14; architecture and controller-boundary checks; compliance, ADR, and docs lint; API/POS lint zero errors; POS/Storefront/IMS builds; live authenticated tenant QA pending
 rollback_note: Roll back the additive parked-sale stock/approval migration only after stopping all POS API writers; retain stock movement rows and reversal evidence. Revert the POS inventory-effect, approval, Back Office presentation, test, ADR, and declaration changes together. Do not automatically reverse previously committed stock movements during schema rollback.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-24T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PARKED-SALE-LIFECYCLE-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-24-POS-PARKED-SALE-LIFECYCLE-APPROVALS
 ---
 
 # POS parked-sale stock and approval lifecycle

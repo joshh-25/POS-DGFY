@@ -12,9 +12,9 @@ policy_version: 2026.09.21
 verification_evidence: split-payment validator and use-case contracts; API source syntax and lint; documentation validation; git diff check
 rollback_note: Revert the Employee Credit provider-field validation and provider-operation guards, focused regression contracts, contract wording, and this declaration; no transaction, ledger, tenant, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: EMPLOYEE_CREDIT_PROVIDER_BOUNDARY
-preflight_run_at: 2026-09-21T20:55:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-448-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-21-POS-EMPLOYEE-CREDIT-PROVIDER-BOUNDARY
 ---
 
 # POS Employee Credit provider boundary hardening
