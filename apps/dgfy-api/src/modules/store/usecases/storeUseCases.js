@@ -469,6 +469,9 @@ const serializeOrderForCustomer = (order) => ({
 const serializeOrderForPublicTracking = (order) => {
     return {
         ...serializeOrderBase(order),
+        // The public tracking summary shows VAT only as an informational amount already included
+        // in item prices. Reuse the persisted value; this projection does not recalculate tax.
+        vat_amount: order?.vat_amount ?? null,
         estimated_wait_minutes: order?.location?.current_wait_time_minutes ?? null
     };
 };
