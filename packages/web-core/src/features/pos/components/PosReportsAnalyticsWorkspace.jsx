@@ -35,7 +35,6 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
-  exportProcurementCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -624,13 +623,6 @@ function PosReportsAnalyticsWorkspace({
     downloadBlob(blob, filename);
   };
 
-  // Procurement export is intentionally independent of the currently loaded
-  // report: the endpoint builds the inventory snapshot from the live catalog.
-  const handleExportProcurementCsv = async () => {
-    const { blob, filename } = await exportProcurementCsv();
-    downloadBlob(blob, filename);
-  };
-
   const handlePrint = () => {
     const isEmployeeCreditReport = activeTab === 'operations' && operationSection === 'employee_credit';
     if (typeof window === 'undefined' || !reportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
@@ -941,20 +933,7 @@ function PosReportsAnalyticsWorkspace({
           />
         ) : null}
       </div>
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1">
-          {renderReportToolbar()}
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 shrink-0 gap-1.5 rounded-xl border-slate-200 px-3 text-[12px] font-extrabold text-slate-700 hover:bg-slate-50 sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
-          onClick={handleExportProcurementCsv}
-        >
-          <Download className="h-4 w-4" aria-hidden="true" />
-          <span>Procurement CSV</span>
-        </Button>
-      </div>
+      {renderReportToolbar()}
 
       {showInlineError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">

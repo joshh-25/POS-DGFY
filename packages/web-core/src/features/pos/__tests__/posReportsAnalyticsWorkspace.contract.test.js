@@ -306,11 +306,11 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
   });
 
-  // Phase 261 (#1488): pre-run procurement CSV export button, independent of the loaded report.
-  it('exposes a procurement CSV export button that is not gated on report data', () => {
-    expect(workspaceSource).toContain('exportProcurementCsv');
-    expect(workspaceSource).toContain('handleExportProcurementCsv');
-    expect(workspaceSource).toContain('Procurement CSV');
-    expect(workspaceSource).toContain('onClick={handleExportProcurementCsv}');
+  it('keeps the report toolbar focused on the primary print and CSV exports', () => {
+    expect(workspaceSource).toContain('exportPosReportCsv');
+    expect(workspaceSource).not.toContain('exportProcurementCsv');
+    expect(workspaceSource).not.toContain('handleExportProcurementCsv');
+    expect(workspaceSource).not.toContain('Procurement CSV');
+    expect(workspaceSource).toContain('{renderReportToolbar()}');
   });
 });
