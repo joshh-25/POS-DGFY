@@ -1,5 +1,3 @@
-import { DGFY_CONVENIENCE_FEE_LABEL } from './storefrontConstants.js';
-
 export const STOREFRONT_ORDER_BREAKDOWN_LABELS = Object.freeze({
   subtotal: 'Subtotal',
   discount: 'Discount',
@@ -45,13 +43,6 @@ export const buildStorefrontOrderBreakdownRows = ({
 
   if (normalizeOrderMethod(orderMethod) === 'delivery' && hasAmount(totals.delivery_fee)) {
     rows.push({ label: STOREFRONT_ORDER_BREAKDOWN_LABELS.deliveryFee, value: money(totals.delivery_fee) });
-  }
-
-  if (hasAmount(totals.service_fee_amount) && Number(totals.service_fee_amount) > 0) {
-    rows.push({
-      label: String(totals.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL).trim(),
-      value: money(totals.service_fee_amount),
-    });
   }
 
   if (hasAmount(totals.vat_amount)) {

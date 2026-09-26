@@ -36,7 +36,7 @@ describe('StorefrontTrackingOrderSummary', () => {
     expect(screen.getByText('formatted 2026-09-26T10:00:00.000Z')).toBeTruthy();
   });
 
-  it('renders the persisted fee, discount, and inclusive-VAT rows with checkout labels', () => {
+  it('renders discount and inclusive-VAT rows without exposing the legacy fee', () => {
     renderSummary({
       order_method: 'delivery',
       subtotalAmount: 119.62,
@@ -52,7 +52,7 @@ describe('StorefrontTrackingOrderSummary', () => {
     expect(screen.getByText('Weekend offer')).toBeTruthy();
     expect(screen.getByText('- ₱10.00')).toBeTruthy();
     expect(screen.getByText('Delivery fee')).toBeTruthy();
-    expect(screen.getByText('DGFY convenience fee')).toBeTruthy();
+    expect(screen.queryByText('DGFY convenience fee')).toBeNull();
     expect(screen.getByText('VAT (included in item prices)')).toBeTruthy();
     expect(screen.getByText('VAT shown above is already included in item prices and is calculated before any promo or voucher discount.')).toBeTruthy();
     expect(screen.getByText('Total')).toBeTruthy();

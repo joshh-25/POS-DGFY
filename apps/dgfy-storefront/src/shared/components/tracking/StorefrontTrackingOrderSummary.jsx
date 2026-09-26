@@ -49,8 +49,6 @@ export function StorefrontTrackingOrderSummary({
       discount_amount: trackingResult?.discountAmount,
       discount_label: trackingResult?.discountLabel,
       delivery_fee: trackingResult?.deliveryFee,
-      service_fee_amount: trackingResult?.serviceFeeAmount,
-      service_fee_label: trackingResult?.serviceFeeLabel,
       vat_amount: trackingResult?.vatAmount,
       total_amount: trackingResult?.totalAmount,
     },

@@ -15,7 +15,7 @@ describe('buildStorefrontOrderBreakdownRows', () => {
         service_fee_amount: 1,
         service_fee_label: 'DGFY convenience fee',
         vat_amount: 10.71,
-        total_amount: 111,
+        total_amount: 110,
       },
     });
 
@@ -23,7 +23,6 @@ describe('buildStorefrontOrderBreakdownRows', () => {
       'Subtotal',
       'Weekend promo',
       'Delivery fee',
-      'DGFY convenience fee',
       'VAT (included in item prices)',
       'Total',
     ]);
@@ -31,14 +30,13 @@ describe('buildStorefrontOrderBreakdownRows', () => {
       '₱100.00',
       '- ₱10.00',
       '₱20.00',
-      '₱1.00',
       '₱10.71',
-      '₱111.00',
+      '₱110.00',
     ]);
     expect(rows.at(-1)).toMatchObject({ emphasis: true, borderTop: true });
   });
 
-  it('omits delivery fees for pickup and omits a zero convenience fee', () => {
+  it('omits delivery fees for pickup and the legacy convenience fee', () => {
     const rows = buildStorefrontOrderBreakdownRows({
       money,
       orderMethod: 'pickup',
@@ -58,13 +56,13 @@ describe('buildStorefrontOrderBreakdownRows', () => {
     ]);
   });
 
-  it('uses the canonical convenience-fee label when the saved label is absent', () => {
+  it('does not expose a legacy service fee when the saved label is absent', () => {
     const rows = buildStorefrontOrderBreakdownRows({
       money,
       orderMethod: 'dine-in',
       totals: { service_fee_amount: 1, total_amount: 1 },
     });
 
-    expect(rows.map(({ label }) => label)).toEqual(['DGFY convenience fee', 'Total']);
+    expect(rows.map(({ label }) => label)).toEqual(['Total']);
   });
 });
