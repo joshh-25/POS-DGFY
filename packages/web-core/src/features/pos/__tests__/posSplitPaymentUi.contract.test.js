@@ -121,7 +121,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('The sale is not paid yet. Press Confirm below to finish it.');
         expect(checkoutSource).not.toContain('must be at least PHP');
         expect(checkoutSource).toContain('!paymentIsSufficient');
-        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {

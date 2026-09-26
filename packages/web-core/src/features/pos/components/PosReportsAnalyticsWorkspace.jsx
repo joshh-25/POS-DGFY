@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { loadOfflinePosReportSnapshot, saveOfflinePosReportSnapshot } from '../services/offlinePosSnapshotStore.js';
 import {
   ArrowLeftRight,
@@ -34,6 +35,7 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
+  exportProcurementCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -59,6 +61,7 @@ import PosPageFrame from './PosPageFrame.jsx';
 import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
+import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
   BackOfficeReportDataTable as DataTable,
   BackOfficeReportEmptyState as EmptyState,
@@ -193,10 +196,6 @@ const downloadBlob = (blob, filename) => {
 const deltaTone = (value) => (Number(value || 0) >= 0
   ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
   : 'text-rose-700 bg-rose-50 border-rose-200');
-
-const formatOrderMethod = (value) => ORDER_METHOD_LABELS[String(value || '').trim().toLowerCase()] || String(value || 'Unknown')
-  .replace(/_/g, ' ')
-  .replace(/\b\w/g, (char) => char.toUpperCase());
 
 const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
   if (!data) return null;
@@ -536,7 +535,6 @@ function PosReportsAnalyticsWorkspace({
   const profitLoss = reportData?.profit_loss || {};
   const cashierLifecycle = reportData?.cashier_lifecycle || {};
   const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
-  const isLifecycleSection = ['attendance', 'cashiers', 'registers', 'handoffs'].includes(activeSection);
 
   const trendSeries = useMemo(() => {
     if (activeTab === 'comparison') {
@@ -623,6 +621,13 @@ function PosReportsAnalyticsWorkspace({
       source: source || undefined,
       category_id: categoryId || undefined
     });
+    downloadBlob(blob, filename);
+  };
+
+  // Procurement export is intentionally independent of the currently loaded
+  // report: the endpoint builds the inventory snapshot from the live catalog.
+  const handleExportProcurementCsv = async () => {
+    const { blob, filename } = await exportProcurementCsv();
     downloadBlob(blob, filename);
   };
 
@@ -936,8 +941,19 @@ function PosReportsAnalyticsWorkspace({
           />
         ) : null}
       </div>
-      <div className="min-w-0">
-        {renderReportToolbar()}
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          {renderReportToolbar()}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 shrink-0 gap-1.5 rounded-xl border-slate-200 px-3 text-[12px] font-extrabold text-slate-700 hover:bg-slate-50 sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
+          onClick={handleExportProcurementCsv}
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          <span>Procurement CSV</span>
+        </Button>
       </div>
 
       {showInlineError ? (
@@ -973,219 +989,10 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
-          {!isLifecycleSection ? <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-            <SectionCard title={activeSection === 'comparison' ? 'Comparison Trend' : activeSection === 'yearly' ? 'Yearly Breakdown' : activeSection === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendSeries}>
-                    <defs>
-                      <linearGradient id="reportTrendFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#2563EB" stopOpacity={0.28} />
-                        <stop offset="95%" stopColor="#2563EB" stopOpacity={0.03} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-                    <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
-                    <YAxis stroke="#64748B" fontSize={11} />
-                    <Tooltip formatter={(value) => money(value, currencySymbol)} />
-                    <Area type="monotone" dataKey="net_sales" stroke="#2563EB" fill="url(#reportTrendFill)" strokeWidth={2.5} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Payment Breakdown">
-              <div className="h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={paymentChartRows}>
-                    <CartesianGrid stroke="#E2E8F0" strokeDasharray="3 3" />
-                    <XAxis dataKey="payment_method" stroke="#64748B" fontSize={11} />
-                    <YAxis stroke="#64748B" fontSize={11} />
-                    <Tooltip formatter={(value) => money(value, currencySymbol)} />
-                    <Bar dataKey="net_sales" radius={[8, 8, 0, 0]}>
-                      {paymentChartRows.map((entry) => <Cell key={`payment-cell-${entry.payment_method}`} fill={entry.fill} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </SectionCard>
-          </div> : null}
-
-          {activeSection === 'daily' ? (
-             <div className="space-y-4">
-               <ZReadingReconciliationCard data={zReadingReconciliation} currencySymbol={currencySymbol} />
-               <SectionCard title="Daily Summary">
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                  <MetricCard label="Business Date" value={dateRange.dateFrom === dateRange.dateTo ? dateRange.dateFrom : `${dateRange.dateFrom} to ${dateRange.dateTo}`} hint="Filtered report date" />
-                  <MetricCard label="Transactions" value={Number(dailyReport.summary?.total_transactions || 0)} />
-                  <MetricCard label="Gross Sales" value={money(dailyReport.summary?.gross_sales, currencySymbol)} />
-                  <MetricCard label="Net Sales" value={money(dailyReport.summary?.net_sales, currencySymbol)} />
-                  <MetricCard label="Discounts" value={money(dailyReport.summary?.discounts, currencySymbol)} />
-                  <MetricCard label="Refunds/Voids" value={money(dailyReport.summary?.refunds_voids, currencySymbol)} tone={Number(dailyReport.summary?.refunds_voids || 0) > 0 ? 'negative' : 'default'} />
-                  <MetricCard label="VAT" value={money(dailyReport.summary?.vat, currencySymbol)} />
-                  <MetricCard label="Service Fees" value={money(dailyReport.summary?.service_fees, currencySymbol)} />
-                  <MetricCard label="POS Profit/Loss" value={money(dailyReport.summary?.pos_profit_loss, currencySymbol)} tone={Number(dailyReport.summary?.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'} />
-                  <MetricCard label="Profit Margin" value={percent(dailyReport.summary?.profit_margin)} tone={Number(dailyReport.summary?.pos_profit_loss || 0) >= 0 ? 'positive' : 'negative'} />
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Refund & Adjustment Events">
-                <p className="mb-3 text-xs font-semibold text-slate-500">
-                  These rows use the refund/adjustment event timestamp. They disclose after-close activity without changing a prior Z-reading or subtracting an already-voided sale twice.
-                </p>
-                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <MetricCard label="Adjustment events" value={Number(dailyReport.adjustment_summary?.adjustment_count || 0)} />
-                  <MetricCard label="Completed amount" value={money(dailyReport.adjustment_summary?.succeeded_amount, currencySymbol)} />
-                  <MetricCard label="Pending amount" value={money(dailyReport.adjustment_summary?.pending_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.pending_amount || 0) > 0 ? 'negative' : 'default'} />
-                  <MetricCard label="Manual review" value={money(dailyReport.adjustment_summary?.manual_review_amount, currencySymbol)} tone={Number(dailyReport.adjustment_summary?.manual_review_amount || 0) > 0 ? 'negative' : 'default'} />
-                </div>
-                <DataTable
-                  columns={[
-                    { key: 'event_at', label: 'Event Datetime', render: (row) => printDateTime(row.event_at) },
-                    { key: 'invoice_number', label: 'Invoice', render: (row) => row.invoice_number || row.pos_transaction_id },
-                    { key: 'adjustment_type', label: 'Action', render: (row) => String(row.adjustment_type || '').replace(/_/g, ' ') },
-                    { key: 'status', label: 'Status', render: (row) => String(row.status || '').replace(/_/g, ' ') },
-                    { key: 'amount', label: 'Amount', align: 'right', render: (row) => money(row.amount, currencySymbol) },
-                    { key: 'original_cashier_name', label: 'Original Cashier', render: (row) => row.original_cashier_name || row.original_cashier_id || '-' },
-                    { key: 'actor_name', label: 'Actioned By', render: (row) => row.actor_name || row.actor_user_id || '-' },
-                    { key: 'actor_shift_id', label: 'Actor Shift', render: (row) => row.actor_shift_id || 'No shift' },
-                    { key: 'adjustment_reference', label: 'Reference' }
-                  ]}
-                  rows={Array.isArray(dailyReport.adjustment_rows) ? dailyReport.adjustment_rows : []}
-                  emptyMessage="No refund or adjustment events were recorded in this event-date range."
-                />
-              </SectionCard>
-
-              <div className="grid gap-4 xl:grid-cols-2">
-                <SectionCard title="All Discounts">
-                  <DataTable
-                    columns={[
-                      { key: 'discount_label', label: 'Discount' },
-                      { key: 'discount_type', label: 'Type' },
-                      { key: 'transaction_count', label: 'Transactions', align: 'right' },
-                      { key: 'discount_amount', label: 'Discount Total', align: 'right', render: (row) => money(row.discount_amount, currencySymbol) },
-                      { key: 'vat_removed', label: 'VAT Removed', align: 'right', render: (row) => money(row.vat_removed, currencySymbol) }
-                    ]}
-                    rows={(dailyReport.discount_breakdown || []).map((row) => ({
-                      ...row,
-                      discount_type: displayDiscountType(row.discount_type)
-                    }))}
-                    emptyMessage="No discounts were recorded for the selected filters."
-                  />
-                </SectionCard>
-
-                <SectionCard title="Payment & Order Method Breakdown">
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Payment Breakdown</p>
-                      {(dailyReport.payment_breakdown || []).length > 0 ? (
-                        (dailyReport.payment_breakdown || []).map((entry) => (
-                          <div key={`daily-payment-${entry.payment_method}`} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3">
-                            <div>
-                              <p className="text-sm font-black text-slate-950">{entry.payment_method}</p>
-                              <p className="mt-1 text-xs font-medium text-slate-500">{entry.total_transactions || 0} transactions</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-black text-slate-950">{money(entry.net_sales, currencySymbol)}</p>
-                              <p className={`mt-1 text-xs font-black ${Number(entry.pos_profit_loss || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                {money(entry.pos_profit_loss, currencySymbol)}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState message="No payment breakdown found for this day." />
-                      )}
-                    </div>
-
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Order Method Breakdown</p>
-                      {orderMethodRows.length > 0 ? (
-                        orderMethodRows.map((entry) => (
-                          <div key={`daily-order-method-${entry.order_method}`} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3">
-                            <div>
-                              <p className="text-sm font-black text-slate-950">{formatOrderMethod(entry.order_method)}</p>
-                              <p className="mt-1 text-xs font-medium text-slate-500">{entry.total_transactions || 0} transactions</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-black text-slate-950">{money(entry.net_sales, currencySymbol)}</p>
-                              <p className={`mt-1 text-xs font-black ${Number(entry.pos_profit_loss || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                                {money(entry.pos_profit_loss, currencySymbol)}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <EmptyState message="No order method breakdown found for this day." />
-                      )}
-                    </div>
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Cashier / Shift Summary">
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashiers</p>
-                      {(dailyReport.cashier_summary || []).slice(0, 5).map((entry) => (
-                        <div key={`cashier-${entry.cashier_id || entry.cashier_name}`} className="rounded-xl border border-slate-200 px-3 py-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-black text-slate-950">{entry.cashier_name}</p>
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${deltaTone(entry.summary?.pos_profit_loss)}`}>
-                              {money(entry.summary?.pos_profit_loss, currencySymbol)}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-xs font-medium text-slate-500">{entry.summary?.total_transactions || 0} transactions attributed to this cashier</p>
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                            <p className="font-semibold text-slate-500">Gross sales<br /><span className="font-black text-slate-950">{money(entry.summary?.gross_sales, currencySymbol)}</span></p>
-                            <p className="font-semibold text-slate-500">Net sales<br /><span className="font-black text-slate-950">{money(entry.summary?.net_sales, currencySymbol)}</span></p>
-                          </div>
-                          <p className="mt-3 text-[11px] font-semibold text-slate-500">Drawer variance is shown under Registers, never assigned to an uncounted relief cashier.</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Shifts</p>
-                      {(cashierLifecycle.registers || []).slice(0, 5).map((entry) => (
-                        <div key={`shift-${(entry.shift_ids || []).join('-') || entry.opening_cashier_id}`} className="rounded-xl border border-slate-200 px-3 py-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-black text-slate-950">Register {(entry.shift_ids || []).join(', ') || '-'}</p>
-                            <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${deltaTone(entry.variance_amount)}`}>
-                              {money(entry.variance_amount, currencySymbol)}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-xs font-medium text-slate-500">
-                            Opened by {entry.opening_cashier_name || 'Legacy cashier'} • {entry.closed_shift_count || 0} closed
-                          </p>
-                          <p className="mt-2 text-xs font-semibold text-slate-500">
-                            Expected: <span className="font-black text-slate-950">{money(entry.expected_cash_amount, currencySymbol)}</span> • Counted: <span className="font-black text-slate-950">{entry.closing_cash_amount == null ? 'Open shift' : money(entry.closing_cash_amount, currencySymbol)}</span>
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Filtered Transactions">
-                  <DataTable
-                    columns={[
-                      { key: 'invoice_number', label: 'Invoice' },
-                      { key: 'created_at', label: 'Datetime', render: (row) => printDateTime(row.created_at) },
-                      { key: 'cashier_name', label: 'Cashier' },
-                      { key: 'payment_type', label: 'Payment', render: (row) => formatPosTransactionPaymentMethods(row) },
-                      { key: 'status', label: 'Status' },
-                      { key: 'total_amount', label: 'Total', align: 'right', render: (row) => money(row.total_amount, currencySymbol) },
-                      { key: 'net_sales', label: 'Reported Net Sales', align: 'right', render: (row) => money(row.net_sales, currencySymbol) }
-                    ]}
-                    rows={transactionRows}
-                    emptyMessage="No transactions found for the selected filters."
-                  />
-                </SectionCard>
-              </div>
-            </div>
-          ) : null}
 
           {renderedTab === 'overview' ? (
             <div className="space-y-4">
+              <ZReadingReconciliationCard data={zReadingReconciliation} currencySymbol={currencySymbol} />
               <PosReportsOverviewTable
                 rows={trendSeries}
                 currencySymbol={currencySymbol}
