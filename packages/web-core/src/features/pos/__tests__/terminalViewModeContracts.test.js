@@ -548,6 +548,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
+    expect(terminalOperationsWorkspaceContent).toContain("const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';");
     expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
@@ -566,6 +567,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Top Selling Items'");
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Profit/Loss'");
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
+  });
+
+  it('routes Settings to the full workspace while preserving scoped Terminal setup', () => {
+    expect(terminalPageContent).toContain(": (isCashierRole ? 'terminal_setup' : 'settings_profile')");
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-terminal-setup"');
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('terminal_setup')}");
+    expect(terminalOperationsWorkspaceContent).toContain("allowedTabIds={['pos_setup']}");
+    expect(terminalOperationsWorkspaceContent).toContain('showTerminalOnlyControls={showTerminalOnlyControlsPane}');
+    expect(posSettingsWorkspaceContent).toContain('return <PosStorefrontSettingsPane {...storefrontPaneProps} />;');
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {

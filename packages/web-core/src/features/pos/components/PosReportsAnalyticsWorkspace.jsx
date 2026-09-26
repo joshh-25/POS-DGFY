@@ -3,8 +3,6 @@ import { Button } from '@/components/ui/button';
 import { loadOfflinePosReportSnapshot, saveOfflinePosReportSnapshot } from '../services/offlinePosSnapshotStore.js';
 import {
   ArrowLeftRight,
-  ArrowDownRight,
-  ArrowUpRight,
   AlertTriangle,
   BarChart3,
   Calculator,
@@ -35,7 +33,6 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
-  exportProcurementCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -109,7 +106,6 @@ const CHART_COLORS = ['#2563EB', '#14B8A6', '#F97316', '#0EA5E9', '#8B5CF6'];
 const REPORT_TAB_TRANSITION_MS = 150;
 const REPORT_TAB_SLIDE_OFFSET = 28;
 const money = (value, currencySymbol = '₱') => `${String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
 const escapeHtml = (value) => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -192,10 +188,6 @@ const downloadBlob = (blob, filename) => {
   link.remove();
   window.URL.revokeObjectURL(url);
 };
-
-const deltaTone = (value) => (Number(value || 0) >= 0
-  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
-  : 'text-rose-700 bg-rose-50 border-rose-200');
 
 const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
   if (!data) return null;
@@ -624,13 +616,6 @@ function PosReportsAnalyticsWorkspace({
     downloadBlob(blob, filename);
   };
 
-  // Procurement export is intentionally independent of the currently loaded
-  // report: the endpoint builds the inventory snapshot from the live catalog.
-  const handleExportProcurementCsv = async () => {
-    const { blob, filename } = await exportProcurementCsv();
-    downloadBlob(blob, filename);
-  };
-
   const handlePrint = () => {
     const isEmployeeCreditReport = activeTab === 'operations' && operationSection === 'employee_credit';
     if (typeof window === 'undefined' || !reportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
@@ -808,8 +793,6 @@ function PosReportsAnalyticsWorkspace({
     printWindow.print();
   };
 
-  const comparisonCards = comparisonReport.fixed_periods || [];
-
   const renderReportFilterPanel = () => (
       <PosReportsFilterPanel
       key={reportFiltersOpen ? 'reports-filter-open' : 'reports-filter-closed'}
@@ -900,7 +883,7 @@ function PosReportsAnalyticsWorkspace({
   );
 
   return (
-    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">
+    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">
       {renderReportFilterPanel()}
       {renderReportDateFilterPanel()}
       <div
@@ -941,20 +924,7 @@ function PosReportsAnalyticsWorkspace({
           />
         ) : null}
       </div>
-      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start">
-        <div className="min-w-0 flex-1">
-          {renderReportToolbar()}
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="min-h-11 shrink-0 gap-1.5 rounded-xl border-slate-200 px-3 text-[12px] font-extrabold text-slate-700 hover:bg-slate-50 sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
-          onClick={handleExportProcurementCsv}
-        >
-          <Download className="h-4 w-4" aria-hidden="true" />
-          <span>Procurement CSV</span>
-        </Button>
-      </div>
+      {renderReportToolbar()}
 
       {showInlineError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
@@ -1094,27 +1064,12 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           {renderedTab === 'comparison' ? (
-            <section aria-labelledby="sales-comparison-snapshot-title" className="mt-4">
-              <h3 id="sales-comparison-snapshot-title" className="mb-4 text-sm font-black text-slate-950">
-                Sales Comparison Snapshot
-              </h3>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {comparisonCards.map((entry) => {
-                  const positive = Number(entry.sales_delta_percentage || 0) >= 0;
-                  const DeltaIcon = positive ? ArrowUpRight : ArrowDownRight;
-                  return (
-                    <div key={entry.key} className={`rounded-2xl border px-4 py-4 ${positive ? 'border-emerald-200 bg-emerald-50/80' : 'border-rose-200 bg-rose-50/80'}`}>
-                      <p className="text-sm font-black text-slate-950">{entry.label}</p>
-                      <p className="mt-3 text-2xl font-black text-slate-950">{money(entry.current?.net_sales, currencySymbol)}</p>
-                      <div className={`mt-3 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-black ${deltaTone(entry.sales_delta_percentage)}`}>
-                        <DeltaIcon className="h-3.5 w-3.5" />
-                        {percent(entry.sales_delta_percentage)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+            <PosReportsComparisonPanel
+              comparison={comparisonReport}
+              currencySymbol={currencySymbol}
+              granularity={displayGranularity}
+              onGranularityChange={setGranularity}
+            />
           ) : null}
 
           {renderedTab === 'profit_loss' ? (
