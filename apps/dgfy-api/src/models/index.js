@@ -89,10 +89,6 @@ import PosTerminalDeviceChallenge from './PosTerminalDeviceChallenge.js';
 import PosDrawerHandoffEvent from './PosDrawerHandoffEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
-import BusinessAdminSavedReportView from './BusinessAdminSavedReportView.js';
-import BusinessAdminExpense from './BusinessAdminExpense.js';
-import BusinessAdminAlertSnapshot from './BusinessAdminAlertSnapshot.js';
-import BusinessAdminNotificationState from './BusinessAdminNotificationState.js';
 import TenantLocation from './TenantLocation.js';
 import ItemLocationStock from './ItemLocationStock.js';
 import InventoryReservation from './InventoryReservation.js';
@@ -626,28 +622,9 @@ ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredien
 // AuditLog associations
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
-// Business Admin owns only scoped read/projection records and approval metadata;
-// source transactions, shifts, fiscal snapshots, and inventory ledgers remain
-// owned by their canonical modules.
 BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'requested_by', as: 'requestedByUser' });
 BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
 BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
-BusinessAdminSavedReportView.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
-BusinessAdminExpense.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser', constraints: false });
-BusinessAdminExpense.belongsTo(User, { foreignKey: 'voided_by', as: 'voidedByUser', constraints: false });
-BusinessAdminExpense.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location', constraints: false });
-User.hasMany(BusinessAdminExpense, { foreignKey: 'created_by', as: 'createdBusinessAdminExpenses', constraints: false });
-User.hasMany(BusinessAdminExpense, { foreignKey: 'voided_by', as: 'voidedBusinessAdminExpenses', constraints: false });
-TenantLocation.hasMany(BusinessAdminExpense, { foreignKey: 'location_id', as: 'businessAdminExpenses', constraints: false });
-BusinessAdminAlertSnapshot.hasMany(BusinessAdminNotificationState, {
-  foreignKey: 'business_admin_alert_snapshot_id',
-  as: 'notificationStates'
-});
-BusinessAdminNotificationState.belongsTo(BusinessAdminAlertSnapshot, {
-  foreignKey: 'business_admin_alert_snapshot_id',
-  as: 'alertSnapshot'
-});
-BusinessAdminNotificationState.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
 // ReceiveToken associations
 ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
@@ -1292,10 +1269,6 @@ const db = {
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
-  BusinessAdminSavedReportView,
-  BusinessAdminExpense,
-  BusinessAdminAlertSnapshot,
-  BusinessAdminNotificationState,
   TenantLocation,
   ItemLocationStock,
   InventoryReservation,
@@ -1521,10 +1494,6 @@ export {
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
-  BusinessAdminSavedReportView,
-  BusinessAdminExpense,
-  BusinessAdminAlertSnapshot,
-  BusinessAdminNotificationState,
   TenantLocation,
   ItemLocationStock,
   InventoryReservation,

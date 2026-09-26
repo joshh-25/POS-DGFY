@@ -4,7 +4,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock,
-  ExternalLink,
   MapPin,
   Store,
   Truck
@@ -127,7 +126,7 @@ const resolveStatus = ({ storeIsVisible, location, hoursStatus }) => {
     return {
       key: 'unassigned',
       label: 'No branch assigned',
-      description: 'Assign a Storefront location in Back Office.'
+      description: 'Assign a Storefront location in POS Setup.'
     };
   }
   if (location.is_active === false) {
@@ -204,8 +203,6 @@ export default function TerminalStorefrontStatusCard({
   loading = false,
   loadError = '',
   isOnline = true,
-  canOpenBackOffice = false,
-  onOpenBackOffice = () => {},
   description = 'Read-only view of the Storefront schedule and branch availability for this terminal.',
   managementMessage = 'Managed by your account admin',
   now = null
@@ -327,24 +324,12 @@ export default function TerminalStorefrontStatusCard({
           </p>
           {loadError ? <p className="mt-1 text-[11px] font-semibold text-amber-800">{loadError}</p> : null}
         </div>
-        {canOpenBackOffice ? (
-          <button
-            type="button"
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#1A4E8D] px-4 text-xs font-extrabold text-white shadow-sm transition hover:bg-[#143F73] focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-            onClick={() => onOpenBackOffice({ path: '/backoffice/settings/storefront' })}
-            data-testid="pos-terminal-storefront-manage"
-          >
-            Manage in Back Office
-            <ExternalLink className="h-4 w-4" aria-hidden="true" />
-          </button>
-        ) : (
-          managementMessage ? (
-            <span className="inline-flex items-center gap-2 text-[11px] font-bold text-blue-900">
-              <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden="true" />
-              {managementMessage}
-            </span>
-          ) : null
-        )}
+        {managementMessage ? (
+          <span className="inline-flex items-center gap-2 text-[11px] font-bold text-blue-900">
+            <span className="h-2 w-2 rounded-full bg-blue-500" aria-hidden="true" />
+            {managementMessage}
+          </span>
+        ) : null}
       </div>
     </section>
   );

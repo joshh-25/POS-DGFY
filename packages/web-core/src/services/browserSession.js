@@ -111,16 +111,6 @@ const bootstrapStandalonePosSession = () => {
 
 bootstrapStandalonePosSession();
 
-// Back Office opens in a separate same-origin browser context. Access and company tokens stay
-// in module memory by design, and the POS active marker is tab-scoped, but the HttpOnly refresh
-// cookie is shared by same-origin tabs. Permit that protected route to rehydrate its own memory
-// session without broadening fresh-tab refresh to the operational POS terminal.
-const isStandaloneBusinessAdminRoute = () => {
-  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return false;
-  const hashPath = String(window.location?.hash || '').split('?')[0];
-  return /^#\/(?:backoffice|business-admin)(?:\/|$)/.test(hashPath);
-};
-
 const getApiBaseUrl = () => resolveApiBaseUrl(
   import.meta.env,
   typeof window !== 'undefined' ? window.location : undefined
@@ -261,7 +251,6 @@ export const canRefreshBrowserSession = () => (
   !IS_STANDALONE_POS_SURFACE
   || standalonePosSessionActivated
   || hasFreshPosCompanySwitchHandoff()
-  || isStandaloneBusinessAdminRoute()
 );
 
 export const getAuthHeaders = ({ includeCsrf = false } = {}) => {

@@ -197,7 +197,7 @@ export default function TerminalLocalControlsSection({
         <div className="min-w-0">
           <h3 id="terminal-only-controls-title" className="text-[16px] font-extrabold text-[#0F172A]">Terminal-only controls</h3>
           <p className="mt-1 text-[12px] leading-5 text-[#64748B]">
-            Local queue and device behavior for this POS terminal. Shared business policy remains in Back Office.
+            Local queue and device behavior for this POS terminal. Shared business policy remains in POS Setup.
           </p>
         </div>
       </div>
@@ -230,7 +230,7 @@ export default function TerminalLocalControlsSection({
         />
       </div>
       <div className="rounded-xl border border-blue-100 bg-blue-50/50 px-3 py-3 text-[11px] leading-4 text-[#46658F]">
-        Device, printer, register, and other terminal-local hardware controls stay in the terminal surface. Registry policy and branch binding stay in Back Office.
+        Device, printer, register, and other terminal-local hardware controls stay in the terminal surface. Registry policy and branch binding stay in POS Setup.
       </div>
     </section>
   );

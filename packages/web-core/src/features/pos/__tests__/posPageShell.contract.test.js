@@ -20,14 +20,4 @@ describe('POS page shell and route ownership', () => {
     expect(skupervisorPage).not.toContain('ServicesPosQueue');
   });
 
-  it('keeps IMS merchant routes as compatibility handoffs while preserving internal admin routing', () => {
-    const main = read('apps/dgfy-ims/src/main.jsx');
-
-    expect(main).toContain('path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />}');
-    expect(main).toContain("import MerchantSurfaceRetired from './pages/MerchantSurfaceRetired.jsx'");
-    expect(main).toContain('path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />}');
-    expect(main).not.toContain('FeedbackViewer');
-    expect(main).not.toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
-    expect(main).not.toContain("const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))");
-  });
 });

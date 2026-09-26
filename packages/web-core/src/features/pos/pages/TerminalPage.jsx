@@ -65,10 +65,6 @@ import {
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
-import {
-  shouldRefreshBusinessAdminSettingsUpdate,
-  subscribeToBusinessAdminSettingsUpdates
-} from '../utils/businessAdminSettingsSync.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
@@ -542,7 +538,6 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
-  const [backOfficeConfirmOpen, setBackOfficeConfirmOpen] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [closeShiftBlocker, setCloseShiftBlocker] = useState(null);
   const [closedShiftReport, setClosedShiftReport] = useState(null);
@@ -640,7 +635,6 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
-  const [backOfficeTargetPath, setBackOfficeTargetPath] = useState('/backoffice/overview');
   const [pendingStorefrontContentViewMode, setPendingStorefrontContentViewMode] = useState('');
   const storefrontContentGuardRef = useRef({ dirty: false, discard: null });
 
@@ -1007,18 +1001,8 @@ export default function TerminalPage() {
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
-  const canAccessBusinessAdmin = !isCashierRole && (
-    isMasterAdminOperator
-    || normalizedTerminalRole === 'admin'
-    || hasPermission('business_admin:access')
-  );
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
-  // Terminal setup is a POS operational surface, not a second Business Admin
-  // editor. Any authenticated operator who can use POS needs the local
-  // terminal, printer, branch-queue, and order-sound controls even when the
-  // tenant/user has no Business Admin entitlement. Business Admin remains
-  // independently guarded above and below.
-  const canAccessPosOnlySetup = !canAccessBusinessAdmin && canViewPos;
+  const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
   // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
   //
@@ -1056,12 +1040,12 @@ export default function TerminalPage() {
       .filter((mode) => mode !== 'audit' || canViewAudit)
       .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
-      .filter((mode) => mode !== 'terminal_setup' || canAccessBusinessAdmin || canAccessSettingsDirectly);
+      .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canAccessBusinessAdmin, canAccessFnbService, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -3646,7 +3630,7 @@ export default function TerminalPage() {
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
     if (activeTerminalRegistry.length === 0) {
-      toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
+      toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
       return false;
     }
     if (!selectedTerminalId) {
@@ -3658,7 +3642,7 @@ export default function TerminalPage() {
       return false;
     }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
-      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+      toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
       return false;
     }
     return true;
@@ -4137,7 +4121,7 @@ export default function TerminalPage() {
         }
         const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
         if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
-          throw new Error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+          throw new Error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         }
         if (typeof window !== 'undefined') {
           safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
@@ -4187,7 +4171,7 @@ export default function TerminalPage() {
       const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find((entry) => String(entry?.terminal_id || '') === selectedTerminalId);
       if (selectedTenantActiveRegistry.length === 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
+        toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
         return;
       }
       if (!selectedTerminalId || !selectedTenantRegistryEntry) {
@@ -4198,7 +4182,7 @@ export default function TerminalPage() {
       const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
       if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+        toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         return;
       }
       if (Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
@@ -4788,7 +4772,7 @@ export default function TerminalPage() {
         : Number(operatingLocationId || 0);
 
       if (!Number.isInteger(resolvedLocationId) || resolvedLocationId <= 0) {
-        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+        toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         return;
       }
 
@@ -5246,7 +5230,7 @@ export default function TerminalPage() {
       ? registryLocationId
       : Number(operatingLocationId);
     if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
-      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+      toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
       return;
     }
 
@@ -6507,80 +6491,6 @@ export default function TerminalPage() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }, []);
 
-  const handleOpenBackOffice = useCallback((target = {}) => {
-    if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;
-    setMobileNavOpen(false);
-    const requestedPath = typeof target === 'string' ? target : target?.path;
-    const normalizedPath = String(requestedPath || '/backoffice/overview').trim();
-    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
-      ? normalizedPath
-      : '/backoffice/overview';
-    const activeBranchId = Number(
-      shiftState?.shift?.location_id
-      || viewingLocationId
-      || operatingLocationId
-      || queueLocationScopeId
-      || 0
-    );
-    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
-      && Number.isInteger(activeBranchId)
-      && activeBranchId > 0) {
-      const [pathOnly, queryString = ''] = safePath.split('?');
-      const params = new URLSearchParams(queryString);
-      params.set('branch_id', String(activeBranchId));
-      safePath = `${pathOnly}?${params.toString()}`;
-    }
-    setBackOfficeTargetPath(safePath);
-    setBackOfficeConfirmOpen(true);
-  }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
-
-  const buildPosBackOfficeHandoffPath = useCallback((path) => {
-    const [pathOnly, queryString = ''] = String(path || '/backoffice/overview').split('?');
-    const params = new URLSearchParams(queryString);
-    params.set('pos_handoff', '1');
-    return `${pathOnly}?${params.toString()}`;
-  }, []);
-
-  const handleConfirmOpenBackOffice = useCallback(() => {
-    if (typeof window === 'undefined') return;
-
-    const url = new URL('/', window.location.origin);
-    const handoffPath = buildPosBackOfficeHandoffPath(backOfficeTargetPath);
-    if (backOfficeTargetPath === '/backoffice/overview') {
-      url.search = '?view=reports';
-      url.hash = `#${handoffPath}`;
-    } else {
-      url.search = '';
-      url.hash = `#${handoffPath}`;
-    }
-    // Open a blank tab synchronously from the confirmation click so popup
-    // blocking is detectable. Detach the opener before navigating so the new
-    // same-origin Back Office page remains an independent browser context.
-    const openedWindow = window.open('', '_blank');
-    setBackOfficeConfirmOpen(false);
-
-    if (!openedWindow) {
-      toast.error('Your browser blocked the Back Office window. Allow pop-ups and try again.');
-      return;
-    }
-
-    try {
-      openedWindow.opener = null;
-      openedWindow.location.replace(url.toString());
-    } catch {
-      try {
-        openedWindow.close();
-      } catch {
-        // The browser may deny closing a newly opened context; the error below
-        // still gives the operator an actionable recovery path.
-      }
-      toast.error('Back Office could not open. Allow pop-ups and try again.');
-      return;
-    }
-
-  const destinationLabel = backOfficeTargetPath === '/backoffice/overview' ? 'Overview' : 'Business settings';
-    toast.success(`Back Office opened in a new window at ${destinationLabel}.`);
-  }, [backOfficeTargetPath, buildPosBackOfficeHandoffPath]);
   const handleStorefrontContentStateChange = useCallback(({ dirty = false, discard = null } = {}) => {
     storefrontContentGuardRef.current = {
       dirty: dirty === true,
@@ -6814,39 +6724,6 @@ export default function TerminalPage() {
       }));
     }
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
-
-  useEffect(() => {
-    if (!activeTenantId || typeof window === 'undefined') return undefined;
-
-    return subscribeToBusinessAdminSettingsUpdates((payload) => {
-      const selectedTerminalBranchId = Number(
-        terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id || 0
-      );
-      const activeBranchId = Number(
-        shiftState?.shift?.location_id
-        || operatingLocationId
-        || viewingLocationId
-        || queueLocationScopeId
-        || selectedTerminalBranchId
-        || 0
-      );
-      if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
-
-      setSettingsRefreshKey((previous) => previous + 1);
-      const refreshTasks = [
-        hydrateUser({ suppressGlobalErrors: true }),
-        hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
-      ];
-      if (!locked && canViewPos) {
-        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
-      }
-      void Promise.all(refreshTasks).catch(() => {
-        // The POS remains usable on its current snapshot when a background refresh fails.
-      });
-    });
-  }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
@@ -7172,7 +7049,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -7192,9 +7069,6 @@ function PosRestorationLoadingScreen() {
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
-              backOfficeConfirmOpen,
-              backOfficeTargetPath,
-              canAccessBusinessAdmin,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -7221,8 +7095,6 @@ function PosRestorationLoadingScreen() {
               handleBackToCashierResume,
               handleCashierResumeSubmit,
               handleCashierTakeoverSubmit,
-              handleConfirmOpenBackOffice,
-              handleOpenBackOffice,
               handleOpenCashierTakeover,
               handleCloseDay,
               handleCollectCash,
@@ -7278,7 +7150,6 @@ function PosRestorationLoadingScreen() {
               setBalanceSettlementReference,
               setBalanceProofFile,
               handleCloseBalancePaymentProofViewer,
-              setBackOfficeConfirmOpen,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -7368,7 +7239,6 @@ function PosRestorationLoadingScreen() {
           canManageVouchers={canManageVouchers}
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
-          canAccessBusinessAdmin={canAccessBusinessAdmin}
           canAccessPosOnlySetup={canAccessPosOnlySetup}
           showFnbService={canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}
@@ -7418,7 +7288,6 @@ function PosRestorationLoadingScreen() {
           isPrinterAvailable={posHardware.isPrinterAvailable}
           printersDetected={posHardware.printersDetected}
           onTestPrinter={handleTestPrinter}
-          onOpenBackOffice={handleOpenBackOffice}
           handleLock={handleLock}
           handleCashierSignIn={handleCashierSignIn}
           onCheckoutAuthorityInvalid={handleCheckoutAuthorityInvalid}

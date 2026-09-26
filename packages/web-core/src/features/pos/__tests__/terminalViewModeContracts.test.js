@@ -375,7 +375,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('return;');
   });
 
-  it('locks POS content while preserving authorized Back Office navigation while locked', () => {
+  it('locks POS content while the terminal is locked', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
     expect(terminalPageLayoutContent).toContain('const lockedSidebarSurfaceClassName = locked');
     expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`');
@@ -557,10 +557,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalWorkspaceSidebarContent).toContain('shouldRouteSettingsToBackOffice');
     expect(terminalWorkspaceSidebarContent).toContain('{onboardingRestricted && (');
     expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
-    expect(terminalWorkspaceSidebarContent).not.toContain("onOpenBackOffice({ path: '/backoffice/settings/profile' })");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
@@ -859,12 +857,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('terminalId: readInitialTerminalId()');
     expect(terminalPageContent).toContain('resolveLoginTerminalId');
     expect(terminalPageContent).toContain('resolvePreferredTerminalId');
-    expect(terminalPageContent).toContain('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
+    expect(terminalPageContent).toContain('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
-    expect(terminalPageContent).toContain('Enter the registered terminal ID from Back Office &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.');
+    expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.');
     expect(terminalPageContent).toContain('Authorized DGFY users can open shifts from any logged-in device');
-    expect(terminalPageContent).toContain('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+    expect(terminalPageContent).toContain('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');
