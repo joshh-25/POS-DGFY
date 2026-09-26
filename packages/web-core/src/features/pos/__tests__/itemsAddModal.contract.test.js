@@ -27,7 +27,7 @@ describe('POS Add Items desktop modal', () => {
     expect(workspace).toContain('bg-[#1A4E8D] hover:bg-[#143F73] focus-visible:ring-[#2563EB]');
     expect(workspace).toContain('Add Options');
     expect(workspace).toContain('data-testid="pos-items-create-options-list"');
-    expect(workspace).toContain('max-h-40 min-h-32');
+    expect(workspace).toContain('pos-items-modal-option-list pos-items-modal-scrollbar mt-2 min-h-0 space-y-1.5 overflow-y-auto');
     expect(workspace).toContain('overflow-y-auto');
     expect(workspace).toContain('listFnbModifierGroups({ include_inactive: false })');
     expect(workspace).toContain('replaceFnbItemModifierGroups(itemId');

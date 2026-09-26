@@ -18,6 +18,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   Barcode,
+  Filter,
   History,
   ImagePlus,
   Info,
@@ -3464,7 +3465,7 @@ function ItemsWorkspace({
                 aria-pressed={showDesktopFilters || hasActiveItemsFilters}
                 aria-controls="pos-items-desktop-filters"
               >
-                <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+                <Filter className="mr-1.5 h-3.5 w-3.5" />
                 Filter
               </Button>
               {canCreateItems ? (
@@ -3521,7 +3522,7 @@ function ItemsWorkspace({
               <div className="pos-filter-surface-header pos-filter-surface-header--extended -mx-px -mt-px flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-[17px] border-b px-4 py-2.5 text-white sm:px-5">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
-                    <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                    <Filter className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
                     <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-sm font-black">Filter</p>
@@ -3655,7 +3656,7 @@ function ItemsWorkspace({
               aria-pressed={showMobileFilters || hasActiveItemsFilters}
               className={`pos-items-mobile-icon-button ${showMobileFilters || hasActiveItemsFilters ? 'pos-items-mobile-icon-button--active' : ''}`}
             >
-              <SlidersHorizontal aria-hidden="true" />
+              <Filter aria-hidden="true" />
             </button>
             {canCreateItems ? (
               <button
@@ -3776,7 +3777,7 @@ function ItemsWorkspace({
                   data-testid="pos-items-mobile-apply-filters"
                   className="h-12 min-w-0 flex-1 rounded-lg bg-[#1A4E8D] text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 hover:bg-[#143F73]"
                 >
-                  <SlidersHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
+                  <Filter className="mr-2 h-4 w-4" aria-hidden="true" />
                   Apply Filters
                 </Button>
               </DialogFooter>
@@ -4552,7 +4553,7 @@ function ItemsWorkspace({
                       className="h-8 rounded-lg border-slate-300 pl-8 text-[10px] placeholder:text-slate-300"
                     />
                   </div>
-                  <div data-testid="pos-items-create-options-list" className="pos-items-modal-option-list pos-items-modal-scrollbar mt-2 max-h-40 min-h-32 space-y-1.5 overflow-y-auto pr-1">
+                  <div data-testid="pos-items-create-options-list" className="pos-items-modal-option-list pos-items-modal-scrollbar mt-2 min-h-0 space-y-1.5 overflow-y-auto pr-1">
                     {createModifierGroupsLoading ? <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs text-slate-500" role="status">Loading options…</p> : null}
                     {!createModifierGroupsLoading && createModifierGroupsError ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-3 text-[10px] text-amber-800" role="alert">{createModifierGroupsError}</p> : null}
                     {!createModifierGroupsLoading && !createModifierGroupsError && !canManageFnbModifiers ? <p className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-3 text-[10px] text-slate-500">Menu options are managed from the Item Options workspace.</p> : null}
@@ -5275,14 +5276,9 @@ function ItemsWorkspace({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-slate-900">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-slate-100 text-slate-600 ring-1 ring-slate-200">
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </div>
-                <div className="min-w-0">
-                  <p id="pos-items-delete-confirm-modal-title" className="text-base font-black leading-5 text-[#0F172A]">Delete Item</p>
-                  <p className="mt-0.5 break-words text-xs leading-4 text-slate-500">Confirm the removal of this item from POS and IMS.</p>
-                </div>
+              <div className="min-w-0 flex-1">
+                <p id="pos-items-delete-confirm-modal-title" className="text-base font-black leading-5 text-[#0F172A]">Delete Item</p>
+                <p className="mt-0.5 break-words text-xs leading-4 text-slate-500">Confirm the removal of this item from POS and IMS.</p>
               </div>
               <button
                 type="button"

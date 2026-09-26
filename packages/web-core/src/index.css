@@ -3820,10 +3820,10 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 .pos-items-form-scale .pos-items-create-options-panel {
   box-sizing: border-box;
   display: flex;
-  align-self: stretch;
-  height: var(--pos-items-create-options-height, auto);
+  align-self: flex-start;
+  height: fit-content;
   min-height: 0;
-  max-height: var(--pos-items-create-options-height, none);
+  max-height: var(--pos-items-create-options-height, 15.625rem);
   flex-direction: column;
   overflow: hidden;
 }
@@ -3831,10 +3831,10 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 .pos-items-form-scale .pos-items-edit-categories-panel {
   box-sizing: border-box;
   display: flex;
-  align-self: stretch;
-  height: var(--pos-items-edit-categories-height, auto);
+  align-self: flex-start;
+  height: fit-content;
   min-height: 0;
-  max-height: var(--pos-items-edit-categories-height, none);
+  max-height: var(--pos-items-edit-categories-height, 15.625rem);
   flex-direction: column;
   overflow: hidden;
 }
@@ -4113,13 +4113,15 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   }
 .pos-items-form-scale .pos-items-create-options-panel,
   .pos-items-form-scale .pos-items-edit-categories-panel {
+    align-self: flex-start;
     height: fit-content !important;
-    max-height: none !important;
+    max-height: min(90dvh, 40rem) !important;
   }
 .pos-items-form-scale .pos-items-modal-option-list,
   .pos-items-form-scale .pos-items-edit-categories-list {
-    flex: 0 0 auto;
-    max-height: 15.625rem;
+    flex: 1 1 auto;
+    height: auto;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
@@ -7125,13 +7127,15 @@ body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .p
   }
 .pos-items-form-scale .pos-items-create-options-panel,
   .pos-items-form-scale .pos-items-edit-categories-panel {
+    align-self: flex-start;
     height: fit-content !important;
-    max-height: none !important;
+    max-height: min(90dvh, 40rem) !important;
   }
 .pos-items-form-scale .pos-items-modal-option-list,
   .pos-items-form-scale .pos-items-edit-categories-list {
-    flex: 0 0 auto;
-    max-height: 15.625rem;
+    flex: 1 1 auto;
+    height: auto;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior: contain;
   }
