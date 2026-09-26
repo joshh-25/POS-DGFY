@@ -1,7 +1,7 @@
 # Back Office / POS Settings Handoff
 
-**Prepared:** 2026-09-15  
-**Repository:** `C:\xampp\htdocs\POS-DGFY`  
+**Prepared:** 2026-09-15
+**Repository:** `C:\xampp\htdocs\POS-DGFY`
 **Branch:** `POS-Development` (currently ahead of `origin/POS-Development` by 16 commits)
 
 ## Handoff snapshot
