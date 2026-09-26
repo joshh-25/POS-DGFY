@@ -33,6 +33,7 @@ export function SimpleCheckoutFulfillmentStep({
   renderGuestCheckoutEntry,
   scheduledFor = '',
   selectedLocation = null,
+  storefrontHours,
   orderTimingPolicy,
   selectedSavedLocationId = '',
   servicesBodyFont,
@@ -99,6 +100,7 @@ export function SimpleCheckoutFulfillmentStep({
         onScheduledForChange={onScheduledForChange}
         orderMethod={orderMethod}
         simpleOrderMethodOptions={simpleOrderMethodOptions}
+        storefrontHours={storefrontHours}
         orderTimingPolicy={orderTimingPolicy || resolveOrderTimingPolicy()}
       />
 

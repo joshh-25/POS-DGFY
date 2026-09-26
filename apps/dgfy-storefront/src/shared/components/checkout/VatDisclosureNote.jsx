@@ -1,3 +1,4 @@
+import React from 'react';
 import { VAT_DISCLOSURE_NOTE } from '../../model/storefrontFeesAndTaxesPresentation.js';
 
 /**

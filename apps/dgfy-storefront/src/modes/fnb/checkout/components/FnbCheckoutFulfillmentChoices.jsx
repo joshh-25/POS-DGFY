@@ -1,12 +1,12 @@
-import { CalendarDays, Clock3, ShoppingBag, Zap } from 'lucide-react';
+import { CalendarDays, ShoppingBag, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { getUnavailableFulfillmentMessage, resolveStorefrontFulfillmentOptions } from '../../../../shared/model/storefrontFulfillmentOptions.js';
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
 import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
-import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
-import { FnbDineInDateTimePicker } from './FnbDineInDateTimePicker.jsx';
+import { CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
+import { StorefrontScheduledDateTimePicker } from '../../../../shared/components/checkout/StorefrontScheduledDateTimePicker.jsx';
 
 const deliveryIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Im0xOCAxNC0xLTMiLz48cGF0aCBkPSJtMyA5IDYgMmEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDEuOTkgMS44MSIvPjxwYXRoIGQ9Ik04IDE3aDNhMSAxIDAgMCAwIDEtMSA2IDYgMCAwIDEgNi02IDEgMSAwIDAgMCAxLTF2LS43NUE1IDUgMCAwIDAgMTcgNSIvPjxjaXJjbGUgY3g9IjE5IiBjeT0iMTciIHI9IjMiLz48Y2lyY2xlIGN4PSI1IiBjeT0iMTciIHI9IjMiLz48L3N2Zz4=';
 
@@ -49,11 +49,6 @@ function buildChoiceCardProps({
   };
 }
 
-const formatDineInDateTime = (value) => {
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed.toLocaleString() : '';
-};
-
 /**
  * Presentation-only F&B fulfillment choices. Address selection and map state
  * intentionally remain in the route container because they are interaction-heavy.
@@ -75,21 +70,27 @@ export function FnbCheckoutFulfillmentChoices({
   onScheduledForChange,
   orderMethod,
   fulfillmentOptions = resolveStorefrontFulfillmentOptions(),
-  locationName = 'Main location',
   scheduleHoursLabel,
   orderTimingPolicy = resolveOrderTimingPolicy(),
   storefrontHours
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
-  const [dineInDateTimeModalOpen, setDineInDateTimeModalOpen] = useState(false);
-  const [dineInDateTimeError, setDineInDateTimeError] = useState('');
+  const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
   const isDineInOrder = orderMethod === 'dine_in';
   // #1217: a single available method is a statement, not a question.
   const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
     resolveFulfillmentSelectorPresentation(fulfillmentOptions);
-  const choiceGridColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
+  const choiceGridColumns = isResponsive ? '1fr' : 'repeat(auto-fit, minmax(150px, 1fr))';
   const timingChoiceGridColumns = isResponsive ? '1fr' : choiceGridColumns;
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
+  const showScheduledDateTimePicker = (showSchedule && !showImmediate)
+    || (showTimingChooser && fnbScheduleMode === 'schedule');
+  const showScheduleHoursWarning = showTimingChooser && fnbScheduleMode === 'schedule' && scheduleHoursLabel;
+  const hoursNoticeMessage = isDineInOrder && scheduleHoursLabel
+    ? `Dine-in orders must be within store hours: ${scheduleHoursLabel}.`
+    : showScheduleHoursWarning
+      ? `Scheduled orders must be within store hours: ${scheduleHoursLabel}.`
+      : '';
   const showTimingSection = isDineInOrder || (showTimingStep && (showTimingChooser || showSchedule));
   const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection });
   const typography = getCheckoutStepTypography();
@@ -102,24 +103,29 @@ export function FnbCheckoutFulfillmentChoices({
     mobileOptionIconBox,
     mobileOptionTextSize
   };
-  const openDineInDateTimeModal = () => {
-    setDineInDateTimeError('');
-    setDineInDateTimeModalOpen(true);
-  };
-  const saveDineInDateTime = (nextValue) => {
-    if (!String(nextValue || '').trim()) {
-      setDineInDateTimeError('Choose a date and time for dine-in.');
-      return;
-    }
-    if (!Number.isFinite(new Date(nextValue).getTime())) {
-      setDineInDateTimeError('Choose a valid date and time for dine-in.');
-      return;
-    }
+  const saveScheduledDateTime = (nextValue) => {
+    if (!String(nextValue || '').trim()) return;
     onScheduleModeChange('schedule');
     onScheduledForChange(nextValue);
-    setDineInDateTimeModalOpen(false);
-    setDineInDateTimeError('');
+    setDateTimePickerOpen(false);
   };
+  const renderScheduledDateTimePicker = (availabilityMode) => (
+    <StorefrontScheduledDateTimePicker
+      availabilityMode={availabilityMode}
+      brandColor={fnbOrderBrand}
+      brandShadow={fnbOrderBrandShadowStrong}
+      isResponsive={isResponsive}
+      onApply={saveScheduledDateTime}
+      onOpenChange={setDateTimePickerOpen}
+      open={dateTimePickerOpen}
+      hoursNoticeMessage={hoursNoticeMessage}
+      scheduleHoursLabel={scheduleHoursLabel}
+      storefrontHours={storefrontHours}
+      leadTimeMinDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMinDays : null}
+      leadTimeMaxDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMaxDays : null}
+      value={fnbScheduledFor}
+    />
+  );
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
@@ -142,11 +148,10 @@ export function FnbCheckoutFulfillmentChoices({
                   return;
                 }
                 setUnavailableMessage('');
+                setDateTimePickerOpen(false);
                 onOrderMethodChange(option.value);
                 if (option.value === 'dine_in') {
                   onScheduleModeChange('schedule');
-                  setDineInDateTimeError('');
-                  setDineInDateTimeModalOpen(true);
                 }
               }
             })} unavailable={!isAvailable} />;
@@ -165,24 +170,7 @@ export function FnbCheckoutFulfillmentChoices({
       <div style={{ display: 'grid', gap: 16 }}>
         {isDineInOrder ? <>
         <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When will you dine in?</div>
-        {scheduleHoursLabel && (
-          <div style={{ minHeight: 46, borderRadius: 12, border: '1px solid #fde68a', background: '#fffbeb', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, boxSizing: 'border-box' }}>
-            <Clock3 size={13} color="#b45309" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#92400e', lineHeight: 1.35 }}>Dine-in orders must be within store hours: {scheduleHoursLabel}.</span>
-          </div>
-        )}
-        <div data-testid="dine-in-schedule-control" style={{ display: 'grid', gap: 10, border: `1px solid ${fnbScheduledFor ? fnbOrderBrandBorder : '#fde68a'}`, borderRadius: 14, background: fnbScheduledFor ? '#f8fbff' : '#fffbeb', padding: 14 }}>
-          <div style={{ display: 'grid', gap: 4 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>Dine-in date and time</div>
-            <div style={{ fontSize: 12, color: fnbScheduledFor ? '#475569' : '#92400e' }}>
-              {fnbScheduledFor ? formatDineInDateTime(fnbScheduledFor) : 'Choose when you will arrive so the store can prepare your order.'}
-            </div>
-          </div>
-          <button type="button" onClick={openDineInDateTimeModal} style={{ minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: '#fff', color: fnbOrderBrand, fontWeight: 800, padding: '0 14px', cursor: 'pointer', fontFamily: CHECKOUT_FONT_FAMILY }}>
-            {fnbScheduledFor ? 'Change date and time' : 'Choose date and time'}
-          </button>
-        </div>
-        {!fnbScheduledFor ? <div role="alert" style={{ color: '#92400e', fontSize: 13, fontWeight: 600 }}>A dine-in date and time is required before continuing.</div> : null}
+        {renderScheduledDateTimePicker('dine_in')}
         </> : showTimingSection ? <>
         <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
         {showTimingChooser ? <div data-testid="order-timing-choice-grid" style={{ display: 'grid', gridTemplateColumns: timingChoiceGridColumns, gap: 16 }}>
@@ -192,7 +180,10 @@ export function FnbCheckoutFulfillmentChoices({
               active: fnbScheduleMode === 'asap',
               icon: ({ size }) => <Zap size={size} />,
               label: 'NOW',
-              onClick: () => onScheduleModeChange('asap')
+              onClick: () => {
+                setDateTimePickerOpen(false);
+                onScheduleModeChange('asap');
+              }
             })}
           />
           <SelectableOptionCard
@@ -205,62 +196,11 @@ export function FnbCheckoutFulfillmentChoices({
             })}
           />
           </div> : null}
-        {showSchedule && !showImmediate ? <>
+        {showSchedule && !showImmediate ? (
           <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
-          <label style={{ display: 'grid', gap: 6, ...typography.fieldLabel, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={fnbScheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px', background: '#f8fafc', color: '#1e293b', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }} /></label>
-        </> : null}
-        {showTimingChooser && fnbScheduleMode === 'schedule' ? (
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            {scheduleHoursLabel && (
-              <div style={{ minHeight: 46, borderRadius: 12, border: '1px solid #fde68a', background: '#fffbeb', padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8, boxSizing: 'border-box' }}>
-                <Clock3 size={13} color="#b45309" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#92400e', lineHeight: 1.35 }}>Scheduled orders must be within store hours: {scheduleHoursLabel}.</span>
-              </div>
-            )}
-            <span>Scheduled date and time</span>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <style>{`.modern-datetime-input::-webkit-calendar-picker-indicator { display: none !important; -webkit-appearance: none !important; }`}</style>
-              <div style={{ position: 'absolute', left: 14, color: fnbOrderBrand, pointerEvents: 'none' }}><CalendarDays size={18} /></div>
-              <input
-                type="datetime-local"
-                className="modern-datetime-input"
-                value={fnbScheduledFor}
-                onChange={(event) => onScheduledForChange(event.target.value)}
-                onClick={(event) => {
-                  try {
-                    event.target.showPicker();
-                  } catch (error) {
-                    // The native picker is optional and not supported by every browser.
-                  }
-                }}
-                style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 42px', background: '#f8fafc', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', fontFamily: CHECKOUT_FONT_FAMILY }}
-                onMouseEnter={(event) => { event.target.style.borderColor = fnbOrderBrand; event.target.style.background = '#ffffff'; }}
-                onMouseLeave={(event) => { if (document.activeElement !== event.target) { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; } }}
-                onFocus={(event) => { event.target.style.borderColor = fnbOrderBrand; event.target.style.background = '#ffffff'; event.target.style.boxShadow = `0 0 0 3px ${fnbOrderBrandShadowStrong}, inset 0 2px 4px rgba(15,23,42,0.02)`; }}
-                onBlur={(event) => { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; event.target.style.boxShadow = 'inset 0 2px 4px rgba(15,23,42,0.02)'; }}
-              />
-            </div>
-          </label>
-        ) : null}</> : <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
+        ) : null}
+        {showScheduledDateTimePicker ? renderScheduledDateTimePicker('any') : null}</> : <FulfillmentMethodNotice accentColor={fnbOrderBrand} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
       </div>
-      {dineInDateTimeModalOpen ? (
-        <FnbDineInDateTimePicker
-          brandColor={fnbOrderBrand}
-          brandShadow={fnbOrderBrandShadowStrong}
-          error={dineInDateTimeError}
-          isResponsive={isResponsive}
-          locationName={locationName}
-          onClose={() => {
-            setDineInDateTimeModalOpen(false);
-            setDineInDateTimeError('');
-          }}
-          onConfirm={saveDineInDateTime}
-          open
-          scheduleHoursLabel={scheduleHoursLabel}
-          storefrontHours={storefrontHours}
-          value={fnbScheduledFor}
-        />
-      ) : null}
     </div>
   );
 }

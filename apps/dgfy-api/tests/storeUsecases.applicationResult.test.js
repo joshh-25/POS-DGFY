@@ -2198,6 +2198,7 @@ describe('store use-cases application result contract', () => {
                     payment_type: 'cash',
                     fulfillment_status: 'placed',
                     subtotal_amount: 100,
+                    vat_amount: 12.34,
                     delivery_fee: 20,
                     total_amount: 120,
                     customer_phone: '09170000000',
@@ -2212,6 +2213,7 @@ describe('store use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(result.data.status).toBe('placed');
         expect(result.data.order.tracking_pin).toBe('SK-A1B2');
+        expect(result.data.order.vat_amount).toBe(12.34);
         expect(result.data.order.customer_phone).toBeUndefined();
         expect(result.data.order.customer_email).toBeUndefined();
         expect(result.data.order.delivery_address).toBeUndefined();

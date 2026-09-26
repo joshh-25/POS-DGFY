@@ -6,7 +6,10 @@ import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentCho
 // #1218: this file's added (a)-(d) cases reuse overlapping queries ("NOW", "Schedule") across
 // several `it` blocks in the same describe -- explicit cleanup keeps each render isolated
 // regardless of whether the runner's implicit auto-cleanup is active.
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 // #1217: new sibling test file, at the parent-component level, mirroring the Retail/F&B
 // rewrites. SimpleOrderMethodSelector.test.jsx itself is left unchanged -- it renders the leaf
@@ -120,6 +123,39 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
     expect(screen.getByTestId('order-timing-choice-grid').style.gridTemplateColumns).toBe('1fr');
   });
 
+  it('uses the shared hours-aware calendar and opens it only from the date/time field', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T08:00:00'));
+    const storefrontHours = {
+      mode: 'weekly',
+      timezone: 'Asia/Manila',
+      weekly: Object.fromEntries(['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].map((day) => [day, {
+        enabled: true,
+        open: '10:00',
+        close: '22:00',
+        intervals: [{ open: '10:00', close: '22:00' }]
+      }]))
+    };
+    render(<SimpleCheckoutFulfillmentChoices
+      isMobileViewport
+      orderMethod="delivery"
+      isDeliveryOrder
+      fnbScheduleMode="schedule"
+      fnbScheduledFor=""
+      storefrontHours={storefrontHours}
+      simpleOrderMethodOptions={twoMethodOptions}
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={vi.fn()}
+      onScheduledForChange={vi.fn()}
+    />);
+
+    expect(screen.getByTestId('scheduled-date-time-picker')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Choose a date and time/ }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getByTestId('scheduled-hours-note').textContent).toMatch(/within store hours/i);
+  });
+
   it('(b) immediate-only policy: no timing selector, input, or redundant NOW banner', () => {
     render(<SimpleCheckoutFulfillmentChoices
       orderMethod="delivery"
@@ -154,8 +190,9 @@ describe('SimpleCheckoutFulfillmentChoices', () => {
 
     expect(screen.queryByRole('button', { name: 'NOW' })).toBeNull();
     expect(screen.queryByText(/will be delivered NOW/)).toBeNull();
-    expect(screen.getByText('Your order will be delivered within 3 days.')).toBeTruthy();
-    expect(document.querySelector('input[type="datetime-local"]')).toBeTruthy();
+    expect(screen.getByText('Your order will be delivered in 3 days.')).toBeTruthy();
+    expect(screen.getByTestId('scheduled-date-time-picker')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('(d) both disabled: no heading, no cards, exactly one order-timing-expectation notice', () => {

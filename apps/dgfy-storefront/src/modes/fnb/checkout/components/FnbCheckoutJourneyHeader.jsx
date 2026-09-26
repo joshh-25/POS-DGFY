@@ -10,16 +10,13 @@ export function FnbCheckoutJourneyHeader({
   accentColor,
   accentSoft,
   activeStep,
-  cartCount,
   cartHasItems,
   completeColor,
   displayFont,
   isCustomerStepComplete,
-  isDeliveryOrder,
   isFulfillmentStepComplete,
   isMobileViewport,
   onStepChange,
-  orderMethod,
   signedIn
 }) {
   const steps = [
@@ -33,10 +30,6 @@ export function FnbCheckoutJourneyHeader({
       <CheckoutHeroHeader
         title="Complete Your Product Order"
         description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
-        badges={[
-          { label: `${cartCount} item${cartCount === 1 ? '' : 's'}`, tone: 'pill' },
-          { label: isDeliveryOrder ? 'Delivery order flow' : orderMethod === 'dine_in' ? 'Dine-in order flow' : 'Pickup order flow' }
-        ]}
         isMobileViewport={isMobileViewport}
         accentColor={accentColor}
         accentSoft={accentSoft}
