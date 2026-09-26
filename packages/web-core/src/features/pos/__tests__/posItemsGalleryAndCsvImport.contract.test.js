@@ -63,7 +63,8 @@ describe('POS Items gallery and IMS CSV import contracts', () => {
   });
 
   it('uses the existing IMS CSV wizard and the dedicated import permission', () => {
-    expect(workspace).toContain("import CSVImportModal from '@/components/items/CSVImportModal.jsx';");
+    expect(workspace).toContain("const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));");
+    expect(workspace).toContain('showCsvImport && canImportItems');
     expect(workspace).toContain('onClick={() => setShowCsvImport(true)}');
     expect(workspace.match(/Import Items/g)).toHaveLength(2);
     expect(workspace).toContain('await Promise.all([loadItems(), loadPosFolders()]);');

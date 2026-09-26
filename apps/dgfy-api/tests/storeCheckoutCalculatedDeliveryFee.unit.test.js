@@ -50,7 +50,7 @@ const calculatedModeSettingsRows = (overrides = {}) => [
     { setting_key: 'pos_open_status', setting_value: 'true' }
 ];
 
-const baseLocation = () => ({
+const baseLocation = (overrides = {}) => ({
     location_id: 3,
     name: 'Main',
     address_line: 'Address',
@@ -63,7 +63,8 @@ const baseLocation = () => ({
     supports_pickup: true,
     supports_dine_in: true,
     allow_out_of_stock_sales: false,
-    current_wait_time_minutes: 15
+    current_wait_time_minutes: 15,
+    ...overrides
 });
 
 const baseItem = () => ([{
@@ -96,19 +97,19 @@ const deliveryPayload = (overrides = {}) => ({
 
 // ---- quote fixture ----
 
-const buildQuoteUseCase = (settingsRows, roadDistanceProvider) => buildStoreCartQuoteUseCase({
+const buildQuoteUseCase = (settingsRows, roadDistanceProvider, locationOverrides = {}) => buildStoreCartQuoteUseCase({
     revenueSharingEnabled: false,
     roadDistanceProvider,
     storeRepository: {
         findSellableItemsByIds: jest.fn().mockResolvedValue(baseItem()),
-        findLocationById: jest.fn().mockResolvedValue(baseLocation()),
+        findLocationById: jest.fn().mockResolvedValue(baseLocation(locationOverrides)),
         getSettingsByKeys: jest.fn().mockResolvedValue(settingsRows)
     }
 });
 
 // ---- checkout fixture ----
 
-const buildFakeCheckoutStoreRepository = ({ settingsRows, createdOrderId = 9401 } = {}) => {
+const buildFakeCheckoutStoreRepository = ({ settingsRows, createdOrderId = 9401, locationOverrides = {} } = {}) => {
     const transaction = {
         finished: false,
         commit: jest.fn(async () => { transaction.finished = 'commit'; }),
@@ -118,7 +119,7 @@ const buildFakeCheckoutStoreRepository = ({ settingsRows, createdOrderId = 9401 
     const createOnlineTransactionWithLines = jest.fn().mockResolvedValue(createdOrderId);
     return {
         beginTransaction: jest.fn().mockResolvedValue(transaction),
-        findLocationById: jest.fn().mockResolvedValue(baseLocation()),
+        findLocationById: jest.fn().mockResolvedValue(baseLocation(locationOverrides)),
         getSettingsByKeys: jest.fn().mockResolvedValue(settingsRows),
         findSellableItemsByIds: jest.fn().mockResolvedValue(baseItem()),
         findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
@@ -159,8 +160,8 @@ const withGuestProof = (payload) => ({
     })
 });
 
-const runCheckout = async ({ settingsRows, roadDistanceProvider, payloadOverrides = {} }) => {
-    const storeRepository = buildFakeCheckoutStoreRepository({ settingsRows });
+const runCheckout = async ({ settingsRows, roadDistanceProvider, payloadOverrides = {}, locationOverrides = {} }) => {
+    const storeRepository = buildFakeCheckoutStoreRepository({ settingsRows, locationOverrides });
     const useCase = buildStoreCheckoutUseCase({ storeRepository, roadDistanceProvider });
     const payload = withGuestProof(deliveryPayload({
         idempotency_key: `calc-checkout-${Math.floor(Math.random() * 1e9)}`,
@@ -326,6 +327,21 @@ describe('resolveStoreDeliveryFee calculated mode -- happy path and in-range bou
         expect(result.success).toBe(true);
         // 49 + 13 increments x 12 = 205.
         expect(result.data.totals.delivery_fee).toBe(205);
+    });
+
+    test('zero location radius does not reject an in-range road distance', async () => {
+        const roadDistanceProvider = fakeRoadDistanceProvider({ distanceMeters: 5400, source: 'road' });
+        const { result } = await runCheckout({
+            settingsRows: calculatedModeSettingsRows(),
+            roadDistanceProvider,
+            locationOverrides: { delivery_radius_km: 0 }
+        });
+
+        // The location radius drives the map coverage preview only. Calculated checkout pricing
+        // uses the road distance and max_distance_km contract, so a zero preview radius must not
+        // reintroduce the retired straight-line checkout gate.
+        expect(result.success).toBe(true);
+        expect(result.data.totals.delivery_fee).toBe(97);
     });
 });
 

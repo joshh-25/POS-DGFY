@@ -76,9 +76,8 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
         expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
-        expect(splitDialogSource).toContain('sessionRecoveryAttemptRef');
+        expect(splitDialogSource).toContain('sessionIdempotencyKeyRef');
         expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback');
-        expect(splitDialogSource).toContain('if (!sessionId) {');
         expect(checkoutSource).toContain('data-testid="pos-split-payment-cancel-dialog"');
         expect(checkoutSource).toContain('handleCancelCheckout');
         expect(checkoutWorkflowSource).toContain('cancelPosPaymentAllocation');
@@ -122,7 +121,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('The sale is not paid yet. Press Confirm below to finish it.');
         expect(checkoutSource).not.toContain('must be at least PHP');
         expect(checkoutSource).toContain('!paymentIsSufficient');
-        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {
@@ -176,6 +175,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutCleanupSource).toContain('data-testid="pos-discount-select-all"');
         expect(checkoutCleanupSource).toContain('showHeading = !buttonLayout');
         expect(checkoutCleanupSource).toContain('Outstanding after sale');
+        expect(splitDialogSource).toContain('showAccountSummary={false}');
         expect(checkoutCleanupSource).not.toContain('No active registered employees are available.');
         expect(checkoutCleanupSource).toContain('No authorized employees are configured. Ask an administrator to grant discount authorization.');
     });
@@ -222,13 +222,14 @@ describe('POS split-payment UI contract', () => {
         expect(paymentInputSection).not.toContain('autoFocus');
     });
 
-    it('hosts split payment outside the Current Sale item list', () => {
+    it('hosts split-payment modal workflow inside Current Sale without saved recovery UI', () => {
         const currentSaleItemsIndex = checkoutSource.indexOf('data-testid="pos-current-sale-items"');
-        const splitPaymentHostIndex = checkoutSource.indexOf('data-testid="pos-split-payment-modal-host"');
+        const splitPaymentModalIndex = checkoutSource.indexOf('data-testid="pos-split-payment-modal-host"');
 
         expect(currentSaleItemsIndex).toBeGreaterThanOrEqual(0);
-        expect(splitPaymentHostIndex).toBeGreaterThan(currentSaleItemsIndex);
-        expect(checkoutSource).toContain('<div data-testid="pos-split-payment-modal-host">');
+        expect(splitPaymentModalIndex).toBeGreaterThan(-1);
+        expect(splitPaymentModalIndex).toBeLessThan(currentSaleItemsIndex);
+        expect(checkoutSource).not.toContain('data-testid="pos-current-sale-payment-recovery"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-dialog"');
     });
 
@@ -256,16 +257,14 @@ describe('POS split-payment UI contract', () => {
         });
     });
 
-    it('renders configurable payment rows with server-owned recovery', () => {
+    it('renders configurable payment rows without saved split-payment recovery', () => {
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-dialog"');
         expect(splitDialogSource).toContain('max-w-2xl');
-        expect(splitDialogSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x');
-        expect(splitDialogSource).toContain('grid w-max min-w-full grid-cols-6 gap-1.5 overflow-visible sm:w-full');
-        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit' }");
-        expect(splitDialogSource).toContain('EmployeeCreditPaymentPanel');
-        expect(splitDialogSource).toContain('employee_credit');
-        expect(splitDialogSource).toContain('h-8 min-w-[7.25rem] whitespace-nowrap');
-        expect(splitDialogSource).toContain('px-2 text-center text-[11px]');
+        expect(splitDialogSource).not.toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x');
+        expect(splitDialogSource).toContain('grid w-full min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6');
+        expect(splitDialogSource).toContain('min-h-8 w-full min-w-0 overflow-hidden');
+        expect(splitDialogSource).toContain('min-w-0 whitespace-normal break-words');
+        expect(splitDialogSource).toContain('px-1.5 py-1 text-center text-[11px]');
         expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-allocations"');
         expect(splitDialogSource).not.toContain('data-testid="pos-quick-two-way-split"');
@@ -319,10 +318,27 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).not.toContain('Change due');
         expect(splitDialogSource).not.toContain('data-testid="pos-split-payment-cancel-session"');
         expect(splitDialogSource).toContain('fetchPosPaymentSession');
-        expect(splitDialogSource).toContain('readPosSplitPaymentSessionPointer');
+        expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback(async () => {');
+        expect(splitDialogSource).toContain('if (!sessionId) {');
+        expect(splitDialogSource).not.toContain('const openOrCreateSession = useCallback');
+        expect(splitDialogSource).toContain('{!isReadyToComplete && (');
+        expect(splitDialogSource).not.toContain('readPosSplitPaymentSessionPointer');
         expect(splitDialogSource).toContain('remaining_amount');
         expect(splitDialogSource).toContain('manual_payment_received: true');
         expect(splitDialogSource).toContain("payment_provider: 'merchant_owned'");
+        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit', entryLabel: 'Employee Credit' }");
+        expect(splitDialogSource).toContain('const visiblePaymentMethods = useMemo(');
+        expect(splitDialogSource).toContain('fetchEmployeeCreditCheckoutOptions({ locationId, limit: 50 })');
+        expect(splitDialogSource).toContain('canUseEmployeeCredit = false');
+        expect(splitDialogSource).toContain('employee_credit: {');
+        expect(splitDialogSource).toContain('data-testid={`pos-employee-credit-payment-${index + 1}`}');
+        expect(splitDialogSource).toContain('Select and verify an eligible Employee Credit account before recording payment.');
+        expect(splitWorkflowSource).toContain('employeeCreditAccountCode');
+        expect(splitWorkflowSource).toContain('canUseEmployeeCredit');
+        expect(checkoutSource).toContain('employeeCreditAccountCode={employeeCreditAccountCode}');
+        expect(checkoutSource).toContain("const canUseEmployeeCredit = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:employee_credit:use');");
+        expect(checkoutSource).toContain('canUseEmployeeCredit,');
+        expect(checkoutSource).toContain('canUseEmployeeCredit={canUseEmployeeCredit}');
         expect(splitDialogSource).not.toContain('This does not use PayMongo.');
         expect(splitDialogSource).not.toContain('Refresh balance');
         expect(splitDialogSource).not.toContain('completePosPaymentSession');
@@ -335,15 +351,18 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).not.toContain('data-testid="pos-split-payment-saved-sale"');
         expect(splitDialogSource).not.toContain('Sale awaiting completion');
         expect(splitDialogSource).not.toContain('This is the server-saved sale. It is read-only while payment is in progress.');
-        expect(splitWorkflowSource).toContain('data-testid="pos-current-sale-payment-in-progress"');
-        expect(splitWorkflowSource).toContain('data-testid="pos-resume-split-payment"');
-        expect(splitWorkflowSource).toContain('data-testid="pos-discard-unpaid-split-payment"');
-        expect(splitWorkflowSource).toContain('fetchPosPaymentSession(stored.sessionId, {');
-        expect(splitWorkflowSource).toContain('fetchActivePosPaymentSession({');
-        expect(splitWorkflowSource).toContain('await cancelPosPaymentSession(sessionId');
+        expect(splitWorkflowSource).not.toContain('data-testid="pos-current-sale-payment-in-progress"');
+        expect(splitWorkflowSource).not.toContain('data-testid="pos-resume-split-payment"');
+        expect(splitWorkflowSource).not.toContain('data-testid="pos-discard-unpaid-split-payment"');
+        expect(splitWorkflowSource).not.toContain('fetchActivePosPaymentSession');
+        expect(splitWorkflowSource).not.toContain('storageScopeKey');
         expect(splitWorkflowSource).toContain('onSessionStateChange');
-        expect(splitWorkflowSource).toContain("reason: 'Cashier discarded unpaid split-payment draft.'");
-        expect(splitWorkflowSource).toContain('No money is recorded. Resume this payment or discard the unpaid draft.');
+        expect(checkoutWorkflowSource).toContain('splitPaymentCloseRequestedRef');
+        expect(checkoutWorkflowSource).toContain('void handleCancelCheckout();');
+        expect(splitDialogSource).not.toContain('onOpenChange?.(false);\n                await finishReadySession');
+        expect(checkoutSource).not.toContain('splitPaymentStorageScopeKey');
+        expect(checkoutSource).not.toContain('handleKeepSplitPaymentAndClose');
+        expect(checkoutSource).not.toContain('Keep Saved Payment');
         expect(checkoutSource).not.toContain('setSplitPaymentDialogOpen(true);\n            return;');
         expect(checkoutSource).not.toContain('paymentSessionBlockedReason');
         expect(checkoutSource).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;');

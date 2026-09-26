@@ -19,6 +19,8 @@ const initialState = {
   locations: []
 };
 
+const noop = () => {};
+
 const errorDetails = (error) => {
   const payload = error?.response?.data || {};
   return {
@@ -34,7 +36,7 @@ const locationInitials = (name, locationId) => {
   return `L${locationId}`;
 };
 
-export default function PosCashierAttendanceSettingsCard({ locked = false, canEdit = false }) {
+export default function PosCashierAttendanceSettingsCard({ locked = false, canEdit = false, onDirtyChange = noop, onSaved = noop }) {
   const [state, setState] = useState(initialState);
   const [savedConfig, setSavedConfig] = useState(initialState.config);
   const [warningOpen, setWarningOpen] = useState(false);
@@ -62,11 +64,12 @@ export default function PosCashierAttendanceSettingsCard({ locked = false, canEd
         revision: payload?.revision || null,
         locations: Array.isArray(payload?.active_locations) ? payload.active_locations : []
       }));
+      onDirtyChange(false);
     } catch (error) {
       const details = errorDetails(error);
       setState((current) => ({ ...current, loading: false, error: details.message, blockers: [] }));
     }
-  }, []);
+  }, [onDirtyChange]);
 
   useEffect(() => {
     const timerId = window.setTimeout(() => { load({ silent: true }); }, 0);
@@ -85,6 +88,7 @@ export default function PosCashierAttendanceSettingsCard({ locked = false, canEd
         config: { ...current.config, location_ids: Array.from(ids).sort((a, b) => a - b) }
       };
     });
+    onDirtyChange(true);
   };
 
   const toggleWarning = () => {
@@ -115,6 +119,8 @@ export default function PosCashierAttendanceSettingsCard({ locked = false, canEd
         config: savedConfig,
         revision: payload?.revision || current.revision
       }));
+      onDirtyChange(false);
+      await onSaved?.();
       window.dispatchEvent(new CustomEvent(POS_ATTENDANCE_CONFIG_CHANGED_EVENT, {
         detail: { config: payload?.config || state.config }
       }));
@@ -184,12 +190,15 @@ export default function PosCashierAttendanceSettingsCard({ locked = false, canEd
           <Switch
             aria-label="Enable Cashier Attendance and Breaks"
             checked={state.config.enabled}
-            onCheckedChange={(enabled) => setState((current) => ({
-              ...current,
-              error: '',
-              blockers: [],
-              config: { ...current.config, enabled: enabled === true }
-            }))}
+            onCheckedChange={(enabled) => {
+              setState((current) => ({
+                ...current,
+                error: '',
+                blockers: [],
+                config: { ...current.config, enabled: enabled === true }
+              }));
+              onDirtyChange(true);
+            }}
             disabled={locked || state.loading || state.saving || !canEdit}
           />
           </div>

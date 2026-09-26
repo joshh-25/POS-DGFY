@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "intentional_deletions": [
+    {
+      "path": "apps/dgfy-ims/Pages/Dashboard.jsx",
+      "decision": "reject",
+      "reason": "Retired duplicate IMS operations surface; the supported operations/back-office pages now live in the shared POS workflow under the branch's intentional IMS retirement refactor."
+    },
+    {
+      "path": "apps/dgfy-ims/Pages/PurchaseOrders.jsx",
+      "decision": "reject",
+      "reason": "Retired duplicate IMS operations surface; the supported purchase-order workflow now lives in the shared POS/back-office surface under the branch's intentional IMS retirement refactor."
+    },
+    {
+      "path": "apps/dgfy-ims/Pages/StockMovements.jsx",
+      "decision": "reject",
+      "reason": "Retired duplicate IMS operations surface; stock movements are served by the shared POS/back-office workflow under the branch's intentional IMS retirement refactor."
+    },
+    {
+      "path": "apps/dgfy-storefront/src/auth/storefrontSkupervisorLink.js",
+      "decision": "reject",
+      "reason": "Retired the legacy storefront-to-SKUpervisor auth-link helper after business registration and authentication moved to the current same-origin/shared handoff flow."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/services/posSplitPaymentSessionStore.js",
+      "decision": "reject",
+      "reason": "Removed the browser local-storage split-payment pointer; the current split-payment workflow keeps the server payment session authoritative and no longer imports this legacy helper."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/services/__tests__/posSplitPaymentSessionStore.test.js",
+      "decision": "reject",
+      "reason": "Removed the test for the retired browser local-storage split-payment pointer together with the implementation; current split-payment contract and workflow tests cover the server-authoritative path."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/utils/skupervisorHandoff.js",
+      "decision": "reject",
+      "reason": "Retired the legacy generic SKUpervisor handoff helper; current app handoffs use the explicit business back-office handoff utility and same-origin storefront helpers."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/utils/__tests__/skupervisorHandoff.test.js",
+      "decision": "reject",
+      "reason": "Removed the test for the retired generic SKUpervisor handoff helper together with the implementation; current business back-office handoff tests cover the supported route."
+    }
+  ],
+  "accepted_reversions": [],
+  "intentional_dropped_additions": []
+}

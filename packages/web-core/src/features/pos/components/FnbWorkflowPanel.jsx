@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 export function FnbWorkflowPanel({
   orderMethod,
@@ -10,8 +10,7 @@ export function FnbWorkflowPanel({
   paymentTypeField = null,
   buttonLayout = false,
   isTabletViewport = false,
-  disabled = false,
-  cartItemCount = 0
+  disabled = false
 }) {
   const orderMethods = [
     { value: 'dine_in', label: 'Dine In' },
@@ -19,15 +18,6 @@ export function FnbWorkflowPanel({
     { value: 'pickup', label: 'Pick Up' },
     { value: 'delivery', label: 'Delivery' }
   ];
-
-  const hasCartItems = Number(cartItemCount) > 0;
-  const hasOptionalDetails = orderMethod === 'dine_in' || (orderMethod === 'takeout' && Boolean(setKitchenNotes));
-  const [optionalDetailsOpen, setOptionalDetailsOpen] = useState(() => !hasCartItems);
-
-  const optionalDetailsHaveValues = Boolean(String(tableNumber || '').trim() || String(kitchenNotes || '').trim());
-  const optionalDetailsLabel = optionalDetailsOpen
-    ? 'Hide table & notes'
-    : (optionalDetailsHaveValues ? 'Edit table & notes' : 'Add table & notes');
 
   return (
     <div data-testid="fnb-workflow-panel" className="grid w-full min-w-0 max-w-full grid-cols-2 gap-x-2 gap-y-0">
@@ -72,49 +62,35 @@ export function FnbWorkflowPanel({
         </label>
       )}
 
-      {hasOptionalDetails && hasCartItems && orderMethod !== 'dine_in' && (
-        <button
-          type="button"
-          className="col-span-full h-8 rounded-lg border border-slate-200 bg-slate-50 px-2 text-left text-[11px] font-extrabold text-slate-700 hover:border-blue-300 hover:bg-blue-50"
-           onClick={() => setOptionalDetailsOpen((open) => !open)}
-           disabled={disabled}
-           aria-expanded={optionalDetailsOpen}
-         >
-          {optionalDetailsLabel}
-        </button>
-      )}
+      <div className="contents">
+        {orderMethod === 'dine_in' && (
+          <label className="block text-[11px] font-bold text-slate-600">
+            Table # (Optional)
+            <input
+              type="text"
+              placeholder="e.g. T-04"
+              value={tableNumber}
+              onChange={(e) => setTableNumber?.(e.target.value)}
+              disabled={disabled}
+              className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-[12px] text-slate-800"
+            />
+          </label>
+        )}
 
-      {(orderMethod === 'dine_in' || !hasCartItems || optionalDetailsOpen) && (
-         <div className="contents">
-          {orderMethod === 'dine_in' && (
-            <label className="block text-[11px] font-bold text-slate-600">
-              Table # (Optional)
-              <input
-                type="text"
-                placeholder="e.g. T-04"
-                value={tableNumber}
-                onChange={(e) => setTableNumber?.(e.target.value)}
-                disabled={disabled}
-                className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-[12px] text-slate-800"
-              />
-            </label>
-          )}
-
-          {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
-            <label className={`${orderMethod === 'takeout' && isTabletViewport ? 'col-span-full ' : ''}block text-[11px] font-bold text-slate-600`}>
-              Order Notes (Global)
-              <input
-                type="text"
-                placeholder="Applies to the whole order"
-                value={kitchenNotes}
-                onChange={(e) => setKitchenNotes(e.target.value)}
-                disabled={disabled}
-                className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-[12px] text-slate-800"
-              />
-            </label>
-          )}
-        </div>
-      )}
+        {(orderMethod === 'dine_in' || orderMethod === 'takeout') && setKitchenNotes && (
+          <label className={`${orderMethod === 'takeout' && isTabletViewport ? 'col-span-full ' : ''}block text-[11px] font-bold text-slate-600`}>
+            Order Notes (Global)
+            <input
+              type="text"
+              placeholder="Applies to the whole order"
+              value={kitchenNotes}
+              onChange={(e) => setKitchenNotes(e.target.value)}
+              disabled={disabled}
+              className="mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 text-[12px] text-slate-800"
+            />
+          </label>
+        )}
+      </div>
 
       {paymentTypeField ? (
         <div className="col-span-full w-full min-w-0 max-w-full">

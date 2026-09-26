@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -211,13 +212,14 @@ export default function ItemFormModal({
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onTogglePosAlwaysAvailable,
+  onTogglePosLocationAvailability,
+  onResetPosLocationAvailability,
   onToggleStorefrontVisibility,
   onToggleStorefrontLocationAvailability,
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
-  onGenerateStorefrontImage,
-  onOpenBulkPosSetup
+  onGenerateStorefrontImage
 }) {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [formData, setFormData] = useState({
@@ -232,6 +234,8 @@ export default function ItemFormModal({
     vat_type: 'vatable',
     senior_pwd_discount_eligible: false,
     pos_always_available: false,
+    pos_visible: false,
+    storefront_visible: false,
     max_capacity: 0,
     current_stock: 0,
     location_id: '',
@@ -265,6 +269,10 @@ export default function ItemFormModal({
   });
   const [msmeOriginalCategory, setMsmeOriginalCategory] = useState(null);
   const [msmeCategoryTouched, setMsmeCategoryTouched] = useState(false);
+  const [channelVisibilityTouched, setChannelVisibilityTouched] = useState({
+    pos: false,
+    storefront: false
+  });
   const [trackServiceCost, setTrackServiceCost] = useState(false);
   // #1318 Phase 268 — secondary category memberships (additive to the
   // primary `product_folder`/`folder_id` above; ADR 0080 clause 1/2). Kept
@@ -334,10 +342,27 @@ export default function ItemFormModal({
   const storefrontLocationAvailability = item
     ? configuredStorefrontLocationAvailability
     : draftStorefrontLocationAvailability;
+  const configuredPosLocationAvailability = useMemo(() => {
+    const configuredRows = Array.isArray(posConfig?.pos_location_availability)
+      ? posConfig.pos_location_availability
+      : [];
+    const configuredByLocationId = new Map(configuredRows.map((row) => [String(row?.location_id), row]));
+    return activeLocations.map((location) => {
+      const configured = configuredByLocationId.get(String(location?.location_id));
+      return {
+        location_id: location.location_id,
+        name: location.name,
+        is_primary_storefront: location.is_primary_storefront === true,
+        pos_available: configured?.pos_available !== false,
+        source: configured?.source === 'override' ? 'override' : 'inherited'
+      };
+    });
+  }, [activeLocations, posConfig]);
   const modeItemTaxonomy = useMemo(
     () => resolveModeItemTaxonomy(workflowMode),
     [workflowMode]
   );
+  const isFnbMode = String(workflowMode).toLowerCase() === 'fnb';
   const currentItemPreset = useMemo(() => {
     if (!modeItemTaxonomy) return null;
     if (formData.mode_preset) {
@@ -560,6 +585,8 @@ export default function ItemFormModal({
         vat_type: item.vat_type || modeItemDefaults.vat_type || 'vatable',
         senior_pwd_discount_eligible: item.senior_pwd_discount_eligible === true || Number(item.senior_pwd_discount_eligible) === 1,
         pos_always_available: posConfig?.pos_always_available === true,
+        pos_visible: posConfig?.pos_visible !== false,
+        storefront_visible: storefrontConfig?.storefront_visible !== false,
         max_capacity: parseNum(item.max_capacity, Number(modeItemDefaults.max_capacity || 0)),
         current_stock: initialLocationStock,
         location_id: initialLocationId,
@@ -625,6 +652,7 @@ export default function ItemFormModal({
       setInitialFormData(initialData);
       setStockBaseline(initialLocationStock);
       setIsDirty(false);
+      setChannelVisibilityTouched({ pos: false, storefront: false });
       setSkuManuallyEdited(Boolean(String(item.sku_code || '').trim()));
       setLastSuggestedSku('');
       setMarginPercent('');
@@ -659,6 +687,8 @@ export default function ItemFormModal({
         vat_type: modeItemDefaults.vat_type || 'vatable',
         senior_pwd_discount_eligible: false,
         pos_always_available: false,
+        pos_visible: modeItemDefaults.category === 'product' && modeItemDefaults.product_type === 'finished_goods',
+        storefront_visible: modeItemDefaults.category === 'product' && modeItemDefaults.product_type === 'finished_goods',
         max_capacity: Number(modeItemDefaults.max_capacity || 0),
         current_stock: 0,
         location_id: activeLocations.length === 1 ? String(activeLocations[0].location_id) : '',
@@ -702,10 +732,17 @@ export default function ItemFormModal({
           };
         }
       }
+      const defaultChannelVisible = initialData.category === 'product' && initialData.product_type === 'finished_goods';
+      initialData = {
+        ...initialData,
+        pos_visible: defaultChannelVisible,
+        storefront_visible: defaultChannelVisible
+      };
       setFormData(initialData);
       setInitialFormData(initialData);
       setStockBaseline(Number(initialData.current_stock) || 0);
       setIsDirty(false);
+      setChannelVisibilityTouched({ pos: false, storefront: false });
       setSkuManuallyEdited(false);
       setLastSuggestedSku('');
       setMarginPercent('');
@@ -722,7 +759,7 @@ export default function ItemFormModal({
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
     }
-  }, [createPreset, item, modeItemDefaults, modeItemTaxonomy, msmeMode, open, activeLocations, workflowMode]);
+  }, [createPreset, item, modeItemDefaults, modeItemTaxonomy, msmeMode, open, activeLocations, posConfig?.pos_always_available, posConfig?.pos_visible, storefrontConfig?.storefront_visible, workflowMode]);
 
   // Track dirty state
   useEffect(() => {
@@ -864,6 +901,12 @@ export default function ItemFormModal({
 
       return updated;
     });
+  };
+
+  const handleChannelVisibilityChange = (channel, checked) => {
+    const field = channel === 'pos' ? 'pos_visible' : 'storefront_visible';
+    setChannelVisibilityTouched((previous) => ({ ...previous, [channel]: true }));
+    handleChange(field, Boolean(checked));
   };
 
   const handleExternalBarcodeChange = (value) => {
@@ -1313,6 +1356,8 @@ export default function ItemFormModal({
       ? {
         ...submitPayload,
         pos_always_available: cleanedData.pos_always_available === true,
+        ...(item || channelVisibilityTouched.pos ? { pos_visible: cleanedData.pos_visible === true } : {}),
+        ...(item || channelVisibilityTouched.storefront ? { storefront_visible: cleanedData.storefront_visible === true } : {}),
         supplier_links: normalizedSupplierLinks,
         supplier_links_dirty: !areSupplierLinksEqual(normalizedSupplierLinks, item?.suppliers || []),
         storefront_location_availability: storefrontLocationAvailability,
@@ -1321,6 +1366,8 @@ export default function ItemFormModal({
       : {
         ...submitPayload,
         pos_always_available: cleanedData.pos_always_available === true,
+        ...(item || channelVisibilityTouched.pos ? { pos_visible: cleanedData.pos_visible === true } : {}),
+        ...(item || channelVisibilityTouched.storefront ? { storefront_visible: cleanedData.storefront_visible === true } : {}),
         storefront_location_availability: storefrontLocationAvailability,
         storefront_image_files: selectedStorefrontImageFiles
       };
@@ -1370,6 +1417,7 @@ export default function ItemFormModal({
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent
           className="pos-mobile-no-focus-zoom wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"
+          data-catalog-editor="true"
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => event.preventDefault()}
         >
@@ -1568,55 +1616,57 @@ export default function ItemFormModal({
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>{modeItemTaxonomy ? 'Item Type' : 'Category'}</Label>
-                <Select
-                  value={modeItemTaxonomy
-                    ? (currentItemPreset?.key || formData.mode_preset || 'legacy_current')
-                    : (formData.category || (msmeMode ? MSME_CATEGORY_VALUES.SUPPLIES : 'raw_material'))}
-                  onValueChange={(v) => (modeItemTaxonomy ? handleChange('mode_preset', v) : handleChange('category', v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modeItemTaxonomy ? (
-                      <>
-                        {!currentItemPreset && formData.category && (
-                          <SelectItem value="legacy_current">
-                            Legacy/current value: {formData.category}
-                          </SelectItem>
-                        )}
-                        {modeItemTaxonomy.presets.map((presetConfig) => (
-                          <SelectItem key={presetConfig.key} value={presetConfig.key}>
-                            {presetConfig.label}
-                          </SelectItem>
-                        ))}
-                      </>
-                    ) : msmeMode ? (
-                      <>
-                        <SelectItem value={MSME_CATEGORY_VALUES.PRODUCT}>Products</SelectItem>
-                        <SelectItem value={MSME_CATEGORY_VALUES.SUPPLIES}>Supplies</SelectItem>
-                      </>
-                    ) : (
-                      <>
-                        <SelectItem value="raw_material">Raw Material</SelectItem>
-                        <SelectItem value="packaging">Packaging</SelectItem>
-                        <SelectItem value="supplies">Supplies</SelectItem>
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-                {modeItemTaxonomy ? (
-                  <p className="text-xs text-slate-500">
-                    Options follow the corrected {modeItemTaxonomy.label} item taxonomy. Legacy rows stay editable without recategorizing old data.
-                  </p>
-                ) : msmeMode && (
-                  <p className="text-xs text-slate-500">
-                    MSME mode shows only Products and Supplies. Legacy raw material/packaging records remain preserved.
-                  </p>
-                )}
-              </div>
+              {!isFnbMode && (
+                <div className="space-y-2">
+                  <Label>{modeItemTaxonomy ? 'Item Type' : 'Category'}</Label>
+                  <Select
+                    value={modeItemTaxonomy
+                      ? (currentItemPreset?.key || formData.mode_preset || 'legacy_current')
+                      : (formData.category || (msmeMode ? MSME_CATEGORY_VALUES.SUPPLIES : 'raw_material'))}
+                    onValueChange={(v) => (modeItemTaxonomy ? handleChange('mode_preset', v) : handleChange('category', v))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modeItemTaxonomy ? (
+                        <>
+                          {!currentItemPreset && formData.category && (
+                            <SelectItem value="legacy_current">
+                              Legacy/current value: {formData.category}
+                            </SelectItem>
+                          )}
+                          {modeItemTaxonomy.presets.map((presetConfig) => (
+                            <SelectItem key={presetConfig.key} value={presetConfig.key}>
+                              {presetConfig.label}
+                            </SelectItem>
+                          ))}
+                        </>
+                      ) : msmeMode ? (
+                        <>
+                          <SelectItem value={MSME_CATEGORY_VALUES.PRODUCT}>Products</SelectItem>
+                          <SelectItem value={MSME_CATEGORY_VALUES.SUPPLIES}>Supplies</SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="raw_material">Raw Material</SelectItem>
+                          <SelectItem value="packaging">Packaging</SelectItem>
+                          <SelectItem value="supplies">Supplies</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {modeItemTaxonomy ? (
+                    <p className="text-xs text-slate-500">
+                      Options follow the corrected {modeItemTaxonomy.label} item taxonomy. Legacy rows stay editable without recategorizing old data.
+                    </p>
+                  ) : msmeMode && (
+                    <p className="text-xs text-slate-500">
+                      MSME mode shows only Products and Supplies. Legacy raw material/packaging records remain preserved.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label>Unit of Measure</Label>
                 <UomSelect
@@ -1661,9 +1711,6 @@ export default function ItemFormModal({
                   ))}
                 </div>
               )}
-              <p className="text-xs text-slate-500">
-                Existing categories are suggested as you type. A new category is saved automatically when you save the item.
-              </p>
             </div>
 
             {Boolean(itemIdForFolders) && (
@@ -1672,9 +1719,7 @@ export default function ItemFormModal({
                   <Tags className="w-4 h-4" />
                   Additional Categories
                 </Label>
-                <p className="text-xs text-slate-500">
-                  Optional. List this item under up to 10 more categories, alongside its primary category above. This does not change the primary category.
-                </p>
+                <p className="text-xs text-slate-500">Optional secondary categories; the primary category stays unchanged.</p>
                 {secondaryFoldersLoading ? (
                   <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -1935,7 +1980,7 @@ export default function ItemFormModal({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {item && (
+                  {item && !isFnbMode && (
                     <Button
                       type="button"
                       variant="outline"
@@ -1946,7 +1991,7 @@ export default function ItemFormModal({
                       {posConfig?.pos_visible !== false ? 'Disable in POS' : 'Enable in POS'}
                     </Button>
                   )}
-                  {item && (
+                  {item && !isFnbMode && (
                     <Button
                       type="button"
                       variant={posConfig?.pos_always_available === true ? 'default' : 'outline'}
@@ -1957,18 +2002,49 @@ export default function ItemFormModal({
                       {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
                     </Button>
                   )}
-                  {onOpenBulkPosSetup && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={onOpenBulkPosSetup}
-                    >
-                      Open Bulk POS Setup
-                    </Button>
-                  )}
                 </div>
               </div>
+
+              {isFnbMode && (
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Sales channels</p>
+                    <p className="text-xs text-slate-500">
+                      Choose where customers can find this item. Leave Storefront unchecked for POS-only items.
+                    </p>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50">
+                      <Checkbox
+                        id="show-in-pos"
+                        checked={formData.pos_visible === true}
+                        onCheckedChange={(checked) => handleChannelVisibilityChange('pos', checked)}
+                        disabled={isSaving}
+                        aria-label="Show in POS"
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-slate-900">Show in POS</span>
+                        <span className="block text-xs text-slate-500">Display this item on POS terminal menus.</span>
+                      </span>
+                    </label>
+                    {showStorefrontCatalogControls && (
+                      <label className="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 px-3 py-2 hover:bg-slate-50">
+                        <Checkbox
+                          id="show-in-storefront"
+                          checked={formData.storefront_visible === true}
+                          onCheckedChange={(checked) => handleChannelVisibilityChange('storefront', checked)}
+                          disabled={isSaving}
+                          aria-label="Show in Storefront"
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-slate-900">Show in Storefront</span>
+                          <span className="block text-xs text-slate-500">Display this item in the customer storefront.</span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3">
                 <div>
@@ -1986,6 +2062,43 @@ export default function ItemFormModal({
                   disabled={isSaving}
                 />
               </div>
+
+              {item && configuredPosLocationAvailability.length > 0 && (
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">POS branch availability</p>
+                      <p className="text-xs text-slate-500">The company POS setting is inherited unless a branch override is saved.</p>
+                    </div>
+                    <Badge variant="outline">
+                      {configuredPosLocationAvailability.filter((row) => row.pos_available !== false).length}/{configuredPosLocationAvailability.length}
+                    </Badge>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {configuredPosLocationAvailability.map((location) => (
+                      <div key={location.location_id} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{location.name || `Location ${location.location_id}`}</p>
+                          <p className="text-xs text-slate-500">{location.source === 'override' ? 'Branch override' : 'Inherited company policy'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {location.source === 'override' && onResetPosLocationAvailability && (
+                            <Button type="button" variant="ghost" size="sm" onClick={() => onResetPosLocationAvailability(item, location.location_id)}>
+                              Inherit
+                            </Button>
+                          )}
+                          <Switch
+                            checked={location.pos_available !== false}
+                            onCheckedChange={(checked) => onTogglePosLocationAvailability && onTogglePosLocationAvailability(item, location.location_id, checked)}
+                            disabled={!onTogglePosLocationAvailability}
+                            aria-label={`Toggle POS availability for ${location.name || location.location_id}`}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {Array.isArray(posConfig?.pos_readiness?.missing_requirements) && posConfig.pos_readiness.missing_requirements.length > 0 && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
@@ -2016,11 +2129,9 @@ export default function ItemFormModal({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <Label>Storefront Catalog (Optional)</Label>
-                  <p className="text-xs text-slate-500">
-                    Configure customer-facing catalog visibility separately while sharing item images with POS.
-                  </p>
+                  <p className="text-xs text-slate-500">Customer-facing visibility and shared item images.</p>
                 </div>
-                {item && (
+                {item && !isFnbMode && (
                   <Button
                     type="button"
                     variant="outline"
@@ -2159,9 +2270,7 @@ export default function ItemFormModal({
                   }}
                   onDrop={handleStorefrontImageDrop}
                 >
-                  <p className="text-sm text-slate-500">
-                    Drag item images here, or choose them from your device. They will be uploaded after the item is saved.
-                  </p>
+                  <p className="text-sm text-slate-500">Drag item images here, or choose them from your device.</p>
                   <label className="inline-flex cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm hover:bg-slate-100">
                     Choose Item Images
                     <input
@@ -2194,9 +2303,7 @@ export default function ItemFormModal({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <Label>Suppliers (Optional)</Label>
-                    <p className="text-xs text-slate-500">
-                      Add existing suppliers or quickly create one here, then save supplier MOQ and unit cost per item.
-                    </p>
+                    <p className="text-xs text-slate-500">Optional supplier and pricing links.</p>
                   </div>
                   <div className="flex gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={() => openCreateSupplierDialog(null)}>
@@ -2288,10 +2395,7 @@ export default function ItemFormModal({
                           Enable FIFO Batch Tracking
                         </Label>
                       </div>
-                      <p className="text-sm text-slate-600">
-                        Track inventory in batches with automatic First-In-First-Out consumption.
-                        Useful for cost tracking, lot traceability, and items with expiry dates.
-                      </p>
+                      <p className="text-sm text-slate-600">Track batches using first-in, first-out consumption.</p>
                     </div>
                   </div>
                   <Switch
@@ -2450,11 +2554,11 @@ export default function ItemFormModal({
       />
 
       <Dialog open={showCreateSupplierDialog} onOpenChange={setShowCreateSupplierDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="catalog-editor-dialog-content max-w-md p-0">
+          <DialogHeader className="border-b border-slate-100 p-4 pb-3">
             <DialogTitle>Create Supplier</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-3 p-4 pt-3">
             <div className="space-y-2">
               <Label htmlFor="inline_supplier_name">Supplier Name</Label>
               <Input
@@ -2483,7 +2587,7 @@ export default function ItemFormModal({
               />
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="p-4 pt-1">
             <Button type="button" variant="outline" onClick={() => setShowCreateSupplierDialog(false)}>
               Cancel
             </Button>
@@ -2505,6 +2609,8 @@ export default function ItemFormModal({
           onClose();
         }}
         onContinueEditing={() => setShowConfirmation(false)}
+        className="catalog-editor-dialog-content p-0 sm:max-w-md"
+        compact
       />
     </>
   );

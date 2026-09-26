@@ -17,12 +17,6 @@ const hasCoarseTouchInput = (windowObj) => {
   return coarsePointer || touchPoints > 0;
 };
 
-/**
- * A phone held sideways can be wider than the normal mobile CSS breakpoint.
- * Use the short viewport edge and touch capability to keep that device in the
- * mobile catalog flow without misclassifying a desktop browser resized to a
- * short landscape window.
- */
 export const isPosMobileLandscapeViewport = ({
   viewportWidth,
   viewportHeight,
@@ -50,11 +44,6 @@ export const isPosMobileViewport = ({
     || isPosMobileLandscapeViewport({ viewportWidth, viewportHeight, windowObj });
 };
 
-/**
- * Keeps the shared POS tablet layout consistent across the terminal shell and
- * its workspaces. The Falcon 1's 1280px landscape display is tablet-sized for
- * cashier use, but a regular 1280px browser remains on the desktop layout.
- */
 export const isPosTabletViewport = ({
   viewportWidth,
   viewportHeight,
@@ -62,13 +51,10 @@ export const isPosTabletViewport = ({
   windowObj = typeof window !== 'undefined' ? window : null
 } = {}) => {
   const width = Number(viewportWidth);
+
   if (!Number.isFinite(width)) return false;
-
   if (isPosMobileLandscapeViewport({ viewportWidth, viewportHeight, windowObj })) return false;
-
-  if (width >= POS_TABLET_MIN_WIDTH_PX && width <= POS_TABLET_MAX_WIDTH_PX) {
-    return true;
-  }
+  if (width >= POS_TABLET_MIN_WIDTH_PX && width <= POS_TABLET_MAX_WIDTH_PX) return true;
 
   return isDgfyPosSurface
     && width >= POS_TABLET_MIN_WIDTH_PX
@@ -78,12 +64,14 @@ export const isPosTabletViewport = ({
 
 export const isPosTabletLandscapeViewport = (options = {}) => {
   const width = Number(options.viewportWidth);
+
   return isPosTabletViewport(options)
     && width >= POS_TABLET_LANDSCAPE_MIN_WIDTH_PX;
 };
 
 export const isPosTabletPortraitViewport = (options = {}) => {
   const width = Number(options.viewportWidth);
+
   return isPosTabletViewport(options)
     && width < POS_TABLET_LANDSCAPE_MIN_WIDTH_PX;
 };

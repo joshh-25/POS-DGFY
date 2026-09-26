@@ -11,7 +11,6 @@ const renderReceiptPreview = () => render(
     splitPaymentCancelModalOpen={false}
     splitPaymentCancelLoading={false}
     setSplitPaymentCancelModalOpen={vi.fn()}
-    handleKeepSplitPaymentAndClose={vi.fn()}
     handleReverseSplitPaymentAndStartNew={vi.fn()}
     receiptPreviewModalOpen
     closeReceiptPreviewModal={vi.fn()}

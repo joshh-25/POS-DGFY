@@ -50,6 +50,7 @@ const buildOrder = (overrides = {}) => ({
   amount_paid: 100,
   balance_due: 50,
   delivery_address: '123 Main St',
+  customer_phone: '09171234567',
   delivery_latitude: 14.5995,
   delivery_longitude: 120.9842,
   created_at: '2026-08-31T10:00:00.000Z',
@@ -191,6 +192,8 @@ describe('Table columns', () => {
     expect(table.textContent).toContain('Delivery'); // Mode column label
     expect(table.textContent).toContain('Pending Dispatch'); // Delivery column status
     expect(table.textContent).toContain('123 Main St'); // Address column
+    expect(table.textContent).toContain('09171234567'); // Customer phone
+    expect(table.textContent).toContain('14.59950000, 120.98420000'); // Exact saved pin
     expect(screen.getByLabelText(/Open pin in map for order 9001/i)).toBeTruthy();
   });
 

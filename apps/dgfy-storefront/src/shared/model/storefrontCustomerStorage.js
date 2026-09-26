@@ -82,6 +82,7 @@ export const normalizeCheckoutAuthResumeDraft = (value) => {
   return {
     version: 1,
     routeSlug,
+    workflowMode: String(value.workflowMode || value.workflow_mode || '').trim().toLowerCase(),
     returnTo: String(value.returnTo || '').trim(),
     checkoutTab,
     fnbOrderStep: Number(value.fnbOrderStep || 0) || null,

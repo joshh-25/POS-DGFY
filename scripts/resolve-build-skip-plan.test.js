@@ -355,10 +355,10 @@ test('parseArgs: --environment defaults to undefined when omitted (deploy-main.y
 // dispatch force-rebuilt the paired dgfy-api/dgfy-migration-runner unit even when only one of them
 // changed -- tripping ADR 0081 Decision 7's tag-immutability guard on the untouched one every time.
 // deriveChannelSuffix must match deploy-api.yml/deploy-migration-runner.yml/deploy-frontend.yml's
-// own inline shell `case` exactly (DEV -> -dev, STAGING -> -staging, PROD -> ''), or this script
+// own inline shell `case` exactly (DEV -> moving dev alias, STAGING -> -staging, PROD -> ''), or this script
 // would check a different tag than the one the real build-and-push step publishes.
 test('deriveChannelSuffix: DEV/STAGING/PROD match the per-workflow shell case exactly', () => {
-  assert.equal(deriveChannelSuffix('DEV'), '-dev');
+  assert.equal(deriveChannelSuffix('DEV'), '');
   assert.equal(deriveChannelSuffix('STAGING'), '-staging');
   assert.equal(deriveChannelSuffix('PROD'), '');
 });
@@ -405,8 +405,8 @@ test('resolveBuildSkipPlan: environment omitted checks the bare tag (deploy-main
 // PROD X.Y.Z-rN); without one, the legacy uniform X.Y.Z[-channel] derivation applies.
 const { deriveVersionTag } = require('./resolve-build-skip-plan');
 
-test('deriveVersionTag: legacy derivation when no release revision is set (DEV/ad-hoc unchanged)', () => {
-  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', revision: undefined }), '1.13.0-dev');
+test('deriveVersionTag: versionless DEV alias and legacy staging/production derivation', () => {
+  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', revision: undefined }), 'dev');
   assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-pos', revision: '' }), '1.13.0-staging');
   assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'PROD', app: 'dgfy-api', revision: null }), '1.13.0');
 });
@@ -428,10 +428,9 @@ test('parseArgs: --release-revision is optional (omitted for DEV/ad-hoc dispatch
 
 // #2055 (Phase 346) -- per-app revisions and DEV ad-hoc tags in the skip plan.
 
-test('deriveVersionTag: per-app revisions resolve per app; prRef resolves ad-hoc DEV tags', () => {
-  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', revision: 'r16' }), '1.13.0-r16-dev');
-  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', prRef: 'pr482' }), '1.13.0-pr482-dev');
-  assert.equal(deriveVersionTag({ version: '1.13.0', environment: 'DEV', app: 'dgfy-pos', prRef: 'feat/foo' }), '1.13.0-feat-foo-dev');
+test('deriveVersionTag: every DEV source resolves to the shared versionless alias', () => {
+  assert.equal(deriveVersionTag({ environment: 'DEV', app: 'dgfy-pos', revision: 'r16' }), 'dev');
+  assert.equal(deriveVersionTag({ environment: 'DEV', app: 'dgfy-pos', prRef: 'pr482' }), 'dev');
   // prRef outside DEV fails closed -- the resolver rejects it, so the plan can never check
   // the wrong tag for a STAGING/PROD dispatch.
   assert.throws(() => deriveVersionTag({ version: '1.13.0', environment: 'STAGING', app: 'dgfy-pos', prRef: 'pr482' }), /DEV-only/);
@@ -457,20 +456,17 @@ test('resolveBuildSkipPlan: an explicit per-app entry wins over the shared candi
   assert.equal(plan['dgfy-pos'].code, 'not-published');
 });
 
-test('resolveBuildSkipPlan: DEV ad-hoc prRef checks the slug tag per app', async () => {
+test('resolveBuildSkipPlan: DEV always builds so the moving tag follows the selected branch SHA', async () => {
   const inspectedRefs = [];
-  await resolveBuildSkipPlan({
-    apps: ['dgfy-pos'],
-    currentRevision: 'HEAD',
-    environment: 'DEV',
-    prRef: 'pr482',
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-pos'], currentRevision: 'HEAD', environment: 'DEV',
     inspectFn: (imageRef) => { inspectedRefs.push(imageRef); return inspectNotFound(); },
     diffFn: neverCalled('diffFn'),
   });
-  assert.equal(inspectedRefs.length, 1);
-  assert.match(inspectedRefs[0], /-pr482-dev$/);
+  assert.equal(plan['dgfy-pos'].skip, false);
+  assert.equal(plan['dgfy-pos'].code, 'dev-moving-tag');
+  assert.deepEqual(inspectedRefs, []);
 });
-
 test('parseArgs: --release-revisions-json parses to a per-app map; garbage fails closed', () => {
   const options = parseArgs(['--revision', 'abc123', '--release-revisions-json', '{"dgfy-api":"r16","dgfy-pos":"17"}']);
   assert.deepEqual(options.revisionsByApp, { 'dgfy-api': 'r16', 'dgfy-pos': '17' });

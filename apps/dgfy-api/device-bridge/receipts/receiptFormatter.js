@@ -4,6 +4,24 @@ const paymentBreakdownLabel = (entry) => String(
 ).replace(/_/g, ' ');
 
 const clampWidth = (value = 48) => Math.max(32, Math.min(Number.parseInt(value, 10) || 48, 64));
+const formatGeneratedAt = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString('en-PH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Manila',
+  });
+};
+const formatReconciliationStatus = (value) => ({
+  matched: 'MATCHED',
+  variance: 'VARIANCE FOUND',
+  not_generated: 'NOT GENERATED',
+  not_comparable: 'COMPARISON UNAVAILABLE',
+}[String(value || '').trim().toLowerCase()] || 'COMPARISON UNAVAILABLE');
+const formatOptionalAmount = (value) => (
+  value === null || value === undefined ? '-' : money(value)
+);
 
 const truncate = (value, max = 48) => {
   const normalized = String(value || '').replace(/\s+/g, ' ').trim();
@@ -157,6 +175,7 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
   const business = payload?.business || {};
   const reading = payload?.z_reading || {};
   const summary = reading?.summary || {};
+  const reconciliation = reading?.reconciliation || reading?.z_reading_reconciliation || null;
   const divider = '-'.repeat(normalizedWidth);
   const lines = [
     business.name || 'DGFY',
@@ -164,7 +183,7 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     reading.business_date ? `Business date: ${reading.business_date}` : '',
     reading.location_id ? `Location: ${reading.location_id}` : '',
     reading.reading_identifier ? `Reading: ${reading.reading_identifier}` : '',
-    reading.generated_at ? `Generated: ${new Date(reading.generated_at).toLocaleString()}` : '',
+    reading.generated_at ? `Generated: ${formatGeneratedAt(reading.generated_at)}` : '',
     divider,
     buildKeyValueLine('Transactions', String(summary.transaction_count || 0), normalizedWidth),
     buildKeyValueLine('Subtotal', money(summary.subtotal_amount), normalizedWidth),
@@ -172,6 +191,17 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('VAT', money(summary.vat_amount), normalizedWidth),
     buildKeyValueLine('Total sales', money(summary.total_amount), normalizedWidth),
     buildKeyValueLine('POS voids', money(summary.void_amount), normalizedWidth),
+    ...(reconciliation ? [
+      divider,
+      'REPORT RECONCILIATION',
+      buildKeyValueLine('Status', formatReconciliationStatus(reconciliation.status), normalizedWidth),
+      buildKeyValueLine('Report recognized', formatOptionalAmount(reconciliation.report_recognized_sales), normalizedWidth),
+      buildKeyValueLine('Z-reading total', formatOptionalAmount(reconciliation.z_total_amount), normalizedWidth),
+      buildKeyValueLine('Difference', formatOptionalAmount(reconciliation.variance), normalizedWidth),
+      buildKeyValueLine('Report refunds/voids', formatOptionalAmount(reconciliation.report_refunds_voids), normalizedWidth),
+      buildKeyValueLine('Report adjustments', formatOptionalAmount(reconciliation.report_adjustment_amount), normalizedWidth),
+      reconciliation.evaluated_at ? buildKeyValueLine('Checked', formatGeneratedAt(reconciliation.evaluated_at), normalizedWidth) : ''
+    ] : []),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);

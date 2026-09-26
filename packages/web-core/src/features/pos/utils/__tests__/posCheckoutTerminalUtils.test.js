@@ -103,6 +103,7 @@ describe('POS checkout terminal pure utilities', () => {
             { line_key: 'a', item_id: 1, quantity: 1, sale_price: 112, vat_type: 'vatable' }
         ], {
             type: 'senior',
+            rate: 20,
             eligible_item_ids: [1]
         });
         expect(statutory.vatRemoved).toBe(12);

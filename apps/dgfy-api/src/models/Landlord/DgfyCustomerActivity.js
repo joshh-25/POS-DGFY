@@ -38,6 +38,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(255),
             allowNull: true
         },
+        location_id: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
         status: {
             type: DataTypes.STRING(60),
             allowNull: true
@@ -86,7 +90,8 @@ export default (sequelize) => {
             { fields: ['dgfy_account_id', 'occurred_at'], name: 'idx_dgfy_customer_activities_account_time' },
             { unique: true, fields: ['tenant_id', 'activity_type', 'reference'], name: 'unique_dgfy_customer_activity_reference' },
             { fields: ['customer_email'], name: 'idx_dgfy_customer_activities_email' },
-            { fields: ['customer_phone'], name: 'idx_dgfy_customer_activities_phone' }
+            { fields: ['customer_phone'], name: 'idx_dgfy_customer_activities_phone' },
+            { fields: ['dgfy_account_id', 'store_slug', 'location_id', 'occurred_at'], name: 'idx_dgfy_customer_activities_account_store_location_time' }
         ]
     });
 

@@ -37,13 +37,9 @@ const resolveOfferDiscountParts = (offer) => {
  * existing non-checkout render sites (StorefrontCatalogToolbar, SimpleCatalogToolbar, #694) that
  * don't pass it keep their current byte-identical, listing-free behavior.
  *
- * Every "Use" click here applies through `onApplyVoucher`, not a separate promo path. That's safe
- * today because #695's migration converted every real promo this codebase had into a voucher and
- * deleted the settings rows backing the legacy engine (confirmed against a full tenant inventory,
- * 2026-08-20) -- so nothing in `availableOffers` is promo-only anymore. It stays safe going forward
- * because the merchant-facing "Add Promo" button (TerminalOperationsWorkspace.jsx) is frozen in the
- * same change, closing off new non-voucher promo creation. If that freeze is ever lifted without a
- * matching dual-dispatch path being added back here, a listed promo-only offer would 404 on apply.
+ * Available offers carry an explicit redemption type from fnbPromoModel.js. Use clicks dispatch
+ * commercial promos through `onApplyPromo` and vouchers through `onApplyVoucher`; manual entry
+ * remains voucher-first for backwards compatibility with the catalog toolbar call sites.
  *
  * Hoisted from modes/fnb/checkout/components/ to shared/ (#694) -- it now has two render sites
  * (the checkout promo-panel stack, and the catalog toolbar's voucher-entry button), and the `fnb/`
@@ -54,7 +50,9 @@ export function VoucherCodePanel({
   code = '',
   onChange,
   onClear,
+  onApplyPromo,
   onApplyVoucher,
+  activeCodeType = 'voucher',
   statusMessage = '',
   statusTone = 'idle',
   appliedDiscountText = '',
@@ -67,8 +65,8 @@ export function VoucherCodePanel({
   // to `null` keeps the checkout render's copy byte-identical to before this change.
   helperText = null,
   triggerLabel = 'Apply a promo / voucher',
-  // #776/#695: optional. promoSectionModel from useStorefrontCatalog.js -- already deduped, already
-  // includes both real promos and voucher-adapted entries. See file header for the safety reasoning.
+  // #776/#695: optional. promoSectionModel from useStorefrontCatalog.js -- already deduped and
+  // includes both real promos and voucher-adapted entries, each with a redemption type.
   availableOffers = []
 }) {
   const normalizedCode = normalizeVoucherCode(code);
@@ -89,11 +87,23 @@ export function VoucherCodePanel({
   const normalizedAvailableOffers = (Array.isArray(availableOffers) ? availableOffers : [])
     .filter((offer) => normalizeVoucherCode(offer?.promoCode || offer?.promo_code).length > 0);
 
-  const handleApply = (codeToApply) => {
+  const handleApply = (codeToApply, redemptionType = null) => {
     const finalCode = normalizeVoucherCode(codeToApply);
     if (!finalCode) return;
-    onChange?.(finalCode);
-    onApplyVoucher?.(finalCode);
+    const explicitType = String(redemptionType || '').trim().toLowerCase();
+    const currentCodeType = String(activeCodeType || '').trim().toLowerCase();
+    const resolvedType = explicitType === 'promo' || explicitType === 'voucher'
+      ? explicitType
+      : currentCodeType === 'promo' && finalCode === normalizedCode
+        ? 'promo'
+        : 'voucher';
+
+    if (resolvedType === 'promo') {
+      onApplyPromo?.(finalCode);
+    } else {
+      onChange?.(finalCode);
+      onApplyVoucher?.(finalCode);
+    }
     setIsModalOpen(false);
   };
 
@@ -198,8 +208,8 @@ export function VoucherCodePanel({
               </div>
             ) : null}
 
-            {/* #776/#695: ported from PromoCodePanel.jsx's "Available Promos" list, unchanged in
-                behavior -- see file header for why this is safe to dispatch through onApplyVoucher. */}
+            {/* #776/#695: ported from PromoCodePanel.jsx's "Available Promos" list. The selected
+                source determines whether the Use click dispatches as a promo or voucher. */}
             {normalizedAvailableOffers.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', paddingRight: 4, marginTop: 4 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Available Offers</div>
@@ -234,7 +244,7 @@ export function VoucherCodePanel({
                           ) : offerCodeName ? (
                             <button
                               type="button"
-                              onClick={() => handleApply(offerCodeName)}
+                              onClick={() => handleApply(offerCodeName, offer.redemptionType || offer.redemption_type)}
                               disabled={!canApplyOffer}
                               style={{ minHeight: 30, padding: '0 16px', borderRadius: 14, border: `1px solid ${canApplyOffer ? accentColor : '#cbd5e1'}`, background: '#ffffff', color: canApplyOffer ? accentColor : '#94a3b8', fontWeight: 800, fontSize: 12, cursor: canApplyOffer ? 'pointer' : 'not-allowed', flexShrink: 0 }}
                             >

@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-23
+last_reviewed: 2026-09-24
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
@@ -23,9 +23,8 @@ Accepted (2026-09-04)
 ## Context
 
 Epic #1548 asks for per-app SemVer on the five containers (`dgfy-api`, `dgfy-migration-runner`,
-`dgfy-ims`, `dgfy-pos`, `dgfy-storefront`), enforced at PR time (patch by default on `develop`, at
-least a minor bump per changed app on promotion to `staging`, patch-only on staging repair and main
-hotfix), stamped on published images, and observable at runtime. No ADR governs image *tags* today
+`dgfy-ims`, `dgfy-pos`, `dgfy-storefront`), enforced at PR time (unchanged floors on `develop` and staging repair, at least a minor floor
+bump per changed app on promotion to `staging`, patch-only on direct `main` hotfix), stamped on published images, and observable at runtime. No ADR governs image *tags* today
 — only names ([ADR 0072](0072-ghcr-container-image-naming.md)). Per
 `docs/architecture/ARCHITECTURE_GOVERNANCE.md`'s decision procedure, a new cross-boundary decision
 with no ADR covering it means: create an ADR. This is that ADR, filed as #1559.
@@ -762,3 +761,30 @@ untouched. Full detail: issue #2055, `.tmp/plan-2055.md` (planner handoff),
   this ADR's scheme deliberately does not fold `packages/pos-receipt` into.
 - Sieitzz/dgfy-mobile#78, #79 — the sibling repo's versioning policy cited for pattern reuse in
   "Alternatives considered," not adopted wholesale.
+
+
+### 2026-09-24 — Versionless shared DEV and promotion-owned floors (#2071, Phase 347)
+
+This amendment supersedes the 2026-09-23 DEV artifact-selection path from Phase 346. DEV is an
+experimental shared target that may be updated manually from `develop` or any non-main branch;
+all such builds publish the moving `dev` alias and a SHA tag. DEV has no SemVer floor, artifact
+revision, candidate eligibility, or promotion role. CI always rebuilds selected DEV apps so a
+previously published alias cannot cause a false skip. The DEV compose deployment explicitly uses
+`IMAGE_TAG=dev`.
+
+Promotion is frozen to a `develop` SHA and builds changed apps directly on STAGING. It does not
+dispatch DEV, inspect DEV tags, select DEV digests, or depend on DEV availability. At promotion
+start, changed apps receive their next minor package floor; ordinary `develop` changes keep their
+floors unchanged. STAGING repairs also keep the floor unchanged and allocate the next immutable
+artifact revision (`rN`) without a patch bump. Only a direct `main` hotfix advances an app's patch
+floor. Promotion revisions are allocated from STAGING/PROD tags only; DEV tags do not participate.
+Frontend STAGING tags retain `X.Y.Z-rN-staging`; backend and PROD revision tags retain their
+existing neutral `X.Y.Z-rN` forms.
+
+New candidate manifests use `sku-release-candidate/v3`: the initial revision records
+`apps_touched` and the frozen develop SHA, without `dev_artifacts`; per-app release lineage uses
+origin `promotion` or `staging_repair`. The validator continues accepting v1/v2 manifests for
+already-created candidates. ADR 0081 Decisions 1, 3, 4, 6, and 8 are amended in place at the
+`[default]` tier. Decision 7's `[binding]` immutability rule is unchanged.
+
+PR: (this PR). Closes #2071. Refs #2055.

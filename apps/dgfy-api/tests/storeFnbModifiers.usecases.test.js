@@ -149,8 +149,8 @@ describe('storefront F&B modifier checkout contract', () => {
 
     expect(result.success).toBe(true);
     expect(result.data.subtotal_amount).toBe(290);
-    expect(result.data.service_fee_amount).toBe(2.9);
-    expect(result.data.total_amount).toBe(292.9);
+    expect(result.data.service_fee_amount).toBe(0);
+    expect(result.data.total_amount).toBe(290);
     expect(result.data.lines[0]).toEqual(expect.objectContaining({
       sale_price: 145,
       line_subtotal: 290,

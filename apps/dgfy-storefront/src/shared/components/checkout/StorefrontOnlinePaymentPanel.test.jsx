@@ -22,6 +22,14 @@ const paymentSession = {
   provider_payment_intent_id: 'pi_test_card_ui'
 };
 
+const directGcashPaymentSession = {
+  payment_session_id: 'CPS-TESTGCASH1',
+  payment_flow: 'direct_gcash',
+  payment_method: 'gcash',
+  status: 'awaiting_payment',
+  provider_payment_intent_id: 'pi_test_gcash_ui'
+};
+
 const renderPanel = () => render(
   <StorefrontOnlinePaymentPanel
     billing={{ email: 'customer@example.com' }}
@@ -34,6 +42,7 @@ const renderPanel = () => render(
 afterEach(() => {
   cleanup();
   window.sessionStorage.clear();
+  window.history.replaceState({}, '', '/');
   vi.clearAllMocks();
 });
 
@@ -97,5 +106,35 @@ describe('StorefrontOnlinePaymentPanel card states', () => {
     }));
 
     resolvePayment({ status: 'awaiting_next_action', redirectUrl: null });
+  });
+});
+
+describe('StorefrontOnlinePaymentPanel direct wallet states', () => {
+  it('shows authorization waiting instead of payment processing before returning from GCash', () => {
+    render(
+      <StorefrontOnlinePaymentPanel
+        paymentEnvironment="test"
+        paymentSession={directGcashPaymentSession}
+        paymentType="gcash"
+      />
+    );
+
+    expect(screen.getByText('Awaiting GCash authorization')).not.toBeNull();
+    expect(screen.queryByText('Payment processing')).toBeNull();
+  });
+
+  it('shows payment processing only after the direct GCash authorization return', () => {
+    window.history.replaceState({}, '', '/order?payment_status=return');
+
+    render(
+      <StorefrontOnlinePaymentPanel
+        paymentEnvironment="test"
+        paymentSession={directGcashPaymentSession}
+        paymentType="gcash"
+      />
+    );
+
+    expect(screen.getByText('Payment processing')).not.toBeNull();
+    expect(screen.queryByText('Awaiting GCash authorization')).toBeNull();
   });
 });

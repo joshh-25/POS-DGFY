@@ -55,9 +55,10 @@ describe('POS reports profit and loss table', () => {
   it('renders the proposed item-level columns and server-provided values', () => {
     render(<PosReportsProfitLossTable rows={rows} />);
 
-    ['Rank', 'Item', 'Category', 'Item Sold', 'Gross Sales (₱)', 'COGS (₱)', 'Net Sales (₱)', 'Net Profit (₱)', 'Loss (₱)', 'Profit Margin (%)'].forEach((label) => {
+    ['Rank', 'Item', 'Net Sales (₱)', 'Net Profit (₱)', 'Loss (₱)', 'Profit Margin (%)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Burger Classic').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱1,417.60').length).toBeGreaterThan(0);
     expect(screen.getAllByText('50.06%').length).toBeGreaterThan(0);
@@ -66,20 +67,20 @@ describe('POS reports profit and loss table', () => {
     const tableRegion = screen.getByRole('region', { name: 'Profit and loss table' });
     const headers = tableRegion.querySelectorAll('thead th');
     const firstRowCells = tableRegion.querySelectorAll('tbody tr:first-child td');
-    expect(firstRowCells[3].className).toContain('text-center');
-    expect(headers[3].className).toContain('text-center');
-    [4, 5, 6, 7, 8, 9].forEach((index) => {
+    expect(firstRowCells[0].className).toContain('text-left');
+    expect(headers[0].className).toContain('text-left');
+    [2, 3, 4, 5].forEach((index) => {
       expect(headers[index].className).toContain('text-left');
       expect(firstRowCells[index].className).toContain('text-left');
       expect(firstRowCells[index].className).toContain('tabular-nums');
     });
   });
 
-  it('uses green for profit, red for loss, and amber when the result is neutral', () => {
+  it('uses brand for profit, danger for loss, and secondary for a neutral result', () => {
     render(<PosReportsProfitLossTable rows={rows} />);
 
-    expect(screen.getAllByLabelText('Profit ₱1,417.60')[0].className).toContain('text-emerald-600');
-    expect(screen.getAllByLabelText('Loss ₱50.00')[0].className).toContain('text-rose-600');
-    expect(screen.getAllByLabelText('No profit ₱0.00')[0].className).toContain('text-amber-600');
+    expect(screen.getAllByLabelText('Profit ₱1,417.60')[0].className).toContain('text-[#15579B]');
+    expect(screen.getAllByLabelText('Loss ₱50.00')[0].className).toContain('text-[#DC2626]');
+    expect(screen.getAllByLabelText('No profit ₱0.00')[0].className).toContain('text-[#475569]');
   });
 });

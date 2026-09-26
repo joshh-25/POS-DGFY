@@ -20,8 +20,11 @@ export const createJobOrderDraft = async (joData) => {
   return response.data.data;
 };
 
-export const finalizeJobOrder = async (joId) => {
-  const response = await api.patch(`/job-orders/${joId}/finalize`);
+export const finalizeJobOrder = async (joId, locationPayload = {}) => {
+  const response = await api.patch(`/job-orders/${joId}/finalize`, {
+    ...(locationPayload?.source_location_id ? { source_location_id: locationPayload.source_location_id } : {}),
+    ...(locationPayload?.destination_location_id ? { destination_location_id: locationPayload.destination_location_id } : {})
+  });
   return response.data.data;
 };
 

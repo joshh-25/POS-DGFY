@@ -126,10 +126,10 @@ describe('buildStoreCartQuoteUseCase — Phase 140 downpayment resolution', () =
         const result = await dbStore.run({ tenantId: TENANT_ID }, () => useCase({ payload: quotePayload() }));
 
         expect(result.success).toBe(true);
-        expect(result.data.total_amount).toBe(505); // 500 subtotal + 1% (5) service fee, no delivery
+        expect(result.data.total_amount).toBe(500); // customer total is the 500 subtotal; no delivery or convenience fee
         expect(result.data.payment_mode).toBe('downpayment_required');
-        expect(result.data.downpayment_amount).toBe(101); // 20% of 505
-        expect(result.data.balance_due_amount).toBe(404);
+        expect(result.data.downpayment_amount).toBe(100); // 20% of 500
+        expect(result.data.balance_due_amount).toBe(400);
         expect(result.data.downpayment_refundable).toBe(true);
     });
 
@@ -192,8 +192,8 @@ describe('buildStoreCartQuoteUseCase — Phase 150 (#866) customer_choice electi
 
         expect(result.success).toBe(true);
         expect(result.data.payment_mode).toBe('downpayment_required');
-        expect(result.data.downpayment_amount).toBe(101); // 20% of 505
-        expect(result.data.balance_due_amount).toBe(404);
+        expect(result.data.downpayment_amount).toBe(100); // 20% of 500
+        expect(result.data.balance_due_amount).toBe(400);
     });
 
     test('election "full" produces the null downpayment shape', async () => {
@@ -463,16 +463,16 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(result.success).toBe(true);
         expect(commercePaymentRepository.createSession).toHaveBeenCalledTimes(1);
         const sessionAttrs = commercePaymentRepository.createSession.mock.calls[0][0];
-        // 500 subtotal + 1% (5) service fee = 505 order total; 20% downpayment = 101 pesos = 10100 centavos.
+        // 500 subtotal, no customer convenience fee; 20% downpayment = 100 pesos = 10000 centavos.
         expect(sessionAttrs.capture_kind).toBe('downpayment');
-        expect(sessionAttrs.order_total_centavos).toBe(50500);
-        expect(sessionAttrs.total_amount_centavos).toBe(10100);
+        expect(sessionAttrs.order_total_centavos).toBe(50000);
+        expect(sessionAttrs.total_amount_centavos).toBe(10000);
         expect(sessionAttrs.total_amount_centavos).toBeLessThan(sessionAttrs.order_total_centavos);
         expect(sessionAttrs.capture_payment_method).toBe('qrph');
         expect(sessionAttrs.downpayment_refundable).toBe(true);
         // The PayMongo intent itself must be created for the captured amount, never the order total.
         expect(paymongoService.createQrphPaymentIntent).toHaveBeenCalledTimes(1);
-        expect(paymongoService.createQrphPaymentIntent.mock.calls[0][0].amount).toBe(10100);
+        expect(paymongoService.createQrphPaymentIntent.mock.calls[0][0].amount).toBe(10000);
     });
 
     test('rejects 422 DOWNPAYMENT_POLICY_UNRESOLVED when the tenant requires a downpayment but the stored settings row is malformed', async () => {
@@ -849,8 +849,8 @@ describe('buildStoreCheckoutPaymentSessionUseCase — Phase 141 (#822) captures 
         expect(result.success).toBe(true);
         const sessionAttrs = commercePaymentRepository.createSession.mock.calls[0][0];
         expect(sessionAttrs.capture_kind).toBe('full');
-        expect(sessionAttrs.order_total_centavos).toBe(50500);
-        expect(sessionAttrs.total_amount_centavos).toBe(50500);
+        expect(sessionAttrs.order_total_centavos).toBe(50000);
+        expect(sessionAttrs.total_amount_centavos).toBe(50000);
         expect(sessionAttrs.downpayment_refundable).toBeNull();
     });
 });
@@ -955,13 +955,13 @@ describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the
 
         expect(result.success).toBe(true);
         const session = result.data.payment_session;
-        // 500 subtotal + 1% (5) service fee = 505 order total; 20% downpayment = 101 pesos.
+        // 500 subtotal with no customer convenience fee; 20% downpayment = 100 pesos.
         expect(session.capture_kind).toBe('downpayment');
-        expect(session.order_total_amount).toBe(505);
-        expect(session.balance_due_amount).toBe(404);
+        expect(session.order_total_amount).toBe(500);
+        expect(session.balance_due_amount).toBe(400);
         expect(session.downpayment_refundable).toBe(true);
         // total_amount keeps its pre-existing meaning: the CAPTURED amount, not the order total.
-        expect(session.total_amount).toBe(101);
+        expect(session.total_amount).toBe(100);
     });
 
     test('additive-only: a full_payment session reports capture_kind "full" and the three new amount/refundable fields strictly null, with every pre-existing key unchanged', async () => {
@@ -1004,7 +1004,7 @@ describe('serializePaymentSession — Phase 142 (#823) downpayment fields on the
         expect(session).toMatchObject({
             status: 'awaiting_payment',
             payment_method: 'qrph',
-            total_amount: 505,
+            total_amount: 500,
             currency: 'PHP'
         });
     });

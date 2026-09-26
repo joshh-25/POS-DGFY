@@ -1,5 +1,9 @@
 const trimText = (value) => String(value || '').trim();
 
+const normalizeRedemptionType = (value) => (
+  trimText(value).toLowerCase() === 'voucher' ? 'voucher' : 'promo'
+);
+
 const parseOptionalArray = (value) => {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string') return [];
@@ -66,6 +70,7 @@ const normalizePromoEntry = (entry, { catalogIndex, catalogCategoryIndex } = {})
   const subtitle = trimText(entry.subtitle);
   const badge = trimText(entry.badge);
   const promoCode = trimText(entry.promo_code || entry.promoCode).toUpperCase();
+  const redemptionType = normalizeRedemptionType(entry.redemption_type || entry.redemptionType);
   const validityText = trimText(entry.validity_text || entry.validityText);
   const headline = trimText(entry.headline || entry.primary_text);
   const supportingText = trimText(entry.supporting_text || entry.secondary_text || entry.supportingText);
@@ -103,6 +108,8 @@ const normalizePromoEntry = (entry, { catalogIndex, catalogCategoryIndex } = {})
     badge,
     promo_code: promoCode,
     promoCode,
+    redemptionType,
+    redemption_type: redemptionType,
     validityText,
     validity_text: validityText,
     headline,
@@ -152,6 +159,8 @@ const adaptVoucherToPromoEntryShape = (voucher) => {
     // here; an empty discount label degrades to `normalizePromoEntry`'s own "PROMO" default.
     discount_percent: discountPercent,
     promo_code: voucher?.code,
+    redemptionType: 'voucher',
+    redemption_type: 'voucher',
     validity_text: voucher?.validity_text,
     active: voucher?.active !== false
   };

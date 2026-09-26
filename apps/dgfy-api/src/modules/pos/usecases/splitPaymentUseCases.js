@@ -269,6 +269,31 @@ const paymentError = (code, message, statusCode, details = undefined) => (
     new DomainError(code, message, { statusCode, ...(details ? { details } : {}) })
 );
 
+const assertEmployeeCreditInternalFields = ({ payload = {}, isEmployeeCredit }) => {
+    if (!isEmployeeCredit) return;
+
+    const paymentHandoffMode = String(payload.payment_handoff_mode || '').trim().toLowerCase();
+    const outcome = String(payload.outcome || '').trim().toLowerCase();
+    const hasProviderFields = Boolean(
+        (paymentHandoffMode && paymentHandoffMode !== 'internal')
+        || payload.manual_payment_received === true
+        || String(payload.payment_reference || '').trim()
+        || String(payload.payment_provider || '').trim()
+        || String(payload.failure_code || '').trim()
+        || String(payload.failure_reason || '').trim()
+        || (outcome && outcome !== 'successful')
+    );
+
+    if (hasProviderFields) {
+        throw paymentError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Employee Credit allocations must use internal successful tender fields only.',
+            422,
+            { reason_code: 'EMPLOYEE_CREDIT_PROVIDER_FIELDS_NOT_ALLOWED' }
+        );
+    }
+};
+
 const resolveOwnedOpenShift = async ({ posRepository, payload = {}, user, transaction }) => {
     const userId = toPositiveInt(user?.user_id || user?.id);
     const shiftOwnerUserId = toPositiveInt(user?.register_shift_owner_user_id) || userId;
@@ -358,11 +383,13 @@ const calculateBalance = (session, allocations = []) => {
 
 const publicAllocation = (row) => {
     const allocation = toPlain(row) || {};
+    const safeAllocation = { ...allocation };
+    delete safeAllocation.employee_credit_account_code;
     return {
-        ...allocation,
-        applied_amount: round4(allocation.applied_amount),
-        cash_tendered: allocation.cash_tendered == null ? null : round4(allocation.cash_tendered),
-        change_amount: allocation.change_amount == null ? null : round4(allocation.change_amount)
+        ...safeAllocation,
+        applied_amount: round4(safeAllocation.applied_amount),
+        cash_tendered: safeAllocation.cash_tendered == null ? null : round4(safeAllocation.cash_tendered),
+        change_amount: safeAllocation.change_amount == null ? null : round4(safeAllocation.change_amount)
     };
 };
 
@@ -594,13 +621,16 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         const paymentMethod = String(payload.payment_method || '').trim().toLowerCase();
         if (!PAYMENT_METHODS.has(paymentMethod)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported split-payment method.', 422);
         const isEmployeeCredit = paymentMethod === 'employee_credit';
-        const employeeCreditAccountCode = String(payload.employee_credit?.account_code || '').trim().toUpperCase();
+        const employeeCreditAccountCode = isEmployeeCredit
+            ? String(payload.employee_credit?.account_code || '').trim().toUpperCase()
+            : null;
         if (isEmployeeCredit && !employeeCreditAccountCode) {
-            throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Employee Credit account is required for this allocation.', 422);
+            throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Employee Credit account_code is required.', 422);
         }
-        const paymentHandoffMode = String(payload.payment_handoff_mode || (paymentMethod === 'cash' ? 'internal' : 'external')).trim().toLowerCase();
+        assertEmployeeCreditInternalFields({ payload, isEmployeeCredit });
+        const paymentHandoffMode = String(payload.payment_handoff_mode || (paymentMethod === 'cash' || isEmployeeCredit ? 'internal' : 'external')).trim().toLowerCase();
         if (!['external', 'internal'].includes(paymentHandoffMode)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported payment handoff mode.', 422);
-        const manualPaymentReceived = isEmployeeCredit || (paymentMethod !== 'cash' && payload.manual_payment_received === true);
+        const manualPaymentReceived = !isEmployeeCredit && paymentMethod !== 'cash' && payload.manual_payment_received === true;
         const paymentProvider = manualPaymentReceived
             ? 'merchant_owned'
             : String(payload.payment_provider || '').trim().toLowerCase();
@@ -608,16 +638,16 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         if (requestedAmount <= 0) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'amount must be greater than 0.', 422);
 
         let outcome = String(payload.outcome || '').trim().toLowerCase();
-        if (!outcome) outcome = paymentMethod === 'cash' || manualPaymentReceived ? 'successful' : 'pending';
-        if (manualPaymentReceived) outcome = 'successful';
+        if (!outcome) outcome = paymentMethod === 'cash' || isEmployeeCredit || manualPaymentReceived ? 'successful' : 'pending';
+        if (manualPaymentReceived || isEmployeeCredit) outcome = 'successful';
         if (!ALLOCATION_OUTCOMES.has(outcome)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported payment allocation outcome.', 422);
-        if (paymentMethod !== 'cash' && paymentHandoffMode === 'internal' && !isEmployeeCredit) {
+        if (paymentMethod !== 'cash' && !isEmployeeCredit && paymentHandoffMode === 'internal') {
             throw paymentError(DomainErrorCode.CONFLICT, 'Internal non-cash handoff is unavailable until POS compliance controls are enabled.', 409, { reason_code: 'PAYMENT_HANDOFF_COMPLIANCE_REQUIRED' });
         }
-        if (paymentMethod !== 'cash' && outcome === 'successful' && !manualPaymentReceived) {
+        if (paymentMethod !== 'cash' && !isEmployeeCredit && outcome === 'successful' && !manualPaymentReceived) {
             throw paymentError(DomainErrorCode.CONFLICT, 'Non-cash allocations require provider confirmation before success.', 409, { reason_code: 'PAYMENT_CONFIRMATION_REQUIRED' });
         }
-        if (paymentMethod !== 'cash' && !manualPaymentReceived && !String(payload.payment_reference || '').trim()) {
+        if (paymentMethod !== 'cash' && !isEmployeeCredit && !manualPaymentReceived && !String(payload.payment_reference || '').trim()) {
             throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'payment_reference is required for non-cash allocations.', 422);
         }
 
@@ -659,6 +689,14 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         const hasAcceptedOrPendingAllocation = loaded.allocations.some((allocation) => (
             allocation?.status === 'successful' || allocation?.status === 'pending'
         ));
+        if (isEmployeeCredit && loaded.allocations.some((allocation) => (
+            allocation?.payment_method === 'employee_credit'
+            && ['successful', 'pending'].includes(allocation?.status)
+        ))) {
+            throw paymentError(DomainErrorCode.CONFLICT, 'Only one Employee Credit allocation is allowed per split payment.', 409, {
+                reason_code: 'EMPLOYEE_CREDIT_ALLOCATION_EXISTS'
+            });
+        }
         if (!hasAcceptedOrPendingAllocation) {
             if (typeof quotePosCheckoutUseCase !== 'function') {
                 throw paymentError(DomainErrorCode.INTERNAL_ERROR, 'POS inventory validation is unavailable.', 500);
@@ -668,7 +706,7 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
                 ? storedSnapshot.checkout_payload
                 : storedSnapshot;
             if (!isPlainObject(sourceSnapshot)) {
-                throw paymentError(DomainErrorCode.CONFLICT, 'The saved payment session has an invalid checkout snapshot. No payment was accepted.', 409, {
+                throw paymentError(DomainErrorCode.CONFLICT, 'The payment session has an invalid checkout snapshot. No payment was accepted.', 409, {
                     reason_code: 'POS_PAYMENT_SESSION_SNAPSHOT_INVALID'
                 });
             }
@@ -711,6 +749,7 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
             request_hash: requestHash,
             status: outcome,
             payment_method: paymentMethod,
+            employee_credit_account_code: employeeCreditAccountCode,
             payment_handoff_mode: paymentHandoffMode,
             applied_amount: appliedAmount,
             cash_tendered: cashTendered,
@@ -765,14 +804,16 @@ export const buildCancelPosPaymentAllocationUseCase = ({ posRepository }) => asy
         if (['completed', 'cancelled'].includes(loaded.session.status)) throw paymentError(DomainErrorCode.CONFLICT, 'Closed payment sessions cannot be changed.', 409, { reason_code: 'POS_PAYMENT_SESSION_CLOSED' });
         const isMerchantOwnedManualDigital = allocation.status === 'successful'
             && allocation.payment_method !== 'cash'
+            && allocation.payment_method !== 'employee_credit'
             && String(allocation.payment_provider || '').trim().toLowerCase() === 'merchant_owned';
-        if (allocation.status === 'successful' && allocation.payment_method !== 'cash' && !isMerchantOwnedManualDigital) {
+        const isEmployeeCredit = allocation.payment_method === 'employee_credit';
+        if (allocation.status === 'successful' && allocation.payment_method !== 'cash' && !isMerchantOwnedManualDigital && !isEmployeeCredit) {
             throw paymentError(DomainErrorCode.CONFLICT, 'Provider-confirmed digital payments require a provider refund before reversal.', 409, {
                 reason_code: 'PAYMENT_PROVIDER_REFUND_REQUIRED'
             });
         }
         const successfulManualReversal = allocation.status === 'successful'
-            && (allocation.payment_method === 'cash' || isMerchantOwnedManualDigital);
+            && (allocation.payment_method === 'cash' || isMerchantOwnedManualDigital || isEmployeeCredit);
         const cancelled = await posRepository.updatePosPaymentAllocation(normalizedAllocationId, successfulManualReversal ? {
             status: 'reversed',
             reversed_by: scope.userId,
@@ -823,6 +864,11 @@ export const buildConfirmPosPaymentAllocationUseCase = ({ posRepository, provide
         if (allocation.payment_method === 'cash') {
             throw paymentError(DomainErrorCode.CONFLICT, 'Cash allocations are confirmed at collection time.', 409, {
                 reason_code: 'CASH_PROVIDER_CONFIRMATION_NOT_ALLOWED'
+            });
+        }
+        if (allocation.payment_method === 'employee_credit') {
+            throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit allocations do not use provider confirmation.', 409, {
+                reason_code: 'EMPLOYEE_CREDIT_PROVIDER_CONFIRMATION_NOT_ALLOWED'
             });
         }
         if (allocation.status === 'successful') {
@@ -919,6 +965,11 @@ export const buildReconcilePosPaymentAllocationUseCase = ({ posRepository, provi
                 reason_code: 'CASH_PROVIDER_RECONCILIATION_NOT_ALLOWED'
             });
         }
+        if (preflightAllocation.payment_method === 'employee_credit') {
+            throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit allocations do not use provider reconciliation.', 409, {
+                reason_code: 'EMPLOYEE_CREDIT_PROVIDER_RECONCILIATION_NOT_ALLOWED'
+            });
+        }
         if (!['pending', 'successful', 'reversed'].includes(preflightAllocation.status)) {
             throw paymentError(DomainErrorCode.CONFLICT, 'This payment allocation cannot be provider-reconciled.', 409, {
                 reason_code: 'PAYMENT_ALLOCATION_NOT_RECONCILABLE'
@@ -958,6 +1009,11 @@ export const buildReconcilePosPaymentAllocationUseCase = ({ posRepository, provi
         const allocation = await posRepository.getPosPaymentAllocationById(normalizedAllocationId, { transaction, lock: true });
         if (!allocation || toPositiveInt(allocation.session_id) !== normalizedSessionId) {
             throw paymentError(DomainErrorCode.RESOURCE_NOT_FOUND, 'POS payment allocation not found.', 404);
+        }
+        if (allocation.payment_method === 'employee_credit') {
+            throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit allocations do not use provider reconciliation.', 409, {
+                reason_code: 'EMPLOYEE_CREDIT_PROVIDER_RECONCILIATION_NOT_ALLOWED'
+            });
         }
 
         const paymentEventId = String(reconciliation.provider_event_id || '').trim();
@@ -1086,7 +1142,7 @@ export const buildCancelPosPaymentSessionUseCase = ({ posRepository }) => async 
 const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
     const storedSnapshot = parseStoredSnapshot(session?.snapshot);
     if (!storedSnapshot) {
-        throw paymentError(DomainErrorCode.CONFLICT, 'The saved payment session has an invalid checkout snapshot. Keep the session open and contact a manager.', 409, {
+        throw paymentError(DomainErrorCode.CONFLICT, 'The payment session has an invalid checkout snapshot. Keep the session open and contact a manager.', 409, {
             reason_code: 'POS_PAYMENT_SESSION_SNAPSHOT_INVALID'
         });
     }
@@ -1095,7 +1151,7 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
         : storedSnapshot;
     const sourceLines = Array.isArray(sourceSnapshot.lines) ? sourceSnapshot.lines : [];
     if (sourceLines.length < 1) {
-        throw paymentError(DomainErrorCode.CONFLICT, 'The saved payment session has no checkout lines. Keep the session open and contact a manager.', 409, {
+        throw paymentError(DomainErrorCode.CONFLICT, 'The payment session has no checkout lines. Keep the session open and contact a manager.', 409, {
             reason_code: 'POS_PAYMENT_SESSION_LINES_MISSING'
         });
     }
@@ -1109,8 +1165,44 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
     });
     const successful = allocations.filter((allocation) => allocation?.status === 'successful');
     const cashAllocations = successful.filter((allocation) => allocation?.payment_method === 'cash');
-    const primaryAllocation = successful.find((allocation) => allocation?.payment_method === 'cash') || successful[0] || null;
+    const employeeCreditAllocations = successful.filter((allocation) => allocation?.payment_method === 'employee_credit');
+    const employeeCreditAllocation = employeeCreditAllocations[0] || null;
+    const primaryAllocation = employeeCreditAllocation
+        || successful.find((allocation) => allocation?.payment_method === 'cash')
+        || successful[0]
+        || null;
     const paymentType = String(primaryAllocation?.payment_method || 'cash').trim().toLowerCase();
+    if (employeeCreditAllocations.length > 1) {
+        throw paymentError(DomainErrorCode.CONFLICT, 'Only one Employee Credit allocation is allowed per split payment.', 409, {
+            reason_code: 'EMPLOYEE_CREDIT_ALLOCATION_EXISTS'
+        });
+    }
+    const employeeCreditAccountCode = employeeCreditAllocation
+        ? String(employeeCreditAllocation.employee_credit_account_code || '').trim().toUpperCase()
+        : '';
+    if (employeeCreditAllocation && !employeeCreditAccountCode) {
+        throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit account data is missing from the payment allocation.', 409, {
+            reason_code: 'EMPLOYEE_CREDIT_ACCOUNT_MISSING'
+        });
+    }
+    if (employeeCreditAllocation) {
+        const paymentHandoffMode = String(employeeCreditAllocation.payment_handoff_mode || '').trim().toLowerCase();
+        const hasProviderFields = Boolean(
+            (paymentHandoffMode && paymentHandoffMode !== 'internal')
+            || String(employeeCreditAllocation.payment_reference || '').trim()
+            || String(employeeCreditAllocation.payment_provider || '').trim()
+            || String(employeeCreditAllocation.failure_code || '').trim()
+            || String(employeeCreditAllocation.failure_reason || '').trim()
+        );
+        if (hasProviderFields) {
+            throw paymentError(
+                DomainErrorCode.CONFLICT,
+                'The saved Employee Credit allocation contains provider-owned fields and cannot complete.',
+                409,
+                { reason_code: 'EMPLOYEE_CREDIT_PROVIDER_FIELDS_NOT_ALLOWED' }
+            );
+        }
+    }
     const cashReceived = round4(cashAllocations.reduce((sum, allocation) => sum + Number(allocation.cash_tendered || 0), 0));
     const changeAmount = round4(cashAllocations.reduce((sum, allocation) => sum + Number(allocation.change_amount || 0), 0));
     const references = [...new Set(successful
@@ -1138,7 +1230,10 @@ const buildCompletionCheckoutPayload = ({ session, allocations, scope }) => {
         terminal_id: scope.terminalId,
         location_id: scope.locationId,
         payment_type: paymentType,
-        payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
+        payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
+        ...(employeeCreditAllocation
+            ? { employee_credit: { account_code: employeeCreditAccountCode } }
+            : {}),
         payment_session_reference: String(session.session_reference || '').trim() || null,
         payment_reference: references.length === 1 ? references[0] : (references.length > 1 ? String(session.session_reference || '').trim() : null),
         payment_provider: providers.length === 1 ? providers[0] : (providers.length > 1 ? 'split' : null),

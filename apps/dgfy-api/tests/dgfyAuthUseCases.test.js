@@ -1949,6 +1949,55 @@ describe('dgfyAuthUseCases', () => {
             userRole: 'admin',
             permissions: ['pos:transact']
         }));
+        expect(validateTerminalPolicy.mock.calls[0][0]).not.toHaveProperty('isTenantOwner');
+    });
+
+    it('treats the accepted tenant owner admin as tenant-wide terminal authority', async () => {
+        const account = createAccount({ id: 'dgfy-pos-owner' });
+        const membership = {
+            id: 57,
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-pos',
+            tenant_user_id: 9,
+            status: 'accepted',
+            tenant: {
+                id: 'tenant-pos',
+                status: 'active',
+                owner_dgfy_account_id: account.id
+            }
+        };
+        const validateTerminalPolicy = jest.fn().mockResolvedValue({
+            terminal_id: 'COUNTER-01',
+            reason_code: 'ALLOWED'
+        });
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 9,
+                role: 'admin',
+                is_master_admin: false,
+                permissions: ['pos:transact'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'counter-01' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(validateTerminalPolicy).toHaveBeenCalledWith(expect.objectContaining({
+            tenantUserId: 9,
+            userRole: 'admin',
+            isMasterAdmin: false,
+            isTenantOwner: true
+        }));
     });
 
     it('allows a cashier membership backed by a master-admin tenant session', async () => {
@@ -1972,7 +2021,7 @@ describe('dgfyAuthUseCases', () => {
             createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
                 user_id: 10,
                 role: 'cashier',
-                is_master_admin: true,
+                is_master_admin: 1,
                 permissions: ['pos:view', 'pos:transact'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),

@@ -1,6 +1,7 @@
 # dgfy-ims
 
-The IMS (SKUpervisor) frontend — the primary back-office admin app, formerly
+The IMS (SKUpervisor) frontend — the legacy authentication, platform-admin, and
+merchant-compatibility app; POS is the canonical merchant Back Office, formerly
 `apps/dgfy-web/apps/skupervisor`, split out by issue
 [#322](https://github.com/Sieitzz/dgfy-platform/issues/322)/ADR
 [0071](../../docs/architecture/adr/0071-frontend-split-into-three-apps.md).

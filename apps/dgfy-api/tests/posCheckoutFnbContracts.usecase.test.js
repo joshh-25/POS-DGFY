@@ -92,7 +92,7 @@ beforeAll(async () => {
 });
 
 describe('POS historical parked-sale settlement', () => {
-    const buildHistoricalRepository = ({ checkoutLine, parkedLine, item }) => {
+    const buildHistoricalRepository = ({ checkoutLine, parkedLine, item, inventoryDeductedAt = null }) => {
         let createdTransaction = null;
         const parkedSale = {
             pos_parked_sale_id: 2201,
@@ -101,6 +101,7 @@ describe('POS historical parked-sale settlement', () => {
             claimed_terminal_id: 'TERM-01',
             shift_id: 901,
             location_id: 3,
+            inventory_deducted_at: inventoryDeductedAt,
             snapshot: { lines: [parkedLine] }
         };
         return {
@@ -147,7 +148,9 @@ describe('POS historical parked-sale settlement', () => {
         const harness = buildHistoricalRepository({
             parkedLine,
             checkoutLine: {
-                line_ref: 'parked-line-1',
+                // Resume/draft hydration may rebuild the client line reference;
+                // the saved item, price, quantity, and configuration still match.
+                line_ref: 'rebuilt-line-ref-1',
                 item_id: 71,
                 quantity: 1,
                 sale_price: 100,
@@ -269,7 +272,7 @@ describe('POS historical parked-sale settlement', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.details.reason_code).toBe('PARKED_SALE_SNAPSHOT_LINE_MISMATCH');
-        expect(harness.repository.findSellableItemsByIds).not.toHaveBeenCalled();
+        expect(harness.repository.findSellableItemsByIds).toHaveBeenCalledWith([72], expect.any(Object));
     });
 
     it('settles from the parked snapshot when the catalog row is physically missing', async () => {
@@ -324,6 +327,363 @@ describe('POS historical parked-sale settlement', () => {
             stock_effect_type: 'stock_exempt',
             stock_exempt_reason: 'historical_parked_sale'
         }));
+    });
+
+    it('rejects an added line when the original parked item is physically missing', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-missing-addition',
+            item_id: 731,
+            item_name: 'Discontinued Combo',
+            quantity: 1,
+            base_sale_price: 125,
+            sale_price: 125,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            checkoutLine: {
+                line_ref: 'parked-line-missing-addition',
+                item_id: 731,
+                quantity: 1,
+                sale_price: 125,
+                parked_snapshot_line: true
+            },
+            item: null
+        });
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-missing-added-line',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [
+                    harness.checkoutLine,
+                    {
+                        line_ref: 'new-missing-item-line',
+                        item_id: 731,
+                        quantity: 1,
+                        sale_price: 125
+                    }
+                ]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_ADDED_LINE_UNAVAILABLE'
+        }));
+    });
+
+    it('issues only the added quantity when an unchanged-price parked line increases quantity', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-added-quantity',
+            item_id: 74,
+            item_name: 'Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'parked-line-added-quantity',
+                item_id: 74,
+                quantity: 2,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: {
+                item_id: 74,
+                name: 'Coffee',
+                category: 'product',
+                status: 'active',
+                pos_visible: true,
+                pos_location_available: true,
+                current_stock: 1,
+                default_sale_price: 100,
+                fifo_enabled: false,
+                vat_type: 'vatable'
+            }
+        });
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 991 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn().mockResolvedValue({ status: 'completed' })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-added-quantity-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.createdTransaction().lines[0]).toEqual(expect.objectContaining({
+            quantity: 2,
+            sale_price: 100,
+            inventory_preissued: true
+        }));
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 74,
+            quantity: 1,
+            movement_type: 'goods_issue',
+            location_id: 3
+        }), 12, expect.any(Object));
+    });
+
+    it('allows checkout after a reasoned parked-line deletion and reconciles reserved stock', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-deleted',
+            item_id: 75,
+            item_name: 'Old Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const replacementItem = {
+            item_id: 76,
+            name: 'New Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 5,
+            default_sale_price: 150,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'new-line-76',
+                item_id: 76,
+                quantity: 1,
+                sale_price: 150
+            },
+            item: replacementItem
+        });
+        harness.repository.findSellableItemsByIds.mockResolvedValue([replacementItem]);
+        const inventoryCommandService = {
+            reverseParkedSaleGoodsIssue: jest.fn().mockResolvedValue([{ item_id: 75 }]),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 992 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn().mockResolvedValue({ status: 'completed' })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-deletion-checkout-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-deleted',
+                    item_id: 75,
+                    reason: 'Customer removed item'
+                }],
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
+            parked_sale_id: 2201,
+            reason: 'Parked-sale line deletion reconciliation for parked sale 2201'
+        }, 12, expect.any(Object));
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 76,
+            quantity: 1,
+            movement_type: 'goods_issue'
+        }), 12, expect.any(Object));
+    });
+
+    it('does not reverse parked inventory twice during a re-park reconciliation', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-repark-deleted',
+            item_id: 79,
+            item_name: 'Deleted Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const replacementItem = {
+            item_id: 80,
+            name: 'Replacement Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 5,
+            default_sale_price: 150,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'replacement-line-80',
+                item_id: 80,
+                quantity: 1,
+                sale_price: 150
+            },
+            item: replacementItem
+        });
+        harness.repository.findSellableItemsByIds.mockResolvedValue([replacementItem]);
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            reverseParkedSaleGoodsIssue: jest.fn().mockResolvedValue([{ item_id: 79 }]),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 993 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            inventoryEffectsOnly: true,
+            validateInventoryAvailability: true,
+            payload: {
+                idempotency_key: 'parked-repark-reconcile-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                parked_sale_inventory_reconciled: true,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-repark-deleted',
+                    item_id: 79,
+                    reason: 'Customer removed item'
+                }],
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(inventoryCommandService.reverseParkedSaleGoodsIssue).not.toHaveBeenCalled();
+        expect(result.data.inventory_effects).toEqual([
+            expect.objectContaining({ item_id: 80, quantity: 1, location_id: 3 })
+        ]);
+    });
+
+    it('re-issues a retained available original line after the old revision is reversed', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-repark-retained',
+            item_id: 81,
+            item_name: 'Retained Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const currentItem = {
+            item_id: 81,
+            name: 'Retained Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 10,
+            default_sale_price: 100,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'parked-line-repark-retained',
+                item_id: 81,
+                quantity: 1,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: currentItem
+        });
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 994 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            inventoryEffectsOnly: true,
+            validateInventoryAvailability: true,
+            payload: {
+                idempotency_key: 'parked-repark-retained-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                parked_sale_inventory_reconciled: true,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.inventory_effects).toEqual([
+            expect.objectContaining({ item_id: 81, quantity: 1, location_id: 3 })
+        ]);
     });
 });
 
@@ -410,6 +770,52 @@ const terminalIdentityPolicy = () => ({
     active_registry: activeTerminalRegistry
 });
 
+const buildFnbGuardRepository = ({ check, lines, includeCheckoutDependencies = false }) => {
+    let createdTransaction = null;
+    const repository = {
+        getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+        findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+        createTransactionWithLines: jest.fn(),
+        getFnbCheckForCheckout: jest.fn().mockResolvedValue({
+            check,
+            lines: (Array.isArray(lines) ? lines : []).filter((line) => line?.status !== 'voided')
+        }),
+        bindFnbCheckLocation: jest.fn().mockResolvedValue(check),
+        ...(includeCheckoutDependencies ? {
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Burger',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 30,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: false
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-FNB-GUARD-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines: transactionLines }) => {
+                createdTransaction = { pos_transaction_id: 901, ...header, lines: transactionLines };
+                return 901;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 901 } }),
+            settleFnbCheck: jest.fn().mockResolvedValue({ check_id: check.check_id, status: 'paid' }),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        } : {})
+    };
+    return {
+        repository,
+        inventoryCommandService: { createStockMovement: jest.fn().mockResolvedValue({ movement_id: 901 }) },
+        getCreatedTransaction: () => createdTransaction
+    };
+};
+
 describe('POS checkout F&B contracts', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -469,6 +875,91 @@ describe('POS checkout F&B contracts', () => {
             expect.objectContaining({ item_id: 1, quantity: 2 })
         ]);
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('charges only the Employee Credit portion of a mixed split checkout', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Mixed Tender Meal',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 10,
+                cost_per_unit: 20,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-EMPLOYEE-CREDIT-SPLIT-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 503, ...header, lines };
+                return 503;
+            }),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const employeeCreditService = {
+            prepareDebit: jest.fn().mockResolvedValue({
+                accountId: 44,
+                userId: null,
+                employeeId: 44,
+                employeeName: 'Employee 44',
+                amount: 60,
+                outstandingAfter: 60,
+                authorizationReference: 'EC-AUTH-503',
+                maskedAccountCode: 'EC-**44'
+            }),
+            finalizeDebit: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            employeeCreditService
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'mixed-employee-credit-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'employee_credit',
+                payment_handoff_mode: 'internal',
+                payment_session_reference: 'PAY-MIXED-503',
+                employee_credit: { account_code: 'EC-44' },
+                payment_breakdown: [
+                    { payment_type: 'employee_credit', count: 1, amount: 60 },
+                    { payment_type: 'cash', count: 1, amount: 40 }
+                ],
+                cash_received: 40,
+                change_amount: 0,
+                order_method: 'pickup',
+                lines: [{ item_id: 1, quantity: 1 }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(employeeCreditService.prepareDebit).toHaveBeenCalledWith(expect.objectContaining({
+            accountCode: 'EC-44',
+            amount: 60
+        }));
+        expect(employeeCreditService.finalizeDebit).toHaveBeenCalledWith(expect.objectContaining({
+            prepared: expect.objectContaining({ amount: 60 }),
+            posTransactionId: 503
+        }));
+        expect(createdTransaction.payment_type).toBe('employee_credit');
+        expect(createdTransaction.employee_credit_amount).toBe(60);
+        expect(createdTransaction.cash_received).toBe(40);
+        expect(createdTransaction.change_amount).toBe(0);
     });
 
     it.each([
@@ -1839,6 +2330,193 @@ describe('POS checkout F&B contracts', () => {
         expect(result.error.details).toEqual(expect.objectContaining({
             reason_code: 'FNB_KITCHEN_ORDER_UNAVAILABLE'
         }));
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('rejects a second checkout for an already-paid F&B check before creating a POS transaction', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 700, status: 'paid', pos_transaction_id: 880 },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-paid-check-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 700,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_CHECK_ALREADY_SETTLED',
+            pos_transaction_id: 880
+        }));
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('rejects checkout when the persisted F&B check lines differ from the submitted cart', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 701, status: 'open', pos_transaction_id: null },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 2, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-changed-lines-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 701,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'FNB_CHECK_LINES_CHANGED',
+            check_id: 701
+        }));
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('allows a newly opened empty check to take its initial POS cart lines', async () => {
+        const { repository, inventoryCommandService, getCreatedTransaction } = buildFnbGuardRepository({
+            check: { check_id: 705, status: 'open', pos_transaction_id: null, location_id: 3 },
+            lines: [],
+            includeCheckoutDependencies: true
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-empty-check-initial-cart',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_check_id: 705,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(getCreatedTransaction().lines).toHaveLength(1);
+        expect(repository.createFnbKitchenOrderForTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            check_id: 705,
+            lines: [expect.objectContaining({ item_id: 1, quantity: 1 })]
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(repository.settleFnbCheck).toHaveBeenCalledWith(
+            { checkId: 705, posTransactionId: 901 },
+            expect.objectContaining({ transaction: expect.any(Object), lock: true })
+        );
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(1);
+    });
+
+    it('settles the branch-bound check once and excludes voided lines from the sale and kitchen ticket', async () => {
+        const { repository, inventoryCommandService, getCreatedTransaction } = buildFnbGuardRepository({
+            check: { check_id: 702, status: 'sent_to_kitchen', pos_transaction_id: null, location_id: 3 },
+            lines: [
+                { check_line_id: 1, item_id: 1, quantity: 1, course: 'main', status: 'sent' },
+                { check_line_id: 2, item_id: 1, quantity: 4, course: 'dessert', status: 'voided' }
+            ],
+            includeCheckoutDependencies: true
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-voided-line-safe-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                fnb_check_id: 702,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(getCreatedTransaction().lines).toHaveLength(1);
+        expect(repository.createFnbKitchenOrderForTransaction).toHaveBeenCalledWith(expect.objectContaining({
+            check_id: 702,
+            lines: [expect.objectContaining({ item_id: 1, quantity: 1 })]
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(repository.settleFnbCheck).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects a check owned by another branch before checkout writes', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 703, status: 'open', pos_transaction_id: null, location_id: 4 },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        repository.bindFnbCheckLocation.mockResolvedValue(false);
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-cross-branch-checkout',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 703,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('FNB_CHECK_LOCATION_MISMATCH');
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
+    });
+
+    it('does not allow a partially paid check to be collected as a new sale', async () => {
+        const { repository, inventoryCommandService } = buildFnbGuardRepository({
+            check: { check_id: 704, status: 'partially_paid', pos_transaction_id: null },
+            lines: [{ check_line_id: 1, item_id: 1, quantity: 1, course: 'main' }]
+        });
+        const useCase = buildCheckoutContractUseCase({ posRepository: repository, inventoryCommandService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'fnb-partial-payment-retry',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                fnb_check_id: 704,
+                lines: [{ item_id: 1, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details?.reason_code).toBe('FNB_PARTIAL_PAYMENT_REQUIRES_BALANCE_SETTLEMENT');
+        expect(repository.createTransactionWithLines).not.toHaveBeenCalled();
         expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
     });
 

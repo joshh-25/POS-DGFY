@@ -176,20 +176,20 @@ export default function CSVExportModal({
 
     return (
         <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="sm:max-w-2xl max-h-[80vh] flex flex-col">
-                <DialogHeader>
+            <DialogContent className="catalog-editor-dialog-content flex max-h-[80vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
+                <DialogHeader className="border-b border-slate-100 p-4 pb-3">
                     <DialogTitle className="flex items-center gap-2">
                         <FileDown className="w-5 h-5 text-blue-600" />
                         Export Items to {exportTemplateLabel || workflowModeLabel} CSV
                     </DialogTitle>
                 </DialogHeader>
 
-                <div className="flex-1 overflow-hidden">
+                <div className="flex-1 overflow-hidden px-4 py-3">
                     {/* Export Mode Selection */}
                     <div className="grid grid-cols-3 gap-3 mb-4">
                         <button
                             className={cn(
-                                "p-4 rounded-lg border-2 text-left transition-all",
+                                "rounded-lg border-2 p-3 text-left transition-all",
                                 exportMode === EXPORT_MODES.ALL
                                     ? "border-blue-500 bg-blue-50"
                                     : "border-slate-200 hover:border-slate-300"
@@ -206,7 +206,7 @@ export default function CSVExportModal({
 
                         <button
                             className={cn(
-                                "p-4 rounded-lg border-2 text-left transition-all",
+                                "rounded-lg border-2 p-3 text-left transition-all",
                                 exportMode === EXPORT_MODES.FILTERED
                                     ? "border-blue-500 bg-blue-50"
                                     : "border-slate-200 hover:border-slate-300"
@@ -223,7 +223,7 @@ export default function CSVExportModal({
 
                         <button
                             className={cn(
-                                "p-4 rounded-lg border-2 text-left transition-all",
+                                "rounded-lg border-2 p-3 text-left transition-all",
                                 exportMode === EXPORT_MODES.SELECTED
                                     ? "border-blue-500 bg-blue-50"
                                     : "border-slate-200 hover:border-slate-300"
@@ -241,7 +241,7 @@ export default function CSVExportModal({
 
                     {/* Mode-specific content */}
                     {exportMode === EXPORT_MODES.FILTERED && (
-                        <div className="bg-slate-50 rounded-lg p-4 mb-4">
+                        <div className="mb-3 rounded-lg bg-slate-50 p-3">
                             <p className="text-sm font-medium text-slate-700 mb-2">Current Filters:</p>
                             <div className="flex flex-wrap gap-2">
                                 {getFilterSummary().map((filter, idx) => (
@@ -314,7 +314,7 @@ export default function CSVExportModal({
                     )}
                 </div>
 
-                <DialogFooter className="mt-4">
+                <DialogFooter className="mt-0 border-t border-slate-100 p-4 pt-3">
                     <div className="flex items-center justify-between w-full">
                         <p className="text-sm text-slate-500">
                             {getExportCount()} items will be exported as {exportTemplateLabel || workflowModeLabel} CSV

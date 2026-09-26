@@ -620,7 +620,12 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
 
 export const printReceiptWithIminBridge = ({ transaction, businessSettings = {}, receiptContract = null, openDrawerAfterPrint = true }) => {
     const bridge = getIminBridge();
-    if (!bridge || typeof bridge.printReceipt !== 'function') {
+    if (!bridge || ![
+        'printReceiptWithLogoAsync',
+        'printReceiptAsync',
+        'printReceiptWithLogo',
+        'printReceipt'
+    ].some((methodName) => typeof bridge[methodName] === 'function')) {
         return { handled: false };
     }
 
@@ -680,6 +685,46 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         : bridge.printReceipt(receiptText, Boolean(openDrawerAfterPrint));
 
     return finalizeResult(raw);
+};
+
+export const printTestReceiptWithIminBridge = ({ message = 'DGFY POS printer test', terminalId = '' } = {}) => {
+    const bridge = getIminBridge();
+    if (!bridge || (
+        typeof bridge.printReceiptAsync !== 'function'
+        && typeof bridge.printReceipt !== 'function'
+    )) {
+        return { handled: false };
+    }
+
+    const receiptText = [
+        center('DGFY POS'),
+        center('PRINTER TEST'),
+        line(),
+        pair('Terminal', safeText(terminalId, 'Unassigned')),
+        pair('Message', safeText(message, 'DGFY POS printer test')),
+        pair('Time', new Date().toLocaleString('en-US')),
+        line(),
+        center('No sale recorded.'),
+        center('Printer connection is working.')
+    ].join('\n');
+    const raw = sendIminTextPrint({
+        bridge,
+        receiptText,
+        fallbackMessage: 'Printer test page sent.'
+    });
+
+    return mapMaybePromise(raw, (value) => {
+        const result = parseBridgeResult(value, 'Printer test page sent.');
+        const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+        emitPosHardwareMessage({
+            title: 'iMin receipt printer',
+            message: normalizedResult.message || 'Printer test page sent.',
+            tone: normalizedResult.success ? 'success' : 'error',
+            source: 'iMin hardware',
+            details: normalizedResult.diagnostics || null
+        });
+        return { handled: true, result: normalizedResult };
+    });
 };
 
 const resolveOrderTicketItemName = (cartLine, index) => safeText(
@@ -758,16 +803,36 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
 };
 
 const formatZReadingValue = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const formatZReadingGeneratedAt = (value) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-PH', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Manila'
+    });
+};
+const formatZReadingReconciliationStatus = (value) => ({
+    matched: 'MATCHED',
+    variance: 'VARIANCE FOUND',
+    not_generated: 'NOT GENERATED',
+    not_comparable: 'COMPARISON UNAVAILABLE'
+}[safeText(value).toLowerCase()] || 'COMPARISON UNAVAILABLE');
+const formatOptionalZReadingValue = (value) => (
+    value === null || value === undefined ? '-' : formatZReadingValue(value)
+);
 
 export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } = {}) => {
     const reading = zReading?.z_reading || {};
     const summary = reading?.summary || {};
+    const reconciliation = reading?.reconciliation || reading?.z_reading_reconciliation || null;
     const lines = [
         center(safeText(businessSettings?.pos_business_name, 'DGFY')),
         center('Z-READING / CLOSE DAY'),
         `Business date: ${safeText(reading.business_date)}`,
         `Location: ${safeText(reading.location_id)}`,
         `Reading: ${safeText(reading.reading_identifier)}`,
+        `Generated: ${formatZReadingGeneratedAt(reading.generated_at)}`,
         line(),
         pair('Transactions', summary.transaction_count || 0),
         pair('Subtotal', formatZReadingValue(summary.subtotal_amount)),
@@ -775,6 +840,17 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('VAT', formatZReadingValue(summary.vat_amount)),
         pair('Total sales', formatZReadingValue(summary.total_amount)),
         pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
+        ...(reconciliation ? [
+            line(),
+            center('REPORT RECONCILIATION'),
+            pair('Status', formatZReadingReconciliationStatus(reconciliation.status)),
+            pair('Report recognized', formatOptionalZReadingValue(reconciliation.report_recognized_sales)),
+            pair('Z-reading total', formatOptionalZReadingValue(reconciliation.z_total_amount)),
+            pair('Difference', formatOptionalZReadingValue(reconciliation.variance)),
+            pair('Report refunds/voids', formatOptionalZReadingValue(reconciliation.report_refunds_voids)),
+            pair('Report adjustments', formatOptionalZReadingValue(reconciliation.report_adjustment_amount)),
+            ...(reconciliation.evaluated_at ? [pair('Checked', formatZReadingGeneratedAt(reconciliation.evaluated_at))] : [])
+        ] : []),
         line(),
         center('PAYMENT BREAKDOWN')
     ];

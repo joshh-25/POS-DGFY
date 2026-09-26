@@ -20,6 +20,13 @@ export const disabledDeviceDriver = {
             timestamp: new Date().toISOString()
         };
     },
+    async testPrint() {
+        throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'POS hardware is disabled for this deployment.',
+            { statusCode: 503, details: { reason_code: 'POS_HARDWARE_DISABLED' } }
+        );
+    },
     async printReceipt() {
         throw new DomainError(
             DomainErrorCode.SERVICE_UNAVAILABLE,

@@ -242,6 +242,45 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         expect(printReceipt.mock.calls[0][1]).toBe(true);
     });
 
+    it('handles an async-only receipt bridge and resolves its final result event', async () => {
+        const listeners = new Map();
+        const printReceiptAsync = vi.fn((requestId) => {
+            queueMicrotask(() => listeners.get('dgfy:imin-command-result')?.({
+                detail: {
+                    requestId,
+                    result: { success: true, message: 'Receipt printed.' }
+                }
+            }));
+
+            return { success: true, message: 'Receipt print command accepted.' };
+        });
+
+        globalThis.window = {
+            addEventListener: (eventName, listener) => listeners.set(eventName, listener),
+            removeEventListener: (eventName, listener) => {
+                if (listeners.get(eventName) === listener) listeners.delete(eventName);
+            },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptAsync
+            }
+        };
+
+        const outcome = await printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {},
+            openDrawerAfterPrint: false
+        });
+
+        expect(outcome.handled).toBe(true);
+        expect(outcome.result).toMatchObject({
+            success: true,
+            message: 'Receipt printed.'
+        });
+        expect(printReceiptAsync).toHaveBeenCalledTimes(1);
+        expect(printReceiptAsync.mock.calls[0][2]).toBe(false);
+    });
+
     it('prints order tickets without a logo, via the plain printReceipt call', () => {
         const printReceiptWithLogo = vi.fn(() => ({ success: true }));
         const printReceipt = vi.fn(() => ({ success: true }));

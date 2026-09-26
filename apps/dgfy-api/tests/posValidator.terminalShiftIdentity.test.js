@@ -56,7 +56,10 @@ describe('POS open shift validator terminal identity', () => {
     const req = {
       body: {
         idempotency_key: 'switch-2026-04-21-001',
+        terminal_id: 'east-01',
         target_location_id: 3,
+        closing_cash_amount: 195,
+        opening_float_amount: 100,
         reason: 'Relieving teammate for lunch coverage'
       }
     };
@@ -67,7 +70,25 @@ describe('POS open shift validator terminal identity', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
+    expect(req.validatedData.terminal_id).toBe('EAST-01');
     expect(req.validatedData.target_location_id).toBe(3);
+  });
+
+  it('rejects a shift location switch without cash reconciliation fields', () => {
+    const req = {
+      body: {
+        terminal_id: 'EAST-01',
+        target_location_id: 3,
+        reason: 'Relieving teammate for lunch coverage'
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateSwitchTerminalShiftLocation(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
   });
 
   it('requires a reason when rejecting an online order', () => {

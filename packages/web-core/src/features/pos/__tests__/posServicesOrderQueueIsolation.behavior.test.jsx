@@ -64,4 +64,52 @@ describe('Services online Orders queue isolation', () => {
 
     expect(screen.getByText('Orders (1)')).toBeDefined();
   });
+
+  it('enables read-only branch Orders for an authorized admin without a shift', () => {
+    const onSelectViewMode = vi.fn();
+    render(
+      <TerminalWorkspaceSidebar
+        locked={false}
+        isOnline
+        terminalUser={{ role: 'admin', company: { id: 'tenant-a' } }}
+        currentViewMode="checkout"
+        canViewPos
+        allowAdminNavigationWithoutShift
+        canViewAdminLocationMonitor
+        shiftState={{ shift: null }}
+        incomingOrdersState={{ orders: [] }}
+        adminLocationMonitorState={{ locationId: 2, orders: [{ pos_transaction_id: 92 }] }}
+        locationsState={{ locations: [{ location_id: 1, name: 'Main Branch' }, { location_id: 2, name: 'East Branch' }] }}
+        operatingLocationId={1}
+        viewingLocationId={2}
+        onSelectViewMode={onSelectViewMode}
+      />
+    );
+
+    const ordersButton = screen.getByRole('button', { name: /Orders \(1\)/ });
+    expect(ordersButton.disabled).toBe(false);
+    expect(screen.getByText('Viewing branch: East Branch')).toBeDefined();
+    expect(screen.getByText('Register branch: Main Branch')).toBeDefined();
+    ordersButton.click();
+    expect(onSelectViewMode).toHaveBeenCalledWith('incoming_queue');
+  });
+
+  it('keeps Orders shift-gated for a cashier even when no-shift admin navigation is enabled', () => {
+    render(
+      <TerminalWorkspaceSidebar
+        locked={false}
+        isOnline
+        terminalUser={{ role: 'cashier' }}
+        currentViewMode="checkout"
+        canViewPos
+        allowAdminNavigationWithoutShift
+        canViewAdminLocationMonitor={false}
+        shiftState={{ shift: null }}
+        incomingOrdersState={{ orders: [] }}
+        onSelectViewMode={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: /Orders \(0\)/ }).disabled).toBe(true);
+  });
 });

@@ -88,6 +88,7 @@ describe('settings validator store_delivery_fee_mode / store_delivery_fee_calc c
         ['missing max_distance_km', { min_fee: 50, included_km: 3, per_km_rate: 10, increment_km: 0.5 }],
         ['negative min_fee', { ...validCalc(), min_fee: -1 }],
         ['zero increment_km', { ...validCalc(), increment_km: 0 }],
+        ['sub-meter increment_km', { ...validCalc(), increment_km: 0.0009 }],
         ['zero max_distance_km', { ...validCalc(), max_distance_km: 0 }],
         ['max_distance_km below included_km', { ...validCalc(), included_km: 10, max_distance_km: 5 }]
     ])('rejects a store_delivery_fee_calc blob with %s', (_label, badCalc) => {
@@ -99,6 +100,23 @@ describe('settings validator store_delivery_fee_mode / store_delivery_fee_calc c
 
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('accepts exactly the one-meter increment boundary', () => {
+        const req = {
+            body: {
+                store_delivery_fee_mode: 'calculated',
+                store_delivery_fee_calc: { ...validCalc(), increment_km: 0.001 }
+            }
+        };
+        const res = buildResponse();
+        const next = jest.fn();
+
+        validateUpdateSettings(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.store_delivery_fee_calc.increment_km).toBe(0.001);
     });
 
     it('accepts store_delivery_fee_mode through the single-setting update route', () => {

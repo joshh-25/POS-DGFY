@@ -73,62 +73,59 @@ describe('POS split-payment repository contract', () => {
         }));
     });
 
-    it('cancels only empty in-flight sessions before shift close', async () => {
+    it('cancels only empty, unfunded in-flight sessions during shift close cleanup', async () => {
         const sessionModel = buildModel();
         const allocationModel = buildModel();
-        const emptySession = {
-            pos_payment_session_id: 501,
-            status: 'open',
-            total_amount: 90,
-            paid_amount: 0,
-            remaining_amount: 90
+        const sessionStates = new Map([
+            [501, { pos_payment_session_id: 501, status: 'open', paid_amount: 0, remaining_amount: 90 }],
+            [502, { pos_payment_session_id: 502, status: 'partially_paid', paid_amount: 25, remaining_amount: 65 }],
+            [503, { pos_payment_session_id: 503, status: 'open', paid_amount: 0, remaining_amount: 120 }]
+        ]);
+        const rowFor = (id) => {
+            const state = sessionStates.get(id);
+            return {
+                ...state,
+                toJSON: () => ({ ...state }),
+                update: jest.fn(async (payload) => {
+                    Object.assign(state, payload);
+                })
+            };
         };
-        const sessionRow = {
-            toJSON: () => ({ ...emptySession }),
-            update: jest.fn(async (payload) => {
-                Object.assign(emptySession, payload);
-            })
-        };
-        sessionModel.findAll.mockResolvedValue([sessionRow]);
-        sessionModel.findByPk.mockResolvedValue(sessionRow);
-        allocationModel.findAll.mockResolvedValue([]);
+        sessionModel.findAll.mockResolvedValue([
+            { toJSON: () => ({ ...sessionStates.get(501) }) },
+            { toJSON: () => ({ ...sessionStates.get(502) }) },
+            { toJSON: () => ({ ...sessionStates.get(503) }) }
+        ]);
+        sessionModel.findByPk.mockImplementation(async (id) => rowFor(Number(id)));
+        allocationModel.findAll.mockImplementation(async ({ where }) => (
+            Number(where.session_id) === 503
+                ? [{ toJSON: () => ({ pos_payment_allocation_id: 701, status: 'failed' }) }]
+                : []
+        ));
         jest.spyOn(dbStore, 'get').mockImplementation((name) => {
             if (name === 'PosPaymentSession') return sessionModel;
             if (name === 'PosPaymentAllocation') return allocationModel;
             throw new Error(`Unexpected model ${name}`);
         });
 
-        const transaction = { LOCK: { UPDATE: 'UPDATE' } };
         const cancelled = await posRepository.cancelEmptyInFlightPaymentSessionsForShift(41, {
-            transaction,
+            transaction: { LOCK: { UPDATE: 'UPDATE' } },
             lock: true,
             cancelledBy: 17
         });
 
-        expect(cancelled).toEqual([expect.objectContaining({
+        expect(cancelled).toHaveLength(1);
+        expect(cancelled[0]).toEqual(expect.objectContaining({
             pos_payment_session_id: 501,
             status: 'cancelled',
             cancelled_by: 17,
             paid_amount: 0,
             remaining_amount: 90
-        })]);
-        expect(sessionRow.update).toHaveBeenCalledWith(expect.objectContaining({
-            status: 'cancelled',
-            cancelled_by: 17,
-            cancel_reason: expect.stringContaining('empty split-payment session')
-        }), { transaction });
-        expect(sessionModel.findAll).toHaveBeenCalledWith(expect.objectContaining({
-            where: expect.objectContaining({
-                shift_id: 41,
-                status: { [Op.in]: ['open', 'partially_paid', 'ready_to_complete'] }
-            }),
-            transaction,
-            lock: 'UPDATE'
         }));
-        expect(allocationModel.findAll).toHaveBeenCalledWith(expect.objectContaining({
-            where: { session_id: 501 },
-            transaction,
-            lock: 'UPDATE'
-        }));
+        expect(sessionModel.findByPk).toHaveBeenCalledTimes(1);
+        expect(sessionModel.findByPk).toHaveBeenCalledWith(501, expect.objectContaining({ lock: 'UPDATE' }));
+        expect(allocationModel.findAll).toHaveBeenCalledTimes(2);
+        expect(sessionStates.get(502).status).toBe('partially_paid');
+        expect(sessionStates.get(503).status).toBe('open');
     });
 });

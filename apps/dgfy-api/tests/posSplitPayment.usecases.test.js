@@ -565,6 +565,74 @@ describe('POS split-payment engine', () => {
         expect(result.data.session.remaining_amount).toBe(500);
     });
 
+    it('records Employee Credit as an internal split allocation without exposing the account code', async () => {
+        const harness = buildHarness({ session: baseSession() });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: {
+                idempotency_key: 'employee-credit-001',
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                payment_method: 'employee_credit',
+                amount: 500,
+                payment_handoff_mode: 'internal',
+                employee_credit: { account_code: 'ec-44' }
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.allocation).toEqual(expect.objectContaining({
+            status: 'successful',
+            payment_method: 'employee_credit',
+            payment_handoff_mode: 'internal',
+            payment_provider: null,
+            applied_amount: 500
+        }));
+        expect(result.data.allocation).not.toHaveProperty('employee_credit_account_code');
+        expect(harness.posRepository.createPosPaymentAllocation).toHaveBeenCalledWith(
+            expect.objectContaining({
+                employee_credit_account_code: 'EC-44',
+                payment_method: 'employee_credit',
+                status: 'successful'
+            }),
+            expect.objectContaining({ transaction: harness.transaction })
+        );
+        expect(result.data.session.paid_amount).toBe(500);
+        expect(result.data.session.remaining_amount).toBe(750);
+    });
+
+    it('rejects provider-owned fields before accepting an Employee Credit allocation', async () => {
+        const harness = buildHarness({ session: baseSession() });
+        const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: {
+                idempotency_key: 'employee-credit-provider-001',
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                payment_method: 'employee_credit',
+                employee_credit: { account_code: 'EC-44' },
+                amount: 500,
+                payment_handoff_mode: 'external',
+                manual_payment_received: true,
+                payment_reference: 'provider-ref-001',
+                payment_provider: 'paymongo'
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'EMPLOYEE_CREDIT_PROVIDER_FIELDS_NOT_ALLOWED'
+        }));
+        expect(harness.sequelize.transaction).not.toHaveBeenCalled();
+        expect(harness.posRepository.createPosPaymentAllocation).not.toHaveBeenCalled();
+    });
+
     it('rejects client-side non-cash success claims', async () => {
         const harness = buildHarness({ session: baseSession() });
         const useCase = buildAddPosPaymentAllocationUseCase({ posRepository: harness.posRepository, quotePosCheckoutUseCase });
@@ -843,6 +911,37 @@ describe('POS split-payment engine', () => {
         expect(result.data.session.remaining_amount).toBe(1250);
     });
 
+    it('reverses an accepted Employee Credit allocation without requiring a provider refund', async () => {
+        const allocation = {
+            pos_payment_allocation_id: 701,
+            session_id: 501,
+            status: 'successful',
+            payment_method: 'employee_credit',
+            employee_credit_account_code: 'EC-44',
+            applied_amount: 500
+        };
+        const harness = buildHarness({
+            session: baseSession({ status: 'partially_paid', paid_amount: 500, remaining_amount: 750 }),
+            allocations: [allocation]
+        });
+        const useCase = buildCancelPosPaymentAllocationUseCase({ posRepository: harness.posRepository });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            allocationId: 701,
+            payload: { shift_id: 41, terminal_id: 'COUNTER-01', reason: 'Employee Credit entered on wrong sale' },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.allocation).toEqual(expect.objectContaining({
+            status: 'reversed',
+            reversal_reason: 'Employee Credit entered on wrong sale'
+        }));
+        expect(result.data.session.paid_amount).toBe(0);
+        expect(result.data.session.remaining_amount).toBe(1250);
+    });
+
     it('does not route cash allocations through provider confirmation', async () => {
         const allocation = {
             pos_payment_allocation_id: 701,
@@ -865,6 +964,77 @@ describe('POS split-payment engine', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'CASH_PROVIDER_CONFIRMATION_NOT_ALLOWED' }));
+    });
+
+    it('does not route Employee Credit allocations through provider confirmation', async () => {
+        const allocation = {
+            pos_payment_allocation_id: 701,
+            session_id: 501,
+            status: 'pending',
+            payment_method: 'employee_credit',
+            employee_credit_account_code: 'EC-44',
+            applied_amount: 500
+        };
+        const harness = buildHarness({ session: baseSession(), allocations: [allocation] });
+        const verifier = jest.fn();
+        const useCase = buildConfirmPosPaymentAllocationUseCase({
+            posRepository: harness.posRepository,
+            providerConfirmationVerifier: verifier
+        });
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            allocationId: 701,
+            payload: {
+                shift_id: 41,
+                terminal_id: 'COUNTER-01',
+                provider_event_id: 'provider-event-employee-credit',
+                provider_confirmed_at: '2026-08-12T10:00:00.000Z',
+                provider_signature: 'd'.repeat(64)
+            },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'EMPLOYEE_CREDIT_PROVIDER_CONFIRMATION_NOT_ALLOWED'
+        }));
+        expect(verifier).not.toHaveBeenCalled();
+        expect(allocation.status).toBe('pending');
+    });
+
+    it('does not route Employee Credit allocations through provider reconciliation', async () => {
+        const allocation = {
+            pos_payment_allocation_id: 701,
+            session_id: 501,
+            status: 'successful',
+            payment_method: 'employee_credit',
+            employee_credit_account_code: 'EC-44',
+            applied_amount: 500
+        };
+        const harness = buildHarness({
+            session: baseSession({ status: 'partially_paid', paid_amount: 500, remaining_amount: 750 }),
+            allocations: [allocation]
+        });
+        const providerReconciler = jest.fn();
+        const useCase = buildReconcilePosPaymentAllocationUseCase({
+            posRepository: harness.posRepository,
+            providerReconciler
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            allocationId: 701,
+            payload: { shift_id: 41, terminal_id: 'COUNTER-01' },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'EMPLOYEE_CREDIT_PROVIDER_RECONCILIATION_NOT_ALLOWED'
+        }));
+        expect(providerReconciler).not.toHaveBeenCalled();
+        expect(harness.sequelize.transaction).not.toHaveBeenCalled();
+        expect(allocation.status).toBe('successful');
     });
 
     it('rejects non-cash overpayment instead of silently treating it as change', async () => {
@@ -977,6 +1147,114 @@ describe('POS split-payment engine', () => {
             expect.objectContaining({ transaction: harness.transaction })
         );
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+    });
+
+    it('completes mixed Employee Credit and cash with the credit portion only', async () => {
+        const allocations = [
+            {
+                pos_payment_allocation_id: 701,
+                session_id: 501,
+                status: 'successful',
+                payment_method: 'employee_credit',
+                employee_credit_account_code: 'EC-44',
+                applied_amount: 500
+            },
+            {
+                pos_payment_allocation_id: 702,
+                session_id: 501,
+                status: 'successful',
+                payment_method: 'cash',
+                applied_amount: 750,
+                cash_tendered: 800,
+                change_amount: 50
+            }
+        ];
+        const harness = buildHarness({
+            session: baseSession({
+                status: 'ready_to_complete',
+                paid_amount: 1250,
+                remaining_amount: 0,
+                session_reference: 'PAY-COMPLETE-EMPLOYEE-CREDIT',
+                snapshot: JSON.stringify({ lines: [{ item_id: 7, quantity: 2, sale_price: 625 }] })
+            }),
+            allocations
+        });
+        const checkoutPosUseCase = jest.fn(async ({ payload, transaction, beforeCommit }) => {
+            expect(transaction).toBe(harness.transaction);
+            expect(payload.payment_type).toBe('employee_credit');
+            expect(payload.payment_handoff_mode).toBe('internal');
+            expect(payload.employee_credit).toEqual({ account_code: 'EC-44' });
+            expect(payload.cash_received).toBe(800);
+            expect(payload.change_amount).toBe(50);
+            expect(payload.payment_breakdown).toEqual([
+                { payment_type: 'employee_credit', count: 1, amount: 500 },
+                { payment_type: 'cash', count: 1, amount: 750 }
+            ]);
+            await beforeCommit({ transactionId: 9902, idempotentReplay: false });
+            return {
+                success: true,
+                data: {
+                    idempotent_replay: false,
+                    transaction: { pos_transaction_id: 9902, total_amount: 1250, status: 'completed' }
+                }
+            };
+        });
+        const useCase = buildCompletePosPaymentSessionUseCase({
+            posRepository: harness.posRepository,
+            checkoutPosUseCase
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: { idempotency_key: 'split-complete-employee-credit', shift_id: 41, terminal_id: 'COUNTER-01', location_id: 3 },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.transaction.pos_transaction_id).toBe(9902);
+        expect(result.data.session.status).toBe('completed');
+    });
+
+    it('fails closed when a saved Employee Credit allocation contains provider fields', async () => {
+        const allocation = {
+            pos_payment_allocation_id: 701,
+            session_id: 501,
+            status: 'successful',
+            payment_method: 'employee_credit',
+            employee_credit_account_code: 'EC-44',
+            payment_handoff_mode: 'external',
+            payment_reference: 'provider-ref-legacy',
+            payment_provider: 'paymongo',
+            applied_amount: 1250
+        };
+        const harness = buildHarness({
+            session: baseSession({
+                status: 'ready_to_complete',
+                paid_amount: 1250,
+                remaining_amount: 0,
+                session_reference: 'PAY-COMPLETE-EMPLOYEE-CREDIT-INVALID',
+                snapshot: JSON.stringify({ lines: [{ item_id: 7, quantity: 2, sale_price: 625 }] })
+            }),
+            allocations: [allocation]
+        });
+        const checkoutPosUseCase = jest.fn();
+        const useCase = buildCompletePosPaymentSessionUseCase({
+            posRepository: harness.posRepository,
+            checkoutPosUseCase
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            paymentSessionId: 501,
+            payload: { idempotency_key: 'split-complete-employee-credit-invalid', shift_id: 41, terminal_id: 'COUNTER-01', location_id: 3 },
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'EMPLOYEE_CREDIT_PROVIDER_FIELDS_NOT_ALLOWED'
+        }));
+        expect(checkoutPosUseCase).not.toHaveBeenCalled();
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
     });
 
     it('passes the server approval proof to completion without exposing it in the checkout payload', async () => {

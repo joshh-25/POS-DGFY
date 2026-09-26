@@ -1,7 +1,7 @@
-import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { readSourceForContract } from './readSourceForContract.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +11,8 @@ const terminalPageDialogLayerPath = path.resolve(__dirname, '../components/Termi
 const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const posSettingsWorkspacePath = path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx');
+const terminalLocalControlsPath = path.resolve(__dirname, '../settings/TerminalLocalControlsSection.jsx');
 const terminalOperationsPanelsPath = path.resolve(__dirname, '../components/TerminalOperationsPanels.jsx');
 // Phase 231 (#1289), §2.7: the split view's order-card grid (payment status, print actions, the
 // empty-queue lifecycle copy) lives in this pure extraction, used only by the split view now that
@@ -50,6 +52,8 @@ describe('POS terminal view-mode contracts', () => {
   let terminalWorkspaceSidebarContent = '';
   let terminalSidebarPanelContent = '';
   let terminalOperationsWorkspaceContent = '';
+  let posSettingsWorkspaceContent = '';
+  let terminalLocalControlsContent = '';
   let terminalOperationsPanelsContent = '';
   let incomingQueueOrderListContent = '';
   let posTenantSetupModalContent = '';
@@ -74,36 +78,38 @@ describe('POS terminal view-mode contracts', () => {
 
   beforeAll(() => {
     terminalPageContent = [terminalPagePath, terminalPageDialogLayerPath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    terminalWorkspaceSidebarContent = fs.readFileSync(terminalWorkspaceSidebarPath, 'utf8');
-    terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
-    terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
+    terminalWorkspaceSidebarContent = readSourceForContract(terminalWorkspaceSidebarPath);
+    terminalSidebarPanelContent = readSourceForContract(terminalSidebarPanelPath);
+    terminalOperationsWorkspaceContent = readSourceForContract(terminalOperationsWorkspacePath);
+    posSettingsWorkspaceContent = readSourceForContract(posSettingsWorkspacePath);
+    terminalLocalControlsContent = readSourceForContract(terminalLocalControlsPath);
     terminalOperationsPanelsContent = [terminalOperationsPanelsPath, incomingQueueOrderActionsPath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    incomingQueueOrderListContent = fs.readFileSync(incomingQueueOrderListPath, 'utf8');
-    posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
-    posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
+    incomingQueueOrderListContent = readSourceForContract(incomingQueueOrderListPath);
+    posTenantSetupModalContent = readSourceForContract(posTenantSetupModalPath);
+    posReportsAnalyticsWorkspaceContent = readSourceForContract(posReportsAnalyticsWorkspacePath);
     posCheckoutTerminalContent = [posCheckoutTerminalPath, posCheckoutTerminalViewPath, posDiscountWorkspacePath]
-      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .map((sourcePath) => readSourceForContract(sourcePath))
       .join('\n');
-    posCheckoutTerminalReceiptDialogsContent = fs.readFileSync(posCheckoutTerminalReceiptDialogsPath, 'utf8');
-    posCheckoutWorkflowContent = fs.readFileSync(posCheckoutWorkflowPath, 'utf8');
-    posHistoryVoidWorkflowContent = fs.readFileSync(posHistoryVoidWorkflowPath, 'utf8');
-    posCheckoutTerminalQueueContent = fs.readFileSync(posCheckoutTerminalQueuePath, 'utf8');
-    posCheckoutTerminalUtilsContent = fs.readFileSync(posCheckoutTerminalUtilsPath, 'utf8');
-    posCheckoutErrorMessagesContent = fs.readFileSync(posCheckoutErrorMessagesPath, 'utf8');
-    skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
-    receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
-    posBarcodeScannerContent = fs.readFileSync(posBarcodeScannerPath, 'utf8');
-    posHistoryPanelContent = fs.readFileSync(posHistoryPanelPath, 'utf8');
-    terminalPageLayoutContent = fs.readFileSync(terminalPageLayoutPath, 'utf8');
-    terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
-    onlineOrderDetailsModalContent = fs.readFileSync(onlineOrderDetailsModalPath, 'utf8');
-    onlineOrderReceiptModalContent = fs.readFileSync(onlineOrderReceiptModalPath, 'utf8');
-    posServiceContent = fs.readFileSync(posServicePath, 'utf8');
-    posShiftCloseResolutionContent = fs.readFileSync(posShiftCloseResolutionPath, 'utf8');
+    posCheckoutTerminalReceiptDialogsContent = readSourceForContract(posCheckoutTerminalReceiptDialogsPath);
+    posCheckoutWorkflowContent = readSourceForContract(posCheckoutWorkflowPath);
+    posHistoryVoidWorkflowContent = readSourceForContract(posHistoryVoidWorkflowPath);
+    posCheckoutTerminalQueueContent = readSourceForContract(posCheckoutTerminalQueuePath);
+    posCheckoutTerminalUtilsContent = readSourceForContract(posCheckoutTerminalUtilsPath);
+    posCheckoutErrorMessagesContent = readSourceForContract(posCheckoutErrorMessagesPath);
+    skupervisorCheckoutTerminalContent = readSourceForContract(skupervisorCheckoutTerminalPath);
+    receiptPrintViewContent = readSourceForContract(receiptPrintViewPath);
+    posBarcodeScannerContent = readSourceForContract(posBarcodeScannerPath);
+    posHistoryPanelContent = readSourceForContract(posHistoryPanelPath);
+    terminalPageLayoutContent = readSourceForContract(terminalPageLayoutPath);
+    terminalLockDrawerContent = readSourceForContract(terminalLockDrawerPath);
+    onlineOrderDetailsModalContent = readSourceForContract(onlineOrderDetailsModalPath);
+    onlineOrderReceiptModalContent = readSourceForContract(onlineOrderReceiptModalPath);
+    posServiceContent = readSourceForContract(posServicePath);
+    posShiftCloseResolutionContent = readSourceForContract(posShiftCloseResolutionPath);
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -199,11 +205,13 @@ describe('POS terminal view-mode contracts', () => {
   });
 
 
-  it('keeps starter-item creation out of the POS onboarding modal', () => {
+  it('keeps Hospitality room setup inside the POS onboarding modal', () => {
+    expect(posTenantSetupModalContent).toContain('createHospitalityRoomType');
+    expect(posTenantSetupModalContent).toContain('Hospitality room setup');
+    expect(posTenantSetupModalContent).toContain('Save Room Setup');
+    expect(posTenantSetupModalContent).toContain("stepKey: 'hospitality_rooms'");
     expect(posTenantSetupModalContent).not.toContain('bulkCreateOnboardingItems');
-    expect(posTenantSetupModalContent).not.toContain('Starter item');
-    expect(posTenantSetupModalContent).not.toContain('starterItemForm');
-    expect(posTenantSetupModalContent).not.toContain('current_stock: parsedStock');
+    expect(posTenantSetupModalContent).not.toContain('Save Starter Item');
     expect(posTenantSetupModalContent).toContain('POS Setup');
   });
 
@@ -215,6 +223,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("onboardingCompleted: onboardingState === 'completed'");
     expect(terminalPageContent).toContain('const setupFlowActive = tenantSetupRequestedOrRequired');
     expect(terminalPageContent).toContain("const PosTenantSetupModal = lazyWithChunkRetry(() => import('./PosTenantSetupModal.jsx'));");
+    expect(terminalPageContent).toContain('starterSetupRequired && !setupFlowState.starterItemReady');
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');
@@ -235,6 +244,41 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain(
       "refreshTenantLocations({\n        suppressGlobalErrors: true,\n        silent: true"
     );
+  });
+
+  it('refreshes shared settings while the authenticated terminal is locked without refreshing operations', () => {
+    expect(terminalPageContent).toContain("if ((!allowWhileLocked && locked) || terminalUser?.is_master_admin !== true)");
+    expect(terminalPageContent).toContain('if (locked && !allowWhileLocked) return;');
+    expect(terminalPageContent).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
+    expect(terminalPageContent).toContain('|| formData.dgfyTenantId');
+    expect(terminalPageContent).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
+    expect(terminalPageContent).toContain(
+      'hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
+    );
+    expect(terminalPageContent).toContain(
+      'refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
+    );
+    expect(terminalPageContent).toContain('if (!locked && canViewPos) {');
+  });
+
+  it('refreshes the mounted settings editor after a scoped Business Admin update', () => {
+    expect(terminalPageContent).toContain('setSettingsRefreshKey((previous) => previous + 1);');
+    expect(terminalPageContent).toContain('settingsRefreshKey={settingsRefreshKey}');
+    expect(terminalPageLayoutContent).toContain('settingsRefreshKey={settingsRefreshKey}');
+    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey = 0');
+    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey,');
+    expect(posSettingsWorkspaceContent).toContain('previousSettingsRefreshKeyRef.current === settingsRefreshKey');
+    expect(posSettingsWorkspaceContent).toContain('hasUnsavedSettingsChanges');
+    expect(posSettingsWorkspaceContent).toContain('void hydrateSettingsWorkspace({ silent: true });');
+    expect(posSettingsWorkspaceContent).toContain('data-testid="pos-settings-external-refresh-pending"');
+  });
+
+  it('keeps terminal setup printer actions compact and aligned with terminal selection', () => {
+    expect(terminalLocalControlsContent).not.toContain('data-testid="pos-terminal-setup-refresh-hardware"');
+    expect(terminalLocalControlsContent).not.toContain('>Refresh</');
+    expect(terminalLocalControlsContent).toContain('data-testid="pos-terminal-setup-test-print"');
+    expect(terminalLocalControlsContent).toContain('md:col-start-2 md:row-start-2 md:self-end');
+    expect(terminalLocalControlsContent).toContain('className="h-12 bg-[#1A4E8D] hover:bg-[#143E72]"');
   });
 
   it('waits for session and onboarding hydration before rendering the POS workspace', () => {
@@ -262,7 +306,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("const POS_LAST_VIEW_STORAGE_PREFIX = 'pos_terminal_last_view_v1';");
     expect(terminalPageContent).toContain("const POS_VIEW_MODE_QUERY_KEY = 'view';");
     expect(terminalPageContent).toContain('buildPosLastViewStorageKey');
-    expect(terminalPageContent).toContain('readRequestedPosView() || \'checkout\'');
+    expect(terminalPageContent).toContain('readRequestedPosView(location.search) || \'checkout\'');
+    expect(terminalPageContent).toContain('const readRequestedPosView = (routeSearch = \'\') =>');
+    expect(terminalPageContent).toContain('const routeView = String(new URLSearchParams(routeSearch).get(POS_VIEW_MODE_QUERY_KEY) || \'\').trim();');
     expect(terminalPageContent).toContain('readStoredPosView(posLastViewStorageKey)');
     expect(terminalPageContent).toContain('updatePosViewQuery(persistableView);');
     expect(terminalPageContent).toContain("window.history.replaceState(window.history.state, '', url);");
@@ -271,6 +317,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('hasInitializedPosViewRef.current = true;');
     expect(terminalPageContent).not.toContain("PIN_PROTECTED_VIEW_MODES.has(normalizedView) && (terminalMeta.loading");
     expect(terminalPageContent).toContain("const nextView = restoredView || 'checkout';");
+    expect(terminalPageContent).toContain('resolveRestorablePosView(readRequestedPosView(location.search))');
     expect(terminalPageContent).toContain('writeStoredPosView(posLastViewStorageKey, persistableView);');
     expect(terminalPageContent).toContain("if (setupFlowActive) {");
     expect(terminalPageContent).toContain("normalizedView === 'receipt'");
@@ -328,15 +375,18 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('return;');
   });
 
-  it('blurs all non-login POS shell surfaces while locked', () => {
+  it('locks POS content while preserving authorized Back Office navigation while locked', () => {
     expect(terminalPageLayoutContent).toContain("const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';");
-    expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSurfaceClassName}`');
+    expect(terminalPageLayoutContent).toContain('const lockedSidebarSurfaceClassName = locked');
+    expect(terminalPageLayoutContent).toContain('`${persistentSidebarClassName} ${lockedSidebarSurfaceClassName}`');
     expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';");
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
-    expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}');
+    expect(terminalPageLayoutContent).toContain('className={workspacePaneClassName}');
+    expect(terminalPageLayoutContent).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
     expect(terminalPageLayoutContent).toContain('data-testid="pos-terminal-lock-backdrop"');
     expect(terminalPageLayoutContent).toContain('bg-slate-950/70 backdrop-blur-none');
+    expect(terminalPageLayoutContent).toContain('pointer-events-none fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-none');
   });
 
   it('remounts the POS layout after terminal unlock for Safari and PWA rendering', () => {
@@ -415,7 +465,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and protected sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !hasActiveShift}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || (!hasActiveShift && !isAdminBranchMonitor)}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
     expect(terminalWorkspaceSidebarContent).toContain('Available online only');
   });
@@ -498,7 +548,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain('bare={isSettingsView}');
+    expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
   });
@@ -507,13 +557,17 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode(settingsTargetViewMode)}");
+    expect(terminalWorkspaceSidebarContent).toContain('shouldRouteSettingsToBackOffice');
+    expect(terminalWorkspaceSidebarContent).toContain('{onboardingRestricted && (');
+    expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
+    expect(terminalWorkspaceSidebarContent).not.toContain("onOpenBackOffice({ path: '/backoffice/settings/profile' })");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Yearly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Sales Comparison');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('POS Profit/Loss');
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Comparison'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Top Selling Items'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Profit/Loss'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -586,7 +640,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain("orderSource: [");
     expect(posHistoryPanelContent).toContain("{ value: 'all', label: 'All' }");
     expect(posHistoryPanelContent).toContain('Transaction sources');
-    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-source-tab-${sourceTab.value}`}');
+    expect(posHistoryPanelContent).toContain('testId: `pos-history-source-tab-${sourceTab.value}`');
     expect(posHistoryPanelContent).not.toContain('testId="pos-history-filter-source"');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
@@ -717,11 +771,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain("const [orderSort, setOrderSort] = React.useState('newest');");
     expect(terminalOperationsPanelsContent).toContain('aria-label="Sort incoming orders"');
     expect(terminalOperationsPanelsContent).toContain('<option value="oldest">Oldest first</option>');
-    // Phase 231 (#1290): the tab view's grid maps over visibleIncomingOrders (the run-filtered
-    // view of sortedIncomingOrders), not sortedIncomingOrders directly -- sortedIncomingOrders
-    // itself is still the sort's own output, feeding the filter rather than the render.
-    expect(terminalOperationsPanelsContent).toContain('{visibleIncomingOrders.map((order) => {');
-    expect(terminalOperationsPanelsContent).toContain('incomingOrders.length === 0 ? (');
+    // The active queue keeps its run-filtered list, while the F&B Dine-in Schedule tab swaps in
+    // the same renderer with a serve-time-sorted list. Both are derived view lists, never a second
+    // API source.
+    expect(terminalOperationsPanelsContent).toContain('{displayedIncomingOrders.map((order) => {');
+    expect(terminalOperationsPanelsContent).toContain('const displayedQueueIsEmpty = isDineInScheduleView');
+    expect(terminalOperationsPanelsContent).toContain("'No active dine-in orders.'");
     // Phase 232 (#1289), §2.7: the split view's own render of the (also now run-filtered) list --
     // including its own empty-state branch -- lives in IncomingQueueOrderList.jsx's pure
     // extraction; see terminalOperationsPanelsContent above for the tab view's own render.
@@ -804,12 +859,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('terminalId: readInitialTerminalId()');
     expect(terminalPageContent).toContain('resolveLoginTerminalId');
     expect(terminalPageContent).toContain('resolvePreferredTerminalId');
-    expect(terminalPageContent).toContain('No active terminals configured. Add one in Settings > POS Setup > Terminal Registry.');
+    expect(terminalPageContent).toContain('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
     expect(terminalPageContent).toContain('Terminal ID');
     expect(terminalPageContent).toContain('Select registered terminal');
-    expect(terminalPageContent).toContain('Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.');
+    expect(terminalPageContent).toContain('Enter the registered terminal ID from Back Office &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.');
     expect(terminalPageContent).toContain('Authorized DGFY users can open shifts from any logged-in device');
-    expect(terminalPageContent).toContain('This terminal has no assigned store location. Set the location in POS Setup > Terminal Registry.');
+    expect(terminalPageContent).toContain('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
     expect(terminalPageContent).toContain('Cashier Email');
     expect(terminalPageContent).toContain('Cashier Password');
     expect(terminalLockDrawerContent).not.toContain('Company Token (Optional)');

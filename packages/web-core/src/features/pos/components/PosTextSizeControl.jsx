@@ -53,7 +53,7 @@ export default function PosTextSizeControl({
 
     return (
         <div
-            className={`relative flex min-w-0 items-center ${className}`}
+            className={`pos-text-size-control relative flex min-w-0 items-center ${className}`}
             data-testid="pos-text-size-control"
         >
             <button
@@ -70,7 +70,7 @@ export default function PosTextSizeControl({
             >
                 <Type className="h-5 w-5 shrink-0 text-[#1A4E8D] lg:h-5 lg:w-5" strokeWidth={2.5} aria-hidden="true" />
                 <span className={`min-w-0 truncate text-[11px] font-extrabold ${desktopLabeled ? 'hidden lg:inline' : 'hidden'}`}>{selectedLabel}</span>
-                <ChevronDown className={`ml-0.5 h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+                <ChevronDown className={`ml-0.5 h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
             </button>
             {open && (
                 <div

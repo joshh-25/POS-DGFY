@@ -62,7 +62,7 @@ describe('parked sale schema contract', () => {
         expect(ownershipMigrationSource).not.toContain('dropTable');
     });
 
-    it('adds parked-sale stock evidence and cancellation approval states without reversing ledger data on rollback', () => {
+    it('adds parked-sale stock evidence and cancellation/void approval states without reversing ledger data on rollback', () => {
         expect(lifecycleMigrationSource).toContain("'inventory_effects'");
         expect(lifecycleMigrationSource).toContain("'inventory_deducted_at'");
         expect(lifecycleMigrationSource).toContain("'cancel_pending'");

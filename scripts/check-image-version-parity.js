@@ -615,7 +615,7 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
   // verified against its OWN allocated revision. Apps absent from the map were never
   // rebuilt by this candidate -- skip, don't fail: their last-published artifact stands.
   const releaseRevision = candidate.release_revision;
-  const perAppRevisions = (manifest.schema === 'sku-release-candidate/v2' && releaseRevision !== null) ? releaseRevision : null;
+  const perAppRevisions = (['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema) && releaseRevision !== null) ? releaseRevision : null;
   const results = apps.map((app) => {
     if (perAppRevisions) {
       const entry = perAppRevisions[app];

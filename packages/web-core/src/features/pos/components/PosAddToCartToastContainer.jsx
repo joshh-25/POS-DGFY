@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShoppingBag, Check, X } from 'lucide-react';
 
 export function PosAddToCartToastContainer({ toasts = [], onDismiss }) {
+  const [failedImageToastIds, setFailedImageToastIds] = useState(() => new Set());
   if (typeof document === 'undefined' || !toasts || toasts.length === 0) return null;
 
   const content = (
@@ -18,14 +19,17 @@ export function PosAddToCartToastContainer({ toasts = [], onDismiss }) {
         >
           {/* Thumbnail */}
           <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center">
-            {toast.imageSrc ? (
+            {toast.imageSrc && !failedImageToastIds.has(toast.id) ? (
               <img
                 src={toast.imageSrc}
                 alt={toast.itemName}
                 className="h-full w-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
+                onError={() => setFailedImageToastIds((current) => {
+                  if (current.has(toast.id)) return current;
+                  const next = new Set(current);
+                  next.add(toast.id);
+                  return next;
+                })}
               />
             ) : (
               <ShoppingBag className="h-5 w-5 text-blue-400" aria-hidden="true" />

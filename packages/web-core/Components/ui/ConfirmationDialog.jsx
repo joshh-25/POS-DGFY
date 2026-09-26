@@ -19,16 +19,18 @@ const ConfirmationDialog = ({
   onContinueEditing,
   saveDraftLabel = "Save as Draft",
   discardLabel = "Discard Changes",
-  continueEditingLabel = "Continue Editing"
+  continueEditingLabel = "Continue Editing",
+  className,
+  compact = false
 }) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className={className || "sm:max-w-md"}>
+        <DialogHeader className={compact ? "border-b border-slate-100 p-4 pb-3" : undefined}>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{message}</DialogDescription>
         </DialogHeader>
-        <DialogFooter className="flex-col sm:flex-row gap-2">
+        <DialogFooter className={compact ? "flex-col gap-2 border-t border-slate-100 p-4 pt-3 sm:flex-row" : "flex-col gap-2 sm:flex-row"}>
           <Button
             variant="outline"
             onClick={() => {

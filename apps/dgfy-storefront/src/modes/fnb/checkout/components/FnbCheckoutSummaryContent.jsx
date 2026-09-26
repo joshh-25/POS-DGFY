@@ -59,7 +59,7 @@ export function FnbCheckoutSummaryContent({
     ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
     ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
     ...(showDeliveryFee ? [{ label: 'Delivery Fee', value: money(totals.delivery_fee) }] : []),
-    ...buildFeeAndVatSummaryRows({ totals, money, includeServiceFee: Number(totals.service_fee_amount || 0) > 0 }),
+    ...buildFeeAndVatSummaryRows({ totals, money }),
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
     ...downpaymentRows
   ];

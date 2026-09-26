@@ -1,6 +1,6 @@
 # DGFY Funding & Discount Stacking — Stakeholder Brief
 
-Prepared for internal legal and stakeholder review, 2026-08-24.
+Prepared for internal legal and stakeholder review, 2026-08-24. Updated 2026-09-12 for Phase 333.
 
 This document explains, in plain language, how DGFY earns revenue on a transaction today, and how
 discounts, vouchers, and fees interact with one another. It reflects the platform's **actual
@@ -11,21 +11,22 @@ something is a known open question rather than settled behavior, that is stated 
 
 ## 1. How DGFY Earns Money Today
 
-DGFY has two structurally different ways of earning revenue on a sale. **Only one of them is
-active today.**
+DGFY has two structurally different funding/settlement regimes on a sale. The customer-facing
+Storefront convenience fee has been retired for new orders; tenant revenue sharing remains available
+when enabled.
 
-### Model A — Convenience Fee (currently active)
+### Model A — Convenience Fee (retired for new Storefront orders)
 
-The **buyer** pays DGFY an extra **1% of the cart subtotal** on top of their order, labeled "DGFY
-convenience fee" on the receipt. The merchant is paid directly by the payment processor, and this
-fee never moves through DGFY's own internal books.
+Historically, the **buyer** paid DGFY an extra **1% of the cart subtotal** on top of their order,
+labeled "DGFY convenience fee" on the receipt. New Storefront quotes and orders set this fee to
+`0`, so the buyer is not charged it. Existing `service_fee_*` fields remain for compatibility and
+historical reads; positive historical values are not recomputed.
 
 - **In-store (point-of-sale) purchases: this fee is ₱0.** It only applies to online orders.
-- The 1% is calculated on the subtotal **before** any discount is subtracted — so even a fully
-  discounted order still carries this fee.
-- **This fee is not currently recorded in DGFY's own internal financial ledger.** It exists only as
-  a line item on the customer's receipt and inside the payment processor's own records.
-- The 1% rate is currently fixed in the system — it is not adjustable per business or region today.
+- For new Storefront orders, the customer total is the discounted item subtotal plus the resolved
+  delivery fee. Restaurant service charge remains a separate F&B concept.
+- In the legacy non-revenue-sharing QR Ph path, any configured platform settlement is separate from
+  the customer total and tenant-funded.
 
 ### Model B — Revenue Sharing (built, not currently active)
 
@@ -46,14 +47,14 @@ default, that fee is passed on to the merchant in full** — DGFY does not curre
 ```mermaid
 flowchart TD
     A["Order checkout begins"] --> B{"Which fee model is active?"}
-    B -->|"Convenience Fee — current default"| C["Buyer-Paid Model"]
+    B -->|"Convenience Fee — retired for new Storefront orders"| C["Legacy Buyer-Paid Model"]
     B -->|"Revenue Sharing — built, not active"| D["Merchant-Paid Model"]
 
     C --> C1{"Sales channel?"}
-    C1 -->|"Online"| C2["Fee = 1% of subtotal,<br/>charged to the BUYER"]
+    C1 -->|"Online"| C2["New customer fee = ₱0<br/>legacy service_fee fields retained"]
     C1 -->|"In-store (POS)"| C3["Fee = ₱0"]
-    C2 --> C4["Collected directly through the payment<br/>processor's split-payment feature"]
-    C4 --> C5["Not recorded in DGFY's own<br/>internal revenue ledger"]
+    C2 --> C4["Legacy QR Ph platform settlement,<br/>if configured, is tenant-funded"]
+    C4 --> C5["Not included in the new customer's<br/>Storefront total"]
 
     D --> D1["Fee = 1% of the amount collected,<br/>deducted from the MERCHANT's payout"]
     D1 --> D2["DGFY collects the full payment"]
@@ -66,18 +67,16 @@ flowchart TD
 All figures below are illustrative, using the rates the system actually applies today, shown the
 way they'd appear on a receipt.
 
-**A. Plain online sale, Convenience Fee model (current default):**
+**A. Plain online sale, new Storefront behavior:**
 ```text
-  DGFY STOREFRONT — ONLINE ORDER  (current default)
+  DGFY STOREFRONT — ONLINE ORDER
   --------------------------------------------------------
   Cart subtotal                                 ₱ 1,000.00
   + Delivery fee                                  (varies)
-  + DGFY convenience fee (1% of subtotal)       ₱    10.00
   --------------------------------------------------------
-  TOTAL CHARGED TO BUYER          ₱ 1,010.00  + delivery
+  TOTAL CHARGED TO BUYER          ₱ 1,000.00  + delivery
   ==========================================================
-  DGFY's ₱10.00 fee is not posted to DGFY's own ledger —
-  it moves only through the payment processor's split payment.
+  DGFY convenience fee                         ₱     0.00
 ```
 
 **B. Same sale, in-store at the register:**
@@ -126,7 +125,7 @@ way they'd appear on a receipt.
   decision (see Section 6).
 ```
 
-**E. Voucher sale, ₱200 voucher discount, Convenience Fee model:**
+**E. Voucher sale, ₱200 voucher discount, new Storefront behavior:**
 ```text
   DGFY STOREFRONT — VOUCHER SALE
   --------------------------------------------------------
@@ -134,11 +133,8 @@ way they'd appear on a receipt.
   − Voucher discount                            ₱  (200.00)
   --------------------------------------------------------
   Amount buyer pays for the goods                ₱   800.00
-  + DGFY convenience fee            ₱    10.00  ← 1% of the ₱1,000
-                                                    SUBTOTAL, not the
-                                                    ₱800 actually paid
   --------------------------------------------------------
-  TOTAL CHARGED TO BUYER                        ₱   810.00
+  TOTAL CHARGED TO BUYER                        ₱   800.00
 ```
 
 **F. PWD/Senior Citizen sale (in-store only — see Section 3), VAT-inclusive item:**
@@ -197,7 +193,7 @@ flowchart TD
 
     Sub --> Code{"Discount code entered?"}
     Sub2 --> Code
-    Code -->|"None"| Total["Total = items + delivery + fee"]
+    Code -->|"None"| Total["Total = items + delivery"]
     Code -->|"Promo code"| PromoApply["Apply promo discount — no maximum cap"]
     Code -->|"Voucher code"| VClass{"Type of voucher"}
 
@@ -219,7 +215,7 @@ flowchart TD
 | Voucher + PWD/Senior Citizen discount | n/a (statutory not available online — see below) | ❌ blocked | Only one discount slot exists per sale |
 | PWD/Senior Citizen discount + an item-level discount | n/a | ✅ **allowed, currently unrestricted** | The item discount reduces the price first; the statutory discount is then computed on the already-discounted amount |
 | PWD/Senior Citizen discount online | ❌ **not available at all** | ✅ available | There is no statutory-discount feature built into the online storefront today |
-| DGFY convenience fee + any discount | ✅ (fee still applies, see example E) | n/a (fee is ₱0 in-store) | The fee is computed before discounts are subtracted |
+| DGFY convenience fee + any discount | ✅ only for positive legacy fee payloads; `0` for new orders | n/a (fee is ₱0 in-store) | New Storefront totals omit the fee; positive legacy values remain readable during compatibility windows |
 
 **The single most important line in this table for legal review: a PWD or Senior Citizen customer
 shopping online today cannot receive their statutory discount at all — the feature only exists for
@@ -234,10 +230,10 @@ this brief surfaces but does not answer.
 
 Under the Revenue Sharing model, a merchant's payment is held until the order is confirmed
 fulfilled, then becomes eligible for payout after a 15- or 30-day cycle, then goes through a
-two-person approval process (a preparer and a separate approver) before money actually moves. Under
-the Convenience Fee model (the current default), the merchant is paid directly by the payment
-processor at the time of sale, minus the processor's own cut — DGFY is not in that money's path at
-all.
+two-person approval process (a preparer and a separate approver) before money actually moves. For
+new Storefront orders with revenue sharing disabled, the merchant is paid directly by the payment
+processor at the time of sale, minus the processor's own cut; any legacy QR Ph platform settlement
+is separate and tenant-funded. Under Revenue Sharing, the settlement flow above applies.
 
 ## 5. Refunds and Cancellations
 
@@ -246,9 +242,8 @@ all.
   partial refunds always add up correctly.
 - A refund never reopens a merchant payout that's already settled; unresolved refund amounts are
   carried forward to the next payout cycle instead.
-- **The Convenience Fee model has no equivalent mechanism for reversing the 1% fee on a refund** —
-  because that fee is never posted into DGFY's own ledger in the first place, there is nothing there
-  to reverse.
+- **New Storefront orders have no customer convenience fee to reverse.** Historical orders retain
+  their original snapshots and are not recomputed or backfilled.
 
 ## 6. Known Limitations and Open Questions
 
@@ -256,8 +251,7 @@ all.
 what happens today by default, not the result of a deliberate policy call:
 
 - What fee, if any, should apply to the remaining balance on a partial-payment (downpayment) order?
-  Today, only the initial downpayment carries a fee.
-- Should the 1% online convenience fee remain fixed, or become adjustable?
+  Under Revenue Sharing, only the initial downpayment carries the platform fee today.
 - Who should fund the affiliate program's discounts — the business itself, or DGFY?
 - Should a fixed-price voucher ever be allowed alongside a statutory discount?
 - Should more than one voucher ever be allowed to stack on a single order (for example, a

@@ -38,6 +38,8 @@ import {
     buildVerifyDgfyEmailUseCase,
     buildRegisterDgfyAccountUseCase
 } from './usecases/dgfyAuthUseCases.js';
+import { buildIssueDgfyPosDeviceChallengeUseCase } from '../pos/usecases/dgfyPosDeviceUseCases.js';
+import * as posTerminalDeviceService from '../pos/services/posTerminalDeviceEnrollmentService.js';
 import {
     buildCancelDgfyCustomerOrderUseCase,
     buildGetDgfyCustomerDashboardUseCase,
@@ -212,6 +214,11 @@ export const startDgfyPosSessionUseCase = buildStartDgfyPosSessionUseCase({
     createTenantSessionForDgfyAccount,
     repository: dgfyAccountRepository,
     validateTerminalPolicy: validateDgfyPosTerminalPolicy
+});
+
+export const issueDgfyPosDeviceChallengeUseCase = buildIssueDgfyPosDeviceChallengeUseCase({
+    service: posTerminalDeviceService,
+    createTenantSession: createTenantSessionForDgfyAccount
 });
 
 export const listDgfyAccountCompaniesUseCase = buildListDgfyAccountCompaniesUseCase({

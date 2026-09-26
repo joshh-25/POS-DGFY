@@ -50,7 +50,7 @@ describe('service worker caching contracts', () => {
     expect(pluginSource).toContain("const PRECACHE_FILE_NAME = 'precache-manifest.json';");
     expect(pluginSource).toContain("const CRITICAL_ASSET_PATTERN = /\\.(?:css|js|webmanifest|woff2?)$/i;");
     expect(pluginSource).toContain('assets: collectPosOfflinePrecacheAssets(bundle)');
-    expect(viteSource).toContain('plugins: [react(), esCompatGuardPlugin(), posOfflinePrecachePlugin(),');
+    expect(viteSource).toContain('plugins: [react(), esCompatGuardPlugin(), productionAutoLoginGuard(), posOfflinePrecachePlugin(),');
     expect(viteSource).toContain('...buildSentryVitePlugins(appSurface)');
   });
 

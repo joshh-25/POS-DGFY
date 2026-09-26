@@ -3,9 +3,10 @@ import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import * as deliveryPersonnelController from '../modules/deliveryPersonnel/controllers/deliveryPersonnelHandlers.js';
-import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
+import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability, requireTenantAdminRole } from '../middleware/auth.js';
 import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posDrawerAuthorizationLimiter, posLimiter } from '../middleware/rateLimiter.js';
+import { requirePosDeviceProof, requirePosDeviceSessionProof } from '../middleware/posDeviceProof.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     posCatalogBulkImageUpload,
@@ -62,6 +63,7 @@ import {
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
     validateCollectCashDineInOrder,
+    validateCollectDineInPayment,
     validateRecordOrderBalancePayment,
     validatePosBalancePaymentProofParams,
     validatePosPackingEvidenceParams,
@@ -88,6 +90,7 @@ import {
     validateUpdateOnlineOrderStatus,
     validateUpdateOnlineOrderDeliveryAddress,
     validatePosDeviceReceiptPrint,
+    validatePosDeviceTestPrint,
     validateOnlineOrderReceiptAutoPrintClaim,
     validatePosDeviceShiftSummaryPrint,
     validatePosDeviceZReadingPrint,
@@ -105,6 +108,14 @@ import {
     validateFiscalTerminalRegistration,
     validateVerifyTerminal,
     validatePosCashierLogin,
+    validatePosTerminalDeviceActivationIssue,
+    validatePosTerminalDeviceBootstrapActivate,
+    validatePosTerminalDeviceChallenge,
+    validatePosTerminalDeviceProof,
+    validatePosTerminalDeviceEnrollmentParam,
+    validatePosTerminalDeviceListQuery,
+    validatePosTerminalDeviceReplace,
+    validatePosTerminalDeviceRevoke,
     validateSetupCashier,
     validatePosDiscountApproval,
     validateEmployeeCreditAccountParam,
@@ -140,22 +151,64 @@ import {
 } from '../validators/posValidator.js';
 import * as deliveryRunController from '../modules/pos/controllers/deliveryRunHandlers.js';
 import * as posBulkImageImportController from '../modules/pos/controllers/posBulkImageImportHandlers.js';
+import * as posTerminalDeviceController from '../modules/pos/controllers/posTerminalDeviceHandlers.js';
 
 const router = express.Router();
-const employeeCreditCheckoutPermission = checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT);
 const requireEmployeeCreditCheckoutPermission = (req, res, next) => {
     if (req.validatedData?.payment_type !== 'employee_credit') return next();
-    return employeeCreditCheckoutPermission(req, res, next);
+    // The browser account is not necessarily the active cashier (a manager may
+    // have opened the register while a relief cashier operates it). Record the
+    // conditional requirement for requireActiveOperatorForMutation, which
+    // rechecks it against the server-resolved operator.
+    req.requiredPermissions = [...new Set([
+        ...(req.requiredPermissions || []),
+        PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT
+    ])];
+    return next();
 };
 
 // Cashiers have no tenant access token before their first POS login. Tenant
 // context, premium/capability checks, rate limiting, and payload validation
 // still run before credentials are verified by the POS login use case.
 router.post(
+    '/auth/device-challenge',
+    requirePremium,
+    requireTenantCapability('tenant_pos_enabled', 'POS'),
+    posLimiter,
+    validatePosTerminalDeviceChallenge,
+    (req, res, next) => {
+        if (String(req.validatedData?.purpose || '').toLowerCase() !== 'session') {
+            return res.status(403).json({
+                success: false,
+                data: null,
+                message: 'Only session challenges are available before POS login.',
+                error_code: 'POS_DEVICE_SESSION_CHALLENGE_REQUIRED',
+                timestamp: new Date().toISOString()
+            });
+        }
+        return posTerminalDeviceController.issueChallenge(req, res, next);
+    }
+);
+
+// First enrollment is the strict-terminal bootstrap boundary: an administrator
+// supplies a short-lived activation code, so no POS access token (and therefore
+// no already-enrolled device proof) is required yet. The code remains tenant,
+// terminal, location, expiry, and one-use bound inside the service.
+router.post(
+    '/terminal/devices/activate',
+    requirePremium,
+    requireTenantCapability('tenant_pos_enabled', 'POS'),
+    posLimiter,
+    validatePosTerminalDeviceBootstrapActivate,
+    posTerminalDeviceController.activateDeviceBootstrap
+);
+
+router.post(
     '/auth/cashier-login',
     requirePremium,
     requireTenantCapability('tenant_pos_enabled', 'POS'),
     posLimiter,
+    requirePosDeviceSessionProof,
     validatePosCashierLogin,
     posController.loginCashier
 );
@@ -169,6 +222,21 @@ router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
 // subtract modules has a working off-switch for the POS surface.
 router.use(requireWorkflowCapability('pos', 'POS'));
 router.use(posLimiter);
+// Strict device enforcement is opt-in per terminal. The middleware resolves the
+// terminal/location from the tenant registry and requires a one-use signed proof
+// for every protected POS request; enrollment/bootstrap and recovery routes are
+// explicitly skipped inside the middleware.
+router.use(requirePosDeviceProof);
+
+router.post('/terminal/devices/activation-codes', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceActivationIssue, posTerminalDeviceController.issueActivationCode);
+// Activation consumes an admin-issued one-use code, but the approved client may
+// complete it as the authenticated POS operator. Recovery/list/replacement
+// remain administrator-only below.
+router.get('/terminal/devices', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceListQuery, posTerminalDeviceController.listDevices);
+router.post('/terminal/devices/:enrollmentId/revoke', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceEnrollmentParam, validatePosTerminalDeviceRevoke, posTerminalDeviceController.revokeDevice);
+router.post('/terminal/devices/:enrollmentId/replace', checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), requireTenantAdminRole, validatePosTerminalDeviceEnrollmentParam, validatePosTerminalDeviceReplace, posTerminalDeviceController.replaceDevice);
+router.post('/terminal/devices/challenge', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTerminalDeviceChallenge, posTerminalDeviceController.issueChallenge);
+router.post('/terminal/devices/proof', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTerminalDeviceProof, posTerminalDeviceController.verifyProof);
 
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
 router.get('/terminal/paired', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getPairedTerminal);
@@ -265,6 +333,7 @@ router.get('/employee-credit/lookup', checkPermission(PERMISSIONS.POS.actions.US
 router.get('/employee-credit/report', checkPermission(PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT), validateEmployeeCreditReportQuery, employeeCreditController.getEmployeeCreditReport);
 router.get('/discount-approvers', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountApprovers);
 router.get('/discount-employees', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountEmployees);
+router.get('/discount-rules', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountRules);
 router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosDiscountApproval, posController.requireActiveOperatorForMutation, posController.verifyDiscountApproval);
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
@@ -287,6 +356,7 @@ router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS),
 // usable before a run is built, unlike the shift-bound incoming-orders queue below.
 router.get('/reports/procurement-export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateProcurementExportQuery, posController.exportProcurementCsv);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
+router.post('/device/test-print', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.requirePairedTerminal, validatePosDeviceTestPrint, posController.testPrinter);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/device/online-order-receipt-claim', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validateOnlineOrderReceiptAutoPrintClaim, posController.claimOnlineOrderReceiptAutoPrint);
 router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
@@ -344,6 +414,7 @@ router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SW
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
 router.post('/orders/:id/collect-dine-in-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDineInOrder, posController.requireActiveOperatorForMutation, posController.collectCashDineInOrder);
+router.post('/orders/:id/collect-dine-in-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectDineInPayment, posController.requireActiveOperatorForMutation, posController.collectDineInPayment);
 // Phase 148 (#825): balance settlement for a partially-paid downpayment order. Same permission,
 // pairing, and param-validation chain as the two collect-cash routes above -- it is the same class
 // of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2

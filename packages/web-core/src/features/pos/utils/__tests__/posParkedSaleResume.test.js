@@ -61,9 +61,39 @@ describe('POS parked-sale resume validation', () => {
                 quantity: 2,
                 sale_price: 125,
                 vat_type: 'vatable',
-                parked_snapshot_line: true
+                parked_snapshot_line: true,
+                parked_original_quantity: 2,
+                parked_line_can_increase: true,
+                parked_line_price_changed: false,
+                parked_line_item_missing: false
             })
         ]));
+    });
+
+    it('marks a resumed line as locked for quantity additions after price drift', () => {
+        const lines = buildResumedCartLines({
+            parkedSale,
+            catalog: [{ ...catalog[0], default_sale_price: 150 }]
+        });
+
+        expect(lines[0]).toEqual(expect.objectContaining({
+            parked_snapshot_line: true,
+            parked_original_quantity: 2,
+            parked_line_price_changed: true,
+            parked_line_can_increase: false,
+            parked_line_item_missing: false
+        }));
+    });
+
+    it('marks a resumed line as unavailable when the catalog item is missing', () => {
+        const lines = buildResumedCartLines({ parkedSale, catalog: [] });
+
+        expect(lines[0]).toEqual(expect.objectContaining({
+            parked_snapshot_line: true,
+            parked_original_quantity: 2,
+            parked_line_item_missing: true,
+            parked_line_can_increase: false
+        }));
     });
 
     it('allows an Always Available item to resume with zero stock', () => {
@@ -274,5 +304,76 @@ describe('POS parked-sale resume validation', () => {
 
         expect(validation.ok).toBe(false);
         expect(validation.conflicts[0]).toContain('Order method "takeout" is no longer available');
+    });
+
+    it('recognizes a migrated legacy profile and requires the cashier to reselect the approved rule', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    discount_context: {
+                        selected_profile: {
+                            name: 'PWD',
+                            percentage: 15
+                        }
+                    }
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            discountRules: [{
+                discount_rule_id: 31,
+                discount_key: 'custom:31',
+                name: 'PWD',
+                type: 'custom',
+                method: 'percentage',
+                percentage: 15,
+                is_enabled: true,
+                is_approved: true
+            }]
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.warnings.join(' ')).toContain('was migrated');
+        expect(validation.warnings.join(' ')).toContain('reselect the current approved rule');
+    });
+
+    it('blocks an applied discount when its current configurable rule is missing or changed', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    discount_context: {
+                        applied: {
+                            type: 'custom',
+                            rule_id: 41,
+                            discount_key: 'custom:41',
+                            label: 'Employee Discount',
+                            method: 'percentage',
+                            rate: 12,
+                            amount: 15
+                        }
+                    }
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            discountRules: [{
+                discount_rule_id: 41,
+                discount_key: 'custom:41',
+                name: 'Employee Discount',
+                type: 'custom',
+                method: 'percentage',
+                percentage: 10,
+                is_enabled: true,
+                is_approved: true
+            }],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(false);
+        expect(validation.conflicts.join(' ')).toContain('changed after this sale was parked');
     });
 });

@@ -26,6 +26,12 @@ const DEFAULT_EMAIL_OTP_PURPOSES = Object.freeze({
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
+const isEnabledFlag = (value) => (
+    value === true
+    || value === 1
+    || value === '1'
+    || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+);
 const DGFY_ACCOUNT_ALREADY_EXISTS_DETAILS = Object.freeze({
     error_code: 'DGFY_ACCOUNT_ALREADY_EXISTS'
 });
@@ -1656,7 +1662,7 @@ export const buildStartDgfyTenantSessionUseCase = ({
         if (accessScope === 'pos') {
             const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
             const role = String(session?.role || '').trim().toLowerCase();
-            const hasAllowedRole = session?.is_master_admin === true || role === 'cashier' || role === 'admin';
+            const hasAllowedRole = isEnabledFlag(session?.is_master_admin) || role === 'cashier' || role === 'admin';
             if (!hasAllowedRole || (!permissions.includes('pos:view') && !permissions.includes('pos:transact'))) {
                 throw new DomainError(
                     DomainErrorCode.AUTHORIZATION_FAILED,
@@ -1686,7 +1692,7 @@ export const buildStartDgfyPosSessionUseCase = ({
     createTenantSessionForDgfyAccount,
     repository = null,
     validateTerminalPolicy = null
-}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+}) => async ({ account, tenantId, body = {}, metadata = {}, deviceProof = null, request = null }) => {
     const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
     const terminalId = String(body?.terminal_id || body?.terminalId || '').trim().toUpperCase();
     if (!resolvedTenantId) {
@@ -1741,7 +1747,9 @@ export const buildStartDgfyPosSessionUseCase = ({
         }
         const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
         const userRole = String(session?.role || '').trim().toLowerCase();
-        const hasAllowedPosRole = session?.is_master_admin === true
+        const isMasterAdmin = isEnabledFlag(session?.is_master_admin);
+        const isTenantOwner = userRole === 'admin' && isMembershipOwner(membership, account?.id);
+        const hasAllowedPosRole = isMasterAdmin
             || userRole === 'cashier'
             || userRole === 'admin';
         if (!hasAllowedPosRole) {
@@ -1761,7 +1769,10 @@ export const buildStartDgfyPosSessionUseCase = ({
                 tenantUserId: membership?.tenant_user_id || session?.user_id || null,
                 userRole,
                 permissions,
-                isMasterAdmin: session?.is_master_admin === true
+                isMasterAdmin,
+                ...(isTenantOwner ? { isTenantOwner: true } : {}),
+                ...(deviceProof ? { deviceProof } : {}),
+                ...(request ? { request } : {})
             })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };
         await repository?.createBusinessAuditLog?.(buildBusinessAuditPayload({

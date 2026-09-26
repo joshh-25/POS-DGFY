@@ -62,7 +62,7 @@ export default function PosLineTabNavigation({
   };
 
   return (
-    <nav ref={tabsViewportRef} aria-label={ariaLabel} className="-mx-1 overflow-x-auto">
+    <nav ref={tabsViewportRef} aria-label={ariaLabel} className="-mx-1 overflow-x-auto min-[1024px]:mx-0">
       <div role="tablist" aria-orientation="horizontal" className="flex min-w-max items-end gap-3 px-1 min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0">
         {availableTabs.map((tab) => {
           const Icon = tab.icon;
@@ -73,6 +73,7 @@ export default function PosLineTabNavigation({
               id={getTabId(tab.id)}
               type="button"
               role="tab"
+              data-testid={tab.testId || undefined}
               aria-selected={active}
               aria-controls={panelId}
               tabIndex={active ? 0 : -1}

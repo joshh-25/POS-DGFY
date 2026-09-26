@@ -163,10 +163,6 @@ export function RetailTrackingActiveView({ actions, formatters, isMobileViewport
                                     <span style={{ color: dgfySoftText }}>Delivery fee</span>
                                    <span style={{ fontWeight: 600, fontFamily: servicesBodyFont }}>{money(trackingResult.deliveryFee ?? 0)}</span>
                                  </div>
-                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                   <span style={{ color: dgfySoftText }}>Service fee</span>
-                                   <span style={{ fontWeight: 600, fontFamily: servicesBodyFont }}>{money(trackingResult.serviceFeeAmount ?? 0)}</span>
-                                 </div>
                               </div>
                               <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                  <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span>

@@ -5,11 +5,10 @@
  * user information, current inventory stats, and system state.
  */
 
-import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
-import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
+import { getDashboardStats } from './dashboardService.js';
 
 /**
  * Build complete context for AI conversation
@@ -83,88 +82,23 @@ export const getUserContext = async (userId) => {
  */
 export const getInventoryStats = async () => {
   try {
-    const Item = dbStore.get('Item');
-    const PurchaseOrder = dbStore.get('PurchaseOrder');
-    const JobOrder = dbStore.get('JobOrder');
-    const DispatchOrder = dbStore.get('DispatchOrder');
-    const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-
-    // Get item counts. Stock-level buckets (low/healthy/overstock) are scoped to
-    // stock-bearing items only — services have no current_stock to bucket by.
-    const [totalItems, lowStockItems, healthyItems, overstockItems] = await Promise.all([
-      Item.count({
-        where: buildVisibleWhere({ status: 'active' })
-      }),
-      Item.count({
-        where: buildStockBearingItemWhere(buildVisibleWhere({
-          status: 'active',
-          current_stock: {
-            [Op.lte]: sequelize.col('min_threshold')
-          }
-        }))
-      }),
-      Item.count({
-        where: buildStockBearingItemWhere(buildVisibleWhere({
-          status: 'active',
-          current_stock: {
-            [Op.gt]: sequelize.col('min_threshold'),
-            [Op.lte]: sequelize.col('max_capacity')
-          }
-        }))
-      }),
-      Item.count({
-        where: buildStockBearingItemWhere(buildVisibleWhere({
-          status: 'active',
-          current_stock: {
-            [Op.gt]: sequelize.col('max_capacity')
-          }
-        }))
-      })
-    ]);
-
-    // Get PO, JO, and DO counts
-    const [pendingPOCount, activeJOCount, activeDOCount] = await Promise.all([
-      PurchaseOrder.count({
-        where: {
-          status: { [Op.in]: ['pending', 'partial'] },
-          archived_at: null
-        }
-      }),
-      JobOrder.count({
-        where: {
-          status: { [Op.in]: ['draft', 'in_progress'] },
-          archived_at: null
-        }
-      }),
-      DispatchOrder.count({
-        where: {
-          status: { [Op.in]: ['draft', 'confirmed', 'partial'] },
-          archived_at: null
-        }
-      })
-    ]);
-
-    // Calculate total inventory value using DB aggregation (single source of truth).
-    // Stock-bearing items only — a service's current_stock/cost_per_unit are not
-    // inventory value.
-    const inventoryValueResult = await Item.findAll({
-      where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
-      attributes: [
-        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
-      ],
-      raw: true
-    });
-    const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
+    // AI context is a presentation consumer. Keep its inventory counts and
+    // valuation on the dashboard's canonical inventory-health projection
+    // instead of maintaining another set of SQL predicates and formulas.
+    const stats = await getDashboardStats();
 
     return {
-      totalItems,
-      lowStockCount: lowStockItems,
-      healthyCount: healthyItems,
-      overstockCount: overstockItems,
-      pendingPOCount,
-      activeJOCount,
-      activeDOCount,
-      totalValue: Math.round(totalValue * 100) / 100
+      totalItems: stats.totalItems,
+      lowStockCount: stats.lowStockCount,
+      outOfStockCount: stats.outOfStockCount || 0,
+      healthyCount: stats.healthyCount,
+      overstockCount: stats.overStockCount,
+      pendingPOCount: stats.pending_purchase_orders,
+      activeJOCount: stats.active_job_orders,
+      activeDOCount: stats.pending_dispatch_orders,
+      totalValue: stats.totalValue,
+      weightedTotalValue: stats.weightedTotalValue,
+      inventoryValueDelta: stats.inventoryValueDelta
     };
   } catch (error) {
     logger.error('Failed to get inventory stats:', error);

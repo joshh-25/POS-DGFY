@@ -25,9 +25,9 @@ describe('POS reports date filter modal', () => {
 
     expect(screen.getByRole('dialog', { name: 'Select Date' })).toBeTruthy();
     const presetGroup = screen.getByRole('group', { name: 'Date presets' });
-    expect(presetGroup.className).toContain('overflow-x-auto');
-    expect(presetGroup.querySelector('button')?.className).toContain('min-h-9');
-    expect(presetGroup.querySelector('button')?.className).toContain('min-w-[8rem]');
+    expect(presetGroup.className).toContain('grid-cols-2');
+    expect(presetGroup.querySelector('button')?.className).toContain('h-8');
+    expect(presetGroup.querySelector('button')?.className).toContain('min-w-0');
     fireEvent.click(screen.getByRole('button', { name: 'Last 7 Days' }));
     expect(onApplyDateRange).not.toHaveBeenCalled();
 
@@ -49,14 +49,14 @@ describe('POS reports date filter modal', () => {
     expect(onApplyDateRange).toHaveBeenCalledWith({ dateFrom: '2026-09-10', dateTo: '2026-09-18' });
   });
 
-  it('renders without a backdrop and closes on outside pointer input', () => {
+  it('uses the shared History dialog shell and closes on overlay input', () => {
     const onClose = vi.fn();
     render(<PosReportsDateFilterPanel {...baseProps} onClose={onClose} />);
 
-    expect(screen.getByRole('dialog', { name: 'Select Date' }).getAttribute('aria-modal')).toBe('false');
-    expect(screen.queryByRole('presentation')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Select Date' }).getAttribute('aria-modal')).toBe('true');
+    expect(document.querySelector('[data-dialog-overlay="true"]')).toBeTruthy();
 
-    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.querySelector('[data-dialog-overlay="true"]'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -71,12 +71,10 @@ describe('POS reports date filter modal', () => {
 
     const panel = screen.getByRole('dialog', { name: 'Select Date' });
     const content = panel.children[1];
-    expect(panel.style.maxHeight).toBe('268px');
-    expect(panel.className).toContain('lg:max-h-none');
+    expect(panel.style.maxHeight).toBe('');
+    expect(panel.className).toContain('dgfy-pos-history-mobile-sheet');
     expect(content.className).toContain('min-h-0');
     expect(content.className).toContain('overflow-y-auto');
-    expect(content.className).not.toContain('lg:flex-none');
-    expect(content.className).not.toContain('lg:overflow-visible');
     expect(panel.querySelector('header').className).toContain('shrink-0');
     expect(panel.querySelector('footer').className).toContain('shrink-0');
   });

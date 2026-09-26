@@ -128,12 +128,14 @@ const folderModifierGroupsSchema = Joi.object({
 const checksQuerySchema = Joi.object({
   status: Joi.string().valid(...CHECK_STATUSES).optional(),
   statuses: Joi.string().trim().max(255).optional(),
+  location_id: Joi.number().integer().positive().allow(null).optional(),
   limit: Joi.number().integer().min(1).max(300).default(100)
 });
 
 const checkSchema = Joi.object({
   table_id: Joi.number().integer().positive().allow(null).optional(),
   dining_area_id: Joi.number().integer().positive().allow(null).optional(),
+  location_id: Joi.number().integer().positive().allow(null).optional(),
   server_id: Joi.number().integer().positive().allow(null).optional(),
   guest_count: Joi.number().integer().min(1).max(500).default(1),
   order_method: Joi.string().valid('dine_in', 'takeout', 'pickup', 'delivery').default('dine_in'),

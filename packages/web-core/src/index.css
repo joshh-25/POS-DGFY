@@ -1,6 +1,113 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* Shared POS pagination follows the mobile wireframe: the range and Go to
+   label share the first row, while page size and navigation share the second. */
+.dgfy-global-pagination__mobile-go-to-label {
+  display: none;
+}
+
+.dgfy-global-pagination__page-size-trigger {
+  border-color: #dbe4f0;
+  background: #ffffff;
+  color: #334155;
+  letter-spacing: -0.01em;
+}
+
+.dgfy-global-pagination__page-size-trigger:hover:not(:disabled) {
+  border-color: rgba(26, 78, 141, 0.5);
+  background: #f8fbff;
+}
+
+.dgfy-global-pagination__page-size-menu {
+  min-width: 100%;
+}
+
+@media (max-width: 767.98px) {
+  .dgfy-global-pagination {
+    display: grid !important;
+    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-rows: auto auto;
+    column-gap: 0.25rem;
+    row-gap: 0.25rem;
+    align-items: center;
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  .dgfy-global-pagination__summary,
+  .dgfy-global-pagination__controls,
+  .dgfy-global-pagination__go-to {
+    display: contents !important;
+  }
+
+  .dgfy-global-pagination__summary-text {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dgfy-global-pagination__page-size {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 5.75rem;
+    max-width: 100%;
+  }
+
+  .dgfy-global-pagination__page-size-trigger {
+    width: 100%;
+    min-width: 5.75rem;
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .dgfy-global-pagination__previous {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__status {
+    grid-column: 3;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.25rem;
+  }
+
+  .dgfy-global-pagination__next {
+    grid-column: 4;
+    grid-row: 2;
+  }
+
+  .dgfy-global-pagination__mobile-go-to-label {
+    display: block;
+    grid-column: 5;
+    grid-row: 1;
+    justify-self: end;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none;
+  }
+
+  .dgfy-global-pagination__go-to-input {
+    grid-column: 5;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 360px) {
+  .dgfy-global-pagination {
+    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
+    column-gap: 0.2rem;
+  }
+}
 
 body {
   margin: 0;
@@ -13,6 +120,127 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Reports keep the sortable header's 36px hit area, centered in the same
+   51px title row used by History. Body rows retain their existing spacing. */
+.pos-reports-responsive-table > thead > tr > th {
+  height: 51px;
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
+}
+
+/* Tablet report tables fit the viewport instead of inheriting desktop column
+   widths. The responsive column selector reserves the final 4.5rem for Actions. */
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  .pos-reports-responsive-table {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+
+  .pos-reports-responsive-table > :is(thead, tbody) > tr > .pos-reports-table-column {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .pos-reports-responsive-table > :is(thead, tbody) > tr > .pos-reports-table-action-column {
+    width: 4.5rem !important;
+    min-width: 4.5rem !important;
+    white-space: nowrap;
+  }
+
+  .pos-reports-responsive-table > thead > tr > th {
+    padding-right: 0.375rem;
+    padding-left: 0.375rem;
+    font-size: 0.6875rem;
+  }
+
+  .pos-reports-comparison-table {
+    width: 100%;
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .pos-reports-comparison-table :is(th, td) {
+    width: auto !important;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    padding-right: 0.375rem;
+    padding-left: 0.375rem;
+  }
+
+  .pos-cashier-permissions-table {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .pos-cashier-permissions-header {
+    grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.4fr) minmax(130px, 0.8fr);
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .pos-cashier-permissions-header [data-pos-cashier-name-header] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .pos-cashier-permissions-header [data-pos-cashier-permissions-header] {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .pos-cashier-permissions-header [data-pos-cashier-terminals-header] {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .pos-cashier-permissions-header .pos-cashier-permission-subheader {
+    display: none;
+  }
+
+  .pos-cashier-permissions-data-row {
+    grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.4fr) minmax(130px, 0.8fr);
+    grid-template-rows: repeat(3, minmax(3.5rem, auto));
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .pos-cashier-permissions-data-row [data-pos-cashier-name-cell] {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+    display: flex;
+    align-items: center;
+  }
+
+  .pos-cashier-permissions-data-row [data-pos-cashier-permission="discount"] {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .pos-cashier-permissions-data-row [data-pos-cashier-permission="day-close"] {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .pos-cashier-permissions-data-row [data-pos-cashier-permission="cashier-void"] {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .pos-cashier-permissions-data-row [data-pos-cashier-terminals-cell] {
+    grid-column: 3;
+    grid-row: 1 / span 3;
+    display: flex;
+    align-items: center;
+  }
 }
 
 /* Touch pointers can retain :hover after a tap. Keep the text-size menu's
@@ -233,10 +461,26 @@ body {
   background: #94a3b8;
 }
 
-/* Shared POS pagination follows the mobile wireframe: the range and Go to
-   label share the first row, while page size and navigation share the second. */
+/* Active filter counts use the same compact badge on History and Reports.
+   Phone and portrait-tablet controls keep the count outside the icon button so
+   the button remains a consistent square target. */
+@media (max-width: 767.98px), (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .dgfy-pos-filter-count-badge {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.25rem;
+    margin-left: 0;
+  }
+}
+
+/* Shared POS pagination keeps the mobile state compact while retaining the
+   direct page-jump form beside the sequential navigation controls. */
 .dgfy-global-pagination__mobile-go-to-label {
   display: none;
+}
+
+.dgfy-global-pagination__page-size-suffix {
+  display: inline;
 }
 
 .dgfy-global-pagination__page-size-trigger {
@@ -258,11 +502,12 @@ body {
 @media (max-width: 767.98px) {
   .dgfy-global-pagination {
     display: grid !important;
-    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);
     grid-template-rows: auto auto;
-    column-gap: 0.25rem;
+    column-gap: 0.2rem;
     row-gap: 0.25rem;
     align-items: center;
+    min-width: 0;
     padding: 0.25rem 0.5rem !important;
   }
 
@@ -283,15 +528,23 @@ body {
   .dgfy-global-pagination__page-size {
     grid-column: 1;
     grid-row: 2;
-    min-width: 5.75rem;
+    min-width: 0;
     max-width: 100%;
   }
 
   .dgfy-global-pagination__page-size-trigger {
     width: 100%;
-    min-width: 5.75rem;
+    min-width: 3.25rem;
     padding-inline: 0.5rem;
     font-size: 0.75rem;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .dgfy-global-pagination__page-size-suffix,
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none !important;
   }
 
   .dgfy-global-pagination__previous {
@@ -314,16 +567,11 @@ body {
 
   .dgfy-global-pagination__mobile-go-to-label {
     display: block;
-    grid-column: 5;
+    grid-column: 4 / -1;
     grid-row: 1;
     justify-self: end;
     white-space: nowrap;
     font-weight: 500;
-  }
-
-  .dgfy-global-pagination__go-to-label,
-  .dgfy-global-pagination__go-to-suffix {
-    display: none;
   }
 
   .dgfy-global-pagination__go-to-input {
@@ -334,18 +582,10 @@ body {
   }
 }
 
-@media (max-width: 360px) {
-  .dgfy-global-pagination {
-    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
-    column-gap: 0.2rem;
-  }
-}
-
-/* Keep the History controls slightly above the phone home indicator. This is
-   intentionally scoped to this footer because the shared mobile pagination
-   rule uses !important padding and other paginated surfaces should not move. */
+/* Keep the shared POS pagination footer slightly above the phone home
+   indicator while retaining the same mobile grid on every paginated surface. */
 @media (max-width: 767.98px) {
-  .dgfy-pos-history-pagination-footer {
+  .dgfy-pos-pagination-footer {
     padding-bottom: 0.75rem !important;
   }
 }
@@ -412,6 +652,19 @@ body {
 .dgfy-pos-scroll-region::-webkit-scrollbar-thumb:hover {
   background: #64748b;
   background-clip: padding-box;
+}
+
+/* Reports and Settings match History's edge spacing without a reserved
+   scrollbar gutter. Overflow remains scrollable through the normal inputs. */
+.dgfy-pos-scroll-region.dgfy-pos-scrollbar-hidden {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dgfy-pos-scroll-region.dgfy-pos-scrollbar-hidden::-webkit-scrollbar {
+  display: none;
 }
 
 @media (min-width: 768px) {
@@ -1143,6 +1396,17 @@ body.dgfy-pos-document-scroll-lock {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
+/* The parked-sales shortcut is portaled into this host only for workflows
+ * that support it. Keep the empty host out of the header layout so unsupported
+ * workflows do not show a blank button-sized gap. */
+.dgfy-pos-header-park-slot {
+  display: none;
+}
+
+.dgfy-pos-header-park-slot:not(:empty) {
+  display: flex;
+}
+
 .dgfy-pos-terminal-badge {
   border: 1px solid rgba(26, 78, 141, 0.14);
   background: linear-gradient(135deg, #f8fbff 0%, #e8f0fb 100%);
@@ -1407,7 +1671,7 @@ body[data-pos-text-size="extra-large"] {
     overflow-wrap: anywhere;
   }
 
-  body[data-pos-text-size] [aria-label="POS transaction history table"] button {
+  body[data-pos-text-size] [aria-label="POS transaction history table"] button:not(.pos-table-action-button) {
     min-height: max(3rem, calc(3rem * var(--pos-text-size-scale, 1)));
     height: auto;
   }
@@ -1625,14 +1889,25 @@ body.pos-receipt-print-mode {
  * their normal blur and motion treatment.
  */
 html.dgfy-imin-performance [data-dialog-overlay="true"],
+html.dgfy-imin-performance [class~="backdrop-blur"],
 html.dgfy-imin-performance [class~="backdrop-blur-sm"],
 html.dgfy-imin-performance [class~="backdrop-blur-md"],
 html.dgfy-imin-performance [class~="backdrop-blur-lg"],
 html.dgfy-imin-performance [class~="backdrop-blur-xl"],
 html.dgfy-imin-performance [class~="backdrop-blur-2xl"],
-html.dgfy-imin-performance [class~="backdrop-blur-3xl"] {
+html.dgfy-imin-performance [class~="backdrop-blur-3xl"],
+html.dgfy-imin-performance [class~="backdrop-blur-[1px]"] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+/* Locked and disabled POS surfaces use a regular CSS filter rather than
+ * backdrop-filter. Keep those filters off in the fixed Chrome 80-84 iMin
+ * WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"],
+html.dgfy-imin-performance [class~="blur-sm"],
+html.dgfy-imin-performance [class~="blur-[0.5px]"] {
+  filter: none !important;
 }
 
 /* POS extended views use a solid dimmed backdrop so the underlying checkout
@@ -2041,10 +2316,9 @@ html.dgfy-imin-performance [class~="transition-all"] {
   background-color: rgb(248 250 252 / 70%);
 }
 
-/* Desktop history is designed as a single viewport. A shared twelve-column
-   grid keeps every column visually balanced and keeps the action controls in
-   the same row as their transaction without creating a second horizontal
-   scrolling surface. */
+/* Desktop history keeps seven prioritized data columns plus one action column
+   so the primary scan path stays readable while the details dialog retains
+   the complete transaction record. */
 .dgfy-pos-history-table--single-view {
   width: 100%;
   max-width: 100%;
@@ -2053,7 +2327,7 @@ html.dgfy-imin-performance [class~="transition-all"] {
 }
 
 .dgfy-pos-history-table--single-view > colgroup > col {
-  width: 8.333333%;
+  width: 12.5%;
 }
 
 .dgfy-pos-history-table--single-view > :is(thead, tbody) > tr > :is(th, td) {
@@ -2141,7 +2415,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 .dgfy-pos-history-table--single-view > tbody > tr {
-  height: 4.5rem;
+  height: 4.25rem;
 }
 
 .dgfy-pos-history-table--single-view > tbody > tr > td:not([colspan]) {
@@ -2157,7 +2431,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 .dgfy-pos-history-table--single-view > tbody > tr > td:not([colspan]) > .pos-history-row-content {
   display: flex;
   width: 100%;
-  min-height: 4.5rem;
+  min-height: 4.25rem;
   align-items: center;
   justify-content: flex-start;
 }
@@ -2175,18 +2449,17 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-shadow: none;
 }
 
-/* Tablets use the same twelve-column history contract as PC, but on a compact
-   fixed canvas. The surrounding scroll region provides intentional horizontal
-   panning instead of collapsing financial fields into an unrelated layout. */
+/* Tablet history keeps the table layout but fits a progressively smaller set
+   of data columns into the available width. */
 .dgfy-pos-history-table--tablet {
   width: 100%;
   max-width: none;
-  min-width: 1180px;
+  min-width: 0;
   table-layout: fixed;
 }
 
 .dgfy-pos-history-table--tablet > colgroup > col {
-  width: 8.333333%;
+  width: auto;
 }
 
 .dgfy-pos-history-table--tablet > :is(thead, tbody) > tr > :is(th, td) {
@@ -2236,21 +2509,25 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-shadow: none;
 }
 
-/* Tablet landscape has enough width for the full financial table, but not for
-   the desktop table's 1180px canvas. Fit the same twelve columns to the
-   available panel width and reserve a slightly wider final column so the two
-   action controls stay visible without disturbing the financial values. */
+/* Portrait shows four data columns plus Actions. */
+.dgfy-pos-history-table--tablet-portrait > colgroup > col:nth-child(1) { width: 18%; }
+.dgfy-pos-history-table--tablet-portrait > colgroup > col:nth-child(2) { width: 20%; }
+.dgfy-pos-history-table--tablet-portrait > colgroup > col:nth-child(3) { width: 19%; }
+.dgfy-pos-history-table--tablet-portrait > colgroup > col:nth-child(4) { width: 18%; }
+.dgfy-pos-history-table--tablet-portrait > colgroup > col:last-child { width: 25%; }
+
+/* Landscape adds Payment while reserving the final column for Actions. */
 .dgfy-pos-history-table--tablet-landscape {
   width: 100%;
   min-width: 0;
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col {
-  width: 8.090909%;
+  width: 15%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {
-  width: 11%;
+  width: 22%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > :is(thead, tbody) > tr > :is(th, td) {
@@ -2259,11 +2536,11 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 .dgfy-pos-history-table--tablet-landscape .pos-history-action-column {
-  text-align: left;
+  text-align: center;
 }
 
 .dgfy-pos-history-table--tablet-landscape .pos-history-action-column > .pos-history-row-content {
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 /* Phones use a readable summary table instead of shrinking the desktop
@@ -2326,86 +2603,7 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   box-shadow: none;
 }
 
-/* Icon-only transaction actions keep a fixed square hit area. The text-size
-   compatibility rule above intentionally allows table buttons to grow for
-   wrapped labels, but that rule must not stretch these icon controls into
-   rectangular hover surfaces. */
-.pos-history-action-button {
-  box-sizing: border-box;
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  aspect-ratio: 1 / 1;
-}
-
-.pos-history-action-button--standard {
-  width: 2.25rem;
-  min-width: 2.25rem;
-  max-width: 2.25rem;
-  height: 2.25rem;
-  min-height: 2.25rem;
-  max-height: 2.25rem;
-  flex-basis: 2.25rem;
-}
-
-.pos-history-action-button--large {
-  width: 2.5rem;
-  min-width: 2.5rem;
-  max-width: 2.5rem;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  max-height: 2.5rem;
-  flex-basis: 2.5rem;
-}
-
-/* The receipt/view action uses the same neutral clipboard tile in the mobile
- * summary, full history table, and expanded mobile details row. Keep this
- * visual contract independent of utility-class generation order. */
-.pos-history-view-action {
-  background-color: #f8fafc;
-  color: #475569;
-}
-
-.pos-history-view-action:hover {
-  background-color: #f1f5f9;
-  color: #334155;
-}
-
-/* This selector intentionally outranks the text-size table-button rule so
-   the square contract remains true at every POS text-size setting. */
-body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-history-action-button--standard {
-  width: 2.25rem;
-  min-width: 2.25rem;
-  max-width: 2.25rem;
-  height: 2.25rem;
-  min-height: 2.25rem;
-  max-height: 2.25rem;
-  flex-basis: 2.25rem;
-}
-
-body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-history-action-button--large {
-  width: 2.5rem;
-  min-width: 2.5rem;
-  max-width: 2.5rem;
-  height: 2.5rem;
-  min-height: 2.5rem;
-  max-height: 2.5rem;
-  flex-basis: 2.5rem;
-}
-
 @media (max-width: 767.98px) {
-  /* Keep the mobile history search field and its three icon controls on one
-     exact control height. The shared Button primitive already uses h-10, but
-     this boundary rule prevents inherited/theme sizing from making the row
-     look uneven. */
-  [data-testid="pos-history-toolbar"] .pos-history-toolbar-control {
-    height: 2.5rem;
-    min-height: 2.5rem;
-    max-height: 2.5rem;
-  }
-
   /* The toolbar must stay a single horizontal control row even before the
      viewport hook finishes its first resize measurement. */
   [data-testid="pos-history-toolbar"] {
@@ -2466,12 +2664,6 @@ body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-histo
  * to the portrait tablet breakpoint so tablet landscape and desktop retain
  * their existing table/dialog geometry. */
 @media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
-  [data-testid="pos-history-toolbar"] .pos-history-toolbar-control {
-    height: 2.5rem;
-    min-height: 2.5rem;
-    max-height: 2.5rem;
-  }
-
   [data-testid="pos-history-toolbar"] {
     display: flex;
     width: 100%;
@@ -2769,4 +2961,65 @@ body[data-pos-text-size] [aria-label="POS transaction history table"] .pos-histo
 
 .animate-pos-illustration-float {
   animation: pos-illustration-float 3.2s ease-in-out infinite;
+}
+
+/* Catalog Editor only: keep the dense authoring surface readable without changing
+   the shared wizard scale used by the rest of the product. */
+.catalog-editor-dialog-content.wizard-core-typography .wizard-title,
+[data-catalog-editor].wizard-core-typography .wizard-title {
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(h3, h4),
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(h3, h4).wizard-section-title,
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(h3, h4) {
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content label,
+[data-catalog-editor].wizard-core-typography .wizard-step-content label {
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content :is(input, textarea, select, button),
+[data-catalog-editor].wizard-core-typography .wizard-step-content :is(input, textarea, select, button) {
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content .text-sm,
+[data-catalog-editor].wizard-core-typography .wizard-step-content .text-sm {
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-step-content .text-xs,
+[data-catalog-editor].wizard-core-typography .wizard-step-content .text-xs {
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-footer,
+[data-catalog-editor].wizard-core-typography .wizard-footer {
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.catalog-editor-dialog-content.wizard-core-typography .wizard-footer button,
+[data-catalog-editor].wizard-core-typography .wizard-footer button {
+  font-size: 0.875rem;
+}
+
+.catalog-editor-dialog-content > .flex-shrink-0:first-child,
+[data-catalog-editor] > .flex-shrink-0:first-child {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0.75rem 1rem;
+}
+
+[data-catalog-editor] .wizard-step-content {
+  padding: 0.75rem 1rem;
 }

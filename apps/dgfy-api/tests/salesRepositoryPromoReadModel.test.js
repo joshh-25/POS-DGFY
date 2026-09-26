@@ -36,6 +36,8 @@ test('unified POS sales read model exposes saved promo and fulfillment truth', a
         payment_status: 'paid',
         customer_name: 'Buyer',
         subtotal_amount: 100,
+        vatable_sales: 80,
+        vat_amount: 20,
         discount_amount: 20,
         discount_label_snapshot: 'Online Promo',
         discount_rate_snapshot: 20,
@@ -61,5 +63,12 @@ test('unified POS sales read model exposes saved promo and fulfillment truth', a
         promo_code: 'SAVE20',
         discount_amount: 20,
         gross_sales: 111
+    }));
+    expect(result.summary).toEqual(expect.objectContaining({
+        gross_sales: 111,
+        discounts: 20,
+        vatable_sales: 80,
+        vat: 20,
+        net_sales: 91
     }));
 });

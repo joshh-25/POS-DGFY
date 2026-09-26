@@ -343,6 +343,12 @@ describe('Simple Storefront online payment contract', () => {
     // its own dedicated coverage.
     expect(submission).toContain('(isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    const sessionCreation = submission.indexOf('const paymentSession = await createStorefrontOnlinePaymentSession');
+    const proofResetAfterSessionCreation = submission.indexOf('resetGuestCheckoutOtp?.();', sessionCreation);
+    const paymentSessionBranch = submission.indexOf('if (isStorefrontDirectPaymentSession(paymentSession))', sessionCreation);
+    expect(sessionCreation).toBeGreaterThan(-1);
+    expect(proofResetAfterSessionCreation).toBeGreaterThan(sessionCreation);
+    expect(proofResetAfterSessionCreation).toBeLessThan(paymentSessionBranch);
     expect(submission).toContain('startStorefrontDirectPayment');
     expect(submission).toContain('isStorefrontDirectPaymentSession');
     expect(panel).toContain('Continue in the ${paymentLabel} app or browser authorization screen');
@@ -354,7 +360,7 @@ describe('Simple Storefront online payment contract', () => {
     expect(panel).toContain('PayMongo will open 3-D Secure authentication');
     expect(panel).toContain('Your card details are sent directly to PayMongo');
     expect(panel).toContain("result.status === 'awaiting_payment_method'");
-    expect(panel).toContain("paymentType === 'card'");
+    expect(panel).toContain('const directCard = isStorefrontDirectCardPaymentSession(paymentSession);');
     expect(panel).toContain("get('payment_status') === 'return'");
     expect(panel).toContain('3-D Secure returned. Waiting for PayMongo confirmation.');
     expect(panel).toContain('dgfy_storefront_direct_card_submitted:');

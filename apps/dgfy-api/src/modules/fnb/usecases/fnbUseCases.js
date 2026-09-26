@@ -782,6 +782,7 @@ export const buildListChecksUseCase = ({ fnbRepository }) => async ({ query = {}
     return ok({
       checks: await fnbRepository.listChecks({
         statuses,
+        locationId: toPositiveInt(query.location_id),
         limit: query.limit
       })
     });
@@ -793,7 +794,14 @@ export const buildListChecksUseCase = ({ fnbRepository }) => async ({ query = {}
 export const buildCreateCheckUseCase = ({ fnbRepository }) => async ({ payload = {}, actorUserId = null } = {}) => {
   try {
     const tableId = toPositiveInt(payload.table_id);
+    const locationId = toPositiveInt(payload.location_id);
     const check = await withTransaction(fnbRepository, async (transaction) => {
+      if (locationId) {
+        const locations = await fnbRepository.findActiveLocationsByIds([locationId], { transaction });
+        if (locations.length === 0) {
+          throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'F&B check location not found or inactive');
+        }
+      }
       let table = null;
       if (tableId) {
         table = await fnbRepository.getTableById(tableId, { transaction, lock: true });
@@ -802,6 +810,7 @@ export const buildCreateCheckUseCase = ({ fnbRepository }) => async ({ payload =
       const created = await fnbRepository.createCheck({
         table_id: tableId,
         dining_area_id: toPositiveInt(payload.dining_area_id) || toPositiveInt(table?.dining_area_id),
+        location_id: locationId,
         server_id: toPositiveInt(payload.server_id) || toPositiveInt(actorUserId),
         guest_count: toPositiveInt(payload.guest_count, 1),
         order_method: ['dine_in', 'takeout', 'pickup', 'delivery'].includes(payload.order_method) ? payload.order_method : 'dine_in',
@@ -898,6 +907,7 @@ export const buildSplitCheckUseCase = ({ fnbRepository }) => async ({ checkId, p
       const created = await fnbRepository.createCheck({
         table_id: toPositiveInt(payload.table_id) || plain.table_id || null,
         dining_area_id: toPositiveInt(payload.dining_area_id) || plain.dining_area_id || null,
+        location_id: plain.location_id || null,
         server_id: toPositiveInt(payload.server_id) || plain.server_id || null,
         guest_count: toPositiveInt(payload.guest_count, 1),
         order_method: plain.order_method || 'dine_in',

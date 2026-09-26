@@ -14,6 +14,10 @@ import {
 } from '@/src/features/fnb/api/fnbApi.js';
 import { fetchPosCatalog } from '../services/posService.js';
 
+vi.mock('@/services/itemService.js', () => ({
+  getFolders: vi.fn().mockResolvedValue([{ folder_id: 20, name: 'Breakfast' }])
+}));
+
 vi.mock('@/src/features/fnb/api/fnbApi.js', () => ({
   createFnbModifierGroup: vi.fn(),
   listFnbFolderModifierGroups: vi.fn(),
@@ -57,10 +61,11 @@ describe('standalone POS F&B modifier management', () => {
     arrange();
     render(<PosFnbModifiersWorkspace canManage isOnline locations={[]} />);
 
-    await screen.findByRole('heading', { name: 'F&B menu modifiers' });
+    await screen.findByRole('heading', { name: 'Option Groups' });
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Option Group' }));
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Sauces' } });
     fireEvent.change(screen.getByLabelText('Option 1 name'), { target: { value: 'Garlic mayo' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     await waitFor(() => expect(createFnbModifierGroup).toHaveBeenCalledTimes(1));
     expect(createFnbModifierGroup.mock.calls[0][0].name).toBe('Sauces');
@@ -71,9 +76,9 @@ describe('standalone POS F&B modifier management', () => {
     arrange();
     render(<PosFnbModifiersWorkspace canManage isOnline locations={[]} />);
 
-    await screen.findByRole('heading', { name: 'Override add-ons for an item' });
+    await screen.findByRole('heading', { name: 'Assign Options to an Item' });
     fireEvent.click(screen.getAllByRole('checkbox', { name: 'Burger extras' })[1]);
-    fireEvent.click(screen.getByRole('button', { name: 'Save item add-ons' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Apply Filters' })[1]);
 
     await waitFor(() => expect(replaceFnbItemModifierGroups).toHaveBeenCalledWith(5, {
       modifier_groups: [{ modifier_group_id: 10, sort_order: 0, is_excluded: false }]
@@ -84,9 +89,9 @@ describe('standalone POS F&B modifier management', () => {
     arrange();
     render(<PosFnbModifiersWorkspace canManage isOnline locations={[]} />);
 
-    await screen.findByRole('heading', { name: 'Assign add-ons to a folder' });
+    await screen.findByRole('heading', { name: 'Assign Option Groups to a Category' });
     fireEvent.click(screen.getAllByRole('checkbox', { name: 'Burger extras' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Save folder add-ons' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Apply Filters' })[0]);
 
     await waitFor(() => expect(replaceFnbFolderModifierGroups).toHaveBeenCalledWith(20, {
       modifier_groups: [{ modifier_group_id: 10, sort_order: 0 }]
@@ -97,9 +102,8 @@ describe('standalone POS F&B modifier management', () => {
     arrange();
     render(<PosFnbModifiersWorkspace canManage={false} isOnline locations={[]} />);
 
-    await screen.findAllByRole('status');
-    expect(screen.getByText('Read-only menu modifiers')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'New group' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Save item add-ons' })).toBeNull();
+    expect(await screen.findByText('Option Groups')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add an Option Group' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Apply Filters' })).toBeNull();
   });
 });

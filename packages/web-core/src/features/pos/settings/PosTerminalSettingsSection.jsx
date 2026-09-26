@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { createSuggestedTerminalId, normalizeTerminalCashierIds } from '@/src/features/pos/utils/terminalIdentity.js';
 import { toPositiveInt } from './posSettingsModels.js';
 import PosAddTerminalModal from './PosAddTerminalModal.jsx';
-import PosTerminalAdvancedSettingsModal from './PosTerminalAdvancedSettingsModal.jsx';
+import PosTerminalAdvancedSettingsModal, { TerminalPolicyFields } from './PosTerminalAdvancedSettingsModal.jsx';
 import PosTerminalCashierAccessTable from './PosTerminalCashierAccessTable.jsx';
 
 const cloneTerminal = (terminal = {}) => ({
@@ -112,9 +112,11 @@ function TerminalCarouselPagination({ terminalCount, activeIndex, canScrollPrevi
 }
 
 export default function PosTerminalSettingsSection({
-  locked, loading, savingTab, posForm, locations,
+  locked, canEditSettings = true, loading, savingTab, posForm, locations,
   handleTerminalRegistrySave, handleTerminalAdvancedSettingsSave,
-  readiness, canManageCashiers, cashiersLoading,
+  showTerminalRegistryEditor = true,
+  editorSection = '',
+  readiness, canManageCashiers, canRemoveCashiers, setCashierRemoveUser, cashiersLoading,
   cashiersLoaded, getCashiersForLocation, setCashierInvitationOpen,
   discountApprovers, discountApproversLoading, canManageDiscountApprovalPins,
   updateDiscountAuthorization, discountAuthorizationSavingUserId, setApprovalPinUser, setApprovalPin,
@@ -132,6 +134,12 @@ export default function PosTerminalSettingsSection({
   const terminalCardRefs = useRef(new Map());
   const [terminalHint, setTerminalHint] = useState(null);
   const [terminalCarouselState, setTerminalCarouselState] = useState({ canScrollPrevious: false, canScrollNext: false });
+  const advancedSettingsValues = advancedSettingsDraft || {
+    terminalRegistryMode: posForm?.terminalRegistryMode || 'warn',
+    terminalLocationBindingEnforced: posForm?.terminalLocationBindingEnforced === true,
+    voucherPosRedemptionEnabled: posForm?.voucherPosRedemptionEnabled === true
+  };
+  const policyLocked = locked || canEditSettings === false;
 
   const openTerminalHint = useCallback((index, pointer = null) => {
     const card = terminalCardRefs.current.get(index);
@@ -237,6 +245,8 @@ export default function PosTerminalSettingsSection({
       observer?.disconnect();
     };
   }, [terminalRegistry.length, updateTerminalCarouselState]);
+
+  if (!showTerminalRegistryEditor) return null;
 
   const beginEditing = (index) => {
     setSelectedTerminalIndex(index);
@@ -421,11 +431,7 @@ export default function PosTerminalSettingsSection({
   };
 
   const openAdvancedSettings = () => {
-    setAdvancedSettingsDraft({
-      terminalRegistryMode: posForm?.terminalRegistryMode || 'warn',
-      terminalLocationBindingEnforced: posForm?.terminalLocationBindingEnforced === true,
-      voucherPosRedemptionEnabled: posForm?.voucherPosRedemptionEnabled === true
-    });
+    setAdvancedSettingsDraft(advancedSettingsValues);
     setAdvancedSettingsOpen(true);
   };
 
@@ -436,8 +442,9 @@ export default function PosTerminalSettingsSection({
   };
 
   const saveAdvancedSettings = async () => {
-    if (!advancedSettingsDraft) return;
-    const saved = await handleTerminalAdvancedSettingsSave?.(advancedSettingsDraft);
+    const saved = await handleTerminalAdvancedSettingsSave?.(advancedSettingsValues, {
+      successMessage: editorSection === 'registers' ? 'Terminal registry saved.' : undefined
+    });
     if (saved === true) {
       setAdvancedSettingsDraft(null);
       setAdvancedSettingsOpen(false);
@@ -453,6 +460,34 @@ export default function PosTerminalSettingsSection({
 
   return (
     <>
+      {editorSection === 'registers' ? (
+        <section aria-labelledby="pos-terminal-policy-title" className="w-full min-w-0 border-b border-slate-200 pb-6">
+          <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h3 id="pos-terminal-policy-title" className="text-[16px] font-extrabold text-[#0F172A]">Terminal policy</h3>
+              <p className="mt-1 text-[12px] leading-5 text-[#64748B]">Branch binding and registry enforcement apply to terminals in this business.</p>
+            </div>
+            <Button
+              type="button"
+              className="min-h-9 w-full rounded-lg bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm hover:bg-[#143F73] sm:w-auto"
+              onClick={saveAdvancedSettings}
+              disabled={policyLocked || loading || savingTab === 'terminal_advanced_settings'}
+            >
+              {savingTab === 'terminal_advanced_settings' ? 'Saving...' : 'Save'}
+            </Button>
+          </div>
+          <div className="grid gap-3">
+            <TerminalPolicyFields
+              values={advancedSettingsValues}
+              locked={policyLocked || loading}
+              saving={savingTab === 'terminal_advanced_settings'}
+              idPrefix="business-admin-terminal"
+              onChange={(key, value) => setAdvancedSettingsDraft((current) => ({ ...advancedSettingsValues, ...current, [key]: value }))}
+            />
+          </div>
+        </section>
+      ) : null}
+
       <section aria-labelledby="pos-terminal-registry-title" className="w-full min-w-0 border-b border-slate-200 pb-6 last:border-b-0">
         <div className="flex flex-col gap-3 pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -463,7 +498,9 @@ export default function PosTerminalSettingsSection({
             </div>
           </div>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <Button type="button" variant="outline" className="min-h-9 gap-1.5 rounded-lg border-[#B9D5F7] bg-blue-50 px-3 text-[13px] font-extrabold text-[#1A4E8D] shadow-sm hover:border-[#1A4E8D] hover:bg-blue-100 sm:text-[14px]" onClick={openAdvancedSettings} disabled={locked || loading || savingTab === 'terminal_advanced_settings' || editingTerminalIndex != null}><Settings2 className="h-4 w-4" />Advanced Settings</Button>
+            {editorSection !== 'registers' ? (
+              <Button type="button" variant="outline" className="min-h-9 gap-1.5 rounded-lg border-[#B9D5F7] bg-blue-50 px-3 text-[13px] font-extrabold text-[#1A4E8D] shadow-sm hover:border-[#1A4E8D] hover:bg-blue-100 sm:text-[14px]" onClick={openAdvancedSettings} disabled={policyLocked || loading || savingTab === 'terminal_advanced_settings' || editingTerminalIndex != null}><Settings2 className="h-4 w-4" />Advanced Settings</Button>
+            ) : null}
           </div>
         </div>
 
@@ -596,7 +633,7 @@ export default function PosTerminalSettingsSection({
               onSelect={scrollToTerminal}
             />
 
-            {selectedTerminal ? <PosTerminalCashierAccessTable terminal={selectedTerminal} locationName={locations.find((location) => toPositiveInt(location.location_id) === toPositiveInt(selectedTerminal.location_id))?.name} assignmentTerminals={assignmentTerminals} getAssignedTerminalIndexes={getAssignedTerminalIndexes} onAssignCashier={updateCashierTerminalAssignments} cashiers={getCashiersForTerminal(selectedTerminal)} locationCashiers={getCashiersForLocation(selectedTerminal.location_id)} terminalRegistrySaving={savingTab === 'terminal_registry'} cashiersLoading={cashiersLoading} cashiersLoaded={cashiersLoaded} setCashierInvitationOpen={setCashierInvitationOpen} locked={locked} loading={loading} canManageCashiers={canManageCashiers} discountApprovers={discountApprovers} discountApproversLoading={discountApproversLoading} canManageDiscountApprovalPins={canManageDiscountApprovalPins} updateDiscountAuthorization={updateDiscountAuthorization} discountAuthorizationSavingUserId={discountAuthorizationSavingUserId} setApprovalPinUser={setApprovalPinUser} setApprovalPin={setApprovalPin} dayCloseOperators={dayCloseOperators} dayCloseOperatorsLoading={dayCloseOperatorsLoading} canManageDayClosePins={canManageDayClosePins} updateDayCloseAccess={updateDayCloseAccess} dayCloseAccessSavingUserId={dayCloseAccessSavingUserId} setDayClosePinUser={setDayClosePinUser} cashierVoidAccessSavingUserId={cashierVoidAccessSavingUserId} updateCashierVoidAccess={updateCashierVoidAccess} updateCashierDrawerAccess={updateCashierDrawerAccess} /> : null}
+            {selectedTerminal ? <PosTerminalCashierAccessTable terminal={selectedTerminal} locationName={locations.find((location) => toPositiveInt(location.location_id) === toPositiveInt(selectedTerminal.location_id))?.name} assignmentTerminals={assignmentTerminals} getAssignedTerminalIndexes={getAssignedTerminalIndexes} onAssignCashier={updateCashierTerminalAssignments} cashiers={getCashiersForTerminal(selectedTerminal)} locationCashiers={getCashiersForLocation(selectedTerminal.location_id)} terminalRegistrySaving={savingTab === 'terminal_registry'} cashiersLoading={cashiersLoading} cashiersLoaded={cashiersLoaded} setCashierInvitationOpen={setCashierInvitationOpen} canRemoveCashiers={canRemoveCashiers} setCashierRemoveUser={setCashierRemoveUser} locked={locked} loading={loading} canManageCashiers={canManageCashiers} discountApprovers={discountApprovers} discountApproversLoading={discountApproversLoading} canManageDiscountApprovalPins={canManageDiscountApprovalPins} updateDiscountAuthorization={updateDiscountAuthorization} discountAuthorizationSavingUserId={discountAuthorizationSavingUserId} setApprovalPinUser={setApprovalPinUser} setApprovalPin={setApprovalPin} dayCloseOperators={dayCloseOperators} dayCloseOperatorsLoading={dayCloseOperatorsLoading} canManageDayClosePins={canManageDayClosePins} updateDayCloseAccess={updateDayCloseAccess} dayCloseAccessSavingUserId={dayCloseAccessSavingUserId} setDayClosePinUser={setDayClosePinUser} cashierVoidAccessSavingUserId={cashierVoidAccessSavingUserId} updateCashierVoidAccess={updateCashierVoidAccess} updateCashierDrawerAccess={updateCashierDrawerAccess} /> : null}
           </>
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-[12px] text-[#64748B]">{(posForm.terminalRegistryMode || 'warn') === 'enforce' ? 'No terminals configured yet. Add at least one active terminal before enabling enforce mode.' : 'No terminals configured yet. Add a terminal to replace manual terminal IDs with managed registry entries.'}</div>
@@ -617,7 +654,7 @@ export default function PosTerminalSettingsSection({
         onSave={saveTerminal}
         onDelete={deleteTerminal}
       />
-      <PosTerminalAdvancedSettingsModal open={advancedSettingsOpen} values={advancedSettingsDraft} locked={locked || loading} saving={savingTab === 'terminal_advanced_settings'} onOpenChange={(open) => { if (!open) closeAdvancedSettings(); }} onChange={(key, value) => setAdvancedSettingsDraft((current) => ({ ...current, [key]: value }))} onSave={saveAdvancedSettings} />
+      <PosTerminalAdvancedSettingsModal open={advancedSettingsOpen} values={advancedSettingsDraft} locked={policyLocked || loading} saving={savingTab === 'terminal_advanced_settings'} onOpenChange={(open) => { if (!open) closeAdvancedSettings(); }} onChange={(key, value) => setAdvancedSettingsDraft((current) => ({ ...current, [key]: value }))} onSave={saveAdvancedSettings} />
     </>
   );
 }

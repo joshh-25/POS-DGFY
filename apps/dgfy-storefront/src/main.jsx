@@ -15,6 +15,7 @@ import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAccep
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import BusinessRegistrationSubmissionPage from './business/pages/BusinessRegistrationSubmissionPage.jsx';
+import LegalDocumentPage from './legal/LegalDocumentPage.jsx';
 import { initBrowserSentry, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import VersionBadge from '../../../packages/web-core/src/components/common/VersionBadge.jsx';
@@ -148,6 +149,8 @@ function StoreRoot() {
             </>
           )}
         />
+        <Route path="/legal/:slug" element={<LegalDocumentPage />} />
+        <Route path="/privacy" element={<LegalDocumentPage />} />
         <Route path="*" element={<App />} />
       </Routes>
     </BrowserRouter>

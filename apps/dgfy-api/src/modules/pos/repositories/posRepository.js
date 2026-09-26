@@ -1,9 +1,12 @@
 import crypto from 'crypto';
-import { Op } from 'sequelize';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { Op, literal } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertPosRepositoryContract } from '../contracts/posRepository.contract.js';
 import { buildFinanciallyRecognizedSalesWhere } from '../../shared/utils/financialRecognition.js';
+import { formatReportDateTime } from '../../shared/utils/reportTimezone.js';
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode
@@ -13,7 +16,10 @@ import {
     buildCatalogSetupRecommendation,
     buildPosReadiness
 } from '../../shared/utils/catalogSetupPolicy.js';
-import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
+import {
+    deriveImageAssetVariantUrls,
+    readAvailableImageAsset
+} from '../../shared/utils/imageAssetStorage.js';
 import {
     detectBarcodeSymbology,
     isBarcodeScopeAllowedForSurface,
@@ -27,8 +33,13 @@ import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
+import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const POS_UPLOADS_ROOT = path.resolve(__dirname, '../../../../uploads');
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const normalizeBusinessDateValue = (value) => {
@@ -46,6 +57,11 @@ const toPositiveInt = (value) => {
     const normalized = Number.parseInt(value, 10);
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
+const toPositiveIntArray = (value) => Array.from(new Set(
+    (Array.isArray(value) ? value : [])
+        .map(toPositiveInt)
+        .filter(Boolean)
+));
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const POS_BEST_SELLER_SETTINGS_KEY = 'pos_best_seller_settings';
@@ -209,6 +225,7 @@ const normalizeTerminalRegistry = (rawValue) => {
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: locationId,
+            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off',
             ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     });
@@ -312,6 +329,13 @@ const isMissingPosCatalogOverrideTableError = (error) => {
     return code === 'ER_NO_SUCH_TABLE' || message.includes('pos_catalog_overrides');
 };
 
+const isMissingPosLocationItemOverrideTableError = (error) => {
+    if (!error) return false;
+    const code = error.original?.code || error.parent?.code || error.code;
+    const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    return code === 'ER_NO_SUCH_TABLE' && message.includes('pos_location_item_overrides');
+};
+
 const isMissingStorefrontCatalogOverrideTableError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
@@ -410,7 +434,7 @@ const buildItemFolderInclude = () => {
         ? [{
             model: ItemFolder,
             as: 'folder',
-            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter'],
+            attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter', 'sort_order'],
             required: false,
             include: FnbModifierGroup && FnbFolderModifierGroup ? [{
                 model: FnbModifierGroup,
@@ -435,6 +459,13 @@ const buildItemFolderInclude = () => {
         }]
         : [];
 };
+
+const PRIMARY_FOLDER_SORT_ORDER_SQL = '(SELECT `folder_order`.`sort_order` FROM `item_folders` AS `folder_order` WHERE `folder_order`.`folder_id` = `Item`.`folder_id` LIMIT 1)';
+
+const buildPrimaryFolderOrder = () => [
+    [literal(`CASE WHEN ${PRIMARY_FOLDER_SORT_ORDER_SQL} IS NULL THEN 1 ELSE 0 END`), 'ASC'],
+    [literal(`COALESCE(${PRIMARY_FOLDER_SORT_ORDER_SQL}, 2147483647)`), 'ASC']
+];
 
 const buildFnbCatalogIncludes = () => {
     const FnbModifierGroup = safeGetModel('FnbModifierGroup');
@@ -516,6 +547,63 @@ const loadCatalogOverridesMap = async (itemIds = [], options = {}) => {
         if (isMissingPosCatalogOverrideTableError(error)) {
             return new Map();
         }
+        throw error;
+    }
+};
+
+const loadPosLocationAvailabilityMap = async (itemIds = [], options = {}) => {
+    const normalizedItemIds = [...new Set((Array.isArray(itemIds) ? itemIds : [])
+        .map((itemId) => toPositiveInt(itemId))
+        .filter(Boolean))];
+    const PosLocationItemOverride = safeGetModel('PosLocationItemOverride');
+    const TenantLocation = safeGetModel('TenantLocation');
+    if (normalizedItemIds.length === 0 || typeof TenantLocation?.findAll !== 'function') {
+        return new Map();
+    }
+
+    const locations = (await TenantLocation.findAll({
+        where: { is_active: true },
+        attributes: ['location_id', 'name', 'is_open', 'is_active', 'is_primary_storefront'],
+        order: [['is_primary_storefront', 'DESC'], ['name', 'ASC'], ['location_id', 'ASC']],
+        transaction: options.transaction
+    })).map(toPlain);
+    const byItemId = new Map(normalizedItemIds.map((itemId) => [
+        itemId,
+        locations.map((location) => ({
+            location_id: Number(location.location_id),
+            name: location.name,
+            is_open: location.is_open !== false,
+            is_active: location.is_active !== false,
+            is_primary_storefront: location.is_primary_storefront === true,
+            pos_available: true,
+            source: 'inherited'
+        }))
+    ]));
+
+    if (typeof PosLocationItemOverride?.findAll !== 'function' || locations.length === 0) {
+        return byItemId;
+    }
+
+    try {
+        const rows = await PosLocationItemOverride.findAll({
+            where: {
+                item_id: { [Op.in]: normalizedItemIds },
+                location_id: { [Op.in]: locations.map((location) => Number(location.location_id)) }
+            },
+            attributes: ['item_id', 'location_id', 'pos_available'],
+            transaction: options.transaction
+        });
+        rows.map(toPlain).forEach((row) => {
+            const itemRows = byItemId.get(Number(row.item_id));
+            const entry = itemRows?.find((location) => Number(location.location_id) === Number(row.location_id));
+            if (entry) {
+                entry.pos_available = row.pos_available !== false;
+                entry.source = 'override';
+            }
+        });
+        return byItemId;
+    } catch (error) {
+        if (isMissingPosLocationItemOverrideTableError(error)) return byItemId;
         throw error;
     }
 };
@@ -644,20 +732,6 @@ const loadStorefrontCatalogImageMap = async (itemIds = [], options = {}) => {
 // used the Storefront image unconditionally, silently dropping a working
 // POS-specific image whenever both existed (#871) -- fixed by routing both
 // through this single helper instead of re-deriving the precedence inline.
-const resolvePosDisplayImage = ({ override, storefrontImage }) => {
-    const path = override?.pos_image_path || storefrontImage?.storefront_image_path || null;
-    const url = override?.pos_image_url || storefrontImage?.storefront_image_url || null;
-    const source = override?.pos_image_url ? 'override' : (storefrontImage?.storefront_image_url ? 'storefront' : null);
-    return {
-        path,
-        url,
-        variants: override?.pos_image_path || override?.pos_image_url
-            ? deriveImageAssetVariantUrls({ storedPath: path, storedUrl: url })
-            : deriveStorefrontImageVariants(storefrontImage),
-        source
-    };
-};
-
 const resolvePrimaryStorefrontGalleryEntry = (storefrontImage) => {
     const gallery = parseJsonLoosely(storefrontImage?.storefront_image_gallery);
     if (!Array.isArray(gallery) || gallery.length === 0) {
@@ -684,6 +758,80 @@ const deriveStorefrontImageVariants = (storefrontImage) => {
     return explicit && typeof explicit === 'object' && !Array.isArray(explicit)
         ? { ...derived, ...explicit }
         : derived;
+};
+
+const readAvailableStorefrontImage = async (storefrontImage) => {
+    const gallery = parseJsonLoosely(storefrontImage?.storefront_image_gallery);
+    const galleryEntries = Array.isArray(gallery) ? gallery : [];
+    const availableGallery = (await Promise.all(galleryEntries.map(async (entry) => {
+        const normalizedEntry = typeof entry === 'string' ? { path: entry } : entry;
+        if (!normalizedEntry || typeof normalizedEntry !== 'object' || Array.isArray(normalizedEntry)) return null;
+        const available = await readAvailableImageAsset({
+            uploadsRoot: POS_UPLOADS_ROOT,
+            storedPath: normalizedEntry.path || null,
+            storedUrl: normalizedEntry.url || null,
+            variants: normalizedEntry.variants || normalizedEntry.image_variants || null
+        });
+        if (!available.path && !available.url) return null;
+        return {
+            ...normalizedEntry,
+            path: available.path,
+            url: available.url,
+            variants: available.variants
+        };
+    }))).filter(Boolean);
+
+    const primaryEntry = availableGallery.find((entry) => entry.is_primary === true)
+        || availableGallery[0]
+        || null;
+    const storedPath = primaryEntry?.path || storefrontImage?.storefront_image_path || null;
+    const storedUrl = primaryEntry?.url || storefrontImage?.storefront_image_url || null;
+    if (!storedPath && !storedUrl) {
+        return { path: null, url: null, variants: null, gallery: availableGallery };
+    }
+
+    const variants = primaryEntry?.variants || deriveStorefrontImageVariants({
+        ...storefrontImage,
+        storefront_image_path: storedPath,
+        storefront_image_url: storedUrl,
+        storefront_image_gallery: availableGallery
+    });
+    const available = await readAvailableImageAsset({
+        uploadsRoot: POS_UPLOADS_ROOT,
+        storedPath,
+        storedUrl,
+        variants
+    });
+    return { ...available, gallery: availableGallery };
+};
+
+const resolvePosDisplayImage = async ({ override, storefrontImage, storefrontAsset = null }) => {
+    const overridePath = override?.pos_image_path || null;
+    const overrideUrl = override?.pos_image_url || null;
+    if (overridePath || overrideUrl) {
+        const overrideAsset = await readAvailableImageAsset({
+            uploadsRoot: POS_UPLOADS_ROOT,
+            storedPath: overridePath,
+            storedUrl: overrideUrl,
+            variants: deriveImageAssetVariantUrls({ storedPath: overridePath, storedUrl: overrideUrl })
+        });
+        if (overrideAsset.path || overrideAsset.url) {
+            return {
+                path: overrideAsset.path,
+                url: overrideAsset.url,
+                variants: overrideAsset.variants,
+                source: 'override'
+            };
+        }
+    }
+
+    const availableStorefrontAsset = storefrontAsset || await readAvailableStorefrontImage(storefrontImage);
+    return {
+        path: availableStorefrontAsset.path,
+        url: availableStorefrontAsset.url,
+        variants: availableStorefrontAsset.variants,
+        source: availableStorefrontAsset.path || availableStorefrontAsset.url ? 'storefront' : null
+    };
 };
 
 const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
@@ -751,25 +899,37 @@ const applyCatalogOverrides = async (items, options = {}) => {
     });
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
+    const posLocationAvailabilityMap = await loadPosLocationAvailabilityMap(itemIds, {
+        ...options,
+        locationId: options.locationId
+    });
     const autoBestSellerItemIds = await loadBestSellerItemIds(itemIds, options);
     const storefrontImageMap = await loadStorefrontCatalogImageMap(itemIds, options);
     const primaryBarcodeMap = options.includePrimaryBarcode === true
         ? await loadPrimaryBarcodeMap(itemIds, options)
         : new Map();
 
-    return normalizedItems
-        .map((item) => {
+    return (await Promise.all(normalizedItems
+        .map(async (item) => {
             const override = overrideMap.get(item.item_id);
+            const locationAvailability = posLocationAvailabilityMap.get(Number(item.item_id)) || [];
+            const locationId = toPositiveInt(options.locationId);
+            const locationEntry = locationId
+                ? locationAvailability.find((entry) => Number(entry.location_id) === locationId)
+                : null;
             const storefrontImage = storefrontImageMap.get(item.item_id);
             const posVisible = resolveCatalogVisibility({ item, override, surface: 'pos' });
             const bestSellerMode = ['force', 'never'].includes(override?.pos_best_seller_mode)
                 ? override.pos_best_seller_mode
                 : 'auto';
-            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
+            const storefrontAsset = await readAvailableStorefrontImage(storefrontImage);
+            const posDisplayImage = await resolvePosDisplayImage({ override, storefrontImage, storefrontAsset });
             return {
                 ...item,
                 pos_visible: posVisible,
                 pos_always_available: override?.pos_always_available === true,
+                pos_location_available: locationEntry ? locationEntry.pos_available !== false : true,
+                pos_location_availability: locationAvailability,
                 pos_best_seller_mode: bestSellerMode,
                 is_best_seller: bestSellerMode === 'force'
                     || (bestSellerMode === 'auto' && autoBestSellerItemIds.has(Number(item.item_id))),
@@ -777,16 +937,17 @@ const applyCatalogOverrides = async (items, options = {}) => {
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
-                storefront_image_path: storefrontImage?.storefront_image_path || null,
-                storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
-                storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
+                storefront_image_path: storefrontAsset.path,
+                storefront_image_url: storefrontAsset.url,
+                storefront_image_variants: storefrontAsset.variants,
+                storefront_image_gallery: storefrontAsset.gallery.length > 0 ? storefrontAsset.gallery : null,
                 ...(options.includePrimaryBarcode === true
                     ? { primary_barcode: primaryBarcodeMap.get(Number(item.item_id)) || null }
                     : {})
             };
-        })
-        .filter((item) => options.includeUnavailable === true || item.pos_visible !== false);
+        })))
+        .filter((item) => options.includeUnavailable === true
+            || (item.pos_visible !== false && item.pos_location_available !== false));
 };
 
 // ADR 0080 Amendment (Phase 286, #1318): attaches each item's SECONDARY category ids
@@ -1535,9 +1696,121 @@ const serializeReportSummary = (lineRows = []) => {
         total_items_sold: sumBy(lineRows, (row) => row.quantity),
         discounts: sumBy(lineRows, (row) => row.discount_amount),
         refunds_voids: sumBy(lineRows, (row) => row.refund_amount),
+        vatable_sales: sumBy(lineRows, (row) => row.vatable_sales),
         vat: sumBy(lineRows, (row) => row.vat_amount),
         service_fees: sumBy(lineRows, (row) => row.service_fee_amount),
         is_loss: posProfitLoss < 0
+    };
+};
+
+const Z_READING_RECONCILIATION_FILTERS = Object.freeze([
+    ['cashier_id', 'cashier'],
+    ['terminal_id', 'terminal'],
+    ['payment_type', 'payment'],
+    ['source', 'source'],
+    ['category_id', 'category'],
+    ['category', 'category']
+]);
+
+const hasReportFilterValue = (value) => value !== undefined
+    && value !== null
+    && String(value).trim() !== '';
+
+const buildReportZReadingReconciliation = ({
+    transactions = [],
+    filters = {},
+    snapshot = null,
+    reportSummary = {},
+    adjustmentSummary = {}
+} = {}) => {
+    const { dateFrom, dateTo } = resolveReportDateRange(filters);
+    const base = {
+        status: 'not_comparable',
+        comparison_basis: 'completed_recognized_transaction_total',
+        business_date: dateFrom === dateTo ? dateFrom : null,
+        location_id: toPositiveInt(filters.location_id),
+        reading_identifier: null,
+        generated_at: null,
+        evaluated_at: new Date().toISOString(),
+        snapshot_persisted: false,
+        report_recognized_sales: null,
+        z_total_amount: null,
+        variance: null,
+        report_net_sales: round4(reportSummary.net_sales),
+        report_refunds_voids: round4(reportSummary.refunds_voids),
+        report_adjustment_amount: round4(adjustmentSummary.succeeded_amount),
+        z_void_transaction_count: null,
+        z_void_amount: null,
+        message: ''
+    };
+
+    if (dateFrom !== dateTo) {
+        return {
+            ...base,
+            message: 'Select one business date to reconcile it with a Z-reading.'
+        };
+    }
+
+    const activeFilterLabels = Z_READING_RECONCILIATION_FILTERS
+        .filter(([key]) => hasReportFilterValue(filters[key]))
+        .map(([, label]) => label);
+    if (activeFilterLabels.length > 0) {
+        return {
+            ...base,
+            message: 'Clear cashier, terminal, payment, source, and category filters to compare the full day with its Z-reading.'
+        };
+    }
+
+    const reportRecognizedSales = sumBy(
+        transactions.filter((transaction) => String(transaction?.status || '').trim().toLowerCase() === 'completed'),
+        (transaction) => transaction?.total_amount
+    );
+    const reportBase = {
+        ...base,
+        report_recognized_sales: reportRecognizedSales
+    };
+
+    if (!snapshot) {
+        return {
+            ...reportBase,
+            status: 'not_generated',
+            message: 'No Z-reading has been generated for this business date.'
+        };
+    }
+
+    const parsedSnapshotSummary = parseJsonLoosely(snapshot.summary);
+    const snapshotSummary = parsedSnapshotSummary && typeof parsedSnapshotSummary === 'object' && !Array.isArray(parsedSnapshotSummary)
+        ? parsedSnapshotSummary
+        : {};
+    const hasComparableZTotal = snapshotSummary.total_amount !== null
+        && snapshotSummary.total_amount !== undefined
+        && Number.isFinite(Number(snapshotSummary.total_amount));
+    const snapshotIdentity = {
+        reading_identifier: snapshot.reading_identifier || null,
+        generated_at: snapshot.generated_at || snapshot.created_at || null,
+        snapshot_persisted: true
+    };
+    if (!hasComparableZTotal) {
+        return {
+            ...reportBase,
+            ...snapshotIdentity,
+            message: 'The Z-reading snapshot does not contain a comparable total.'
+        };
+    }
+    const zTotalAmount = round4(snapshotSummary.total_amount);
+    const variance = round4(reportRecognizedSales - zTotalAmount);
+    const zVoidTransactionCount = Number.parseInt(snapshotSummary.void_transaction_count || 0, 10);
+    return {
+        ...reportBase,
+        status: variance === 0 ? 'matched' : 'variance',
+        ...snapshotIdentity,
+        z_total_amount: zTotalAmount,
+        variance,
+        z_void_transaction_count: Number.isFinite(zVoidTransactionCount) ? zVoidTransactionCount : 0,
+        z_void_amount: round4(snapshotSummary.void_amount),
+        message: variance === 0
+            ? 'Report recognized sales match the immutable Z-reading total.'
+            : 'Report recognized sales differ from the immutable Z-reading total. Review the transaction scope and post-close events.'
     };
 };
 
@@ -1894,13 +2167,15 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
             net_sales: 0,
             discount_amount: 0,
             refund_amount: 0,
-            pos_profit_loss: 0
+            vatable_sales: 0,
+            vat_amount: 0
         };
         current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
         current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
         current.discount_amount = round4(current.discount_amount + Number(row.discount_amount || 0));
         current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
-        current.pos_profit_loss = round4(current.pos_profit_loss + Number(row.pos_profit_loss || 0));
+        current.vatable_sales = round4(current.vatable_sales + Number(row.vatable_sales || 0));
+        current.vat_amount = round4(current.vat_amount + Number(row.vat_amount || 0));
         lineSummaryByTransaction.set(key, current);
     });
 
@@ -1926,8 +2201,9 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 gross_sales: round4(summary.gross_sales),
                 net_sales: round4(summary.net_sales),
                 discount_amount: round4(summary.discount_amount),
-                refund_amount: round4(summary.refund_amount),
-                pos_profit_loss: round4(summary.pos_profit_loss)
+                vatable_sales: round4(summary.vatable_sales),
+                vat_amount: round4(summary.vat_amount),
+                refund_amount: round4(summary.refund_amount)
             };
         });
 };
@@ -1984,6 +2260,7 @@ const loadCashierLifecycleReport = async ({ filters = {}, options = {}, register
     const handoffWhere = { event_at: { [Op.gte]: range.startAt, [Op.lt]: range.endAtExclusive } };
     const cashierId = toPositiveInt(filters.cashier_id);
     const locationId = toPositiveInt(filters.location_id);
+    const locationIds = toPositiveIntArray(filters.location_ids);
     const terminalId = String(filters.terminal_id || '').trim();
     if (cashierId) {
         attendanceWhere.user_id = cashierId;
@@ -1997,6 +2274,10 @@ const loadCashierLifecycleReport = async ({ filters = {}, options = {}, register
         attendanceWhere.location_id = locationId;
         operatorWhere.location_id = locationId;
         handoffWhere.location_id = locationId;
+    } else if (locationIds.length > 0) {
+        attendanceWhere.location_id = { [Op.in]: locationIds };
+        operatorWhere.location_id = { [Op.in]: locationIds };
+        handoffWhere.location_id = { [Op.in]: locationIds };
     }
     if (terminalId) {
         operatorWhere.terminal_id = terminalId;
@@ -2366,9 +2647,31 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             : [];
         const discountAllocationByLineId = new Map(discountAllocations.map((allocation) => [Number(allocation.transaction_line_id), allocation]));
         const sourceLabel = resolveReportSourceLabel(transaction);
+        const transactionLines = Array.isArray(transaction?.lines) ? transaction.lines : [];
+        const reportLineContexts = transactionLines.map((line) => {
+            const grossSales = round4(line?.line_subtotal || 0);
+            const persistedDiscountAllocation = discountAllocationByLineId.get(Number(line?.line_id));
+            const vatType = String(line?.vat_type_snapshot || 'vatable').trim().toLowerCase();
+            const hasDiscountVatExemption = Number(persistedDiscountAllocation?.vat_exempt_amount || 0) > 0;
+            return {
+                line,
+                item: line?.item || {},
+                grossSales,
+                persistedDiscountAllocation,
+                isVatableLine: vatType === 'vatable' && !hasDiscountVatExemption
+            };
+        });
+        const totalLineGross = reportLineContexts.reduce((sum, context) => sum + Math.max(0, context.grossSales), 0);
+        const vatableLineGross = reportLineContexts.reduce(
+            (sum, context) => sum + (context.isVatableLine ? Math.max(0, context.grossSales) : 0),
+            0
+        );
+        // Transaction VAT totals include taxable service charges, so allocate them across
+        // sale-time vatable lines. If there are no vatable lines, retain the invoice totals by
+        // allocating the taxable service-charge-only case across the invoice lines.
+        const taxAllocationBase = vatableLineGross > 0 ? vatableLineGross : totalLineGross;
 
-        (Array.isArray(transaction?.lines) ? transaction.lines : []).forEach((line) => {
-            const item = line?.item || {};
+        reportLineContexts.forEach(({ line, item, grossSales, persistedDiscountAllocation, isVatableLine }) => {
             const reportCategory = resolveReportItemCategory(item);
             const category = reportCategory.toLowerCase();
             if (normalizedFolderId && Number(item?.folder_id) !== normalizedFolderId) {
@@ -2379,9 +2682,12 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             }
 
             const quantity = Number(line?.quantity || 0);
-            const grossSales = round4(line?.line_subtotal || 0);
             const share = subtotalAmount > 0 ? grossSales / subtotalAmount : 0;
-            const persistedDiscountAllocation = discountAllocationByLineId.get(Number(line?.line_id));
+            const taxShare = taxAllocationBase > 0
+                ? (vatableLineGross > 0
+                    ? (isVatableLine ? Math.max(0, grossSales) / vatableLineGross : 0)
+                    : Math.max(0, grossSales) / totalLineGross)
+                : 0;
             const recordedLineDiscount = persistedDiscountAllocation
                 ? round4(persistedDiscountAllocation.discount_amount)
                 : round4(discountAmount * share);
@@ -2430,7 +2736,8 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                         ? round4(persistedDiscountAllocation.vat_removed)
                         : round4(Number(transaction?.discount?.vat_removed || 0) * share),
                 refund_amount: lineRefund,
-                vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * share),
+                vatable_sales: isVoidedOrRefunded ? 0 : round4(Number(transaction?.vatable_sales || 0) * taxShare),
+                vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * taxShare),
                 service_fee_amount: isVoidedOrRefunded ? 0 : round4(totalServiceFeeAmount * share),
                 cogs,
                 pos_profit_loss: round4(lineNetSales - cogs)
@@ -2680,6 +2987,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         rows.push(['Profit Margin %', round4(summary.profit_margin || 0)]);
         rows.push(['Transactions', Number.parseInt(summary.total_transactions || 0, 10) || 0]);
         rows.push(['Discounts', round4(summary.discounts || 0)]);
+        rows.push(['VAT Sales', round4(summary.vatable_sales || 0)]);
         rows.push(['Refunds/Voids', round4(summary.refunds_voids || 0)]);
         rows.push(['VAT', round4(summary.vat || 0)]);
         rows.push(['Service Fees', round4(summary.service_fees || 0)]);
@@ -2812,27 +3120,31 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         ]);
     });
     rows.push([]);
-    rows.push(['Invoice', 'Datetime', 'Cashier', 'Payment', 'Status', 'Total', 'Reported Net Sales']);
+    rows.push(['Invoice', 'Datetime (Asia/Manila)', 'Cashier', 'Payment', 'Status', 'Total', 'Gross Sales', 'Discount', 'VAT Sales', 'VAT', 'Net Sales']);
     (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
         rows.push([
             entry.invoice_number || entry.pos_transaction_id,
-            entry.created_at || '',
+            formatReportDateTime(entry.created_at),
             entry.cashier_name || '',
             Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
                 ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
                 : (entry.payment_type || ''),
             entry.status || '',
             round4(entry.total_amount),
+            round4(entry.gross_sales),
+            round4(entry.discount_amount),
+            round4(entry.vatable_sales),
+            round4(entry.vat_amount),
             round4(entry.net_sales)
         ]);
     });
     rows.push([]);
     rows.push(['Refund/Adjustment Events']);
-    rows.push(['Reference', 'Event Datetime', 'Invoice', 'Type', 'Tender', 'Status', 'Amount', 'Original Cashier', 'Original Shift', 'Actioned By', 'Actor Shift', 'Reason']);
+    rows.push(['Reference', 'Event Datetime (Asia/Manila)', 'Invoice', 'Type', 'Tender', 'Status', 'Amount', 'Original Cashier', 'Original Shift', 'Actioned By', 'Actor Shift', 'Reason']);
     (payload?.daily_report?.adjustment_rows || []).forEach((entry) => {
         rows.push([
             entry.adjustment_reference || entry.pos_transaction_adjustment_id,
-            entry.event_at || '',
+            formatReportDateTime(entry.event_at),
             entry.invoice_number || entry.pos_transaction_id,
             entry.adjustment_type || '',
             entry.tender_type || '',
@@ -2851,8 +3163,26 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
 export const posRepository = {
     async findActiveDiscountRuleByType(type, options = {}) {
         const PosDiscountRule = dbStore.get('PosDiscountRule');
+        const normalizedType = String(type || '').trim().toLowerCase();
+        const normalizedRuleId = Number.parseInt(options.ruleId, 10);
+        const normalizedDiscountKey = String(options.discountKey || '').trim().toLowerCase();
+        const where = {
+            is_active: true,
+            is_approved: true
+        };
+        if (Number.isInteger(normalizedRuleId) && normalizedRuleId > 0) {
+            where.id = normalizedRuleId;
+        } else if (normalizedDiscountKey) {
+            where.discount_key = normalizedDiscountKey;
+        } else {
+            where.type = normalizedType;
+        }
+        // A custom rule must always be selected by its stable identity. The
+        // server must never choose an arbitrary custom rule for a checkout.
+        if (normalizedType === 'custom' && !where.id && !where.discount_key) return null;
+        if (where.id || where.discount_key) where.type = normalizedType;
         const row = await PosDiscountRule.findOne({
-            where: { type, is_active: true },
+            where,
             order: [['id', 'ASC']],
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
@@ -3081,10 +3411,12 @@ export const posRepository = {
         }
     },
 
-    // Parked-sale settlement may need the sale-time item snapshot even when
-    // the current catalog row is inactive, hidden, or soft-deleted. Ordinary
-    // checkout visibility rules remain unchanged; this method is only used
-    // after the parked-sale claim and snapshot have been authorized.
+    // Parked-sale settlement is the one checkout path that may need the
+    // sale-time item row even after the item is inactive, hidden from POS, or
+    // soft-deleted. The checkout use case still authorizes the parked-sale
+    // claim and validates the snapshot before using this method; this method
+    // only widens the repository lookup so immutable transaction snapshots can
+    // be written without weakening ordinary checkout visibility rules.
     async findParkedSaleItemsByIds(itemIds, options = {}) {
         const Item = dbStore.get('Item');
         const normalizedLocationId = Number.parseInt(options.locationId, 10);
@@ -3092,7 +3424,6 @@ export const posRepository = {
             .map((itemId) => Number.parseInt(itemId, 10))
             .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
         if (normalizedItemIds.length === 0) return [];
-
         const queryOptions = {
             where: buildVisibleWhere(
                 { item_id: { [Op.in]: normalizedItemIds } },
@@ -3105,6 +3436,7 @@ export const posRepository = {
                 ...buildFnbCatalogIncludes()
             ]
         };
+
         if (options.transaction) {
             queryOptions.transaction = options.transaction;
             if (options.lock) queryOptions.lock = options.transaction.LOCK.UPDATE;
@@ -3114,7 +3446,10 @@ export const posRepository = {
             const rawItems = await Item.findAll({ ...queryOptions, attributes });
             const catalogItems = await applyCatalogOverrides(
                 attributes.includes('vat_type') ? rawItems : withLegacyVatFallback(rawItems),
-                { ...options, includeUnavailable: true }
+                {
+                    ...options,
+                    includeUnavailable: true
+                }
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -3461,6 +3796,7 @@ export const posRepository = {
         const PosTransactionDiscountBeneficiary = dbStore.get('PosTransactionDiscountBeneficiary');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
         const transaction = options.transaction;
+        const taxPolicy = resolvePosTaxPolicy(application?.tax_policy, application?.type);
         const created = await PosTransactionDiscount.create({
             transaction_id: transactionId,
             discount_rule_id: application.rule_id || null,
@@ -3470,6 +3806,8 @@ export const posRepository = {
             discount_amount: calculation.discount_amount,
             vat_removed: calculation.vat_removed,
             vat_exempt_amount: calculation.vat_exempt_amount,
+            tax_treatment: calculation.vat_treatment || taxPolicy.vat_treatment,
+            tax_policy_version: Number(calculation.tax_policy_version || taxPolicy.version || 1),
             customer_name: application.customer_name || null,
             senior_pwd_id_number: application.id_number || null,
             employee_name: application.employee_name || null,
@@ -3609,6 +3947,51 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async getFnbCheckForCheckout(checkId, options = {}) {
+        const FnbCheck = dbStore.get('FnbCheck');
+        const FnbCheckLine = dbStore.get('FnbCheckLine');
+        if (!FnbCheck || !FnbCheckLine) return null;
+        const normalizedCheckId = toPositiveInt(checkId);
+        if (!normalizedCheckId) return null;
+        const transaction = options.transaction;
+        const check = await FnbCheck.findByPk(normalizedCheckId, {
+            transaction,
+            lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        if (!check) return null;
+        const lines = await FnbCheckLine.findAll({
+            where: {
+                check_id: normalizedCheckId,
+                status: { [Op.ne]: 'voided' }
+            },
+            order: [['check_line_id', 'ASC']],
+            transaction,
+            lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        return {
+            check,
+            lines: lines.map(toPlain)
+        };
+    },
+
+    async bindFnbCheckLocation({ checkId, locationId } = {}, options = {}) {
+        const FnbCheck = dbStore.get('FnbCheck');
+        if (!FnbCheck) return null;
+        const normalizedCheckId = toPositiveInt(checkId);
+        const normalizedLocationId = toPositiveInt(locationId);
+        if (!normalizedCheckId || !normalizedLocationId) return null;
+        const row = await FnbCheck.findByPk(normalizedCheckId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        if (row.location_id && Number(row.location_id) !== normalizedLocationId) return false;
+        if (!row.location_id) {
+            await row.update({ location_id: normalizedLocationId }, { transaction: options.transaction });
+        }
+        return toPlain(row);
+    },
+
     async createFnbKitchenOrderForTransaction(payload = {}, options = {}) {
         const FnbCheck = dbStore.get('FnbCheck');
         const FnbCheckLine = dbStore.get('FnbCheckLine');
@@ -3649,6 +4032,7 @@ export const posRepository = {
         } else {
             check = await FnbCheck.create({
                 table_id: toPositiveInt(payload.table_id),
+                location_id: toPositiveInt(payload.location_id),
                 server_id: toPositiveInt(payload.server_id),
                 guest_count: toPositiveInt(payload.guest_count) || 1,
                 order_method: ['dine_in', 'takeout', 'pickup', 'delivery'].includes(payload.order_method)
@@ -3693,7 +4077,10 @@ export const posRepository = {
             await FnbCheckLine.bulkCreate(lineRows, { transaction });
         } else if (usesExistingCheck) {
             const existingLines = await FnbCheckLine.findAll({
-                where: { check_id: checkId },
+                where: {
+                    check_id: checkId,
+                    status: { [Op.ne]: 'voided' }
+                },
                 order: [['created_at', 'ASC']],
                 transaction,
                 lock: options.lock && transaction ? transaction.LOCK.UPDATE : undefined
@@ -3721,8 +4108,14 @@ export const posRepository = {
                         transaction
                     }
                 );
+            } else if (lineRows.length > 0) {
+                const createdLineRows = await FnbCheckLine.bulkCreate(lineRows, { transaction });
+                lineRows = createdLineRows.map(toPlain);
             }
             const checkUpdate = { status: 'sent_to_kitchen', pos_transaction_id: posTransactionId };
+            if (!check.location_id && toPositiveInt(payload.location_id)) {
+                checkUpdate.location_id = toPositiveInt(payload.location_id);
+            }
             if (orderNotes !== null) checkUpdate.notes = orderNotes;
             await check.update(checkUpdate, { transaction });
         }
@@ -3757,9 +4150,16 @@ export const posRepository = {
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         if (!row) return null;
+        const normalizedPosTransactionId = toPositiveInt(posTransactionId);
+        if (row.status === 'paid') {
+            return Number(row.pos_transaction_id) === normalizedPosTransactionId
+                ? toPlain(row)
+                : false;
+        }
+        if (!['open', 'sent_to_kitchen'].includes(String(row.status || '').trim())) return false;
         await row.update({
             status: 'paid',
-            pos_transaction_id: toPositiveInt(posTransactionId),
+            pos_transaction_id: normalizedPosTransactionId,
             closed_at: new Date()
         }, { transaction: options.transaction });
         return toPlain(row);
@@ -4083,18 +4483,27 @@ export const posRepository = {
     },
 
     async getReportsOverview(filters = {}, options = {}) {
-        const previousComparisonRange = buildComparisonRange(resolveReportDateRange(filters)).previous;
+        const reportDateRange = resolveReportDateRange(filters);
+        const previousComparisonRange = buildComparisonRange(reportDateRange).previous;
         const previousComparisonFilters = {
             ...filters,
             date_from: previousComparisonRange.dateFrom,
             date_to: previousComparisonRange.dateTo
         };
-        const [transactions, previousTransactions, categoryOptions, adjustments, firstTransactionDate] = await Promise.all([
+        const canLoadZReadingSnapshot = reportDateRange.dateFrom === reportDateRange.dateTo
+            && Boolean(safeGetModel('PosZReadingSnapshot'));
+        const [transactions, previousTransactions, categoryOptions, adjustments, firstTransactionDate, zReadingSnapshot] = await Promise.all([
             this.listReportTransactions(filters, options),
             this.listReportTransactions(previousComparisonFilters, options),
             this.listActiveReportCategories(options),
             this.listReportTransactionAdjustments(filters, options),
-            this.getFirstReportTransactionDate(filters, options)
+            this.getFirstReportTransactionDate(filters, options),
+            canLoadZReadingSnapshot
+                ? this.getLatestZReadingSnapshotByBusinessDate(reportDateRange.dateFrom, {
+                    locationId: toPositiveInt(filters.location_id),
+                    transaction: options.transaction
+                })
+                : null
         ]);
         const cashierReconciliation = await loadReportCashierReconciliation({
             transactions,
@@ -4119,6 +4528,13 @@ export const posRepository = {
             first_transaction_date: firstTransactionDate || null,
             today: getManilaDateParts(new Date()).date
         };
+        payload.z_reading_reconciliation = buildReportZReadingReconciliation({
+            transactions,
+            filters,
+            snapshot: zReadingSnapshot,
+            reportSummary: payload.daily_report?.summary,
+            adjustmentSummary: payload.daily_report?.adjustment_summary
+        });
         const cashierNetSales = round4((payload.daily_report?.cashier_summary || []).reduce(
             (total, row) => total + Number(row.summary?.net_sales || 0),
             0
@@ -4132,6 +4548,49 @@ export const posRepository = {
             exclusions: ['cash drawer movements are register ledger entries, not sales']
         };
         return payload;
+    },
+
+    async getZReadingReconciliationByBusinessDate(businessDate, options = {}) {
+        const normalizedBusinessDate = String(businessDate || '').trim();
+        const locationId = toPositiveInt(options.locationId);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedBusinessDate) || !locationId) return null;
+
+        const filters = {
+            date_from: normalizedBusinessDate,
+            date_to: normalizedBusinessDate,
+            location_id: locationId
+        };
+        const canLoadZReadingSnapshot = Boolean(safeGetModel('PosZReadingSnapshot'));
+        const [transactions, adjustments, zReadingSnapshot] = await Promise.all([
+            this.listReportTransactions(filters, options),
+            this.listReportTransactionAdjustments(filters, options),
+            canLoadZReadingSnapshot
+                ? this.getLatestZReadingSnapshotByBusinessDate(normalizedBusinessDate, {
+                    locationId,
+                    transaction: options.transaction
+                })
+                : null
+        ]);
+        const reportPayload = buildReportPayloadFromTransactions(
+            transactions,
+            filters,
+            [],
+            new Map(),
+            adjustments,
+            null
+        );
+
+        return buildReportZReadingReconciliation({
+            transactions,
+            filters,
+            snapshot: zReadingSnapshot,
+            reportSummary: reportPayload.daily_report?.summary,
+            adjustmentSummary: reportPayload.daily_report?.adjustment_summary
+        });
+    },
+
+    async getCashierLifecycleReport(filters = {}, options = {}) {
+        return loadCashierLifecycleReport({ filters, options });
     },
 
     async exportReports(filters = {}, options = {}) {
@@ -4910,7 +5369,8 @@ export const posRepository = {
         const override = overrideMap.get(itemPayload.item_id);
         const storefrontImageMap = await loadStorefrontCatalogImageMap([itemPayload.item_id]);
         const storefrontImage = storefrontImageMap.get(itemPayload.item_id);
-        const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
+        const storefrontAsset = await readAvailableStorefrontImage(storefrontImage);
+        const posDisplayImage = await resolvePosDisplayImage({ override, storefrontImage, storefrontAsset });
         const stockMap = await loadItemLocationStockMap([itemPayload.item_id], location_id);
         const [itemWithLocationStock] = Number.isInteger(Number.parseInt(location_id, 10)) && stockMap.locationScopeResolved
             ? applyItemLocationStockMap([itemPayload], stockMap.stockMap)
@@ -4945,14 +5405,14 @@ export const posRepository = {
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
-                storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
+                storefront_image_url: storefrontAsset.url,
+                storefront_image_variants: storefrontAsset.variants,
                 pos_readiness: readiness
             }
         };
     },
 
-    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null, offset = 0, with_scan_info = false } = {}) {
+    async listCatalog({ search = '', limit = 100, folder_id = null, location_id = null, offset = 0, with_scan_info = false, order_by_category = false } = {}) {
         const Item = dbStore.get('Item');
         const where = buildVisibleWhere(
             {},
@@ -5022,15 +5482,25 @@ export const posRepository = {
             }
         }
 
+        const itemFolderInclude = buildItemFolderInclude();
         const queryOptions = {
             where,
             attributes: POS_ITEM_ATTRIBUTES_WITH_VAT,
             include: [
-                ...buildItemFolderInclude(),
+                ...itemFolderInclude,
                 ...buildServiceDetailInclude(),
                 ...buildFnbCatalogIncludes()
             ],
-            order: [['name', 'ASC'], ['item_id', 'ASC']],
+            // The category order is used only by the paginated management "All" read. The
+            // unpaged terminal read still receives the legacy name order and applies the same
+            // ordering client-side after its category metadata is loaded.
+            order: order_by_category && itemFolderInclude.length > 0
+                ? [
+                    ...buildPrimaryFolderOrder(),
+                    ['name', 'ASC'],
+                    ['item_id', 'ASC']
+                ]
+                : [['name', 'ASC'], ['item_id', 'ASC']],
             limit: Math.min(Number.parseInt(limit, 10) || 100, 500),
             offset: Math.max(Number.parseInt(offset, 10) || 0, 0)
         };
@@ -5038,7 +5508,7 @@ export const posRepository = {
         try {
             const rawItems = await Item.findAll(queryOptions);
             const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(rawItems, { includePrimaryBarcode: true })
+                await applyCatalogOverrides(rawItems, { includePrimaryBarcode: true, locationId: location_id })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -5059,7 +5529,7 @@ export const posRepository = {
                     attributes: BASE_POS_ITEM_ATTRIBUTES
                 });
             const catalogItems = await attachSecondaryFolderIds(
-                await applyCatalogOverrides(withLegacyVatFallback(rawItems), { includePrimaryBarcode: true })
+                await applyCatalogOverrides(withLegacyVatFallback(rawItems), { includePrimaryBarcode: true, locationId: location_id })
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -5073,12 +5543,12 @@ export const posRepository = {
         }
     },
 
-    async listCatalogPage({ search = '', page = 1, page_size = 15, category_filter = 'all', stock_filter = 'all', location_id = null } = {}) {
+    async listCatalogPage({ search = '', page = 1, page_size = 20, category_filter = 'all', stock_filter = 'all', location_id = null } = {}) {
         const normalizedSearch = String(search || '').trim().toLowerCase();
         const normalizedCategory = String(category_filter || 'all').trim();
         const normalizedStock = String(stock_filter || 'all').trim();
         const safePage = Math.max(Number.parseInt(page, 10) || 1, 1);
-        const safePageSize = Math.min(Math.max(Number.parseInt(page_size, 10) || 15, 1), 100);
+        const safePageSize = Math.min(Math.max(Number.parseInt(page_size, 10) || 20, 1), 100);
         const matchStart = (safePage - 1) * safePageSize;
         const pageItems = [];
         let matchedCount = 0;
@@ -5090,7 +5560,8 @@ export const posRepository = {
                 limit: batchSize,
                 offset,
                 location_id,
-                with_scan_info: true
+                with_scan_info: true,
+                order_by_category: normalizedCategory === 'all'
             });
             for (const item of batch.data) {
                 const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
@@ -5174,13 +5645,16 @@ export const posRepository = {
         });
 
         const overrideMap = await loadCatalogOverridesMap(items.map((item) => item.item_id));
+        const posLocationAvailabilityMap = await loadPosLocationAvailabilityMap(items.map((item) => item.item_id));
         const storefrontImageMap = await loadStorefrontCatalogImageMap(items.map((item) => item.item_id));
         const workflowMode = await getCurrentWorkflowMode();
-        return items.map((item) => {
+        return Promise.all(items.map(async (item) => {
             const payload = toPlain(item);
             const override = overrideMap.get(payload.item_id);
+            const posLocationAvailability = posLocationAvailabilityMap.get(Number(payload.item_id)) || [];
             const storefrontImage = storefrontImageMap.get(payload.item_id);
-            const posDisplayImage = resolvePosDisplayImage({ override, storefrontImage });
+            const storefrontAsset = await readAvailableStorefrontImage(storefrontImage);
+            const posDisplayImage = await resolvePosDisplayImage({ override, storefrontImage, storefrontAsset });
             const readiness = buildPosReadiness({ item: payload, override });
             const recommendation = buildCatalogSetupRecommendation({
                 item: payload,
@@ -5191,17 +5665,18 @@ export const posRepository = {
                 ...payload,
                 pos_visible: resolveCatalogVisibility({ item: payload, override, surface: 'pos' }),
                 pos_always_available: override?.pos_always_available === true,
+                pos_location_availability: posLocationAvailability,
                 pos_image_path: posDisplayImage.path,
                 pos_image_url: posDisplayImage.url,
                 pos_image_variants: posDisplayImage.variants,
                 pos_image_source: posDisplayImage.source,
-                storefront_image_url: storefrontImage?.storefront_image_url || null,
-                storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
+                storefront_image_url: storefrontAsset.url,
+                storefront_image_variants: storefrontAsset.variants,
                 has_override: Boolean(override),
                 pos_readiness: readiness,
                 catalog_setup_recommendation: recommendation
             };
-        });
+        }));
     },
 
     async getCatalogReadinessByItemId(itemId, { forcedPosVisible = null, locationId = null } = {}) {
@@ -5258,7 +5733,12 @@ export const posRepository = {
         });
         const storefrontImageMap = await loadStorefrontCatalogImageMap([normalizedItemId]);
         const storefrontImage = storefrontImageMap.get(normalizedItemId);
-        const posDisplayImage = resolvePosDisplayImage({ override: effectiveOverride, storefrontImage });
+        const storefrontAsset = await readAvailableStorefrontImage(storefrontImage);
+        const posDisplayImage = await resolvePosDisplayImage({
+            override: effectiveOverride,
+            storefrontImage,
+            storefrontAsset
+        });
 
         return {
             item_id: payload.item_id,
@@ -5267,10 +5747,10 @@ export const posRepository = {
             pos_image_url: posDisplayImage.url,
             pos_image_path: posDisplayImage.path,
             pos_image_variants: posDisplayImage.variants,
-            storefront_image_path: storefrontImage?.storefront_image_path || null,
-            storefront_image_url: storefrontImage?.storefront_image_url || null,
-            storefront_image_variants: deriveStorefrontImageVariants(storefrontImage),
-            storefront_image_gallery: storefrontImage?.storefront_image_gallery || null,
+            storefront_image_path: storefrontAsset.path,
+            storefront_image_url: storefrontAsset.url,
+            storefront_image_variants: storefrontAsset.variants,
+            storefront_image_gallery: storefrontAsset.gallery.length > 0 ? storefrontAsset.gallery : null,
             pos_readiness: readiness,
             catalog_setup_recommendation: recommendation
         };
@@ -5291,6 +5771,64 @@ export const posRepository = {
             }
             throw error;
         }
+    },
+
+    async listPosItemLocationAvailability(itemIds = [], options = {}) {
+        return loadPosLocationAvailabilityMap(itemIds, options);
+    },
+
+    async upsertPosItemLocationAvailability(itemId, entries = [], options = {}) {
+        const PosLocationItemOverride = dbStore.get('PosLocationItemOverride');
+        const TenantLocation = dbStore.get('TenantLocation');
+        const normalizedItemId = toPositiveInt(itemId);
+        const normalizedEntries = (Array.isArray(entries) ? entries : [])
+            .map((entry) => ({
+                location_id: toPositiveInt(entry?.location_id),
+                pos_available: entry?.pos_available === null ? null : entry?.pos_available === true
+            }))
+            .filter((entry) => entry.location_id);
+        if (!normalizedItemId || normalizedEntries.length === 0) return [];
+        if (!PosLocationItemOverride?.findOne) {
+            throw new Error('POS location item override model is unavailable');
+        }
+
+        const validLocations = TenantLocation?.findAll
+            ? await TenantLocation.findAll({
+                where: {
+                    location_id: { [Op.in]: normalizedEntries.map((entry) => entry.location_id) },
+                    is_active: true
+                },
+                attributes: ['location_id'],
+                transaction: options.transaction
+            })
+            : [];
+        const validLocationIds = new Set(validLocations.map((row) => Number(toPlain(row).location_id)));
+        const invalid = normalizedEntries.filter((entry) => !validLocationIds.has(entry.location_id));
+        if (invalid.length > 0) {
+            const error = new Error('location_availability contains inactive or unknown location_id values');
+            error.statusCode = 422;
+            error.details = invalid.map((entry) => ({ location_id: entry.location_id }));
+            throw error;
+        }
+
+        const results = [];
+        for (const entry of normalizedEntries) {
+            const where = { item_id: normalizedItemId, location_id: entry.location_id };
+            if (entry.pos_available === null) {
+                await PosLocationItemOverride.destroy({ where, transaction: options.transaction });
+                results.push({ ...where, pos_available: null, source: 'inherited' });
+                continue;
+            }
+            const existing = await PosLocationItemOverride.findOne({ where, transaction: options.transaction });
+            const payload = { ...where, pos_available: entry.pos_available };
+            if (existing) {
+                await existing.update(payload, { transaction: options.transaction });
+                results.push(toPlain(existing));
+            } else {
+                results.push(toPlain(await PosLocationItemOverride.create(payload, { transaction: options.transaction })));
+            }
+        }
+        return results;
     },
 
     async upsertCatalogOverride(itemId, payload = {}, options = {}) {

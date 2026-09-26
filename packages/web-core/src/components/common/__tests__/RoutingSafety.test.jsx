@@ -68,7 +68,17 @@ describe('routing safety', () => {
 
     ['services', 'fnbDining', 'hospitalityReservations', 'productionWorkflows', 'inventory'].forEach((capability) => {
       expect(layout).toContain(`requiredCapability: '${capability}'`);
-      expect(main).toContain(`requiredCapability="${capability}"`);
+    });
+    [
+      ['/services', '/backoffice/services', 'Services workspace moved'],
+      ['/fnb', '/backoffice/fnb', 'Food-and-beverage workspace moved'],
+      ['/hospitality', '/backoffice/hospitality', 'Hospitality workspace moved'],
+      ['/job-orders', '/backoffice/job-orders', 'Job-order workspace moved'],
+      ['/stock-movements', '/backoffice/stock-movements', 'Inventory workspace moved']
+    ].forEach(([legacyPath, target, title]) => {
+      expect(main).toContain(
+        `<Route path="${legacyPath}" element={<LegacyMerchantRoute target="${target}" title="${title}" />} />`
+      );
     });
     expect(main).toContain('<Route path="*" element={<NotFoundPage />} />');
   });

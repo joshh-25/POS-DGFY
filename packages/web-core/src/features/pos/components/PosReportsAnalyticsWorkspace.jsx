@@ -1,6 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { loadOfflinePosReportSnapshot, saveOfflinePosReportSnapshot } from '../services/offlinePosSnapshotStore.js';
-import { ArrowDownRight, ArrowLeftRight, ArrowUpRight, BarChart3, Calculator, Clock3, CreditCard, LayoutDashboard, Receipt, Scale, ShoppingBag, Users } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  ArrowDownRight,
+  ArrowUpRight,
+  AlertTriangle,
+  BarChart3,
+  Calculator,
+  Calendar,
+  CheckCircle2,
+  Clock3,
+  CreditCard,
+  Download,
+  Filter,
+  LayoutDashboard,
+  Printer,
+  Receipt,
+  Scale,
+  ShoppingBag,
+  Users
+} from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -15,6 +35,7 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
+  exportProcurementCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -36,9 +57,17 @@ import PosReportsComparisonPanel from './PosReportsComparisonPanel.jsx';
 import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
 import PosSubtabNavigation from './PosSubtabNavigation.jsx';
+import PosPageFrame from './PosPageFrame.jsx';
+import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+import {
+  BackOfficeReportDataTable as DataTable,
+  BackOfficeReportEmptyState as EmptyState,
+  BackOfficeReportMetric as MetricCard,
+  BackOfficeReportSectionCard as SectionCard
+} from '../../../components/backOffice/BackOfficePrimitives.jsx';
 
 const REPORT_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, granularity: 'daily', exportSection: 'daily' },
@@ -90,7 +119,13 @@ const escapeHtml = (value) => String(value ?? '')
 const printDateTime = (value) => {
   if (!value) return '-';
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString();
+  return Number.isNaN(parsed.getTime())
+    ? '-'
+    : parsed.toLocaleString('en-PH', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Manila'
+    });
 };
 
 const toDateInput = (date) => {
@@ -162,21 +197,51 @@ const deltaTone = (value) => (Number(value || 0) >= 0
   ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
   : 'text-rose-700 bg-rose-50 border-rose-200');
 
-const SectionCard = ({ title, actions = null, children, className = '' }) => (
-  <section className={`min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/60 ${className}`}>
-    <div className="mb-4 flex min-w-0 items-center justify-between gap-3">
-      <h3 className="min-w-0 text-sm font-black text-slate-950">{title}</h3>
-      {actions}
-    </div>
-    {children}
-  </section>
-);
+const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
+  if (!data) return null;
 
-const EmptyState = ({ message }) => (
-  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm font-semibold text-slate-500">
-    {message}
-  </div>
-);
+  const status = String(data.status || 'not_comparable');
+  const statusConfig = status === 'matched'
+    ? { label: 'Matched', Icon: CheckCircle2, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' }
+    : status === 'variance'
+      ? { label: 'Variance found', Icon: AlertTriangle, className: 'border-rose-200 bg-rose-50 text-rose-800' }
+      : { label: status === 'not_generated' ? 'Not generated' : 'Comparison unavailable', Icon: AlertTriangle, className: 'border-amber-200 bg-amber-50 text-amber-800' };
+  const StatusIcon = statusConfig.Icon;
+  const isComparable = status === 'matched' || status === 'variance';
+  const hasReportTotal = data.report_recognized_sales !== null && data.report_recognized_sales !== undefined;
+
+  return (
+    <SectionCard
+      title="Z-reading reconciliation"
+      actions={data.reading_identifier ? <span className="text-xs font-black text-slate-500">{data.reading_identifier}</span> : null}
+    >
+      <div className={`rounded-2xl border px-4 py-3 ${statusConfig.className}`}>
+        <div className="flex items-start gap-3">
+          <StatusIcon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-sm font-black">{statusConfig.label}</p>
+            <p className="mt-1 text-xs font-semibold leading-5">{data.message || 'The selected report scope cannot be compared with a Z-reading.'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Report recognized sales" value={hasReportTotal ? money(data.report_recognized_sales, currencySymbol) : '—'} hint="Completed, recognized transaction totals" />
+        <MetricCard label="Z-reading total" value={data.z_total_amount === null || data.z_total_amount === undefined ? '—' : money(data.z_total_amount, currencySymbol)} hint={data.generated_at ? `Generated ${printDateTime(data.generated_at)}` : 'No immutable snapshot yet'} />
+        <MetricCard label="Difference" value={data.variance === null || data.variance === undefined ? '—' : money(data.variance, currencySymbol)} tone={isComparable && Number(data.variance || 0) < 0 ? 'negative' : isComparable ? 'positive' : 'default'} hint={isComparable ? 'Report recognized sales minus Z-reading total' : 'Shown only when both totals are comparable'} />
+        <MetricCard label="Report net sales" value={money(data.report_net_sales, currencySymbol)} hint="Different metric; includes line-level discounts/refunds" />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-500">
+        <span>Z voids: {Number(data.z_void_transaction_count || 0)} · {money(data.z_void_amount, currencySymbol)}</span>
+        <span>Report refunds/voids: {money(data.report_refunds_voids, currencySymbol)}</span>
+        <span>Report adjustments: {money(data.report_adjustment_amount, currencySymbol)}</span>
+        {data.generated_at ? <span>Generated: {printDateTime(data.generated_at)}</span> : null}
+        {data.evaluated_at ? <span>Checked: {printDateTime(data.evaluated_at)}</span> : null}
+      </div>
+    </SectionCard>
+  );
+};
 
 function PosReportsAnalyticsWorkspace({
   terminalUser = null,
@@ -213,6 +278,7 @@ function PosReportsAnalyticsWorkspace({
     !section.permission || terminalUser?.is_master_admin === true || resolveUserPermissionList(terminalUser).includes(section.permission)
   )), [terminalUser]);
   const selectedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0], [activeTab]);
+  const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;
   const clearReportPanelAnimationTimers = useCallback(() => {
     reportPanelAnimationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
     reportPanelAnimationTimersRef.current = [];
@@ -286,14 +352,22 @@ function PosReportsAnalyticsWorkspace({
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
-    granularity,
+    granularity: displayGranularity,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
     cashierId,
     paymentType,
     source,
     categoryId
-  }), [categoryId, cashierId, granularity, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, paymentType, source]);
+  }), [
+    categoryId,
+    cashierId,
+    displayGranularity,
+    normalizedDateRange.dateFrom,
+    normalizedDateRange.dateTo,
+    paymentType,
+    source
+  ]);
 
   const handleTabChange = (tabId) => {
     const nextTab = String(tabId || 'overview').trim() || 'overview';
@@ -301,9 +375,6 @@ function PosReportsAnalyticsWorkspace({
     if (selectedTab.id === activeTab) return;
     transitionReportPanel(selectedTab.id, operationSection);
     setActiveTab(selectedTab.id);
-    setGranularity(selectedTab.granularity);
-    setDateRange(defaultDisplayDateRange);
-    setReportDateFilterApplied(false);
     setOverviewSearchQuery('');
   };
 
@@ -331,7 +402,7 @@ function PosReportsAnalyticsWorkspace({
 
   const handleClearAllFilters = () => {
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
-    setGranularity(selectedTab.granularity);
+    if (activeTab === 'comparison') setGranularity(selectedTab.granularity);
     setDateRange(defaultDisplayDateRange);
     setReportDateFilterApplied(false);
     setCashierId('');
@@ -355,7 +426,7 @@ function PosReportsAnalyticsWorkspace({
       setSource('');
     } else if (filterKey === 'category') {
       setCategoryId('');
-    } else if (filterKey === 'granularity') {
+    } else if (filterKey === 'granularity' && activeTab === 'comparison') {
       setGranularity(selectedReportTab.granularity);
     } else if (filterKey === 'search') {
       setOverviewSearchQuery('');
@@ -412,7 +483,7 @@ function PosReportsAnalyticsWorkspace({
       }
       try {
         const payload = await fetchPosReportsOverview({
-          granularity,
+          granularity: displayGranularity,
           date_from: normalizedDateRange.dateFrom,
           date_to: normalizedDateRange.dateTo,
           cashier_id: cashierId || undefined,
@@ -440,7 +511,19 @@ function PosReportsAnalyticsWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [categoryId, cashierId, granularity, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, offlineReportKey, offlineSnapshotScope, paymentType, reportRefreshKey, source]);
+  }, [
+    categoryId,
+    cashierId,
+    displayGranularity,
+    isOnline,
+    normalizedDateRange.dateFrom,
+    normalizedDateRange.dateTo,
+    offlineReportKey,
+    offlineSnapshotScope,
+    paymentType,
+    reportRefreshKey,
+    source
+  ]);
 
   const summaryCards = reportData?.summary_cards || {};
   const selectedTender = summaryCards.selected_tender || null;
@@ -451,14 +534,16 @@ function PosReportsAnalyticsWorkspace({
   const comparisonReport = reportData?.sales_comparison || {};
   const profitLoss = reportData?.profit_loss || {};
   const cashierLifecycle = reportData?.cashier_lifecycle || {};
+  const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
+
   const trendSeries = useMemo(() => {
     if (activeTab === 'comparison') {
       return comparisonReport.flexible_trend || [];
     }
-    if (granularity === 'monthly') return monthlyReport.sales_trend || [];
-    if (granularity === 'yearly') return yearlyReport.monthly_breakdown || [];
+    if (displayGranularity === 'monthly') return monthlyReport.sales_trend || [];
+    if (displayGranularity === 'yearly') return yearlyReport.monthly_breakdown || [];
     return dailyReport.trend || [];
-  }, [activeTab, comparisonReport.flexible_trend, dailyReport.trend, granularity, monthlyReport.sales_trend, yearlyReport.monthly_breakdown]);
+  }, [activeTab, comparisonReport.flexible_trend, dailyReport.trend, displayGranularity, monthlyReport.sales_trend, yearlyReport.monthly_breakdown]);
 
   const paymentChartRows = (dailyReport.payment_breakdown || []).map((entry, index) => ({
     ...entry,
@@ -503,7 +588,7 @@ function PosReportsAnalyticsWorkspace({
   const activeReportFilterChips = useMemo(() => buildPosReportsActiveFilters({
     dateFilterApplied: reportDateFilterApplied,
     dateRange: normalizedDateRange,
-    granularity,
+    granularity: displayGranularity,
     defaultGranularity: selectedReportTab.granularity,
     cashierLabel: cashierId ? reportCashierLabel : '',
     paymentLabel: selectedPaymentLabel,
@@ -513,7 +598,7 @@ function PosReportsAnalyticsWorkspace({
   }), [
     categoryId,
     cashierId,
-    granularity,
+    displayGranularity,
     normalizedDateRange,
     overviewSearchQuery,
     reportCashierLabel,
@@ -528,7 +613,7 @@ function PosReportsAnalyticsWorkspace({
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
     const { blob, filename } = await exportPosReportCsv({
       section: activeTab === 'operations' ? operationSection : selectedTab.exportSection,
-      granularity,
+      granularity: displayGranularity,
       date_from: normalizedDateRange.dateFrom,
       date_to: normalizedDateRange.dateTo,
       cashier_id: cashierId || undefined,
@@ -536,6 +621,13 @@ function PosReportsAnalyticsWorkspace({
       source: source || undefined,
       category_id: categoryId || undefined
     });
+    downloadBlob(blob, filename);
+  };
+
+  // Procurement export is intentionally independent of the currently loaded
+  // report: the endpoint builds the inventory snapshot from the live catalog.
+  const handleExportProcurementCsv = async () => {
+    const { blob, filename } = await exportProcurementCsv();
     downloadBlob(blob, filename);
   };
 
@@ -642,6 +734,19 @@ function PosReportsAnalyticsWorkspace({
         <td style="text-align:right">${escapeHtml(money(entry.net_sales, currencySymbol))}</td>
       </tr>
     `).join('');
+    const zReadingPrint = zReadingReconciliation ? `
+          <div class="section">
+            <h2>Z-reading reconciliation</h2>
+            <p>Status: ${escapeHtml(zReadingReconciliation.status || 'unavailable')}</p>
+            <p>${escapeHtml(zReadingReconciliation.message || '')}</p>
+            <p>Report recognized sales: ${escapeHtml(zReadingReconciliation.report_recognized_sales == null ? '-' : money(zReadingReconciliation.report_recognized_sales, currencySymbol))}</p>
+            <p>Z-reading total: ${escapeHtml(zReadingReconciliation.z_total_amount == null ? '-' : money(zReadingReconciliation.z_total_amount, currencySymbol))}</p>
+            <p>Difference: ${escapeHtml(zReadingReconciliation.variance == null ? '-' : money(zReadingReconciliation.variance, currencySymbol))}</p>
+            <p>Report refunds/voids: ${escapeHtml(money(zReadingReconciliation.report_refunds_voids, currencySymbol))}</p>
+            <p>Report adjustments: ${escapeHtml(money(zReadingReconciliation.report_adjustment_amount, currencySymbol))}</p>
+            <p>Reading: ${escapeHtml(zReadingReconciliation.reading_identifier || '-')} · Generated: ${escapeHtml(zReadingReconciliation.generated_at ? printDateTime(zReadingReconciliation.generated_at) : '-')} · Checked: ${escapeHtml(zReadingReconciliation.evaluated_at ? printDateTime(zReadingReconciliation.evaluated_at) : '-')}</p>
+          </div>
+    ` : '';
 
     printWindow.document.write(`
       <html>
@@ -673,6 +778,7 @@ function PosReportsAnalyticsWorkspace({
             <div class="card"><div class="label">POS Profit/Loss</div><div class="value">${escapeHtml(money(summaryCards.pos_profit_loss, currencySymbol))}</div></div>
             ${selectedTender ? `<div class="card"><div class="label">${escapeHtml(selectedTender.payment_label)} Collected</div><div class="value">${escapeHtml(money(selectedTender.amount, currencySymbol))}</div></div>` : ''}
           </div>
+          ${zReadingPrint}
           <div class="section">
             <h2>Cash Reconciliation</h2>
             <table>
@@ -706,7 +812,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderReportFilterPanel = () => (
       <PosReportsFilterPanel
-      key={reportFiltersOpen ? 'open' : 'closed'}
+      key={reportFiltersOpen ? 'reports-filter-open' : 'reports-filter-closed'}
       open={reportFiltersOpen}
       onClose={() => setReportFiltersOpen(false)}
       onApplyFilters={handleApplyReportFilters}
@@ -724,7 +830,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderReportDateFilterPanel = () => (
     <PosReportsDateFilterPanel
-      key={reportDateFilterOpen ? 'open' : 'closed'}
+      key={reportDateFilterOpen ? 'reports-date-open' : 'reports-date-closed'}
       open={reportDateFilterOpen}
       onClose={() => setReportDateFilterOpen(false)}
         onApplyDateRange={handleApplyReportDateRange}
@@ -755,7 +861,7 @@ function PosReportsAnalyticsWorkspace({
 
   const renderTrendAndPaymentBreakdown = () => (
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : granularity === 'yearly' ? 'Yearly Breakdown' : granularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
+      <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
         <div className="h-[280px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={trendSeries}>
@@ -794,10 +900,13 @@ function PosReportsAnalyticsWorkspace({
   );
 
   return (
-    <div id={sectionId} className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3">
+    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">
       {renderReportFilterPanel()}
       {renderReportDateFilterPanel()}
-      <div className="flex min-w-0 max-w-full flex-col gap-4 sm:gap-6">
+      <div
+        data-testid="pos-reports-sticky-content"
+        className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}
+      >
       <div className="min-w-0">
         <PosReportsKpiCards
           summaryCards={summaryCards}
@@ -807,7 +916,10 @@ function PosReportsAnalyticsWorkspace({
           selectedTender={selectedTender}
         />
       </div>
-      <div className="min-w-0">
+      <div
+        data-testid="pos-reports-sticky-tabs"
+        className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}
+      >
         <PosLineTabNavigation
           tabs={REPORT_TABS}
           activeTab={activeTab}
@@ -816,9 +928,7 @@ function PosReportsAnalyticsWorkspace({
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
-      </div>
-      {shouldShowOperationsSubtabs ? (
-        <div className="min-w-0">
+        {shouldShowOperationsSubtabs ? (
           <PosSubtabNavigation
             tabs={operationSections}
             activeTab={operationSection}
@@ -827,12 +937,23 @@ function PosReportsAnalyticsWorkspace({
             idPrefix={`${sectionId || 'pos-reports'}-operations`}
             panelId={`${sectionId || 'pos-reports'}-panel`}
             desktopColumns={operationSections.length === 6 ? 6 : 5}
+            compactMobile
           />
-        </div>
-      ) : null}
-      <div className="min-w-0">
-        {renderReportToolbar()}
+        ) : null}
       </div>
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start">
+        <div className="min-w-0 flex-1">
+          {renderReportToolbar()}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="min-h-11 shrink-0 gap-1.5 rounded-xl border-slate-200 px-3 text-[12px] font-extrabold text-slate-700 hover:bg-slate-50 sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
+          onClick={handleExportProcurementCsv}
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          <span>Procurement CSV</span>
+        </Button>
       </div>
 
       {showInlineError ? (
@@ -868,17 +989,10 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
-          {renderedTab === 'comparison' ? (
-            <PosReportsComparisonPanel
-              comparison={comparisonReport}
-              currencySymbol={currencySymbol}
-              granularity={granularity}
-              onGranularityChange={setGranularity}
-            />
-          ) : null}
 
           {renderedTab === 'overview' ? (
             <div className="space-y-4">
+              <ZReadingReconciliationCard data={zReadingReconciliation} currencySymbol={currencySymbol} />
               <PosReportsOverviewTable
                 rows={trendSeries}
                 currencySymbol={currencySymbol}
@@ -946,13 +1060,13 @@ function PosReportsAnalyticsWorkspace({
               />
               <PosReportsResponsiveTable
                 columns={[
-                  { key: 'event_at', label: 'Event Time', required: true, render: (row) => printDateTime(row.event_at) },
-                  { key: 'event_type', label: 'Event', render: (row) => String(row.event_type || '').replace(/_/g, ' ') },
-                  { key: 'outgoing_operator_name', label: 'Outgoing', render: (row) => row.outgoing_operator_name || '-' },
-                  { key: 'incoming_operator_name', label: 'Incoming', render: (row) => row.incoming_operator_name || '-' },
-                  { key: 'custody_mode', label: 'Custody', render: (row) => String(row.custody_mode || '').replace(/_/g, ' ') },
-                  { key: 'counted_cash_amount', label: 'Counted', align: 'right', render: (row) => row.counted_cash_amount == null ? 'Not counted' : money(row.counted_cash_amount, currencySymbol) },
-                  { key: 'variance_amount', label: 'Variance', align: 'right', render: (row) => row.variance_amount == null ? 'Not attributed' : money(row.variance_amount, currencySymbol) }
+                  { key: 'event_at', label: 'Event Time', align: 'left', required: true, render: (row) => printDateTime(row.event_at) },
+                  { key: 'event_type', label: 'Event', align: 'left', render: (row) => String(row.event_type || '').replace(/_/g, ' ') },
+                  { key: 'outgoing_operator_name', label: 'Outgoing', align: 'left', render: (row) => row.outgoing_operator_name || '-' },
+                  { key: 'incoming_operator_name', label: 'Incoming', align: 'left', render: (row) => row.incoming_operator_name || '-' },
+                  { key: 'custody_mode', label: 'Custody', align: 'center', render: (row) => String(row.custody_mode || '').replace(/_/g, ' ') },
+                  { key: 'counted_cash_amount', label: 'Counted', valueTone: (row) => row.counted_cash_amount == null ? 'muted' : 'secondary', align: 'left', render: (row) => row.counted_cash_amount == null ? 'Not counted' : money(row.counted_cash_amount, currencySymbol) },
+                  { key: 'variance_amount', label: 'Variance', valueTone: (row) => row.variance_amount == null ? 'muted' : Number(row.variance_amount) < 0 ? 'danger' : 'secondary', align: 'left', render: (row) => row.variance_amount == null ? 'Not attributed' : money(row.variance_amount, currencySymbol) }
                 ]}
                 rows={cashierLifecycle.handoffs?.rows || []}
                 searchQuery={overviewSearchQuery}
@@ -1014,7 +1128,7 @@ function PosReportsAnalyticsWorkspace({
             </div>
           ) : null}
 
-          {renderedTab === 'sales' && granularity === 'yearly' ? (
+          {renderedTab === 'sales' && displayGranularity === 'yearly' ? (
             <SectionCard title="Year-over-Year">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
@@ -1033,9 +1147,9 @@ function PosReportsAnalyticsWorkspace({
 
           {renderedTab === 'top_items' ? (
             <PosReportsTopItemsTable
-              rows={granularity === 'yearly'
+              rows={displayGranularity === 'yearly'
                 ? (yearlyReport.top_items || [])
-                : granularity === 'monthly'
+                : displayGranularity === 'monthly'
                   ? (monthlyReport.top_items || [])
                   : (dailyReport.top_items || [])}
               currencySymbol={currencySymbol}
@@ -1046,7 +1160,8 @@ function PosReportsAnalyticsWorkspace({
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </PosPageFrame>
   );
 }
 

@@ -15,6 +15,7 @@ const buildOrder = (overrides = {}) => ({
   fulfillment_status: 'confirmed',
   ...overrides
 });
+
 describe('Dine-in schedule alert scheduler', () => {
   it('only enables cashier alerts for an active, authorized F&B terminal', () => {
     const eligibleState = {

@@ -41,4 +41,18 @@ describe('POS terminal registry pairing versions', () => {
     }));
     expect(JSON.stringify(readable)).not.toContain('terminal_password');
   });
+
+  it('preserves strict device enforcement when an older settings form omits the field', async () => {
+    const current = await hashTerminalRegistrySecrets({
+      currentEntries: [{ terminal_id: 'COUNTER-01', location_id: 1, is_active: true, device_enforcement: 'strict' }],
+      incomingEntries: [{ terminal_id: 'COUNTER-01', location_id: 1, is_active: true }]
+    });
+    expect(current[0].device_enforcement).toBe('strict');
+
+    const explicitlyDisabled = await hashTerminalRegistrySecrets({
+      currentEntries: current,
+      incomingEntries: [{ terminal_id: 'COUNTER-01', location_id: 1, is_active: true, device_enforcement: 'off' }]
+    });
+    expect(explicitlyDisabled[0].device_enforcement).toBe('off');
+  });
 });

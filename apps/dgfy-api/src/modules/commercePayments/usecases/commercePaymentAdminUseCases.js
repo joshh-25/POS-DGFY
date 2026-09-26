@@ -704,7 +704,7 @@ export const buildCreateTenantPayMongoChildAccountUseCase = ({
         provider_account_matched_before_create: Boolean(existingProviderAccount),
         fee_contract: {
           dgfy_fee_basis: 'subtotal',
-          dgfy_fee_charged_to: 'customer',
+          dgfy_fee_charged_to: 'tenant',
           provider_fee_shoulder: 'tenant_company'
         }
       },

@@ -157,7 +157,7 @@ Evidence semantics:
 3. Email-template and user-management tests prove new DGFY invitations do not expose manual links or `company_token`; the old `/accept-invite?token=...` route is compatibility-only and must remain non-mutating for new business onboarding.
 4. Backend DGFY tests prove account search safe fields, DGFY-only invitation creation, accept/reject, leave, ownership transfer, legacy grace, POS session authorization, owner-transfer demotion, and no normal email-fallback tenant-session authentication.
 5. Platform-admin assisted provisioning tests prove public OTP rules remain unchanged, admin-created DGFY accounts use temporary-password state, ownerless tenants cannot issue DGFY/POS sessions, combined provisioning creates explicit accepted membership, force assignment targets an active account id, and audit snapshots exclude secrets.
-6. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
+6. Frontend invitation/POS/service tests prove the IMS invite modal selects registered DGFY accounts, DGFY auth service errors stay scoped away from generic tenant global toasts, development auto-login is opt-in, environment-only, and excluded from DGFY/POS lock entrypoints, and the POS drawer exposes DGFY sign-in, company, terminal, and legacy-grace states.
 7. Admin frontend tests prove Tenant Manager separates Company-only from DGFY+Company provisioning, reason fields are required, DGFY Accounts creation shows temporary-password state, and owner/company/account submit boundaries do not trigger adjacent actions.
 8. The rendered smoke writes structured JSON under `.tmp/rendered-qa/dgfy-access/` plus desktop/mobile screenshots. Default mode is frontend-only and records API failures as diagnostics; strict mode fails on 5xx network responses for full-stack evidence.
 9. These gates do not prove all historically issued links have expired, that POS hardware bridges are device-proven after DGFY unlock, or that every admin-created merchant has accepted current legal terms. Seeded UAT must still cover legal acknowledgement before owner-authorized self-service, receipt printing, cash drawer, iMin warnings, shift state, terminal policy denial, and offline queue replay.
@@ -353,14 +353,16 @@ Use `RUN_BROWSER_E2E=true` only for browser-driven suites. Default backend test 
 For the end-to-end cashier/admin continuity path (create item -> POS-ready -> checkout -> POS history -> Sales export), use:
 
 1. Browser E2E (Chromium, desktop profile):
-   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e`
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e`
 2. Browser E2E matrix with keyboard/screen-reader accessibility pass (desktop + mobile):
-   - `npm --prefix backend run test:frontend-ims-pos-sales-e2e:matrix`
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:matrix`
+3. Release-profile core journey only (the promotion-leg shape: create item -> POS-ready -> checkout -> history -> sales export, with the required export-download assertion):
+   - `npm --prefix apps/dgfy-api run test:frontend-ims-pos-sales-e2e:release`
 
-CI enforcement policy:
-1. `main` and `release/*` pushes run the core desktop journey as a release gate before build/deploy stages.
-2. Nightly schedule runs the matrix journey (desktop + mobile) for drift detection.
-3. Failure artifacts (trace/video/screenshot) are uploaded and retained for 14 days (release gate) and 21 days (nightly).
+CI execution and advisory status:
+1. The journey runs as `frontend-ims-pos-sales-e2e-quality` in `.github/workflows/promotion-quality-gate.yml` on the `release/*` -> `main` promotion leg (plus manual `workflow_dispatch` / `workflow_call` runs). The `to-staging/*` -> `staging` leg is skipped entirely -- it runs zero quality jobs.
+2. The job is advisory (`continue-on-error` at job and step level, with real per-step outcomes reported via `record_outcomes`); a red run does not block promotion. The advisory-to-blocking transition is deferred by Pat's call on #1749.
+3. Failure artifacts (trace/video/screenshot, plus the downloaded sales CSV persisted by the export assertion) upload as `ims-pos-sales-e2e-<sha>` and are retained for 30 days. There is no nightly E2E workflow; drift detection comes from promotion-leg and manual-dispatch runs.
 4. **New/expanded E2E coverage here is lower priority than POS/Storefront**, per `AGENTS.md`'s
    "Engineering-investment priority" note (#1739) — this existing required journey gate is
    unaffected; the priority note only weighs *additional* investment, not what already runs.

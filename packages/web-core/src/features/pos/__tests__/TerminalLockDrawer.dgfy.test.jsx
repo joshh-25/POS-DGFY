@@ -113,7 +113,7 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     render(
       <TerminalLockDrawer
         drawerOpen
-        formData={{ ...baseFormData, email: 'admin@test.com', password: 'wrong-password' }}
+        formData={{ ...baseFormData, email: 'operator@example.test', password: 'wrong-password' }}
         setFormData={vi.fn()}
         dgfyPosState={{ authenticated: false, companies: [] }}
         unlockFailure={{ message: 'Invalid email or password.', status: 401, ref: 'POS-TEST-401' }}

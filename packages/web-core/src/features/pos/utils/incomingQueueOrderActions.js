@@ -85,7 +85,10 @@ export function buildIncomingQueueOrderActions(order = {}, {
   // Both predicates below are pure functions of `order` alone -- moved in from
   // IncomingQueueWorkspace's per-order .map() body verbatim (Phase 148/#825, Phase 204/#965)
   // rather than threaded through `deps`, so card and table can never drift on eligibility.
-  const canCollectCash = isCashCollectionTimingValid(order)
+  const canCollectDineInPayment = order.order_method === 'dine_in'
+    && order.payment_status === 'unpaid'
+    && order.fulfillment_status === 'ready_for_pickup';
+  const canCollectCash = order.order_method !== 'dine_in'
     && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
     && (
@@ -109,7 +112,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
 
   const buttons = [];
 
-  if (canCollectCash) {
+  if (canCollectDineInPayment || canCollectCash) {
     buttons.push(
       React.createElement(
         Button,
@@ -122,10 +125,8 @@ export function buildIncomingQueueOrderActions(order = {}, {
         },
         React.createElement(Wallet, { className: 'mr-2 h-4 w-4 shrink-0' }),
         order.order_method === 'dine_in'
-          ? 'Collect Dine-in Cash'
-          : order.order_method === 'delivery'
-            ? 'Collect Delivery Cash'
-            : 'Collect Cash'
+          ? 'Checkout'
+          : order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'
       )
     );
   }

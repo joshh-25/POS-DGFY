@@ -140,6 +140,29 @@ object AppConfig {
         )
     }
 
+    /**
+     * Exact origins that may receive the origin-bound device proof channel.
+     * Local/custom origin overrides remain useful for UI and hardware testing,
+     * but they must never gain access to the device private key.
+     */
+    fun approvedDeviceProofOriginRules(): Set<String> {
+        return setOf(normalizeOrigin(LIVE_POS_ORIGIN))
+    }
+
+    fun isApprovedDeviceProofOrigin(origin: String?): Boolean {
+        val normalized = origin?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        return approvedDeviceProofOriginRules().contains(normalizeOrigin(normalized))
+    }
+
+    private fun normalizeOrigin(raw: String): String {
+        val uri = runCatching { URI(raw.trim()) }.getOrNull() ?: return ""
+        val scheme = uri.scheme?.lowercase() ?: return ""
+        val host = uri.host?.lowercase() ?: return ""
+        if (scheme != "http" && scheme != "https") return ""
+        val portSuffix = if (uri.port != -1) ":${uri.port}" else ""
+        return "$scheme://$host$portSuffix"
+    }
+
     private fun activeLocalHost(): String {
         return if (isProbablyEmulator()) EMULATOR_HOST else LOCAL_LAN_HOST
     }

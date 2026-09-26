@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: pos
 date: 2026-09-24
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-25
 review_by: 2027-03-24
 applies_to: architecture_decision
 topic: pos_parked_sale_stock_and_high_risk_approval_lifecycle
@@ -60,6 +60,18 @@ creating a second stock or transaction mutation owner.
 7. Approval execution is idempotent and atomic with its approval state. Cache
    invalidation is post-commit and best-effort; it cannot reverse a committed
    stock or transaction change. `[binding]`
+
+## Amendment — resumed parked-line edit boundary (2026-09-25)
+
+The original lines in a resumed parked snapshot are immutable in identity,
+saved price, configuration, and minimum quantity. A cashier may increase an
+original line only when the current item is usable and its current catalog base
+price still matches the saved base price. If the item is missing/unavailable or
+its price has drifted, the original line remains settleable at its saved
+quantity and price, while any addition must be a separate ordinary line using
+the current catalog price. New lines remain removable and editable. Checkout
+and re-park enforce the same rule server-side; when a previously issued parked
+line is increased, only the added quantity receives a new inventory issue.
 
 ## Consequences
 

@@ -1,5 +1,6 @@
 import {
     printReceiptWithIminBridge,
+    printTestReceiptWithIminBridge,
     printShiftSummaryWithIminBridge,
     printZReadingWithIminBridge,
     printOrderWithIminBridge,
@@ -87,6 +88,7 @@ export const iminNativeDriver = {
     label: 'iMin built-in printer',
     capabilities: Object.freeze([
         POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+        POS_HARDWARE_CAPABILITIES.TEST_PRINT,
         POS_HARDWARE_CAPABILITIES.PRINT_SHIFT_SUMMARY,
         POS_HARDWARE_CAPABILITIES.PRINT_Z_READING,
         POS_HARDWARE_CAPABILITIES.OPEN_DRAWER,
@@ -170,6 +172,26 @@ export const iminNativeDriver = {
         }
 
         return attachClientAuditConfirmation({ outcome, reports });
+    },
+    async testPrint({ message, terminalId } = {}) {
+        try {
+            const result = await printTestReceiptWithIminBridge({ message, terminalId });
+            if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
+            return normalizeHardwareResult({
+                success: result.result?.success !== false,
+                driverId: this.id,
+                message: result.result?.message || 'Printer test page sent.',
+                reasonCode: result.result?.reasonCode || null,
+                raw: result.result
+            });
+        } catch (error) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: error?.message || 'Failed to print the iMin printer test page.',
+                reasonCode: error?.code || 'IMIN_TEST_PRINT_FAILED'
+            });
+        }
     },
     async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes, billRequest, billTotal } = {}) {
         try {

@@ -39,4 +39,41 @@ describe('stockMovementService service-mode guard', () => {
       message: 'Pure service items are stock-exempt and cannot have stock movements.'
     });
   });
+
+  it('allows an online fulfillment movement to read an inactive historical item row', async () => {
+    const historicalItem = {
+      item_id: 502,
+      name: 'Deleted Menu Item',
+      category: 'product',
+      mode_item_preset: 'service',
+      status: 'inactive',
+      deleted_at: new Date(),
+      current_stock: 0
+    };
+    const Item = {
+      findOne: jest.fn().mockResolvedValue(historicalItem)
+    };
+
+    getSpy.mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      return {};
+    });
+
+    await expect(createStockMovement({
+      item_id: 502,
+      quantity: 1,
+      movement_type: 'goods_issue',
+      reference_type: 'POS',
+      reference_id: 'ONLINE:902:1'
+    }, 7, { LOCK: { UPDATE: 'UPDATE' } }, {
+      allowInactiveHistoricalItem: true
+    })).rejects.toMatchObject({
+      statusCode: 422,
+      message: 'Pure service items are stock-exempt and cannot have stock movements.'
+    });
+
+    expect(Item.findOne).toHaveBeenCalledWith(expect.objectContaining({
+      where: { item_id: 502 }
+    }));
+  });
 });

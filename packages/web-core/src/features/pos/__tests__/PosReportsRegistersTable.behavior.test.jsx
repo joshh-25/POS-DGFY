@@ -49,14 +49,12 @@ describe('POS reports registers table', () => {
   it('renders the proposed register columns and derives accurate states from backend amounts', () => {
     render(<PosReportsRegistersTable rows={rows} />);
 
-    ['Register Shift', 'Opening Cashier', 'Opening Float (₱)', 'Cash Sales (₱)', 'Expected (₱)', 'Counted (₱)', 'Variance (₱)', 'Variance %', 'Status'].forEach((label) => {
+    ['Register Shift', 'Opening Cashier', 'Expected (₱)', 'Counted (₱)', 'Variance (₱)', 'Status'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('RS-81').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱2,980.00').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('0.00%').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('0.34%').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('-0.34%').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Reconciled').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Over').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Short').length).toBeGreaterThan(0);

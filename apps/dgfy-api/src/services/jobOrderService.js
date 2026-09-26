@@ -12,6 +12,8 @@ import dbStore from '../utils/dbStore.js';
 import { consumeStockForProduction, receiveProducedStock } from '../modules/inventory/index.js';
 import { convertQuantity, areCompatible, normalizeUom } from '../utils/uomConverter.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { loadItemLocationStockMap } from '../modules/shared/repositories/itemLocationStockOverlay.js';
+import { resolveMovementLocation } from './locationInventoryService.js';
 
 const visibleItemWhere = (where = {}) => {
   return buildVisibleWhere(where, {
@@ -24,6 +26,24 @@ const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
   if (!Number.isInteger(normalized) || normalized <= 0) return null;
   return normalized;
+};
+
+const resolveJobOrderLocation = async ({ requestedLocationId, userId, operationLabel }) => {
+  const location = await resolveMovementLocation({
+    requestedLocationId,
+    userId,
+    operationLabel
+  });
+  return location ? Number(location.location_id) : null;
+};
+
+const loadJobOrderIngredientStock = async (itemIds, sourceLocationId) => {
+  if (!sourceLocationId || !Array.isArray(itemIds) || itemIds.length === 0) {
+    return { stockMap: new Map(), locationScopeResolved: false };
+  }
+  return loadItemLocationStockMap(itemIds, sourceLocationId, {
+    fallbackEventType: 'job_order_stock_preflight_fallback'
+  });
 };
 
 export const getJobOrders = async (queryParams) => {
@@ -133,6 +153,28 @@ export const createJobOrder = async (joData, userId) => {
   // Only generate JO number if not a draft
   const isDraft = joData.status === 'draft' || !joData.status;
   const joNumber = isDraft ? null : `JO-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+  let sourceLocationId = parsePositiveInt(joData.source_location_id);
+  let destinationLocationId = parsePositiveInt(joData.destination_location_id);
+
+  if (!isDraft) {
+    sourceLocationId = await resolveJobOrderLocation({
+      requestedLocationId: sourceLocationId,
+      userId,
+      operationLabel: 'job order ingredient preflight'
+    });
+    if (destinationLocationId) {
+      destinationLocationId = await resolveJobOrderLocation({
+        requestedLocationId: destinationLocationId,
+        userId,
+        operationLabel: 'job order output location'
+      });
+    }
+    if (sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId) {
+      const error = new Error('source_location_id and destination_location_id must be different');
+      error.statusCode = 422;
+      throw error;
+    }
+  }
 
   // NEW: Validate stock for non-draft JOs with UOM conversion support
   if (!isDraft) {
@@ -145,6 +187,10 @@ export const createJobOrder = async (joData, userId) => {
 
   if (!isDraft && ingredients && ingredients.length > 0) {
     const insufficientIngredients = [];
+    const ingredientIds = ingredients
+      .map((ingredient) => parsePositiveInt(ingredient?.item_id))
+      .filter(Boolean);
+    const locationStock = await loadJobOrderIngredientStock(ingredientIds, sourceLocationId);
 
     for (const ing of ingredients) {
       // Fetch current stock from database
@@ -159,7 +205,9 @@ export const createJobOrder = async (joData, userId) => {
         throw error;
       }
 
-      const currentStock = parseFloat(item.current_stock);
+      const currentStock = locationStock.locationScopeResolved
+        ? Number(locationStock.stockMap.get(Number(item.item_id)) || 0)
+        : parseFloat(item.current_stock);
       const requiredQty = parseFloat(ing.quantity_required);
       const ingredientUom = normalizeUom(item.unit_of_measure);
       const recipeUom = normalizeUom(ing.unit_of_measure || item.unit_of_measure);
@@ -210,6 +258,8 @@ export const createJobOrder = async (joData, userId) => {
   return await sequelize.transaction(async (t) => {
     const jo = await JobOrder.create({
       ...joMainData,
+      source_location_id: sourceLocationId,
+      destination_location_id: destinationLocationId,
       jo_number: joNumber,
       responsible_user: userId,
       status: isDraft ? 'draft' : 'in_progress'
@@ -233,7 +283,7 @@ export const createJobOrder = async (joData, userId) => {
   });
 };
 
-export const finalizeJobOrder = async (joId) => {
+export const finalizeJobOrder = async (joId, userId = null, locationData = {}) => {
   const JobOrder = dbStore.get('JobOrder');
   const Item = dbStore.get('Item');
   const JOIngredient = dbStore.get('JOIngredient');
@@ -270,6 +320,26 @@ export const finalizeJobOrder = async (joId) => {
     throw error;
   }
 
+  let sourceLocationId = parsePositiveInt(locationData?.source_location_id ?? jo.source_location_id);
+  let destinationLocationId = parsePositiveInt(locationData?.destination_location_id ?? jo.destination_location_id);
+  sourceLocationId = await resolveJobOrderLocation({
+    requestedLocationId: sourceLocationId,
+    userId,
+    operationLabel: 'job order ingredient preflight'
+  });
+  if (destinationLocationId) {
+    destinationLocationId = await resolveJobOrderLocation({
+      requestedLocationId: destinationLocationId,
+      userId,
+      operationLabel: 'job order output location'
+    });
+  }
+  if (sourceLocationId && destinationLocationId && sourceLocationId === destinationLocationId) {
+    const error = new Error('source_location_id and destination_location_id must be different');
+    error.statusCode = 422;
+    throw error;
+  }
+
   // NEW: Validate stock before finalizing draft
   const insufficientIngredients = [];
 
@@ -288,9 +358,16 @@ export const finalizeJobOrder = async (joId) => {
     ]
   });
 
+  const ingredientIds = joWithIngredients.ingredients
+    .map((ingredient) => parsePositiveInt(ingredient?.item_id))
+    .filter(Boolean);
+  const locationStock = await loadJobOrderIngredientStock(ingredientIds, sourceLocationId);
+
   for (const ingredient of joWithIngredients.ingredients) {
     const item = ingredient.item;
-    const currentStock = parseFloat(item.current_stock);
+    const currentStock = locationStock.locationScopeResolved
+      ? Number(locationStock.stockMap.get(Number(item.item_id)) || 0)
+      : parseFloat(item.current_stock);
     const requiredQty = parseFloat(ingredient.quantity_required);
     const ingredientUom = normalizeUom(item.unit_of_measure);
     const recipeUom = normalizeUom(ingredient.unit_of_measure || item.unit_of_measure);
@@ -336,7 +413,9 @@ export const finalizeJobOrder = async (joId) => {
   // Update status to in_progress and add JO number
   await jo.update({
     status: 'in_progress',
-    jo_number: joNumber
+    jo_number: joNumber,
+    source_location_id: sourceLocationId,
+    destination_location_id: destinationLocationId
   });
 
   return jo;
@@ -401,6 +480,11 @@ export const completeJobOrder = async (joId, userId, expiryDateOverride = null, 
         error.statusCode = 400;
         throw error;
       }
+
+      await jo.update({
+        source_location_id: normalizedSourceLocationId,
+        destination_location_id: normalizedDestinationLocationId
+      }, { transaction: t });
 
       // Determine quantity to process in this transaction
       const currentQuantityProduced = parseFloat(jo.quantity_produced || 0);

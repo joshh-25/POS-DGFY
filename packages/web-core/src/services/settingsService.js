@@ -71,8 +71,15 @@ export const getSettingByKey = async (key) => {
 /**
  * Update multiple settings at once
  */
-export const updateSettings = async (settingsData) => {
-  const response = await api.put('/settings', settingsData);
+export const updateSettings = async (settingsData, { expectedUpdatedAt = null } = {}) => {
+  const hasExpectedVersions = expectedUpdatedAt
+    && typeof expectedUpdatedAt === 'object'
+    && !Array.isArray(expectedUpdatedAt)
+    && Object.keys(expectedUpdatedAt).length > 0;
+  const requestPayload = hasExpectedVersions
+    ? { ...settingsData, expected_updated_at: expectedUpdatedAt }
+    : settingsData;
+  const response = await api.put('/settings', requestPayload);
   invalidateSettingsCache();
   return response.data.data;
 };
@@ -80,10 +87,46 @@ export const updateSettings = async (settingsData) => {
 /**
  * Update a single setting by key
  */
-export const updateSettingByKey = async (key, value) => {
-  const response = await api.put(`/settings/${key}`, { value });
+export const updateSettingByKey = async (key, value, { expectedUpdatedAt = null } = {}) => {
+  const requestPayload = expectedUpdatedAt
+    ? { value, expected_updated_at: expectedUpdatedAt }
+    : { value };
+  const response = await api.put(`/settings/${key}`, requestPayload);
   invalidateSettingsCache();
   return response.data.data;
+};
+
+/**
+ * List all configurable POS discount rules for the authenticated tenant.
+ * This endpoint intentionally has its own service methods instead of using
+ * the generic settings cache because discount rules have independent
+ * configuration versions and approval state.
+ */
+export const getDiscountRules = async () => {
+  const response = await api.get('/settings/discount-rules');
+  return Array.isArray(response.data?.data?.discount_rules)
+    ? response.data.data.discount_rules
+    : [];
+};
+
+export const createDiscountRule = async (payload) => {
+  const response = await api.post('/settings/discount-rules', payload);
+  return response.data?.data?.discount_rule || null;
+};
+
+export const updateDiscountRule = async (discountRuleId, payload) => {
+  const response = await api.patch(
+    `/settings/discount-rules/${encodeURIComponent(discountRuleId)}`,
+    payload
+  );
+  return response.data?.data?.discount_rule || null;
+};
+
+export const deleteDiscountRule = async (discountRuleId) => {
+  const response = await api.delete(
+    `/settings/discount-rules/${encodeURIComponent(discountRuleId)}`
+  );
+  return response.data?.data || null;
 };
 
 export const generateStorefrontSlug = async () => {

@@ -59,7 +59,7 @@ const normalizeBackendOrigin = (value = '') => {
     }
     return parsed.origin.replace(/\/+$/, '');
   } catch {
-    throw new Error('Enter a valid backend URL, for example http://192.168.1.10:5001');
+    throw new Error('Enter a valid backend URL, for example http://192.168.1.10:5000');
   }
 };
 
@@ -86,14 +86,17 @@ const writeRuntimeConfig = (config) => {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 };
 
-const normalizeRuntimeConfig = (raw = {}) => {
+const normalizeRuntimeConfig = (raw = {}, { allowMissingBackend = false } = {}) => {
   const backendOrigin = normalizeBackendOrigin(raw.backendOrigin);
+  if (!backendOrigin && !allowMissingBackend) {
+    throw new Error('A backend URL is required before launching the packaged POS shell.');
+  }
   const companyToken = String(raw.companyToken || '').trim();
   const terminalId = sanitizeTerminalId(raw.terminalId || '');
 
   return {
     backendOrigin,
-    apiBaseUrl: `${backendOrigin}/api/v1`,
+    apiBaseUrl: backendOrigin ? `${backendOrigin}/api/v1` : '/api/v1',
     assetBaseUrl: backendOrigin,
     companyToken,
     terminalId,
@@ -104,10 +107,10 @@ const normalizeRuntimeConfig = (raw = {}) => {
 
 const getWindowRuntimeConfig = () => {
   if (isDevShell()) {
-    const backendOrigin = process.env.POS_ELECTRON_BACKEND_ORIGIN || 'http://127.0.0.1:5001';
-    const companyToken = process.env.POS_ELECTRON_COMPANY_TOKEN || 'token-original';
-    const terminalId = process.env.POS_ELECTRON_TERMINAL_ID || 'COUNTER-01';
-    return normalizeRuntimeConfig({ backendOrigin, companyToken, terminalId });
+    const backendOrigin = process.env.POS_ELECTRON_BACKEND_ORIGIN || '';
+    const companyToken = process.env.POS_ELECTRON_COMPANY_TOKEN || '';
+    const terminalId = process.env.POS_ELECTRON_TERMINAL_ID || '';
+    return normalizeRuntimeConfig({ backendOrigin, companyToken, terminalId }, { allowMissingBackend: true });
   }
 
   const stored = readRuntimeConfig();

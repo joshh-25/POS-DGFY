@@ -8,6 +8,7 @@ const toPositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
+
 const stableStringify = (value) => {
     if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
     if (value && typeof value === 'object') {

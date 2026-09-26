@@ -6,7 +6,7 @@ const positiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
-const ITEM_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual']);
+const ITEM_DISCOUNT_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual', 'custom']);
 
 const validationError = (message, reasonCode, details = {}) => {
     throw new DomainError(DomainErrorCode.VALIDATION_FAILED, message, {
@@ -41,6 +41,8 @@ export const resolvePosItemDiscount = async ({
         draft: {
             ...draft,
             type,
+            rule_id: positiveInt(draft.discount_rule_id || draft.rule_id),
+            discount_key: text(draft.discount_key),
             label: text(draft.label),
             eligible_items: ['senior', 'pwd'].includes(type)
                 ? [{ item_id: normalizedItemId, eligible_quantity: Number(preparedLine.quantity || 0) }]

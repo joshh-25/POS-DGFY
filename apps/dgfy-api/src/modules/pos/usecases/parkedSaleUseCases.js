@@ -3,6 +3,10 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
+import {
+    normalizeParkedSaleLineRemovalReasons,
+    validateParkedSaleSnapshotRevision
+} from '../domain/parkedSaleLinePolicy.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const ACTIVE_PARKED_STATUSES = ['parked', 'claimed', 'cancel_pending'];
@@ -188,18 +192,7 @@ const buildParkedSaleError = (code, message, statusCode, details = undefined) =>
     new DomainError(code, message, { statusCode, ...(details ? { details } : {}) })
 );
 
-const resolveParkedSaleInventoryEffects = async ({
-    resolver,
-    snapshot,
-    scope,
-    user,
-    payload,
-    transaction,
-    parkedSaleId,
-    revision,
-    isRepark = false,
-    preservedInventoryEffects = []
-}) => {
+const resolveParkedSaleInventoryEffects = async ({ resolver, snapshot, scope, user, payload, transaction, parkedSaleId, revision }) => {
     if (typeof resolver !== 'function') {
         throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'POS inventory-effect planning is unavailable.', 503, {
             reason_code: 'PARKED_SALE_INVENTORY_PLANNER_UNAVAILABLE'
@@ -212,24 +205,14 @@ const resolveParkedSaleInventoryEffects = async ({
         payload,
         transaction,
         parkedSaleId,
-        revision,
-        isRepark,
-        preservedInventoryEffects
+        revision
     });
     if (!Array.isArray(effects)) {
         throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'POS inventory-effect planning returned an invalid result.', 503, {
             reason_code: 'PARKED_SALE_INVENTORY_PLAN_INVALID'
         });
     }
-    const continuityEffects = (Array.isArray(preservedInventoryEffects) ? preservedInventoryEffects : [])
-        .map((effect) => ({
-            item_id: effect.item_id,
-            quantity: effect.quantity,
-            location_id: effect.location_id,
-            preserve_existing: true
-        }))
-        .filter((effect) => Number.isFinite(Number(effect.item_id)) && Number(effect.quantity) > 0);
-    return [...effects, ...continuityEffects];
+    return effects;
 };
 
 const issueParkedSaleInventoryEffects = async ({ inventoryCommandService, effects, parkedSaleId, revision, userId, transaction }) => {
@@ -241,11 +224,20 @@ const issueParkedSaleInventoryEffects = async ({ inventoryCommandService, effect
     }
     const movements = [];
     for (const [index, effect] of effects.entries()) {
-        if (effect?.preserve_existing === true) continue;
         const itemId = toPositiveInt(effect?.item_id);
         const quantity = Number(effect?.quantity);
         const locationId = toPositiveInt(effect?.location_id);
-        if (!itemId || !Number.isFinite(quantity) || quantity <= 0 || !locationId) continue;
+        if (!itemId || !Number.isFinite(quantity) || quantity <= 0 || !locationId) {
+            throw buildParkedSaleError(
+                DomainErrorCode.CONFLICT,
+                'POS inventory-effect planning returned a malformed stock effect.',
+                503,
+                {
+                    reason_code: 'PARKED_SALE_INVENTORY_EFFECT_INVALID',
+                    effect_index: index
+                }
+            );
+        }
         const movement = await issueStock({
             item_id: itemId,
             quantity,
@@ -253,8 +245,7 @@ const issueParkedSaleInventoryEffects = async ({ inventoryCommandService, effect
             location_id: locationId,
             reference_type: 'POS_PARKED_SALE',
             reference_id: `PARKED:${parkedSaleId}:${revision}:${index + 1}`,
-            notes: `POS parked sale stock deduction · ${parkedSaleId} · revision ${revision}`,
-            ...(effect?.allow_archived_item === true ? { allow_archived_item: true } : {})
+            notes: `POS parked sale stock deduction · ${parkedSaleId} · revision ${revision}`
         }, userId, transaction);
         movements.push({ item_id: itemId, quantity, location_id: locationId, movement_id: movement?.movement_id || null });
     }
@@ -524,7 +515,8 @@ export const buildReparkPosParkedSaleUseCase = ({
         const expectedRevision = toPositiveInt(payload.expected_revision);
         if (!normalizedId) throw buildParkedSaleError(DomainErrorCode.VALIDATION_FAILED, 'parked sale id must be a positive integer.', 400);
         if (!expectedRevision) throw buildParkedSaleError(DomainErrorCode.VALIDATION_FAILED, 'expected_revision is required.', 422);
-        let snapshot = normalizeSnapshot(payload.snapshot);
+        const snapshot = normalizeSnapshot(payload.snapshot);
+        const removedLineReasons = normalizeParkedSaleLineRemovalReasons(payload.removed_line_reasons);
         transaction = await beginTransaction();
         const scope = await resolveOwnedOpenShift({
             posRepository,
@@ -552,9 +544,32 @@ export const buildReparkPosParkedSaleUseCase = ({
             });
         }
 
-        snapshot = markReparkedSnapshotLines(snapshot, parseStoredSnapshot(row.snapshot) || {});
+        const previousSnapshot = parseStoredSnapshot(row.snapshot) || { lines: [] };
+        const nextItemIds = [...new Set(snapshot.lines
+            .map((line) => toPositiveInt(line?.item_id))
+            .filter(Boolean))];
+        const currentItems = typeof posRepository.findSellableItemsByIds === 'function'
+            ? await posRepository.findSellableItemsByIds(nextItemIds, {
+                transaction,
+                lock: true,
+                locationId: scope.locationId
+            })
+            : [];
+        const snapshotViolation = validateParkedSaleSnapshotRevision({
+            previousSnapshot,
+            nextSnapshot: snapshot,
+            currentItems,
+            removedLineReasons
+        });
+        if (snapshotViolation) {
+            throw buildParkedSaleError(DomainErrorCode.CONFLICT, snapshotViolation.message, 409, {
+                reason_code: snapshotViolation.reasonCode,
+                item_id: snapshotViolation.itemId,
+                line_ref: snapshotViolation.lineRef
+            });
+        }
+
         const reversedInventoryEffects = [];
-        const preservedInventoryEffects = [];
         if (row.inventory_deducted_at) {
             const reverseParkedSaleGoodsIssue = inventoryCommandService?.reverseParkedSaleGoodsIssue;
             if (typeof reverseParkedSaleGoodsIssue !== 'function') {
@@ -564,26 +579,21 @@ export const buildReparkPosParkedSaleUseCase = ({
             }
             const reversals = await reverseParkedSaleGoodsIssue({
                 parked_sale_id: normalizedId,
-                reason: `Re-park inventory reconciliation for parked sale ${normalizedId}`,
-                preserve_item_ids: snapshot.lines.map((line) => line.item_id)
+                reason: `Re-park inventory reconciliation for parked sale ${normalizedId}`
             }, scope.userId, transaction);
-            for (const reversal of Array.isArray(reversals) ? reversals : []) {
-                if (reversal?.preserved === true) preservedInventoryEffects.push(reversal);
-                else reversedInventoryEffects.push(reversal);
-            }
+            reversedInventoryEffects.push(...(Array.isArray(reversals) ? reversals : []));
         }
         const nextRevision = currentRevision + 1;
         const inventoryEffects = await resolveParkedSaleInventoryEffects({
             resolver: resolveInventoryEffects,
             snapshot,
+            previousSnapshot,
             scope,
             user,
             payload,
             transaction,
             parkedSaleId: normalizedId,
-            revision: nextRevision,
-            isRepark: true,
-            preservedInventoryEffects
+            revision: nextRevision
         });
         await issueParkedSaleInventoryEffects({
             inventoryCommandService,
@@ -623,6 +633,7 @@ export const buildReparkPosParkedSaleUseCase = ({
                 operator_session_id: scope.operatorSessionId,
                 revision: reparkingPayload.revision,
                 total_amount: reparkingPayload.total_amount,
+                removed_line_reasons: removedLineReasons,
                 terminal_id: scope.terminalId,
                 shift_id: scope.shiftId,
                 location_id: scope.locationId

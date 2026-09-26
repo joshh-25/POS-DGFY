@@ -3,9 +3,24 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const currencyLabel = (value) => String(value || '').toUpperCase() === 'PHP' ? '₱' : String(value || '₱');
+const formatGeneratedAt = (value) => {
+    const date = value ? new Date(value) : null;
+    if (!date || Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleString('en-PH', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Manila'
+    });
+};
 const paymentLabel = (entry) => (
     String(entry?.payment_label || entry?.payment_type || '').replace(/_/g, ' ') || '-'
 );
+const reconciliationStatusLabel = (value) => ({
+    matched: 'MATCHED',
+    variance: 'VARIANCE FOUND',
+    not_generated: 'NOT GENERATED',
+    not_comparable: 'COMPARISON UNAVAILABLE'
+}[String(value || '').trim().toLowerCase()] || 'COMPARISON UNAVAILABLE');
 
 const Row = ({ name, value, strong = false }) => (
     <div className={`flex items-start justify-between gap-3 ${strong ? 'border-t border-slate-300 pt-1 font-bold text-slate-950' : 'text-slate-700'}`}>
@@ -25,6 +40,7 @@ export default function ZReadingPrintView({
 }) {
     if (!report) return null;
     const summary = report.summary || {};
+    const reconciliation = report.z_reading_reconciliation || report.reconciliation || null;
     const displayCurrency = currencyLabel(currency);
     const counters = report.counters || {};
     const payments = Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : [];
@@ -52,6 +68,7 @@ export default function ZReadingPrintView({
                     <p className="mt-1 text-[10px] text-slate-600">Business date: {report.business_date || '-'}</p>
                     <p className="text-[10px] text-slate-600">Location: {report.location_id || '-'}</p>
                     <p className="text-[10px] text-slate-600">Reading: {report.reading_identifier || '-'}</p>
+                    <p className="text-[10px] text-slate-600">Generated: {formatGeneratedAt(report.generated_at)}</p>
                 </header>
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
@@ -62,6 +79,19 @@ export default function ZReadingPrintView({
                     <Row name="Total sales" value={`${displayCurrency}${money(summary.total_amount)}`} strong />
                     <Row name={`POS voids (${Number(summary.void_transaction_count || 0).toLocaleString('en-US')})`} value={`${displayCurrency}${money(summary.void_amount)}`} />
                 </section>
+
+                {reconciliation ? (
+                    <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
+                        <p className="font-black uppercase">Report reconciliation</p>
+                        <Row name="Status" value={reconciliationStatusLabel(reconciliation.status)} />
+                        <Row name="Report recognized sales" value={reconciliation.report_recognized_sales == null ? '-' : `${displayCurrency}${money(reconciliation.report_recognized_sales)}`} />
+                        <Row name="Z-reading total" value={reconciliation.z_total_amount == null ? '-' : `${displayCurrency}${money(reconciliation.z_total_amount)}`} />
+                        <Row name="Difference" value={reconciliation.variance == null ? '-' : `${displayCurrency}${money(reconciliation.variance)}`} strong />
+                        <Row name="Report refunds/voids" value={reconciliation.report_refunds_voids == null ? '-' : `${displayCurrency}${money(reconciliation.report_refunds_voids)}`} />
+                        <Row name="Report adjustments" value={reconciliation.report_adjustment_amount == null ? '-' : `${displayCurrency}${money(reconciliation.report_adjustment_amount)}`} />
+                        {reconciliation.evaluated_at ? <Row name="Checked" value={formatGeneratedAt(reconciliation.evaluated_at)} /> : null}
+                    </section>
+                ) : null}
 
                 <section className="space-y-1 border-b border-dashed border-slate-300 py-2">
                     <p className="font-black uppercase">Payment method breakdown</p>

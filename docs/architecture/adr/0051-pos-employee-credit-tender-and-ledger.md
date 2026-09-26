@@ -140,6 +140,18 @@ while any employee-only credit account exists, preventing orphaned financial dat
 11. Apply a reasoned administrative correction, reject a correction that would
     create a negative balance, and confirm the legacy funded balance is unchanged.
 
+## Amendments
+
+### 2026-09-21: Employee Credit mixed split tender (ADR 0085)
+
+Decision 4's Version 1 full-credit restriction is superseded only for the
+mixed-tender capability defined by [ADR 0085](0085-pos-employee-credit-mixed-split-tender.md).
+Employee Credit may be one leg of an online POS split session, but the existing
+server-owned eligibility, account-locking, ledger-charge, receipt, cashflow,
+idempotency, and void/reversal rules remain unchanged. The Employee Credit
+ledger is charged only for the successful Employee Credit allocation amount
+inside the atomic final checkout transaction.
+
 ## Authoritative Sources
 
 - `docs/START_HERE.md`

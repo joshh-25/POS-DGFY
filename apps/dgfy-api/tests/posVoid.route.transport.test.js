@@ -146,10 +146,15 @@ jest.unstable_mockModule('../src/middleware/auth.js', () => ({
     checkAnyPermission: mockCheckAnyPermission,
     checkPermission: mockCheckPermission,
     requirePremium: passThrough,
-    requireTenantCapability: () => passThrough
+    requireTenantCapability: () => passThrough,
+    requireTenantAdminRole: passThrough
 }));
 jest.unstable_mockModule('../src/middleware/workflowModeCapability.js', () => ({
     requireWorkflowCapability: () => passThrough
+}));
+jest.unstable_mockModule('../src/middleware/posDeviceProof.js', () => ({
+    requirePosDeviceProof: passThrough,
+    requirePosDeviceSessionProof: passThrough
 }));
 jest.unstable_mockModule('../src/middleware/rateLimiter.js', () => ({
     posDrawerAuthorizationLimiter: passThrough,

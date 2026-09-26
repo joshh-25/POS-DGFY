@@ -953,6 +953,7 @@ CREATE TABLE tenant_locations (
     supports_delivery BOOLEAN NOT NULL DEFAULT TRUE,
     supports_pickup BOOLEAN NOT NULL DEFAULT TRUE,
     supports_dine_in BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_dine_in_pay_at_store BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_name (name),
@@ -1365,11 +1366,19 @@ CREATE TABLE system_settings (
   - `pos_receipt_footer_message`
   - `pos_receipt_metadata_pending_changes` (JSON review payload for tenant-submitted receipt metadata edits awaiting platform-admin approval)
   - `pos_discount_profiles` (JSON array with named percentage presets)
+  - `pos_tax_policies` (versioned JSON object with six POS discount categories and per-category `standard`/`vat_exempt` VAT treatment)
   - `pos_order_method_fees` (deprecated, retained only for historical compatibility; no runtime pricing effect)
   - `pos_petty_cash_symbol` (string, e.g. `PHP`)
   - `pos_petty_cash_amount` (number, operational float for reconciliation)
 - Compliance lifecycle is tenant-level (`tenants.compliance_mode_state`, `tenants.compliance_mode_choice_required`, `tenants.compliance_profile`) and no longer driven by a strict-toggle setting.
 - Tenant admins submit receipt identity edits for platform-admin approval. Platform admins own DGFY POS software name, software version, and software serial number through `/admin/tenants/:id/pos-metadata`; approved tenant edits are applied back into tenant-local `system_settings`.
+
+- Governed POS discount snapshots in `pos_transaction_discounts` include:
+  - `tax_treatment` (`standard` or `vat_exempt`, immutable treatment resolved at checkout; nullable for legacy rows)
+  - `tax_policy_version` (tenant policy version used for the calculation; nullable for legacy rows)
+  These additive columns are introduced by migration
+  `20260925000001-add-pos-tax-policy-snapshot.cjs`; existing transaction rows
+  are not backfilled, while new governed POS writes provide both values.
 
 - POS discount and service-fee audit snapshots are stored in `pos_transactions`:
   - `discount_label_snapshot` (string, nullable)
@@ -1378,7 +1387,7 @@ CREATE TABLE system_settings (
   - `service_fee_label_snapshot` (string, nullable)
   - `service_fee_method_snapshot` (enum `dine_in|takeout|pickup|delivery`, nullable; legacy `online` remains read-compatible for historical data)
   - `service_fee_overridden` (boolean, default false)
-  - `payment_timing` (enum `upfront|on_pickup|on_delivery`, server-derived; online delivery cash resolves to `on_delivery` and online pickup cash resolves to `on_pickup`)
+  - `payment_timing` (enum `upfront|on_pickup|on_delivery|on_dine_in`, server-derived; online delivery cash resolves to `on_delivery`, online pickup cash resolves to `on_pickup`, and F&B dine-in downpayment balances resolve to `on_dine_in`)
   - `payment_status` (enum `unpaid|payment_pending|paid|failed|refund_pending|partial_refunded|refunded`, default `paid`)
   - `payment_reference` (provider payment/reference ID, nullable)
   - `payment_checkout_url` (provider checkout URL, nullable)
@@ -1547,7 +1556,7 @@ CREATE TABLE pos_parked_sales (
     park_reference VARCHAR(40) NOT NULL UNIQUE,
     idempotency_key VARCHAR(120) NOT NULL UNIQUE,
     request_hash VARCHAR(64) NOT NULL,
-    status ENUM('parked', 'claimed', 'completed', 'cancelled') NOT NULL DEFAULT 'parked',
+    status ENUM('parked', 'claimed', 'completed', 'cancel_pending', 'cancelled') NOT NULL DEFAULT 'parked',
     revision INT UNSIGNED NOT NULL DEFAULT 1,
     cashier_id INT NOT NULL,
     shift_id INT NOT NULL,
@@ -1560,6 +1569,8 @@ CREATE TABLE pos_parked_sales (
     quantity_total DECIMAL(24, 12) NOT NULL DEFAULT 0,
     subtotal_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
     total_amount DECIMAL(14, 4) NOT NULL DEFAULT 0,
+    inventory_effects JSON NULL,
+    inventory_deducted_at DATETIME NULL,
     claimed_by INT NULL,
     claimed_terminal_id VARCHAR(100) NULL,
     claimed_at TIMESTAMP NULL,
@@ -1587,11 +1598,16 @@ CREATE TABLE pos_parked_sales (
 );
 ```
 
-**Current Implementation Note (2026-08-13):**
+**Current Implementation Note (2026-09-24):**
 - Tenant-local parked carts are immutable until an explicit cashier re-park
   replaces the snapshot on the same claimed record using optimistic revision
-  protection. Parking and re-parking create no payment, sale, receipt,
-  Z-reading, or stock movement.
+  protection. Inventory issues are recorded when parking and reconciled when
+  re-parking; checkout does not issue the parked snapshot a second time.
+  Payment, receipt, Z-reading, and sales-history effects still wait for checkout.
+- Cancellation is held in `cancel_pending` until a Back Office approver decides
+  the request. Approval reverses the parked sale's active Inventory-owned issue
+  movements once; rejection restores the prior parked/claimed state without
+  changing stock.
 - `cashier_id` and `shift_id` identify the current operational owner. The
   nullable `origin_cashier_id` and `origin_shift_id` preserve the cashier and
   shift that originally parked the cart when another authorized cashier
@@ -1603,6 +1619,11 @@ CREATE TABLE pos_parked_sales (
   cashier operations are scoped to the open shift, terminal, and location.
 - Secret-like snapshot keys are removed before persistence, and the snapshot
   is bounded to protect tenant storage and API payload limits.
+
+The `business_admin_approval_requests.action_type` enum includes `pos_void`
+and `pos_parked_sale_cancel`. These requests retain a required reason and
+immutable target payload; only the canonical POS/Inventory approval handler
+executes an approved action.
 
 ### 24. POS Payment Sessions Table
 
@@ -1665,7 +1686,8 @@ CREATE TABLE pos_payment_allocations (
     idempotency_key VARCHAR(120) NOT NULL,
     request_hash VARCHAR(64) NOT NULL,
     status ENUM('pending', 'successful', 'failed', 'cancelled', 'reversed') NOT NULL DEFAULT 'pending',
-    payment_method ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer') NOT NULL,
+    payment_method ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit') NOT NULL,
+    employee_credit_account_code VARCHAR(40) NULL,
     payment_handoff_mode ENUM('external', 'internal') NULL,
     applied_amount DECIMAL(14, 4) NOT NULL,
     cash_tendered DECIMAL(14, 4) NULL,

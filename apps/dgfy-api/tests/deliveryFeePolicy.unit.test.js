@@ -112,4 +112,65 @@ describe('computeCalculatedDeliveryFeeCentavos — edge behavior not covered by 
             expect(error.details).toBeDefined();
         }
     });
+
+    test('Phase 327 rejects increments below one meter before integer math', () => {
+        for (const incrementKm of [0, 0.0001, 0.0009]) {
+            try {
+                computeCalculatedDeliveryFeeCentavos({
+                    distanceMeters: 3001,
+                    config: { ...REFERENCE_CONFIG, increment_km: incrementKm }
+                });
+                throw new Error('expected a sub-meter increment to be rejected');
+            } catch (error) {
+                expect(error).toBeInstanceOf(DeliveryFeePolicyError);
+                expect(error.code).toBe('INVALID_CONFIG');
+                expect(error.details.minimum_km).toBe(0.001);
+            }
+        }
+    });
+
+    test('Phase 327 accepts the one-meter boundary and keeps every result finite', () => {
+        const result = computeCalculatedDeliveryFeeCentavos({
+            distanceMeters: 3001,
+            config: { ...REFERENCE_CONFIG, increment_km: 0.001 }
+        });
+
+        expect(result).toEqual({
+            feeCentavos: 5001,
+            billedKm: 3,
+            incrementsCharged: 1,
+            outOfRange: false
+        });
+        expect(Number.isFinite(result.feeCentavos)).toBe(true);
+        expect(Number.isFinite(result.billedKm)).toBe(true);
+        expect(Number.isFinite(result.incrementsCharged)).toBe(true);
+    });
+
+    test('Phase 327 rejects an overflowed calculated result instead of returning Infinity', () => {
+        try {
+            computeCalculatedDeliveryFeeCentavos({
+                distanceMeters: 3001,
+                // The per-km conversion itself is finite, but multiplying that value by the
+                // configured increment overflows while computing the per-increment charge.
+                config: { ...REFERENCE_CONFIG, per_km_rate: 1e304 }
+            });
+            throw new Error('expected an overflowed result to be rejected');
+        } catch (error) {
+            expect(error).toBeInstanceOf(DeliveryFeePolicyError);
+            expect(error.code).toBe('NON_FINITE_RESULT');
+        }
+    });
+
+    test('Phase 327 rejects configuration values that overflow during unit conversion', () => {
+        try {
+            computeCalculatedDeliveryFeeCentavos({
+                distanceMeters: 1000,
+                config: { ...REFERENCE_CONFIG, max_distance_km: Number.MAX_VALUE }
+            });
+            throw new Error('expected a non-finite converted config value to be rejected');
+        } catch (error) {
+            expect(error).toBeInstanceOf(DeliveryFeePolicyError);
+            expect(error.code).toBe('INVALID_CONFIG');
+        }
+    });
 });

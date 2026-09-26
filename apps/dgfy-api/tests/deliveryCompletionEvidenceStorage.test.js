@@ -36,7 +36,9 @@ describe('delivery completion evidence private storage', () => {
             deliveryCompletionEvidenceStorage.store({ posTransactionId: 77, tempPath: sourcePath })
         ));
         const storedPath = path.join(root, stored.storage_key);
-        const metadata = await sharp(storedPath).metadata();
+        // Sharp keeps a path-backed image handle open on Windows after metadata(); inspect
+        // an in-memory copy so the repository cleanup assertion can unlink the stored object.
+        const metadata = await sharp(await fs.readFile(storedPath)).metadata();
 
         expect(stored.mime_type).toBe('image/webp');
         expect(metadata.format).toBe('webp');

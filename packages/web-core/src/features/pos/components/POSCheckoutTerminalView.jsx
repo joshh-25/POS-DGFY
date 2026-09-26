@@ -38,6 +38,7 @@ import {
 } from '../services/posPendingItemImagePreviewStore.js';
 import { getCatalogStockColorClassName, isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
+import { getParkedLineEditState } from '../utils/posParkedSaleResume.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import PosItemImage from './PosItemImage.jsx';
@@ -135,6 +136,7 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
         cartTotal,
@@ -205,7 +207,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleFolderStripPointerEnd,
         handleFolderStripPointerMove,
         handleFolderStripWheel,
-        handleKeepSplitPaymentAndClose,
         handleManualUniversalSync,
         handleOpenDrawer,
         handleParkAndNewSale,
@@ -235,6 +236,11 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         historySearch,
         historyStatus,
         imagePreview,
+        employeeCreditAccountCode,
+        employeeCreditAccount,
+        selectedEmployeeCreditOption,
+        employeeCreditLookupLoading,
+        handleSelectEmployeeCredit,
         isEmployeeCreditPayment,
         isMobileLandscapeViewport,
         isMobileViewport,
@@ -286,6 +292,11 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         receiptPrinting,
         receiptSettings,
         removeCartLine,
+        parkedLineDeletionRequest,
+        parkedLineDeletionReason,
+        setParkedLineDeletionReason,
+        cancelParkedLineDeletion,
+        confirmParkedLineDeletion,
         replayingQueuedCheckouts,
         resetCurrentSaleForNewSale,
         safeCart,
@@ -339,7 +350,6 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         splitPaymentCancelModalOpen,
         splitPaymentCheckoutContext,
         splitPaymentDialogOpen,
-        splitPaymentStorageScopeKey,
         splitPaymentWorkflowVersion,
         submitDrawerAuthorization,
         terminalUser,
@@ -407,13 +417,13 @@ return (
                     currentViewMode === 'checkout'
                         ? 'contents'
                         : (currentViewMode === 'history'
-                            ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-5 sm:pb-0 max-sm:p-2 max-sm:pb-0'
+                            ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden'
                             : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5')
                 }
             >
             {currentViewMode === 'history' && (
                 <div key="view-history" className="catalog-slide-enter h-full min-h-0 min-w-0 max-w-full max-sm:animate-pos-slide-in">
-                <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
+                <Suspense fallback={<section className="text-sm text-slate-500">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
                         setHistorySearch={setHistorySearch}
@@ -744,7 +754,7 @@ return (
                                     aria-label={item.name}
                                     className={`${catalogCardClassName} ${
                                         isOutOfStock || posActionsBlocked || isLoadingServiceOptions
-                                            ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
+                                            ? 'cursor-not-allowed opacity-75'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
                                 >
@@ -1072,26 +1082,60 @@ return (
                         </div>
                     )}
                 </div>
+                <div data-testid="pos-split-payment-modal-host">
+                    <Suspense fallback={null}>
+                        <POSSplitPaymentWorkflow
+                            key={splitPaymentWorkflowVersion}
+                            open={splitPaymentDialogOpen}
+                            onOpenChange={handleSplitPaymentOpenChange}
+                            cart={safeCart}
+                            catalog={safeCatalog}
+                            subtotalAmount={cartSubtotal}
+                            totalAmount={cartTotal}
+                            shiftId={activeShiftId}
+                            locationId={selectedLocationId}
+                            terminalId={normalizedTerminalId}
+                            parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
+                            isMsmeMode={isMsmeMode}
+                            checkoutContext={splitPaymentCheckoutContext}
+                            employeeCreditAccountCode={employeeCreditAccountCode}
+                            employeeCreditAccount={employeeCreditAccount}
+                            selectedEmployeeCreditOption={selectedEmployeeCreditOption}
+                            employeeCreditLookupLoading={employeeCreditLookupLoading}
+                            canUseEmployeeCredit={canUseEmployeeCredit}
+                            onSelectEmployeeCredit={handleSelectEmployeeCredit}
+                            onSessionStateChange={handleSplitPaymentSessionStateChange}
+                            onReadyToComplete={handleCompletePreparedSplitPayment}
+                        />
+                    </Suspense>
+                </div>
                 <div data-testid="pos-current-sale-scroll" className={currentSaleBodyClassName}>
                 <div className={`col-span-2 flex min-h-0 flex-col overflow-hidden ${isTabletPortraitMobileLayout ? '' : 'md:h-[clamp(18rem,46vh,26rem)] md:flex-none'}`}>
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
+                            const parkedLineState = getParkedLineEditState(
+                                line,
+                                safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id)),
+                                activeParkedSale
+                            );
+                            const isLockedParkedLine = parkedLineState.isOriginal;
+                            const canIncreaseParkedLine = parkedLineState.canIncrease;
                             return (
                                 <div
                                     key={lineKey}
                                     role="button"
-                                    tabIndex={sessionLocked ? -1 : 0}
-                                    aria-disabled={sessionLocked}
-                                    aria-label={`Customize ${line.item_name}`}
+                                    tabIndex={sessionLocked || isLockedParkedLine ? -1 : 0}
+                                    aria-disabled={sessionLocked || isLockedParkedLine}
+                                    aria-label={isLockedParkedLine ? `${line.item_name} parked line locked` : `Customize ${line.item_name}`}
                                     data-testid={`pos-item-options-trigger-${lineKey}`}
                                     onClick={() => {
-                                        if (!sessionLocked) setItemOptionsLineKey(lineKey);
+                                        if (!sessionLocked && !isLockedParkedLine) setItemOptionsLineKey(lineKey);
                                     }}
                                     onKeyDown={(event) => {
                                         if (event.target !== event.currentTarget) return;
-                                        if ((event.key === 'Enter' || event.key === ' ') && !sessionLocked) {
+                                        if ((event.key === 'Enter' || event.key === ' ') && !sessionLocked && !isLockedParkedLine) {
                                             event.preventDefault();
                                             setItemOptionsLineKey(lineKey);
                                         }
@@ -1103,7 +1147,11 @@ return (
                                             <div className="flex min-w-0 items-center gap-2.5 text-left">
                                                 <span className="min-w-0">
                                                     <span className="block max-w-full line-clamp-2 text-[13px] font-black leading-tight break-words text-[#0F172A] sm:text-[14px]">{line.item_name}</span>
-                                                    <span className="mt-0.5 hidden text-[10px] font-bold text-blue-700 sm:block sm:text-[11px]">Tap item to customize</span>
+                                                    {!isLockedParkedLine ? (
+                                                        <span className="mt-0.5 hidden text-[10px] font-bold text-blue-700 sm:block sm:text-[11px]">
+                                                            Tap item to customize
+                                                        </span>
+                                                    ) : null}
                                                 </span>
                                             </div>
                                             <div className="min-w-0">
@@ -1145,7 +1193,7 @@ return (
                                             disabled={posActionsBlocked}
                                             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
                                             aria-label={`Remove ${line.item_name}`}
-                                            title="Remove item"
+                                            title={isLockedParkedLine ? 'Remove parked item (reason required)' : 'Remove item'}
                                         >
                                             <Trash2 className="h-4 w-4" />
                                         </button>
@@ -1162,7 +1210,7 @@ return (
                                                 <button
                                                     type="button"
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
-                                                    disabled={posActionsBlocked}
+                                                    disabled={posActionsBlocked || isLockedParkedLine}
                                                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
                                                     aria-label={`Decrease quantity for ${line.item_name}`}
                                                 >
@@ -1174,7 +1222,7 @@ return (
                                                 <button
                                                     type="button"
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
-                                                    disabled={posActionsBlocked}
+                                                    disabled={posActionsBlocked || (isLockedParkedLine && !canIncreaseParkedLine)}
                                                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-100"
                                                     aria-label={`Increase quantity for ${line.item_name}`}
                                                 >
@@ -1192,7 +1240,7 @@ return (
                                                     size="sm"
                                                     className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
-                                                    disabled={posActionsBlocked}
+                                                    disabled={posActionsBlocked || isLockedParkedLine}
                                                 >
                                                     <Minus className="h-3.5 w-3.5" />
                                                 </Button>
@@ -1219,17 +1267,27 @@ return (
                                                     onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
                                                     onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
                                                     onPointerCancel={handleCartQtyButtonPointerCancel}
-                                                    disabled={posActionsBlocked}
+                                                    disabled={posActionsBlocked || (isLockedParkedLine && !canIncreaseParkedLine)}
                                                 >
                                                     <Plus className="h-3.5 w-3.5" />
                                                 </Button>
                                             </div>
                                         </label>
                                         <div className="text-[11px] text-slate-500 sm:text-[12px]">
-                                            <span>Price</span>
+                                            <span>Unit price</span>
                                             <p className="mt-1 h-8 rounded-md border border-slate-200 bg-slate-50 px-2 text-[13px] font-extrabold leading-8 text-[#0F172A] sm:text-[14px]">
-                                                {money(getCartLineSubtotal(line))}
+                                                ₱{money(line.sale_price)}
                                             </p>
+                                            <p className="mt-1 text-[10px] font-bold text-slate-500 sm:text-[11px]">
+                                                Line total: ₱{money(getCartLineSubtotal(line))}
+                                            </p>
+                                            {isLockedParkedLine && (parkedLineState.itemMissing || parkedLineState.priceChanged) ? (
+                                                <p className="mt-1 text-[10px] font-bold text-amber-700 sm:text-[11px]">
+                                                    {parkedLineState.itemMissing
+                                                        ? 'Item unavailable; additions disabled.'
+                                                        : 'Price changed; add as a separate line.'}
+                                                </p>
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>
@@ -1568,29 +1626,6 @@ return (
             )}
             </section>
 
-            <div data-testid="pos-split-payment-modal-host">
-                <Suspense fallback={null}>
-                    <POSSplitPaymentWorkflow
-                        key={splitPaymentWorkflowVersion}
-                        open={splitPaymentDialogOpen}
-                        onOpenChange={handleSplitPaymentOpenChange}
-                        cart={safeCart}
-                        catalog={safeCatalog}
-                        subtotalAmount={cartSubtotal}
-                        totalAmount={cartTotal}
-                        shiftId={activeShiftId}
-                        locationId={selectedLocationId}
-                        terminalId={normalizedTerminalId}
-                        parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
-                        storageScopeKey={splitPaymentStorageScopeKey}
-                        isMsmeMode={isMsmeMode}
-                        checkoutContext={splitPaymentCheckoutContext}
-                        onSessionStateChange={handleSplitPaymentSessionStateChange}
-                        onReadyToComplete={handleCompletePreparedSplitPayment}
-                    />
-                </Suspense>
-            </div>
-
             <Dialog
                 open={drawerAuthorizationModalOpen}
                 onOpenChange={(nextOpen) => {
@@ -1696,7 +1731,6 @@ return (
                 splitPaymentCancelModalOpen={splitPaymentCancelModalOpen}
                 splitPaymentCancelLoading={splitPaymentCancelLoading}
                 setSplitPaymentCancelModalOpen={setSplitPaymentCancelModalOpen}
-                handleKeepSplitPaymentAndClose={handleKeepSplitPaymentAndClose}
                 handleReverseSplitPaymentAndStartNew={handleReverseSplitPaymentAndStartNew}
                 receiptPreviewModalOpen={receiptPreviewModalOpen}
                 closeReceiptPreviewModal={closeReceiptPreviewModal}
@@ -1733,7 +1767,7 @@ return (
                         <div className="min-h-0 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
                             <div className="mb-3 flex items-start justify-between gap-2">
                                 <div>
-                                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup Context</p>
+                                    <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Terminal Setup</p>
                                     <h2 id="pos-setup-snapshot-modal-title" className="mt-1 text-[21px] font-black tracking-tight text-[#0F172A]">
                                         POS readiness snapshot
                                     </h2>
@@ -1793,6 +1827,7 @@ return (
                         onClaimed={handleParkedSaleClaimed}
                         onCancelled={(cancelledSale) => {
                             if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
+                            if (cancelledSale?.status !== 'cancelled') return;
                             clearPosCartDraft(offlineSnapshotScope, activeShiftId);
                             setActiveParkedSale(null);
                             resetCurrentSaleForNewSale();
@@ -1800,6 +1835,70 @@ return (
                     />
                 </Suspense>
             )}
+            <Dialog
+                open={Boolean(parkedLineDeletionRequest)}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen) cancelParkedLineDeletion();
+                }}
+            >
+                <DialogContent
+                    className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
+                    data-testid="pos-parked-line-deletion-dialog"
+                >
+                    <form
+                        className="flex flex-col"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            confirmParkedLineDeletion();
+                        }}
+                    >
+                        <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+                            <DialogTitle className="text-lg font-black text-slate-900">Remove parked item?</DialogTitle>
+                            <DialogDescription className="text-sm text-slate-600">
+                                Removing the original parked line requires a reason and is recorded with the parked-sale update.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-3 px-5 py-4">
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">
+                                {parkedLineDeletionRequest?.line?.item_name || 'This parked item'}
+                            </div>
+                            <div>
+                                <label htmlFor="pos-parked-line-deletion-reason" className="text-xs font-extrabold text-slate-700">
+                                    Reason <span className="text-rose-600">*</span>
+                                </label>
+                                <Input
+                                    id="pos-parked-line-deletion-reason"
+                                    data-testid="pos-parked-line-deletion-reason"
+                                    value={parkedLineDeletionReason}
+                                    onChange={(event) => setParkedLineDeletionReason(event.target.value)}
+                                    placeholder="e.g. Customer removed item"
+                                    maxLength={255}
+                                    autoFocus
+                                />
+                                <p className="mt-1 text-[11px] text-slate-500">Minimum 3 characters.</p>
+                            </div>
+                        </div>
+                        <DialogFooter className="flex-row gap-2 border-t border-slate-200 px-5 py-4 sm:justify-end">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={cancelParkedLineDeletion}
+                                className="min-w-0 flex-1"
+                            >
+                                Keep item
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={parkedLineDeletionReason.trim().length < 3}
+                                className="min-w-0 flex-1 bg-rose-600 text-white hover:bg-rose-700"
+                                data-testid="pos-confirm-parked-line-deletion"
+                            >
+                                Remove item
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
             <Dialog
                 open={parkSaleNameDialogOpen}
                 onOpenChange={(nextOpen) => {

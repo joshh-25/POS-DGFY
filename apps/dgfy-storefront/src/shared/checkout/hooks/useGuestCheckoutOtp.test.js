@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, renderHook } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { useGuestCheckoutOtp } from './useGuestCheckoutOtp.js';
 
@@ -12,6 +13,36 @@ const buildProps = (requestJson) => ({
 });
 
 describe('useGuestCheckoutOtp delivery handling', () => {
+  it('requests the remembered email when apply-and-request runs in one callback', async () => {
+    const requestJson = vi.fn().mockResolvedValue({ delivery_status: 'sent' });
+    const props = buildProps(requestJson);
+    const { result } = renderHook(() => {
+      const [email, setEmail] = useState('');
+      const otp = useGuestCheckoutOtp({ ...props, customerEmail: email });
+
+      return {
+        ...otp,
+        applyRememberedDetailsAndRequestOtp: () => {
+          setEmail(props.customerEmail);
+          return otp.handleRequestGuestCheckoutOtp(props.customerEmail);
+        }
+      };
+    });
+
+    let requested;
+    await act(async () => {
+      requested = await result.current.applyRememberedDetailsAndRequestOtp();
+    });
+
+    expect(requested).toBe(true);
+    expect(requestJson).toHaveBeenCalledWith(
+      '/api/v1/store/checkout/guest-otp/request',
+      expect.objectContaining({
+        body: expect.objectContaining({ email: 'guest@example.com' })
+      })
+    );
+  });
+
   it('starts the cooldown only after the API confirms email delivery', async () => {
     const requestJson = vi.fn().mockResolvedValue({ delivery_status: 'sent' });
     const props = buildProps(requestJson);
@@ -119,5 +150,26 @@ describe('useGuestCheckoutOtp delivery handling', () => {
       email: 'guest@example.com',
       proof: 'signed-guest-proof-value'
     });
+  });
+
+  it('rotates the proof and idempotency key after an order completes', async () => {
+    const requestJson = vi.fn().mockResolvedValue({ guest_checkout_proof: 'signed-guest-proof-value' });
+    const props = buildProps(requestJson);
+    const { result } = renderHook(() => useGuestCheckoutOtp(props));
+    const firstIntentId = result.current.guestCheckoutIntentId;
+
+    act(() => result.current.handleGuestCheckoutOtpCodeChange('528372'));
+    await act(async () => {
+      await result.current.handleVerifyGuestCheckoutOtp();
+    });
+
+    expect(result.current.guestCheckoutOtpVerified).toBe(true);
+    act(() => result.current.resetGuestCheckoutOtp());
+
+    expect(result.current.guestCheckoutIntentId).not.toBe(firstIntentId);
+    expect(result.current.guestCheckoutProof).toBeNull();
+    expect(result.current.guestCheckoutOtpCode).toBe('');
+    expect(result.current.guestCheckoutOtpVerified).toBe(false);
+    expect(result.current.isGuestCheckoutOtpCooldownActive).toBe(false);
   });
 });

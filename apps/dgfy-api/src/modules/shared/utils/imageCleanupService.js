@@ -1,5 +1,3 @@
-import fs from 'fs/promises';
-import path from 'path';
 import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
 import { removeOptimizedImageAsset } from './imageAssetStorage.js';

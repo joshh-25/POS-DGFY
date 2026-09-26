@@ -41,6 +41,45 @@ vi.mock('../components/POSDiscountWorkspace.jsx', () => ({
     )
 }));
 
+const configuredDiscountRules = [
+    {
+        discount_rule_id: 1,
+        name: 'Employee',
+        type: 'employee',
+        method: 'percentage',
+        percentage: 12,
+        is_enabled: true,
+        is_approved: true
+    },
+    {
+        discount_rule_id: 2,
+        name: 'Senior Citizen',
+        type: 'senior',
+        method: 'percentage',
+        percentage: 20,
+        is_enabled: true,
+        is_approved: true
+    },
+    {
+        discount_rule_id: 3,
+        name: 'PWD',
+        type: 'pwd',
+        method: 'percentage',
+        percentage: 20,
+        is_enabled: true,
+        is_approved: true
+    },
+    {
+        discount_rule_id: 4,
+        name: 'Others',
+        type: 'manual',
+        method: 'percentage',
+        percentage: 5,
+        is_enabled: true,
+        is_approved: true
+    }
+];
+
 const createViewModel = (overrides = {}) => ({
     billRequestPrinting: false,
     calculatedDiscountAmount: 0,
@@ -57,6 +96,8 @@ const createViewModel = (overrides = {}) => ({
     discountDraft: { type: 'employee' },
     discountModalOpen: false,
     discountPreviewTotals: { vatRemoved: 0 },
+    discountRules: configuredDiscountRules,
+    discountRulesReady: true,
     governedDiscountTotals: { vatRemoved: 0 },
     handleBillRequest: vi.fn(),
     handleCancelCheckout: vi.fn(),
@@ -89,6 +130,68 @@ const createViewModel = (overrides = {}) => ({
 });
 
 describe('POSCheckoutConfirmDialog payment draft', () => {
+    it('keeps the standard Checkout Tab while routing an existing dine-in order to its settlement callback', () => {
+        const handleCheckout = vi.fn();
+        const handleExistingOrderCheckout = vi.fn().mockResolvedValue(true);
+
+        render(<POSCheckoutConfirmDialog viewModel={createViewModel({
+            cartSubtotal: 100,
+            cartTotal: 100,
+            checkoutSubtotalOverride: 310,
+            checkoutTotalOverride: 310,
+            customerPaymentAmountInput: '310.00',
+            handleCheckout,
+            handleExistingOrderCheckout,
+            isExistingOrderCheckout: true
+        })} />);
+
+        expect(screen.getByTestId('pos-checkout-payment-summary').textContent).toContain('₱310.00');
+        expect(screen.getByRole('button', { name: 'GCash' }).disabled).toBe(false);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+        expect(handleExistingOrderCheckout).toHaveBeenCalledWith({
+            customerPaymentAmount: 310,
+            customerPaymentChange: 0,
+            isCustomerPaymentSufficient: true,
+            paymentType: 'cash',
+            manualPaymentReceived: false
+        });
+        expect(handleCheckout).not.toHaveBeenCalled();
+    });
+
+    it('allows a non-cash existing dine-in tender with exact payment and explicit confirmation', () => {
+        const handleExistingOrderCheckout = vi.fn().mockResolvedValue(true);
+        const viewModel = createViewModel({
+            checkoutSubtotalOverride: 310,
+            checkoutTotalOverride: 310,
+            customerPaymentAmountInput: '310.00',
+            handleExistingOrderCheckout,
+            isExistingOrderCheckout: true,
+            isCashPayment: false,
+            paymentType: 'gcash'
+        });
+
+        render(<POSCheckoutConfirmDialog viewModel={viewModel} />);
+
+        const confirmation = screen.getByTestId('pos-checkout-payment-confirmation');
+        const confirmButton = screen.getByRole('button', { name: 'Confirm' });
+        expect(screen.getByRole('button', { name: 'GCash' }).disabled).toBe(false);
+        expect(confirmButton.disabled).toBe(true);
+
+        fireEvent.click(within(confirmation).getByRole('checkbox'));
+        expect(confirmButton.disabled).toBe(false);
+
+        fireEvent.click(confirmButton);
+
+        expect(handleExistingOrderCheckout).toHaveBeenCalledWith(expect.objectContaining({
+            customerPaymentAmount: 310,
+            isCustomerPaymentSufficient: true,
+            paymentType: 'gcash',
+            manualPaymentReceived: true
+        }));
+    });
+
     it('does not inspect cart data while checkout is closed', () => {
         const guardedCart = new Proxy([], {
             get() {

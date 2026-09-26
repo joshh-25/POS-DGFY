@@ -106,7 +106,6 @@ export function POSCheckoutTerminalReceiptDialogs({
     splitPaymentCancelModalOpen,
     splitPaymentCancelLoading,
     setSplitPaymentCancelModalOpen,
-    handleKeepSplitPaymentAndClose,
     handleReverseSplitPaymentAndStartNew,
     receiptPreviewModalOpen,
     closeReceiptPreviewModal,
@@ -144,7 +143,7 @@ export function POSCheckoutTerminalReceiptDialogs({
                     <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
                         <DialogTitle className="text-lg font-black text-slate-900">Cancel split payment?</DialogTitle>
                         <DialogDescription className="text-sm leading-5 text-slate-600">
-                            This sale already has recorded payment. Keep it saved to resume later, or reverse the recorded allocations before starting a new checkout.
+                            This sale already has recorded payment. Reverse the recorded allocations before starting a new checkout.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
@@ -156,15 +155,6 @@ export function POSCheckoutTerminalReceiptDialogs({
                             className="font-extrabold"
                         >
                             Back
-                        </Button>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleKeepSplitPaymentAndClose}
-                            disabled={splitPaymentCancelLoading}
-                            className="font-extrabold text-[#1A4E8D]"
-                        >
-                            Keep Saved Payment
                         </Button>
                         <Button
                             type="button"

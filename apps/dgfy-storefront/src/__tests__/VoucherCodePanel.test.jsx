@@ -40,6 +40,35 @@ describe('VoucherCodePanel', () => {
     expect(onApplyVoucher).toHaveBeenCalledWith('SAVE20');
   });
 
+  it('routes an explicitly marked promo offer through onApplyPromo', () => {
+    const onChange = vi.fn();
+    const onApplyPromo = vi.fn();
+    const onApplyVoucher = vi.fn();
+
+    render(
+      <VoucherCodePanel
+        code=""
+        onChange={onChange}
+        onApplyPromo={onApplyPromo}
+        onApplyVoucher={onApplyVoucher}
+        availableOffers={[
+          {
+            title: 'Weekend Saver',
+            promo_code: 'SAVE20',
+            redemptionType: 'promo'
+          }
+        ]}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /apply a promo \/ voucher/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^use$/i }));
+
+    expect(onApplyPromo).toHaveBeenCalledWith('SAVE20');
+    expect(onApplyVoucher).not.toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('disables scheduled offer use until the availability window begins', () => {
     const onChange = vi.fn();
     const onApplyVoucher = vi.fn();

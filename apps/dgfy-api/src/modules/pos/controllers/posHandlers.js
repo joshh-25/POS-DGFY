@@ -10,6 +10,7 @@ import {
     checkoutPosUseCase,
     listPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase,
+    listAvailablePosDiscountRulesUseCase,
     verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
@@ -58,6 +59,7 @@ import {
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
     collectCashDineInOrderUseCase,
+    collectDineInPaymentUseCase,
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
@@ -73,6 +75,7 @@ import {
     updateOnlineOrderStatusUseCase,
     updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
+    testPosPrinterUseCase,
     claimOnlineOrderReceiptAutoPrintUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
@@ -363,6 +366,9 @@ export const requireActiveOperatorForMutation = async (req, res, next) => {
         const operationKey = requestId(req, res) || crypto.randomUUID();
         const operationType = `${String(req.method || 'MUTATION').toUpperCase()} ${String(req.originalUrl || req.path || 'pos').split('?')[0]}`.slice(0, 120);
         const result = await authorizePosOperatorMutationUseCase({
+            userId: req.user?.user_id,
+            requiredPermissions: req.requiredPermissions || [],
+            requiredPermissionAlternatives: req.requiredPermissionAlternatives || [],
             authorityToken: getCookie(req, SESSION_COOKIE_NAMES.posOperatorAuthority),
             tenantId: tenantIdForOperator(req),
             scope: operatorScope(req),
@@ -548,6 +554,19 @@ export const listDiscountEmployees = async (req, res, next) => {
     }
 };
 
+export const listDiscountRules = async (req, res, next) => {
+    try {
+        const result = await listAvailablePosDiscountRulesUseCase();
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
 export const verifyDiscountApproval = async (req, res, next) => {
     try {
         const result = await verifyPosDiscountApprovalUseCase({
@@ -664,7 +683,10 @@ export const listSetupCashiers = async (req, res, next) => {
 export const loginCashier = async (req, res, next) => {
     try {
         const result = await loginPosCashierUseCase({
-            payload: req.validatedData || req.body || {}
+            payload: req.validatedData || req.body || {},
+            deviceProof: req.posDeviceProof || null,
+            request: req,
+            tenantId: req.tenant?.id || null
         });
         if (result?.success) {
             setTenantSessionCookies(res, {
@@ -2194,6 +2216,32 @@ export const collectCashDineInOrder = async (req, res, next) => {
     }
 };
 
+export const collectDineInPayment = async (req, res, next) => {
+    try {
+        const result = await collectDineInPaymentUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Dine-in payment collected.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // Phase 148 (#825): the balance-settlement sibling of collectCashPickupOrder /
 // collectCashDeliveryOrder above. One handler for both order methods -- the use case derives the
 // required handover state from the order's own order_method, so there is no reason to split this
@@ -2531,6 +2579,32 @@ export const getDeviceStatus = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const testPrinter = async (req, res, next) => {
+    try {
+        const result = await testPosPrinterUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS printer test page sent',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

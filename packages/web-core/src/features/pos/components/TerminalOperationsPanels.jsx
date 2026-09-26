@@ -1,7 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Phone, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -30,6 +30,8 @@ import useDeliveryRunOptions from '../hooks/useDeliveryRunOptions.js';
 import {
   formatOrderDateTime,
   formatOrderAmount,
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
   humanizeOrderStatus,
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel,
@@ -44,6 +46,7 @@ import {
   getDineInScheduleCountdownLabel,
   getDineInScheduleState,
   getDineInScheduleStateLabel,
+  isDineInOrder,
   isScheduledDineInOrder,
   sortDineInScheduleOrders
 } from '../utils/dineInSchedule.js';
@@ -54,6 +57,7 @@ import {
 import { normalizeWorkflowMode } from '../../settings/workflowMode.js';
 
 const createIdempotencyKey = (prefix) => `${prefix}-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
+const EMPTY_ORDER_LIST = Object.freeze([]);
 
 // Fixed 2026-09-02 (#1289 follow-up, reported live): this gate originally reused
 // IMIN_TABLET_MAX_WIDTH_PX (1280) as its *minimum* width -- but that constant is the Falcon 1 POS
@@ -106,7 +110,7 @@ function useSplitViewportEligible() {
   return isEligible;
 }
 
-function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false, borderless = false }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -124,9 +128,8 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
     );
   }
 
-  // Settings already owns its inner cards and navigation surfaces. Keep the shell
-  // spacing for consistent content alignment, while removing the redundant card
-  // chrome that constrains small viewports.
+  // Bare workspaces own their page frame, so the caller controls their outer
+  // spacing while this shell removes only the redundant card chrome.
   if (bare) {
     return (
       <section className={`min-w-0 max-w-full ${className}`}>
@@ -136,7 +139,9 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
   }
 
   return (
-    <section className={`min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
+    <section className={`${borderless
+      ? 'min-w-0 max-w-full rounded-xl bg-white shadow-sm shadow-slate-200/70'
+      : 'min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70'} ${className}`}>
       {children}
     </section>
   );
@@ -432,6 +437,110 @@ function OnlineOrderHistoryPanel({
   );
 }
 
+function AdminBranchOrdersPanel({
+  adminLocationMonitorState = { loading: false, orders: [], errorMessage: '' },
+  locationsState = { locations: [] },
+  viewingLocationId = null,
+  operatingLocationId = null,
+  isOnline = true,
+  refreshAdminLocationMonitor = async () => {},
+  dineInScheduleView = false,
+  scheduleNow = null
+}) {
+  const [fallbackScheduleNow] = React.useState(() => Date.now());
+  const effectiveScheduleNow = Number.isFinite(Number(scheduleNow)) ? Number(scheduleNow) : fallbackScheduleNow;
+  const locations = (Array.isArray(locationsState?.locations) ? locationsState.locations : [])
+    .filter((location) => location?.is_active !== false);
+  const selectedLocationId = Number(viewingLocationId || operatingLocationId || 0);
+  const selectedLocation = locations.find((location) => Number(location?.location_id || 0) === selectedLocationId);
+  const selectedLocationName = selectedLocation?.name || selectedLocation?.location_name || `Location #${selectedLocationId}`;
+  const stateLocationId = Number(adminLocationMonitorState?.locationId || 0);
+  const isCurrentScope = stateLocationId === selectedLocationId;
+  const orders = isCurrentScope && Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders
+    : [];
+  const loading = isCurrentScope && adminLocationMonitorState?.loading;
+  const errorMessage = isCurrentScope ? String(adminLocationMonitorState?.errorMessage || '').trim() : '';
+  const activeOrders = orders.filter((order) => !isDineInOrder(order));
+  const displayedOrders = dineInScheduleView ? sortDineInScheduleOrders(orders) : activeOrders;
+
+  return (
+    <div data-testid="admin-branch-orders" className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
+        <div>
+          <p className="text-sm leading-5 text-[#475569]">
+            {dineInScheduleView ? 'Dine-in service:' : 'Viewing branch orders:'}
+          </p>
+          <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
+          <p className="mt-1 text-[11px] text-slate-500">
+            {dineInScheduleView
+              ? `Scheduled orders first; immediate service follows · ${displayedOrders.length} active order${displayedOrders.length === 1 ? '' : 's'}`
+              : 'Read-only admin view. Open a register shift to process orders.'}
+          </p>
+          {dineInScheduleView ? (
+            <p className="mt-1 text-[11px] text-slate-500">Read-only admin view. Open a register shift to process orders.</p>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 rounded-lg border-slate-300 bg-white px-4 text-sm font-extrabold text-[#0F172A] hover:bg-slate-100"
+          onClick={() => refreshAdminLocationMonitor?.()}
+          disabled={Boolean(adminLocationMonitorState?.loading) || !isOnline}
+        >
+          <RefreshCcw className="mr-2 h-4 w-4" />
+          {adminLocationMonitorState?.loading ? 'Refreshing...' : 'Refresh'}
+        </Button>
+      </div>
+      {errorMessage ? (
+        <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMessage}</p>
+      ) : loading ? (
+        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading branch orders...</p>
+      ) : displayedOrders.length === 0 ? (
+        <p className="rounded-lg border border-slate-200 bg-white px-3 py-4 text-sm text-slate-600">
+          {dineInScheduleView ? 'No active dine-in orders for this branch.' : 'No active online orders for this branch.'}
+        </p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {displayedOrders.map((order) => {
+            const scheduledDineIn = isScheduledDineInOrder(order);
+            const dineInScheduleState = dineInScheduleView
+              ? getDineInScheduleState(order, effectiveScheduleNow)
+              : null;
+
+            return (
+            <div key={`admin-order-${order.pos_transaction_id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
+                  <p className="mt-1 text-xs text-slate-500">{order.tracking_pin || `Order #${order.pos_transaction_id}`}</p>
+                </div>
+                <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
+                  {dineInScheduleView
+                    ? (scheduledDineIn ? getDineInScheduleStateLabel(dineInScheduleState) : 'Immediate service')
+                    : String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}
+                </span>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                <span>{String(order.order_method || '-').replace(/_/g, ' ')}</span>
+                <span className="text-right">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
+                <span className="col-span-2">
+                  {dineInScheduleView
+                    ? (scheduledDineIn
+                      ? `Serve by ${formatOrderDateTime(order.scheduled_for)} · ${getDineInScheduleCountdownLabel(order, effectiveScheduleNow)}`
+                      : `Immediate service · Received ${formatOrderDateTime(order.created_at)}`)
+                    : formatOrderDateTime(order.created_at)}
+                </span>
+              </div>
+            </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function IncomingQueueWorkspace({
   canViewPos,
   canTransactPos,
@@ -452,7 +561,12 @@ function IncomingQueueWorkspace({
   refreshIncomingOrders,
   refreshOrderHistory,
   locationsState,
+  operatingLocationId,
+  viewingLocationId,
   queueLocationScopeId,
+  adminLocationMonitorState,
+  canViewAdminLocationMonitor = false,
+  refreshAdminLocationMonitor,
   locked,
   isOnline = true,
   sectionId,
@@ -479,7 +593,16 @@ function IncomingQueueWorkspace({
   const isDeliveryRunMode = normalizedWorkflowMode === 'retail' || normalizedWorkflowMode === 'fnb';
   const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : EMPTY_ORDER_LIST;
+  const adminMonitorOrders = Array.isArray(adminLocationMonitorState?.orders) ? adminLocationMonitorState.orders : EMPTY_ORDER_LIST;
+  const sortedIncomingOrders = [...incomingOrders].sort((left, right) => {
+    const leftTime = new Date(left?.created_at || left?.order_time || 0).getTime() || 0;
+    const rightTime = new Date(right?.created_at || right?.order_time || 0).getTime() || 0;
+    const difference = leftTime - rightTime;
+    if (difference !== 0) return orderSort === 'oldest' ? difference : -difference;
+
+    return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
+  });
   const [scheduleNow, setScheduleNow] = React.useState(() => Date.now());
   React.useEffect(() => {
     if (!isFnbMode) return undefined;
@@ -490,15 +613,17 @@ function IncomingQueueWorkspace({
     () => sortDineInScheduleOrders(incomingOrders),
     [incomingOrders]
   );
+  const adminDineInScheduleOrders = React.useMemo(
+    () => sortDineInScheduleOrders(adminMonitorOrders),
+    [adminMonitorOrders]
+  );
+  // The incoming endpoint intentionally returns one active lifecycle payload for all order
+  // methods. Keep Dine-In in that payload so the schedule remains live, but make the two F&B
+  // views mutually exclusive: Dine-In belongs only in Dine-in Schedule, while every other method
+  // remains in Active Queue.
+  const activeQueueOrders = sortedIncomingOrders.filter((order) => !isDineInOrder(order));
+  const adminActiveOrders = adminMonitorOrders.filter((order) => !isDineInOrder(order));
   const isDineInScheduleView = activeView === 'dine_in_schedule' && isFnbMode;
-  const sortedIncomingOrders = [...incomingOrders].sort((left, right) => {
-    const leftTime = new Date(left?.created_at || left?.order_time || 0).getTime() || 0;
-    const rightTime = new Date(right?.created_at || right?.order_time || 0).getTime() || 0;
-    const difference = leftTime - rightTime;
-    if (difference !== 0) return orderSort === 'oldest' ? difference : -difference;
-
-    return Number(left?.pos_transaction_id || 0) - Number(right?.pos_transaction_id || 0);
-  });
 
   // Phase 231 (#1290): the Active Queue's client-side delivery-run view filter. Purely a view
   // concern over the already-fetched list -- see deliveryRunQueueFilter.js for why this is NOT
@@ -510,11 +635,11 @@ function IncomingQueueWorkspace({
   const runFilterOptions = React.useMemo(
     () => getQueueRunFilterOptions(deliveryRuns, { locationId: queueLocationScopeId }).map((run) => ({
       ...run,
-      queueCount: filterOrdersByRun(sortedIncomingOrders, run.delivery_run_id).length
+      queueCount: filterOrdersByRun(activeQueueOrders, run.delivery_run_id).length
     })),
-    [deliveryRuns, queueLocationScopeId, sortedIncomingOrders]
+    [deliveryRuns, queueLocationScopeId, activeQueueOrders]
   );
-  const visibleIncomingOrders = filterOrdersByRun(sortedIncomingOrders, runFilter);
+  const visibleIncomingOrders = filterOrdersByRun(activeQueueOrders, runFilter);
   // Phase 257 (#1491) Part 2: the split ("Queue + Run") view's own candidate list -- always
   // unassigned-only, independent of `runFilter` (which the split view doesn't even render a
   // control for). Deliberately NOT a flip of `runFilter`'s own default: an order stays "assigned"
@@ -522,7 +647,7 @@ function IncomingQueueWorkspace({
   // screen with the per-order cash-collection/balance-settlement/status-change/personnel-assignment
   // buttons an operator still needs for an assigned order -- see the compliance impact
   // declaration for the full regression analysis. Scoped to this one call site instead.
-  const splitQueueCandidates = filterOrdersByRun(sortedIncomingOrders, QUEUE_RUN_FILTER_UNASSIGNED);
+  const splitQueueCandidates = filterOrdersByRun(activeQueueOrders, QUEUE_RUN_FILTER_UNASSIGNED);
   // Maps id -> label from the same already-loaded runs list the filter itself uses (F-3, the
   // Phase 227 declaration's own pattern) -- deliberately the unfiltered deliveryRuns list, not
   // runFilterOptions, so a card still shows a real label for a run outside the filter's own scope
@@ -596,11 +721,11 @@ function IncomingQueueWorkspace({
     visibleSelectedCount,
     selectedDriftCount,
     selectedHiddenCount
-  } = deriveQueueSelectionCounts(sortedIncomingOrders, visibleIncomingOrders, selectedOrderIds);
+  } = deriveQueueSelectionCounts(activeQueueOrders, visibleIncomingOrders, selectedOrderIds);
   // Phase 257 (#1491) Part 2: the same math, re-derived against the split view's own
   // unassigned-only candidate list instead -- used only by the split branch below (its
   // QueueRunAssignBar display counts and its checkbox-submit path), never the standalone tab.
-  const splitSelectionCounts = deriveQueueSelectionCounts(sortedIncomingOrders, splitQueueCandidates, selectedOrderIds);
+  const splitSelectionCounts = deriveQueueSelectionCounts(activeQueueOrders, splitQueueCandidates, selectedOrderIds);
 
   const toggleOrderSelection = (orderId, checked) => {
     setSelectedOrderIds((current) => {
@@ -647,7 +772,7 @@ function IncomingQueueWorkspace({
       ? explicitOrderIds
         .map((id) => Number(id))
         .filter((id) => {
-          const order = sortedIncomingOrders.find((candidate) => Number(candidate?.pos_transaction_id) === id);
+          const order = activeQueueOrders.find((candidate) => Number(candidate?.pos_transaction_id) === id);
           return Boolean(order) && getRunAssignEligibility(order, {}).eligible;
         })
         .sort((left, right) => left - right)
@@ -753,6 +878,7 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
+  const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
 
   // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
   // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered
@@ -810,18 +936,20 @@ function IncomingQueueWorkspace({
     if ((activeView === 'runs' || activeView === 'split') && !isDeliveryRunMode) setActiveView('active');
     if (activeView === 'dine_in_schedule' && !isFnbMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
+    if (activeView === 'dine_in_schedule' && !isFnbMode) setActiveView('active');
+    if (isAdminBranchMonitor && (activeView === 'runs' || activeView === 'split')) setActiveView('active');
     if (!isDeliveryRunMode) {
       setSelectedOrderIds(new Set());
       setRunFilter(QUEUE_RUN_FILTER_ALL);
     }
-  }, [activeView, isDeliveryRunMode, isFnbMode, isSplitViewportEligible]);
+  }, [activeView, isAdminBranchMonitor, isDeliveryRunMode, isFnbMode, isSplitViewportEligible]);
 
   const displayedIncomingOrders = isDineInScheduleView
     ? dineInScheduleOrders
     : visibleIncomingOrders;
   const displayedQueueIsEmpty = isDineInScheduleView
     ? displayedIncomingOrders.length === 0
-    : incomingOrders.length === 0;
+    : activeQueueOrders.length === 0;
 
   if (activeView === 'history') {
     return (
@@ -829,10 +957,10 @@ function IncomingQueueWorkspace({
         <OrderWorkspaceTabs
           activeView={activeView}
           onChange={setActiveView}
-          activeCount={incomingOrders.length}
+          activeCount={isAdminBranchMonitor ? adminActiveOrders.length : activeQueueOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDineInSchedule={isFnbMode}
-          dineInScheduleCount={dineInScheduleOrders.length}
+          dineInScheduleCount={isAdminBranchMonitor ? adminDineInScheduleOrders.length : dineInScheduleOrders.length}
           showDeliveryRuns={isDeliveryRunMode}
           runCount={deliveryRunCount}
           showSplitView={isDeliveryRunMode && isSplitViewportEligible}
@@ -852,13 +980,40 @@ function IncomingQueueWorkspace({
     );
   }
 
+  if (isAdminBranchMonitor) {
+    return (
+      <div id={sectionId} className="space-y-4">
+        <OrderWorkspaceTabs
+          activeView={activeView}
+          onChange={setActiveView}
+          activeCount={adminActiveOrders.length}
+          historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
+          showDineInSchedule={isFnbMode}
+          dineInScheduleCount={adminDineInScheduleOrders.length}
+          showDeliveryRuns={false}
+          showSplitView={false}
+        />
+        <AdminBranchOrdersPanel
+          adminLocationMonitorState={adminLocationMonitorState}
+          locationsState={locationsState}
+          viewingLocationId={viewingLocationId}
+          operatingLocationId={operatingLocationId}
+          isOnline={isOnline}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          dineInScheduleView={activeView === 'dine_in_schedule' && isFnbMode}
+          scheduleNow={scheduleNow}
+        />
+      </div>
+    );
+  }
+
   if (activeView === 'runs' && isDeliveryRunMode) {
     return (
       <div id={sectionId} className="space-y-4">
         <OrderWorkspaceTabs
           activeView={activeView}
           onChange={setActiveView}
-          activeCount={incomingOrders.length}
+          activeCount={activeQueueOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDineInSchedule={isFnbMode}
           dineInScheduleCount={dineInScheduleOrders.length}
@@ -898,14 +1053,14 @@ function IncomingQueueWorkspace({
     // Phase 257 (#1491) Part 2: how many orders this split-view queue is hiding because they're
     // already assigned to a run -- purely informational, so the shorter list here doesn't read as
     // a bug against the Active Queue tab's own unfiltered count.
-    const splitHiddenAssignedCount = sortedIncomingOrders.length - splitQueueCandidates.length;
+    const splitHiddenAssignedCount = activeQueueOrders.length - splitQueueCandidates.length;
 
     return (
       <div id={sectionId} className="space-y-4">
         <OrderWorkspaceTabs
           activeView={activeView}
           onChange={setActiveView}
-          activeCount={incomingOrders.length}
+          activeCount={activeQueueOrders.length}
           historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
           showDineInSchedule={isFnbMode}
           dineInScheduleCount={dineInScheduleOrders.length}
@@ -984,6 +1139,7 @@ function IncomingQueueWorkspace({
                   deliveryPersonnelState={deliveryPersonnelState}
                   handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
                   handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
+                  scheduleNow={scheduleNow}
                   columns={1}
                   draggable
                 />
@@ -1041,7 +1197,7 @@ function IncomingQueueWorkspace({
       <OrderWorkspaceTabs
         activeView={activeView}
         onChange={setActiveView}
-        activeCount={incomingOrders.length}
+        activeCount={activeQueueOrders.length}
         historyCount={Number.isFinite(Number(orderHistoryState?.pagination?.total)) ? Number(orderHistoryState.pagination.total) : null}
         showDineInSchedule={isFnbMode}
         dineInScheduleCount={dineInScheduleOrders.length}
@@ -1073,10 +1229,10 @@ function IncomingQueueWorkspace({
             <MapPinned className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm leading-5 text-[#475569]">{isDineInScheduleView ? 'Scheduled dine-in service:' : 'Location scope:'}</p>
+            <p className="text-sm leading-5 text-[#475569]">{isDineInScheduleView ? 'Dine-in service:' : 'Location scope:'}</p>
             <p className="text-lg font-black leading-6 text-[#0F172A]">{selectedLocationName}</p>
             {isDineInScheduleView ? (
-              <p className="mt-1 text-xs font-semibold text-slate-500">Sorted by serving time · {dineInScheduleOrders.length} active schedule{dineInScheduleOrders.length === 1 ? '' : 's'}</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Scheduled orders first; immediate service follows · {dineInScheduleOrders.length} active order{dineInScheduleOrders.length === 1 ? '' : 's'}</p>
             ) : null}
           </div>
         </div>
@@ -1089,7 +1245,7 @@ function IncomingQueueWorkspace({
               loading={deliveryRunsLoading}
               errorMessage={deliveryRunsError}
               visibleCount={visibleIncomingOrders.length}
-              totalCount={sortedIncomingOrders.length}
+              totalCount={activeQueueOrders.length}
               disabled={locked}
             />
           ) : null}
@@ -1162,6 +1318,15 @@ function IncomingQueueWorkspace({
         </p>
       ) : null}
 
+      {isDineInScheduleView ? (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm leading-5 text-[#334155]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+            <CalendarClock className="h-4 w-4" />
+          </span>
+          <p>Dine-in orders with a serving time are sorted first. Orders without a serving time are marked <strong>Immediate service</strong>. Use <strong>Ready to Serve</strong> when an order reaches the handover stage.</p>
+        </div>
+      ) : null}
+
       {queueAccessNotice ? (
         queueAccessNotice
       ) : displayedQueueIsEmpty ? (
@@ -1180,14 +1345,14 @@ function IncomingQueueWorkspace({
             </div>
           </div>
           <div>
-            <p className="text-xl font-black tracking-tight text-[#0F172A]">{isDineInScheduleView ? 'No scheduled dine-in orders.' : 'No online orders in active queue.'}</p>
+            <p className="text-xl font-black tracking-tight text-[#0F172A]">{isDineInScheduleView ? 'No active dine-in orders.' : 'No online orders in active queue.'}</p>
             <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/40 px-3 py-3 text-sm leading-5 text-[#334155]">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
                 <Info className="h-4 w-4" />
               </span>
               <p>
                 {isDineInScheduleView
-                  ? 'New scheduled dine-in orders for this branch will appear here automatically.'
+                  ? 'New dine-in orders for this branch will appear here automatically.'
                   : <>Completed paid sales move to Sales History. Rejected, cancelled, or unpaid online orders move to Order History.<br />Incoming Queue shows active fulfillment statuses only.</>}
               </p>
             </div>
@@ -1208,9 +1373,8 @@ function IncomingQueueWorkspace({
           </Button>
         </div>
       ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
-        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
-        // table view must respect the run filter exactly like the card view below, or switching
-        // to Table would silently bypass it.
+        // Both views use displayedIncomingOrders: run-filtered active orders, or the separately
+        // sorted dine-in schedule when that tab is selected.
         <QueueOrderTableView
           orders={displayedIncomingOrders}
           isDeliveryRunMode={isDeliveryRunMode && !isDineInScheduleView}
@@ -1299,13 +1463,15 @@ function IncomingQueueWorkspace({
                       <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
                         {getFulfillmentStatusLabel(order.fulfillment_status, order) || 'Unknown'}
                       </span>
-                      {scheduledDineIn ? (
-                        <span className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${dineInScheduleState === 'late'
-                          ? 'border-rose-200 bg-rose-50 text-rose-700'
-                          : dineInScheduleState === 'ready'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                          {getDineInScheduleStateLabel(dineInScheduleState)}
+                      {isDineInScheduleView ? (
+                        <span className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${!scheduledDineIn
+                          ? 'border-slate-200 bg-slate-50 text-slate-700'
+                          : dineInScheduleState === 'late'
+                            ? 'border-rose-200 bg-rose-50 text-rose-700'
+                            : dineInScheduleState === 'ready'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                          {scheduledDineIn ? getDineInScheduleStateLabel(dineInScheduleState) : 'Immediate service'}
                         </span>
                       ) : null}
                     </div>
@@ -1425,10 +1591,21 @@ function IncomingQueueWorkspace({
                           <Calendar className="h-4 w-4" />
                         </div>
                         <div className="flex items-center flex-1 min-w-0">
-                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">{scheduledDineIn ? 'Serve By' : 'Order Time'}</span>
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">{scheduledDineIn ? 'Serve By' : isDineInScheduleView ? 'Service' : 'Order Time'}</span>
                           <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(scheduledDineIn ? order.scheduled_for : order.created_at)}</span>
                         </div>
                       </div>
+                      {isDineInScheduleView ? (
+                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                            <CalendarClock className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{scheduledDineIn ? getDineInScheduleCountdownLabel(order, scheduleNow) : 'Immediate service'}</span>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {scheduledDineIn ? (
                         <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
@@ -1478,6 +1655,28 @@ function IncomingQueueWorkspace({
                           <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
                         </div>
                       </div>
+                      {order.order_method === 'delivery' && (
+                        <>
+                          <div className="flex items-center gap-3 py-1.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                              <Phone className="h-4 w-4" />
+                            </div>
+                            <div className="flex items-center flex-1 min-w-0">
+                              <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Phone</span>
+                              <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatCustomerPhone(order.customer_phone)}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 py-1.5">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                              <MapPin className="h-4 w-4" />
+                            </div>
+                            <div className="flex items-center flex-1 min-w-0">
+                              <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Pin coordinates</span>
+                              <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatDeliveryCoordinates(deliveryCoords)}</span>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 

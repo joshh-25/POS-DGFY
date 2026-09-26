@@ -22,7 +22,6 @@ export function SimpleTrackingCompletedView({ actions, formatters, isMobileViewp
   const hasSubtotal = Number.isFinite(trackingResult?.subtotalAmount);
   const hasDeliveryFee = Number.isFinite(trackingResult?.deliveryFee);
   const hasDiscount = Number.isFinite(trackingResult?.discountAmount) && trackingResult.discountAmount > 0;
-  const hasServiceFee = Number.isFinite(trackingResult?.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0;
 
   return (
     <div
@@ -103,7 +102,6 @@ export function SimpleTrackingCompletedView({ actions, formatters, isMobileViewp
         {hasSubtotal ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}><span>Subtotal</span><span>{money(trackingResult.subtotalAmount)}</span></div> : null}
         {hasDiscount ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}><span>{trackingResult.discountLabel || 'Promo / Discount'}</span><span>- {money(trackingResult.discountAmount)}</span></div> : null}
         {hasDeliveryFee ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}><span>Delivery fee</span><span>{money(trackingResult.deliveryFee)}</span></div> : null}
-        {hasServiceFee ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}><span>Service fee</span><span>{money(trackingResult.serviceFeeAmount)}</span></div> : null}
         <div style={{ borderTop: `1px dashed ${dgfyBorder}`, paddingTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total Amount</span>
           <span style={{ fontSize: 18, fontWeight: 800, color: dgfyPrimary, fontFamily: servicesDisplayFont }}>{money(trackingResult?.totalAmount || 0)}</span>

@@ -16,10 +16,10 @@
  * out of the hot path today by sentryClient.js's `enableInp: false`, but
  * shimming removes the dependency on that staying true forever), and
  * mdast-util-to-hast (a react-markdown dependency, reachable from
- * SKUpervisor's lazy-loaded AI Chat page) calls structuredClone, and
+ * POS Back Office's lazy-loaded AI Chat page) calls structuredClone, and
  * @radix-ui/react-collection (bundled transitively via @radix-ui/react-
- * accordion and @radix-ui/react-scroll-area, reachable from IMS's Items
- * page) calls Array.prototype.toSorted -- both caught live by
+ * accordion and @radix-ui/react-scroll-area, reachable from POS Back Office's
+ * Catalog Editor) calls Array.prototype.toSorted -- both caught live by
  * build/esCompatGuardPlugin.js (layer 2) on this guardrail's own first
  * build against the fully absorbed codebase (2026-08-22 develop absorb),
  * and promoted here rather than allowlisted around, since a shim actually

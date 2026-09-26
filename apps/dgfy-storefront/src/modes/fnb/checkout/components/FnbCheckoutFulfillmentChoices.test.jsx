@@ -148,6 +148,10 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dine In' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(screen.getByText('Choose your date & time')).toBeTruthy();
+    expect(screen.queryByText('Scheduling for')).toBeNull();
+    expect(screen.queryByText("Tell us when you'd like to dine in or schedule your order.")).toBeNull();
+    expect(screen.queryByText('You can adjust this later')).toBeNull();
+    expect(screen.queryByText(/Good\s*food ahead!/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Select September 30, 2026' }));
     fireEvent.click(screen.getByRole('button', { name: 'PM' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select 6:30 PM' }));

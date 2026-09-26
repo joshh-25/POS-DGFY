@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-25
 review_by: 2027-01-07
 applies_to: architecture_decision
 topic: commercial_promo_and_statutory_pos_discount_boundaries
@@ -133,6 +133,32 @@ both Storefront and POS without affecting completed transactions.
 
 ## Amendments
 
+### 2026-09-25 — Tenant-configurable VAT treatment for POS governed discounts
+
+- Clauses amended: Decision 5, Decision 8, and Decision 10 (untagged, therefore
+  `default` tier under ADR 0039).
+- POS exposes a tenant-wide `system_settings.pos_tax_policies` JSON policy with
+  six canonical categories: `senior`, `pwd`, `manual` (presented as Other),
+  `employee`, `promo`, and `voucher`. Each category may keep item VAT
+  (`standard`) or remove embedded VAT (`vat_exempt`). The default preserves the
+  existing behavior: Senior/PWD are VAT-exempt and the other categories keep
+  item VAT.
+- This policy controls VAT treatment only. The server remains authoritative for
+  statutory rates, discount methods, eligibility, approval PINs, commercial
+  promo rules, voucher redemption, and all client-supplied totals. The embedded
+  VAT calculation continues to use the existing 12% basis; no tenant VAT rate
+  or statutory discount rate is introduced.
+- New governed discount snapshots store the resolved `tax_treatment` and
+  `tax_policy_version` in `pos_transaction_discounts`. Settings writes advance
+  the policy version when the category policy changes and create a tenant audit
+  event. Existing completed-transaction snapshots are not rewritten; parked
+  sale snapshots are not rewritten by the settings write and retain their
+  existing resume/checkout contract.
+- Native offline statutory-policy evidence includes the tax-treatment policy
+  version, so a policy change invalidates stale signed evidence rather than
+  silently repricing an offline transaction. No new architecture exception or
+  allowlist entry is introduced.
+
 ### 2026-09-04 — Multiple statutory beneficiaries per POS transaction
 
 POS checkout may record multiple Senior/PWD beneficiaries in one transaction. Each
@@ -177,10 +203,10 @@ remain online-only and continue to require their existing authorization.
 
 The existing `payment_type: cash` value is retained as the tender type. A
 server-derived `payment_timing` value distinguishes `upfront`, `on_pickup`,
-and `on_delivery` collection semantics. New online delivery cash orders resolve
-to `on_delivery`; new online pickup cash orders resolve to `on_pickup`; all other
-transaction paths resolve to `upfront` unless a later contract explicitly adds
-another timing mode.
+`on_delivery`, and the F&B-only `on_dine_in` collection semantics. New online
+delivery cash orders resolve to `on_delivery`; new online pickup cash orders
+resolve to `on_pickup`; all other transaction paths resolve to `upfront` unless a
+later contract explicitly adds another timing mode.
 
 The existing payment collection evidence columns remain the source of truth for
 cash collection: amount received, change, collection time, cashier, shift, and
@@ -189,6 +215,15 @@ payment statuses, fulfillment statuses, or completed history. The delivery cash
 collection use case is implemented as a dedicated POS action for
 `out_for_delivery` orders and writes payment, collector, shift, terminal, cash,
 change, and audit evidence atomically with idempotent replay protection.
+
+### 2026-09-23 — F&B dine-in handover timing
+
+F&B Storefront dine-in orders add `payment_timing = on_dine_in` when a balance remains after an
+online downpayment. Direct Storefront cash is unavailable for dine-in; the remaining balance is
+settled by POS through the existing `Settle Balance` action when the order is ready to serve.
+The order reuses the non-delivery `ready_for_pickup` lifecycle and completion payment gate and
+does not create a delivery job. Existing `upfront`, `on_pickup`, and `on_delivery` semantics are
+unchanged.
 
 ### 2026-08-07 — Delivery completion guard
 

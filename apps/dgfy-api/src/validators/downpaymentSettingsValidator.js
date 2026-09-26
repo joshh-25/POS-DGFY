@@ -2,11 +2,15 @@ import Joi from 'joi';
 
 const MAX_CENTAVOS = 999999999999;
 const MAX_RATE_BPS = 10000; // 100.00%
+const expectedUpdatedAtSchema = Joi.date().iso().raw();
 
 // Shape/bounds/cross-field conditionals only. The two DB-dependent business rules Joi can't
 // express -- non-Retail workflow_mode rejection and customer_choice rejection -- live in
 // downpaymentSettingsUseCases.js instead (Phase 138 plan, decision 3).
 const updateDownpaymentSettingsSchema = Joi.object({
+    // Transport-only optimistic concurrency metadata. The use case strips this before the
+    // canonical tenant_downpayment_settings owner receives the update payload.
+    expected_updated_at: expectedUpdatedAtSchema,
     payment_mode: Joi.string().trim().lowercase().valid('full_payment', 'downpayment_required', 'customer_choice').messages({
         'any.only': 'payment_mode must be one of: full_payment, downpayment_required, customer_choice'
     }),

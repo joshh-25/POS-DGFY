@@ -6,6 +6,35 @@ const PAYMENT_MODE_VALUES = new Set(['full_payment', 'downpayment_required', 'cu
 const DOWNPAYMENT_TYPE_VALUES = new Set(['percentage', 'fixed']);
 const MAX_RATE_BPS = 10000; // 100.00%
 
+const getUpdatedAt = (row) => row?.updated_at ?? row?.updatedAt ?? null;
+
+const toIsoTimestamp = (value) => {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const assertExpectedVersion = (current, expectedUpdatedAt) => {
+    if (!expectedUpdatedAt) return;
+    const expected = toIsoTimestamp(expectedUpdatedAt);
+    const actual = toIsoTimestamp(getUpdatedAt(current));
+    if (!expected || !actual || expected !== actual) {
+        const error = new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Downpayment settings changed in another session. Refresh the values and try again.',
+            {
+                statusCode: 409,
+                details: {
+                    reason_code: 'DOWNPAYMENT_SETTINGS_VERSION_CONFLICT',
+                    expected_updated_at: expectedUpdatedAt,
+                    current_updated_at: getUpdatedAt(current)
+                }
+            }
+        );
+        throw error;
+    }
+};
+
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
     return new DomainError(DomainErrorCode.INTERNAL_ERROR, fallbackMessage, {
@@ -49,6 +78,7 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
         try {
             const tenant = ensureTenantId(tenantId);
             const current = await repository.getSettings(tenant);
+            assertExpectedVersion(current, body.expected_updated_at);
             const updates = {};
 
             if (body.payment_mode !== undefined) {
@@ -149,7 +179,9 @@ export const buildUpdateDownpaymentSettingsUseCase = ({
                 }
             }
 
-            const settings = await repository.upsertSettings(tenant, updates);
+            const settings = body.expected_updated_at
+                ? await repository.upsertSettings(tenant, updates, { expectedUpdatedAt: body.expected_updated_at })
+                : await repository.upsertSettings(tenant, updates);
             return ok({ settings });
         } catch (error) {
             return fail(mapError(error, 'Failed to update downpayment settings'));

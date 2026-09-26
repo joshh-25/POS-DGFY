@@ -173,6 +173,7 @@ export function useFnbCheckoutQuote({
     if (!normalizedPromoCode) return;
 
     setCheckoutPromoCode(normalizedPromoCode);
+    setCheckoutVoucherCode('');
     setQuoteError('');
 
     if (!Array.isArray(cart) || cart.length === 0) {
@@ -202,6 +203,7 @@ export function useFnbCheckoutQuote({
       // it's the one place "applied" (as opposed to merely "typed") is true.
       await requestQuote({
         promoCodeOverride: normalizedPromoCode,
+        voucherCodeOverride: '',
         successMessage: `Promo code ${normalizedPromoCode} applied.`,
       });
       trackFunnelEvent(ANALYTICS_EVENTS.PROMO_CODE_APPLIED, {
@@ -235,6 +237,7 @@ export function useFnbCheckoutQuote({
     requestQuote,
     selectedStore,
     setCheckoutPromoCode,
+    setCheckoutVoucherCode,
     setQuoteError,
     setQuoteNeedsRefresh,
     storefrontClosedByHours,
@@ -250,6 +253,7 @@ export function useFnbCheckoutQuote({
     if (!normalizedVoucherCode) return;
 
     setCheckoutVoucherCode(normalizedVoucherCode);
+    setCheckoutPromoCode('');
     setQuoteError('');
 
     if (!Array.isArray(cart) || cart.length === 0) {
@@ -275,6 +279,7 @@ export function useFnbCheckoutQuote({
 
     try {
       await requestQuote({
+        promoCodeOverride: '',
         voucherCodeOverride: normalizedVoucherCode,
         successMessage: `Voucher code ${normalizedVoucherCode} applied.`,
       });
@@ -308,12 +313,63 @@ export function useFnbCheckoutQuote({
     normalizeErrorMessage,
     requestQuote,
     selectedStore,
+    setCheckoutPromoCode,
     setCheckoutVoucherCode,
     setQuoteError,
     setQuoteNeedsRefresh,
     storefrontClosedByHours,
     storefrontHoursLabel,
     toast,
+  ]);
+
+  // Removing a promo is a quote-affecting mutation too. Clear the active promo and invalidate the
+  // last quote before re-quoting with an explicit empty promo override. Preserve a voucher that may
+  // have been entered independently.
+  const handlePromoCardRemove = useCallback(async () => {
+    setCheckoutPromoCode('');
+    setQuoteError('');
+    setQuoteResult(null);
+    setQuotedCartSignature(null);
+    setQuoteNeedsRefresh(true);
+
+    if (!selectedStore || !Array.isArray(cart) || cart.length === 0) return null;
+    if (storefrontClosedByHours || !checkoutPermitted || accessCapabilities.quote === false) return null;
+
+    try {
+      return await requestQuote({
+        promoCodeOverride: '',
+        voucherCodeOverride: checkoutVoucherCode,
+        silent: true
+      });
+    } catch (error) {
+      const violation = extractStockViolation(error);
+      if (violation) {
+        setQuoteError(buildStockExceededMessage(violation));
+      } else if (isDeferredCustomerValidation(error)) {
+        // The cart drawer can be visible before customer details exist. The code is still removed;
+        // leave the quote invalidated and let the completed checkout details trigger validation.
+        setQuoteNeedsRefresh(true);
+      } else {
+        setQuoteError(normalizeErrorMessage(error, 'Unable to update order totals.'));
+      }
+      return null;
+    }
+  }, [
+    accessCapabilities.quote,
+    buildStockExceededMessage,
+    cart,
+    checkoutPermitted,
+    checkoutVoucherCode,
+    extractStockViolation,
+    normalizeErrorMessage,
+    requestQuote,
+    selectedStore,
+    setCheckoutPromoCode,
+    setQuoteError,
+    setQuotedCartSignature,
+    setQuoteNeedsRefresh,
+    setQuoteResult,
+    storefrontClosedByHours,
   ]);
 
   // Removing a voucher is a quote-affecting mutation too. Clearing only the input state leaves
@@ -366,6 +422,7 @@ export function useFnbCheckoutQuote({
   return {
     buildPayload,
     handlePromoCardApply,
+    handlePromoCardRemove,
     handleVoucherCardApply,
     handleVoucherCardRemove,
     requestQuote,

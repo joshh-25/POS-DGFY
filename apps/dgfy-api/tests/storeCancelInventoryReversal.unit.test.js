@@ -1,5 +1,5 @@
-// Unit tests for #1931: a post-acceptance customer cancel reverses a Retail online order's
-// accept-time goods-issue exactly once, through the Inventory-owned reversal command, inside
+// Unit tests for confirmation-time online inventory: a post-acceptance customer cancel reverses
+// an online order's goods-issue exactly once, through the Inventory-owned reversal command, inside
 // the same transaction as the status update.
 //
 // No database anywhere in this file. storeRepository is a hand-built fake mirroring
@@ -63,7 +63,7 @@ const run = (fixture, overrides = {}) => fixture.useCase({
     ...overrides
 });
 
-describe('storefront cancel reverses a Retail accept-time goods-issue (#1931)', () => {
+describe('storefront cancel reverses confirmation-time online goods-issue', () => {
     it('reverses the recorded deduction once and stamps inventory_reversed_at', async () => {
         const fixture = build();
 
@@ -84,7 +84,7 @@ describe('storefront cancel reverses a Retail accept-time goods-issue (#1931)', 
         expect(fixture.transaction.commit).toHaveBeenCalledTimes(1);
     });
 
-    it('does not reverse on a pre-acceptance placed cancel, even in Retail mode', async () => {
+    it('does not reverse on a pre-acceptance placed cancel', async () => {
         const fixture = build({ order: baseOrder({ fulfillment_status: 'placed', inventory_issued_at: null }) });
 
         const result = await run(fixture);
@@ -99,16 +99,16 @@ describe('storefront cancel reverses a Retail accept-time goods-issue (#1931)', 
         );
     });
 
-    it('does not reverse for a non-Retail order even with prior evidence set', async () => {
+    it('also reverses a non-Retail order with prior evidence set', async () => {
         const fixture = build({ workflowMode: 'fnb' });
 
         const result = await run(fixture);
 
         expect(result.success).toBe(true);
-        expect(fixture.reverseOnlineOrderGoodsIssue).not.toHaveBeenCalled();
+        expect(fixture.reverseOnlineOrderGoodsIssue).toHaveBeenCalledTimes(1);
         expect(fixture.storeRepository.updateOrderByTrackingPin).toHaveBeenCalledWith(
             TRACKING_PIN,
-            { fulfillment_status: 'cancelled' },
+            { fulfillment_status: 'cancelled', inventory_reversed_at: expect.any(Date) },
             { transaction: fixture.transaction }
         );
     });

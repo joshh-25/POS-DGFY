@@ -24,6 +24,27 @@ const dineInCashOrder = {
 };
 
 describe('buildIncomingQueueOrderActions delivery handoff print action (#1319)', () => {
+  it('offers Dine-In checkout for any unpaid tender, not only cash', () => {
+    const handleOpenCashCollection = vi.fn();
+    const buttons = buildIncomingQueueOrderActions({
+      pos_transaction_id: 778,
+      order_method: 'dine_in',
+      fulfillment_status: 'ready_for_pickup',
+      payment_type: 'gcash',
+      payment_status: 'unpaid'
+    }, {
+      canTransactPos: true,
+      isOnline: true,
+      hasActiveShift: true,
+      handleOpenCashCollection
+    });
+    const checkoutButton = buttons.find((button) => button.key === 'collect_cash');
+
+    expect(checkoutButton).toBeDefined();
+    checkoutButton.props.onClick();
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(expect.objectContaining({ pos_transaction_id: 778 }));
+  });
+
   it('renders a print/reprint receipt button for an in-progress delivery order', () => {
     const buttons = buildIncomingQueueOrderActions(outForDeliveryOrder, {
       canViewPos: true,

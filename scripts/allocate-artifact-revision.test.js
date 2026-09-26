@@ -6,35 +6,34 @@ const {
   nextRevisionFromTags,
   allocateRevision,
   probeExistingSightings,
-  resolveDevRevision,
-  selectLatestDevArtifact,
+  allocateArtifactRevision,
   parseArgs,
 } = require('./allocate-artifact-revision');
 const { ReleaseTagsError } = require('./resolve-release-tags');
 
-// Issue #2055 (Phase 346) -- per-app GHCR-sourced revision allocation.
+// Promotion-time per-app GHCR-sourced revision allocation (#2071).
 
 test('nextRevisionFromTags: empty listing starts the sequence at 1', () => {
   assert.equal(nextRevisionFromTags([], '1.13.0'), 1);
   assert.equal(nextRevisionFromTags(null, '1.13.0'), 1);
 });
 
-test('nextRevisionFromTags: max-plus-one across all channels for the same floor', () => {
+test('nextRevisionFromTags: DEV history does not advance promotion revisions', () => {
   assert.equal(
     nextRevisionFromTags(['1.13.0-r1-dev', '1.13.0-r2-staging', '1.13.0-r2', '1.13.0-r5-dev'], '1.13.0'),
-    6,
+    3,
   );
 });
 
-test('nextRevisionFromTags: ignores other floors, legacy bare-dev, and ad-hoc tags', () => {
+test('nextRevisionFromTags: ignores DEV and non-promotion tags', () => {
   assert.equal(
     nextRevisionFromTags(['1.12.9-r99', '1.13.0-dev', '1.13.0-pr482-dev', '1.13.0-feat-foo-dev', '1.13.0', 'latest', '1.13.0-r3-dev'], '1.13.0'),
-    4,
+    1,
   );
 });
 
 test('nextRevisionFromTags: a floor bump naturally resets the sequence', () => {
-  assert.equal(nextRevisionFromTags(['1.13.0-r41-dev', '1.13.0-r41-staging'], '1.13.1'), 1);
+  assert.equal(nextRevisionFromTags(['1.13.0-r41-staging'], '1.13.1'), 1);
 });
 
 test('nextRevisionFromTags: rejects a non-floor', () => {
@@ -48,7 +47,7 @@ test('allocateRevision: no sightings allocates r1, never reused', () => {
 
 test('allocateRevision: unseen source allocates max-plus-one', () => {
   const sightings = [
-    { tag: '1.13.0-r1-dev', revision: 'b'.repeat(40) },
+    { tag: '1.13.0-r1-staging', revision: 'b'.repeat(40) },
     { tag: '1.13.0-r2-staging', revision: 'c'.repeat(40) },
   ];
   assert.deepEqual(allocateRevision({ floor: '1.13.0', currentRevision: 'd'.repeat(40), sightings }), { revision: 3, reused: false });
@@ -57,9 +56,9 @@ test('allocateRevision: unseen source allocates max-plus-one', () => {
 test('allocateRevision: same source reuses its own N (idempotent retry, not a new allocation)', () => {
   const sha = 'a'.repeat(40);
   const sightings = [
-    { tag: '1.13.0-r1-dev', revision: 'b'.repeat(40) },
-    { tag: '1.13.0-r2-dev', revision: sha },
-    { tag: '1.13.0-r3-dev', revision: 'c'.repeat(40) },
+    { tag: '1.13.0-r1-staging', revision: 'b'.repeat(40) },
+    { tag: '1.13.0-r2', revision: sha },
+    { tag: '1.13.0-r3-staging', revision: 'c'.repeat(40) },
   ];
   // Reuses r2 even though r3 exists -- the retry must converge on its own tag, and the
   // Decision 7 guard treats pushing it again as an idempotent no-op.
@@ -69,7 +68,7 @@ test('allocateRevision: same source reuses its own N (idempotent retry, not a ne
 test('allocateRevision: unreadable labels count toward the max but never toward reuse', () => {
   const sha = 'a'.repeat(40);
   const sightings = [
-    { tag: '1.13.0-r4-dev', revision: null },
+    { tag: '1.13.0-r4-staging', revision: null },
     { tag: '1.13.0-r4-staging', revision: null },
   ];
   assert.deepEqual(allocateRevision({ floor: '1.13.0', currentRevision: sha, sightings }), { revision: 5, reused: false });
@@ -100,7 +99,7 @@ function stubInspect(mapping) {
   };
 }
 
-test('probeExistingSightings: stops at the first fully-absent N across all channels', () => {
+test('probeExistingSightings: stops at the first fully-absent N across promotion channels', () => {
   const shaA = 'a'.repeat(40);
   const image = 'ghcr.io/sieitzz/dgfy-pos';
   const { sightings, maxSeen } = probeExistingSightings({
@@ -108,13 +107,13 @@ test('probeExistingSightings: stops at the first fully-absent N across all chann
     floor: '1.13.0',
     currentRevision: shaA,
     inspectFn: stubInspect({
-      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
+      [`${image}:1.13.0-r1-staging`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
       [`${image}:1.13.0-r2-staging`]: { status: 0, stdout: labelFixture('b'.repeat(40)), stderr: '' },
     }),
   });
   assert.equal(maxSeen, 2);
   assert.deepEqual(sightings, [
-    { tag: '1.13.0-r1-dev', revision: shaA },
+    { tag: '1.13.0-r1-staging', revision: shaA },
     { tag: '1.13.0-r2-staging', revision: 'b'.repeat(40) },
   ]);
 });
@@ -145,25 +144,25 @@ test('probeExistingSightings: unreadable labels are kept with null revision, not
   assert.deepEqual(sightings, [{ tag: '1.13.0-r1', revision: null }]);
 });
 
-test('resolveDevRevision: end-to-end probe plus allocation with an injected registry', () => {
+test('allocateArtifactRevision: end-to-end probe plus allocation with an injected registry', () => {
   const shaA = 'a'.repeat(40);
   const image = 'ghcr.io/sieitzz/dgfy-ims';
-  const fresh = resolveDevRevision({
+  const fresh = allocateArtifactRevision({
     image,
     floor: '1.13.0',
     currentRevision: 'f'.repeat(40),
     inspectFn: stubInspect({
-      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
+      [`${image}:1.13.0-r1-staging`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
     }),
   });
   assert.deepEqual(fresh, { revision: 2, reused: false, maxSeen: 1 });
 
-  const retry = resolveDevRevision({
+  const retry = allocateArtifactRevision({
     image,
     floor: '1.13.0',
     currentRevision: shaA,
     inspectFn: stubInspect({
-      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
+      [`${image}:1.13.0-r1-staging`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
     }),
   });
   assert.deepEqual(retry, { revision: 1, reused: true, maxSeen: 1 });
@@ -178,55 +177,16 @@ test('parseArgs: requires floor and revision; --tags-json is optional', () => {
   assert.throws(() => parseArgs(['--floor', '1.13.0', '--revision', 'abc', '--bogus']), /Unknown argument/);
 });
 
-test('selectLatestDevArtifact: returns the highest revisioned DEV tag with its sha and digest', () => {
-  const shaA = 'a'.repeat(40);
-  const shaB = 'b'.repeat(40);
-  const image = 'ghcr.io/sieitzz/dgfy-pos';
-  const selected = selectLatestDevArtifact({
-    image,
-    floor: '1.13.0',
-    inspectFn: stubInspect({
-      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture(shaA, `sha256:${'1'.repeat(64)}`), stderr: '' },
-      [`${image}:1.13.0-r2-staging`]: { status: 0, stdout: labelFixture(shaB, `sha256:${'2'.repeat(64)}`), stderr: '' },
-      [`${image}:1.13.0-r3-dev`]: { status: 0, stdout: labelFixture(shaB, `sha256:${'3'.repeat(64)}`), stderr: '' },
-    }),
-  });
-  // r3-dev wins over the higher-channel r2-staging tag (selection starts from DEV only),
-  // and the digest comes from the winning tag's own inspect.
-  assert.deepEqual(selected, { revision: 3, sha: shaB, digest: `sha256:${'3'.repeat(64)}`, tag: '1.13.0-r3-dev' });
-});
-
-test('selectLatestDevArtifact: ignores unreadable labels and non-dev channels', () => {
-  const shaA = 'a'.repeat(40);
+test('probeExistingSightings: legacy DEV revisions are ignored', () => {
   const image = 'ghcr.io/sieitzz/dgfy-api';
-  const selected = selectLatestDevArtifact({
+  const { sightings } = probeExistingSightings({
     image,
     floor: '1.13.0',
+    currentRevision: 'a'.repeat(40),
     inspectFn: stubInspect({
-      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
-      [`${image}:1.13.0-r5-dev`]: { status: 0, stdout: JSON.stringify({ Image: { Config: { Labels: {} } } }), stderr: '' },
-      [`${image}:1.13.0-r9`]: { status: 0, stdout: labelFixture(shaA), stderr: '' },
+      [`${image}:1.13.0-r1-dev`]: { status: 0, stdout: labelFixture('b'.repeat(40)), stderr: '' },
+      [`${image}:1.13.0-r2-staging`]: { status: 0, stdout: labelFixture('c'.repeat(40)), stderr: '' },
     }),
   });
-  assert.equal(selected.revision, 1);
-  assert.equal(selected.sha, shaA);
-});
-
-test('selectLatestDevArtifact: throws when no revisioned DEV artifact was ever published', () => {
-  const image = 'ghcr.io/sieitzz/dgfy-pos';
-  assert.throws(
-    () => selectLatestDevArtifact({ image, floor: '1.13.0', inspectFn: stubInspect({}) }),
-    /dispatch a DEV build on develop first/,
-  );
-  // Legacy bare-dev and ad-hoc tags do not count as selectable artifacts.
-  assert.throws(
-    () => selectLatestDevArtifact({
-      image,
-      floor: '1.13.0',
-      inspectFn: stubInspect({
-        [`${image}:1.13.0-r2-staging`]: { status: 0, stdout: labelFixture('a'.repeat(40)), stderr: '' },
-      }),
-    }),
-    /dispatch a DEV build on develop first/,
-  );
+  assert.deepEqual(sightings, []);
 });

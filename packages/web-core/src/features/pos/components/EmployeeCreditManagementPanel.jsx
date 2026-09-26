@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
+import PosTableActionButton from './PosTableActionButton.jsx';
+import { POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
 import {
   adjustEmployeeCreditOutstanding,
   enableEmployeeCreditForActiveEmployees,
@@ -12,7 +15,7 @@ import {
   updateEmployeeCreditEmployeeAccount
 } from '../services/employeeCreditService.js';
 import { fetchEmployees } from '../services/employeeService.js';
-import PosSettingsPagination from '../settings/PosSettingsPagination.jsx';
+import PosTableSurface, { POS_TABLE_HEADER_CLASS, POS_TABLE_HEADER_CELL_CLASS, POS_TABLE_ROW_CLASS } from './PosTableSurface.jsx';
 import { PosResponsiveFormDrawer, usePosFormFocusScroll, usePosVisualViewportMetrics, usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
 
 const createIdempotencyKey = () => `employee-credit-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`;
@@ -217,6 +220,7 @@ export default function EmployeeCreditManagementPanel({
   const [repayAllTarget, setRepayAllTarget] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const filterContainerRef = useRef(null);
+  const filterButtonRef = useRef(null);
 
   const selectedEmployee = useMemo(
     () => employees.find((entry) => String(entry.employee_id) === String(selectedEmployeeId)) || null,
@@ -312,6 +316,7 @@ export default function EmployeeCreditManagementPanel({
   const applyStatusFilter = () => {
     setStatusFilter(pendingStatusFilter);
     setFiltersOpen(false);
+    filterButtonRef.current?.focus();
   };
 
   const toggleAccountAction = (nextAction) => {
@@ -493,7 +498,11 @@ export default function EmployeeCreditManagementPanel({
       if (!filterContainerRef.current?.contains(event.target)) setFiltersOpen(false);
     };
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setFiltersOpen(false);
+      if (event.key === 'Escape') {
+        const focusWasInFilter = filterContainerRef.current?.contains(document.activeElement);
+        setFiltersOpen(false);
+        if (focusWasInFilter) filterButtonRef.current?.focus();
+      }
     };
     document.addEventListener('pointerdown', closeOnOutsidePointer);
     document.addEventListener('keydown', closeOnEscape);
@@ -510,7 +519,7 @@ export default function EmployeeCreditManagementPanel({
   ];
 
   const filterPopover = filtersOpen ? (
-    <div id="employee-credit-filter-popover" role="region" aria-labelledby="employee-credit-filter-title" className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] top-auto z-[70] max-h-[calc(100dvh-1rem)] w-auto max-w-none overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-[calc(100%+0.5rem)] sm:max-h-none sm:w-[min(26rem,calc(100vw-2rem))] sm:overflow-hidden">
+    <div id="employee-credit-filter-popover" role="region" aria-labelledby="employee-credit-filter-title" className="fixed inset-x-0 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] top-auto z-[70] max-h-[calc(100dvh-1rem)] w-auto max-w-none overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 sm:absolute sm:inset-x-auto sm:right-0 sm:bottom-auto sm:top-[calc(100%+0.5rem)] sm:max-h-none sm:w-[min(26rem,calc(100vw-2rem))] sm:overflow-hidden">
       <div className="border-b border-slate-100 px-5 py-4 text-left sm:px-6">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#1A4E8D]"><Filter aria-hidden="true" className="h-4 w-4" /></div>
@@ -589,7 +598,7 @@ export default function EmployeeCreditManagementPanel({
                 <p className="text-[12px] font-medium leading-5 text-slate-500">Manage employee eligibility, limits, repayments, and outstanding balances.</p>
               </div>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => refreshActionRef?.current?.()} disabled={disabled || loading} className="h-9 w-9 shrink-0 p-0 sm:h-10 sm:w-auto sm:px-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => refreshActionRef?.current?.()} disabled={disabled || loading} className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-3`}>
               <RefreshCw className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Refresh</span>
             </Button>
           </div>
@@ -597,42 +606,42 @@ export default function EmployeeCreditManagementPanel({
           <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 min-[1200px]:flex min-[1200px]:items-center">
             <div className="relative min-w-0 min-[1200px]:flex-1">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input type="search" aria-label="Search employee credit" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search employees by name, code, email, or account..." className="h-10 pl-9" />
+              <Input type="search" aria-label="Search employee credit" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search employees by name, code, email, or account..." className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} pl-9`} />
             </div>
             <div ref={filterContainerRef} className="relative min-w-0">
-              <Button type="button" variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-haspopup="true" aria-controls="employee-credit-filter-popover" title="Filters" className="h-10 w-10 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto"><Filter aria-hidden="true" className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Filters</span></Button>
+              <Button type="button" ref={filterButtonRef} variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersOpen ? 'employee-credit-filter-popover' : undefined} title="Filters" className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto`}><Filter aria-hidden="true" className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Filters</span></Button>
               {filterPopover}
             </div>
             <Button type="button" size="sm" onClick={() => setBulkEligibilityConfirmOpen(true)} disabled={busy || disabled || employees.length === 0} className="col-span-2 h-10 w-full shrink-0 bg-[#1A4E8D] text-white hover:bg-[#123B6D] min-[1200px]:w-auto"><BadgeCheck aria-hidden="true" className="mr-2 h-4 w-4" /> Enable Credit to All Employees</Button>
           </div>
 
-          <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 min-[1200px]:block">
+          <PosTableSurface className="mt-4 hidden min-[768px]:block">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-left text-[13px] sm:text-[14px]">
                 <caption className="sr-only">Employee Credit directory</caption>
-                <thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+                <thead className={POS_TABLE_HEADER_CLASS}>
                   <tr>
-                    <th scope="col" className="w-[40%] px-2 py-3 sm:px-2.5 sm:w-[29%]">Employee</th>
-                    <th scope="col" className="hidden w-[18%] px-2 py-3 sm:px-2.5 sm:table-cell">Account</th>
-                    <th scope="col" className="hidden w-[17%] px-2 py-3 sm:px-2.5 sm:table-cell">Credit</th>
-                    <th scope="col" className="hidden w-[17%] px-2 py-3 sm:px-2.5 md:table-cell">Outstanding</th>
-                    <th scope="col" className="w-[24%] px-2 py-3 sm:px-2.5 sm:w-[13%]">Status</th>
-                    <th scope="col" className="w-[36%] px-2 py-3 text-right sm:px-2.5 sm:w-[17%]">Actions</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[40%] sm:w-[29%]`}>Employee</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[18%] min-[1024px]:table-cell`}>Account</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[17%] min-[1024px]:table-cell`}>Credit</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[17%] min-[1200px]:table-cell`}>Outstanding</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[24%] sm:w-[13%]`}>Status</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[36%] text-right sm:w-[17%]`}>Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pageEmployees.map((employee) => {
                     const currentAccount = employee.employeeCreditAccount || null;
                     return (
-                      <tr key={employee.employee_id} className={employee.is_active ? 'bg-white' : 'bg-slate-50/80'}>
+                      <tr key={employee.employee_id} className={`${POS_TABLE_ROW_CLASS} ${employee.is_active ? 'bg-white' : 'bg-slate-50/80'}`}>
                         <td className="max-w-0 px-2 py-2.5 sm:px-2.5">
                           <div className="min-w-0"><p className="truncate font-bold text-slate-950">{employee.full_name}</p><p className="truncate text-[11px] font-medium text-slate-500">{employee.employee_code || employee.email || 'Employee directory record'}</p></div>
                         </td>
-                        <td className="hidden max-w-0 truncate px-2 py-2.5 font-semibold text-slate-700 sm:px-2.5 sm:table-cell" title={currentAccount?.account_code || undefined}>{currentAccount?.account_code || 'Not configured'}</td>
-                        <td className="hidden px-2 py-2.5 sm:px-2.5 sm:table-cell"><div className="flex flex-wrap items-center gap-1.5"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-extrabold ${currentAccount?.is_eligible ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{currentAccount?.is_eligible ? 'Eligible' : 'Not eligible'}</span><span className="text-[11px] text-slate-500">{currentAccount?.credit_limit == null ? 'No limit' : `PHP ${money(currentAccount.credit_limit)}`}</span></div></td>
-                        <td className={`hidden whitespace-nowrap px-2 py-2.5 font-semibold sm:px-2.5 md:table-cell ${Number(currentAccount?.outstanding_balance ?? 0) === 0 ? 'text-emerald-600' : 'text-red-600'}`}>PHP {money(currentAccount?.outstanding_balance)}</td>
+                        <td className="hidden max-w-0 truncate px-2 py-2.5 font-semibold text-slate-700 sm:px-2.5 min-[1024px]:table-cell" title={currentAccount?.account_code || undefined}>{currentAccount?.account_code || 'Not configured'}</td>
+                        <td className="hidden px-2 py-2.5 sm:px-2.5 min-[1024px]:table-cell"><div className="flex flex-wrap items-center gap-1.5"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-extrabold ${currentAccount?.is_eligible ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{currentAccount?.is_eligible ? 'Eligible' : 'Not eligible'}</span><span className="text-[11px] text-slate-500">{currentAccount?.credit_limit == null ? 'No limit' : `PHP ${money(currentAccount.credit_limit)}`}</span></div></td>
+                        <td className={`hidden whitespace-nowrap px-2 py-2.5 font-semibold sm:px-2.5 min-[1200px]:table-cell ${Number(currentAccount?.outstanding_balance ?? 0) === 0 ? 'text-emerald-600' : 'text-red-600'}`}>PHP {money(currentAccount?.outstanding_balance)}</td>
                         <td className="px-2 py-2.5 sm:px-2.5"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-extrabold ${employee.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{employee.is_active ? 'Enabled' : 'Disabled'}</span></td>
-                        <td className="px-2 py-2.5 sm:px-2.5"><div className="flex justify-end"><Button type="button" variant="outline" size="sm" onClick={() => openCreditForm(employee)} disabled={disabled || !employee.is_active} aria-label={`View credit for ${employee.full_name}`} title={employee.is_active ? `View credit for ${employee.full_name}` : 'Inactive employees cannot be configured'} className="h-8 w-8 border-emerald-200 p-0 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:ring-emerald-200"><Eye aria-hidden="true" className="h-3.5 w-3.5" /></Button></div></td>
+                        <td className="px-2 py-2.5 sm:px-2.5"><div className="flex justify-end"><PosTableActionButton icon={Eye} onClick={() => openCreditForm(employee)} disabled={disabled || !employee.is_active} aria-label={`View credit for ${employee.full_name}`} title={employee.is_active ? `View credit for ${employee.full_name}` : 'Inactive employees cannot be configured'} /></div></td>
                       </tr>
                     );
                   })}
@@ -640,8 +649,8 @@ export default function EmployeeCreditManagementPanel({
                 </tbody>
               </table>
             </div>
-          </div>
-          <div className="mt-4 grid gap-2 min-[1200px]:hidden">
+          </PosTableSurface>
+          <div className="mt-4 grid gap-2 min-[768px]:hidden">
             {pageEmployees.map((employee) => {
               const currentAccount = employee.employeeCreditAccount || null;
               const creditStatus = currentAccount?.is_eligible ? 'Eligible' : 'Not eligible';
@@ -662,7 +671,7 @@ export default function EmployeeCreditManagementPanel({
                         <span className={Number(currentAccount?.outstanding_balance ?? 0) === 0 ? 'text-emerald-600' : 'text-red-600'}>Outstanding PHP {money(currentAccount?.outstanding_balance)}</span>
                       </div>
                     </div>
-                    <Button type="button" variant="outline" size="sm" onClick={() => openCreditForm(employee)} disabled={disabled || !employee.is_active} aria-label={`View credit for ${employee.full_name}`} title={employee.is_active ? `View credit for ${employee.full_name}` : 'Inactive employees cannot be configured'} className="h-9 w-9 shrink-0 border-emerald-200 p-0 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:ring-emerald-200"><Eye aria-hidden="true" className="h-3.5 w-3.5" /></Button>
+                    <PosTableActionButton icon={Eye} onClick={() => openCreditForm(employee)} disabled={disabled || !employee.is_active} aria-label={`View credit for ${employee.full_name}`} title={employee.is_active ? `View credit for ${employee.full_name}` : 'Inactive employees cannot be configured'} />
                   </div>
                 </article>
               );
@@ -670,18 +679,21 @@ export default function EmployeeCreditManagementPanel({
             {pageEmployees.length === 0 && !loading ? <div className="rounded-xl border border-dashed border-slate-300 px-3 py-10 text-center text-[13px] font-medium text-slate-500">{employees.length === 0 ? 'No employees available. Add an employee first to configure Employee Credit.' : 'No employees match your filters.'}</div> : null}
           </div>
           <div className="mt-3">
-            <PosSettingsPagination
-              page={page}
+            <GlobalPagination
+              currentPage={page}
               totalPages={totalPages}
               pageSize={pageSize}
-              total={filteredEmployees.length}
+              totalItems={filteredEmployees.length}
               itemLabel="employees"
               pageSizeLabel="Employees per page"
+              pageInputLabel="Go to employee credit page"
               previousLabel="Previous employee credit page"
               nextLabel="Next employee credit page"
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
               disabled={busy}
+              ariaLabel="Employee credit pagination"
+              className={POS_PAGINATION_FOOTER_CLASS}
             />
           </div>
         </div>

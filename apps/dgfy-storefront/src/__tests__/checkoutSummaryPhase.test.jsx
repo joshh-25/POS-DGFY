@@ -143,11 +143,7 @@ describe('checkout summary phase presentation', () => {
       />
     );
 
-    if (_mode === 'F&B') {
-      expect(screen.queryByText('Service Fee')).toBeNull();
-    } else {
-      expect(screen.getByText('Service Fee').parentElement.textContent).toContain('PHP 0.00');
-    }
+    expect(screen.queryByText('Service Fee')).toBeNull();
     expect(screen.getByText('VAT (included in item prices)').parentElement.textContent).toContain('PHP 11.25');
     expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
   });
@@ -183,7 +179,7 @@ describe('checkout summary phase presentation', () => {
       />
     );
 
-    expect(screen.getByText('Service Fee').parentElement.textContent).toContain('PHP 0.00');
+    expect(screen.queryByText('Service Fee')).toBeNull();
     expect(screen.getByText('VAT (included in item prices)').parentElement.textContent).toContain('PHP 11.25');
     expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
   });

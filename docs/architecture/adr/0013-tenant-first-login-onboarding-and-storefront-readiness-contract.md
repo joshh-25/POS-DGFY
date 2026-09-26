@@ -204,3 +204,19 @@ labels; an address suggestion may fill an empty address field but must not overw
 merchant-edited address text unless the merchant explicitly applies it; and reverse-geocode
 failure must never prevent saving valid coordinates. Geocoding remains server-side only — the
 service sends no CORS headers, so a browser-side call is impossible by construction.
+
+### 2026-09-16: F&B Onboarding Does Not Require Starter Item Creation
+
+1. Food & Beverage (`fnb`) tenants no longer require a priced starter item to complete first-login onboarding. The checklist retains the legacy `has_priced_starter_item` field for response compatibility, but excludes it from `required_keys` and `missing_requirements` for F&B.
+2. POS onboarding hides the starter-item step for F&B and uses the three-step order `profile`, `storefront_setup`, and `pos_setup`. Food Manufacturing, MSME, Services, and Hospitality behavior remains unchanged; Hospitality continues to use its room-based starter setup.
+3. F&B item authoring remains available through the normal POS catalog/item-management surfaces after onboarding. Completing onboarding with an empty F&B catalog is intentional and must leave an honest empty-catalog state until the merchant creates menu items.
+4. Existing incomplete F&B tenants can complete onboarding without deleting or recreating catalog rows. Existing non-F&B tenants retain the priced starter-item readiness gate.
+5. The backend checklist, POS navigation/readiness helpers, rendered onboarding flow, and focused API/frontend tests are the authoritative validation surfaces for this exception.
+
+### 2026-09-16: Catalog Items Are Optional for All Non-Hospitality Onboarding
+
+1. The priced catalog starter item is optional for every non-Hospitality workflow mode, including Food & Beverage, Food Manufacturing, MSME, and Services. These tenants may complete first-login onboarding with an empty catalog and author items later through the normal POS catalog-management surfaces.
+2. The POS setup order for non-Hospitality modes is `profile`, `storefront_setup`, and `pos_setup`. The existing `STARTER_ITEM` protocol value and `has_priced_starter_item` response field remain readable for backward compatibility, but they are not a required step or completion gate for non-Hospitality modes.
+3. Hospitality retains a setup step at the same protocol boundary, but its meaning is room setup: the tenant must create an active room type with a positive default rate and at least one room. Hospitality readiness is computed from the canonical room models, not from catalog-item rows.
+4. The POS onboarding modal must not create catalog items or fetch the catalog solely to determine onboarding readiness. Catalog authoring, pricing, stock, and images remain available after onboarding through the canonical catalog-management workflow.
+5. Where earlier sections or the 2026-07-02 POS starter-item addendum require catalog starter creation for non-Hospitality modes, this amendment supersedes that requirement. The backend checklist, POS flow helpers, rendered onboarding modal, and focused API/frontend tests are the authoritative validation surfaces.

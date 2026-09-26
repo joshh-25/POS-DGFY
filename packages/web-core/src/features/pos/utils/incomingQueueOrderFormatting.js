@@ -59,3 +59,13 @@ export const parseDeliveryCoords = (order = {}) => {
     longitude: lng
   };
 };
+
+export const formatCustomerPhone = (value) => (
+  String(value || '').trim() || 'Not provided'
+);
+
+export const formatDeliveryCoordinates = (coords) => (
+  coords
+    ? `${coords.latitude.toFixed(8)}, ${coords.longitude.toFixed(8)}`
+    : 'Not provided'
+);

@@ -31,7 +31,6 @@ import {
     getLineKey,
     getPriceOverrideReasonValidationMessage,
     isSeniorPwdDiscountEligible,
-    normalizeDiscountProfiles,
     normalizePromoCode,
     round4,
     toArray
@@ -40,7 +39,16 @@ import { resolveModifierDelta } from '../utils/posCheckoutTerminalModifiers.js';
 import { flyImageToCheckoutBar } from '../utils/posCatalogAnimations.js';
 import { getPosTerminalLayoutClasses } from '../utils/posTerminalLayout.js';
 import { normalizeAppliedDiscount, normalizePosTerminalDraftState, parseTerminalPermissions } from '../utils/posTerminalDraftState.js';
+import {
+    POS_DISCOUNT_FALLBACK_OPTIONS,
+    buildPosDiscountTypeOptions,
+    findPosDiscountTypeOption,
+    normalizeAvailablePosDiscountRules
+} from '../utils/posDiscountOptions.js';
 import { buildDiscountItemSelection, getDiscountLineRef, isStatutoryBeneficiaryIdentityValid, MAX_STATUTORY_BENEFICIARIES } from '../utils/posDiscountSelection.js';
+import { isParkedSaleOriginalLine } from '../utils/posParkedSaleResume.js';
+import { buildIncomingDineInCheckoutCartLines } from '../utils/incomingDineInCheckoutCart.js';
+import { resolveFnbCheckoutContext, usePosFnbCheckoutState } from '../hooks/usePosFnbCheckoutState.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POSCheckoutTerminalView = lazyWithChunkRetry(() => import('./POSCheckoutTerminalView.jsx'));
 
@@ -57,6 +65,7 @@ export default function POSCheckoutTerminal({
     terminalMeta = null,
     offlineSnapshotScope: providedOfflineSnapshotScope = {},
     onCheckoutCompleted = null,
+    onCheckoutAuthorityInvalid = null,
     checkoutBlockedReason = '',
     onManualUniversalSync = async () => ({ allowed: false }),
     onQueueOfflineOperation = async () => null,
@@ -74,7 +83,12 @@ export default function POSCheckoutTerminal({
     onExternalCatalogHydrated = null,
     fnbContext = null,
     workflowMode = null,
-    effectiveCapabilities = null
+    effectiveCapabilities = null,
+    dineInCashCheckout = null,
+    dineInCashCheckoutSaving = false,
+    dineInCashCheckoutError = '',
+    onDineInCashCheckoutSubmit = async () => false,
+    onCancelDineInCashCheckout = () => {}
 }) {
     useEffect(() => {
         notifyIminWebPosReady();
@@ -99,6 +113,7 @@ export default function POSCheckoutTerminal({
     );
 
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
+    const isDineInCashCheckoutRequested = Boolean(dineInCashCheckout);
     const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
     const [tableNumber, setTableNumber] = useState('');
     const [kitchenNotes, setKitchenNotes] = useState('');
@@ -108,11 +123,6 @@ export default function POSCheckoutTerminal({
     const [servicesResource, setServicesResource] = useState('');
     const [servicesNotes, setServicesNotes] = useState('');
 
-    useEffect(() => {
-        if (posWorkflow && !posWorkflow.allowedMethods.includes(orderMethod)) {
-            setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
-        }
-    }, [posWorkflow, orderMethod]);
     const [paymentType, setPaymentType] = useState('cash');
     const {
         employeeCreditAccountCode,
@@ -156,10 +166,12 @@ export default function POSCheckoutTerminal({
     const {
         discountApprovers,
         discountEmployees,
+        discountRules,
+        discountRulesReady,
         discountApproversLoading,
         discountEmployeesLoading,
         loadDiscountDirectory
-    } = usePosDiscountDirectory({ autoLoad: false });
+    } = usePosDiscountDirectory({ autoLoad: true });
     const posHardware = usePosHardware({ enabled: Boolean(terminalUser) });
     const [imagePreview, setImagePreview] = useState(null);
     const [setupSnapshotModalOpen, setSetupSnapshotModalOpen] = useState(false);
@@ -186,23 +198,6 @@ export default function POSCheckoutTerminal({
         setSplitPaymentSession(nextState?.active && nextState?.session ? nextState.session : null);
     }, []);
 
-    const splitPaymentStorageScopeKey = useMemo(() => (
-        [
-            providedOfflineSnapshotScope?.tenantId || 'tenant',
-            terminalUser?.user_id || terminalUser?.id || terminalUser?.email || 'cashier',
-            terminalId || 'terminal',
-            activeShiftId || 'shift',
-            selectedLocationId || 'location'
-        ].map((value) => String(value)).join(':')
-    ), [
-        activeShiftId,
-        terminalId,
-        providedOfflineSnapshotScope?.tenantId,
-        selectedLocationId,
-        terminalUser?.email,
-        terminalUser?.id,
-        terminalUser?.user_id
-    ]);
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
@@ -294,14 +289,22 @@ export default function POSCheckoutTerminal({
         setReceiptSettings,
         setLowStockDisplayThreshold
     });
+    // F&B service can be enabled as a capability on a counter/retail terminal.
+    // Once a check is attached, checkout must use the F&B line and settlement
+    // contract even when the base terminal workflow is not the fnb preset.
+    const {
+        normalizedFnbContext,
+        hasFnbCheckoutContext,
+        checkoutUsesFnbContract
+    } = resolveFnbCheckoutContext({
+        fnbContext,
+        isFnbWorkflow: isFnbWorkflow || isDineInCashCheckoutRequested,
+        allowedMethods: posWorkflow.allowedMethods
+    });
 
     useEffect(() => {
         if (isTabletViewport) setMobileCheckoutPanelOpen(false);
     }, [isTabletViewport]);
-
-    const normalizedFnbContext = useMemo(() => (
-        fnbContext && typeof fnbContext === 'object' ? fnbContext : null
-    ), [fnbContext]);
     const parkedSaleEmptyCartHandlerRef = useRef(null);
     const handleCartBecameEmpty = useCallback(() => {
         if (typeof parkedSaleEmptyCartHandlerRef.current === 'function') {
@@ -345,7 +348,12 @@ export default function POSCheckoutTerminal({
         handleCartQtyButtonPointerMove,
         handleCartQtyButtonPointerUp,
         handleCartQtyButtonPointerCancel,
-        removeCartLine
+        removeCartLine,
+        parkedLineDeletionRequest,
+        parkedLineDeletionReason,
+        setParkedLineDeletionReason,
+        cancelParkedLineDeletion,
+        confirmParkedLineDeletion
     } = usePosCartWorkflow({
         sessionLocked,
         checkoutBlockedReason,
@@ -354,11 +362,34 @@ export default function POSCheckoutTerminal({
         catalog,
         receiptSettings,
         posWorkflow,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         setOrderMethod,
         onCartBecameEmpty: handleCartBecameEmpty,
         onCartLineRemoved: handleCartLineRemoved,
+        onParkedLineDeleted: ({ line, reason }) => {
+            setActiveParkedSale((previous) => {
+                if (!previous?.pos_parked_sale_id) return previous;
+                const existingReasons = Array.isArray(previous.removed_line_reasons)
+                    ? previous.removed_line_reasons
+                    : [];
+                const lineRef = String(line?.line_key || line?.line_ref || '').trim() || null;
+                const itemId = Number(line?.item_id) || null;
+                const nextReasons = [
+                    ...existingReasons.filter((entry) => (
+                        String(entry?.line_ref || '').trim() !== lineRef
+                        || Number(entry?.item_id) !== itemId
+                    )),
+                    {
+                        line_ref: lineRef,
+                        item_id: itemId,
+                        item_name: String(line?.item_name || '').trim() || null,
+                        reason: String(reason || '').trim()
+                    }
+                ];
+                return { ...previous, removed_line_reasons: nextReasons };
+            });
+        },
         onCatalogAddAnimation: handleCatalogAddAnimation
     });
     const posActionsBlocked = Boolean(checkoutBlockedReason) || parkedSaleReleaseLoading;
@@ -378,6 +409,8 @@ export default function POSCheckoutTerminal({
         safeCatalog,
         safeCart,
         safeDiscountProfiles,
+        safeDiscountRules,
+        discountRulesReady: normalizedDiscountRulesReady,
         safeCommercialPromoConfig,
         safeDiscountApprovers,
         safeQueuedCheckouts,
@@ -388,6 +421,8 @@ export default function POSCheckoutTerminal({
         catalog,
         cart,
         discountProfiles,
+        discountRules,
+        discountRulesReady,
         commercialPromoConfig,
         discountApprovers,
         activeShiftCashierId,
@@ -395,6 +430,29 @@ export default function POSCheckoutTerminal({
         discountDraft
     });
     const safeDiscountEmployees = toArray(discountEmployees);
+    const discountTypeOptions = useMemo(
+        () => buildPosDiscountTypeOptions(
+            safeDiscountRules,
+            POS_DISCOUNT_FALLBACK_OPTIONS,
+            { rulesReady: normalizedDiscountRulesReady }
+        ),
+        [normalizedDiscountRulesReady, safeDiscountRules]
+    );
+    const { checkoutAllowedOrderMethods } = usePosFnbCheckoutState({
+        normalizedFnbContext,
+        hasFnbCheckoutContext,
+        checkoutUsesFnbContract,
+        workflowMode: posWorkflow.mode,
+        allowedMethods: posWorkflow.allowedMethods,
+        orderMethod,
+        setOrderMethod,
+        catalogLoading,
+        safeCart,
+        safeCatalog,
+        setCart,
+        setTableNumber,
+        setKitchenNotes
+    });
     const checkoutWorkflowValidationMessage = useMemo(() => {
         for (const line of safeCart) {
             const catalogItem = safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id));
@@ -413,7 +471,7 @@ export default function POSCheckoutTerminal({
         }
         return null;
     }, [safeCart, safeCatalog]);
-    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
+    const isCheckoutWorkflowValid = checkoutAllowedOrderMethods.includes(orderMethod)
         && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
         && (orderMethod !== 'appointment' || Boolean(servicesDateTime))
         && !checkoutWorkflowValidationMessage;
@@ -423,6 +481,7 @@ export default function POSCheckoutTerminal({
     );
     const terminalPermissionList = useMemo(() => parseTerminalPermissions(terminalUser?.permissions), [terminalUser?.permissions]);
     const canVoidTransactions = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void');
+    const canUseEmployeeCredit = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:employee_credit:use');
     const isAdminOperator = terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
     const safeAppliedDiscount = useMemo(() => normalizeAppliedDiscount(appliedDiscount), [appliedDiscount]);
     const {
@@ -460,6 +519,7 @@ export default function POSCheckoutTerminal({
     } = usePosFinancialWorkflow({
         cart: safeCart,
         discountProfiles: safeDiscountProfiles,
+        discountRules: safeDiscountRules,
         selectedDiscountProfile,
         manualDiscountMode,
         manualDiscountRateInput,
@@ -565,7 +625,7 @@ export default function POSCheckoutTerminal({
         normalizedFnbContext,
         tableNumber,
         kitchenNotes,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         setCheckoutConfirmModalOpen,
         onExternalReceiptClosed
     });
@@ -691,7 +751,7 @@ export default function POSCheckoutTerminal({
         cart,
         catalog,
         catalogReady: !catalogLoading,
-        enabled: !sessionLocked && Boolean(activeShiftId),
+        enabled: !sessionLocked && Boolean(activeShiftId) && !isDineInCashCheckoutRequested,
         scope: offlineSnapshotScope,
         setActiveParkedSale,
         setCart
@@ -711,7 +771,6 @@ export default function POSCheckoutTerminal({
         openParkSaleNameDialog,
         openParkedSalesHistory,
         handleCancelCheckout,
-        handleKeepSplitPaymentAndClose,
         handleReverseSplitPaymentAndStartNew,
         handleCompletePreparedSplitPayment,
         splitPaymentCheckoutContext,
@@ -725,7 +784,7 @@ export default function POSCheckoutTerminal({
         normalizedTerminalId,
         offlineSnapshotScope,
         posWorkflow,
-        isFnbWorkflow,
+        isFnbWorkflow: checkoutUsesFnbContract,
         normalizedFnbContext,
         orderMethod,
         tableNumber,
@@ -737,6 +796,7 @@ export default function POSCheckoutTerminal({
         servicesNotes,
         safeCatalog,
         discountProfiles: safeDiscountProfiles,
+        discountRules: safeDiscountRules,
         commercialPromoConfig: safeCommercialPromoConfig,
         catalog,
         setCatalog,
@@ -757,6 +817,7 @@ export default function POSCheckoutTerminal({
         onQueueOfflineOperation,
         onManualUniversalSync,
         onCheckoutCompleted,
+        onCheckoutAuthorityInvalid,
         historyPage,
         loadHistory,
         loadCatalog,
@@ -827,11 +888,115 @@ export default function POSCheckoutTerminal({
         setSplitPaymentSession,
         setSplitPaymentDialogOpen,
         setSplitPaymentWorkflowVersion,
-        splitPaymentStorageScopeKey,
         splitPaymentSuccessfulAllocations,
         setSplitPaymentCancelModalOpen,
         setSplitPaymentCancelLoading
     });
+    const {
+        setCustomerPaymentAmountInput,
+        setCustomerPaymentAmountAutoFilled
+    } = customerPaymentAmountState;
+
+    const dineInCashCheckoutHydrationRef = useRef({
+        key: '',
+        active: false,
+        previousCart: []
+    });
+    const isExistingDineInCheckout = Boolean(dineInCashCheckout);
+
+    useEffect(() => {
+        const checkoutOrder = dineInCashCheckout?.order;
+        const orderId = Number(checkoutOrder?.pos_transaction_id);
+        const checkoutKey = checkoutOrder
+            ? `${Number.isInteger(orderId) ? orderId : 'unknown'}:${String(dineInCashCheckout?.idempotencyKey || '')}`
+            : '';
+
+        if (!checkoutOrder) {
+            if (!dineInCashCheckoutHydrationRef.current.active) return;
+
+            const previousCart = dineInCashCheckoutHydrationRef.current.previousCart;
+            dineInCashCheckoutHydrationRef.current = { key: '', active: false, previousCart: [] };
+            setCheckoutConfirmModalOpen(false);
+            setCheckoutOpenedFromCurrentSale(false);
+            setCart(previousCart);
+            setPaymentType('cash');
+            setCustomerPaymentAmountInput('');
+            setCustomerPaymentAmountAutoFilled(false);
+            resetDiscountState();
+            return;
+        }
+
+        if (dineInCashCheckoutHydrationRef.current.key === checkoutKey) return;
+
+        const lines = buildIncomingDineInCheckoutCartLines({ order: checkoutOrder, catalog: safeCatalog });
+        if (lines.length === 0) {
+            dineInCashCheckoutHydrationRef.current = { key: checkoutKey, active: false, previousCart: [] };
+            toast.error('This dine-in order has no valid items to check out. Refresh the incoming order queue and try again.');
+            onCancelDineInCashCheckout?.();
+            return;
+        }
+
+        dineInCashCheckoutHydrationRef.current = {
+            key: checkoutKey,
+            active: true,
+            previousCart: [...safeCart]
+        };
+        setCart(lines);
+        setOrderMethod('dine_in');
+        setTableNumber(String(checkoutOrder?.fnb_table_label_snapshot || checkoutOrder?.table_number || '').trim());
+        setKitchenNotes(String(
+            checkoutOrder?.special_instructions
+            || checkoutOrder?.customer_note
+            || checkoutOrder?.order_notes
+            || ''
+        ).trim());
+        setPaymentType('cash');
+        resetEmployeeCredit();
+        resetDiscountState();
+        setCustomerPaymentAmountInput(String(checkoutOrder?.total_amount ?? ''));
+        setCustomerPaymentAmountAutoFilled(true);
+        setCheckoutOpenedFromCurrentSale(false);
+        setCheckoutConfirmModalOpen(true);
+    }, [
+        dineInCashCheckout,
+        onCancelDineInCashCheckout,
+        resetDiscountState,
+        resetEmployeeCredit,
+        safeCatalog,
+        safeCart,
+        setCart,
+        setCheckoutConfirmModalOpen,
+        setCheckoutOpenedFromCurrentSale,
+        setCustomerPaymentAmountAutoFilled,
+        setCustomerPaymentAmountInput,
+        setKitchenNotes,
+        setOrderMethod,
+        setPaymentType,
+        setTableNumber
+    ]);
+
+    const handleExistingDineInCheckout = useCallback(async (paymentSnapshot) => {
+        if (!isExistingDineInCheckout) return handleCheckout(paymentSnapshot);
+        const result = await onDineInCashCheckoutSubmit?.(paymentSnapshot);
+        if (result === true) setCheckoutConfirmModalOpen(false);
+        return result;
+    }, [
+        handleCheckout,
+        isExistingDineInCheckout,
+        onDineInCashCheckoutSubmit,
+        setCheckoutConfirmModalOpen
+    ]);
+
+    const handleTerminalCheckoutCancel = useCallback(async () => {
+        if (!isExistingDineInCheckout) return handleCancelCheckout();
+        await handleCancelCheckout();
+        onCancelDineInCashCheckout?.();
+        return true;
+    }, [
+        handleCancelCheckout,
+        isExistingDineInCheckout,
+        onCancelDineInCashCheckout
+    ]);
 
     const loadReceiptSettings = useCallback(async () => {
         if (sessionLocked) {
@@ -863,7 +1028,6 @@ export default function POSCheckoutTerminal({
             setReceiptSettings(nextReceiptSettings);
             setLowStockDisplayThreshold(nextReceiptSettings.inventory_low_stock_display_threshold);
             saveCatalogSnapshot(undefined, nextReceiptSettings);
-            setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
             const { normalizeCommercialPromoConfigs } = await import('../utils/posCommercialPromoConfig.js');
             setCommercialPromoConfig(normalizeCommercialPromoConfigs(allSettings));
         } catch {
@@ -956,6 +1120,11 @@ export default function POSCheckoutTerminal({
         const lineKey = itemOptionsLineKey;
         const currentLine = safeCart.find((line) => getLineKey(line) === lineKey);
         if (!lineKey || !currentLine || sessionLocked) return false;
+        if (isParkedSaleOriginalLine(currentLine, activeParkedSale)) {
+            toast.error('Original parked items cannot be edited. Add a new item instead.');
+            setItemOptionsLineKey(null);
+            return false;
+        }
         const basePrice = Number(currentLine.base_sale_price || currentLine.sale_price || 0);
         const serviceDelta = (currentLine.service_option_details || []).reduce(
             (sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100),
@@ -976,9 +1145,7 @@ export default function POSCheckoutTerminal({
     }, []);
 
     const openDiscountModal = async ({ initialType } = {}) => {
-        const requestedType = ['employee', 'senior', 'pwd', 'promo', 'voucher', 'manual'].includes(initialType)
-            ? initialType
-            : null;
+        const requestedOption = findPosDiscountTypeOption(discountTypeOptions, initialType);
         const employeeCreditDirectoryId = Number(selectedEmployeeCreditOption?.employee_id) || null;
         const employeeCreditDiscountName = employeeCreditDirectoryId
             ? String(selectedEmployeeCreditOption?.employee_name || '').trim()
@@ -994,11 +1161,22 @@ export default function POSCheckoutTerminal({
                 employee_id: employeeCreditDiscountId,
                 employee_directory_id: employeeCreditDirectoryId ? String(employeeCreditDirectoryId) : ''
             };
-        if (requestedType) {
-            draftSeed.type = requestedType;
-            draftSeed.rate = requestedType === 'employee'
-                ? '15'
-                : (['senior', 'pwd'].includes(requestedType) ? '20' : draftSeed.rate);
+        if (requestedOption) {
+            const rule = requestedOption.rule;
+            draftSeed.type = requestedOption.type || requestedOption.value;
+            draftSeed.rule_id = rule?.discount_rule_id || '';
+            draftSeed.discount_key = rule?.discount_key || '';
+            draftSeed.label = rule?.name || draftSeed.label;
+            draftSeed.method = rule?.method || draftSeed.method;
+            draftSeed.rate = rule?.method === 'percentage' && rule?.percentage != null
+                ? String(rule.percentage)
+                : '';
+            draftSeed.amount = rule?.method === 'fixed' && rule?.fixed_amount != null
+                ? String(rule.fixed_amount)
+                : '';
+            draftSeed.requires_customer_id = rule?.requires_customer_id === true;
+            draftSeed.requires_employee_id = rule?.requires_employee_id === true;
+            draftSeed.requires_manager_approval = rule?.requires_manager_approval === true;
         }
         const draftToOpen = {
             ...draftSeed,
@@ -1013,7 +1191,33 @@ export default function POSCheckoutTerminal({
         setDiscountDraft(draftToOpen);
         setDiscountModalOpen(true);
         try {
-            const { approvers } = await loadDiscountDirectory();
+            const directory = await loadDiscountDirectory();
+            const resolvedOption = findPosDiscountTypeOption(
+                buildPosDiscountTypeOptions(
+                    directory?.rules,
+                    POS_DISCOUNT_FALLBACK_OPTIONS,
+                    { rulesReady: true }
+                ),
+                initialType
+            );
+            let resolvedDraft = { ...draftToOpen };
+            if (resolvedOption && !appliedDiscount) {
+                const rule = resolvedOption.rule;
+                resolvedDraft = {
+                    ...resolvedDraft,
+                    type: resolvedOption.type || resolvedOption.value,
+                    rule_id: rule?.discount_rule_id || '',
+                    discount_key: rule?.discount_key || '',
+                    label: rule?.name || resolvedDraft.label,
+                    method: rule?.method || resolvedDraft.method,
+                    rate: rule?.method === 'percentage' && rule?.percentage != null ? String(rule.percentage) : '',
+                    amount: rule?.method === 'fixed' && rule?.fixed_amount != null ? String(rule.fixed_amount) : '',
+                    requires_customer_id: rule?.requires_customer_id === true,
+                    requires_employee_id: rule?.requires_employee_id === true,
+                    requires_manager_approval: rule?.requires_manager_approval === true
+                };
+            }
+            const { approvers = [] } = directory || {};
             if (!appliedDiscount) {
                 const shiftCashierId = Number(activeShiftCashierId);
                 const shiftCashierApprover = Number.isInteger(shiftCashierId) && shiftCashierId > 0
@@ -1022,18 +1226,41 @@ export default function POSCheckoutTerminal({
                         && approver?.pos_approval_pin_configured === true
                     ))
                     : null;
-                draftToOpen.approver_user_id = shiftCashierApprover?.user_id || '';
+                resolvedDraft = {
+                    ...resolvedDraft,
+                    approver_user_id: shiftCashierApprover?.user_id || ''
+                };
             }
-            setDiscountDraft(draftToOpen);
+            setDiscountDraft(resolvedDraft);
         } catch (error) {
-            setDiscountDraft(draftToOpen);
+            setDiscountDraft({ ...draftToOpen });
             toast.error(error?.response?.data?.message || 'Failed to load POS discount employees.');
         }
     };
 
     const handleApplyGovernedDiscount = async () => {
-        const type = discountDraft.type;
+        const type = String(discountDraft.type || '').trim().toLowerCase();
+        const selectedRule = normalizeAvailablePosDiscountRules(safeDiscountRules).find((rule) => (
+            (Number(discountDraft.rule_id) > 0 && Number(rule?.discount_rule_id) === Number(discountDraft.rule_id))
+            || (!Number(discountDraft.rule_id) && type !== 'custom' && String(rule?.type || '').trim().toLowerCase() === type)
+        )) || null;
+        const hasConfiguredRule = Boolean(selectedRule);
         const statutory = type === 'senior' || type === 'pwd';
+        const configuredMethod = selectedRule?.method || String(discountDraft.method || '').trim().toLowerCase();
+        const configuredRate = selectedRule?.method === 'percentage'
+            ? Number(selectedRule.percentage)
+            : Number(discountDraft.rate || 0);
+        const configuredAmount = selectedRule?.method === 'fixed'
+            ? Number(selectedRule.fixed_amount)
+            : Number(discountDraft.amount || 0);
+        if (!selectedRule && !['promo', 'voucher'].includes(type)) {
+            toast.error('The configurable discount directory is unavailable. Refresh the discount list and try again.');
+            return;
+        }
+        const requiresCustomerName = selectedRule
+            ? selectedRule.requires_customer_id === true
+            : (!statutory && type !== 'employee');
+        const legacyPromo = type === 'promo' && !hasConfiguredRule;
         const cartLinesByRef = new Map(safeCart.map((line, index) => [getDiscountLineRef(line, index), line]));
         const selectedDiscountItems = safeEligibleDiscountItems.filter((entry) => {
             const line = cartLinesByRef.get(String(entry?.line_ref || '').trim());
@@ -1071,7 +1298,15 @@ export default function POSCheckoutTerminal({
             toast.error('Select a registered employee.');
             return;
         }
-        if (!statutory && type !== 'employee' && !discountDraft.customer_name.trim()) {
+        if (type === 'custom' && !hasConfiguredRule) {
+            toast.error('The selected discount configuration is unavailable. Refresh the discount list and try again.');
+            return;
+        }
+        if (discountDraft.rule_id && !hasConfiguredRule) {
+            toast.error('The selected discount configuration is no longer available. Refresh and select an active approved discount.');
+            return;
+        }
+        if (requiresCustomerName && !String(discountDraft.customer_name || '').trim()) {
             toast.error('Customer name is required for this discount.');
             return;
         }
@@ -1113,7 +1348,7 @@ export default function POSCheckoutTerminal({
             toast.error('Select at least one item for this discount.');
             return;
         }
-        if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
+        if (legacyPromo && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
             toast.error('Promo code is required.');
             return;
         }
@@ -1121,16 +1356,16 @@ export default function POSCheckoutTerminal({
             toast.error('Voucher code is required.');
             return;
         }
-        const rate = Number(discountDraft.rate || 0);
-        const amount = Number(discountDraft.amount || 0);
+        const rate = configuredRate;
+        const amount = configuredAmount;
         // #712: a voucher's discount amount is never client-resolvable -- unlike Promo, there is no
         // enumerating endpoint for a store's vouchers, so no rate/amount check applies here either.
         // The server decides on submit.
-        if (!statutory && !['promo', 'voucher'].includes(type) && discountDraft.method === 'percentage' && (!(rate > 0) || rate > 100)) {
+        if (!['promo', 'voucher'].includes(type) && configuredMethod === 'percentage' && (!(rate > 0) || rate > 100)) {
             toast.error('Enter a discount rate from 0.01 to 100.');
             return;
         }
-        if (!statutory && !['promo', 'voucher'].includes(type) && discountDraft.method === 'fixed' && !(amount > 0)) {
+        if (!['promo', 'voucher'].includes(type) && configuredMethod === 'fixed' && !(amount > 0)) {
             toast.error('Enter a fixed discount amount.');
             return;
         }
@@ -1144,24 +1379,23 @@ export default function POSCheckoutTerminal({
                     ? Number(discountDraft.employee_directory_id) || null
                     : null
             });
-            const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', voucher: 'Voucher Discount', manual: 'Other Discount' };
             const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
             const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0
                 ? resolvedApproverUserId
                 : null;
             const enteredPromoCode = normalizePromoCode(discountDraft.promo_code);
-            const matchedPromoConfig = type === 'promo'
+            const matchedPromoConfig = legacyPromo
                 ? safeCommercialPromoConfig.find((entry) => normalizePromoCode(entry?.promo_code) === enteredPromoCode)
                 : null;
             const configuredPromoRate = Number(matchedPromoConfig?.discount_percent || 0);
-            if (type === 'promo' && (
+            if (legacyPromo && (
                 matchedPromoConfig?.active !== true
                 || !(configuredPromoRate > 0 && configuredPromoRate <= 100)
             )) {
                 toast.error('Promo code is invalid or inactive.');
                 return;
             }
-            const configuredTargetIds = type === 'promo'
+            const configuredTargetIds = legacyPromo
                 ? [...new Set((Array.isArray(matchedPromoConfig?.target_item_ids) ? matchedPromoConfig.target_item_ids : [])
                     .map(Number)
                     .filter((itemId) => Number.isInteger(itemId) && itemId > 0))]
@@ -1169,23 +1403,29 @@ export default function POSCheckoutTerminal({
             const promoEligibleItemIds = configuredTargetIds.length > 0
                 ? configuredTargetIds.filter((itemId) => selectedDiscountItemIds.includes(itemId))
                 : selectedDiscountItemIds;
-            if (type === 'promo' && promoEligibleItemIds.length === 0) {
+            if (legacyPromo && promoEligibleItemIds.length === 0) {
                 toast.error('Promo code does not apply to the items in this order.');
                 return;
             }
+            const discountLabel = selectedRule?.name
+                || String(discountDraft.label || '').trim()
+                || ({ senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', voucher: 'Voucher Discount', manual: 'Other Discount' }[type] || 'Discount');
             setAppliedDiscount({
                 ...discountDraft,
                 manager_pin: undefined,
-                label: labels[type],
+                label: discountLabel,
+                rule_id: selectedRule?.discount_rule_id || null,
+                discount_key: selectedRule?.discount_key || null,
+                configuration_version: selectedRule?.configuration_version || null,
                 // #712: a voucher's method/rate are never client-known -- unlike Promo, there is no
                 // client-side config to resolve them from, so they stay null until the server
                 // responds at checkout. calculateGovernedDiscount (client-side cart-summary preview
                 // only, never authoritative) safely treats a null rate as 0, matching the "Discount
                 // amount is confirmed at checkout" copy shown in the modal.
-                method: type === 'promo' ? 'percentage' : (type === 'voucher' ? null : discountDraft.method),
-                rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : (type === 'voucher' ? null : rate)),
-                amount: !['promo', 'voucher'].includes(type) && discountDraft.method === 'fixed' ? amount : null,
-                promo_code: type === 'promo' ? enteredPromoCode : discountDraft.promo_code,
+                method: legacyPromo ? 'percentage' : (type === 'voucher' ? null : configuredMethod),
+                rate: legacyPromo ? configuredPromoRate : (type === 'voucher' ? null : (configuredMethod === 'percentage' ? rate : null)),
+                amount: !['promo', 'voucher'].includes(type) && configuredMethod === 'fixed' ? amount : null,
+                promo_code: legacyPromo ? enteredPromoCode : discountDraft.promo_code,
                 voucher_code: type === 'voucher' ? String(discountDraft.voucher_code || '').trim().toUpperCase() : discountDraft.voucher_code,
                 employee_directory_id: type === 'employee'
                     ? Number(discountDraft.employee_directory_id) || null
@@ -1212,7 +1452,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             closeDiscountModal();
-            toast.success(`${labels[type]} applied.`);
+            toast.success(`${discountLabel} applied.`);
         } catch (error) {
             toast.error(error?.response?.data?.message || 'Employee PIN authorization failed.');
         } finally {
@@ -1254,6 +1494,7 @@ export default function POSCheckoutTerminal({
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
         cartTotal,
@@ -1281,10 +1522,13 @@ export default function POSCheckoutTerminal({
         catalogViewportRef,
         checkoutBlockedReason,
         checkoutConfirmModalOpen,
-        checkoutOpenedFromCurrentSale,
+        checkoutError: isExistingDineInCheckout ? dineInCashCheckoutError : '',
+        checkoutOpenedFromCurrentSale: isExistingDineInCheckout ? false : checkoutOpenedFromCurrentSale,
         checkoutDiscountLabel,
         checkoutGridClassName,
-        checkoutLoading,
+        checkoutLoading: isExistingDineInCheckout ? dineInCashCheckoutSaving : checkoutLoading,
+        checkoutSubtotalOverride: isExistingDineInCheckout ? dineInCashCheckout?.order?.total_amount : null,
+        checkoutTotalOverride: isExistingDineInCheckout ? dineInCashCheckout?.order?.total_amount : null,
         checkoutPaneClassName,
         clearAppliedDiscount,
         clearDiscountEmployeeCreditPrefill,
@@ -1306,6 +1550,9 @@ export default function POSCheckoutTerminal({
         discountApproversLoading,
         discountEmployeesLoading,
         discountDraft,
+        discountTypeOptions,
+        discountRules: normalizeAvailablePosDiscountRules(safeDiscountRules),
+        discountRulesReady: normalizedDiscountRulesReady,
         discountModalOpen,
         discountPreviewTotals,
         drawerAdminBypass,
@@ -1316,6 +1563,7 @@ export default function POSCheckoutTerminal({
         drawerOpening,
         editingQuantityItemId,
         employeeCreditAccount,
+        employeeCreditAccountCode,
         employeeCreditLookupLoading,
         employeeCreditSelectionSource,
         employeeDiscountRateOptions,
@@ -1326,7 +1574,7 @@ export default function POSCheckoutTerminal({
         governedDiscountTotals,
         handleApplyGovernedDiscount,
         handleBillRequest,
-        handleCancelCheckout,
+        handleCancelCheckout: handleTerminalCheckoutCancel,
         handleCartQtyButtonPointerCancel,
         handleCartQtyButtonPointerDown,
         handleCartQtyButtonPointerMove,
@@ -1335,7 +1583,8 @@ export default function POSCheckoutTerminal({
         handleCatalogPageSizeChange,
         handleCatalogSwipeEnd,
         handleCatalogSwipeStart,
-        handleCheckout,
+        handleCheckout: handleExistingDineInCheckout,
+        handleExistingOrderCheckout: handleExistingDineInCheckout,
         handleCompletePreparedSplitPayment,
         handleConfirmServiceOptions,
         handleDismissToast,
@@ -1344,7 +1593,6 @@ export default function POSCheckoutTerminal({
         handleFolderStripPointerEnd,
         handleFolderStripPointerMove,
         handleFolderStripWheel,
-        handleKeepSplitPaymentAndClose,
         handleManualUniversalSync,
         handleOpenDrawer,
         handleParkAndNewSale,
@@ -1381,7 +1629,8 @@ export default function POSCheckoutTerminal({
         imagePreview,
         isCartLineSeniorPwdEligible,
         isCashPayment,
-        isCheckoutWorkflowValid,
+        isCheckoutWorkflowValid: isExistingDineInCheckout ? true : isCheckoutWorkflowValid,
+        isExistingOrderCheckout: isExistingDineInCheckout,
         isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
@@ -1439,6 +1688,11 @@ export default function POSCheckoutTerminal({
         receiptPrinting,
         receiptSettings,
         removeCartLine,
+        parkedLineDeletionRequest,
+        parkedLineDeletionReason,
+        setParkedLineDeletionReason,
+        cancelParkedLineDeletion,
+        confirmParkedLineDeletion,
         replayingQueuedCheckouts,
         resetCurrentSaleForNewSale,
         resetEmployeeCredit,
@@ -1522,7 +1776,6 @@ export default function POSCheckoutTerminal({
         splitPaymentCheckoutContext,
         splitPaymentDialogOpen,
         splitPaymentReady,
-        splitPaymentStorageScopeKey,
         splitPaymentSummaryAllocations,
         splitPaymentSummaryChangeAmount,
         splitPaymentSummaryPaidAmount,

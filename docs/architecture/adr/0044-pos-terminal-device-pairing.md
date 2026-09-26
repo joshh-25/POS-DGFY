@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-28
-last_reviewed: 2026-08-24
-review_by: 2027-02-24
+last_reviewed: 2026-09-14
+review_by: 2027-03-14
 applies_to: architecture_decision
 topic: pos_terminal_device_pairing
 ---
@@ -63,3 +63,25 @@ Missing, expired, tampered, or invalidated pairing fails closed to the existing 
   implementation phase activates the approved operator-session contract. This is
   a governance amendment only; it does not authorize migration or runtime work.
 - See `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`.
+
+### 2026-09-14: Strict Device Enrollment Contract (Phase 345)
+
+- The browser pairing cookie remains a logical terminal compatibility signal. It
+  is not proof of unique physical hardware and does not satisfy strict device
+  enforcement by itself.
+- A tenant may explicitly require an enrolled device for a registered terminal.
+  The enrolled device must prove possession of a secure signing key bound to
+  the tenant, terminal, and location. The device proof is an additional factor
+  after cashier identity and membership resolution; it never authenticates a
+  cashier or opens a shift on its own.
+- One active device is allowed per strict terminal. Re-enrollment replaces and
+  revokes the previous device atomically. A missing, expired, replayed, or
+  revoked proof fails closed with an audited administrator recovery path.
+- Strict enforcement binds the terminal to its registered home location; a
+  location-switch permission cannot override that binding. Authorized device
+  policy administration may use a separate admin step-up surface so a lost
+  device can be revoked or replaced without requiring the lost device.
+- The existing default browser behavior and no-migration pairing contract stay
+  unchanged while strict mode is disabled. This Phase 345 amendment records
+  policy only; Phases 346-350 implement enrollment, iMin proof, UI, bridge
+  command authorization, and rollout validation.

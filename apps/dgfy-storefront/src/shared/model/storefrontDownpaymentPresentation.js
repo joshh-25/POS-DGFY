@@ -41,9 +41,7 @@ export const buildPaymentModeStorePatch = (catalogData = null) => ({
 export const resolveDownpaymentBalanceLabel = (orderMethod) => (
   orderMethod === 'delivery'
     ? 'Balance due on delivery'
-    : orderMethod === 'dine_in'
-      ? 'Balance due at dine-in'
-      : 'Balance due at pickup'
+    : orderMethod === 'dine_in' ? 'Balance due at dine-in' : 'Balance due at pickup'
 );
 
 const NULL_DISPLAY = Object.freeze({

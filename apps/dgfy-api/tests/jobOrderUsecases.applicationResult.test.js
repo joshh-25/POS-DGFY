@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 import {
   buildGetJobOrderByIdUseCase,
   buildCreateJobOrderUseCase,
+  buildFinalizeJobOrderUseCase,
   buildCompleteJobOrderUseCase,
   buildArchiveJobOrderUseCase
 } from '../src/modules/jobOrders/usecases/jobOrderUseCases.js';
@@ -39,6 +40,26 @@ describe('jobOrder use-cases application result contract', () => {
       error: null,
       message: null
     });
+  });
+
+  it('finalizeJobOrder forwards the selected source and destination branches', async () => {
+    const finalizeJobOrder = jest.fn().mockResolvedValue({
+      jo_id: 41,
+      jo_number: 'JO-2026-000041',
+      status: 'in_progress',
+      source_location_id: 2,
+      destination_location_id: 3
+    });
+    const useCase = buildFinalizeJobOrderUseCase({
+      jobOrderService: { finalizeJobOrder }
+    });
+
+    const locationData = { source_location_id: 2, destination_location_id: 3 };
+    const result = await useCase({ jobOrderId: '41', userId: '6', locationData });
+
+    expect(finalizeJobOrder).toHaveBeenCalledWith(41, 6, locationData);
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual(expect.objectContaining(locationData));
   });
 
   it('completeJobOrder validates completionData shape', async () => {

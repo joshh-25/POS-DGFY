@@ -747,6 +747,46 @@ describe('pos use-cases application result contract', () => {
         expect(upsertCatalogOverride).toHaveBeenCalledWith(101, { pos_visible: true });
     });
 
+    it('updates POS branch availability through a granted location override', async () => {
+        const assertLocationAccess = jest.fn().mockResolvedValue(undefined);
+        const upsertPosItemLocationAvailability = jest.fn().mockResolvedValue([
+            { item_id: 204, location_id: 7, pos_available: false, source: 'override' }
+        ]);
+        const listPosItemLocationAvailability = jest.fn().mockResolvedValue(new Map([
+            [204, [{ item_id: 204, location_id: 7, pos_available: false, source: 'override' }]]
+        ]));
+        const useCase = buildUpdatePosCatalogOverrideUseCase({
+            assertLocationAccess,
+            posRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 204, name: 'Branch-only item' }),
+                findCatalogOverrideByItemId: jest.fn().mockResolvedValue({ item_id: 204, pos_visible: true }),
+                upsertPosItemLocationAvailability,
+                listPosItemLocationAvailability,
+                createAuditLog: jest.fn().mockResolvedValue(null)
+            }
+        });
+
+        const result = await useCase({
+            itemId: 204,
+            payload: { location_availability: [{ location_id: 7, pos_available: false }] },
+            user: { user_id: 17, is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(assertLocationAccess).toHaveBeenCalledWith({
+            userId: 17,
+            locationId: 7,
+            operationLabel: 'edit POS branch availability',
+            requireGrant: true
+        });
+        expect(upsertPosItemLocationAvailability).toHaveBeenCalledWith(204, [
+            { location_id: 7, pos_available: false }
+        ]);
+        expect(result.data.pos_location_availability).toEqual([
+            { item_id: 204, location_id: 7, pos_available: false, source: 'override' }
+        ]);
+    });
+
     it('updatePosCatalogOverride blocks enabling pos visibility when readiness is incomplete', async () => {
         const getItemById = jest.fn().mockResolvedValue({ item_id: 202 });
         const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
@@ -2217,8 +2257,9 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(updatedOrder),
             updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
         };
-        // #1931: placed -> confirmed resolves the tenant workflow mode; pin non-Retail so this
-        // stays the legacy accept path (no inventory_issued_at in the payload below).
+        // Confirmation-time issue now applies to every online mode. This fixture has no stock
+        // command and no lines, so it preserves the focused shift-attribution assertion while
+        // the use case records the confirmation evidence.
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
             resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'fnb', enabledCapabilities: [] })
@@ -2233,7 +2274,12 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             58,
-            { fulfillment_status: 'confirmed', accepted_by: 7, accepted_at: expect.any(Date) },
+            {
+                fulfillment_status: 'confirmed',
+                accepted_by: 7,
+                accepted_at: expect.any(Date),
+                inventory_issued_at: expect.any(Date)
+            },
             expect.objectContaining({ transaction, lock: true })
         );
     });

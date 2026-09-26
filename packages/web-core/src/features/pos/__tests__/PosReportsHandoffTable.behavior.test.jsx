@@ -31,9 +31,11 @@ describe('POS reports handoff table', () => {
   it('renders the proposed session columns from the operator session payload', () => {
     render(<PosReportsHandoffTable rows={rows} />);
 
-    ['Session ID', 'Operator', 'Register', 'Start Time', 'End Time', 'Duration', 'Status'].forEach((label) => {
+    ['Session ID', 'Operator', 'Register', 'Start Time', 'Duration', 'Status'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
+    expect(screen.queryByRole('button', { name: 'Sort by End Time' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('SES-000701').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Register #1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('12h 00m').length).toBeGreaterThan(0);
