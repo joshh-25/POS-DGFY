@@ -6,6 +6,7 @@ import { getAllSettingsUseCase } from '../../settings/index.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import dbStore from '../../../utils/dbStore.js';
+import { normalizePosTaxPolicies, resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
 
 // Exported so middleware/rateLimiter.js can enforce the same number it
 // advertises to clients in sync_policy/sync_limit_policy - see
@@ -37,6 +38,7 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_petty_cash_symbol',
     'pos_petty_cash_amount',
     'pos_discount_profiles',
+    'pos_tax_policies',
     'pos_order_method_fees',
     'pos_terminal_registry_mode',
     'pos_terminal_registry',
@@ -74,7 +76,8 @@ const signStatutoryPolicy = ({ version, expiresAt }) => {
     return crypto.createHmac('sha256', secret).update(`${version}:${expiresAt}`).digest('hex');
 };
 
-const buildStatutoryPolicySnapshot = async (posRepository, now = new Date()) => {
+const buildStatutoryPolicySnapshot = async (posRepository, settings = {}, now = new Date()) => {
+    const taxPolicies = normalizePosTaxPolicies(settings?.pos_tax_policies?.value);
     const rows = await Promise.all(['senior', 'pwd'].map((type) => posRepository.findActiveDiscountRuleByType(type)));
     const rules = rows.filter(Boolean).map((row) => ({
         id: toPositiveInt(row.id),
@@ -83,6 +86,7 @@ const buildStatutoryPolicySnapshot = async (posRepository, now = new Date()) => 
         rate: row.rate == null ? null : Number(row.rate),
         fixed_amount: row.fixed_amount == null ? null : Number(row.fixed_amount),
         is_vat_exempt: row.is_vat_exempt === true,
+        tax_treatment: resolvePosTaxPolicy(taxPolicies, row.type).vat_treatment,
         requires_customer_id: row.requires_customer_id === true,
         max_discount_amount: row.max_discount_amount == null ? null : Number(row.max_discount_amount),
         updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at || '') || null
@@ -90,13 +94,13 @@ const buildStatutoryPolicySnapshot = async (posRepository, now = new Date()) => 
     if (rules.length === 0) return null;
     const generatedAt = now.toISOString();
     const expiresAt = new Date(now.getTime() + MOBILE_STATUTORY_POLICY_TTL_MS).toISOString();
-    const version = buildCheckpointToken({ contract: 'mobile-pos.statutory-policy.v1', rules });
+    const version = buildCheckpointToken({ contract: 'mobile-pos.statutory-policy.v2', rules, tax_policies: taxPolicies });
     const signature = signStatutoryPolicy({ version, expiresAt });
     if (!signature) return null;
-    return { version, generated_at: generatedAt, expires_at: expiresAt, signature, rules };
+    return { version, generated_at: generatedAt, expires_at: expiresAt, signature, rules, tax_policies: taxPolicies };
 };
 
-const verifyStatutoryPolicyEvidence = async ({ evidence, posRepository, now = new Date() }) => {
+const verifyStatutoryPolicyEvidence = async ({ evidence, posRepository, settings = {}, now = new Date() }) => {
     const version = safeTrimmedText(evidence?.version, '');
     const expiresAt = safeTrimmedText(evidence?.expires_at, '');
     const signature = safeTrimmedText(evidence?.signature, '');
@@ -105,7 +109,7 @@ const verifyStatutoryPolicyEvidence = async ({ evidence, posRepository, now = ne
     const signatureValid = Boolean(expectedSignature && signature)
         && expectedSignature.length === signature.length
         && crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature));
-    const current = await buildStatutoryPolicySnapshot(posRepository, now);
+    const current = await buildStatutoryPolicySnapshot(posRepository, settings, now);
     if (!version || !Number.isFinite(expiresMs) || expiresMs <= now.getTime() || !signatureValid || current?.version !== version) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -338,7 +342,7 @@ export const buildGetMobilePosDevicePolicyUseCase = ({ posRepository }) => {
         try {
             const settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
             const terminalPolicy = await posRepository.getTerminalIdentityPolicySettings();
-            const statutoryDiscountPolicy = await buildStatutoryPolicySnapshot(posRepository);
+            const statutoryDiscountPolicy = await buildStatutoryPolicySnapshot(posRepository, settings);
             return ok({
                 generated_at: new Date().toISOString(),
                 bootstrap_version: MOBILE_CHECKPOINT_VERSION,
@@ -381,6 +385,7 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase, posRepo
             });
         }
 
+        const settings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
         const results = [];
         let acceptedEntries = 0;
         let replayedEntries = 0;
@@ -409,7 +414,11 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase, posRepo
             let trustedOfflineStatutoryPolicy = null;
             if (discountType === 'senior' || discountType === 'pwd') {
                 try {
-                    const verified = await verifyStatutoryPolicyEvidence({ evidence: syncPayload.offline_statutory_policy, posRepository });
+                    const verified = await verifyStatutoryPolicyEvidence({
+                        evidence: syncPayload.offline_statutory_policy,
+                        posRepository,
+                        settings
+                    });
                     trustedOfflineStatutoryPolicy = { ...verified, discountType };
                 } catch (error) {
                     rejectedEntries += 1;

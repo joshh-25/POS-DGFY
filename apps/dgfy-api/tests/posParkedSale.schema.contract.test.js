@@ -15,6 +15,10 @@ const ownershipMigrationSource = fs.readFileSync(
     path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260815000002-add-pos-parked-sale-origin-ownership.cjs'),
     'utf8'
 );
+const lifecycleMigrationSource = fs.readFileSync(
+    path.resolve(process.cwd(), '../dgfy-migration-runner/migrations/20260924000001-add-parked-sale-stock-and-approval-lifecycle.cjs'),
+    'utf8'
+);
 
 describe('parked sale schema contract', () => {
     it('registers the tenant model and lifecycle fields', () => {
@@ -24,6 +28,7 @@ describe('parked sale schema contract', () => {
             'parked',
             'claimed',
             'completed',
+            'cancel_pending',
             'cancelled'
         ]);
         expect(defaultDb.PosParkedSale.rawAttributes.snapshot.type.toString()).toContain('JSON');
@@ -31,6 +36,8 @@ describe('parked sale schema contract', () => {
         expect(defaultDb.PosParkedSale.rawAttributes.revision.defaultValue).toBe(1);
         expect(defaultDb.PosParkedSale.rawAttributes.origin_cashier_id.allowNull).toBe(true);
         expect(defaultDb.PosParkedSale.rawAttributes.origin_shift_id.allowNull).toBe(true);
+        expect(defaultDb.PosParkedSale.rawAttributes.inventory_effects).toBeDefined();
+        expect(defaultDb.PosParkedSale.rawAttributes.inventory_deducted_at).toBeDefined();
     });
 
     it('uses an additive migration with tenant-safe foreign keys and no transaction writes', () => {
@@ -53,5 +60,14 @@ describe('parked sale schema contract', () => {
         expect(ownershipMigrationSource).toContain('COALESCE(origin_cashier_id, cashier_id)');
         expect(ownershipMigrationSource).toContain('COALESCE(origin_shift_id, shift_id)');
         expect(ownershipMigrationSource).not.toContain('dropTable');
+    });
+
+    it('adds parked-sale stock evidence and cancellation/void approval states without reversing ledger data on rollback', () => {
+        expect(lifecycleMigrationSource).toContain("'inventory_effects'");
+        expect(lifecycleMigrationSource).toContain("'inventory_deducted_at'");
+        expect(lifecycleMigrationSource).toContain("'cancel_pending'");
+        expect(lifecycleMigrationSource).toContain("'pos_void','pos_parked_sale_cancel'");
+        expect(lifecycleMigrationSource).toContain('async down() {}');
+        expect(lifecycleMigrationSource).not.toContain('dropTable');
     });
 });

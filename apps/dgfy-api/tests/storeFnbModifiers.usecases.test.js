@@ -852,6 +852,52 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
+  it('requires a future scheduled time for dine-in checkout', async () => {
+    const repository = buildRepository([burgerItem]);
+    const useCase = buildCheckoutUseCase(repository);
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'dine-in-schedule-required',
+        location_id: 4,
+        order_method: 'dine_in',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('DINE_IN_SCHEDULE_REQUIRED');
+  });
+
+  it('rejects direct dine-in cash checkout even when the location otherwise accepts cash', async () => {
+    const repository = buildRepository([burgerItem]);
+    const useCase = buildCheckoutUseCase(repository);
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'dine-in-cash-rejected',
+        location_id: 4,
+        order_method: 'dine_in',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-10-01T18:30:00+08:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('DINE_IN_CASH_PAYMENT_NOT_ALLOWED');
+    expect(repository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+  });
+
   it('rejects immediate checkout outside structured storefront business hours', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-25T20:00:00+08:00'));
     const structuredHours = {

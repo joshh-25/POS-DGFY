@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { FnbCheckoutSummaryContent } from '../modes/fnb/checkout/components/FnbCheckoutSummaryContent.jsx';
+import { FnbCheckoutMobileSummaryPanel } from '../modes/fnb/checkout/components/FnbCheckoutMobileSummaryPanel.jsx';
 import { RetailOrderSummaryContent } from '../modes/retail/checkout/components/RetailOrderSummaryContent.jsx';
 import { SimpleCheckoutMobileSummaryPanel } from '../modes/simple/checkout/components/SimpleCheckoutMobileSummaryPanel.jsx';
 import { SimpleCheckoutSummaryContent } from '../modes/simple/checkout/components/SimpleCheckoutSummaryContent.jsx';
@@ -181,5 +182,55 @@ describe('checkout summary phase presentation', () => {
     expect(screen.queryByText('Service Fee')).toBeNull();
     expect(screen.getByText('VAT (included in item prices)').parentElement.textContent).toContain('PHP 11.25');
     expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
+  });
+
+  it('shows the delivery fee only for delivery orders in the desktop F&B summary', () => {
+    const modeProps = { accentColor: '#1a4e8d', accentSoft: '#aee8f4', accentTint: '#eef6fd', bodyFont: 'sans-serif', displayFont: 'sans-serif', checkoutAllowed: true, variant: 'customer' };
+
+    render(<FnbCheckoutSummaryContent {...sharedProps} {...modeProps} orderMethod="dine_in" isDeliveryOrder={false} />);
+    expect(screen.queryByText('Delivery Fee')).toBeNull();
+
+    cleanup();
+    render(<FnbCheckoutSummaryContent {...sharedProps} {...modeProps} orderMethod="delivery" isDeliveryOrder />);
+    expect(screen.getByText('Delivery Fee')).toBeTruthy();
+  });
+
+  it('shows the delivery fee only for delivery orders in the mobile F&B summary', () => {
+    const mobileProps = {
+      brandColor: '#1a4e8d',
+      brandColorDark: '#123b6d',
+      brandShadowStrong: 'rgba(26,78,141,.2)',
+      cart,
+      cartCount: 1,
+      cartImageErrors: new Set(),
+      checkoutAllowed: true,
+      checkoutLoading: false,
+      fnbCustomerStepComplete: true,
+      fnbFulfillmentStepComplete: true,
+      itemCountLabel: '1 item',
+      money: sharedProps.money,
+      onBackToCart: () => {},
+      onCheckout: () => {},
+      onDecreaseStep: () => {},
+      onImageError: () => {},
+      onIncreaseStep: () => {},
+      onToggleSummary: () => {},
+      orderStep: 2,
+      promoDiscountSummaryRow: null,
+      voucherDiscountSummaryRow: null,
+      promoPanel: null,
+      scheduleLabel: 'NOW',
+      setSummaryOpen: () => {},
+      showFulfillmentSummary: true,
+      showSummary: true,
+      totals,
+    };
+
+    render(<FnbCheckoutMobileSummaryPanel {...mobileProps} orderMethod="dine_in" isDeliveryOrder={false} />);
+    expect(screen.queryByText('Delivery Fee')).toBeNull();
+
+    cleanup();
+    render(<FnbCheckoutMobileSummaryPanel {...mobileProps} orderMethod="delivery" isDeliveryOrder />);
+    expect(screen.getByText('Delivery Fee')).toBeTruthy();
   });
 });

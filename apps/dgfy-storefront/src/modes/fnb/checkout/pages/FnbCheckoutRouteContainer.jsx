@@ -15,7 +15,7 @@ import SavedAddressCard from '../../../../shared/components/checkout/SavedAddres
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
 import { DownpaymentPaymentCallout } from '../../../../shared/components/checkout/DownpaymentPaymentCallout.jsx';
 import { PaymentElectionSelector } from '../../../../shared/components/checkout/PaymentElectionSelector.jsx';
-import { isCustomerChoiceStore, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
+import { isCustomerChoiceStore, resolveDownpaymentBalanceLabel, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
 import { requiresBillingEmail } from '../../../../checkout/checkoutValidation.js';
 import {
   MOBILE_DROPDOWN_MENU_STYLE,
@@ -93,6 +93,7 @@ export function FnbCheckoutRouteContainer({
   fnbCheckoutContentPadding,
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
+  allowDineInPayAtStore = false,
   orderTimingPolicy,
   fulfillmentOptions,
   fnbMobileSummaryItemCountLabel,
@@ -194,6 +195,9 @@ export function FnbCheckoutRouteContainer({
 }) {
   // Phase 142 (#823): quote-sourced (this container renders before a payment session exists).
   const downpaymentDisplay = resolveDownpaymentDisplay({ quoteResult: totalsForDisplay });
+  const isDineInOrder = orderMethod === 'dine_in';
+  const downpaymentHandoverLabel = resolveDownpaymentBalanceLabel(orderMethod)
+    .replace(/^Balance due /, '');
   // #963: see RetailOrderPaymentStep.jsx for the rationale -- same gate, same shared helper.
   const fnbBillingEmailRequired = requiresBillingEmail({ paymentType: fnbPaymentType, customerEmail });
   const resolvedFnbOrderTimingPolicy = orderTimingPolicy || resolveOrderTimingPolicy();
@@ -211,6 +215,7 @@ export function FnbCheckoutRouteContainer({
       contentPadding={fnbCheckoutContentPadding}
       displayFont={servicesDisplayFont}
       isDeliveryOrder={isDeliveryOrder}
+      orderMethod={orderMethod}
       isMobileViewport={isMobileViewport}
       isResponsiveFlow={isFnbOrderResponsiveFlow}
       onBack={goStoreCatalogPage}
@@ -231,6 +236,7 @@ export function FnbCheckoutRouteContainer({
           displayFont: servicesDisplayFont,
           isCustomerStepComplete: fnbCustomerStepComplete,
           isDeliveryOrder,
+          orderMethod,
           isFulfillmentStepComplete: fnbFulfillmentStepComplete,
           isMobileViewport,
           onStepChange: setFnbOrderStep,
@@ -259,7 +265,15 @@ export function FnbCheckoutRouteContainer({
               mobileOptionHeight={fnbOrderMobileOptionHeight}
               mobileOptionIconBox={fnbOrderMobileOptionIconBox}
               mobileOptionTextSize={fnbOrderMobileOptionTextSize}
-              onOrderMethodChange={setOrderMethod}
+              onOrderMethodChange={(nextMethod) => {
+                setOrderMethod(nextMethod);
+                if (nextMethod === 'dine_in') {
+                  setFnbScheduleMode('schedule');
+                } else if (orderMethod === 'dine_in') {
+                  setFnbScheduleMode('asap');
+                  setFnbScheduledFor('');
+                }
+              }}
               onScheduleModeChange={(nextMode) => {
                 setFnbScheduleMode(nextMode);
                 if (nextMode === 'asap') setFnbScheduledFor('');
@@ -270,7 +284,9 @@ export function FnbCheckoutRouteContainer({
               }}
               orderMethod={orderMethod}
               orderTimingPolicy={orderTimingPolicy}
+              locationName={selectedStore?.location_name || selectedStore?.tenant_name || 'Main location'}
               scheduleHoursLabel={formatStorefrontHoursLabel(selectedStore?.storefront_hours, selectedStore?.storefront_hours_status?.display || '')}
+              storefrontHours={selectedStore?.storefront_hours}
             />                      {isDeliveryOrder && (
               <div style={{ display: 'grid', gap: 16 }}>
                 <div style={{ display: 'grid', gap: 4 }}>
@@ -600,6 +616,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
                 const normalizedLineItemId = Number(itemId);
@@ -683,6 +700,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
                 const normalizedLineItemId = Number(itemId);
@@ -735,10 +753,16 @@ export function FnbCheckoutRouteContainer({
                   value={paymentElection}
                 />
                 <PaymentMethodSelectorBlock
-                  label={downpaymentDisplay.active ? 'Pay downpayment with' : 'Payment Type'}
+                  label={downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore) ? 'Pay downpayment with' : 'Payment Type'}
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
-                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore) })}
+                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, {
+                    hideCash: (downpaymentDisplay.active && !(isDineInOrder && allowDineInPayAtStore))
+                      || (isCustomerChoiceStore(selectedStore) && !(isDineInOrder && allowDineInPayAtStore))
+                      || (isDineInOrder && !allowDineInPayAtStore),
+                    cashLabel: isDineInOrder ? 'Pay in store' : null,
+                    allowCash: isDineInOrder && allowDineInPayAtStore
+                  })}
                   DropdownComponent={StorefrontDropdown}
                   labelStyle={{ ...checkoutTypography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}
                   triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, padding: '0 42px 0 14px', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY } : { ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
@@ -751,7 +775,7 @@ export function FnbCheckoutRouteContainer({
                       bodyFont={CHECKOUT_FONT_FAMILY}
                       display={downpaymentDisplay}
                       money={money}
-                      orderMethod={isDeliveryOrder ? 'delivery' : 'pickup'}
+                      orderMethod={orderMethod}
                     />
                   )}
                   notice={fnbBillingEmailRequired && typeof renderBillingEmailPrompt === 'function'
@@ -763,7 +787,7 @@ export function FnbCheckoutRouteContainer({
                     amountDue={downpaymentDisplay.active ? money(downpaymentDisplay.downpaymentAmount) : null}
                     amountDueLabel="Downpayment due"
                     balanceNote={downpaymentDisplay.active
-                      ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${isDeliveryOrder ? 'on delivery' : 'at pickup'}.`
+                      ? `Pay the remaining ${money(downpaymentDisplay.balanceDueAmount)} in cash ${downpaymentHandoverLabel}.`
                       : null}
                     billing={{ name: customerName, email: customerEmail, phone: customerPhone }}
                     onConfirmTestPayment={import.meta.env.DEV
@@ -802,6 +826,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
                 const normalizedLineItemId = Number(itemId);
@@ -836,6 +861,7 @@ export function FnbCheckoutRouteContainer({
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
           isDeliveryOrder={isDeliveryOrder}
+          orderMethod={orderMethod}
           itemCountLabel={fnbMobileSummaryItemCountLabel}
           money={money}
           onBackToCart={() => {
@@ -931,6 +957,7 @@ export function FnbCheckoutRouteContainer({
           cartLines={Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []}
           checkoutResult={checkoutResult}
           isDeliveryOrder={isDeliveryOrder}
+          orderMethod={orderMethod}
           isMobileViewport={isMobileViewport}
           money={money}
           mutedTextColor={fnbOrderMutedBlueText}

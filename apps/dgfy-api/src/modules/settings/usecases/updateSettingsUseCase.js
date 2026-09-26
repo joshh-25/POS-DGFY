@@ -56,6 +56,7 @@ import {
 } from './storeProfileShadowWrite.js';
 import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
+import { applyPosTaxPolicyAuditLog, resolvePosTaxPolicyAuditBeforeValue } from './posTaxPolicyAuditLog.js';
 import logger from '../../../config/logger.js';
 import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { isPlatformControlledImageClientConversionKey } from '../../shared/utils/imageClientConversionGate.js';
@@ -102,6 +103,16 @@ const safelyLogWorkflowModeAudit = async ({ settingsData, beforeValues, actorUse
         await applyWorkflowModeAuditLog({ settingsData, beforeValues, actorUser });
     } catch (error) {
         logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+            error: error?.message
+        });
+    }
+};
+
+const safelyLogPosTaxPolicyAudit = async ({ settingsData, beforeValue, actorUser }) => {
+    try {
+        await applyPosTaxPolicyAuditLog({ settingsData, beforeValue, actorUser });
+    } catch (error) {
+        logger.warn('[PosTaxPolicyAudit] failed to record tax policy change log', {
             error: error?.message
         });
     }
@@ -574,6 +585,10 @@ export const buildUpdateSettingsUseCase = ({
                 settingsRepository,
                 settingsData
             });
+            const posTaxPolicyAuditBeforeValue = await resolvePosTaxPolicyAuditBeforeValue({
+                settingsRepository,
+                settingsData
+            });
 
             settingsData = await applyStoreProfileShadowWrite({ settingsRepository, settingsData });
 
@@ -590,6 +605,11 @@ export const buildUpdateSettingsUseCase = ({
                 storefrontAssetStorage
             });
             await safelyLogWorkflowModeAudit({ settingsData, beforeValues: auditBeforeValues, actorUser });
+            await safelyLogPosTaxPolicyAudit({
+                settingsData,
+                beforeValue: posTaxPolicyAuditBeforeValue,
+                actorUser
+            });
             return ok({
                 ...result,
                 pending_review_keys: posMetadataReview.pendingReviewKeys

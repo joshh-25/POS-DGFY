@@ -80,6 +80,36 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
   });
 
+  it('offers Settle Balance for a dine-in order when it is ready to serve', () => {
+    renderQueue([{
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      fulfillment_status: 'ready_for_pickup'
+    }]);
+
+    expect(screen.getByRole('button', { name: /settle balance/i })).toBeTruthy();
+  });
+
+  it('routes an unpaid cash dine-in order to Checkout when it is ready to serve', () => {
+    const handleOpenCashCollection = vi.fn();
+    const dineInOrder = {
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      payment_type: 'cash',
+      payment_status: 'unpaid',
+      fulfillment_status: 'ready_for_pickup',
+      amount_paid: 0,
+      balance_due: 0
+    };
+    renderQueue([dineInOrder], { handleOpenCashCollection });
+
+    fireEvent.click(screen.getByRole('button', { name: /^checkout$/i }));
+
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(dineInOrder);
+    expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /settle balance/i })).toBeNull();
+  });
+
   it('never offers Settle Balance on the plain COD path collect-cash owns', () => {
     renderQueue([{ ...DOWNPAYMENT_ORDER, payment_status: 'unpaid', amount_paid: 0, balance_due: 0 }]);
 

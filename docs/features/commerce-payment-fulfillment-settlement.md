@@ -37,6 +37,11 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
   record whose amount and currency match the locked session total.
 - Provider reconciliation is an audited recovery path, not a replacement for the
   signed `payment.paid` webhook and never trusts browser payment confirmation.
+- In local PayMongo test mode only, a loopback-gated Storefront reconciliation action may
+  retrieve a direct GCash, Maya, or card Payment Intent after the provider authorization return.
+  It reuses the same server-side amount, currency, livemode, payment-record, tenant-scope, and
+  idempotent finalization checks; it is unavailable outside test mode and does not change the
+  production rule that the signed `payment.paid` webhook is authoritative.
 - A retry must either create/link the POS transaction and tracking PIN or leave
   the session in the recoverable manual-resolution state with the latest failure.
 

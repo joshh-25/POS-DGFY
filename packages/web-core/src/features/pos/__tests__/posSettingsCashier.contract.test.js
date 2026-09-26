@@ -610,6 +610,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain('description="Sell out-of-stock items"');
     expect(storefrontPaneSource).toContain('description="Accept delivery orders"');
     expect(storefrontPaneSource).toContain('description="Accept pickup orders"');
+    expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}');
+    expect(storefrontPaneSource).toContain('description="Accept dine-in orders"');
     expect(storefrontPaneSource).toContain('description="Offer scheduled orders"');
     expect(storefrontPaneSource).toContain('description="Offer immediate fulfillment"');
   });

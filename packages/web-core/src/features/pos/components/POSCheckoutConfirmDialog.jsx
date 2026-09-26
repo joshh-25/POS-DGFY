@@ -26,6 +26,11 @@ import {
     resolvePaymentMethodColorStyles,
     round4
 } from '../utils/posCheckoutTerminalUtils.js';
+import {
+    buildPosDiscountTypeOptions,
+    getDiscountRuleSelectionKey,
+    POS_DISCOUNT_FALLBACK_OPTIONS
+} from '../utils/posDiscountOptions.js';
 
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
@@ -39,14 +44,6 @@ const PAYMENT_METHOD_OPTIONS = [
     { value: 'card', label: 'Card' },
     { value: 'bank_transfer', label: 'Bank Transfer' },
     { value: 'employee_credit', label: 'Employee Credit' }
-];
-const CHECKOUT_DISCOUNT_TYPE_OPTIONS = [
-    { value: 'employee', label: 'Employee' },
-    { value: 'senior', label: 'Senior Citizen' },
-    { value: 'pwd', label: 'PWD' },
-    { value: 'promo', label: 'Promo' },
-    { value: 'voucher', label: 'Voucher' },
-    { value: 'manual', label: 'Others' }
 ];
 const CHECKOUT_SECONDARY_HOVER = 'hover:border-[#1A4E8D] hover:bg-[#EFF7FF]';
 const CHECKOUT_ICON_HOVER = 'hover:bg-[#EFF7FF] hover:text-[#1A4E8D]';
@@ -71,9 +68,12 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         cartSubtotal,
         cartTotal,
         checkoutConfirmModalOpen,
+        checkoutError = '',
         checkoutOpenedFromCurrentSale,
         checkoutDiscountLabel,
         checkoutLoading,
+        checkoutSubtotalOverride = null,
+        checkoutTotalOverride = null,
         clearAppliedDiscount,
         closeDiscountModal,
         clearDiscountEmployeeCreditPrefill,
@@ -83,13 +83,18 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         discountDraft = {},
         discountModalOpen,
         discountPreviewTotals = {},
+        discountRules = [],
+        discountRulesReady = false,
+        discountTypeOptions: providedDiscountTypeOptions = null,
         employeeCreditAccount,
+        employeeCreditAccountCode,
         employeeCreditLookupLoading,
         employeeCreditSelectionSource,
         governedDiscountTotals = {},
         handleBillRequest,
         handleCancelCheckout,
         handleCheckout,
+        handleExistingOrderCheckout,
         handleCompletePreparedSplitPayment,
         handlePrintOrder,
         handlePrefillEmployeeCredit,
@@ -97,6 +102,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         hasSplitPaymentSummary,
         isCashPayment,
         isCheckoutWorkflowValid,
+        isExistingOrderCheckout = false,
         isCustomerPaymentSufficient,
         isEmployeeCreditPayment,
         isMsmeMode,
@@ -165,6 +171,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const [discountWorkspaceMounted, setDiscountWorkspaceMounted] = useState(false);
     const [discountWorkspaceOpen, setDiscountWorkspaceOpen] = useState(false);
     const [checkoutSheetMotionOpen, setCheckoutSheetMotionOpen] = useState(false);
+    const [existingOrderPaymentConfirmed, setExistingOrderPaymentConfirmed] = useState(false);
     const checkoutSheetRef = useRef(null);
 
     useEffect(() => {
@@ -226,6 +233,12 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
         setOrderSummaryOpen(false);
     }, [checkoutConfirmModalOpen]);
 
+    useEffect(() => {
+        if (!checkoutConfirmModalOpen || !isExistingOrderCheckout || paymentType === 'cash') {
+            setExistingOrderPaymentConfirmed(false);
+        }
+    }, [checkoutConfirmModalOpen, isExistingOrderCheckout, paymentType]);
+
     if (!checkoutConfirmModalOpen) return null;
 
     const checkoutDiscountWorkspaceExpanded = discountWorkspaceOpen || (!discountModalOpen && discountWorkspaceMounted);
@@ -257,13 +270,27 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
     const employeeCreditDiscountPreference = resolveEmployeeDiscountCreditPreference(appliedDiscount, safeCart);
 
+    const normalizedCheckoutTotalOverride = Number(checkoutTotalOverride);
+    const hasCheckoutTotalOverride = checkoutTotalOverride !== null
+        && checkoutTotalOverride !== undefined
+        && Number.isFinite(normalizedCheckoutTotalOverride);
+    const effectiveCheckoutTotal = hasCheckoutTotalOverride
+        ? round4(normalizedCheckoutTotalOverride)
+        : cartTotal;
+    const normalizedCheckoutSubtotalOverride = Number(checkoutSubtotalOverride);
+    const hasCheckoutSubtotalOverride = checkoutSubtotalOverride !== null
+        && checkoutSubtotalOverride !== undefined
+        && Number.isFinite(normalizedCheckoutSubtotalOverride);
+    const effectiveCheckoutSubtotal = hasCheckoutSubtotalOverride
+        ? round4(normalizedCheckoutSubtotalOverride)
+        : cartSubtotal;
     const paymentAmountAutoFilled = paymentAmountDraft?.autoFilled ?? Boolean(customerPaymentAmountAutoFilled);
     const paymentAmountInput = paymentAmountAutoFilled
-        ? money(cartTotal)
+        ? money(effectiveCheckoutTotal)
         : (paymentAmountDraft?.value ?? customerPaymentAmountInput ?? '');
     const customerPaymentAmount = normalizePaymentAmount(paymentAmountInput);
-    const customerPaymentShortfall = round4(Math.max(0, Number(cartTotal || 0) - customerPaymentAmount));
-    const customerPaymentChange = round4(Math.max(0, customerPaymentAmount - Number(cartTotal || 0)));
+    const customerPaymentShortfall = round4(Math.max(0, Number(effectiveCheckoutTotal || 0) - customerPaymentAmount));
+    const customerPaymentChange = round4(Math.max(0, customerPaymentAmount - Number(effectiveCheckoutTotal || 0)));
     const displayedPaymentReceived = hasSplitPaymentSummary
         ? round4(splitPaymentSummaryPaidAmount)
         : customerPaymentAmount;
@@ -273,13 +300,25 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const selectedDiscountType = discountModalOpen
         ? discountDraft.type
         : (appliedDiscount?.type || '');
+    const selectedDiscountSelectionKey = getDiscountRuleSelectionKey(
+        discountModalOpen ? discountDraft : appliedDiscount
+    );
+    const checkoutDiscountTypeOptions = providedDiscountTypeOptions || buildPosDiscountTypeOptions(
+        discountRules,
+        POS_DISCOUNT_FALLBACK_OPTIONS,
+        { rulesReady: discountRulesReady }
+    );
     const isStatutoryDiscountSelected = selectedDiscountType === 'senior' || selectedDiscountType === 'pwd';
     const displayedVatRemoved = discountModalOpen
         ? round4(discountPreviewTotals.vatRemoved)
         : round4(governedDiscountTotals.vatRemoved);
-    const paymentIsSufficient = isEmployeeCreditPayment
-        ? Boolean(isCustomerPaymentSufficient)
-        : isPaymentAmountSufficient(customerPaymentAmount, cartTotal);
+    const existingNonCashPayment = isExistingOrderCheckout && paymentType !== 'cash';
+    const paymentIsSufficient = existingNonCashPayment
+        ? Math.abs(customerPaymentAmount - Number(effectiveCheckoutTotal || 0)) <= 0.0001
+            && (!isEmployeeCreditPayment || Boolean(isCustomerPaymentSufficient))
+        : isEmployeeCreditPayment
+            ? Boolean(isCustomerPaymentSufficient)
+            : isPaymentAmountSufficient(customerPaymentAmount, effectiveCheckoutTotal);
 
     const selectPaymentAmount = (nextValue, autoFilled = false) => {
         setPaymentAmountDraft({ value: nextValue, autoFilled });
@@ -293,16 +332,28 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
     const handlePaymentTypeChange = (nextPaymentType) => {
         setPaymentType(nextPaymentType);
         resetEmployeeCredit();
-        setCustomerPaymentAmountInput(money(cartTotal));
+        setExistingOrderPaymentConfirmed(false);
+        setCustomerPaymentAmountInput(money(effectiveCheckoutTotal));
         setCustomerPaymentAmountAutoFilled(true);
         selectPaymentAmount('', true);
     };
 
-    const confirmCheckout = () => handleCheckout({
+    const checkoutPaymentSnapshot = {
         customerPaymentAmount,
         customerPaymentChange,
-        isCustomerPaymentSufficient: paymentIsSufficient
-    });
+        isCustomerPaymentSufficient: paymentIsSufficient,
+        ...(isExistingOrderCheckout ? {
+            paymentType,
+            manualPaymentReceived: existingNonCashPayment ? existingOrderPaymentConfirmed : false,
+            ...(employeeCreditAccountCode ? { employeeCreditAccountCode } : {})
+        } : {})
+    };
+    const confirmCheckout = () => {
+        if (isExistingOrderCheckout && typeof handleExistingOrderCheckout === 'function') {
+            return handleExistingOrderCheckout(checkoutPaymentSnapshot);
+        }
+        return handleCheckout(checkoutPaymentSnapshot);
+    };
 
     const openCheckoutDiscountEditor = (initialType) => {
         setCustomerPaymentAmountInput(paymentAmountInput);
@@ -314,6 +365,10 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
     const handleCheckoutDiscountTypeClick = (discountType) => {
         if (selectedDiscountType === discountType) {
+            clearAppliedDiscount();
+            return;
+        }
+        if (selectedDiscountSelectionKey === discountType) {
             clearAppliedDiscount();
             return;
         }
@@ -383,7 +438,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     >
                         <div className={`${isStatutoryDiscountSelected ? 'max-sm:col-span-2' : ''} px-3 py-2.5`}>
                             <span className="block text-[10px] font-bold text-slate-600">Order Total</span>
-                            <span className="block text-sm font-black tabular-nums text-emerald-700">₱{money(cartTotal)}</span>
+                            <span className="block text-sm font-black tabular-nums text-emerald-700">₱{money(effectiveCheckoutTotal)}</span>
                         </div>
                         <div className={`${isStatutoryDiscountSelected ? 'max-sm:col-span-2' : ''} border-l border-emerald-200 px-3 py-2.5`}>
                             <span className="block text-[10px] font-bold text-slate-600">Discount</span>
@@ -438,7 +493,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 setServicesNotes={setServicesNotes}
                                 buttonLayout={true}
                                 isTabletViewport={isTabletViewport}
-                                disabled={posActionsBlocked || checkoutLoading}
+                                disabled={posActionsBlocked || checkoutLoading || isExistingOrderCheckout}
                                 cartItemCount={safeCart.length}
                             />
                         </Suspense>
@@ -488,7 +543,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                     onClearPrefill={clearDiscountEmployeeCreditPrefill}
                                     lookupLoading={employeeCreditLookupLoading}
                                     account={employeeCreditAccount}
-                                    totalDue={cartTotal}
+                                    totalDue={effectiveCheckoutTotal}
                                     locationId={selectedLocationId}
                                     preferredEmployeeId={employeeCreditDiscountPreference.preferredEmployeeId}
                                     prefillEnabled={!hasSplitPaymentSummary}
@@ -543,24 +598,55 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                     Remaining Balance: ₱{money(customerPaymentShortfall)}
                                 </p>
                             )}
+                            {existingNonCashPayment && !paymentIsSufficient && (
+                                <p className="text-right text-[11px] font-bold text-rose-700" data-testid="pos-checkout-payment-exact-required">
+                                    Enter the exact order total for this payment method.
+                                </p>
+                            )}
+                            {existingNonCashPayment && (
+                                <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#1A4E8D]" data-testid="pos-checkout-payment-confirmation">
+                                    <input
+                                        type="checkbox"
+                                        checked={existingOrderPaymentConfirmed}
+                                        onChange={(event) => setExistingOrderPaymentConfirmed(event.target.checked)}
+                                        disabled={checkoutLoading}
+                                        className="mt-0.5 h-4 w-4 accent-[#1A4E8D]"
+                                    />
+                                    <span>{paymentType === 'employee_credit'
+                                        ? 'I confirm this Employee Credit account is authorized for the order.'
+                                        : 'I confirm the store received this payment.'}</span>
+                                </label>
+                            )}
                         </div>
                     )}
                         </div>
+                    )}
+                    {existingNonCashPayment && isEmployeeCreditPayment && (
+                        <label className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#1A4E8D] lg:col-span-2" data-testid="pos-checkout-payment-confirmation">
+                            <input
+                                type="checkbox"
+                                checked={existingOrderPaymentConfirmed}
+                                onChange={(event) => setExistingOrderPaymentConfirmed(event.target.checked)}
+                                disabled={checkoutLoading}
+                                className="mt-0.5 h-4 w-4 accent-[#1A4E8D]"
+                            />
+                            <span>I confirm this Employee Credit account is authorized for the order.</span>
+                        </label>
                     )}
 
                     <fieldset className="pos-checkout-discount-types w-full min-w-0 max-w-full space-y-1 py-2 lg:col-span-2" aria-label="Apply Discount">
                         <legend className="text-[11px] font-bold text-slate-600">Apply Discount</legend>
                         <div className="pos-checkout-discount-type-scroll w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 touch-pan-x">
                             <div className="grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5" data-testid="pos-checkout-discount-type-buttons">
-                                {CHECKOUT_DISCOUNT_TYPE_OPTIONS.map((option) => {
-                                    const active = selectedDiscountType === option.value;
+                                {checkoutDiscountTypeOptions.map((option) => {
+                                    const active = selectedDiscountSelectionKey === option.value;
                                     return (
                                         <button
                                             key={option.value}
                                             type="button"
                                             aria-pressed={active}
                                             onClick={() => handleCheckoutDiscountTypeClick(option.value)}
-                                            disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                            disabled={isExistingOrderCheckout || checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
                                             className={`h-9 whitespace-nowrap rounded-lg border px-2 text-[11px] font-extrabold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${
                                                 active
                                                     ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm'
@@ -582,7 +668,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 <button
                                     type="button"
                                     onClick={() => openCheckoutDiscountEditor()}
-                                    disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                    disabled={isExistingOrderCheckout || checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
                                     className={`flex h-7 items-center gap-1 rounded-lg px-1.5 text-[11px] font-bold text-[#1A4E8D] transition-colors ${CHECKOUT_ICON_HOVER} disabled:cursor-not-allowed disabled:opacity-40`}
                                     aria-label={`Edit ${checkoutDiscountLabel}`}
                                     title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Edit discount'}
@@ -594,7 +680,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                                 <button
                                     type="button"
                                     onClick={clearAppliedDiscount}
-                                    disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                    disabled={isExistingOrderCheckout || checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
                                     className="flex h-7 w-7 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
                                     aria-label={`Remove ${checkoutDiscountLabel}`}
                                     title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Remove discount'}
@@ -670,6 +756,11 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                 </div>
 
                 <DialogFooter className="pos-checkout-mobile-footer shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
+                    {checkoutError && (
+                        <p className="col-span-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700" role="alert" data-testid="pos-checkout-error">
+                            {checkoutError}
+                        </p>
+                    )}
                     <Button
                         type="button"
                         variant="outline"
@@ -695,7 +786,7 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
                     <Button
                         type="button"
                         onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : confirmCheckout}
-                        disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}
+                        disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}
                         title={discountModalOpen ? 'Apply or cancel the discount draft before confirming checkout.' : undefined}
                         className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                     >
@@ -757,13 +848,13 @@ export function POSCheckoutConfirmDialog({ viewModel = {} }) {
 
                 <div className="pos-checkout-order-summary-totals shrink-0 bg-white p-4 pt-2">
                     <dl className="space-y-1 rounded-xl border border-slate-200 px-4 py-3 text-[11px]">
-                        <div className="flex items-center justify-between gap-4"><dt>Item Cost</dt><dd>₱{money(cartSubtotal)}</dd></div>
+                        <div className="flex items-center justify-between gap-4"><dt>Item Cost</dt><dd>₱{money(effectiveCheckoutSubtotal)}</dd></div>
                         {Number(restaurantServiceChargeAmount || 0) > 0 && (
                             <div className="flex items-center justify-between gap-4"><dt>Service Charge</dt><dd>₱{money(restaurantServiceChargeAmount)}</dd></div>
                         )}
                             <div className="flex items-center justify-between gap-4"><dt>VAT Removed</dt><dd>₱{money(governedDiscountTotals.vatRemoved)}</dd></div>
                             <div className="flex items-center justify-between gap-4 text-rose-600"><dt>Discount/Promo</dt><dd>-₱{money(calculatedDiscountAmount)}</dd></div>
-                        <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 text-sm font-black text-slate-950"><dt>Total Amount</dt><dd>₱{money(cartTotal)}</dd></div>
+                        <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 text-sm font-black text-slate-950"><dt>Total Amount</dt><dd>₱{money(effectiveCheckoutTotal)}</dd></div>
                     </dl>
                 </div>
             </DialogContent>

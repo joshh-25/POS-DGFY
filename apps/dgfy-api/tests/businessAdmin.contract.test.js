@@ -50,7 +50,7 @@ describe('Business Admin contracts', () => {
             profile: { view: true, edit: true, scope: 'tenant' },
             pos: { view: true, edit: true, scope: 'tenant' },
             team: { view: true, edit: true, scope: 'branch' },
-            payments: { view: true, edit: false, scope: 'tenant' },
+            payments: { view: true, edit: false, scope: 'branch' },
             branches: { view: true, edit: false, scope: 'branch' },
             registers: { view: true, edit: false, scope: 'branch' }
         });

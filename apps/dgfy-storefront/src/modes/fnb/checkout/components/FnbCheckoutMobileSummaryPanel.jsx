@@ -37,6 +37,7 @@ export function FnbCheckoutMobileSummaryPanel({
   onImageError,
   onIncreaseStep,
   onToggleSummary,
+  orderMethod,
   orderStep,
   promoDiscountSummaryRow,
   voucherDiscountSummaryRow,
@@ -53,9 +54,12 @@ export function FnbCheckoutMobileSummaryPanel({
   const downpaymentRows = buildDownpaymentTotalsRows({
     display: resolveDownpaymentDisplay({ quoteResult: totals }),
     money,
-    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+    orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup')
   });
   const feeAndVatRows = buildFeeAndVatSummaryRows({ totals, money });
+  const showDeliveryFee = orderMethod
+    ? String(orderMethod).trim().toLowerCase() === 'delivery'
+    : isDeliveryOrder;
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
@@ -101,7 +105,7 @@ export function FnbCheckoutMobileSummaryPanel({
             <div style={{ overflowY: 'auto', padding: '16px 16px 20px', display: 'grid', gap: 16 }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{money(totals.total_amount)}</div>
               <div style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-                {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
+                {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={orderMethod === 'dine_in' ? 'Dine In' : isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
                 {showFulfillmentSummary && <SummaryRow label="Schedule" value={scheduleLabel} />}
                 <SummaryRow label="Items" value={`${cartCount} item${cartCount === 1 ? '' : 's'}`} />
               </div>
@@ -140,7 +144,7 @@ export function FnbCheckoutMobileSummaryPanel({
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
                 {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
-                <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
+                {showDeliveryFee ? <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} /> : null}
                 {feeAndVatRows.map((row) => (
                   <SummaryRow key={row.label} label={row.label} value={row.value} />
                 ))}

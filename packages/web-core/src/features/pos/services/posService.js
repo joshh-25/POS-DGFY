@@ -193,6 +193,11 @@ export const fetchPosDiscountEmployees = async () => {
     return response.data?.data?.employees || [];
 };
 
+export const fetchPosDiscountRules = async () => {
+    const response = await api.get('/pos/discount-rules');
+    return response.data?.data?.discount_rules || [];
+};
+
 export const verifyPosDiscountApproval = async (payload = {}) => {
     const response = await api.post('/pos/discount-approvals/verify', payload);
     return response.data?.data?.approver || null;
@@ -212,11 +217,14 @@ export const voidPosTransaction = async (id, payload = {}) => {
     const response = await api.post(`/pos/transactions/${id}/void`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
-    trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_VOIDED, {
-        transaction_id: id,
-        reason: payload?.reason
-    });
-    return response.data?.data;
+    const result = response.data?.data;
+    if (result?.pending !== true) {
+        trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_VOIDED, {
+            transaction_id: id,
+            reason: payload?.reason
+        });
+    }
+    return result;
 };
 
 export const refundCashPosTransaction = async (id, payload = {}) => {
@@ -861,6 +869,20 @@ export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) =
     return response.data?.data;
 };
 
+export const collectCashDineInOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const collectDineInPaymentOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-payment`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 // Phase 148 (#825): settles the remaining balance on a partially-paid downpayment order. A
 // separate endpoint from the two collect-cash calls above, not a variant of them -- those own the
 // plain-COD `unpaid` path and are deliberately untouched.
@@ -1062,6 +1084,8 @@ export default {
     fetchActiveDeliveryPersonnel,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    collectCashDineInOrder,
+    collectDineInPaymentOrder,
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,

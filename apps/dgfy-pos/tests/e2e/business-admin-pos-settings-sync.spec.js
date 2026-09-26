@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './fixtures/login.js';
+import { signIn, signInBackOffice } from './fixtures/login.js';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 
 const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
@@ -26,6 +26,7 @@ test.describe('Business Admin settings ownership', () => {
     let originalMode = null;
     try {
       await businessAdminPage.goto('/?view=reports#/backoffice/settings/registers', { waitUntil: 'domcontentloaded' });
+      await signInBackOffice(businessAdminPage, testCredentials, { companyName: testCompanyName });
       await expect(businessAdminPage.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
 
       const branchContext = businessAdminPage.getByLabel('Branch context');

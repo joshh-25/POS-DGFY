@@ -147,4 +147,179 @@ describe('usePosCartWorkflow', () => {
         expect(onCartBecameEmpty).toHaveBeenCalledTimes(1);
         expect(result.current.cart).toHaveLength(1);
     });
+
+    it('allows same-price quantity increases but protects the original parked line', () => {
+        const { result } = renderCart({
+            catalog: [{ ...retailItem, current_stock: 5 }]
+        });
+        const parkedLine = {
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1,
+            service_option_ids: []
+        };
+
+        act(() => result.current.setCart([parkedLine]));
+        act(() => result.current.addToCart(retailItem));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.cart[0]).toEqual(expect.objectContaining({
+            line_key: 'parked-coffee',
+            quantity: 2,
+            sale_price: 100
+        }));
+
+        act(() => result.current.updateCartQuantity('parked-coffee', 0));
+        expect(result.current.cart[0].quantity).toBe(2);
+        act(() => result.current.removeCartLine('parked-coffee'));
+        expect(result.current.cart).toHaveLength(1);
+    });
+
+    it('requires a reason before deleting an original parked line', () => {
+        const onParkedLineDeleted = vi.fn();
+        const { result } = renderCart({ onParkedLineDeleted });
+        const parkedLine = {
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1,
+            service_option_ids: []
+        };
+
+        act(() => result.current.setCart([parkedLine]));
+        act(() => result.current.removeCartLine('parked-coffee'));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.parkedLineDeletionRequest).toEqual(expect.objectContaining({
+            lineKey: 'parked-coffee'
+        }));
+
+        act(() => result.current.confirmParkedLineDeletion());
+        expect(result.current.cart).toHaveLength(1);
+
+        act(() => result.current.setParkedLineDeletionReason('Customer removed item'));
+        act(() => result.current.confirmParkedLineDeletion());
+        expect(result.current.cart).toEqual([]);
+        expect(onParkedLineDeleted).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'Customer removed item',
+            line: expect.objectContaining({ line_key: 'parked-coffee' })
+        }));
+    });
+
+    it('requires a reason when the parked-line marker is missing but the snapshot identity matches', () => {
+        const onParkedLineDeleted = vi.fn();
+        const { result } = renderCart({
+            activeParkedSale: {
+                pos_parked_sale_id: 44,
+                snapshot: {
+                    lines: [{
+                        line_key: 'parked-coffee',
+                        item_id: retailItem.item_id,
+                        item_name: retailItem.name,
+                        quantity: 1,
+                        sale_price: 100
+                    }]
+                }
+            },
+            onParkedLineDeleted
+        });
+        const parkedLineWithoutMarker = {
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            service_option_ids: []
+        };
+
+        act(() => result.current.setCart([parkedLineWithoutMarker]));
+        act(() => result.current.removeCartLine('parked-coffee'));
+        expect(result.current.cart).toHaveLength(1);
+        expect(result.current.parkedLineDeletionRequest).toEqual(expect.objectContaining({
+            lineKey: 'parked-coffee'
+        }));
+
+        act(() => result.current.setParkedLineDeletionReason('Customer removed item'));
+        act(() => result.current.confirmParkedLineDeletion());
+        expect(result.current.cart).toEqual([]);
+        expect(onParkedLineDeleted).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'Customer removed item',
+            line: expect.objectContaining({ line_key: 'parked-coffee' })
+        }));
+    });
+
+    it('creates a separate line when the parked item price changed', () => {
+        const { result } = renderCart({
+            catalog: [{ ...retailItem, default_sale_price: 120, current_stock: 5 }]
+        });
+        act(() => result.current.setCart([{
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1,
+            service_option_ids: []
+        }]));
+
+        act(() => result.current.addToCart({ ...retailItem, default_sale_price: 120 }));
+        expect(result.current.cart).toHaveLength(2);
+        expect(result.current.cart.map((line) => line.sale_price)).toEqual([100, 120]);
+        expect(result.current.cart[0].quantity).toBe(1);
+        expect(result.current.cart[1].parked_snapshot_line).not.toBe(true);
+
+        act(() => result.current.updateCartQuantity('parked-coffee', 2));
+        expect(result.current.cart[0].quantity).toBe(1);
+    });
+
+    it('adds a separate current-price line from catalog quantity controls after price drift', () => {
+        const { result } = renderCart({
+            catalog: [{ ...retailItem, default_sale_price: 120, current_stock: 5 }]
+        });
+        act(() => result.current.setCart([{
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1,
+            service_option_ids: []
+        }]));
+
+        act(() => result.current.adjustCartQuantity({ ...retailItem, default_sale_price: 120 }, 1));
+        expect(result.current.cart).toHaveLength(2);
+        expect(result.current.cart.map((line) => line.sale_price)).toEqual([100, 120]);
+        expect(result.current.cart[0].quantity).toBe(1);
+        expect(result.current.cart[1].quantity).toBe(1);
+    });
+
+    it('does not allow additions to a missing parked item', () => {
+        const { result } = renderCart({ catalog: [] });
+        act(() => result.current.setCart([{
+            ...retailItem,
+            line_key: 'parked-missing-coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1
+        }]));
+
+        act(() => result.current.updateCartQuantity('parked-missing-coffee', 2));
+        expect(result.current.cart[0].quantity).toBe(1);
+        act(() => result.current.removeCartLine('parked-missing-coffee'));
+        expect(result.current.cart).toHaveLength(1);
+    });
 });

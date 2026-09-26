@@ -430,7 +430,9 @@ const buildHealthySequelizeMock = () => ({
                     origin_shift_id: {},
                     terminal_id: {},
                     location_id: {},
-                    snapshot: {}
+                    snapshot: {},
+                    inventory_effects: {},
+                    inventory_deducted_at: {}
                 },
                 employee_credit_accounts: {
                     account_id: {},

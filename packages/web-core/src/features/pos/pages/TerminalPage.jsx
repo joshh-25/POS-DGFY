@@ -1,6 +1,11 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
+import {
+  appendDineInScheduleAlertQueue,
+  getDineInScheduleAlertCandidates,
+  isDineInScheduleAlertsEnabled
+} from '../utils/dineInScheduleAlerts.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -26,6 +31,7 @@ import {
   recordCashDrawerEvent,
   collectCashPickupOrder,
   collectCashDeliveryOrder,
+  collectDineInPaymentOrder,
   recordOrderBalancePayment,
   uploadOrderBalancePaymentProof,
   fetchOrderBalancePaymentProof,
@@ -720,6 +726,10 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
+  const [scheduledDineInAlertQueue, setScheduledDineInAlertQueue] = useState([]);
+  const [scheduledDineInNow, setScheduledDineInNow] = useState(() => Date.now());
+  const scheduledDineInAlertScopeRef = useRef('');
+  const scheduledDineInAlertKeysRef = useRef(new Set());
   const [orderHistoryState, setOrderHistoryState] = useState({
     loading: false,
     orders: [],
@@ -800,6 +810,9 @@ export default function TerminalPage() {
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
   const [cashReceivedInput, setCashReceivedInput] = useState('');
   const [cashCollectionSaving, setCashCollectionSaving] = useState(false);
+  const [dineInCashCheckout, setDineInCashCheckout] = useState(null);
+  const [dineInCashCheckoutSaving, setDineInCashCheckoutSaving] = useState(false);
+  const [dineInCashCheckoutError, setDineInCashCheckoutError] = useState('');
   // Phase 148 (#825): balance settlement keeps its own state rather than sharing the cash-
   // collection state above -- the two dialogs can never be open at once, but sharing would couple
   // the live COD path to every future change here for no benefit.
@@ -3102,6 +3115,60 @@ export default function TerminalPage() {
     }, ONLINE_ORDER_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [canViewPos, locked, onlineOrderQueueEnabled, refreshIncomingOrders]);
+
+  useEffect(() => {
+    if (workflowMode !== 'fnb' || !onlineOrderQueueEnabled || locked) return undefined;
+    setScheduledDineInNow(Date.now());
+    const timer = window.setInterval(() => setScheduledDineInNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [locked, onlineOrderQueueEnabled, workflowMode]);
+
+  useEffect(() => {
+    const shiftId = Number(shiftState?.shift?.pos_terminal_shift_id || 0);
+    const locationId = Number(shiftState?.shift?.location_id || 0);
+    const scopeKey = `${shiftId}:${locationId}`;
+    if (scheduledDineInAlertScopeRef.current !== scopeKey) {
+      scheduledDineInAlertScopeRef.current = scopeKey;
+      scheduledDineInAlertKeysRef.current = new Set();
+      setScheduledDineInAlertQueue([]);
+    }
+
+    const hasActiveShift = hasUsableIncomingOrderShift({
+      pos_terminal_shift_id: shiftId,
+      location_id: locationId,
+      status: shiftState?.shift?.status,
+      closed_at: shiftState?.shift?.closed_at,
+      closedAt: shiftState?.shift?.closedAt
+    });
+    const alertsEnabled = isDineInScheduleAlertsEnabled({
+      workflowMode,
+      onlineOrderQueueEnabled,
+      incomingOrdersAccessState: incomingOrdersState?.accessState,
+      hasActiveShift,
+      canTransactPos,
+      locked
+    });
+
+    if (!alertsEnabled) {
+      setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
+      return;
+    }
+
+    const newAlerts = getDineInScheduleAlertCandidates(incomingOrdersState?.orders, {
+      now: scheduledDineInNow,
+      scopeKey,
+      alertedKeys: scheduledDineInAlertKeysRef.current
+    });
+
+    if (newAlerts.length === 0) return;
+    newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
+    setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+  }, [canTransactPos, incomingOrdersState?.accessState, incomingOrdersState?.orders, locked, onlineOrderQueueEnabled, scheduledDineInNow, shiftState?.shift?.closedAt, shiftState?.shift?.closed_at, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.status, workflowMode]);
+
+  const handleScheduledDineInAlertOpenChange = useCallback((open) => {
+    if (open) return;
+    setScheduledDineInAlertQueue((currentQueue) => currentQueue.slice(1));
+  }, []);
 
   const activeShiftId = shiftState?.shift?.pos_terminal_shift_id || null;
 
@@ -6062,8 +6129,107 @@ export default function TerminalPage() {
       toast.error('Reconnect to the internet before collecting payment for an online order.');
       return;
     }
+    if (order?.order_method === 'dine_in') {
+      if (
+        order.payment_status !== 'unpaid'
+        || order.fulfillment_status !== 'ready_for_pickup'
+      ) {
+        toast.error('This dine-in order is no longer eligible for payment checkout. Refresh the order queue and try again.');
+        return;
+      }
+      setDineInCashCheckout({
+        order,
+        cashReceived: order?.total_amount == null ? '' : String(order.total_amount),
+        idempotencyKey: createIdempotencyKey('pos-dine-in-payment'),
+        returnViewMode: posViewMode === 'checkout' ? 'incoming_queue' : posViewMode
+      });
+      setDineInCashCheckoutError('');
+      commitViewModeSelection('checkout');
+      return;
+    }
     setCashCollectionOrder(order || null);
     setCashReceivedInput(order?.total_amount == null ? '' : String(order.total_amount));
+  };
+
+  const handleDineInCashCheckoutAmountChange = (cashReceived) => {
+    setDineInCashCheckout((current) => current ? { ...current, cashReceived } : current);
+    setDineInCashCheckoutError('');
+  };
+
+  const handleCancelDineInCashCheckout = () => {
+    if (dineInCashCheckoutSaving) return;
+    const returnViewMode = dineInCashCheckout?.returnViewMode || 'incoming_queue';
+    setDineInCashCheckout(null);
+    setDineInCashCheckoutError('');
+    commitViewModeSelection(returnViewMode);
+  };
+
+  const handleDineInCashCheckoutSubmit = async (paymentSnapshot = null) => {
+    if (!dineInCashCheckout || dineInCashCheckoutSaving) return false;
+    if (!isOnline) {
+      setDineInCashCheckoutError('Reconnect before collecting payment for this order.');
+      return false;
+    }
+    const orderId = Number.parseInt(dineInCashCheckout.order?.pos_transaction_id, 10);
+    const paymentMethod = String(paymentSnapshot?.paymentType || 'cash').trim().toLowerCase();
+    const paymentAmount = Number(paymentSnapshot?.customerPaymentAmount ?? dineInCashCheckout.cashReceived);
+    const orderTotal = Number(dineInCashCheckout.order?.total_amount);
+    const terminalId = sanitizeTerminalId(activeTerminalId);
+    const isCashPayment = paymentMethod === 'cash';
+    const hasValidPaymentAmount = Number.isFinite(paymentAmount)
+      && Number.isFinite(orderTotal)
+      && (isCashPayment ? paymentAmount >= orderTotal : Math.abs(paymentAmount - orderTotal) <= 0.0001);
+    const hasManualPaymentConfirmation = isCashPayment || paymentSnapshot?.manualPaymentReceived === true;
+    const employeeCreditAccountCode = String(paymentSnapshot?.employeeCreditAccountCode || '').trim().toUpperCase();
+    if (
+      !Number.isInteger(orderId)
+      || orderId <= 0
+      || !hasValidPaymentAmount
+      || !hasManualPaymentConfirmation
+      || !terminalId
+      || (paymentMethod === 'employee_credit' && !employeeCreditAccountCode)
+    ) {
+      setDineInCashCheckoutError(isCashPayment
+        ? 'Enter cash equal to or greater than the order total and use an active terminal.'
+        : 'Confirm that the store received the exact payment amount and use an active terminal.');
+      return false;
+    }
+
+    setDineInCashCheckoutSaving(true);
+    setDineInCashCheckoutError('');
+    try {
+      await collectDineInPaymentOrder(orderId, {
+        terminal_id: terminalId,
+        payment_method: paymentMethod,
+        ...(isCashPayment
+          ? { cash_received: paymentAmount }
+          : {
+            amount: paymentAmount,
+            manual_payment_received: true
+          }),
+        ...(paymentMethod === 'employee_credit'
+          ? { employee_credit: { account_code: employeeCreditAccountCode } }
+          : {}),
+        idempotency_key: dineInCashCheckout.idempotencyKey
+      });
+      try {
+        await printOnlineOrderReceiptById(orderId, { automatic: true });
+      } catch (printError) {
+        toast.message(printError?.response?.data?.message || 'Payment was recorded, but the order receipt still needs printing.');
+      }
+      toast.success('Dine-in payment collected. You can now mark the order as served.');
+      const returnViewMode = dineInCashCheckout.returnViewMode || 'incoming_queue';
+      setDineInCashCheckout(null);
+      setDineInCashCheckoutError('');
+      commitViewModeSelection(returnViewMode);
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      setDineInCashCheckoutError(error?.response?.data?.message || 'Failed to collect payment for this dine-in order.');
+      return false;
+    } finally {
+      setDineInCashCheckoutSaving(false);
+    }
   };
 
   const handleCollectCash = async () => {
@@ -6363,16 +6529,24 @@ export default function TerminalPage() {
     setBackOfficeConfirmOpen(true);
   }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
 
+  const buildPosBackOfficeHandoffPath = useCallback((path) => {
+    const [pathOnly, queryString = ''] = String(path || '/backoffice/overview').split('?');
+    const params = new URLSearchParams(queryString);
+    params.set('pos_handoff', '1');
+    return `${pathOnly}?${params.toString()}`;
+  }, []);
+
   const handleConfirmOpenBackOffice = useCallback(() => {
     if (typeof window === 'undefined') return;
 
     const url = new URL('/', window.location.origin);
+    const handoffPath = buildPosBackOfficeHandoffPath(backOfficeTargetPath);
     if (backOfficeTargetPath === '/backoffice/overview') {
       url.search = '?view=reports';
-      url.hash = '#/backoffice/overview';
+      url.hash = `#${handoffPath}`;
     } else {
       url.search = '';
-      url.hash = `#${backOfficeTargetPath}`;
+      url.hash = `#${handoffPath}`;
     }
     // Open a blank tab synchronously from the confirmation click so popup
     // blocking is detectable. Detach the opener before navigating so the new
@@ -6401,7 +6575,7 @@ export default function TerminalPage() {
 
   const destinationLabel = backOfficeTargetPath === '/backoffice/overview' ? 'Overview' : 'Business settings';
     toast.success(`Back Office opened in a new window at ${destinationLabel}.`);
-  }, [backOfficeTargetPath]);
+  }, [backOfficeTargetPath, buildPosBackOfficeHandoffPath]);
   const handleStorefrontContentStateChange = useCallback(({ dirty = false, discard = null } = {}) => {
     storefrontContentGuardRef.current = {
       dirty: dirty === true,
@@ -6983,6 +7157,8 @@ function PosRestorationLoadingScreen() {
   );
 }
 
+  const scheduledDineInAlert = scheduledDineInAlertQueue[0] || null;
+
   if (terminalStartupLoading) {
     return <PosRestorationLoadingScreen />;
   }
@@ -6991,7 +7167,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -7071,6 +7247,9 @@ function PosRestorationLoadingScreen() {
               incomingOrderPrintLoading,
               incomingOrderReceiptOpen,
               incomingReceiptOpeningId,
+              scheduledDineInAlert,
+              scheduledDineInAlertNow: scheduledDineInNow,
+              handleScheduledDineInAlertOpenChange,
               isOnline,
               legacyLinkState,
               locationNameLookup,
@@ -7285,6 +7464,12 @@ function PosRestorationLoadingScreen() {
           onDeliveryPersonnelChanged={handleDeliveryPersonnelChanged}
           ensureDeliveryPersonnelLoaded={ensureDeliveryPersonnelLoaded}
           handleOpenCashCollection={handleOpenCashCollection}
+          dineInCashCheckout={dineInCashCheckout}
+          dineInCashCheckoutSaving={dineInCashCheckoutSaving}
+          dineInCashCheckoutError={dineInCashCheckoutError}
+          onDineInCashCheckoutAmountChange={handleDineInCashCheckoutAmountChange}
+          onDineInCashCheckoutSubmit={handleDineInCashCheckoutSubmit}
+          onCancelDineInCashCheckout={handleCancelDineInCashCheckout}
           handleOpenBalanceSettlement={handleOpenBalanceSettlement}
           handleViewBalancePaymentProof={handleViewBalancePaymentProof}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}

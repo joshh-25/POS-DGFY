@@ -16,6 +16,11 @@ import {
     normalizeStorefrontAssetUrl
 } from '../../shared/utils/storefrontAssetPolicy.js';
 import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
+import {
+    normalizePosTaxPolicies,
+    POS_TAX_POLICY_SETTING_KEY,
+    POS_TAX_POLICY_VERSION
+} from '../../shared/constants/posTaxPolicy.js';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -409,6 +414,9 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     if (settingKey === 'pos_discount_profiles') {
         return normalizeDiscountProfiles(value);
     }
+    if (settingKey === POS_TAX_POLICY_SETTING_KEY) {
+        return normalizePosTaxPolicies(value);
+    }
     if (settingKey === 'pos_order_method_fees') {
         return normalizeOrderMethodFees(value);
     }
@@ -462,6 +470,7 @@ const normalizeValueForSettingKey = (settingKey, value) => {
 
 const POS_JSON_SETTING_KEYS = new Set([
     'pos_discount_profiles',
+    POS_TAX_POLICY_SETTING_KEY,
     'pos_order_method_fees',
     'pos_terminal_registry',
     'pos_best_seller_settings',
@@ -506,6 +515,21 @@ const parseSettingValue = (setting) => {
     }
 
     return normalizeValueForSettingKey(setting.setting_key, value);
+};
+
+const normalizeVersionedPosTaxPolicies = (value, currentSetting = null) => {
+    const normalized = normalizePosTaxPolicies(value);
+    const current = currentSetting ? parseSettingValue(currentSetting) : null;
+    const currentNormalized = current ? normalizePosTaxPolicies(current) : null;
+    const currentVersion = Number.parseInt(current?.version, 10);
+    const policyChanged = !currentNormalized
+        || JSON.stringify(currentNormalized.categories) !== JSON.stringify(normalized.categories);
+    return {
+        ...normalized,
+        version: Number.isInteger(currentVersion) && currentVersion > 0
+            ? (policyChanged ? currentVersion + 1 : currentVersion)
+            : POS_TAX_POLICY_VERSION
+    };
 };
 
 const serializeSettingValue = (setting, value) => {
@@ -780,10 +804,12 @@ export const settingsRepository = {
 
         for (const [key, value] of Object.entries(settingsData)) {
             try {
-                const normalizedValue = normalizeValueForSettingKey(key, value);
                 let setting = await SystemSetting.findOne({
                     where: { setting_key: key }
                 });
+                const normalizedValue = key === POS_TAX_POLICY_SETTING_KEY
+                    ? normalizeVersionedPosTaxPolicies(value, setting)
+                    : normalizeValueForSettingKey(key, value);
 
                 if (!setting) {
                     const data_type = inferDataType(normalizedValue);
@@ -831,10 +857,12 @@ export const settingsRepository = {
     },
     async updateSettingByKey(key, value, { expectedUpdatedAt = null } = {}) {
         const SystemSetting = dbStore.get('SystemSetting');
-        const normalizedValue = normalizeValueForSettingKey(key, value);
         let setting = await SystemSetting.findOne({
             where: { setting_key: key }
         });
+        const normalizedValue = key === POS_TAX_POLICY_SETTING_KEY
+            ? normalizeVersionedPosTaxPolicies(value, setting)
+            : normalizeValueForSettingKey(key, value);
 
         if (!setting) {
             if (normalizeUpdatedAt(expectedUpdatedAt)) {

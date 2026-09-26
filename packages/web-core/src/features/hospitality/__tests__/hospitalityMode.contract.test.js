@@ -14,7 +14,7 @@ describe('Hospitality frontend contract', () => {
     const businessAdmin = read('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
 
     expect(main).toContain('<Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />');
-    expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(posMain).toContain('<Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />');
     expect(businessAdmin).toContain('hospitality: MERCHANT_BACKOFFICE_MODULE_META.hospitality');
   });
 

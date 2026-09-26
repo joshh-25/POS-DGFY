@@ -38,6 +38,7 @@ import { modeHasCapability } from '@sieitzz/shared-constants/workflowModes';
 
 export const reconcileBusinessAdminAlerts = () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository });
 import { posRepository } from '../pos/repositories/posRepository.js';
+import { decidePosExceptionApprovalUseCase as decidePosExceptionApprovalHandler } from '../pos/index.js';
 import { getWeightedInventoryValueByLocation } from '../inventory/services/costValuationService.js';
 import { commercePaymentRepository } from '../commercePayments/index.js';
 
@@ -76,10 +77,8 @@ export const listBusinessAdminApprovalsUseCase = buildListBusinessAdminApprovals
 });
 
 export const decideBusinessAdminApprovalUseCase = buildDecideBusinessAdminApprovalUseCase({
-    // The current POS branch has no generic exception-approval command. Keep
-    // the Business Admin queue read-only until a canonical owner contract is
-    // approved; never invent a second refund/shift mutation path here.
-    decidePosExceptionApprovalUseCase: null
+    // Business Admin authorizes the reviewer; POS/Inventory own the approved mutation.
+    decidePosExceptionApprovalUseCase: decidePosExceptionApprovalHandler
 });
 
 export const cancelBusinessAdminApprovalUseCase = buildCancelBusinessAdminApprovalUseCase({

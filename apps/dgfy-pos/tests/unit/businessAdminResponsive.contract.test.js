@@ -9,6 +9,10 @@ const businessAdminCss = fs.readFileSync(
   path.resolve(__dirname, '../../src/features/businessAdmin/businessAdmin.css'),
   'utf8'
 );
+const businessAdminPage = fs.readFileSync(
+  path.resolve(__dirname, '../../src/features/businessAdmin/BusinessAdminPage.jsx'),
+  'utf8'
+);
 
 describe('Business Admin responsive layout contract', () => {
   it('keeps the settings editor usable through tablet and mobile breakpoints', () => {
@@ -18,7 +22,9 @@ describe('Business Admin responsive layout contract', () => {
     expect(businessAdminCss).toContain('.business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }');
     expect(businessAdminCss).toContain('overflow-x: auto;');
     expect(businessAdminCss).toContain('scroll-snap-type: x proximity;');
-    expect(businessAdminCss).toContain('.business-admin-settings-nav-control');
+    expect(businessAdminCss).not.toContain('.business-admin-settings-nav-control');
+    expect(businessAdminPage).not.toContain('Scroll settings sections left');
+    expect(businessAdminPage).not.toContain('Scroll settings sections right');
     expect(businessAdminCss).toContain('.business-admin-settings-workspace { display: grid; gap: 12px; }');
     expect(businessAdminCss).toContain('.business-admin-settings-compact-copy');
     expect(businessAdminCss).toContain('.business-admin-settings-terminal-link');

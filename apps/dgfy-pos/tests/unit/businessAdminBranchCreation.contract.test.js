@@ -35,9 +35,10 @@ describe('Business Admin branch creation contract', () => {
     it('keeps branch creation and editing in the shared SettingsWorkspace location editor', () => {
         expect(settingsWorkspace).toContain('startWithNewLocation = false');
         expect(settingsWorkspace).toContain('locationEditorOnly = false');
-        expect(storefrontSettingsPane).toContain('business-admin-location-editor-only');
-        expect(storefrontSettingsPane).toContain('const autoStartLocationEditor = startWithNewLocation && !readOnly && !loading;');
-        expect(storefrontSettingsPane).toContain('settingsSurface !== \'business-admin\' || readOnly || startWithNewLocation');
+        expect(storefrontSettingsPane).toContain('business-admin-storefront-location-editor');
+        expect(storefrontSettingsPane).toContain('const handleAddLocation = () => {');
+        expect(storefrontSettingsPane).toContain("setActiveSubtab('locations');");
+        expect(storefrontSettingsPane).toContain('setIsEditing(true);');
         expect(storefrontSettingsPane).toContain("editorSection === 'branches' ? 'Branches' : 'Storefront Locations'");
         expect(storefrontSettingsPane).toContain('const locationEditorTitle = editingLocationId');
         expect(storefrontSettingsPane).toContain('STOREFRONT_LOCATION_LABELS.addBranch');

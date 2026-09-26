@@ -14,7 +14,7 @@ describe('Food & Beverage frontend contract', () => {
     const businessAdminManifest = read('apps/dgfy-pos/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(main).toContain('<Route path="/fnb" element={<LegacyMerchantRoute target="/backoffice/fnb" title="Food-and-beverage workspace moved" />} />');
-    expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(posMain).toContain('<Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />');
     expect(businessAdmin).toContain('MIGRATED_BACKOFFICE_MODULE_KEYS');
     expect(businessAdmin).toContain('MigratedBackOfficeModule');
     expect(businessAdminManifest).toContain("fnb: module('Operations', 'fnb', 'F&B Setup'");

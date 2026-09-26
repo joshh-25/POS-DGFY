@@ -1,3 +1,5 @@
+import { shouldRemovePosTaxVat, resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
+
 const VAT_RATE = 0.12;
 const STATUTORY_TYPES = new Set(['senior', 'pwd']);
 const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
@@ -27,6 +29,8 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
   }
 
   const statutory = STATUTORY_TYPES.has(type);
+  const taxPolicy = resolvePosTaxPolicy(application?.tax_policy || null, type);
+  const removeVat = shouldRemovePosTaxVat(application?.tax_policy || null, type);
   if (statutory && Array.isArray(application.beneficiaries) && application.beneficiaries.length > 0) {
     const beneficiaryCalculations = application.beneficiaries.map((beneficiary) => ({
       ...beneficiary,
@@ -60,7 +64,9 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
     return {
       type,
       method: 'percentage',
-      rate: 20,
+      rate: clamp(application.rate, 0, 100),
+      vat_treatment: taxPolicy.vat_treatment,
+      tax_policy_version: taxPolicy.version,
       subtotal_amount: subtotalAmount,
       eligible_amount: round4(calculatedLines.reduce((sum, line) => sum + line.gross_eligible_amount, 0)),
       vat_removed: vatRemoved,
@@ -71,7 +77,9 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
       beneficiaries: beneficiaryCalculations
     };
   }
-  const requestedRate = statutory ? 20 : clamp(application.rate, 0, 100);
+  // Statutory rates are resolved from the approved database rule before this
+  // calculator is called. The calculator never supplies a fallback rate.
+  const requestedRate = clamp(application.rate, 0, 100);
   const method = String(application.method || 'percentage').toLowerCase() === 'fixed' ? 'fixed' : 'percentage';
   const selectionEntries = Array.isArray(application.lines) ? application.lines : [];
   const selectionsByLineRef = new Map(selectionEntries
@@ -132,22 +140,23 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     let discountAmount = 0;
-    if (statutory && eligibleGross > 0) {
+    if (removeVat && eligibleGross > 0) {
       if (line.vat_type === 'vatable' || line.vat_type_snapshot === 'vatable') {
         vatExemptAmount = round4(eligibleGross / (1 + VAT_RATE));
         vatRemoved = round4(eligibleGross - vatExemptAmount);
       } else {
         vatExemptAmount = eligibleGross;
       }
-      discountAmount = round4(vatExemptAmount * 0.20);
-    } else if (!statutory && eligibleGross > 0) {
-      if (method === 'fixed') {
+    }
+    if (eligibleGross > 0) {
+      if (!statutory && method === 'fixed') {
         discountAmount = index === finalEligibleIndex
           ? remainingFixed
           : round4(Math.min(remainingFixed, eligibleBase > 0 ? (eligibleGross / eligibleBase) * fixedDiscountAmount : 0));
         remainingFixed = round4(remainingFixed - discountAmount);
       } else {
-        discountAmount = round4(eligibleGross * (requestedRate / 100));
+        const discountBase = removeVat ? vatExemptAmount : eligibleGross;
+        discountAmount = round4(discountBase * (requestedRate / 100));
       }
     }
     return {
@@ -183,6 +192,8 @@ export const calculatePosDiscount = ({ lines = [], application = null } = {}) =>
     type,
     method,
     rate: method === 'percentage' ? requestedRate : null,
+    vat_treatment: taxPolicy.vat_treatment,
+    tax_policy_version: taxPolicy.version,
     subtotal_amount: subtotalAmount,
     eligible_amount: eligibleBase,
     vat_removed: vatRemoved,

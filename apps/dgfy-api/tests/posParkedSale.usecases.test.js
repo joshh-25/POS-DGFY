@@ -39,6 +39,7 @@ const buildTransaction = () => {
 
 const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) => {
     const transaction = buildTransaction();
+    let currentParkedSale = parkedSale;
     const posRepository = {
         getTerminalShiftById: jest.fn().mockResolvedValue({
             pos_terminal_shift_id: 41,
@@ -49,21 +50,42 @@ const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) 
             ...shift
         }),
         findParkedSaleByIdempotencyKey: jest.fn().mockResolvedValue(parkedSale),
-        createParkedSale: jest.fn(async (payload) => ({
-            pos_parked_sale_id: 101,
-            created_at: new Date().toISOString(),
+        createParkedSale: jest.fn(async (payload) => {
+            currentParkedSale = {
+                pos_parked_sale_id: 101,
+                created_at: new Date().toISOString(),
+                ...payload
+            };
+            return currentParkedSale;
+        }),
+        findPendingBusinessAdminApprovalRequest: jest.fn().mockResolvedValue(null),
+        createBusinessAdminApprovalRequest: jest.fn(async (payload) => ({
+            business_admin_approval_request_id: 501,
             ...payload
         })),
-        getParkedSaleById: jest.fn().mockResolvedValue(parkedSale),
-        updateParkedSale: jest.fn(async (id, payload) => ({
-            ...(parkedSale || { pos_parked_sale_id: id, shift_id: 41, cashier_id: 15, location_id: 3, status: 'parked' }),
-            ...payload
-        })),
+        getParkedSaleById: jest.fn(async () => currentParkedSale),
+        findSellableItemsByIds: jest.fn().mockResolvedValue([]),
+        updateParkedSale: jest.fn(async (id, payload) => {
+            currentParkedSale = {
+                ...(currentParkedSale || { pos_parked_sale_id: id, shift_id: 41, cashier_id: 15, location_id: 3, status: 'parked' }),
+                ...payload
+            };
+            return currentParkedSale;
+        }),
         listParkedSales: jest.fn().mockResolvedValue(parkedSales),
         createAuditLog: jest.fn().mockResolvedValue(undefined)
     };
     const sequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
-    return { posRepository, sequelize, transaction };
+    return {
+        posRepository,
+        sequelize,
+        transaction,
+        resolveInventoryEffects: jest.fn().mockResolvedValue([]),
+        inventoryCommandService: {
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 808 }),
+            reverseParkedSaleGoodsIssue: jest.fn().mockResolvedValue([])
+        }
+    };
 };
 
 const runInTenant = (sequelize, callback) => dbStore.run({ sequelize }, callback);
@@ -73,7 +95,16 @@ afterEach(() => jest.restoreAllMocks());
 describe('parked sale use cases', () => {
     it('parks an immutable snapshot and scrubs secrets before persistence', async () => {
         const harness = buildHarness();
-        const useCase = buildCreatePosParkedSaleUseCase({ posRepository: harness.posRepository });
+        const resolveInventoryEffects = jest.fn().mockResolvedValue([{ item_id: 7, quantity: 2, location_id: 3 }]);
+        const inventoryCommandService = {
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 808 }),
+            reverseParkedSaleGoodsIssue: jest.fn()
+        };
+        const useCase = buildCreatePosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects,
+            inventoryCommandService
+        });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             payload: basePayload(),
@@ -97,13 +128,54 @@ describe('parked sale use cases', () => {
             }),
             expect.objectContaining({ transaction: harness.transaction })
         );
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 7,
+            quantity: 2,
+            movement_type: 'goods_issue',
+            reference_type: 'POS_PARKED_SALE',
+            reference_id: 'PARKED:101:1:1'
+        }), 15, harness.transaction);
+        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
+            inventory_effects: [{ item_id: 7, quantity: 2, location_id: 3 }],
+            inventory_deducted_at: expect.any(Date)
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
         expect(harness.transaction.rollback).not.toHaveBeenCalled();
     });
 
+    it('rolls back when inventory planning returns a malformed effect', async () => {
+        const harness = buildHarness();
+        const useCase = buildCreatePosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: jest.fn().mockResolvedValue([
+                { item_id: 7, quantity: 2, location_id: null }
+            ]),
+            inventoryCommandService: harness.inventoryCommandService
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            payload: basePayload(),
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_INVENTORY_EFFECT_INVALID',
+            effect_index: 0
+        }));
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(harness.transaction.commit).not.toHaveBeenCalled();
+        expect(harness.inventoryCommandService.issueStockForPosSale).not.toHaveBeenCalled();
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+    });
+
     it('replays the same idempotent park request without creating a duplicate', async () => {
         const harness = buildHarness();
-        const useCase = buildCreatePosParkedSaleUseCase({ posRepository: harness.posRepository });
+        const useCase = buildCreatePosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
         const first = await runInTenant(harness.sequelize, () => useCase({ payload: basePayload(), user: { user_id: 15 } }));
         const stored = first.data;
         harness.posRepository.findParkedSaleByIdempotencyKey.mockResolvedValue(stored);
@@ -168,7 +240,7 @@ describe('parked sale use cases', () => {
         expect(harness.posRepository.listParkedSales).toHaveBeenCalledWith(expect.objectContaining({
             locationId: 3,
             sharedLocation: true,
-            statuses: ['parked', 'claimed']
+            statuses: ['parked', 'claimed', 'cancel_pending']
         }));
     });
 
@@ -204,7 +276,11 @@ describe('parked sale use cases', () => {
 
     it('rejects an idempotency key reused with a different snapshot', async () => {
         const harness = buildHarness({ parkedSale: { request_hash: 'different-hash' } });
-        const useCase = buildCreatePosParkedSaleUseCase({ posRepository: harness.posRepository });
+        const useCase = buildCreatePosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
 
         const result = await runInTenant(harness.sequelize, () => useCase({
             payload: basePayload(),
@@ -237,6 +313,70 @@ describe('parked sale use cases', () => {
         expect(result.error.code).toBe('AUTHORIZATION_FAILED');
         expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_LOCATION_MISMATCH' }));
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+    });
+
+    it('re-parks a sale after a reasoned original-line deletion and records the reason', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            revision: 1,
+            inventory_deducted_at: new Date(),
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            snapshot: {
+                lines: [{
+                    line_key: 'parked-line-1',
+                    item_id: 7,
+                    quantity: 1,
+                    base_sale_price: 100,
+                    sale_price: 100,
+                    line_modifiers: []
+                }]
+            }
+        };
+        const harness = buildHarness({ parkedSale });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 1;
+        payload.snapshot.lines = [{
+            line_key: 'new-line-1',
+            item_id: 8,
+            quantity: 1,
+            base_sale_price: 120,
+            sale_price: 120,
+            line_modifiers: []
+        }];
+        payload.removed_line_reasons = [{
+            line_ref: 'parked-line-1',
+            item_id: 7,
+            reason: 'Customer removed item'
+        }];
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_parked_sale_reparked',
+            changes: expect.objectContaining({
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-1',
+                    item_id: 7,
+                    reason: 'Customer removed item'
+                }]
+            })
+        }), expect.objectContaining({ transaction: harness.transaction }));
     });
 
     it('allows another cashier in the same location to resume and own a parked sale', async () => {
@@ -285,7 +425,7 @@ describe('parked sale use cases', () => {
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
     });
 
-    it('cancels a parked sale with an auditable reason', async () => {
+    it('requests Back Office cancellation approval with an auditable reason and leaves stock pending', async () => {
         const parkedSale = {
             pos_parked_sale_id: 101,
             status: 'parked',
@@ -303,16 +443,25 @@ describe('parked sale use cases', () => {
         }));
 
         expect(result.success).toBe(true);
-        expect(result.data.status).toBe('cancelled');
+        expect(result.data.pending).toBe(true);
+        expect(result.data.parked_sale.status).toBe('cancel_pending');
+        expect(result.data.approval_request).toEqual(expect.objectContaining({
+            action_type: 'pos_parked_sale_cancel',
+            reason: 'Customer changed order',
+            status: 'pending'
+        }));
         expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(
             101,
             expect.objectContaining({
-                status: 'cancelled',
-                cancelled_by: 15,
-                cancel_reason: 'Customer changed order'
+                status: 'cancel_pending'
             }),
             expect.objectContaining({ transaction: harness.transaction, lock: true })
         );
+        expect(harness.posRepository.createBusinessAdminApprovalRequest).toHaveBeenCalledWith(expect.objectContaining({
+            action_type: 'pos_parked_sale_cancel',
+            reason: 'Customer changed order',
+            status: 'pending'
+        }), expect.objectContaining({ transaction: harness.transaction }));
     });
 
     it('updates the same claimed parked sale and increments its revision', async () => {
@@ -321,6 +470,7 @@ describe('parked sale use cases', () => {
             park_reference: 'PARK-ABC123',
             status: 'claimed',
             revision: 2,
+            inventory_deducted_at: new Date(),
             shift_id: 41,
             cashier_id: 15,
             location_id: 3,
@@ -328,7 +478,12 @@ describe('parked sale use cases', () => {
             claimed_terminal_id: 'COUNTER-01'
         };
         const harness = buildHarness({ parkedSale });
-        const useCase = buildReparkPosParkedSaleUseCase({ posRepository: harness.posRepository });
+        const resolveInventoryEffects = jest.fn().mockResolvedValue([{ item_id: 8, quantity: 1, location_id: 3 }]);
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
         const payload = basePayload();
         delete payload.idempotency_key;
         payload.expected_revision = 2;
@@ -353,6 +508,16 @@ describe('parked sale use cases', () => {
             claimed_by: null,
             line_count: 1
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
+            parked_sale_id: 101,
+            reason: 'Re-park inventory reconciliation for parked sale 101'
+        }, 15, harness.transaction);
+        expect(harness.inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 8,
+            quantity: 1,
+            reference_type: 'POS_PARKED_SALE',
+            reference_id: 'PARKED:101:3:1'
+        }), 15, harness.transaction);
     });
 
     it('rejects a stale re-park revision without overwriting the parked sale', async () => {
@@ -367,7 +532,11 @@ describe('parked sale use cases', () => {
             claimed_terminal_id: 'COUNTER-01'
         };
         const harness = buildHarness({ parkedSale });
-        const useCase = buildReparkPosParkedSaleUseCase({ posRepository: harness.posRepository });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
         const payload = basePayload();
         delete payload.idempotency_key;
         payload.expected_revision = 2;
@@ -376,6 +545,59 @@ describe('parked sale use cases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_REVISION_CONFLICT' }));
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+    });
+
+    it('rejects re-parking when an original parked line is removed', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            revision: 1,
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            snapshot: {
+                lines: [{
+                    line_key: 'parked-line-1',
+                    item_id: 7,
+                    quantity: 1,
+                    base_sale_price: 100,
+                    sale_price: 100,
+                    line_modifiers: []
+                }]
+            }
+        };
+        const harness = buildHarness({ parkedSale });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 1;
+        payload.snapshot.lines = [{
+            line_key: 'replacement-line',
+            item_id: 8,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            line_modifiers: []
+        }];
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_ORIGINAL_LINE_REMOVED'
+        }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).not.toHaveBeenCalled();
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 

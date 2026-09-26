@@ -217,6 +217,12 @@ export default function TerminalPageLayout({
     ensureDeliveryPersonnelLoaded,
     handleDeliveryJobStatusChange,
     handleOpenCashCollection,
+    dineInCashCheckout = null,
+    dineInCashCheckoutSaving = false,
+    dineInCashCheckoutError = '',
+    // The standard Checkout Tab owns the payment input for incoming dine-in orders.
+    onDineInCashCheckoutSubmit = () => {},
+    onCancelDineInCashCheckout = () => {},
     handleOpenBalanceSettlement,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
@@ -998,56 +1004,61 @@ export default function TerminalPageLayout({
         >
           {!locked && (isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
             <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
-            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
-              <POSCheckoutTerminal
-                workflowMode={workflowMode}
-                effectiveCapabilities={effectiveCapabilities}
-                sessionLocked={locked}
-                isMsmeMode={isMsmeMode}
-                sidebarCollapsed={effectiveSidebarCollapsed}
-                canViewHistory={canViewPos}
-                terminalUser={terminalUser}
-                selectedLocationId={operatingLocationId}
-                activeShiftId={activeShiftId}
-                activeShiftCashierId={shiftState?.shift?.cashier_id || null}
-                terminalId={normalizedActiveTerminalId}
-                terminalMeta={terminalMeta}
-                fnbContext={fnbCheckoutContext}
-                checkoutBlockedReason={checkoutBlockedReason}
-                onManualUniversalSync={onManualUniversalSync}
-                manualSyncPolicy={manualSyncPolicy}
-                universalPendingSyncCount={queueCount + blockedQueueCount}
-                offlineSnapshotScope={offlineSnapshotScope}
-                onQueueOfflineItemDraft={onQueueOfflineItemDraft}
-                onQueueOfflineOperation={onQueueOfflineOperation}
-                onCheckoutCompleted={(...args) => {
-                  setFnbCheckoutContext(null);
-                  return handleCheckoutCompleted?.(...args);
-                }}
-                onCheckoutAuthorityInvalid={onCheckoutAuthorityInvalid}
-                viewMode={posViewMode}
-                onViewModeChange={setPosViewMode}
-                onCheckoutLifecycleChange={onCheckoutLifecycleChange}
-                modalOnly={!isCheckoutWorkspaceMode}
-                externalReceiptTransactionId={receiptRequestId}
-                externalHistoryQuery={historyRequestQuery}
-                onExternalReceiptHydrated={() => {
-                  setReceiptRequestId(null);
-                }}
-                onExternalReceiptClosed={() => {
-                  setIncomingReceiptOpeningId(null);
-                  if (receiptReturnViewMode) {
-                    setPosViewMode(receiptReturnViewMode);
-                    setReceiptReturnViewMode(null);
-                  }
-                }}
-                onExternalHistoryHydrated={() => {
-                  setHistoryRequestQuery('');
-                }}
-                externalCatalogSearch={catalogSearchPrefill}
-                onExternalCatalogHydrated={onCatalogSearchHydrated}
-              />
-            </Suspense>
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+                <POSCheckoutTerminal
+                  workflowMode={workflowMode}
+                  effectiveCapabilities={effectiveCapabilities}
+                  sessionLocked={locked}
+                  isMsmeMode={isMsmeMode}
+                  sidebarCollapsed={effectiveSidebarCollapsed}
+                  canViewHistory={canViewPos}
+                  terminalUser={terminalUser}
+                  selectedLocationId={operatingLocationId}
+                  activeShiftId={activeShiftId}
+                  activeShiftCashierId={shiftState?.shift?.cashier_id || null}
+                  terminalId={normalizedActiveTerminalId}
+                  terminalMeta={terminalMeta}
+                  fnbContext={fnbCheckoutContext}
+                  checkoutBlockedReason={checkoutBlockedReason}
+                  onManualUniversalSync={onManualUniversalSync}
+                  manualSyncPolicy={manualSyncPolicy}
+                  universalPendingSyncCount={queueCount + blockedQueueCount}
+                  offlineSnapshotScope={offlineSnapshotScope}
+                  onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+                  onQueueOfflineOperation={onQueueOfflineOperation}
+                  onCheckoutCompleted={(...args) => {
+                    setFnbCheckoutContext(null);
+                    return handleCheckoutCompleted?.(...args);
+                  }}
+                  onCheckoutAuthorityInvalid={onCheckoutAuthorityInvalid}
+                  viewMode={posViewMode}
+                  onViewModeChange={setPosViewMode}
+                  onCheckoutLifecycleChange={onCheckoutLifecycleChange}
+                  modalOnly={!isCheckoutWorkspaceMode}
+                  externalReceiptTransactionId={receiptRequestId}
+                  externalHistoryQuery={historyRequestQuery}
+                  onExternalReceiptHydrated={() => {
+                    setReceiptRequestId(null);
+                  }}
+                  onExternalReceiptClosed={() => {
+                    setIncomingReceiptOpeningId(null);
+                    if (receiptReturnViewMode) {
+                      setPosViewMode(receiptReturnViewMode);
+                      setReceiptReturnViewMode(null);
+                    }
+                  }}
+                  onExternalHistoryHydrated={() => {
+                    setHistoryRequestQuery('');
+                  }}
+                  externalCatalogSearch={catalogSearchPrefill}
+                  onExternalCatalogHydrated={onCatalogSearchHydrated}
+                  dineInCashCheckout={dineInCashCheckout}
+                  dineInCashCheckoutSaving={dineInCashCheckoutSaving}
+                  dineInCashCheckoutError={dineInCashCheckoutError}
+                  onDineInCashCheckoutSubmit={onDineInCashCheckoutSubmit}
+                  onCancelDineInCashCheckout={onCancelDineInCashCheckout}
+                />
+              </Suspense>
             </div>
           )}
 

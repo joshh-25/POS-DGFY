@@ -1,6 +1,8 @@
 # Implementation — Image Lifecycle, Metadata & POS Optimization (Phases 1–7)
 
-Latest proposal: [POS Device and Location Access, Phases 345–350](#implementation---pos-device-and-location-access-phases-345-350).
+Latest proposal: [POS Settings - Taxes](#implementation---pos-settings---taxes).
+
+Previous proposal: [POS Device and Location Access, Phases 345–350](#implementation---pos-device-and-location-access-phases-345-350).
 
 ## Proposed Changes
 
@@ -3918,3 +3920,262 @@ Phase 348 becomes eligible.
 
 Technical references: [Android Keystore](https://developer.android.com/privacy-and-security/keystore)
 and [Geolocation API](https://developer.mozilla.org/en-US/docs/Web/API/Geolocation_API).
+
+---
+
+# Implementation - POS Settings - Taxes
+
+Date: 2026-09-25.
+Status: implemented locally after approval; no commit, PR, or deployment was created.
+
+## 1. Objective and scope
+
+Add a button named **Taxes** to POS Settings. Provide a dedicated configuration
+screen covering PWD, Senior Citizen, Others, Employee, Promo, and Voucher, with
+clearly distinguished VAT treatment controls.
+
+This is back-office configuration owned by POS. The existing POS settings UI
+lives in `packages/web-core/src/features/pos/settings/`; the Back Office settings
+entry and capabilities live in `apps/dgfy-pos/src/features/businessAdmin/`.
+
+The approved implementation is POS-only, tenant-wide, and applies to future
+checkout calculations. It does not add editable discount rates or a tenant VAT
+rate, and it does not authorize a PR or deployment.
+
+## 2. Current behavior and critical assessment
+
+- The POS discount calculator uses the existing fixed VAT rate of 12% and the
+  server-governed 20% Senior/PWD calculation on eligible quantities.
+- Item VAT classification and sale-time transaction snapshots already exist.
+- `pos_discount_rules` includes rate and exemption fields, but the calculator
+  also hardcodes statutory behavior. Exposing database fields alone would not
+  establish a working configurable tax policy.
+- Employee and Other discounts, commercial promos, and vouchers follow distinct
+  server-owned rules. Their authoring, eligibility, approval, and usage limits
+  must remain consistent with the existing owners.
+- Historical receipts and reports must use their saved transaction values.
+
+Implemented decision: retain the requested **Taxes** label and expose only VAT
+treatment (`Keep item VAT` or `Remove embedded VAT`). Discount rates, approval
+requirements, promo rules, and voucher rules remain owned by their existing
+server-side policies.
+
+## 3. Approved decisions
+
+- `Taxes` means VAT treatment only; no editable VAT rate or discount percentage
+  was introduced.
+- The setting is POS-only and tenant-wide. Storefront checkout is outside this
+  implementation.
+- Existing settings permissions remain authoritative: users with settings view
+  access can see the tab; master admins or settings editors can save it; the
+  existing API authorization and validation path remains in force.
+- Six categories are stored: `senior`, `pwd`, `manual` (shown as Others),
+  `employee`, `promo`, and `voucher`.
+- Defaults preserve current behavior: Senior Citizen and PWD are `vat_exempt`;
+  Others, Employee, Promo, and Voucher are `standard`.
+- Each category may be set to `standard` or `vat_exempt`. Removing embedded VAT
+  uses the existing 12% VAT basis; it does not alter the server-governed
+  statutory 20% rate.
+- The setting is versioned on write. Discount rows snapshot the selected VAT
+  treatment and policy version, and policy updates are audited as tenant-scoped
+  changes effective for future POS transactions.
+- Historical transaction snapshots are not backfilled. Existing parked and
+  completed records retain their stored financial values; the exact parked-sale
+  resume lifecycle remains a separate acceptance item if it is required to use
+  sale-time tax policy rather than the policy at final calculation.
+
+## 4. Architecture, authority, and phase tracking
+
+Follow `routes -> controllers -> usecases -> repositories -> models`.
+Controllers remain transport-only; calculations and policy validation remain
+server-owned. No new architecture exception or allowlist entry is proposed.
+
+Authoritative sources already inspected:
+
+- [Documentation entry point](docs/START_HERE.md), reviewed 2026-08-25.
+- [Architecture boundaries](docs/architecture/ARCHITECTURE_BOUNDARIES.md), reviewed
+  2026-03-06, and [governance](docs/architecture/ARCHITECTURE_GOVERNANCE.md), reviewed
+  2026-05-21. Recheck these older documents against the final design.
+- [ADR 0033](docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md),
+  reviewed and amended 2026-09-25: governed discounts, commercial promo ownership,
+  and tenant-configurable POS VAT treatment.
+- [ADR 0007](docs/architecture/adr/0007-dual-mode-pos-compliance-program.md), reviewed
+  2026-04-06, and [ADR 0042](docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md),
+  reviewed 2026-06-01: compliance and fiscal document controls.
+- [ADR 0075](docs/architecture/adr/0075-standalone-mobile-offline-financial-reconciliation.md),
+  reviewed 2026-09-01: signed offline statutory policy and immutable receipts.
+
+Supporting references: [Back Office settings ownership](docs/features/backoffice.md),
+reviewed 2026-09-25; [API specification](docs/api/specification.md); [schema](docs/database/schema.md);
+and
+[compliance preflight protocol](docs/compliance/request-time-preflight-protocol.md),
+reviewed 2026-09-06.
+
+The implementation stays within the existing settings and POS discount
+boundaries. It does not change the binding statutory discount-rate ownership in
+ADR 0033, and it does not add an architecture exception or allowlist entry.
+The migration is additive and the API remains server-authoritative.
+
+This implementation is recorded as **Phase 346** in the authoritative phase
+ledger. It remains `in_progress` until fresh-tenant migration rehearsal,
+authenticated acceptance, review, merge, and deployed QA are complete; Phase 347
+is the next eligible phase after those gates.
+
+## 5. Delivery sections and dependencies
+
+### Section A - Policy contract and calculation matrix
+
+Owner: product, engineering, and the relevant tax/compliance reviewer.
+Inputs: the decisions in Section 3 and current calculation examples.
+
+- Document each category's tax treatment, discount basis, eligibility, rounding,
+  editable values, effective date, and applicable channels.
+- Confirm the canonical owner of each setting and the required ADR/declaration.
+- Complete the applicable compliance preflight before dependent implementation.
+
+Acceptance: satisfied locally by the approved matrix in Section 3 and the
+calculator tests described in Section 7.
+
+### Section B - Persistence, API, and authorization
+
+Owner: backend engineering. Dependency: Section A.
+
+- Reconcile the existing `PosDiscountRule` fields and their actual consumers.
+  Reuse canonical storage where it supports the approved contract; specify an
+  additive migration only for confirmed gaps.
+- Implement validated tenant-scoped reads and writes through the existing layers.
+- Record policy version, effective timing, actor, and before/after audit evidence.
+- Reject unauthorized access, cross-tenant requests, unsupported values, and stale
+  updates. Keep policy storage and its audit update atomic.
+
+Acceptance: implemented with Joi validation, canonical normalization, versioned
+settings writes, existing permission gates, and before/after audit logging.
+
+### Section C - Taxes settings screen
+
+Owner: POS frontend engineering. Dependency: Section A and Section B's API contract.
+
+- Add **Taxes** to the existing settings navigation and Back Office settings
+  capability mapping where applicable.
+- Show PWD, Senior Citizen, Others, Employee, Promo, and Voucher with separate
+  labels for approved tax and discount fields.
+- Provide saved values, policy source, validation feedback, loading/error states,
+  save status, and a calculation preview based on the approved matrix.
+- Keep the form responsive and separate its submit action from other settings.
+
+Acceptance: the POS settings tab, six category controls, dirty-state protection,
+save/cancel behavior, responsive layout, and permission visibility are implemented.
+The direct API remains protected by the existing settings authorization path.
+
+### Section D - Checkout, snapshots, and offline behavior
+
+Owner: backend and POS engineering. Dependency: Sections A and B.
+
+- Make the approved checkout consumers resolve policy on the server; client
+  totals remain previews and cannot override calculated tax or discount amounts.
+- Preserve item classifications, beneficiary/quantity eligibility, approver
+  evidence, promo/voucher rules, and the approved calculation order.
+- Persist the applied policy version and required financial snapshots with the
+  transaction; keep historical receipts and reports stable after settings change.
+- Preserve signed, expiring native offline statutory policies and server replay
+  validation. Define visible handling of stale policy instead of silent repricing.
+- Specify how new settings affect open carts, parked sales, and accepted orders;
+  do not change their existing financial contracts implicitly.
+
+Acceptance: server calculations resolve the policy for governed Senior, PWD,
+Others, Employee, Promo, and Voucher flows; discount rows snapshot treatment and
+version; mobile signed statutory-policy evidence includes the policy so changes
+invalidate stale offline evidence instead of silently repricing it.
+
+### Section E - Verification and documentation closure
+
+Owner: QA and engineering. Dependency: Sections B-D.
+
+- Test every category against eligible/ineligible quantities, mixed tax classes,
+  rounding boundaries, malformed requests, permissions, tenant isolation, and
+  concurrent settings updates.
+- Verify saved policy values, transaction snapshots, receipts, reports, and
+  relevant refunds/voids against the same calculation examples.
+- Cover policy changes during open/parked transactions and applicable offline
+  replay with valid, expired, or stale signed policy.
+- Run rendered desktop/mobile checks, affected API/POS tests, and affected app
+  builds. Include Storefront or other consumers when confirmed scope touches them.
+- Run architecture/controller-boundary checks, compliance declaration validation,
+  documentation/ADR checks, and `git diff --check`; record actual results.
+- Update the governed contract and phase ledger with passed evidence and explicit
+  remaining limitations. Do not mark unchecked acceptance complete.
+
+Acceptance: focused automated checks and all three frontend builds pass. A fresh-
+tenant migration rehearsal and full authenticated browser acceptance pass remain
+before release completion.
+
+## 6. Rollout and rollback
+
+- Validate locally first. The additive migration has been applied to the local
+  landlord database and all 15 active local tenant databases (16 schemas total).
+  A fresh-tenant migration rehearsal is still required before deployment.
+- Preserve current calculation defaults until a reviewed policy is activated.
+- Release through the repository's established release process when separately
+  requested; saving this plan does not request deployment.
+- Roll back new configuration availability or future policy activation while
+  retaining financial snapshots, policy history, and audit evidence.
+
+## 7. Implementation and validation evidence
+
+Implemented files include:
+
+- POS settings UI and model: `packages/web-core/src/features/pos/settings/`
+  (`PosSettingsWorkspace.jsx`, `PosTaxSettingsPane.jsx`, `posTaxPolicies.js`).
+- POS settings capability mapping: `apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx`.
+- Server policy contract, validation, settings persistence, audit, discount and
+  voucher calculation: `apps/dgfy-api/src/modules/shared/constants/posTaxPolicy.js`,
+  `apps/dgfy-api/src/validators/settingsValidator.js`, the settings use cases and
+  repository, and the POS discount modules.
+- Immutable discount snapshot fields and additive migration:
+  `apps/dgfy-api/src/models/PosTransactionDiscount.js`,
+  `apps/dgfy-migration-runner/migrations/20260925000001-add-pos-tax-policy-snapshot.cjs`,
+  and the tenant-schema registry in
+  `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+- Offline statutory-policy propagation and stale-evidence invalidation:
+  `apps/dgfy-api/src/modules/pos/usecases/mobilePosUseCases.js`.
+- Governed contract and storage documentation: ADR 0033, the Back Office
+  settings ownership table, the API specification, the database schema note,
+  and the Phase 346 ledger entry.
+
+Validation run locally:
+
+- Backend focused tests: **7 suites, 41 tests passed**, including the additive
+  migration contract, first-save audit path, and server-owned policy-version
+  behavior.
+- POS Settings web-core behavior test: **38 tests passed** from the IMS Vitest
+  runner, including Taxes visibility and save behavior.
+- POS lint: passed with existing warnings only.
+- POS build: passed.
+- Storefront build: passed, with an existing large-chunk warning.
+- IMS build: passed.
+- Changed backend syntax checks, backend lint, and `git diff --check`: passed.
+- Architecture guardrails/controller-boundary checks and governed documentation
+  checks: passed. Scoped compliance validation for the Taxes file set passed;
+  the full dirty-worktree compliance run remains unsuitable as release evidence
+  because unrelated parked-sale changes require their own declarations.
+- Local database migration: the single pending tax-policy migration was applied
+  successfully to 16 local schemas; both snapshot columns are present in every
+  schema, nullable, and without an effective default. Tenant-schema coverage
+  passed.
+
+Remaining release gates:
+
+- Rehearse the additive migration against a fresh tenant database; the upgraded
+  local landlord and 15 active tenant schemas have already been migrated.
+- Run authenticated desktop/mobile acceptance with representative discount,
+  promo, voucher, receipt/report, and offline replay data.
+- Review the entire dirty worktree and create a domain-batched commit/PR only
+  when explicitly requested. This implementation did not create one.
+
+## 8. Final status
+
+The approved POS Taxes feature is implemented in the shared local workspace and
+validated by the focused checks above. It is not yet release-complete because
+fresh-tenant migration rehearsal and authenticated rendered acceptance remain
+outstanding. Phase 346 remains `in_progress` until those gates, review, merge,
+and deployed QA are complete.

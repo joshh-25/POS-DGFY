@@ -50,7 +50,7 @@ export const BUSINESS_ADMIN_SETTINGS_SECTIONS = Object.freeze({
         editPermission: PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
     }),
     payments: Object.freeze({
-        scope: 'tenant',
+        scope: 'branch',
         viewPermission: PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
         editPermission: PERMISSIONS.DOWNPAYMENT.actions.MANAGE_DOWNPAYMENT_SETTINGS
     }),

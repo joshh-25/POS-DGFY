@@ -140,7 +140,7 @@ export const BACKOFFICE_SETTINGS_SECTION_MANIFEST = Object.freeze([
   { key: 'branches', label: 'Branches & locations', description: 'Branch address, hours, fulfillment, and location-specific operating values.', scope: 'branch', ownerViewMode: 'settings_storefront', ownerLabel: 'Open branch settings' },
   { key: 'team', label: 'Team & access', description: 'User access, cashier administration, branch grants, and employee ownership.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open team settings' },
   { key: 'attendance', label: 'Attendance settings', description: 'Cashier attendance configuration scoped to the selected branch set.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open attendance settings' },
-  { key: 'payments', label: 'Payment policies', description: 'Downpayment and partial-payment policy for this business.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open payment settings' },
+  { key: 'payments', label: 'Payment policies', description: 'Downpayment policy plus branch-specific Dine-in pay-in-store access.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open payment settings' },
   { key: 'registers', label: 'Registers & terminal policy', description: 'Terminal registry and branch binding policy. Device enrollment remains POS-owned.', scope: 'branch', ownerViewMode: 'settings_pos', ownerLabel: 'Open register settings' }
 ]);
 

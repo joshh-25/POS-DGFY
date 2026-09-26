@@ -80,7 +80,6 @@ import {
   trimAddressCountrySuffix
 } from './shared/model/storefrontCatalogModel.js';
 import { DGFY_BRAND_NAME, ORDER_METHOD_OPTIONS } from './shared/model/storefrontConstants.js';
-import { STOREFRONT_FULFILLMENT_ORDER_METHODS } from '@sieitzz/shared-constants/orderMethods';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
 import { buildCartSignature } from './shared/model/cartSignature.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
@@ -90,7 +89,6 @@ import {
 } from './shared/model/customerAccess.js';
 import { buildStorefrontCheckoutPaymentOptions } from './shared/model/storefrontCheckoutPaymentOptions.js';
 import {
-  buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from './shared/model/storefrontOrderMethodOptions.js';
 import { resolveOrderTimingPolicy, resolveTimingStepScheduleMode } from './shared/model/storefrontOrderTimingPolicy.js';
@@ -372,13 +370,6 @@ const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
-// #1093: the ecommerce fulfillment axis's candidate set -- delivery/pickup only, never
-// dine_in/takeout. Availability (which of these a resolved location actually supports) is
-// layered on top via buildStorefrontOrderMethodOptions, not baked in here.
-const STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS = ORDER_METHOD_OPTIONS.filter(
-  (option) => STOREFRONT_FULFILLMENT_ORDER_METHODS.includes(option.value)
-);
-
 export default function StorefrontApp() {
   const {
     routeSlug,
@@ -726,46 +717,6 @@ export default function StorefrontApp() {
     if (elected !== PAYMENT_ELECTION_FULL) setElected(PAYMENT_ELECTION_FULL);
   }, [selectedStore?.payment_mode, elected]);
 
-  // Phase 142 (#823): the first enabled online rail, for a downpayment-required store where
-  // plain 'cash' is not a valid selection (the backend 422s DOWNPAYMENT_CAPTURE_NOT_AVAILABLE on
-  // it -- see storeCheckoutPaymentOptions.js's hideCash option, which removes it from the list
-  // this reads). Falls back to 'qrph' if the store's payment_capabilities haven't loaded yet.
-  const resolveDefaultDownpaymentRail = useCallback(() => (
-    buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: true })[0]?.value || 'qrph'
-  ), [selectedStore?.payment_capabilities]);
-
-  // Phase 150 (#866): widened to a customer_choice store whose election resolved to 'downpayment'
-  // -- cash isn't a choice there either, for the identical reason it isn't at downpayment_required.
-  const expectsDownpaymentCapture = selectedStore?.payment_mode === 'downpayment_required'
-    || paymentElection === PAYMENT_ELECTION_DOWNPAYMENT;
-
-  const handlePaymentTypeChange = useCallback((val) => {
-    if (val === 'online') {
-      uiOpenOnlinePaymentModal();
-      // Phase 142 (#823): this legacy value opens the "online payment unavailable" modal and
-      // used to always reset to 'cash' -- wrong at a downpayment store, where 'cash' isn't a
-      // choice at all. Reset to a valid rail instead so the selector never lands on cash there.
-      setFnbPaymentType(expectsDownpaymentCapture ? resolveDefaultDownpaymentRail() : 'cash');
-    } else {
-      if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
-      setFnbPaymentType(val);
-    }
-  }, [expectsDownpaymentCapture, resolveDefaultDownpaymentRail, resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
-
-  // Phase 142 (#823): every mode's paymentType state defaults to 'cash' (useFnbCheckoutRouteState.js
-  // / RetailOrderPage.jsx's own local state) -- not a valid choice once a store resolves to
-  // downpayment_required (Phase 150, #866: or a customer_choice store whose election resolved to
-  // 'downpayment'). Self-heals a stale 'cash' selection (a restored guest draft, a store that
-  // just flipped modes, or simply the unchanged default) to the first enabled rail. No-op
-  // otherwise.
-  useEffect(() => {
-    if (!expectsDownpaymentCapture || fnbPaymentType !== 'cash') return;
-    setFnbPaymentType(resolveDefaultDownpaymentRail());
-  }, [expectsDownpaymentCapture, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
-  // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
-  // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
-  // the same snapshot. Retail/F&B/services only; see that hook's `enabled` condition.
-
   const {
     catalog,
     setCatalog,
@@ -800,6 +751,46 @@ export default function StorefrontApp() {
     preferredStoreLocationSelection,
     voucherCode: checkoutVoucherCode
   });
+
+  const selectedCheckoutLocation = useMemo(
+    () => resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId }),
+    [selectedStore, storeLocations, selectedLocationId]
+  );
+  const allowDineInPayAtStore = selectedCheckoutLocation?.allow_dine_in_pay_at_store === true;
+
+  // Phase 142 (#823): the first enabled online rail, for a downpayment-required store where
+  // plain 'cash' is not a valid selection. Falls back to 'qrph' if the store's payment
+  // capabilities have not loaded yet.
+  const resolveDefaultDownpaymentRail = useCallback(() => (
+    buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities, { hideCash: true })[0]?.value || 'qrph'
+  ), [selectedStore?.payment_capabilities]);
+
+  const expectsDownpaymentCapture = selectedStore?.payment_mode === 'downpayment_required'
+    || paymentElection === PAYMENT_ELECTION_DOWNPAYMENT;
+  const dineInPayAtStoreAvailable = orderMethod === 'dine_in' && allowDineInPayAtStore;
+  const requiresOnlinePaymentForCurrentOrder = (expectsDownpaymentCapture && !dineInPayAtStoreAvailable)
+    || (orderMethod === 'dine_in' && !allowDineInPayAtStore);
+
+  const handlePaymentTypeChange = useCallback((val) => {
+    if (val === 'online') {
+      uiOpenOnlinePaymentModal();
+      setFnbPaymentType(requiresOnlinePaymentForCurrentOrder ? resolveDefaultDownpaymentRail() : 'cash');
+    } else {
+      if (val === 'cash' && orderMethod === 'dine_in' && !allowDineInPayAtStore) {
+        setFnbPaymentType(resolveDefaultDownpaymentRail());
+        return;
+      }
+      if (!isStorefrontOnlinePaymentType(val)) resetQrphPaymentSession();
+      setFnbPaymentType(val);
+    }
+  }, [allowDineInPayAtStore, orderMethod, requiresOnlinePaymentForCurrentOrder, resolveDefaultDownpaymentRail, resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
+
+  useEffect(() => {
+    if (!requiresOnlinePaymentForCurrentOrder || fnbPaymentType !== 'cash') return;
+    setFnbPaymentType(resolveDefaultDownpaymentRail());
+  }, [requiresOnlinePaymentForCurrentOrder, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
+  // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
+  // store+mode alongside the cart lines.
 
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
@@ -1823,6 +1814,7 @@ export default function StorefrontApp() {
     isSimpleMode,
     money,
     orderMethod,
+    fnbScheduledFor,
     paymentElection,
     quoteError,
     quoteNeedsRefresh,
@@ -1879,15 +1871,17 @@ export default function StorefrontApp() {
   // both-methods branch) re-derives the available set rather than trusting a stale one.
   useEffect(() => {
     if (!isStorePage || !(isFnbMode || isSimpleMode || isRetailMode)) return;
-    const availableMethods = buildStorefrontOrderMethodOptions(
-      STOREFRONT_FULFILLMENT_CANDIDATE_OPTIONS,
-      resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId })
-    );
+    const availableMethods = simpleOrderMethodOptions;
     const enabledMethods = availableMethods.filter((option) => option.available);
     if (enabledMethods.length === 0) return;
     if (enabledMethods.some((option) => option.value === orderMethod)) return;
-    setOrderMethod(enabledMethods[0].value);
-  }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod]);
+    const nextOrderMethod = enabledMethods[0].value;
+    setOrderMethod(nextOrderMethod);
+    if (orderMethod === 'dine_in' && nextOrderMethod !== 'dine_in') {
+      setFnbScheduleMode('asap');
+      setFnbScheduledFor('');
+    }
+  }, [isStorePage, isFnbMode, isSimpleMode, isRetailMode, selectedStore, storeLocations, selectedLocationId, orderMethod, simpleOrderMethodOptions, setFnbScheduleMode, setFnbScheduledFor, setOrderMethod]);
   useEffect(() => {
     if (!isStorePage || !(isFnbMode || isSimpleMode || isRetailMode)) return;
     const policy = resolveOrderTimingPolicy(
@@ -2322,6 +2316,7 @@ export default function StorefrontApp() {
     customerPhone,
     extractStockViolation,
     fnbPaymentType,
+    allowDineInPayAtStore,
     goStoreTrackPage,
     guestCheckoutIntentId,
     guestCheckoutOtpVerified,
@@ -2382,7 +2377,36 @@ export default function StorefrontApp() {
           cache: 'no-store'
         }
       );
-      const paymentSession = data?.payment_session || null;
+      let paymentSession = data?.payment_session || null;
+      const paymentStatusFromUrl = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('payment_status')
+        : null;
+      const directPaymentFlow = ['direct_gcash', 'direct_maya', 'direct_card'].includes(
+        String(paymentSession?.payment_flow || '').trim().toLowerCase()
+      );
+      const paymentEnvironment = selectedStore?.payment_capabilities?.[
+        String(paymentSession?.payment_method || '').trim().toLowerCase()
+      ]?.environment;
+      if (
+        paymentSession?.status === 'awaiting_payment'
+        && paymentStatusFromUrl === 'return'
+        && directPaymentFlow
+        && paymentEnvironment === 'test'
+      ) {
+        const reconciliation = await requestJson(
+          `/api/v1/store/checkout/payment-sessions/${encodeURIComponent(paymentSessionId)}/reconcile-test`,
+          {
+            method: 'POST',
+            storeSlug: selectedStore.slug,
+            authToken: isDgfyCustomerSignedIn
+              ? (readDgfyAuthToken() || readStoreAuthToken())
+              : readStoreAuthToken(),
+            body: {},
+            cache: 'no-store'
+          }
+        );
+        paymentSession = reconciliation?.payment_session || paymentSession;
+      }
       setQrphPaymentSession(paymentSession);
       pollResult = {
         status: String(paymentSession?.status || '').trim().toLowerCase()
@@ -2857,6 +2881,7 @@ export default function StorefrontApp() {
     fnbScheduledFor,
     hasPinnedDeliveryLocation,
     isDeliveryOrder,
+    orderMethod,
     isDesktopCheckout,
     isFnbMode,
     isFnbOrderSubpage,
@@ -3145,6 +3170,7 @@ export default function StorefrontApp() {
     fnbCheckoutContentPadding,
     fnbCustomerStepComplete,
     fnbFulfillmentStepComplete,
+    allowDineInPayAtStore,
     orderTimingPolicy,
     fulfillmentOptions: simpleOrderMethodOptions,
     fnbMobileSummaryItemCountLabel,

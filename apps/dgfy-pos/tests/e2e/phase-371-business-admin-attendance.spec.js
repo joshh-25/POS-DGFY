@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './fixtures/login.js';
+import { signInBackOffice } from './fixtures/login.js';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 
 const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
@@ -52,7 +52,7 @@ test.describe('Phase 371 Business Admin attendance workspace', () => {
 
     test('renders scoped attendance and operator-session read models without a blank page', async ({ page }) => {
         const diagnostics = installRuntimeDiagnostics(page);
-        await signIn(page, testCredentials, { companyName: testCompanyName });
+        await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
 
         const attendanceResponsePromise = page.waitForResponse((response) => (
             response.request().method() === 'GET'

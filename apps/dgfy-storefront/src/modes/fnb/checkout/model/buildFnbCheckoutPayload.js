@@ -38,7 +38,12 @@ export const buildFnbCheckoutPayload = ({
   delivery_address: String(deliveryAddress || '').trim(),
   delivery_latitude: isDeliveryOrder ? toNumberOrNull(customerPin?.latitude) : null,
   delivery_longitude: isDeliveryOrder ? toNumberOrNull(customerPin?.longitude) : null,
-  scheduled_for: fnbScheduleMode === 'schedule' && fnbScheduledFor ? new Date(fnbScheduledFor).toISOString() : null,
+  // Dine-in is always scheduled. The route keeps fnbScheduleMode in sync for presentation,
+  // but the payload remains defensive so a restored/stale mode cannot silently drop the
+  // required handover time.
+  scheduled_for: (fnbScheduleMode === 'schedule' || orderMethod === 'dine_in') && fnbScheduledFor
+    ? new Date(fnbScheduledFor).toISOString()
+    : null,
   special_instructions: String(fnbSpecialInstructions || '').trim(),
   lines: (Array.isArray(cart) ? cart : []).map((line) => ({
     item_id: Number(line.item_id),

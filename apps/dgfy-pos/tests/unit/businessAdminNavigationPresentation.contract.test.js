@@ -52,6 +52,32 @@ describe('Business Admin navigation presentation contract', () => {
     expect(businessAdminCss).toContain('.business-admin-nav-group.is-standalone .business-admin-nav-item');
   });
 
+  it('uses the flat icon-and-underline design for Settings sections', () => {
+    expect(businessAdminPage).toContain('role="tablist"');
+    expect(businessAdminPage).toContain('role="tab"');
+    expect(businessAdminPage).toContain('aria-selected={active}');
+    expect(businessAdminPage).toContain('business-admin-settings-section-label');
+    expect(businessAdminPage).toContain('BUSINESS_ADMIN_SETTINGS_SECTION_ICONS');
+    expect(businessAdminPage).not.toContain('business-admin-status ${sectionAccess.edit ? \'available\' : \'\'}');
+    expect(businessAdminCss).toContain('border-bottom: 2px solid transparent;');
+    expect(businessAdminCss).toContain('.business-admin-settings-section.active { border-bottom-color: #1a4e8d;');
+    expect(businessAdminCss).not.toMatch(/\.business-admin-settings-section\.active\s*\{[^}]*box-shadow:\s*inset/);
+    expect(businessAdminPage).toContain('Swipe right');
+    expect(businessAdminPage).toContain('onPointerDown={handleSettingsSectionPointerDown}');
+    expect(businessAdminPage).toContain('onPointerMove={handleSettingsSectionPointerMove}');
+    expect(businessAdminPage).toContain('const [settingsSectionSwipeHintVisible, setSettingsSectionSwipeHintVisible] = useState(true);');
+    expect(businessAdminPage).toContain('setSettingsSectionSwipeHintVisible(false);');
+    expect(businessAdminPage).toContain('setSettingsSectionSwipeHintVisible(true);');
+    expect(businessAdminPage).toContain('settingsSectionCanSwipe && settingsSectionSwipeHintVisible');
+    expect(businessAdminPage).toContain("if (!drag.captured) {");
+    expect(businessAdminPage).toContain('drag.captured = true;');
+    expect(businessAdminPage).toContain("if (drag.pointerType === 'mouse' && drag.captured)");
+    expect(businessAdminCss).toContain('touch-action: pan-x;');
+    expect(businessAdminCss).toContain('scrollbar-width: none;');
+    expect(businessAdminCss).toContain('.business-admin-settings-section-list.is-dragging');
+    expect(businessAdminCss).toContain('.business-admin-settings-swipe-hint');
+  });
+
   it('provides an accessible desktop sidebar collapse without changing the mobile drawer contract', () => {
     const sidebarIndex = businessAdminPage.indexOf('data-testid="business-admin-sidebar"');
     const sidebarToggleIndex = businessAdminPage.indexOf('data-testid="business-admin-sidebar-toggle"');

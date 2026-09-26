@@ -209,7 +209,9 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'origin_shift_id',
         'terminal_id',
         'location_id',
-        'snapshot'
+        'snapshot',
+        'inventory_effects',
+        'inventory_deducted_at'
     ],
     pos_payment_allocations: [
         'pos_payment_allocation_id',

@@ -1,5 +1,6 @@
 import express from 'express';
 import * as settingsController from '../controllers/settingsController.js';
+import * as posDiscountConfigurationController from '../modules/pos/controllers/posDiscountConfigurationHandlers.js';
 import {
   authenticate,
   checkPermission,
@@ -10,9 +11,12 @@ import { PERMISSIONS } from '../config/permissions.js';
 import { storefrontAssetUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
   validateVerifyPosSettingsAccessPin,
+  validateConfigurableDiscountRuleId,
+  validateCreateConfigurableDiscountRule,
   validateStorefrontAssetTypeParam,
   validateUpdateSettings,
-  validateUpdateSingleSetting
+  validateUpdateSingleSetting,
+  validateUpdateConfigurableDiscountRule
 } from '../validators/settingsValidator.js';
 
 const router = express.Router();
@@ -43,6 +47,58 @@ router.post(
   authenticate,
   checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
   settingsController.generateStorefrontSlug
+);
+
+/**
+ * @route   GET /api/v1/settings/discount-rules
+ * @desc    List all tenant POS discount configurations, including disabled and unapproved rules
+ * @access  Private (settings:view)
+ */
+router.get(
+  '/discount-rules',
+  authenticate,
+  checkPermission(PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS),
+  posDiscountConfigurationController.listDiscountRules
+);
+
+/**
+ * @route   POST /api/v1/settings/discount-rules
+ * @desc    Create a tenant POS discount configuration
+ * @access  Private (settings:edit)
+ */
+router.post(
+  '/discount-rules',
+  authenticate,
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+  validateCreateConfigurableDiscountRule,
+  posDiscountConfigurationController.createDiscountRule
+);
+
+/**
+ * @route   PATCH /api/v1/settings/discount-rules/:discountRuleId
+ * @desc    Update a tenant POS discount configuration
+ * @access  Private (settings:edit)
+ */
+router.patch(
+  '/discount-rules/:discountRuleId',
+  authenticate,
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+  validateConfigurableDiscountRuleId,
+  validateUpdateConfigurableDiscountRule,
+  posDiscountConfigurationController.updateDiscountRule
+);
+
+/**
+ * @route   DELETE /api/v1/settings/discount-rules/:discountRuleId
+ * @desc    Delete an unused tenant POS discount configuration
+ * @access  Private (settings:edit)
+ */
+router.delete(
+  '/discount-rules/:discountRuleId',
+  authenticate,
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+  validateConfigurableDiscountRuleId,
+  posDiscountConfigurationController.deleteDiscountRule
 );
 
 /**

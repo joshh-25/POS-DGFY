@@ -354,7 +354,7 @@ export const SellScreen = ({
     onRefreshCatalog: () => void;
     onLockSession: () => void;
     onOpenCart: () => void;
-    onCheckout: (options?: { paymentType?: string; orderMethod?: string }) => void;
+    onCheckout: (options?: { paymentType?: string; orderMethod?: string; tableNumber?: string }) => void;
     onOpenHistoryReceipt: (localTransactionId: string) => void;
     onRefreshHistory: () => Promise<void>;
     onOpenReceipt: () => void;
@@ -374,6 +374,7 @@ export const SellScreen = ({
     const [search, setSearch] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All Items');
     const [orderMethod, setOrderMethod] = useState('Dine In');
+    const [tableNumber, setTableNumber] = useState('');
     const [paymentType, setPaymentType] = useState('Cash');
     const [discountPreset, setDiscountPreset] = useState('No Discount');
     const [discountType, setDiscountType] = useState('No Manual Discount');
@@ -431,6 +432,8 @@ export const SellScreen = ({
     const totalDue = Number((netItems + convenienceFee).toFixed(2));
     const checkoutDue = currentSubtotal;
     const normalizedPaymentType = paymentType.replace(/\s+/g, '_').toLowerCase();
+    const isDineIn = orderMethod.replace(/\s+/g, '_').toLowerCase() === 'dine_in';
+    const hasRequiredTableNumber = !isDineIn || tableNumber.trim().length > 0;
     const isCashPayment = normalizedPaymentType === 'cash';
     const customerPaymentAmount = Number(customerPaymentAmountInput || 0);
     const normalizedCustomerPaymentAmount = Number.isFinite(customerPaymentAmount) ? customerPaymentAmount : 0;
@@ -535,7 +538,10 @@ export const SellScreen = ({
         if (!isCustomerPaymentSufficient || cart.length === 0 || loading) {
             return;
         }
-        void onCheckout({ paymentType, orderMethod });
+        if (!hasRequiredTableNumber) {
+            return;
+        }
+        void onCheckout({ paymentType, orderMethod, tableNumber });
     };
 
     const renderSidebar = (compact = false) => (
@@ -1142,10 +1148,27 @@ export const SellScreen = ({
                                         label="Order Method"
                                         value={orderMethod}
                                         options={ORDER_METHOD_OPTIONS}
-                                        onSelect={setOrderMethod}
+                                        onSelect={(nextOrderMethod) => {
+                                            setOrderMethod(nextOrderMethod);
+                                            if (nextOrderMethod !== 'Dine In') {
+                                                setTableNumber('');
+                                            }
+                                        }}
                                         open={openDropdown === 'sell-order-method'}
                                         onToggle={() => setOpenDropdown((current) => current === 'sell-order-method' ? null : 'sell-order-method')}
                                     />
+                                    {isDineIn ? (
+                                        <View style={{ marginBottom: 14 }}>
+                                            <Text style={{ color: '#334155', fontSize: 13, fontWeight: '800', marginBottom: 8 }}>Table Number</Text>
+                                            <TextInput
+                                                value={tableNumber}
+                                                onChangeText={setTableNumber}
+                                                placeholder="Enter table number"
+                                                placeholderTextColor="#94A3B8"
+                                                style={{ minHeight: 52, borderRadius: 16, borderWidth: 1, borderColor: '#D9E2EC', backgroundColor: '#FFFFFF', paddingHorizontal: 16, color: '#0F172A' }}
+                                            />
+                                        </View>
+                                    ) : null}
                                     <SelectCard
                                         label="Payment Type"
                                         value={paymentType}
@@ -1637,6 +1660,11 @@ export const SellScreen = ({
                                     </Text>
                                 </View>
                             ) : null}
+                            {isDineIn && !hasRequiredTableNumber ? (
+                                <View style={{ borderRadius: 14, borderWidth: 1, borderColor: '#FECDD3', backgroundColor: '#FFF1F2', paddingHorizontal: 14, paddingVertical: 12, marginTop: 14 }}>
+                                    <Text style={{ color: '#BE123C', fontSize: 12, fontWeight: '700' }}>Table number is required for Dine In.</Text>
+                                </View>
+                            ) : null}
                         </ScrollView>
 
                         <View
@@ -1659,7 +1687,7 @@ export const SellScreen = ({
                                 label={loading ? 'Processing...' : 'Confirm'}
                                 onPress={handleConfirmCheckout}
                                 variant="primary"
-                                disabled={loading || cart.length === 0 || !isCustomerPaymentSufficient}
+                                disabled={loading || cart.length === 0 || !isCustomerPaymentSufficient || !hasRequiredTableNumber}
                             />
                         </View>
                     </View>

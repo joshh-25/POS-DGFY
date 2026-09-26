@@ -2257,8 +2257,9 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(updatedOrder),
             updateOrderById: jest.fn().mockResolvedValue(updatedOrder)
         };
-        // #1931: placed -> confirmed resolves the tenant workflow mode; pin non-Retail so this
-        // stays the legacy accept path (no inventory_issued_at in the payload below).
+        // Confirmation-time issue now applies to every online mode. This fixture has no stock
+        // command and no lines, so it preserves the focused shift-attribution assertion while
+        // the use case records the confirmation evidence.
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
             resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'fnb', enabledCapabilities: [] })
@@ -2273,7 +2274,12 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(posRepository.updateOrderById).toHaveBeenCalledWith(
             58,
-            { fulfillment_status: 'confirmed', accepted_by: 7, accepted_at: expect.any(Date) },
+            {
+                fulfillment_status: 'confirmed',
+                accepted_by: 7,
+                accepted_at: expect.any(Date),
+                inventory_issued_at: expect.any(Date)
+            },
             expect.objectContaining({ transaction, lock: true })
         );
     });

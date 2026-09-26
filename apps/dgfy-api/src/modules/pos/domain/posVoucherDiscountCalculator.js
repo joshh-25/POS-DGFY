@@ -11,12 +11,16 @@
 // share of one total. A voucher must never be run through `calculatePosDiscount`; this module builds
 // the same RETURN SHAPE directly from the voucher's own `lineAllocations` instead.
 //
-// VAT: `vat_removed`/`vat_exempt_amount` are only ever nonzero for STATUTORY (senior/pwd) discounts
-// in `calculatePosDiscount` -- confirmed by reading it in full. A voucher is never statutory, so both
-// stay zero here too; output VAT derives from the discounted subtotal elsewhere, matching ADR 0066
-// Consequences item 1 ("VAT moves with the voucher discount", same mechanism as promo).
+// VAT: a voucher is not statutory, so the default standard treatment keeps
+// `vat_removed`/`vat_exempt_amount` at zero and output VAT derives from the
+// discounted subtotal elsewhere, matching ADR 0066 Consequences item 1
+// ("VAT moves with the voucher discount", same mechanism as promo). The tenant
+// POS tax policy may additionally remove embedded VAT for voucher-eligible lines.
+
+import { resolvePosTaxPolicy, shouldRemovePosTaxVat } from '../../shared/constants/posTaxPolicy.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const VAT_RATE = 0.12;
 const centavosToPeso = (value) => round4(Number(value || 0) / 100);
 
 // `lines`: the same array posUseCases.js already builds for the `calculatePosDiscount` call site --
@@ -26,7 +30,7 @@ const centavosToPeso = (value) => round4(Number(value || 0) / 100);
 // `voucher.lineAllocations`, the UNFILTERED, `item_id`-keyed array from `calculateVoucherBenefit`
 // (camelCase fields: `item_id`, `quantity`, `discountCentavos`, `eligible`), and
 // `voucher.discountCentavos`, the ledger-authoritative aggregate.
-export const buildVoucherGovernedCalculation = ({ lines = [], voucher }) => {
+export const buildVoucherGovernedCalculation = ({ lines = [], voucher, taxPolicy = null }) => {
     const allocations = Array.isArray(voucher?.lineAllocations) ? voucher.lineAllocations : [];
     const allocationByLineRef = new Map(allocations
         .map((allocation) => [String(allocation?.line_ref || '').trim(), allocation])
@@ -57,15 +61,26 @@ export const buildVoucherGovernedCalculation = ({ lines = [], voucher }) => {
         // The voucher's own centavos-precision discount is the source of truth for this line --
         // never recomputed from a rate here, unlike calculatePosDiscount's percentage/fixed paths.
         const discountAmount = isEligible ? centavosToPeso(allocation.discountCentavos || 0) : 0;
+        const removeVat = isEligible && shouldRemovePosTaxVat(taxPolicy, 'voucher');
+        let vatRemoved = 0;
+        let vatExemptAmount = 0;
+        if (removeVat && grossEligibleAmount > 0) {
+            if (line.vat_type === 'vatable' || line.vat_type_snapshot === 'vatable') {
+                vatExemptAmount = round4(grossEligibleAmount / (1 + VAT_RATE));
+                vatRemoved = round4(grossEligibleAmount - vatExemptAmount);
+            } else {
+                vatExemptAmount = grossEligibleAmount;
+            }
+        }
         return {
             ...line,
             eligible_quantity: eligibleQuantity,
             gross_eligible_amount: grossEligibleAmount,
-            vat_removed: 0,
-            vat_exempt_amount: 0,
+            vat_removed: vatRemoved,
+            vat_exempt_amount: vatExemptAmount,
             discount_amount: discountAmount,
             eligibility_override_reason: null,
-            final_line_amount: round4(line.global_discount_base_amount - discountAmount)
+            final_line_amount: round4(line.global_discount_base_amount - vatRemoved - discountAmount)
         };
     });
 
@@ -80,10 +95,14 @@ export const buildVoucherGovernedCalculation = ({ lines = [], voucher }) => {
             : null,
         subtotal_amount: subtotalAmount,
         eligible_amount: eligibleAmount,
-        vat_removed: 0,
-        vat_exempt_amount: 0,
+        vat_removed: round4(calculatedLines.reduce((sum, line) => sum + line.vat_removed, 0)),
+        vat_exempt_amount: round4(calculatedLines.reduce((sum, line) => sum + line.vat_exempt_amount, 0)),
         discount_amount: discountAmount,
-        total_amount: round4(subtotalAmount - discountAmount),
+        total_amount: round4(subtotalAmount
+            - calculatedLines.reduce((sum, line) => sum + line.vat_removed, 0)
+            - discountAmount),
+        vat_treatment: resolvePosTaxPolicy(taxPolicy, 'voucher').vat_treatment,
+        tax_policy_version: resolvePosTaxPolicy(taxPolicy, 'voucher').version,
         lines: calculatedLines
     };
 };

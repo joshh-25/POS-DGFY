@@ -49,7 +49,7 @@ describe('Business Admin Sales & Orders consolidation contract', () => {
         expect(salesPage).toContain('Open the canonical Orders detail for payment, refund, item, and audit history.');
         expect(salesPage).toContain('navigate(`/backoffice/orders?transaction_id=${encodeURIComponent(selected.source_id)}`)');
         expect(main).toContain('<Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />');
-        expect(main).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage />} />');
-        expect(main).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+        expect(main).toContain('<Route path="/business-admin/*" element={<BackOfficeRouteGuard />} />');
+        expect(main).toContain('<Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />');
     });
 });

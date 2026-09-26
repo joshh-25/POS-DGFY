@@ -1143,63 +1143,71 @@
 .business-admin-feature p { margin: 0; color: #71879a; font-size: 12px; line-height: 1.5; }
 .business-admin-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: start; }
 .business-admin-settings-nav { min-width: 0; }
-.business-admin-settings-nav-body { padding: 10px 12px; }
-.business-admin-settings-nav-strip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.business-admin-settings-nav-body { padding: 0 12px; }
+.business-admin-settings-nav-strip { position: relative; min-width: 0; }
 .business-admin-settings-section-list {
   display: flex;
+  width: 100%;
   min-width: 0;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 0;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  padding: 2px;
+  padding: 0;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
-  scrollbar-color: transparent transparent;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  cursor: grab;
+  user-select: none;
 }
-.business-admin-settings-section-list::-webkit-scrollbar { width: 8px; height: 8px; }
-.business-admin-settings-section-list::-webkit-scrollbar-track { background: transparent; }
-.business-admin-settings-section-list::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: transparent; background-clip: padding-box; }
-.business-admin-settings-section-list:hover,
-.business-admin-settings-section-list:focus-within,
-.business-admin-settings-section-list:active { scrollbar-color: #94a3b8 transparent; }
-.business-admin-settings-section-list:hover::-webkit-scrollbar-thumb,
-.business-admin-settings-section-list:focus-within::-webkit-scrollbar-thumb,
-.business-admin-settings-section-list:active::-webkit-scrollbar-thumb { background: #94a3b8; background-clip: padding-box; }
-.business-admin-settings-nav-control {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid #cbd5e1;
-  border-radius: 9px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-}
-.business-admin-settings-nav-control:hover { border-color: #2563eb; color: #1a4e8d; background: #eff7ff; }
-.business-admin-settings-nav-control:disabled { opacity: .45; cursor: not-allowed; }
+.business-admin-settings-section-list.is-dragging { cursor: grabbing; scroll-behavior: auto; }
+.business-admin-settings-section-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
 .business-admin-settings-section {
-  width: auto;
-  min-width: 168px;
-  flex: 0 0 auto;
-  display: flex;
+  position: relative;
+  min-width: max-content;
+  flex: 1 0 auto;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 1px solid #e2e8f0;
-  border-radius: 9px;
-  padding: 10px 11px;
-  background: #fff;
-  color: #1e293b;
-  text-align: left;
+  justify-content: center;
+  gap: 6px;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 12px;
+  background: transparent;
+  color: #0f172a;
+  text-align: center;
+  white-space: nowrap;
   cursor: pointer;
+  transition: border-color .16s ease, color .16s ease, background-color .16s ease;
 }
-.business-admin-settings-section:hover { border-color: #2563eb; background: #eff7ff; }
-.business-admin-settings-section.active { border-color: #1a4e8d; background: #eff7ff; box-shadow: inset 3px 0 #1a4e8d; }
-.business-admin-settings-section strong { display: block; font-size: 12px; font-weight: 900; }
-.business-admin-settings-section .business-admin-status { flex: 0 0 auto; }
+.business-admin-settings-section:hover { border-bottom-color: #cbd5e1; background: transparent; }
+.business-admin-settings-section.active { border-bottom-color: #1a4e8d; background: transparent; box-shadow: none; }
+.business-admin-settings-section:focus-visible { outline: 2px solid #1a4e8d; outline-offset: -2px; }
+.business-admin-settings-section-label { font-size: 14px; font-weight: 700; line-height: 1.25; }
+.business-admin-settings-swipe-hint {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid #1a4e8d;
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: rgba(26, 78, 141, .96);
+  box-shadow: 0 6px 16px rgba(26, 78, 141, .2);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
 .business-admin-settings-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .business-admin-settings-context-grid > div { border: 1px solid #e2edf1; border-radius: 10px; padding: 12px; background: #fbfefe; }
 .business-admin-settings-context-grid strong { display: block; color: #234b64; font-size: 13px; margin-top: 4px; }
@@ -1275,20 +1283,20 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-overview-chart-grid { grid-template-columns: minmax(0, 1fr); }
   .business-admin-overview-sales-card { grid-column: auto; }
   .business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-  .business-admin-settings-nav .business-admin-card-body { padding: 10px 12px 12px; }
+  .business-admin-settings-nav .business-admin-card-body { padding: 0 12px 4px; }
   .business-admin-settings-section-list {
     display: flex;
-    gap: 8px;
+    min-width: 0;
+    gap: 0;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
-    padding: 2px 2px 6px;
+    padding: 0;
     scroll-snap-type: x proximity;
-    scrollbar-width: thin;
+    scrollbar-width: none;
   }
   .business-admin-settings-section {
-    width: auto;
-    min-width: 190px;
-    flex: 0 0 min(190px, 72vw);
+    min-width: max-content;
+    flex: 0 0 auto;
     scroll-margin-inline: 12px;
     scroll-snap-align: start;
   }
@@ -1320,11 +1328,10 @@ html.dgfy-imin-performance .business-admin-settings-editor .business-admin-store
   .business-admin-nav-group.is-standalone { display: block; margin-top: 8px; }
   .business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
   .business-admin-main { padding: 18px 12px 30px; }
-  .business-admin-settings-nav-body { padding: 8px 10px; }
-  .business-admin-settings-nav-strip { gap: 5px; }
-  .business-admin-settings-nav-control { width: 31px; height: 32px; }
-  .business-admin-settings-section { min-width: 168px; flex-basis: min(168px, 72vw); padding: 9px 10px; }
-  .business-admin-settings-section strong { font-size: 11px; }
+  .business-admin-settings-nav-body { padding: 0 10px; }
+  .business-admin-settings-swipe-hint { right: 10px; }
+  .business-admin-settings-section { min-width: max-content; flex-basis: auto; padding: 12px 10px; }
+  .business-admin-settings-section-label { font-size: 13px; }
   .business-admin-topbar { display: block; }
   .business-admin-topbar-leading { display: block; }
   .business-admin-sidebar-toggle { display: none; }
@@ -2107,4 +2114,22 @@ html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar
   border-radius: 99px;
   background: #94a3b8;
   background-clip: padding-box;
+}
+
+/* The Settings section row is intentionally a gesture surface, not a visible scrollbar. */
+.business-admin-shell .business-admin-settings-section-list,
+.business-admin-shell .business-admin-settings-section-list:hover,
+.business-admin-shell .business-admin-settings-section-list:focus-within,
+.business-admin-shell .business-admin-settings-section-list:active {
+  scrollbar-width: none !important;
+  scrollbar-color: transparent transparent !important;
+  -ms-overflow-style: none;
+}
+.business-admin-shell .business-admin-settings-section-list::-webkit-scrollbar,
+.business-admin-shell .business-admin-settings-section-list:hover::-webkit-scrollbar,
+.business-admin-shell .business-admin-settings-section-list:focus-within::-webkit-scrollbar,
+.business-admin-shell .business-admin-settings-section-list:active::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }

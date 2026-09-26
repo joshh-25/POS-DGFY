@@ -60,6 +60,8 @@ import {
     validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
+    validateCollectCashDineInOrder,
+    validateCollectDineInPayment,
     validateRecordOrderBalancePayment,
     validatePosBalancePaymentProofParams,
     validatePosPackingEvidenceParams,
@@ -328,6 +330,7 @@ router.get('/employee-credit/lookup', checkPermission(PERMISSIONS.POS.actions.US
 router.get('/employee-credit/report', checkPermission(PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT), validateEmployeeCreditReportQuery, employeeCreditController.getEmployeeCreditReport);
 router.get('/discount-approvers', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountApprovers);
 router.get('/discount-employees', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountEmployees);
+router.get('/discount-rules', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountRules);
 router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosDiscountApproval, posController.requireActiveOperatorForMutation, posController.verifyDiscountApproval);
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
 router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
@@ -407,6 +410,8 @@ router.post('/delivery-runs/:deliveryRunId/dispatch', checkAnyPermission([PERMIS
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
+router.post('/orders/:id/collect-dine-in-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDineInOrder, posController.requireActiveOperatorForMutation, posController.collectCashDineInOrder);
+router.post('/orders/:id/collect-dine-in-payment', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectDineInPayment, posController.requireActiveOperatorForMutation, posController.collectDineInPayment);
 // Phase 148 (#825): balance settlement for a partially-paid downpayment order. Same permission,
 // pairing, and param-validation chain as the two collect-cash routes above -- it is the same class
 // of money-recording action at the same terminal, just for the balance leg (ADR 0069 clause 2

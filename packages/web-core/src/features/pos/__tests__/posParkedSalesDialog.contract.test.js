@@ -37,6 +37,11 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');
         expect(dialogSource).toContain('Pay a parked sale now or resume it to add more items.');
+        expect(dialogSource).toContain('data-testid={`pos-parked-sale-view-${parkedSaleId}`}');
+        expect(dialogSource).toContain('>\n                                                    View\n');
+        expect(dialogSource).toContain('data-testid="pos-parked-sale-view-dialog"');
+        expect(dialogSource).toContain('data-testid="pos-parked-sale-view-items"');
+        expect(dialogSource).not.toContain('const linePreview =');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-pay-${parkedSaleId}`}');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-resume-${parkedSaleId}`}');
         expect(dialogSource).not.toContain('aria-label="Refresh parked sales"');
@@ -81,14 +86,16 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(terminalHydration).toBeGreaterThan(-1);
     });
 
-    it('provides an explicit cancellation path for shift-close resolution', () => {
+    it('requires a reason and waits for independent Back Office cancellation approval', () => {
         expect(dialogSource).toContain('cancelPosParkedSale');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}');
-        expect(dialogSource).toContain("const PARKED_SALE_AUTO_CANCEL_REASON = 'Cancelled from Parked Sales';");
-        expect(dialogSource).toContain('reason: PARKED_SALE_AUTO_CANCEL_REASON');
-        expect(dialogSource).toContain('Cancel this parked sale?');
-        expect(dialogSource).not.toContain('Cancellation reason');
-        expect(dialogSource).not.toContain('pos-parked-sale-cancel-reason');
+        expect(dialogSource).toContain("if (cancelReason.trim().length < 3)");
+        expect(dialogSource).toContain('Request cancellation approval');
+        expect(dialogSource).toContain('Stock remains deducted until approved.');
+        expect(dialogSource).toContain("const cancellationPending = status === 'cancel_pending';");
+        expect(dialogSource).toContain("status === 'cancel_pending'");
+        expect(terminalViewSource).toContain("if (cancelledSale?.status !== 'cancelled') return;");
+        expect(dialogSource).not.toContain("const PARKED_SALE_AUTO_CANCEL_REASON");
         expect(workflowSource).toContain("operation: 'parked_sale'");
         expect(terminalRenderSource).toContain('data-testid="pos-pending-sync-banner"');
     });

@@ -21,7 +21,7 @@ describe('Business Admin settings navigation model', () => {
         branches: { view: true, edit: false, scope: 'branch' },
         team: { view: true, edit: true, scope: 'branch' },
         attendance: { view: false, edit: false, scope: 'branch' },
-        payments: { view: true, edit: false, scope: 'tenant' },
+        payments: { view: true, edit: false, scope: 'branch' },
         registers: { view: false, edit: false, scope: 'branch' }
     };
 
@@ -37,7 +37,7 @@ describe('Business Admin settings navigation model', () => {
             branches: 'branch',
             team: 'branch',
             attendance: 'branch',
-            payments: 'tenant',
+            payments: 'branch',
             registers: 'branch'
         });
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'pos').description).toContain('discount rules');

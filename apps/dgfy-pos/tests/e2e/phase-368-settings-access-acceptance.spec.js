@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './fixtures/login.js';
+import { signInBackOffice } from './fixtures/login.js';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 
 const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
@@ -61,7 +61,7 @@ test.describe('Phase 368 settings access acceptance', () => {
 
   test('preserves branch context across refresh and protects unsaved settings', async ({ page }) => {
     const diagnostics = installRuntimeDiagnostics(page);
-    await signIn(page, testCredentials, { companyName: testCompanyName });
+    await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
 
     await page.goto('/?view=reports#/backoffice/settings/registers', { waitUntil: 'domcontentloaded' });
     await expect(page.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
@@ -118,30 +118,31 @@ test.describe('Phase 368 settings access acceptance', () => {
 
   test('renders explicit session-invalidated and company-switched states without a blank page', async ({ page }) => {
     const diagnostics = installRuntimeDiagnostics(page);
-    await signIn(page, testCredentials, { companyName: testCompanyName });
+    await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
     await page.goto('/?view=reports#/backoffice/overview', { waitUntil: 'domcontentloaded' });
     await expectVisibleExactText(page, 'Business back office');
 
     await page.evaluate(() => window.dispatchEvent(new Event('auth:session-expired')));
-    await expect(page.getByTestId('business-admin-session-required')).toBeVisible();
-    await expect(page.getByRole('link', { name: /Open POS sign-in/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Back Office sign in' })).toBeVisible();
+    await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expectVisibleExactText(page, 'Business back office');
     await page.evaluate(() => window.dispatchEvent(new Event('auth:logout')));
-    await expect(page.getByTestId('business-admin-session-required')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Back Office sign in' })).toBeVisible();
+    await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
 
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expectVisibleExactText(page, 'Business back office');
     await page.evaluate(() => window.dispatchEvent(new CustomEvent('auth:tenant-switched')));
-    await expect(page.getByTestId('business-admin-session-required')).toContainText('company changed in another window');
+    await expect(page.getByRole('heading', { name: 'Back Office sign in' })).toBeVisible();
 
     await assertHealthy(page, diagnostics, 'session and company invalidation');
   });
 
   test('shows an explicit denied state when the server rejects Back Office bootstrap', async ({ page }) => {
     const diagnostics = installRuntimeDiagnostics(page);
-    await signIn(page, testCredentials, { companyName: testCompanyName });
+    await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
     await page.route('**/api/v1/business-admin/bootstrap', (route) => route.fulfill({
       status: 403,
       contentType: 'application/json',

@@ -89,7 +89,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0064 | [Services Handoff Legs and Round-Trip Persistence](0064-services-handoff-legs-and-round-trip-persistence.md) | `accepted` | services_handoff_legs | 2027-02-15 | 6 |
 | 0065 | [POS Shared Parked Sales and Cashier Handoff](0065-pos-shared-parked-sales-and-cashier-handoff.md) | `amended` | pos_shared_parked_sales_and_cashier_handoff | 2027-02-15 | 7 |
 | 0066 | [Voucher Sale-Time Price Resolution](0066-voucher-sale-time-price-resolution.md) | `amended` | voucher_sale_time_price_resolution | 2027-02-17 | 7 |
-| 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `amended` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 3 |
+| 0067 | [Frontend Browser-Support Baseline and ES-Compat Guardrail](0067-frontend-browser-support-baseline-and-es-compat-guardrail.md) | `amended` | frontend_browser_support_baseline_and_es_compat_guardrail | 2027-02-18 | 4 |
 | 0068 | [Retail Downpayment / Payment-Capture Authorization](0068-retail-downpayment-payment-capture-authorization.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 6 |
 | 0069 | [Retail Downpayment — Multi-Method Capture, Refund Policy, and Fee Basis](0069-retail-downpayment-multi-method-capture-and-refund-policy.md) | `superseded` | retail_downpayment_payment_capture_authorization | 2027-02-21 | 8 |
 | 0070 | [Downpayment Authorization Across Workflow Modes](0070-downpayment-authorization-across-workflow-modes.md) | `amended` | downpayment_authorization_across_workflow_modes | 2027-02-21 | 6 |
@@ -103,11 +103,12 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0078 | [Customer Delivery-Fee Modes](0078-customer-delivery-fee-modes.md) | `amended` | customer_delivery_fee_modes | 2027-03-01 | 4 |
 | 0079 | [DGLaundry external runtime and provider contract](0079-dglaundry-external-runtime-and-provider-contract.md) | `proposed` | dglaundry_external_runtime_and_provider_contract | 2027-02-28 | 0 |
 | 0080 | [Item Multi-Category Membership](0080-item-multi-category-membership.md) | `amended` | item_multi_category_membership | 2027-03-03 | 6 |
-| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-04 | 1 |
+| 0081 | [Per-App Container Semantic Versioning](0081-per-app-container-semantic-versioning.md) | `amended` | per_app_container_semantic_versioning | 2027-03-04 | 2 |
 | 0082 | [Production Release Record and Release Notes](0082-production-release-record-and-release-notes.md) | `accepted` | production_release_record_and_release_notes | 2027-03-06 | 2 |
 | 0083 | [Courier Cash Custody and Remittance for COD Deliveries](0083-courier-cash-custody-and-remittance.md) | `accepted` | courier_cash_custody_remittance | 2027-03-13 | 9 |
 | 0084 | [POS Business Admin Operational Expense Ledger](0084-pos-business-admin-operational-expense-ledger.md) | `accepted` | pos_business_admin_operational_expense_ledger | 2027-03-17 | 5 |
 | 0085 | [POS Employee Credit Mixed Split Tender](0085-pos-employee-credit-mixed-split-tender.md) | `accepted` | pos_employee_credit_mixed_split_tender | 2027-03-21 | 6 |
+| 0086 | [POS Parked-Sale Stock and High-Risk Approval Lifecycle](0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md) | `accepted` | pos_parked_sale_stock_and_high_risk_approval_lifecycle | 2027-03-24 | 7 |
 
 ## Renumbered (collision stubs)
 

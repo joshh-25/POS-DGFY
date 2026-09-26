@@ -2,7 +2,7 @@
 // runs before any other module code (including bundled deps like
 // maplibre-gl). See ADR 0067 / #666.
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
-import React, { lazy, Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
@@ -33,6 +33,13 @@ import {
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
+import {
+  buildBackOfficeLoginPath,
+  clearBackOfficeSession,
+  isBackOfficePosHandoff,
+  isBackOfficeSessionGranted,
+  subscribeToBackOfficeSession
+} from './features/businessAdmin/businessAdminAuth.js';
 
 // Keep POS-only body portals (dialogs, menus, and notifications) on the same
 // typography stack as the shell, including routes that render before the
@@ -85,6 +92,37 @@ function LegacyBackOfficeRoute({ section = 'overview' }) {
   return <Navigate to={`/backoffice/${section}${location.search || ''}`} replace />;
 }
 
+function BackOfficeRouteGuard() {
+  const location = useLocation();
+  const [granted, setGranted] = useState(isBackOfficeSessionGranted);
+
+  useEffect(() => {
+    const handleSessionInvalidation = () => {
+      clearBackOfficeSession();
+      setGranted(false);
+    };
+    const unsubscribe = subscribeToBackOfficeSession(setGranted);
+    window.addEventListener('auth:session-expired', handleSessionInvalidation);
+    window.addEventListener('auth:session-cleared', handleSessionInvalidation);
+    window.addEventListener('auth:logout', handleSessionInvalidation);
+    window.addEventListener('auth:tenant-switched', handleSessionInvalidation);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('auth:session-expired', handleSessionInvalidation);
+      window.removeEventListener('auth:session-cleared', handleSessionInvalidation);
+      window.removeEventListener('auth:logout', handleSessionInvalidation);
+      window.removeEventListener('auth:tenant-switched', handleSessionInvalidation);
+    };
+  }, []);
+
+  if (!granted && !isBackOfficePosHandoff(location.search)) {
+    const returnTo = `${location.pathname}${location.search || ''}`;
+    return <Navigate to={buildBackOfficeLoginPath(returnTo)} replace />;
+  }
+
+  return <BusinessAdminPage />;
+}
+
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true';
@@ -101,6 +139,7 @@ const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/Regi
 const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
 const MobileReceivePage = lazy(() => import('../../../packages/web-core/src/features/merchantBackOffice/pages/MobileReceivePage.jsx'));
 const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));
+const BackOfficeLoginPage = lazy(() => import('./features/businessAdmin/BackOfficeLoginPage.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -339,8 +378,9 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
-                  <Route path="/business-admin/*" element={<BusinessAdminPage />} />
-                  <Route path="/backoffice/*" element={<BusinessAdminPage />} />
+                  <Route path="/backoffice/login" element={<BackOfficeLoginPage />} />
+                  <Route path="/business-admin/*" element={<BackOfficeRouteGuard />} />
+                  <Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />
                   <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
                   <Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />
                   <Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />

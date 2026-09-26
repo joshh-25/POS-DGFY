@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { signIn } from './fixtures/login.js';
+import { signInBackOffice } from './fixtures/login.js';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 
 const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
@@ -77,7 +77,7 @@ test.describe('Phase 375 Business Admin historical data visibility', () => {
 
     test('loads bounded history for Shifts, Orders, and Audit and exposes date presets', async ({ page }) => {
         const diagnostics = installRuntimeDiagnostics(page);
-        await signIn(page, testCredentials, { companyName: testCompanyName });
+        await signInBackOffice(page, testCredentials, { companyName: testCompanyName });
 
         const today = manilaToday();
         const last30Start = shiftDateOnly(today, -29);

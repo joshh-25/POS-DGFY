@@ -3,9 +3,13 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
+import {
+    normalizeParkedSaleLineRemovalReasons,
+    validateParkedSaleSnapshotRevision
+} from '../domain/parkedSaleLinePolicy.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
-const ACTIVE_PARKED_STATUSES = ['parked', 'claimed'];
+const ACTIVE_PARKED_STATUSES = ['parked', 'claimed', 'cancel_pending'];
 const MAX_SNAPSHOT_BYTES = 512 * 1024;
 const SECRET_KEY_PATTERN = /(password|passwd|pin|token|secret|authorization|access[_-]?token|refresh[_-]?token)/i;
 
@@ -166,6 +170,78 @@ const buildParkedSaleError = (code, message, statusCode, details = undefined) =>
     new DomainError(code, message, { statusCode, ...(details ? { details } : {}) })
 );
 
+const resolveParkedSaleInventoryEffects = async ({ resolver, snapshot, scope, user, payload, transaction, parkedSaleId, revision }) => {
+    if (typeof resolver !== 'function') {
+        throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'POS inventory-effect planning is unavailable.', 503, {
+            reason_code: 'PARKED_SALE_INVENTORY_PLANNER_UNAVAILABLE'
+        });
+    }
+    const effects = await resolver({
+        snapshot,
+        scope,
+        user,
+        payload,
+        transaction,
+        parkedSaleId,
+        revision
+    });
+    if (!Array.isArray(effects)) {
+        throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'POS inventory-effect planning returned an invalid result.', 503, {
+            reason_code: 'PARKED_SALE_INVENTORY_PLAN_INVALID'
+        });
+    }
+    return effects;
+};
+
+const issueParkedSaleInventoryEffects = async ({ inventoryCommandService, effects, parkedSaleId, revision, userId, transaction }) => {
+    const issueStock = inventoryCommandService?.issueStockForPosSale;
+    if (typeof issueStock !== 'function') {
+        throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Inventory stock issue command is unavailable.', 503, {
+            reason_code: 'PARKED_SALE_INVENTORY_COMMAND_UNAVAILABLE'
+        });
+    }
+    const movements = [];
+    for (const [index, effect] of effects.entries()) {
+        const itemId = toPositiveInt(effect?.item_id);
+        const quantity = Number(effect?.quantity);
+        const locationId = toPositiveInt(effect?.location_id);
+        if (!itemId || !Number.isFinite(quantity) || quantity <= 0 || !locationId) {
+            throw buildParkedSaleError(
+                DomainErrorCode.CONFLICT,
+                'POS inventory-effect planning returned a malformed stock effect.',
+                503,
+                {
+                    reason_code: 'PARKED_SALE_INVENTORY_EFFECT_INVALID',
+                    effect_index: index
+                }
+            );
+        }
+        const movement = await issueStock({
+            item_id: itemId,
+            quantity,
+            movement_type: 'goods_issue',
+            location_id: locationId,
+            reference_type: 'POS_PARKED_SALE',
+            reference_id: `PARKED:${parkedSaleId}:${revision}:${index + 1}`,
+            notes: `POS parked sale stock deduction · ${parkedSaleId} · revision ${revision}`
+        }, userId, transaction);
+        movements.push({ item_id: itemId, quantity, location_id: locationId, movement_id: movement?.movement_id || null });
+    }
+    return movements;
+};
+
+const publishParkedSaleStockChange = async ({ publishCatalogChange, effects = [] }) => {
+    if (typeof publishCatalogChange !== 'function') return;
+    const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
+    const itemIds = [...new Set(effects.map((effect) => toPositiveInt(effect?.item_id)).filter(Boolean))];
+    if (!tenantId || itemIds.length === 0) return;
+    try {
+        await publishCatalogChange({ tenantId, reason: 'pos_parked_sale_stock_changed', itemIds });
+    } catch {
+        // The stock transaction is already committed; catalog invalidation is best-effort.
+    }
+};
+
 const resolveOwnedOpenShift = async ({
     posRepository,
     payload = {},
@@ -278,7 +354,12 @@ const toPublicParkedSale = (row, extra = {}) => {
     };
 };
 
-export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ payload = {}, user }) => {
+export const buildCreatePosParkedSaleUseCase = ({
+    posRepository,
+    inventoryCommandService = null,
+    resolveInventoryEffects = null,
+    publishCatalogChange = null
+}) => async ({ payload = {}, user }) => {
     let transaction = null;
     try {
         const idempotencyKey = String(payload.idempotency_key || '').trim();
@@ -344,6 +425,32 @@ export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ p
             subtotal_amount: requestPayload.subtotal_amount,
             total_amount: requestPayload.total_amount
         }, { transaction });
+        if (created?._idempotent_replay === true) {
+            await finishTransaction(transaction, 'commit');
+            return ok(toPublicParkedSale(created, { idempotent_replay: true }), 'POS sale park request replayed');
+        }
+        const inventoryEffects = await resolveParkedSaleInventoryEffects({
+            resolver: resolveInventoryEffects,
+            snapshot,
+            scope,
+            user,
+            payload,
+            transaction,
+            parkedSaleId: created?.pos_parked_sale_id,
+            revision: 1
+        });
+        await issueParkedSaleInventoryEffects({
+            inventoryCommandService,
+            effects: inventoryEffects,
+            parkedSaleId: created.pos_parked_sale_id,
+            revision: 1,
+            userId: scope.userId,
+            transaction
+        });
+        const withInventoryEvidence = await posRepository.updateParkedSale(created.pos_parked_sale_id, {
+            inventory_effects: inventoryEffects,
+            inventory_deducted_at: new Date()
+        }, { transaction, lock: true });
         await posRepository.createAuditLog({
             user_id: scope.userId,
             entity_type: 'pos_parked_sale',
@@ -359,20 +466,27 @@ export const buildCreatePosParkedSaleUseCase = ({ posRepository }) => async ({ p
                 park_reference: created?.park_reference || null,
                 line_count: requestPayload.line_count,
                 total_amount: requestPayload.total_amount,
+                inventory_effect_count: inventoryEffects.length,
                 terminal_id: scope.terminalId,
                 shift_id: scope.shiftId,
                 location_id: scope.locationId
             }
         }, { transaction });
         await finishTransaction(transaction, 'commit');
-        return ok(toPublicParkedSale(created, { idempotent_replay: false }), 'POS sale parked');
+        await publishParkedSaleStockChange({ publishCatalogChange, effects: inventoryEffects });
+        return ok(toPublicParkedSale(withInventoryEvidence || created, { idempotent_replay: false }), 'POS sale parked');
     } catch (error) {
         await finishTransaction(transaction, 'rollback');
         return fail(mapPosUseCaseError(error, 'Failed to park POS sale'));
     }
 };
 
-export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ parkedSaleId, payload = {}, user }) => {
+export const buildReparkPosParkedSaleUseCase = ({
+    posRepository,
+    inventoryCommandService = null,
+    resolveInventoryEffects = null,
+    publishCatalogChange = null
+}) => async ({ parkedSaleId, payload = {}, user }) => {
     let transaction = null;
     try {
         const normalizedId = toPositiveInt(parkedSaleId);
@@ -380,6 +494,7 @@ export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ p
         if (!normalizedId) throw buildParkedSaleError(DomainErrorCode.VALIDATION_FAILED, 'parked sale id must be a positive integer.', 400);
         if (!expectedRevision) throw buildParkedSaleError(DomainErrorCode.VALIDATION_FAILED, 'expected_revision is required.', 422);
         const snapshot = normalizeSnapshot(payload.snapshot);
+        const removedLineReasons = normalizeParkedSaleLineRemovalReasons(payload.removed_line_reasons);
         transaction = await beginTransaction();
         const scope = await resolveOwnedOpenShift({
             posRepository,
@@ -407,13 +522,75 @@ export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             });
         }
 
+        const previousSnapshot = parseStoredSnapshot(row.snapshot) || { lines: [] };
+        const nextItemIds = [...new Set(snapshot.lines
+            .map((line) => toPositiveInt(line?.item_id))
+            .filter(Boolean))];
+        const currentItems = typeof posRepository.findSellableItemsByIds === 'function'
+            ? await posRepository.findSellableItemsByIds(nextItemIds, {
+                transaction,
+                lock: true,
+                locationId: scope.locationId
+            })
+            : [];
+        const snapshotViolation = validateParkedSaleSnapshotRevision({
+            previousSnapshot,
+            nextSnapshot: snapshot,
+            currentItems,
+            removedLineReasons
+        });
+        if (snapshotViolation) {
+            throw buildParkedSaleError(DomainErrorCode.CONFLICT, snapshotViolation.message, 409, {
+                reason_code: snapshotViolation.reasonCode,
+                item_id: snapshotViolation.itemId,
+                line_ref: snapshotViolation.lineRef
+            });
+        }
+
+        const reversedInventoryEffects = [];
+        if (row.inventory_deducted_at) {
+            const reverseParkedSaleGoodsIssue = inventoryCommandService?.reverseParkedSaleGoodsIssue;
+            if (typeof reverseParkedSaleGoodsIssue !== 'function') {
+                throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Inventory reversal command is unavailable for this parked sale.', 503, {
+                    reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_UNAVAILABLE'
+                });
+            }
+            const reversals = await reverseParkedSaleGoodsIssue({
+                parked_sale_id: normalizedId,
+                reason: `Re-park inventory reconciliation for parked sale ${normalizedId}`
+            }, scope.userId, transaction);
+            reversedInventoryEffects.push(...(Array.isArray(reversals) ? reversals : []));
+        }
+        const nextRevision = currentRevision + 1;
+        const inventoryEffects = await resolveParkedSaleInventoryEffects({
+            resolver: resolveInventoryEffects,
+            snapshot,
+            previousSnapshot,
+            scope,
+            user,
+            payload,
+            transaction,
+            parkedSaleId: normalizedId,
+            revision: nextRevision
+        });
+        await issueParkedSaleInventoryEffects({
+            inventoryCommandService,
+            effects: inventoryEffects,
+            parkedSaleId: normalizedId,
+            revision: nextRevision,
+            userId: scope.userId,
+            transaction
+        });
+
         const reparkingPayload = {
             snapshot,
             line_count: snapshot.lines.length,
             quantity_total: snapshot.lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0),
             subtotal_amount: toFiniteNonNegative(payload.subtotal_amount),
             total_amount: toFiniteNonNegative(payload.total_amount),
-            revision: currentRevision + 1,
+            revision: nextRevision,
+            inventory_effects: inventoryEffects,
+            inventory_deducted_at: new Date(),
             status: 'parked',
             claimed_by: null,
             claimed_terminal_id: null,
@@ -434,12 +611,17 @@ export const buildReparkPosParkedSaleUseCase = ({ posRepository }) => async ({ p
                 operator_session_id: scope.operatorSessionId,
                 revision: reparkingPayload.revision,
                 total_amount: reparkingPayload.total_amount,
+                removed_line_reasons: removedLineReasons,
                 terminal_id: scope.terminalId,
                 shift_id: scope.shiftId,
                 location_id: scope.locationId
             }
         }, { transaction });
         await finishTransaction(transaction, 'commit');
+        await publishParkedSaleStockChange({
+            publishCatalogChange,
+            effects: [...reversedInventoryEffects, ...inventoryEffects]
+        });
         return ok(toPublicParkedSale(updated, { idempotent_replay: false }), 'Parked POS sale updated');
     } catch (error) {
         await finishTransaction(transaction, 'rollback');
@@ -632,26 +814,77 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
                 reason_code: 'PARKED_SALE_ALREADY_COMPLETED'
             });
         }
+        const existingRequest = await posRepository.findPendingBusinessAdminApprovalRequest({
+            actionType: 'pos_parked_sale_cancel',
+            entityType: 'pos_parked_sale',
+            entityId: normalizedId
+        }, { transaction, lock: true });
+        if (row.status === 'cancel_pending') {
+            if (!existingRequest) {
+                throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Cancellation is pending but its approval request is unavailable.', 409, {
+                    reason_code: 'PARKED_SALE_CANCEL_APPROVAL_MISSING'
+                });
+            }
+            await finishTransaction(transaction, 'commit');
+            return ok({
+                parked_sale: toPublicParkedSale(row, { idempotent_replay: true }),
+                approval_request: existingRequest,
+                pending: true
+            }, 'Parked POS sale cancellation is awaiting Back Office approval');
+        }
+        if (!['parked', 'claimed'].includes(String(row.status || '').toLowerCase())) {
+            throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Only an active parked POS sale can request cancellation.', 409, {
+                reason_code: 'PARKED_SALE_NOT_CANCELLABLE',
+                status: row.status
+            });
+        }
+        if (existingRequest) {
+            throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'A cancellation approval request is already pending for this parked sale.', 409, {
+                reason_code: 'PARKED_SALE_CANCEL_APPROVAL_ALREADY_PENDING',
+                approval_request_id: existingRequest.business_admin_approval_request_id
+            });
+        }
 
-        const cancelled = await posRepository.updateParkedSale(normalizedId, {
-            status: 'cancelled',
-            cancelled_by: scope.userId,
-            cancelled_at: new Date(),
-            cancel_reason: reason
+        const approvalPayload = {
+            parked_sale_id: normalizedId,
+            park_reference: row.park_reference || null,
+            location_id: scope.locationId,
+            terminal_id: scope.terminalId,
+            shift_id: scope.shiftId,
+            previous_status: row.status,
+            previous_claimed_by: toPositiveInt(row.claimed_by),
+            previous_claimed_terminal_id: row.claimed_terminal_id || null,
+            reason,
+            requested_by: scope.userId
+        };
+        const approvalRequest = await posRepository.createBusinessAdminApprovalRequest({
+            action_type: 'pos_parked_sale_cancel',
+            entity_type: 'pos_parked_sale',
+            entity_id: normalizedId,
+            payload: approvalPayload,
+            payload_hash: hashPayload(approvalPayload),
+            status: 'pending',
+            reason,
+            idempotency_key: `parked-cancel:${normalizedId}:${crypto.randomUUID()}`,
+            requested_by: scope.userId
+        }, { transaction });
+        const pending = await posRepository.updateParkedSale(normalizedId, {
+            status: 'cancel_pending'
         }, { transaction, lock: true });
         await posRepository.createAuditLog({
             user_id: scope.userId,
             entity_type: 'pos_parked_sale',
             entity_id: normalizedId,
             action: 'UPDATE',
-            event_type: 'pos_parked_sale_cancelled',
+            event_type: 'pos_parked_sale_cancellation_requested',
             terminal_id: scope.terminalId,
             shift_id: scope.shiftId,
             location_id: scope.locationId,
             reason,
             changes: {
-                event: 'pos_parked_sale_cancelled',
+                event: 'pos_parked_sale_cancellation_requested',
                 operator_session_id: scope.operatorSessionId,
+                approval_request_id: approvalRequest.business_admin_approval_request_id,
                 reason,
                 terminal_id: scope.terminalId,
                 shift_id: scope.shiftId,
@@ -659,7 +892,11 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             }
         }, { transaction });
         await finishTransaction(transaction, 'commit');
-        return ok(toPublicParkedSale(cancelled, { idempotent_replay: false }), 'Parked POS sale cancelled');
+        return ok({
+            parked_sale: toPublicParkedSale(pending, { idempotent_replay: false }),
+            approval_request: approvalRequest,
+            pending: true
+        }, 'Parked POS sale cancellation submitted for Back Office approval');
     } catch (error) {
         await finishTransaction(transaction, 'rollback');
         return fail(mapPosUseCaseError(error, 'Failed to cancel parked POS sale'));

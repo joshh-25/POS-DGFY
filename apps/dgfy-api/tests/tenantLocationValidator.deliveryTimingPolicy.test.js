@@ -1,4 +1,8 @@
-import { validateCreateTenantLocation, validateUpdateTenantLocation } from '../src/validators/tenantLocationValidator.js';
+import {
+    validateCreateTenantLocation,
+    validateDineInPaymentPolicyUpdate,
+    validateUpdateTenantLocation
+} from '../src/validators/tenantLocationValidator.js';
 import { jest } from '@jest/globals';
 
 // #1218 (pr-reviewer RF-1, PR #1237): the create-time Joi cross-field rule enforcing the
@@ -137,6 +141,29 @@ describe('tenantLocationValidator delivery timing policy cross-field rule (#1218
 
             expect(next).not.toHaveBeenCalled();
             expect(res.statusCode).toBe(422);
+        });
+    });
+
+    describe('Dine-in payment policy', () => {
+        it('accepts an explicit boolean policy value', () => {
+            const req = { body: { allow_dine_in_pay_at_store: true } };
+            const { res, next } = runMiddleware(validateDineInPaymentPolicyUpdate, req);
+
+            expect(res.statusCode).toBe(200);
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(req.validatedData).toEqual({ allow_dine_in_pay_at_store: true });
+        });
+
+        it('rejects a missing or non-boolean policy value', () => {
+            const missing = runMiddleware(validateDineInPaymentPolicyUpdate, { body: {} });
+            const invalid = runMiddleware(validateDineInPaymentPolicyUpdate, {
+                body: { allow_dine_in_pay_at_store: 'true' }
+            });
+
+            expect(missing.next).not.toHaveBeenCalled();
+            expect(missing.res.statusCode).toBe(422);
+            expect(invalid.next).not.toHaveBeenCalled();
+            expect(invalid.res.statusCode).toBe(422);
         });
     });
 });

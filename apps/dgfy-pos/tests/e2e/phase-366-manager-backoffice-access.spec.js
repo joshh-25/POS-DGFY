@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { signIn } from './fixtures/login.js';
+import { signIn, signInBackOffice } from './fixtures/login.js';
 import { hasTestCredentials, testCredentials } from './fixtures/test-credentials.js';
 
 const LOCK_KEY = 'pos_terminal_locked_v1';
 const LOCK_REASON_KEY = 'pos_terminal_lock_reason_v1';
+const testCompanyName = process.env.E2E_TEST_COMPANY_NAME?.trim();
 
 const installRuntimeDiagnostics = (page) => {
   const diagnostics = {
@@ -89,8 +90,9 @@ const runManagerBackOfficeFlow = async (page) => {
   const backOffice = await popupPromise;
   const popupDiagnostics = installRuntimeDiagnostics(backOffice);
   try {
-    await backOffice.waitForURL(/#\/backoffice\/overview$/, { timeout: 30_000 });
+    await backOffice.waitForURL(/#\/backoffice\/login\?return_to=/, { timeout: 30_000 });
     await backOffice.waitForLoadState('domcontentloaded');
+    await signInBackOffice(backOffice, testCredentials, { companyName: testCompanyName });
     const backOfficeUrl = new URL(backOffice.url());
     expect(backOfficeUrl.pathname).toBe('/');
     expect(backOfficeUrl.search).toBe('?view=reports');

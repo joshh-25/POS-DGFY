@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import PosSettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
 import PosBusinessReceiptsSection from '../settings/PosBusinessReceiptsSection.jsx';
-import { deleteStorefrontAsset, getAllSettings, getCompanyInfo, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import { deleteStorefrontAsset, getAllSettings, getCompanyInfo, getDiscountRules, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
 import { updateProfile } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
@@ -14,6 +14,7 @@ vi.mock('@/services/settingsService.js', async (importOriginal) => ({
   ...await importOriginal(),
   getAllSettings: vi.fn(),
   getCompanyInfo: vi.fn().mockResolvedValue(null),
+  getDiscountRules: vi.fn(),
   deleteStorefrontAsset: vi.fn(),
   updateSettingByKey: vi.fn(),
   updateSettings: vi.fn(),
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   listTenantLocations.mockResolvedValue([]);
   getAllSettings.mockResolvedValue({});
+  getDiscountRules.mockResolvedValue([]);
   updateProfile.mockResolvedValue({});
   deleteStorefrontAsset.mockResolvedValue({});
   updateSettingByKey.mockResolvedValue({});
@@ -68,6 +70,39 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('extracted POS Settings workspace', () => {
+  it('switches the Business Admin POS settings tabs and moves the active underline state', async () => {
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'pos_setup',
+      allowedTabIds: ['pos_setup', 'taxes', 'discounts'],
+      terminalUser: { ...buildProps().terminalUser, is_master_admin: true }
+    })} />);
+
+    const posSetupTab = await screen.findByRole('tab', { name: 'POS Setup', exact: true });
+    const taxesTab = screen.getByRole('tab', { name: 'Taxes', exact: true });
+    const discountsTab = screen.getByRole('tab', { name: 'Discounts', exact: true });
+
+    expect(posSetupTab.getAttribute('aria-selected')).toBe('true');
+    expect(taxesTab.getAttribute('aria-selected')).toBe('false');
+    expect(discountsTab.getAttribute('aria-selected')).toBe('false');
+    expect(posSetupTab.className).toContain('border-[#1A4E8D]');
+
+    fireEvent.click(taxesTab);
+    await waitFor(() => {
+      expect(taxesTab.getAttribute('aria-selected')).toBe('true');
+      expect(posSetupTab.getAttribute('aria-selected')).toBe('false');
+      expect(screen.getByRole('heading', { name: 'Taxes', exact: true })).toBeTruthy();
+    });
+    expect(taxesTab.className).toContain('border-[#1A4E8D]');
+
+    fireEvent.click(discountsTab);
+    await waitFor(() => {
+      expect(discountsTab.getAttribute('aria-selected')).toBe('true');
+      expect(taxesTab.getAttribute('aria-selected')).toBe('false');
+      expect(screen.getByRole('heading', { name: 'Discount Management', exact: true })).toBeTruthy();
+    });
+    expect(discountsTab.className).toContain('border-[#1A4E8D]');
+  });
+
   it('preserves a profile draft across tabs and saves only the profile payload', async () => {
     const onRefreshTerminalUser = vi.fn().mockResolvedValue(undefined);
     render(<PosSettingsWorkspace {...buildProps({ onRefreshTerminalUser })} />);
@@ -89,6 +124,58 @@ describe('extracted POS Settings workspace', () => {
     }));
     expect(onRefreshTerminalUser).toHaveBeenCalledWith({ suppressGlobalErrors: true });
     expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('exposes the Taxes tab to POS settings editors and saves the category VAT policy', async () => {
+    const settingsPayload = {
+      pos_tax_policies: {
+        value: {
+          version: 3,
+          categories: {
+            senior: { vat_treatment: 'vat_exempt' },
+            pwd: { vat_treatment: 'vat_exempt' },
+            manual: { vat_treatment: 'standard' },
+            employee: { vat_treatment: 'standard' },
+            promo: { vat_treatment: 'standard' },
+            voucher: { vat_treatment: 'standard' }
+          }
+        }
+      }
+    };
+    getAllSettings.mockResolvedValue(settingsPayload);
+    updateSettings.mockResolvedValue({
+      pos_tax_policies: {
+        value: {
+          ...settingsPayload.pos_tax_policies.value,
+          version: 4,
+          categories: {
+            ...settingsPayload.pos_tax_policies.value.categories,
+            manual: { vat_treatment: 'vat_exempt' }
+          }
+        }
+      }
+    });
+
+    render(<PosSettingsWorkspace {...buildProps({
+      initialTab: 'taxes',
+      terminalUser: { ...buildProps().terminalUser, is_master_admin: true }
+    })} />);
+
+    expect(await screen.findByRole('heading', { name: 'Taxes' })).toBeTruthy();
+    const othersTreatment = screen.getByRole('combobox', { name: 'Others VAT treatment' });
+    expect(othersTreatment.value).toBe('standard');
+    fireEvent.change(othersTreatment, { target: { value: 'vat_exempt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Taxes' }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({
+      pos_tax_policies: expect.objectContaining({
+        version: 3,
+        categories: expect.objectContaining({
+          manual: { vat_treatment: 'vat_exempt' }
+        })
+      })
+    }));
+    expect(toast.success).toHaveBeenCalledWith('Tax settings synced to shared settings.');
   });
 
   it('keeps a failed profile save editable and reports the error', async () => {
@@ -921,16 +1008,13 @@ describe('extracted POS Settings workspace', () => {
     expect(discountHeading?.parentElement?.parentElement?.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
   });
 
-  it('uses a destructive red treatment for discount preset removal', async () => {
+  it('keeps legacy discount presets read-only after the configurable-rule cutover', async () => {
     render(<PosSettingsWorkspace {...buildProps()} />);
 
     fireEvent.click(await screen.findByRole('tab', { name: 'POS Setup', exact: true }));
     fireEvent.click(await screen.findByRole('tab', { name: 'Discounts & Automation', exact: true }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Add Discount', exact: true }));
 
-    const removeButton = await screen.findByRole('button', { name: 'Remove discount profile 1', exact: true });
-    expect(removeButton.className).toContain('border-rose-200');
-    expect(removeButton.className).toContain('bg-rose-50');
-    expect(removeButton.className).toContain('text-rose-600');
+    expect(screen.queryByRole('button', { name: 'Add Discount', exact: true })).toBeNull();
+    expect(await screen.findByText('No legacy discount presets detected. Use Discount Management to create and approve a configurable discount.')).toBeTruthy();
   });
 });

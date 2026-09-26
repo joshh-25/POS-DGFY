@@ -82,6 +82,7 @@ const buildSnapshot = (cart, checkoutSnapshot = null) => ({
         item_id: Number(line?.item_id),
         quantity: Number(line?.quantity),
         sale_price: Number(line?.sale_price),
+        ...(line?.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
         price_override_reason: String(line?.price_override_reason || '').trim() || null,
         course: line?.course || null,
         line_modifiers: Array.isArray(line?.line_modifiers) ? line.line_modifiers : [],

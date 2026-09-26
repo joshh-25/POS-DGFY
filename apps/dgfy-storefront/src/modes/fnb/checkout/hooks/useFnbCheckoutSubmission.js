@@ -32,6 +32,7 @@ export function useFnbCheckoutSubmission({
   customerPhone,
   extractStockViolation,
   fnbPaymentType,
+  allowDineInPayAtStore = false,
   goStoreTrackPage,
   guestCheckoutIntentId,
   guestCheckoutProof,
@@ -88,7 +89,8 @@ export function useFnbCheckoutSubmission({
       // #1093: the resolved fulfillment location has neither delivery nor pickup enabled --
       // shouldn't normally be reachable (see checkoutRules.js's own comment), but this store is
       // the honest, actionable fallback rather than a silent no-op Place Order click.
-      no_fulfillment_method: 'This store is not accepting delivery or pickup orders online right now.',
+      no_fulfillment_method: 'This store is not accepting delivery, pickup, or dine-in orders online right now.',
+      missing_dine_in_schedule: 'Choose a date and time for dine-in before placing the order.',
     };
     const blockMessage = checkoutBlockReason === 'business_hours'
       ? storefrontClosedMessageBody
@@ -99,6 +101,12 @@ export function useFnbCheckoutSubmission({
       toast.error(checkoutBlockReason === 'business_hours'
         ? storefrontClosedToastMessage
         : blockMessage);
+      return;
+    }
+    if (orderMethod === 'dine_in' && fnbPaymentType === 'cash' && !allowDineInPayAtStore) {
+      const message = 'Dine-in orders require online full payment or an online downpayment unless Pay in Store is enabled for this branch.';
+      setCheckoutError(message);
+      toast.error(message);
       return;
     }
     if (!isDgfyCustomerSignedIn && !isGuestCheckoutAllowed(selectedStore)) {
@@ -282,6 +290,7 @@ export function useFnbCheckoutSubmission({
     customerPhone,
     extractStockViolation,
     fnbPaymentType,
+    allowDineInPayAtStore,
     goStoreTrackPage,
     guestCheckoutIntentId,
     guestCheckoutProof,

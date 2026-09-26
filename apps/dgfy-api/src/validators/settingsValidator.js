@@ -7,6 +7,7 @@ import {
 import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
 import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
 import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
+import { POS_TAX_POLICY_TYPES, POS_TAX_TREATMENTS } from '../modules/shared/constants/posTaxPolicy.js';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -59,6 +60,58 @@ const posDiscountProfilesSchema = Joi.array()
     'array.max': 'A maximum of 20 POS discount profiles is allowed',
     'any.invalid': '{{#message}}'
   });
+
+const configurableDiscountNameSchema = Joi.string()
+  .trim()
+  .min(1)
+  .max(100)
+  .messages({
+    'string.empty': 'Discount name is required',
+    'any.required': 'Discount name is required'
+  });
+
+const configurableDiscountPercentageSchema = Joi.number()
+  .min(0)
+  .max(100)
+  .precision(4)
+  .messages({
+    'number.min': 'Discount percentage must be 0 or greater',
+    'number.max': 'Discount percentage must be 100 or less'
+  });
+
+const createConfigurableDiscountRuleSchema = Joi.object({
+  name: configurableDiscountNameSchema.required(),
+  percentage: configurableDiscountPercentageSchema.required().messages({
+    'any.required': 'Discount percentage is required'
+  }),
+  description: Joi.string().trim().max(500).allow('', null).default(null),
+  is_enabled: Joi.boolean().default(false),
+  is_approved: Joi.boolean().default(false)
+});
+
+const updateConfigurableDiscountRuleSchema = Joi.object({
+  name: configurableDiscountNameSchema.optional(),
+  percentage: configurableDiscountPercentageSchema.optional(),
+  description: Joi.string().trim().max(500).allow('', null).optional(),
+  is_enabled: Joi.boolean().optional(),
+  is_approved: Joi.boolean().optional(),
+  expected_configuration_version: Joi.number().integer().min(1).required().messages({
+    'any.required': 'expected_configuration_version is required',
+    'number.min': 'expected_configuration_version must be a positive integer'
+  })
+}).custom((value, helpers) => {
+  const editableFields = ['name', 'percentage', 'description', 'is_enabled', 'is_approved'];
+  if (!editableFields.some((field) => Object.prototype.hasOwnProperty.call(value, field))) {
+    return helpers.error('any.custom');
+  }
+  return value;
+}).messages({
+  'any.custom': 'At least one discount field must be provided'
+});
+
+const configurableDiscountRuleIdSchema = Joi.object({
+  discountRuleId: Joi.number().integer().positive().required()
+});
 
 const orderMethodFeeEntrySchema = Joi.object({
   enabled: Joi.boolean().required(),
@@ -461,6 +514,22 @@ const posBestSellerSettingsSchema = Joi.object({
   daily_top_enabled: Joi.boolean().default(false)
 }).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
+const posTaxPolicyCategorySchema = Joi.object({
+  vat_treatment: Joi.string().trim().lowercase().valid(...POS_TAX_TREATMENTS).required().messages({
+    'any.only': `VAT treatment must be one of: ${POS_TAX_TREATMENTS.join(', ')}`,
+    'any.required': 'VAT treatment is required'
+  })
+});
+
+const posTaxPoliciesSchema = Joi.object({
+  version: Joi.number().integer().min(1).optional(),
+  categories: Joi.object(
+    Object.fromEntries(POS_TAX_POLICY_TYPES.map((type) => [type, posTaxPolicyCategorySchema.required()]))
+  ).required().messages({
+    'any.required': 'POS tax policy categories are required'
+  })
+}).required();
+
 // Phase 233 (#1324, epic #1321): the calculated-mode delivery-fee formula, as ONE JSON blob per
 // Wave 0a decision #1 -- replaced wholesale on write, never merged field-by-field with whatever is
 // already stored. Reference values from the epic (₱50 minimum / first 3 km / ₱10 per km / ₱5 per
@@ -556,6 +625,7 @@ export const updateSettingsSchema = Joi.object({
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_employee_discount_self_approval_enabled: Joi.boolean().optional(),
+  pos_tax_policies: posTaxPoliciesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
   pos_terminal_registry: posTerminalRegistrySchema.optional(),
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
@@ -763,6 +833,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_employee_discount_self_approval_enabled: Joi.boolean(),
+    pos_tax_policies: posTaxPoliciesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,
     pos_terminal_registry: posTerminalRegistrySchema,
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
@@ -908,3 +979,44 @@ export const validateVerifyPosSettingsAccessPin = (req, res, next) => {
   req.validatedData = value;
   next();
 };
+
+const validateSettingsSchema = (schema, source, target) => (req, res, next) => {
+  const { error, value } = schema.validate(req[source], {
+    abortEarly: false,
+    stripUnknown: true
+  });
+
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req[target] = value;
+  return next();
+};
+
+export const validateCreateConfigurableDiscountRule = validateSettingsSchema(
+  createConfigurableDiscountRuleSchema,
+  'body',
+  'validatedData'
+);
+
+export const validateUpdateConfigurableDiscountRule = validateSettingsSchema(
+  updateConfigurableDiscountRuleSchema,
+  'body',
+  'validatedData'
+);
+
+export const validateConfigurableDiscountRuleId = validateSettingsSchema(
+  configurableDiscountRuleIdSchema,
+  'params',
+  'validatedParams'
+);

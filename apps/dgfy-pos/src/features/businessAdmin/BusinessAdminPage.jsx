@@ -28,6 +28,7 @@ import {
     ShoppingBag,
     ShieldCheck,
     Store,
+    Truck,
     UserRound,
     Users,
     Utensils,
@@ -87,6 +88,13 @@ import {
     isBusinessAdminWorkflowSectionVisible
 } from './businessAdminWorkflowVisibility.js';
 import {
+    buildBackOfficeLoginPath,
+    clearBackOfficeSession,
+    grantBackOfficeSession,
+    isBackOfficePosHandoff,
+    removeBackOfficePosHandoff
+} from './businessAdminAuth.js';
+import {
     DATE_RANGE_PRESETS,
     formatDateRangeLabel,
     getDateRangeForPreset,
@@ -113,6 +121,18 @@ const BUSINESS_ADMIN_RECEIPT_TYPE_OPTIONS = Object.freeze([
     { value: 'refund', label: 'Refund receipts' },
     { value: 'voided', label: 'Voided receipts' }
 ]);
+
+const BUSINESS_ADMIN_SETTINGS_SECTION_ICONS = Object.freeze({
+    profile: Building2,
+    pos: Settings,
+    storefront: Store,
+    delivery: Truck,
+    branches: MapPin,
+    team: Users,
+    attendance: CalendarDays,
+    payments: Wallet,
+    registers: Monitor
+});
 
 const INVENTORY_WORKFLOW_LINKS = Object.freeze([
     {
@@ -1653,7 +1673,39 @@ function NotificationsWorkspace({ data, onAction, actionLoading, refreshing = fa
     );
 }
 function ApprovalsWorkspace({ data, onDecision, actionLoading }) {
-    return <SectionCard title="Approval queue" subtitle="High-risk requests are visible here; mutation remains with POS"><DataTable rows={data?.approvals || []} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={[{ key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) }, { key: 'entity_id', label: 'Entity' }, { key: 'requested_by', label: 'Requested by' }, { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'actions', label: 'Decision', render: (row) => row.status === 'pending' ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div> : <span className="business-admin-muted">No action</span> }]} /></SectionCard>;
+    const rows = data?.approvals || [];
+    const targetLabel = (row) => {
+        const payload = row.payload || {};
+        const reference = payload.invoice_number || payload.park_reference
+            || `${humanize(row.entity_type)} #${row.entity_id}`;
+        const amount = payload.amount == null ? '' : ` · ${money(payload.amount)}`;
+        const branch = row.branch_id == null ? '' : ` · Branch #${row.branch_id}`;
+        return `${reference}${amount}${branch}`;
+    };
+    return (
+        <SectionCard title="Approval queue" subtitle="Review the reason and target before deciding. POS and Inventory perform approved changes; rejected requests leave the sale and stock unchanged.">
+            <DataTable
+                rows={rows}
+                rowKey={(row) => row.approval_request_id}
+                emptyMessage="No approval requests are pending."
+                columns={[
+                    { key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) },
+                    { key: 'target', label: 'Target', render: (row) => targetLabel(row) },
+                    { key: 'reason', label: 'Reason', render: (row) => <span title={row.reason || ''}>{row.reason || '—'}</span> },
+                    { key: 'requested_by', label: 'Requested by' },
+                    { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) },
+                    { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> },
+                    {
+                        key: 'actions',
+                        label: 'Decision',
+                        render: (row) => row.status === 'pending'
+                            ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div>
+                            : <span className="business-admin-muted">No action</span>
+                    }
+                ]}
+            />
+        </SectionCard>
+    );
 }
 
 function AuditWorkspace({ data, dateFrom, dateTo }) {
@@ -1807,7 +1859,7 @@ function PaymentsWorkspace({ data }) {
 
 const BUSINESS_ADMIN_EDITOR_TABS = Object.freeze({
     profile: ['profile', 'pos_setup'],
-    pos: ['pos_setup'],
+    pos: ['pos_setup', 'taxes', 'discounts'],
     storefront: ['storefront'],
     delivery: ['delivery_pricing'],
     branches: ['storefront'],
@@ -1971,7 +2023,7 @@ function BusinessAdminSettingsEditor({
                 onSettingsSaved={notifySettingsSaved}
                 settingsRefreshKey={settingsRefreshKey}
                 onDirtyChange={onDirtyChange}
-                locationScopeId={definition?.key === 'branches' ? settingsBranchId : null}
+                locationScopeId={definition?.scope === 'branch' ? settingsBranchId : null}
             />
         </div>
     );
@@ -2000,44 +2052,18 @@ function BusinessAdminSettingsWorkspace({
     const sectionCapability = definition ? capabilities[definition.key] : null;
     const isVisible = definition ? canAccessBusinessAdminSettingsSection(rawCapabilities, definition.key, 'view') : false;
     const settingsSectionListRef = useRef(null);
-    const [settingsSectionScrollState, setSettingsSectionScrollState] = useState({
-        canScrollLeft: false,
-        canScrollRight: false
+    const settingsSectionDragRef = useRef({
+        active: false,
+        pointerId: null,
+        pointerType: '',
+        startX: 0,
+        startScrollLeft: 0,
+        moved: false,
+        captured: false
     });
-
-    const updateSettingsSectionScrollState = useCallback(() => {
-        const element = settingsSectionListRef.current;
-        if (!element) return;
-        const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
-        setSettingsSectionScrollState({
-            canScrollLeft: element.scrollLeft > 1,
-            canScrollRight: element.scrollLeft < maxScrollLeft - 1
-        });
-    }, []);
-
-    const scrollSettingsSections = useCallback((direction) => {
-        const element = settingsSectionListRef.current;
-        if (!element) return;
-        const distance = Math.max(220, Math.round(element.clientWidth * 0.72));
-        element.scrollBy({ left: direction * distance, behavior: 'smooth' });
-    }, []);
-
-    useEffect(() => {
-        const element = settingsSectionListRef.current;
-        if (!element) return undefined;
-        updateSettingsSectionScrollState();
-        element.addEventListener('scroll', updateSettingsSectionScrollState, { passive: true });
-        window.addEventListener('resize', updateSettingsSectionScrollState);
-        const resizeObserver = typeof ResizeObserver === 'function'
-            ? new ResizeObserver(updateSettingsSectionScrollState)
-            : null;
-        resizeObserver?.observe(element);
-        return () => {
-            element.removeEventListener('scroll', updateSettingsSectionScrollState);
-            window.removeEventListener('resize', updateSettingsSectionScrollState);
-            resizeObserver?.disconnect();
-        };
-    }, [updateSettingsSectionScrollState, visibleSections.length]);
+    const suppressSettingsSectionClickRef = useRef(false);
+    const [settingsSectionCanSwipe, setSettingsSectionCanSwipe] = useState(false);
+    const [settingsSectionSwipeHintVisible, setSettingsSectionSwipeHintVisible] = useState(true);
 
     useEffect(() => {
         const activeSection = settingsSectionListRef.current?.querySelector('.business-admin-settings-section.active');
@@ -2045,6 +2071,38 @@ function BusinessAdminSettingsWorkspace({
             activeSection.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
         }
     }, [definition?.key]);
+
+    const updateSettingsSectionSwipeState = useCallback(() => {
+        const element = settingsSectionListRef.current;
+        if (!element) {
+            setSettingsSectionCanSwipe(false);
+            return;
+        }
+
+        const maxScrollLeft = Math.max(0, element.scrollWidth - element.clientWidth);
+        const hasHiddenSectionsToRight = element.scrollLeft < maxScrollLeft - 2;
+        setSettingsSectionCanSwipe(hasHiddenSectionsToRight);
+    }, []);
+
+    useEffect(() => {
+        const element = settingsSectionListRef.current;
+        if (!element) return undefined;
+
+        const initialMeasureFrame = window.requestAnimationFrame(updateSettingsSectionSwipeState);
+        element.addEventListener('scroll', updateSettingsSectionSwipeState, { passive: true });
+        window.addEventListener('resize', updateSettingsSectionSwipeState);
+        const resizeObserver = typeof ResizeObserver === 'function'
+            ? new ResizeObserver(updateSettingsSectionSwipeState)
+            : null;
+        resizeObserver?.observe(element);
+
+        return () => {
+            window.cancelAnimationFrame(initialMeasureFrame);
+            element.removeEventListener('scroll', updateSettingsSectionSwipeState);
+            window.removeEventListener('resize', updateSettingsSectionSwipeState);
+            resizeObserver?.disconnect();
+        };
+    }, [updateSettingsSectionSwipeState, visibleSections.length]);
 
     const handleBranchChange = (nextBranchId) => {
         if (String(nextBranchId || '') === String(settingsBranchId || '')) return;
@@ -2056,6 +2114,102 @@ function BusinessAdminSettingsWorkspace({
             onLeaveSettings?.();
         }
         onBranchChange(nextBranchId);
+    };
+
+    const handleSettingsSectionKeyDown = (event, sectionKey) => {
+        const navigationKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
+        if (!navigationKeys.includes(event.key)) return;
+        event.preventDefault();
+
+        const currentIndex = visibleSections.findIndex((section) => section.key === sectionKey);
+        if (currentIndex < 0 || visibleSections.length === 0) return;
+
+        const isForwardKey = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+        const nextIndex = event.key === 'Home'
+            ? 0
+            : (event.key === 'End'
+                ? visibleSections.length - 1
+                : (currentIndex + (isForwardKey ? 1 : -1) + visibleSections.length) % visibleSections.length);
+        const nextSection = visibleSections[nextIndex];
+        onSelectSection(nextSection.key);
+        window.requestAnimationFrame(() => {
+            document.getElementById(`business-admin-settings-tab-${nextSection.key}`)?.focus();
+        });
+    };
+
+    const handleSettingsSectionPointerDown = (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const element = settingsSectionListRef.current;
+        if (!element) return;
+
+        setSettingsSectionSwipeHintVisible(false);
+
+        settingsSectionDragRef.current = {
+            active: true,
+            pointerId: event.pointerId,
+            pointerType: event.pointerType,
+            startX: event.clientX,
+            startScrollLeft: element.scrollLeft,
+            moved: false,
+            captured: false
+        };
+
+    };
+
+    const handleSettingsSectionPointerMove = (event) => {
+        const drag = settingsSectionDragRef.current;
+        if (!drag.active || drag.pointerId !== event.pointerId) return;
+
+        const deltaX = event.clientX - drag.startX;
+        if (!drag.moved && Math.abs(deltaX) < 4) return;
+        drag.moved = true;
+
+        const element = settingsSectionListRef.current;
+        if (drag.pointerType === 'mouse' && element) {
+            if (!drag.captured) {
+                element.setPointerCapture?.(event.pointerId);
+                element.classList.add('is-dragging');
+                drag.captured = true;
+            }
+            element.scrollLeft = drag.startScrollLeft - deltaX;
+            event.preventDefault();
+        }
+    };
+
+    const finishSettingsSectionPointer = (event) => {
+        const drag = settingsSectionDragRef.current;
+        if (!drag.active || drag.pointerId !== event.pointerId) return;
+
+        const element = settingsSectionListRef.current;
+        if (drag.pointerType === 'mouse' && drag.captured) {
+            element?.releasePointerCapture?.(event.pointerId);
+            element?.classList.remove('is-dragging');
+        }
+        if (drag.moved) {
+            suppressSettingsSectionClickRef.current = true;
+            window.setTimeout(() => {
+                suppressSettingsSectionClickRef.current = false;
+            }, 0);
+        }
+        setSettingsSectionSwipeHintVisible(true);
+        settingsSectionDragRef.current = {
+            active: false,
+            pointerId: null,
+            pointerType: '',
+            startX: 0,
+            startScrollLeft: 0,
+            moved: false,
+            captured: false
+        };
+    };
+
+    const handleSettingsSectionClick = (event, sectionKey) => {
+        if (suppressSettingsSectionClickRef.current) {
+            event.preventDefault();
+            suppressSettingsSectionClickRef.current = false;
+            return;
+        }
+        onSelectSection(sectionKey);
     };
 
     if (!visibleSections.length) {
@@ -2082,50 +2236,52 @@ function BusinessAdminSettingsWorkspace({
                         </div>
                         <div className="business-admin-card-body business-admin-settings-nav-body">
                             <div className="business-admin-settings-nav-strip">
-                                <button
-                                    type="button"
-                                    className="business-admin-settings-nav-control"
-                                    aria-label="Scroll settings sections left"
-                                    title="Scroll settings sections left"
-                                    onClick={() => scrollSettingsSections(-1)}
-                                    disabled={!settingsSectionScrollState.canScrollLeft}
+                                <div
+                                    className="business-admin-settings-section-list"
+                                    ref={settingsSectionListRef}
+                                    role="tablist"
+                                    aria-label="Settings sections"
+                                    onScroll={updateSettingsSectionSwipeState}
+                                    onPointerDown={handleSettingsSectionPointerDown}
+                                    onPointerMove={handleSettingsSectionPointerMove}
+                                    onPointerUp={finishSettingsSectionPointer}
+                                    onPointerCancel={finishSettingsSectionPointer}
                                 >
-                                    <ChevronLeft size={17} aria-hidden="true" />
-                                </button>
-                                <div className="business-admin-settings-section-list" ref={settingsSectionListRef}>
                                     {visibleSections.map((section) => {
+                                        const active = section.key === definition?.key;
+                                        const SectionIcon = BUSINESS_ADMIN_SETTINGS_SECTION_ICONS[section.key];
                                         const sectionAccess = capabilities[section.key] || {};
                                         return (
                                             <button
+                                                id={`business-admin-settings-tab-${section.key}`}
                                                 type="button"
                                                 key={section.key}
-                                                className={`business-admin-settings-section ${section.key === definition?.key ? 'active' : ''}`}
-                                                onClick={() => onSelectSection(section.key)}
-                                                aria-current={section.key === definition?.key ? 'page' : undefined}
+                                                role="tab"
+                                                aria-selected={active}
+                                                aria-controls="business-admin-settings-panel"
+                                                tabIndex={active ? 0 : -1}
+                                                className={`business-admin-settings-section ${active ? 'active' : ''}`}
+                                                onClick={(event) => handleSettingsSectionClick(event, section.key)}
+                                                onKeyDown={(event) => handleSettingsSectionKeyDown(event, section.key)}
+                                                aria-current={active ? 'page' : undefined}
+                                                title={`${section.label} (${sectionAccess.edit ? 'Edit' : 'View'} access)`}
                                             >
-                                                <span><strong>{section.label}</strong></span>
-                                                <span className={`business-admin-status ${sectionAccess.edit ? 'available' : ''}`}>
-                                                    {sectionAccess.edit ? 'Edit' : 'View'}
-                                                </span>
+                                                {SectionIcon ? <SectionIcon size={16} aria-hidden="true" /> : null}
+                                                <span className="business-admin-settings-section-label">{section.label}</span>
                                             </button>
                                         );
                                     })}
                                 </div>
-                                <button
-                                    type="button"
-                                    className="business-admin-settings-nav-control"
-                                    aria-label="Scroll settings sections right"
-                                    title="Scroll settings sections right"
-                                    onClick={() => scrollSettingsSections(1)}
-                                    disabled={!settingsSectionScrollState.canScrollRight}
-                                >
-                                    <ChevronRight size={17} aria-hidden="true" />
-                                </button>
+                                {settingsSectionCanSwipe && settingsSectionSwipeHintVisible ? (
+                                    <div className="business-admin-settings-swipe-hint" role="status" aria-live="polite">
+                                        Swipe right
+                                    </div>
+                                ) : null}
                             </div>
                         </div>
                     </section>
                 </div>
-                <section className="business-admin-card" data-testid="business-admin-settings-section">
+                <section className="business-admin-card" id="business-admin-settings-panel" data-testid="business-admin-settings-section">
                     {!definition || !isVisible ? (
                         <div className="business-admin-card-body">
                             <div className="business-admin-alert error mb-0">
@@ -2689,6 +2845,7 @@ export default function BusinessAdminPage() {
             const status = Number(error?.response?.status || 0);
             if (bootstrapRequestRef.current !== requestId) return;
             const sessionRequired = status === 401 || status === 419;
+            if (sessionRequired) clearBackOfficeSession();
             setBootstrapAuthRequired(sessionRequired);
             setBootstrapAccessDenied(status === 403);
             setBootstrap(null);
@@ -2703,6 +2860,7 @@ export default function BusinessAdminPage() {
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
         const handleSessionInvalidation = () => {
+            clearBackOfficeSession();
             bootstrapRequestRef.current += 1;
             setBootstrap(null);
             setBootstrapLoading(false);
@@ -2715,6 +2873,7 @@ export default function BusinessAdminPage() {
             setSettingsDirty(false);
         };
         const handleTenantSwitch = () => {
+            clearBackOfficeSession();
             bootstrapRequestRef.current += 1;
             setBootstrap(null);
             setBootstrapLoading(false);
@@ -2778,6 +2937,15 @@ export default function BusinessAdminPage() {
     }, []);
 
     useEffect(() => { loadBootstrap(); }, [loadBootstrap]);
+
+    useEffect(() => {
+        if (!bootstrap || !isBackOfficePosHandoff(location.search)) return;
+        grantBackOfficeSession();
+        navigate({
+            pathname: location.pathname,
+            search: removeBackOfficePosHandoff(location.search)
+        }, { replace: true });
+    }, [bootstrap, location.pathname, location.search, navigate]);
 
     const requestedItemId = useMemo(() => {
         if (activeSection !== 'orders') return '';
@@ -3011,7 +3179,7 @@ export default function BusinessAdminPage() {
 
     if (bootstrapLoading) return <Loading />;
     if (bootstrapError || !bootstrap) {
-        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p><Link to="/terminal" className="business-admin-button primary mt-5"><ExternalLink size={14} /> {bootstrapAuthRequired ? 'Open POS sign-in' : 'Open POS terminal'}</Link></section></main>;
+        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p><Link to={bootstrapAuthRequired ? buildBackOfficeLoginPath(`${location.pathname}${location.search || ''}`) : '/terminal'} className="business-admin-button primary mt-5"><ExternalLink size={14} /> {bootstrapAuthRequired ? 'Open Back Office sign-in' : 'Open POS terminal'}</Link></section></main>;
     }
 
     const meta = activeSection === 'settings' && settingsDefinition

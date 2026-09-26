@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { resolvePosGovernedDiscount } from '../src/modules/pos/domain/posDiscountPolicy.js';
 
 const preparedLines = [
@@ -9,10 +10,52 @@ const rules = {
     senior: { id: 10, name: 'Senior Citizen', type: 'senior', method: 'percentage', rate: 20, is_active: true },
     pwd: { id: 11, name: 'PWD', type: 'pwd', method: 'percentage', rate: 20, is_active: true },
     employee: { id: 12, name: 'Employee Discount', type: 'employee', method: 'percentage', rate: 15, is_active: true },
-    manual: { id: 13, name: 'Manual Discount', type: 'manual', method: 'percentage', rate: null, is_active: true }
+    manual: { id: 13, name: 'Manual Discount', type: 'manual', method: 'percentage', rate: null, is_active: true },
+    custom: {
+        id: 21,
+        discount_key: 'custom-staff-abc123',
+        name: 'Staff Discount',
+        type: 'custom',
+        method: 'percentage',
+        rate: 12,
+        is_active: true,
+        is_approved: true,
+        requires_customer_id: false,
+        configuration_version: 3
+    }
 };
 
 describe('POS governed discount policy', () => {
+    test('resolves an approved custom rule by identity and uses its configured rate', async () => {
+        const findActiveRule = jest.fn(async (type, identity) => {
+            expect(type).toBe('custom');
+            expect(identity).toEqual({ ruleId: 21, discountKey: 'custom-staff-abc123' });
+            return rules.custom;
+        });
+        const result = await resolvePosGovernedDiscount({
+            draft: {
+                type: 'custom',
+                rule_id: 21,
+                discount_key: 'custom-staff-abc123',
+                method: 'percentage',
+                rate: 99,
+                eligible_item_ids: [1]
+            },
+            preparedLines,
+            subtotalAmount: 180,
+            findActiveRule
+        });
+
+        expect(result.application).toMatchObject({
+            type: 'custom',
+            rule_id: 21,
+            discount_key: 'custom-staff-abc123',
+            label: 'Staff Discount',
+            rate: 12,
+            configuration_version: 3
+        });
+    });
+
     test('preserves a selected statutory quantity for an eligible item', async () => {
         const result = await resolvePosGovernedDiscount({
             draft: { type: 'senior', customer_name: 'Juan', id_number: 'SC-1', eligible_items: [{ item_id: 1, eligible_quantity: 1 }] },

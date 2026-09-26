@@ -1,4 +1,5 @@
 import { posRepository } from './repositories/posRepository.js';
+import { posDiscountConfigurationRepository } from './repositories/posDiscountConfigurationRepository.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 export { createPosCashierAttendanceRepository } from './repositories/posCashierAttendanceRepository.js';
 export {
@@ -90,6 +91,8 @@ import {
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
+    buildCollectCashDineInOrderUseCase,
+    buildCollectDineInPaymentUseCase,
     buildRecordOrderBalancePaymentUseCase,
     buildAttachOrderBalancePaymentProofUseCase,
     buildGetOrderBalancePaymentProofUseCase,
@@ -107,6 +110,13 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import {
+    buildCreatePosDiscountRuleUseCase,
+    buildDeletePosDiscountRuleUseCase,
+    buildListAvailablePosDiscountRulesUseCase,
+    buildListPosDiscountRulesUseCase,
+    buildUpdatePosDiscountRuleUseCase
+} from './usecases/posDiscountConfigurationUseCases.js';
 import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
 import { buildOverrideDeliveryFeeUseCase } from './usecases/deliveryFeeOverrideUseCases.js';
 import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
@@ -144,6 +154,8 @@ import {
     buildCompleteClaimedPosParkedSaleUseCase,
     buildCancelPosParkedSaleUseCase
 } from './usecases/parkedSaleUseCases.js';
+import { markRetainedParkedSaleLines } from './domain/parkedSaleLinePolicy.js';
+import { buildDecidePosExceptionApprovalUseCase } from './usecases/posExceptionApprovalUseCases.js';
 import {
     buildCreatePosPaymentSessionUseCase,
     buildGetPosPaymentSessionUseCase,
@@ -233,14 +245,92 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     completeClaimedPosParkedSaleUseCase,
     publishCatalogChange
 });
+const resolveParkedSaleInventoryEffects = async ({
+    snapshot,
+    previousSnapshot = null,
+    scope,
+    user,
+    payload = {},
+    transaction,
+    parkedSaleId,
+    revision
+}) => {
+    const isRepark = Boolean(previousSnapshot);
+    const inventorySnapshot = isRepark
+        ? markRetainedParkedSaleLines({ snapshot, previousSnapshot })
+        : snapshot;
+    const lines = (Array.isArray(inventorySnapshot?.lines) ? inventorySnapshot.lines : []).map((line) => {
+        const normalizedLine = {
+            ...line,
+            sale_price: isRepark ? Number(line.sale_price) : 1
+        };
+        if (!isRepark) delete normalizedLine.parked_snapshot_line;
+        delete normalizedLine.price_override_reason;
+        delete normalizedLine.item_discount;
+        delete normalizedLine.item_discount_approval;
+        return normalizedLine;
+    });
+    const result = await checkoutPosUseCase({
+        payload: {
+            ...inventorySnapshot,
+            idempotency_key: `PARKED-STOCK-${parkedSaleId}-${revision}`,
+            lines,
+            shift_id: scope.shiftId,
+            terminal_id: scope.terminalId,
+            location_id: scope.locationId,
+            terminal_location_id: scope.locationId,
+            ...(snapshot?.order_method ? { order_method: snapshot.order_method } : {}),
+            payment_type: 'cash',
+            ...(isRepark ? {
+                parked_sale_id: parkedSaleId,
+                parked_sale_inventory_reconciled: true,
+                removed_line_reasons: payload.removed_line_reasons || []
+            } : {})
+        },
+        userId: scope.userId,
+        user,
+        operatorSessionId: scope.operatorSessionId,
+        transaction,
+        quoteOnly: true,
+        validateInventoryAvailability: true,
+        inventoryEffectsOnly: true
+    });
+    if (result?.success !== true) throw result?.error || new Error('Unable to resolve parked-sale inventory effects.');
+    return result.data?.inventory_effects || [];
+};
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
+export const listPosDiscountRulesUseCase = buildListPosDiscountRulesUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const listAvailablePosDiscountRulesUseCase = buildListAvailablePosDiscountRulesUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const createPosDiscountRuleUseCase = buildCreatePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const updatePosDiscountRuleUseCase = buildUpdatePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const deletePosDiscountRuleUseCase = buildDeletePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
-export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({ posRepository });
+export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    resolveInventoryEffects: resolveParkedSaleInventoryEffects,
+    publishCatalogChange
+});
 export const listPosParkedSalesUseCase = buildListPosParkedSalesUseCase({ posRepository });
 export const claimPosParkedSaleUseCase = buildClaimPosParkedSaleUseCase({ posRepository });
-export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({ posRepository });
+export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    resolveInventoryEffects: resolveParkedSaleInventoryEffects,
+    publishCatalogChange
+});
 export const cancelPosParkedSaleUseCase = buildCancelPosParkedSaleUseCase({ posRepository });
 export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCase({
     posRepository,
@@ -277,6 +367,12 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
+    publishCatalogChange
+});
+export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApprovalUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    voidPosTransactionUseCase,
     publishCatalogChange
 });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
@@ -371,6 +467,8 @@ export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonn
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const collectCashDineInOrderUseCase = buildCollectCashDineInOrderUseCase({ posRepository });
+export const collectDineInPaymentUseCase = buildCollectDineInPaymentUseCase({ posRepository, employeeCreditService });
 export const recordOrderBalancePaymentUseCase = buildRecordOrderBalancePaymentUseCase({ posRepository });
 export const attachOrderBalancePaymentProofUseCase = buildAttachOrderBalancePaymentProofUseCase({
     posRepository,

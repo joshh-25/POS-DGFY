@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
+import { isDineInOrder } from '../utils/dineInSchedule.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -112,10 +113,14 @@ export default function TerminalWorkspaceSidebar({
   const shouldShowIncomingQueue = showIncomingQueue;
   const hasActiveShift = Boolean(shiftState?.shift);
   const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
+  const activeIncomingOrders = Array.isArray(incomingOrdersState?.orders)
+    ? incomingOrdersState.orders.filter((order) => !isDineInOrder(order))
+    : [];
+  const activeAdminOrders = Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders.filter((order) => !isDineInOrder(order))
+    : [];
   const incomingCount = canViewPos
-    ? (isAdminBranchMonitor && Array.isArray(adminLocationMonitorState?.orders)
-      ? adminLocationMonitorState.orders.length
-      : (Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders.length : 0))
+    ? (isAdminBranchMonitor ? activeAdminOrders.length : activeIncomingOrders.length)
     : 0;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;

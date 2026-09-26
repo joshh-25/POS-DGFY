@@ -10,6 +10,7 @@ import {
     checkoutPosUseCase,
     listPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase,
+    listAvailablePosDiscountRulesUseCase,
     verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
@@ -57,6 +58,8 @@ import {
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    collectCashDineInOrderUseCase,
+    collectDineInPaymentUseCase,
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
@@ -547,6 +550,19 @@ export const listDiscountEmployees = async (req, res, next) => {
         });
     } catch (error) {
         next(error);
+    }
+};
+
+export const listDiscountRules = async (req, res, next) => {
+    try {
+        const result = await listAvailablePosDiscountRulesUseCase();
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        return next(error);
     }
 };
 
@@ -2139,6 +2155,58 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectCashDineInOrder = async (req, res, next) => {
+    try {
+        const result = await collectCashDineInOrderUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash payment collected for dine-in order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectDineInPayment = async (req, res, next) => {
+    try {
+        const result = await collectDineInPaymentUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Dine-in payment collected.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

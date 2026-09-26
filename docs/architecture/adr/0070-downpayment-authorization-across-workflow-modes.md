@@ -3,9 +3,9 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-21
-last_reviewed: 2026-08-22
+last_reviewed: 2026-09-23
 review_by: 2027-02-21
-applies_to: retail_storefront, payments, checkout
+applies_to: retail_storefront, fnb_storefront, payments, checkout
 topic: downpayment_authorization_across_workflow_modes
 supersedes: 0069-retail-downpayment-multi-method-capture-and-refund-policy.md
 ---
@@ -126,6 +126,33 @@ here — see ADR 0069 for their text. Only clauses 6 and 7 are replaced; one new
   `[default]` tier.
 
 ## Amendments
+
+### 2026-09-25 — POS may settle existing unpaid cash dine-in orders
+
+POS may collect cash for an already-created F&B `dine_in` order when it is `unpaid`, uses
+`payment_type = cash` and `payment_timing = on_dine_in`, and has reached `ready_for_pickup` (the
+POS label is “Ready to Serve”). This is a narrow settlement path for orders already carrying those
+terms; it does not add cash or Pay-in-Store to Storefront checkout, alter full-payment or
+downpayment capture rules, or authorize new unpaid order placement. POS records payment against the
+same order with the active cashier, shift, and terminal, and requires cash received to cover the
+full order total. It does not create a second sale or mark the order served; the existing paid-state
+completion gate remains in force.
+
+### 2026-09-23 — F&B dine-in checkout uses scheduled online payment and POS handover settlement
+
+The shared Storefront checkout now wires F&B `dine_in` as a fulfillment method. A customer must
+choose a future `scheduled_for` date and time; this is an arrival/preparation time and does not
+reserve a restaurant table. Dine-in checkout never offers direct Storefront cash or Pay-in-Store.
+`full_payment` requires full online capture. `downpayment_required` and the downpayment election of
+`customer_choice` capture only the configured amount online, then keep the remaining balance for POS
+settlement when the order reaches `ready_for_pickup` (the F&B "ready to serve" state). The order
+uses `payment_timing = on_dine_in`, the existing balance-payment ledger, and the existing POS
+completion gate; it does not create a delivery job.
+
+This amendment changes the default functional wiring described by clause 7, not the binding
+reachability rule: no checkout surface may present or honor downpayment behavior unless its capture,
+ledger, POS settlement, and completion gates are wired and tested. Services and Hospitality remain
+outside this implementation because their booking flows are still separate and unwired.
 
 ### 2026-08-22 — `customer_choice` is lifted from reserved to built
 

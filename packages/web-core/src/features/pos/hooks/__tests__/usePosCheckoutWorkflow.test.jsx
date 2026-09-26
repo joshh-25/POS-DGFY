@@ -215,6 +215,50 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it('marks a snapshot-matching parked line as original when its client marker is missing', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 27,
+            snapshot: {
+                lines: [{
+                    line_key: 'line-7',
+                    item_id: 7,
+                    item_name: 'Coffee',
+                    quantity: 1,
+                    sale_price: 100
+                }]
+            },
+            removed_line_reasons: [{
+                line_ref: 'line-8',
+                item_id: 8,
+                reason: 'Customer removed item'
+            }]
+        };
+        const { result } = renderCheckout({
+            activeParkedSale: parkedSale,
+            safeCart: [{
+                line_key: 'line-7',
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                sale_price: 100,
+                vat_type: 'vatable'
+            }]
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(createPosCheckout).toHaveBeenCalledWith(expect.objectContaining({
+            parked_sale_id: 27,
+            removed_line_reasons: parkedSale.removed_line_reasons,
+            lines: [expect.objectContaining({
+                line_ref: 'line-7',
+                parked_snapshot_line: true
+            })]
+        }));
+    });
+
     it('blocks checkout and explains when a changed price has no override reason', async () => {
         const validationMessage = 'Enter a price override reason of at least 3 characters for Coffee before checkout.';
         const { result, props } = renderCheckout({
@@ -556,7 +600,8 @@ describe('usePosCheckoutWorkflow', () => {
             ok: true,
             resumeContext: {
                 parkedSaleId: 27,
-                catalog: expect.any(Array)
+                catalog: expect.any(Array),
+                warnings: []
             }
         });
 
@@ -564,7 +609,13 @@ describe('usePosCheckoutWorkflow', () => {
             await result.current.handleParkedSaleClaimed(parkedSale, 'resume', validation.resumeContext);
         });
         expect(props.setCart).toHaveBeenCalledWith([
-            expect.objectContaining({ item_id: 7, item_name: 'Coffee', quantity: 1 })
+            expect.objectContaining({
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                parked_snapshot_line: true,
+                parked_original_quantity: 1
+            })
         ]);
     });
 
@@ -623,7 +674,7 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
-    it('does not fall back to stale catalog data when a refreshed parked item is no longer returned', async () => {
+    it('keeps a parked line payable when a refreshed catalog no longer returns it', async () => {
         fetchPosCatalog.mockResolvedValue([]);
         const { result } = renderCheckout({
             safeCart: [],
@@ -654,8 +705,8 @@ describe('usePosCheckoutWorkflow', () => {
             }, 'resume');
         });
 
-        expect(validation.ok).toBe(false);
-        expect(validation.message).toContain('Coffee is no longer available');
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Coffee is no longer available');
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

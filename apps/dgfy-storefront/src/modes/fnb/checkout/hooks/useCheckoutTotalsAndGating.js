@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { canCheckout, getCheckoutBlockReason } from '../../../../shared/model/checkoutRules.js';
 import { DGFY_CONVENIENCE_FEE_LABEL, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import {
-  buildStorefrontOrderMethodOptions,
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
-import { resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
+import {
+  resolveStorefrontFnbFulfillmentOptions,
+  resolveStorefrontFulfillmentOptions
+} from '../../../../shared/model/storefrontFulfillmentOptions.js';
 import { buildServiceCartValidationIssues } from '../../../services/booking/model/serviceBookingValidation.js';
 import { buildFnbCartStatusLabel } from '../model/fnbCartPresentation.js';
 
@@ -35,6 +37,7 @@ export function useCheckoutTotalsAndGating({
   isSimpleMode,
   money,
   orderMethod,
+  fnbScheduledFor,
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
   // payment_mode='customer_choice' store.
   paymentElection,
@@ -48,6 +51,7 @@ export function useCheckoutTotalsAndGating({
   storeLocations,
   storefrontClosedByHours
 }) {
+  const [currentTime] = useState(() => Date.now());
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
   ), [cart]);
@@ -126,10 +130,15 @@ export function useCheckoutTotalsAndGating({
   // #1093: the mode's delivery/pickup candidate set, narrowed to what the resolved
   // fulfillment location actually supports -- mirrors the server's own checkout-time
   // enforcement (assertCheckoutLocationOperationalReadiness, storeUseCases.js).
-  const fulfillmentLocation = resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId });
-  const simpleOrderMethodOptions = buildStorefrontOrderMethodOptions(
-    ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery'),
-    fulfillmentLocation
+  const fulfillmentLocation = useMemo(
+    () => resolveLocationFulfillmentSupport({ selectedStore, storeLocations, selectedLocationId }),
+    [selectedLocationId, selectedStore, storeLocations]
+  );
+  const simpleOrderMethodOptions = useMemo(
+    () => (isFnbMode
+      ? resolveStorefrontFnbFulfillmentOptions(fulfillmentLocation)
+      : resolveStorefrontFulfillmentOptions(fulfillmentLocation)),
+    [fulfillmentLocation, isFnbMode]
   );
   // Phase 142 (#823): fnb/simple/retail's product checkout normally never requires a quote (each
   // has its own client-computable totals fallback) -- but a downpayment-required store's payment
@@ -144,7 +153,7 @@ export function useCheckoutTotalsAndGating({
     || (selectedStore?.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
   const requireQuoteForCheckout = !hasServiceCart
     && (isDownpaymentStore || (!isFnbMode && !isSimpleMode && !isRetailMode));
-  const checkoutBlockReason = getCheckoutBlockReason({
+  const baseCheckoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
     checkoutLoading,
@@ -157,6 +166,16 @@ export function useCheckoutTotalsAndGating({
     paymentElection,
     hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
   });
+  const hasValidDineInSchedule = Boolean(
+    String(fnbScheduledFor || '').trim()
+    && Number.isFinite(new Date(fnbScheduledFor).getTime())
+    && new Date(fnbScheduledFor).getTime() > currentTime
+  );
+  const checkoutBlockReason = baseCheckoutBlockReason || (
+    isFnbMode && orderMethod === 'dine_in' && !hasValidDineInSchedule
+      ? 'missing_dine_in_schedule'
+      : null
+  );
   const serviceCartValidationIssues = useMemo(
     () => buildServiceCartValidationIssues(serviceCartLines, serviceAppointmentAt),
     [serviceAppointmentAt, serviceCartLines]
@@ -173,7 +192,9 @@ export function useCheckoutTotalsAndGating({
     requireQuote: requireQuoteForCheckout,
     paymentElection,
     hasAvailableFulfillmentMethod: simpleOrderMethodOptions.some((option) => option.available)
-  }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
+  })
+    && (!hasServiceCart || serviceCartValidationIssues.length === 0)
+    && !(isFnbMode && orderMethod === 'dine_in' && !hasValidDineInSchedule);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,
     storefrontClosedByHours,

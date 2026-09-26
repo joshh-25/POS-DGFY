@@ -152,6 +152,7 @@ interface HardwarePosState {
     commitCheckout(options?: {
         paymentType?: string;
         orderMethod?: string;
+        tableNumber?: string;
     }): Promise<void>;
     runManualSync(): Promise<void>;
     printLastReceipt(): Promise<void>;
@@ -463,11 +464,15 @@ const buildCheckoutInput = (
     options?: {
         paymentType?: string;
         orderMethod?: string;
+        tableNumber?: string;
     }
 ): LocalCheckoutInput => {
     const createdAtLocal = new Date().toISOString();
     const normalizedPaymentType = normalizeCheckoutPaymentType(options?.paymentType);
     const normalizedOrderMethod = normalizeCheckoutOrderMethod(options?.orderMethod);
+    const tableNumber = normalizedOrderMethod === 'dine_in'
+        ? String(options?.tableNumber || '').trim()
+        : '';
     const lines: LocalTransactionLineInput[] = cart.map((entry, index) => ({
         lineId: `${deviceId}-line-${Date.now()}-${index}`,
         itemId: entry.product.itemId,
@@ -502,6 +507,7 @@ const buildCheckoutInput = (
         paymentSnapshot: {
             payment_type: normalizedPaymentType,
             order_method: normalizedOrderMethod,
+            table_number: tableNumber || undefined,
             cashier_name: cashierName
         },
         customerSnapshot: null
@@ -1310,6 +1316,7 @@ export const useHardwarePosStore = (): HardwarePosState => {
     const commitCheckout = useCallback(async (options?: {
         paymentType?: string;
         orderMethod?: string;
+        tableNumber?: string;
     }) => {
         const deps = await getDeps();
         const currentState = stateRef.current;
@@ -1363,6 +1370,9 @@ export const useHardwarePosStore = (): HardwarePosState => {
         try {
             const normalizedPaymentType = normalizeCheckoutPaymentType(options?.paymentType);
             const normalizedOrderMethod = normalizeCheckoutOrderMethod(options?.orderMethod);
+            const tableNumber = normalizedOrderMethod === 'dine_in'
+                ? String(options?.tableNumber || '').trim()
+                : '';
             const liveCatalogResponse = await client.getCatalog({ limit: 500 });
             const liveCatalog = liveCatalogResponse.catalog.map(mapBootstrapCatalogEntry);
             const liveCatalogById = new Map(liveCatalog.map((product) => [product.itemId, product]));
@@ -1388,6 +1398,7 @@ export const useHardwarePosStore = (): HardwarePosState => {
                 terminalId: currentState.deviceId,
                 shiftId: currentState.activeShiftId,
                 orderMethod: normalizedOrderMethod,
+                tableNumber,
                 paymentType: normalizedPaymentType,
                 lines: checkoutCart.map((entry) => ({
                     item_id: entry.product.itemId,

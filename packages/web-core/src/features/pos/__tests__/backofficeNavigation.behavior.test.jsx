@@ -175,9 +175,10 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageSource).toContain("|| normalizedTerminalRole === 'admin'");
     expect(terminalPageSource).toContain("|| hasPermission('business_admin:access')");
     expect(terminalPageSource).toContain('setBackOfficeConfirmOpen(true)');
+    expect(terminalPageSource).toContain('const buildPosBackOfficeHandoffPath = useCallback((path) => {');
+    expect(terminalPageSource).toContain("params.set('pos_handoff', '1')");
     expect(terminalPageSource).toContain("url.search = '?view=reports'");
-    expect(terminalPageSource).toContain("url.hash = '#/backoffice/overview'");
-    expect(terminalPageSource).toContain("url.hash = `#${backOfficeTargetPath}`");
+    expect(terminalPageSource).toContain('url.hash = `#${handoffPath}`');
     expect(terminalPageSource).toContain("setBackOfficeTargetPath(safePath)");
     expect(terminalPageSource).toContain("const requestedPath = typeof target === 'string' ? target : target?.path;");
     expect(terminalPageSource).toContain("params.set('branch_id', String(activeBranchId))");
@@ -206,7 +207,8 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageDialogLayerSource).toContain('canAccessBusinessAdmin && terminalUser && handleOpenBackOffice');
     expect(terminalLockDrawerSource).toContain('data-testid="pos-lock-drawer-open-backoffice"');
     expect(terminalLockDrawerSource).toContain('Open Back Office without unlocking checkout or starting a cashier shift.');
-    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage />} />');
+    expect(posRouteSource).toContain('<Route path="/backoffice/login" element={<BackOfficeLoginPage />} />');
+    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />');
     expect(terminalPageLayoutSource).toContain('const lockedSidebarSurfaceClassName = locked');
     expect(terminalPageLayoutSource).toContain('disabled={locked && !canAccessBusinessAdmin}');
     expect(terminalPageLayoutSource).toContain('className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}');
@@ -257,7 +259,7 @@ describe('POS Back Office navigation', () => {
     expect(businessAdminPageSource).toContain('Back Office access denied');
     expect(businessAdminPageSource).toContain("bootstrapAuthRequired ? 'business-admin-session-required'");
     expect(businessAdminPageSource).toContain("bootstrapAccessDenied ? 'business-admin-access-denied'");
-    expect(businessAdminPageSource).toContain('Open POS sign-in');
+    expect(businessAdminPageSource).toContain('Open Back Office sign-in');
     expect(businessAdminPageSource).toContain('const handleBusinessAdminRefresh = useCallback');
     expect(businessAdminPageSource).toContain("window.confirm('You have unsaved settings changes. Refresh and discard them?')");
     expect(businessAdminPageSource).toContain("onSettingsSaved={notifySettingsSaved}");

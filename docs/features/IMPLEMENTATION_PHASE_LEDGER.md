@@ -23800,3 +23800,209 @@ Not yet merged — set at merge time.
 
 345 after Phase 344's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
+
+## Phase 345 - Deduct parked-sale stock at park and route void/cancellation through Back Office approval
+
+### Initiative and release
+
+POS parked-sale lifecycle and high-risk operational approvals, current release.
+
+### Objective and scope
+
+Deduct Inventory-owned stock movements when a POS sale is parked; atomically
+reconcile movements when the claimed sale is re-parked; prevent checkout from
+deducting the stored snapshot twice; and require an audited reason plus
+independent Back Office approval before voiding a completed POS sale or
+cancelling a parked sale. Preserve stored parked prices and note-only
+settlement for historical lines whose catalog item is no longer usable. No PR,
+commit, deployment, or production data mutation is part of this local task.
+
+### Status
+
+`in_progress` — implementation and focused local validation are underway;
+authenticated cashier/approver acceptance, PR review, merge, and deployed QA
+remain outstanding.
+
+### Dependencies
+
+Operator approval on 2026-09-24; ADR 0086 (scoped supersession of ADR 0065
+Decision 8); ADR 0029 (Inventory-owned stock truth); Phase 344 is the continuous
+ledger predecessor.
+
+### Acceptance and validation evidence
+
+- [ ] Parking records Inventory-owned goods issues atomically with the parked
+      snapshot; failed movement rolls back the park.
+- [ ] Re-parking reverses old active movements and issues the revised snapshot
+      atomically; cache invalidation covers old and new affected items.
+- [ ] Payment does not issue already-deducted parked lines twice; historical
+      prices and missing-item note-only behavior remain intact.
+- [ ] Void and parked-sale cancellation require a reason, create pending
+      requests, and do not change sale/stock until an independent reviewer
+      approves; rejection leaves stock unchanged.
+- [ ] Targeted backend/frontend suites, migration/schema tests, architecture
+      checks, compliance declaration check, lint, builds, and `git diff --check`
+      pass.
+- [ ] A real tenant database with separate cashier and approver accounts
+      validates park/re-park/pay, void, cancellation approval/rejection, stock
+      quantities, audit records, and terminal/Back Office behavior before
+      release.
+
+### Links
+
+- ADR: `docs/architecture/adr/0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-24-pos-parked-sale-lifecycle-approvals.md`.
+- Implementation: `apps/dgfy-api/src/modules/pos/usecases/parkedSaleUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posExceptionApprovalUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`,
+  and the Back Office approval workspace.
+- Architecture sources: `docs/START_HERE.md`,
+  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0065, and ADR
+  0029.
+
+### Completion date
+
+Not complete; set only after required acceptance gates and deployed QA pass.
+
+### Next eligible phase
+
+346 after Phase 345's implementation, review, merge, and deployed QA evidence
+are complete (re-check the ledger before reserving it).
+
+## Phase 346 - POS Settings Taxes: tenant VAT-treatment policy
+
+### Initiative and release
+
+POS Settings and governed discount financial-policy configuration, current release.
+
+### Objective and scope
+
+Add a POS-only **Taxes** settings surface for the six governed discount and
+promotion categories: Senior Citizen, PWD, Other (`manual`), Employee, Promo,
+and Voucher. The setting is tenant-wide and controls only whether item VAT is
+kept or embedded VAT is removed for future POS calculations. Preserve
+server-owned statutory rates, discount eligibility and methods, approval PINs,
+promo/voucher ownership, receipt/report snapshots, and historical parked or
+completed financial values. Add immutable tax-treatment/policy-version
+snapshots and signed offline-policy invalidation when the setting changes.
+
+### Status
+
+`in_progress` — the approved local implementation and focused validation are
+complete; the upgraded local schemas are migrated, while fresh-tenant rehearsal,
+authenticated rendered acceptance, PR review, merge, and deployed QA remain
+outstanding.
+
+### Dependencies
+
+User approval on 2026-09-25; ADR 0033 and ADR 0075; the existing tenant
+settings authorization and POS discount contracts. Phase 345 is the continuous
+ledger predecessor and was still `in_progress` when this phase was reserved;
+the Taxes implementation has no runtime dependency on the parked-sale approval
+lifecycle.
+
+### Acceptance and validation evidence
+
+- [x] `pos_tax_policies` is validated, normalized, versioned on write, and
+      audited as a tenant-scoped future-transaction setting under existing
+      settings permissions.
+- [x] POS Settings exposes the Taxes tab with six category controls, preserved
+      Senior/PWD defaults, dirty-state protection, save/cancel behavior, and a
+      VAT calculation preview.
+- [x] Governed POS discount, voucher, item-snapshot, and signed mobile-policy
+      paths resolve the server-owned policy; discount rows snapshot
+      `tax_treatment` and `tax_policy_version` without rewriting history.
+- [x] Focused backend coverage passes: 7 suites, 41 tests; POS Settings
+      behavior coverage passes: 38 tests.
+- [x] POS, Storefront, and IMS production builds pass; architecture and docs
+      checks pass; scoped compliance validation for this change passes.
+- [x] The additive migration was applied to the local landlord database and all
+      15 active local tenant databases (16 schemas total); both nullable snapshot
+      columns were verified in every schema, and tenant-schema coverage passed.
+- [ ] Fresh-tenant migration rehearsal is complete.
+- [ ] Authenticated desktop/mobile acceptance covers representative statutory,
+      employee, promo, voucher, receipt/report, and stale-offline-policy flows.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge
+      or deploy.
+
+### Links
+
+- ADR: `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-25-pos-tax-policy.md`.
+- Implementation plan: `Implementation.md` (`POS Settings - Taxes`).
+- Implementation: `packages/web-core/src/features/pos/settings/`,
+  `apps/dgfy-api/src/modules/shared/constants/posTaxPolicy.js`, the POS
+  discount/settings modules, and
+  `apps/dgfy-migration-runner/migrations/20260925000001-add-pos-tax-policy-snapshot.cjs`;
+  tenant-schema registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
+
+### Completion date
+
+Not complete; set only after all required acceptance gates and deployed QA pass.
+
+### Next eligible phase
+
+347 after Phase 346's implementation, review, merge, and deployed QA evidence
+are complete (re-check the ledger before reserving it).
+
+## Phase 347 - Online order confirmation-time inventory hardening
+
+### Initiative and release
+
+Online order lifecycle and deleted-catalog-item fulfillment, current release.
+
+### Objective and scope
+
+Issue online-order stock exactly once when an order is confirmed for every workflow
+mode, preserve the legacy completion fallback for orders without inventory evidence,
+reverse the recorded issue on eligible cancel/reject transitions, and allow only the
+scoped online fulfillment path to use a soft-deleted historical item row. Keep normal
+manual/POS/dispatch stock operations active-item-only. No database migration is needed;
+the existing `inventory_issued_at` and `inventory_reversed_at` evidence columns are reused.
+
+### Status
+
+`in_progress` — implementation and focused regression validation are underway; full
+repository checks, authenticated order-flow acceptance, PR review, and deployed QA remain.
+
+### Dependencies
+
+Phase 346 is the continuous ledger predecessor; ADR 0029's 2026-09-25 amendment;
+existing online inventory reservation and stock-command contracts.
+
+### Acceptance and validation evidence
+
+- [ ] Confirmation issues and converts inventory once for Retail and non-Retail online orders.
+- [ ] Completion does not re-issue an order with `inventory_issued_at`; legacy no-evidence
+      orders still use the completion fallback.
+- [ ] Eligible cancel/reject reverses once for every mode and remains atomic with reservation
+      release and status update.
+- [ ] A soft-deleted item already present in an online order can complete; a hard-deleted or
+      unrelated inactive item still fails safely.
+- [ ] Focused backend lifecycle, stock-service, and regression tests pass.
+- [ ] Architecture/docs checks and the relevant build pass; no migration is generated because
+      the required evidence columns already exist.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge or deploy.
+
+### Links
+
+- ADR: `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md`.
+- Implementation: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`, and
+  `apps/dgfy-api/src/services/stockMovementService.js`.
+- Tests: `apps/dgfy-api/tests/posOnlineInventoryReservationLifecycle.unit.test.js`,
+  `apps/dgfy-api/tests/storeCancelInventoryReversal.unit.test.js`, and
+  `apps/dgfy-api/tests/stockMovementService.serviceMode.test.js`.
+
+### Completion date
+
+Not complete; set only after required acceptance gates and deployed QA pass.
+
+### Next eligible phase
+
+348 after Phase 347's implementation, review, merge, and deployed QA evidence are
+complete (re-check the ledger before reserving it).

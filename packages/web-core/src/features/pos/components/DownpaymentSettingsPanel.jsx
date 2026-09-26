@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { CircleDollarSign, RefreshCcw, Save } from 'lucide-react';
+import { CircleDollarSign, Lock, MapPin, RefreshCcw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import {
+    listTenantLocations,
+    updateTenantLocationDineInPaymentPolicy
+} from '@/services/tenantLocationService.js';
 import { fetchDownpaymentSettings, updateDownpaymentSettings } from '../services/downpaymentSettingsService.js';
 import {
     createDefaultDownpaymentForm,
@@ -59,7 +63,23 @@ const PAYMENT_MODE_OPTIONS = [
     { value: 'customer_choice', label: 'Let the customer choose', description: 'Customers pick at checkout: pay the full total online, or pay a downpayment online with the balance on delivery/pickup.' }
 ];
 
-export default function DownpaymentSettingsPanel({ terminalUser = null, locked = false, sectionId, onDirtyChange = noop, onSaved = noop }) {
+const normalizeLocationOptions = (values) => (Array.isArray(values) ? values : [])
+    .map((location) => ({
+        ...location,
+        location_id: Number(location?.location_id),
+        name: String(location?.name || '').trim() || `Branch ${location?.location_id || ''}`
+    }))
+    .filter((location) => Number.isInteger(location.location_id) && location.location_id > 0);
+
+export default function DownpaymentSettingsPanel({
+    terminalUser = null,
+    locked = false,
+    sectionId,
+    locationScopeId = null,
+    locationOptions = [],
+    onDirtyChange = noop,
+    onSaved = noop
+}) {
     const isMasterAdmin = terminalUser?.is_master_admin === true;
     const permissionList = useMemo(() => resolveUserPermissionList(terminalUser), [terminalUser]);
     const canView = isMasterAdmin || permissionList.includes('downpayment:view') || permissionList.includes('downpayment:settings');
@@ -72,6 +92,92 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
     const [settingsUpdatedAt, setSettingsUpdatedAt] = useState(null);
     const [validationErrors, setValidationErrors] = useState([]);
     const [sampleTotalPesos, setSampleTotalPesos] = useState('1000');
+    const [locationRows, setLocationRows] = useState(() => normalizeLocationOptions(locationOptions));
+    const [locationOverrides, setLocationOverrides] = useState({});
+    const [selectedLocationId, setSelectedLocationId] = useState('');
+    const [allowDineInPayAtStore, setAllowDineInPayAtStore] = useState(false);
+    const [dineInPolicyDirty, setDineInPolicyDirty] = useState(false);
+    const [dineInPolicyLoading, setDineInPolicyLoading] = useState(false);
+    const [dineInPolicySaving, setDineInPolicySaving] = useState(false);
+    const [dineInPolicyError, setDineInPolicyError] = useState('');
+
+    const locationOptionsSignature = (Array.isArray(locationOptions) ? locationOptions : [])
+        .map((location) => `${location?.location_id}:${location?.name}:${location?.updated_at || ''}:${location?.allow_dine_in_pay_at_store === true}`)
+        .join('|');
+    const normalizedLocationOptions = useMemo(() => normalizeLocationOptions(locationOptions), [locationOptionsSignature]);
+    const normalizedLocationScopeId = Number(locationScopeId) > 0 ? String(Number(locationScopeId)) : '';
+
+    const loadLocationPolicies = useCallback(async () => {
+        const seedRows = normalizedLocationOptions;
+        setLocationRows(seedRows);
+        setDineInPolicyError('');
+        if (!canView || seedRows.length === 0) return;
+
+        setDineInPolicyLoading(true);
+        try {
+            const remoteRows = normalizeLocationOptions(await listTenantLocations({ include_inactive: true }));
+            const allowedIds = new Set(seedRows.map((location) => location.location_id));
+            const scopedRows = remoteRows.filter((location) => allowedIds.has(location.location_id));
+            setLocationRows(scopedRows.length > 0 ? scopedRows : seedRows);
+        } catch (err) {
+            setDineInPolicyError(err?.response?.data?.message || 'Unable to load branch payment policies.');
+        } finally {
+            setDineInPolicyLoading(false);
+        }
+    }, [canView, normalizedLocationOptions]);
+
+    useEffect(() => {
+        if (!canView) return;
+        loadLocationPolicies();
+    }, [canView, loadLocationPolicies]);
+
+    useEffect(() => {
+        if (normalizedLocationScopeId) {
+            setSelectedLocationId(normalizedLocationScopeId);
+            return;
+        }
+        setSelectedLocationId((current) => {
+            if (current && locationRows.some((location) => String(location.location_id) === current)) return current;
+            return locationRows[0] ? String(locationRows[0].location_id) : '';
+        });
+    }, [locationRows, normalizedLocationScopeId]);
+
+    const selectedLocation = useMemo(() => {
+        const row = locationRows.find((location) => String(location.location_id) === String(selectedLocationId));
+        const override = locationOverrides[String(selectedLocationId)];
+        return override ? { ...row, ...override } : row;
+    }, [locationOverrides, locationRows, selectedLocationId]);
+
+    useEffect(() => {
+        setAllowDineInPayAtStore(selectedLocation?.allow_dine_in_pay_at_store === true);
+        setDineInPolicyDirty(false);
+    }, [selectedLocationId, selectedLocation?.allow_dine_in_pay_at_store]);
+
+    const handleSaveDineInPaymentPolicy = async () => {
+        if (!canManage || locked || !selectedLocation || !dineInPolicyDirty) return;
+        setDineInPolicySaving(true);
+        setDineInPolicyError('');
+        try {
+            const updated = await updateTenantLocationDineInPaymentPolicy(selectedLocation.location_id, {
+                allow_dine_in_pay_at_store: allowDineInPayAtStore,
+                ...(selectedLocation.updated_at ? { expected_updated_at: selectedLocation.updated_at } : {})
+            });
+            setLocationOverrides((current) => ({
+                ...current,
+                [String(selectedLocation.location_id)]: updated || {
+                    ...selectedLocation,
+                    allow_dine_in_pay_at_store: allowDineInPayAtStore
+                }
+            }));
+            setDineInPolicyDirty(false);
+            toast.success('Dine-in payment policy updated');
+        } catch (err) {
+            setDineInPolicyError(err?.response?.data?.message || 'Failed to update the dine-in payment policy.');
+            toast.error(err?.response?.data?.message || 'Failed to update the dine-in payment policy.');
+        } finally {
+            setDineInPolicySaving(false);
+        }
+    };
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -100,6 +206,13 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
 
     const splitConfigurable = isSplitConfigurable(form.payment_mode);
     const isCustomerChoice = form.payment_mode === 'customer_choice';
+    const branchSelectionIsFixed = locked || Boolean(normalizedLocationScopeId);
+    const branchSelectionIsUnavailable = dineInPolicyLoading || locationRows.length === 0;
+    const branchDisplayValue = selectedLocation?.name
+        || (dineInPolicyLoading ? 'Loading branches…' : 'No visible branches');
+    const branchDisplayStatus = branchSelectionIsFixed
+        ? 'Locked'
+        : (dineInPolicyLoading ? 'Loading' : 'Unavailable');
     const preview = useMemo(
         () => previewDownpaymentSplit({ form, sampleTotalPesos }),
         [form, sampleTotalPesos]
@@ -202,6 +315,73 @@ export default function DownpaymentSettingsPanel({ terminalUser = null, locked =
                             </div>
                         </label>
                     ))}
+                </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70" aria-labelledby="dine-in-payment-policy-heading">
+                <div className="flex items-start gap-2">
+                    <MapPin className="mt-0.5 h-5 w-5 text-[#1A4E8D]" />
+                    <div>
+                        <h2 id="dine-in-payment-policy-heading" className="text-[15px] font-black text-slate-950">Dine-in payment policy</h2>
+                        <p className="text-xs text-slate-500">Control whether customers may pay at the selected branch after choosing Dine In.</p>
+                    </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                    <div className="space-y-1.5">
+                        <Label id="dine-in-payment-policy-branch-label">Branch</Label>
+                        {branchSelectionIsFixed || branchSelectionIsUnavailable ? (
+                            <div
+                                id="dine-in-payment-policy-branch"
+                                data-testid="dine-in-payment-policy-branch-readonly"
+                                role="status"
+                                aria-labelledby="dine-in-payment-policy-branch-label"
+                                className="flex h-10 w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700"
+                            >
+                                {branchSelectionIsFixed ? <Lock className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" /> : null}
+                                <span className="min-w-0 flex-1 truncate">{branchDisplayValue}</span>
+                                <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    {branchDisplayStatus}
+                                </span>
+                            </div>
+                        ) : (
+                            <select
+                                id="dine-in-payment-policy-branch"
+                                value={selectedLocationId}
+                                aria-labelledby="dine-in-payment-policy-branch-label"
+                                onChange={(event) => setSelectedLocationId(event.target.value)}
+                                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20"
+                            >
+                                {locationRows.map((location) => <option key={location.location_id} value={location.location_id}>{location.name}</option>)}
+                            </select>
+                        )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-3">
+                        <div>
+                            <span className="text-sm font-bold text-slate-900">Allow Pay in Store for Dine In</span>
+                            <p className="text-xs text-slate-500">When off, Dine In accepts only online full payment or an online downpayment.</p>
+                        </div>
+                        <Switch
+                            aria-label="Allow Pay in Store for Dine In"
+                            checked={allowDineInPayAtStore}
+                            disabled={locked || !canManage || dineInPolicyLoading || dineInPolicySaving || !selectedLocation}
+                            onCheckedChange={(value) => {
+                                setAllowDineInPayAtStore(value === true);
+                                setDineInPolicyDirty(true);
+                            }}
+                        />
+                    </div>
+                    {dineInPolicyError ? <p className="text-xs text-rose-600" role="alert">{dineInPolicyError}</p> : null}
+                    <div className="flex justify-end">
+                        <Button
+                            type="button"
+                            disabled={locked || !canManage || dineInPolicySaving || !dineInPolicyDirty || !selectedLocation}
+                            onClick={() => void handleSaveDineInPaymentPolicy()}
+                        >
+                            <Save className="mr-2 h-4 w-4" /> {dineInPolicySaving ? 'Saving…' : 'Save Dine-in Policy'}
+                        </Button>
+                    </div>
                 </div>
             </div>
 

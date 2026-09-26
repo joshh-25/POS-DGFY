@@ -354,7 +354,7 @@ describe('Simple Storefront online payment contract', () => {
     expect(panel).toContain('PayMongo will open 3-D Secure authentication');
     expect(panel).toContain('Your card details are sent directly to PayMongo');
     expect(panel).toContain("result.status === 'awaiting_payment_method'");
-    expect(panel).toContain("paymentType === 'card'");
+    expect(panel).toContain('const directCard = isStorefrontDirectCardPaymentSession(paymentSession);');
     expect(panel).toContain("get('payment_status') === 'return'");
     expect(panel).toContain('3-D Secure returned. Waiting for PayMongo confirmation.');
     expect(panel).toContain('dgfy_storefront_direct_card_submitted:');

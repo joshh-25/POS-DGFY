@@ -122,6 +122,23 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.scheduled_for).toBeNull();
   });
 
+  it('always carries the selected dine-in time even if the timing mode is stale', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'corner-store-9f21' },
+      orderMethod: 'dine_in',
+      customerName: 'Ana Reyes',
+      customerPhone: '+639181234567',
+      customerEmail: 'ana@example.com',
+      isDeliveryOrder: false,
+      fnbScheduleMode: 'asap',
+      fnbScheduledFor: '2026-09-30T18:30',
+      cart: [{ item_id: 2, quantity: 1 }]
+    });
+
+    expect(payload.scheduled_for).toBe(new Date('2026-09-30T18:30').toISOString());
+  });
+
   // Phase 150 (#866).
   it('defaults payment_election to "full" when omitted -- every pre-#866 caller is unaffected', () => {
     const payload = buildFnbCheckoutPayload({

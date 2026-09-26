@@ -41,14 +41,24 @@ describe('usePosCartDraft', () => {
     savePosCartDraft(scope, 81, [{
       item_id: 4,
       item_name: 'Beef Meal',
+      line_key: 'parked-line-4',
       quantity: 1,
-      sale_price: 150
+      sale_price: 150,
+      parked_snapshot_line: true,
+      parked_original_quantity: 1,
+      parked_line_can_increase: true
     }]);
 
     render(<CartDraftHarness />);
 
     await waitFor(() => expect(screen.getByText('Beef Meal')).toBeTruthy());
     expect(loadPosCartDraft(scope, 81, catalog)).toHaveLength(1);
+    expect(loadPosCartDraft(scope, 81, catalog)[0]).toEqual(expect.objectContaining({
+      line_key: 'parked-line-4',
+      parked_snapshot_line: true,
+      parked_original_quantity: 1,
+      parked_line_can_increase: true
+    }));
   });
 
   it('restores the resumed parked-sale identity with the same shift cart', () => {
@@ -61,7 +71,16 @@ describe('usePosCartDraft', () => {
       activeParkedSale: {
         pos_parked_sale_id: 17,
         park_reference: 'PARK-ABC123',
-        revision: 2
+        revision: 2,
+        snapshot: {
+          lines: [{
+            item_id: 4,
+            item_name: 'Beef Meal',
+            line_key: 'parked-line-4',
+            quantity: 1,
+            sale_price: 150
+          }]
+        }
       }
     });
 
@@ -69,7 +88,16 @@ describe('usePosCartDraft', () => {
       activeParkedSale: {
         pos_parked_sale_id: 17,
         park_reference: 'PARK-ABC123',
-        revision: 2
+        revision: 2,
+        snapshot: {
+          lines: [{
+            item_id: 4,
+            item_name: 'Beef Meal',
+            line_key: 'parked-line-4',
+            quantity: 1,
+            sale_price: 150
+          }]
+        }
       }
     }));
   });

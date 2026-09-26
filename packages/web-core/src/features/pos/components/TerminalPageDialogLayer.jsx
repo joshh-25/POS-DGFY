@@ -13,6 +13,7 @@ import {
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { isStarterSetupRequired } from '../utils/setupFlow.js';
 import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
+import ScheduledDineInAlertDialog from './ScheduledDineInAlertDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
 
@@ -102,6 +103,9 @@ export default function TerminalPageDialogLayer({ model }) {
     incomingOrderPrintLoading,
     incomingOrderReceiptOpen,
     incomingReceiptOpeningId,
+    scheduledDineInAlert,
+    scheduledDineInAlertNow,
+    handleScheduledDineInAlertOpenChange,
     isOnline,
     legacyLinkState,
     locationNameLookup,
@@ -1088,6 +1092,11 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <ScheduledDineInAlertDialog
+          alert={scheduledDineInAlert}
+          now={scheduledDineInAlertNow}
+          onOpenChange={handleScheduledDineInAlertOpenChange}
+        />
         {incomingOrderModalOpen && (
           <Suspense fallback={null}>
             <OnlineOrderDetailsModal
