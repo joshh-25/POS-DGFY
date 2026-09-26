@@ -343,6 +343,12 @@ describe('Simple Storefront online payment contract', () => {
     // its own dedicated coverage.
     expect(submission).toContain('(isSimpleMode || isRetailMode) && isStorefrontOnlinePaymentType(fnbPaymentType)');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    const sessionCreation = submission.indexOf('const paymentSession = await createStorefrontOnlinePaymentSession');
+    const proofResetAfterSessionCreation = submission.indexOf('resetGuestCheckoutOtp?.();', sessionCreation);
+    const paymentSessionBranch = submission.indexOf('if (isStorefrontDirectPaymentSession(paymentSession))', sessionCreation);
+    expect(sessionCreation).toBeGreaterThan(-1);
+    expect(proofResetAfterSessionCreation).toBeGreaterThan(sessionCreation);
+    expect(proofResetAfterSessionCreation).toBeLessThan(paymentSessionBranch);
     expect(submission).toContain('startStorefrontDirectPayment');
     expect(submission).toContain('isStorefrontDirectPaymentSession');
     expect(panel).toContain('Continue in the ${paymentLabel} app or browser authorization screen');

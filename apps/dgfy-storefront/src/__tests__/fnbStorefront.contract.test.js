@@ -233,6 +233,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    const sessionCreation = submission.indexOf('const paymentSession = await createStorefrontOnlinePaymentSession');
+    const proofResetAfterSessionCreation = submission.indexOf('resetGuestCheckoutOtp?.();', sessionCreation);
+    const paymentSessionBranch = submission.indexOf('if (isStorefrontDirectPaymentSession(paymentSession))', sessionCreation);
+    expect(sessionCreation).toBeGreaterThan(-1);
+    expect(proofResetAfterSessionCreation).toBeGreaterThan(sessionCreation);
+    expect(proofResetAfterSessionCreation).toBeLessThan(paymentSessionBranch);
     expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
     expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
