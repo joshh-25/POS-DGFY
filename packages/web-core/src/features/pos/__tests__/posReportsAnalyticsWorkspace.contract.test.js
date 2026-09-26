@@ -161,15 +161,16 @@ describe('POS report category filter contract', () => {
     expect(profitLossTabSource).not.toContain('MetricCard');
   });
 
-  it('spaces the comparison snapshot from the trend and removes its outer card shell', () => {
-    const snapshotStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
-    const snapshotEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", snapshotStart);
-    const snapshotSource = workspaceSource.slice(snapshotStart, snapshotEnd);
+  it('uses the full main-branch comparison workspace without changing the report shell', () => {
+    const comparisonStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
+    const comparisonEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", comparisonStart);
+    const comparisonSource = workspaceSource.slice(comparisonStart, comparisonEnd);
 
-    expect(snapshotSource).toContain('<section aria-labelledby="sales-comparison-snapshot-title" className="mt-4">');
-    expect(snapshotSource).toContain('<h3 id="sales-comparison-snapshot-title"');
-    expect(snapshotSource).toContain('grid gap-3 md:grid-cols-2 xl:grid-cols-4');
-    expect(snapshotSource).not.toContain('<SectionCard');
+    expect(comparisonSource).toContain('<PosReportsComparisonPanel');
+    expect(comparisonSource).toContain('comparison={comparisonReport}');
+    expect(comparisonSource).toContain('granularity={displayGranularity}');
+    expect(comparisonSource).toContain('onGranularityChange={setGranularity}');
+    expect(comparisonSource).not.toContain('sales-comparison-snapshot-title');
   });
 
   it('maps the Top Selling Items table to the supported report aggregates', () => {
