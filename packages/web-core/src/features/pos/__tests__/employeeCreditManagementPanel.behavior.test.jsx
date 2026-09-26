@@ -43,6 +43,8 @@ const employee = {
   }
 };
 
+const getEmployeeCreditTable = () => screen.getByRole('table', { name: 'Employee Credit directory' });
+
 describe('EmployeeCreditManagementPanel Repay All flow', () => {
   afterEach(cleanup);
 
@@ -57,8 +59,8 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     const user = userEvent.setup();
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
-    await user.click(screen.getByRole('button', { name: 'View credit for Branch Employee' }));
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
+    await user.click(within(getEmployeeCreditTable()).getByRole('button', { name: 'View credit for Branch Employee' }));
     await waitFor(() => expect(screen.getByText('Outstanding balance:')).toBeTruthy());
     const repaymentAction = screen.getByRole('button', { name: 'Record repayment', exact: true });
     const adjustmentAction = screen.getByRole('button', { name: 'Administrative adjustment', exact: true });
@@ -68,7 +70,7 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     await user.click(screen.getByRole('button', { name: 'Repay all' }));
 
     expect(screen.getByRole('heading', { name: 'Repay Employee Credit in full?' })).toBeTruthy();
-    expect(screen.getByText(/full repayment of ₱125\.00/)).toBeTruthy();
+    expect(screen.getByText(/full repayment of PHP 125\.00/)).toBeTruthy();
     const dialog = screen.getByRole('dialog');
 
     await user.click(within(dialog).getByRole('button', { name: 'Repay all' }));
@@ -92,8 +94,8 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     fetchEmployees.mockResolvedValue([{ ...employee, employeeCreditAccount: { ...employee.employeeCreditAccount, outstanding_balance: 0 } }]);
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
-    await userEvent.setup().click(screen.getByRole('button', { name: 'View credit for Branch Employee' }));
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
+    await userEvent.setup().click(within(getEmployeeCreditTable()).getByRole('button', { name: 'View credit for Branch Employee' }));
     await waitFor(() => expect(screen.getByText('Outstanding balance:')).toBeTruthy());
     await userEvent.setup().click(screen.getByRole('button', { name: 'Record repayment', exact: true }));
     expect(screen.getByRole('button', { name: 'Repay all' }).disabled).toBe(true);
@@ -117,7 +119,7 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     ]);
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
 
     const positiveBalance = within(screen.getByRole('row', { name: /Branch Employee/ })).getByText('PHP 125.00');
     const zeroBalance = within(screen.getByRole('row', { name: /Settled Employee/ })).getByText('PHP 0.00');
@@ -144,7 +146,7 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     const user = userEvent.setup();
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
     await user.click(screen.getByRole('button', { name: 'Filters' }));
 
     const popover = screen.getByRole('region', { name: 'Filter employee credit' });
@@ -163,8 +165,8 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     const user = userEvent.setup();
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
-    await user.click(screen.getByRole('button', { name: 'View credit for Branch Employee' }));
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
+    await user.click(within(getEmployeeCreditTable()).getByRole('button', { name: 'View credit for Branch Employee' }));
     const repaymentAction = screen.getByRole('button', { name: 'Record repayment', exact: true });
     expect(repaymentAction.disabled).toBe(false);
 
@@ -178,10 +180,10 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
     const user = userEvent.setup();
     render(<EmployeeCreditManagementPanel />);
 
-    await waitFor(() => expect(screen.getByRole('table', { name: 'Employee Credit directory' })).toBeTruthy());
+    await waitFor(() => expect(getEmployeeCreditTable()).toBeTruthy());
     expect(screen.queryByRole('complementary', { name: 'Manage Employee Credit' })).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'View credit for Branch Employee' }));
+    await user.click(within(getEmployeeCreditTable()).getByRole('button', { name: 'View credit for Branch Employee' }));
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Settings' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
@@ -213,7 +215,8 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
 
     try {
       render(<EmployeeCreditManagementPanel />);
-      const viewButton = await screen.findByRole('button', { name: 'View credit for Branch Employee' });
+      const employeeCard = await screen.findByRole('article');
+      const viewButton = within(employeeCard).getByRole('button', { name: 'View credit for Branch Employee' });
       expect(viewButton).toBeTruthy();
       expect(screen.getAllByRole('article')).toHaveLength(1);
       await userEvent.setup().click(viewButton);
@@ -222,7 +225,7 @@ describe('EmployeeCreditManagementPanel Repay All flow', () => {
       expect(drawer.parentElement.className).toContain('fixed');
       expect(drawer.parentElement.className).toContain('bottom-0');
       expect(drawer.parentElement.className).toContain('rounded-t-2xl');
-      expect(drawer.parentElement.className).toContain('translate-y-full');
+      await waitFor(() => expect(drawer.parentElement.className).toContain('translate-y-0'));
       expect(drawer.parentElement.parentElement).toBe(document.body);
       expect(document.body.style.overflow).toBe('hidden');
 

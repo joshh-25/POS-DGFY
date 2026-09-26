@@ -31,6 +31,13 @@ const findHistoricalItemById = async (Item, itemId, options = {}) => {
   });
 };
 
+const findArchivedItemById = async (Item, itemId, options = {}) => {
+  return Item.findOne({
+    ...options,
+    where: { item_id: itemId }
+  });
+};
+
 const isHistoricalOnlineGoodsIssue = (movementData = {}, { allowInactiveHistoricalItem = false } = {}) => (
   allowInactiveHistoricalItem === true
   && movementData.movement_type === 'goods_issue'
@@ -439,7 +446,9 @@ export const validateStockIssueAvailability = async (movementData = {}, userId, 
   });
   const resolvedLocationId = resolvedLocation?.location_id || null;
   const options = transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {};
-  const item = await findVisibleItemById(Item, movementData.item_id, options);
+  const item = movementData.allow_archived_item === true
+    ? await findArchivedItemById(Item, movementData.item_id, options)
+    : await findVisibleItemById(Item, movementData.item_id, options);
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -1152,6 +1161,7 @@ export const voidMovement = async (
       throw error;
     }
 
+    const stockItemId = item?.item_id || item_id;
     const options = { transaction, lock: transaction.LOCK.UPDATE };
     if (movement_type === 'transfer') {
       const sourceLocationId = parsePositiveInt(originalMovement.source_location_id);
@@ -1164,14 +1174,14 @@ export const voidMovement = async (
 
       const sourceStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: sourceLocationId,
         userId,
         options
       });
       const destinationStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: destinationLocationId,
         userId,
         options
@@ -1194,11 +1204,11 @@ export const voidMovement = async (
         updated_by: userId || null
       }, { transaction });
 
-      await updateItemAggregateStock({ item, ItemLocationStock, options });
+      if (item) await updateItemAggregateStock({ item, ItemLocationStock, options });
     } else if (originalMovement.location_id) {
       const locationStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: originalMovement.location_id,
         userId,
         options
@@ -1216,15 +1226,22 @@ export const voidMovement = async (
         quantity_on_hand: nextLocationStock,
         updated_by: userId || null
       }, { transaction });
-      await updateItemAggregateStock({ item, ItemLocationStock, options });
+      if (item) await updateItemAggregateStock({ item, ItemLocationStock, options });
     } else {
-      const newStock = parseFloat(item.current_stock) + reverseQuantity;
-      if (newStock < 0) {
-        const error = new Error('Cannot void: would result in negative stock');
-        error.statusCode = 400;
-        throw error;
+      if (!item) {
+        // A hard-deleted historical item has no aggregate row left to update.
+        // The movement is still voided so the parked-sale ledger remains auditable.
+        // Re-park continuity keeps the original movement when the line remains
+        // in the saved snapshot and no replacement item can be issued.
+      } else {
+        const newStock = parseFloat(item.current_stock) + reverseQuantity;
+        if (newStock < 0) {
+          const error = new Error('Cannot void: would result in negative stock');
+          error.statusCode = 400;
+          throw error;
+        }
+        await item.update({ current_stock: newStock }, { transaction });
       }
-      await item.update({ current_stock: newStock }, { transaction });
     }
 
     // Handle FIFO batch reversal for consumption movements
@@ -1395,7 +1412,13 @@ export const voidOnlineOrderGoodsIssue = async ({ orderId, userId, reason, trans
  * re-park may safely issue a new revision after reversing the previous one.
  * The caller owns the transaction; a failure rolls back the complete restore.
  */
-export const voidParkedSaleGoodsIssue = async ({ parkedSaleId, userId, reason, transaction = null } = {}) => {
+export const voidParkedSaleGoodsIssue = async ({
+  parkedSaleId,
+  userId,
+  reason,
+  transaction = null,
+  preserveItemIds = []
+} = {}) => {
   const normalizedParkedSaleId = parsePositiveInt(parkedSaleId);
   if (!normalizedParkedSaleId) {
     const error = new Error('parkedSaleId must be a positive integer');
@@ -1403,6 +1426,12 @@ export const voidParkedSaleGoodsIssue = async ({ parkedSaleId, userId, reason, t
     throw error;
   }
   const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const normalizedPreserveItemIds = new Set(
+    (Array.isArray(preserveItemIds) ? preserveItemIds : [])
+      .map(parsePositiveInt)
+      .filter(Boolean)
+  );
   const referencePrefix = `PARKED:${normalizedParkedSaleId}:`;
   const movements = await StockMovement.findAll({
     where: {
@@ -1417,16 +1446,38 @@ export const voidParkedSaleGoodsIssue = async ({ parkedSaleId, userId, reason, t
   const reversed = [];
   for (const movement of movements) {
     if (String(movement.notes || '').includes('Voided by')) continue;
+    const movementItemId = parsePositiveInt(movement.item_id);
+    const archivedItem = movementItemId
+      ? await Item.findOne({
+        where: { item_id: movementItemId },
+        transaction: transaction || undefined,
+        ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
+      })
+      : null;
+    if (!archivedItem && normalizedPreserveItemIds.has(movementItemId)) {
+      reversed.push({
+        preserved: true,
+        original_movement_id: movement.movement_id,
+        reversal_movement_id: null,
+        item_id: movement.item_id,
+        quantity: Math.abs(Number(movement.quantity || 0)),
+        location_id: movement.location_id || null
+      });
+      continue;
+    }
     const reversal = await voidMovement(
       movement.movement_id,
       userId,
       reason || `Back Office reversal of parked POS sale ${normalizedParkedSaleId}`,
-      transaction
+      transaction,
+      { allowArchivedItem: true, allowMissingItem: true }
     );
     reversed.push({
+      preserved: false,
       original_movement_id: movement.movement_id,
       reversal_movement_id: reversal?.movement_id || null,
       item_id: movement.item_id,
+      quantity: Math.abs(Number(movement.quantity || 0)),
       location_id: movement.location_id || null
     });
   }

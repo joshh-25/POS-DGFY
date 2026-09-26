@@ -22,7 +22,7 @@ export const VAT_DISCLOSURE_NOTE = 'VAT shown above is already included in item 
  * order/quote responses, while the zero-valued Phase 333 Storefront fee is omitted. The VAT row is
  * informational and is never added into the total because it is already included in subtotal_amount.
  */
-export const buildFeeAndVatSummaryRows = ({ totals = {}, money } = {}) => {
+export const buildFeeAndVatSummaryRows = ({ totals = {}, money, includeServiceFee = true } = {}) => {
   if (typeof money !== 'function') return [];
   const serviceFeeAmount = Number(totals.service_fee_amount || 0);
   const vatAmount = Number(totals.vat_amount || 0);

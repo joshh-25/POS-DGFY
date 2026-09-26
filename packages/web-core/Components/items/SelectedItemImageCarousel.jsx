@@ -18,6 +18,7 @@ export default function SelectedItemImageCarousel({
   disabled = false,
   posPreview = false,
   showPrimaryToggle = false,
+  compactRemoveAction = false,
   primaryEntryKey,
   onPrimaryChange,
   onRemove,
@@ -252,7 +253,7 @@ export default function SelectedItemImageCarousel({
           ))}
         </div>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         {showPrimaryToggle ? (
           <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-slate-600">
             <Switch
@@ -262,20 +263,24 @@ export default function SelectedItemImageCarousel({
               }}
               disabled={disabled || isPrimary}
               aria-label={`Make item image ${resolvedActiveIndex + 1} primary`}
-              className="h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&[aria-checked=true]>span]:translate-x-4"
+              className={`h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&[aria-checked=true]>span]:translate-x-4 ${isPrimary ? 'bg-[#1A4E8D] focus-visible:ring-[#1A4E8D]' : 'bg-slate-200'}`}
             />
             <span>Primary</span>
           </label>
         ) : null}
         <button
           type="button"
-          className="inline-flex shrink-0 items-center gap-1 rounded border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          className={compactRemoveAction
+            ? 'inline-flex h-8 min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-lg border border-red-200 px-2 text-[11px] font-semibold leading-4 whitespace-nowrap text-red-700 hover:bg-red-50 disabled:opacity-50'
+            : 'inline-flex min-w-0 shrink items-center justify-center gap-1 rounded border border-red-200 px-1.5 py-1 text-[10px] font-semibold leading-4 whitespace-nowrap text-red-700 hover:bg-red-50 disabled:opacity-50'}
           onClick={handleRemoveCurrent}
           disabled={disabled || !canRemoveCurrent}
           aria-label={`${combinedGallery ? 'Remove item image' : 'Remove selected item image'} ${resolvedActiveIndex + 1}`}
+          title="Remove image"
+          data-pos-item-image-remove={compactRemoveAction ? 'true' : undefined}
         >
           <X className="h-3 w-3" aria-hidden="true" />
-          Remove current image
+          <span className="truncate">{compactRemoveAction ? 'Remove current image' : 'Remove'}</span>
         </button>
       </div>
       {combinedGallery && showPrimaryToggle ? (

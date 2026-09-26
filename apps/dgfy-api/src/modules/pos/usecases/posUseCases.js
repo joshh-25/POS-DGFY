@@ -2349,7 +2349,8 @@ const validatePosInventoryIssues = async ({
     recipeMovementPlanByPreparedLine,
     locationId,
     userId,
-    transaction
+    transaction,
+    allowArchivedItems = false
 }) => {
     const validate = inventoryCommandService?.validateStockIssueAvailability;
     if (typeof validate !== 'function') {
@@ -2367,7 +2368,12 @@ const validatePosInventoryIssues = async ({
         const normalizedLocationId = parsePositiveInt(movementLocationId) || parsePositiveInt(locationId);
         if (!normalizedItemId || !Number.isFinite(normalizedQuantity) || normalizedQuantity <= 0) return;
         const key = `${normalizedLocationId || 0}:${normalizedItemId}`;
-        const current = quantitiesByScope.get(key) || { item_id: normalizedItemId, location_id: normalizedLocationId, quantity: 0 };
+        const current = quantitiesByScope.get(key) || {
+            item_id: normalizedItemId,
+            location_id: normalizedLocationId,
+            quantity: 0,
+            ...(allowArchivedItems ? { allow_archived_item: true } : {})
+        };
         current.quantity = round4(current.quantity + normalizedQuantity);
         quantitiesByScope.set(key, current);
     };
@@ -3358,7 +3364,8 @@ export const buildCheckoutPosUseCase = ({
         trustedOfflineStatutoryPolicy = null,
         itemDiscountApprovals = null,
         trustedItemDiscountApprovals = null,
-        inventoryEffectsOnly = false
+        inventoryEffectsOnly = false,
+        parkedSaleInventoryReconciliation = false
     }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -3485,7 +3492,7 @@ export const buildCheckoutPosUseCase = ({
             ...(parkedSaleId ? { parked_sale_id: parkedSaleId } : {}),
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
-            ...(String(payload.payment_type || 'cash').trim().toLowerCase() === 'employee_credit'
+            ...(String(payload.employee_credit?.account_code || '').trim()
                 ? {
                     employee_credit: {
                         account_code: String(payload.employee_credit?.account_code || '').trim().toUpperCase()
@@ -3581,6 +3588,7 @@ export const buildCheckoutPosUseCase = ({
                         ? { selected_option_ids: normalizeServiceOptionIds(line.selected_option_ids) }
                         : {}),
                     scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null,
+                    ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                     ...(isPlainObject(line.item_discount)
                         ? {
                             item_discount: {
@@ -4502,6 +4510,28 @@ export const buildCheckoutPosUseCase = ({
                     item_discount_draft: line.item_discount || null,
                     item_discount_snapshot: null
                 });
+                if (historicalSnapshotLine) {
+                    const currentPrice = Number(item.default_sale_price);
+                    const savedSalePrice = Number(historicalSnapshotLine.sale_price);
+                    const driftReasons = [];
+                    if (!currentItemIsSellable) driftReasons.push('item_not_currently_sellable');
+                    if (historicalStockShortfall) driftReasons.push('stock_shortfall');
+                    if (Number.isFinite(currentPrice)
+                        && Number.isFinite(Number(historicalSnapshotLine.base_sale_price))
+                        && !sameParkedSaleNumber(currentPrice, historicalSnapshotLine.base_sale_price)) {
+                        driftReasons.push('catalog_price_changed');
+                    }
+                    if (!Number.isFinite(currentPrice) || currentPrice <= 0) driftReasons.push('current_price_missing');
+                    historicalSettlementAuditLines.push({
+                        line_ref: String(line.line_ref || '').trim() || null,
+                        item_id: item.item_id,
+                        item_name: historicalSnapshotLine.item_name || item.name || null,
+                        saved_sale_price: Number.isFinite(savedSalePrice) ? round4(savedSalePrice) : null,
+                        current_sale_price: Number.isFinite(currentPrice) ? round4(currentPrice) : null,
+                        drift_reasons: driftReasons,
+                        inventory_effect: historicalNeedsStockExemption ? 'stock_exempt' : 'inventory_issue'
+                    });
+                }
                 recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
                 if (historicalSnapshotLine) {
                     const currentPrice = Number(item.default_sale_price);
@@ -4950,6 +4980,33 @@ export const buildCheckoutPosUseCase = ({
             const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
 
+            if (inventoryEffectsOnly) {
+                if (validateInventoryAvailability) {
+                    await validatePosInventoryIssues({
+                        inventoryCommandService: stockCommands,
+                        preparedLines,
+                        recipeMovementPlanByPreparedLine,
+                        locationId: enforcedCheckoutLocationId,
+                        userId: normalizedUserId,
+                        transaction,
+                        allowArchivedItems: parkedSaleInventoryReconciliation === true
+                    });
+                }
+                const inventoryEffects = buildPosInventoryIssuePlan({
+                    preparedLines,
+                    recipeMovementPlanByPreparedLine,
+                    locationId: enforcedCheckoutLocationId,
+                    allowArchivedItems: parkedSaleInventoryReconciliation === true
+                }).map(({ item_id, quantity, location_id, allow_archived_item }) => ({
+                    item_id,
+                    quantity,
+                    location_id,
+                    ...(allow_archived_item ? { allow_archived_item: true } : {})
+                }));
+                if (ownsTransaction) await transaction.commit();
+                return ok({ inventory_effects: inventoryEffects });
+            }
+
             if (quoteOnly) {
                 if (validateInventoryAvailability) {
                     await validatePosInventoryIssues({
@@ -4999,7 +5056,10 @@ export const buildCheckoutPosUseCase = ({
                     : [{ payment_type: normalizedPaymentType, count: 1, amount: totalAmount }]
             );
             let preparedEmployeeCreditDebit = null;
-            if (normalizedPaymentType === 'employee_credit') {
+            const employeeCreditPaymentAmount = round4(paymentBreakdown
+                .filter((entry) => entry.payment_type === 'employee_credit')
+                .reduce((sum, entry) => sum + Number(entry.amount || 0), 0));
+            if (normalizedPaymentType === 'employee_credit' || employeeCreditPaymentAmount > 0) {
                 if (!employeeCreditService) {
                     throw new DomainError(
                         DomainErrorCode.INTERNAL_ERROR,
@@ -5522,6 +5582,30 @@ export const buildCheckoutPosUseCase = ({
                 posTransactionId,
                 { transaction }
             );
+
+            if (
+                parkedSaleId
+                && historicalSettlementAuditLines.length > 0
+                && typeof posRepository.createAuditLog === 'function'
+            ) {
+                await posRepository.createAuditLog({
+                    user_id: normalizedUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: posTransactionId,
+                    action: 'CREATE',
+                    event_type: 'pos_parked_sale_snapshot_settlement',
+                    terminal_id: normalizedTerminalId,
+                    shift_id: normalizedShiftId,
+                    location_id: enforcedCheckoutLocationId,
+                    changes: {
+                        event: 'pos_parked_sale_snapshot_settlement',
+                        parked_sale_id: parkedSaleId,
+                        transaction_id: posTransactionId,
+                        policy: 'original_parked_snapshot_price',
+                        lines: historicalSettlementAuditLines
+                    }
+                }, { transaction });
+            }
 
             await runCheckoutBeforeCommit({
                 transactionId: posTransactionId,

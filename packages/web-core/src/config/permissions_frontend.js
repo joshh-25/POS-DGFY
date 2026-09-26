@@ -21,6 +21,14 @@ export const PERMISSION_GROUPS = {
             APPROVE_HIGH_RISK: "business_admin:high_risk:approve"
         }
     },
+    EXPENSES: {
+        label: "Operational Expenses",
+        permissions: {
+            VIEW: "expenses:view",
+            CREATE: "expenses:create",
+            VOID: "expenses:void"
+        }
+    },
     INVENTORY: {
         label: "Inventory Management",
         permissions: {
@@ -69,6 +77,15 @@ export const PERMISSION_GROUPS = {
             DELETE_DO: "do:delete"
         }
     },
+    STAFF_FULFILLMENT: {
+        label: "Staff Fulfillment",
+        permissions: {
+            PACK_ASSIGNED_ORDERS: "orders:pack",
+            VIEW_ASSIGNED_ORDERS: "orders:view_assigned",
+            VIEW_ASSIGNED_DELIVERY_RUNS: "delivery_runs:view_assigned",
+            ACT_ASSIGNED_DELIVERY_RUNS: "delivery_runs:act"
+        }
+    },
     POS: {
         label: "Point of Sale",
         permissions: {
@@ -78,6 +95,7 @@ export const PERMISSION_GROUPS = {
             PRICE_OVERRIDE_POS: "pos:price_override",
             OVERRIDE_DELIVERY_FEE: "pos:delivery_fee_override",
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust",
+            RESOLVE_DELIVERY_RUN_VARIANCE: "pos:delivery_run_variance_resolve",
             CLOSE_SHIFT_POS: "pos:shift_close",
             CLOSE_DAY_POS: "pos:close_day",
             REPRINT_POS_RECEIPT: "pos:reprint",

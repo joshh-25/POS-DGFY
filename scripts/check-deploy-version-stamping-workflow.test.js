@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   checkVersionTagComputation,
   checkReleaseRevisionInput,
+  checkVersionlessDevResolver,
   checkJobOutputsVersionTag,
   checkWorkflowCallOutputsVersionTag,
   checkBuildStepStamping,
@@ -120,6 +121,27 @@ test('checkReleaseRevisionInput: missing input/env/outputs are each caught', () 
   assert.equal(problems.filter((p) => /missing "RELEASE_REVISION/.test(p)).length, 1);
   assert.equal(problems.filter((p) => /release_floor/.test(p)).length, 1);
   assert.equal(problems.filter((p) => /release_revision:.*steps\.meta/.test(p)).length, 1);
+});
+
+// #2071: DEV resolves to a versionless shared tag, independent of branch/floor/revision.
+
+test('checkVersionlessDevResolver: accepts a versionless DEV resolver and rejects branch suffixes', () => {
+  const text = `
+          if [ "\${ENVIRONMENT}" = "DEV" ]; then
+            RESOLVED="$(node scripts/resolve-release-tags.js --app "\${APP_NAME}" --environment DEV)"
+          fi
+  `;
+  assert.deepEqual(checkVersionlessDevResolver(text, { label: 'fixture.yml' }), []);
+  assert.equal(checkVersionlessDevResolver('RESOLVER_ARGS+=(--pr-ref "\${DEV_PR_REF}")', { label: 'fixture.yml' }).length, 2);
+});
+
+test('checkVersionlessDevResolver: real builder workflows pass', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  for (const file of ['deploy-api.yml', 'deploy-frontend.yml', 'deploy-migration-runner.yml']) {
+    const text = fs.readFileSync(path.resolve(__dirname, `../.github/workflows/${file}`), 'utf8');
+    assert.deepEqual(checkVersionlessDevResolver(text, { label: file }), []);
+  }
 });
 
 test('checkMetaStepStampsFloorRevisionLabels: floor unconditional, revision conditional', () => {
@@ -416,17 +438,33 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
   assert.equal(problems.filter((p) => /promote-aliases/.test(p)).length, 1);
 });
 
-// checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #1977
-// (Phase 342): the candidate-wide release_revision is threaded deploy.yml ->
-// deployment-orchestrator.yml -> builders, and declared + forwarded per job on deploy-main.yml
-// (plus --release-revision into resolve-build-plan and the promote-aliases job).
+// checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #2055
+// (Phase 346): per-app-group release_revision_* inputs are threaded deploy.yml ->
+// deployment-orchestrator.yml -> builders (each job forwards its own app's entry out of
+// resolve-build-plan's revisions_json map plus dev_pr_ref), and declared + forwarded per
+// job-group on deploy-main.yml (plus --release-revisions-json into resolve-build-plan and
+// the per-app promote-aliases job).
 
-function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS } = {}) {
+const ORCHESTRATOR_REVISION_JOB_KEYS = Object.freeze({
+  'dgfy-api': 'dgfy-api',
+  'dgfy-migration-runner': 'dgfy-migration-runner',
+  'frontend-ims': 'dgfy-ims',
+  'frontend-pos': 'dgfy-pos',
+  'frontend-storefront': 'dgfy-storefront',
+});
+
+function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS, skipPlanRevision = true, withRevisionsStep = true } = {}) {
   const inputBlock = withInput
-    ? "on:\n  workflow_call:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
+    ? "on:\n  workflow_call:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
-  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`).join('\n');
-  return `${inputBlock}jobs:\n${jobBlocks}`;
+  const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${ORCHESTRATOR_REVISION_JOB_KEYS[name]} }}\n    secrets: inherit\n`).join('\n');
+  const revisionsStep = withRevisionsStep
+    ? '      - name: Resolve per-app artifact revisions\n        id: revisions\n        run: echo \"revisions_json={}\" >> \"$GITHUB_OUTPUT\"\n'
+    : '';
+  const skipPlan = skipPlanRevision
+    ? '  resolve-build-plan:\n    steps:\n      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --environment STAGING --release-revisions-json {"a":"r1"}\n'
+    : '  resolve-build-plan:\n    steps:\n      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --environment STAGING\n';
+  return `${inputBlock}jobs:\n${revisionsStep}${skipPlan}\n${jobBlocks}`;
 }
 
 test('checkOrchestratorReleaseRevisionWiring: every builder job wired -> no problems', () => {
@@ -435,14 +473,24 @@ test('checkOrchestratorReleaseRevisionWiring: every builder job wired -> no prob
 
 test('checkOrchestratorReleaseRevisionWiring: missing input and missing per-job forwarding are each caught', () => {
   const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ withInput: false }));
-  assert.equal(problems.filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /missing a "release_revision_api" string input/.test(p)).length, 1);
   const text = orchestratorRevisionFixture().replace(
-    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: ${{ inputs.release_revision }}\n    secrets: inherit\n',
-    '  dgfy-api:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n    secrets: inherit\n',
+    '      release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-api }}\n',
+    '',
   );
   const jobProblems = checkOrchestratorReleaseRevisionWiring(text);
   assert.equal(jobProblems.length, 1);
   assert.match(jobProblems[0], /job "dgfy-api" does not forward/);
+});
+
+test('checkOrchestratorReleaseRevisionWiring: missing resolve-build-plan flag is caught', () => {
+  const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ skipPlanRevision: false }));
+  assert.equal(problems.filter((p) => /resolve-build-plan step does not pass "--release-revisions-json"/.test(p)).length, 1);
+});
+
+test('checkOrchestratorReleaseRevisionWiring: missing revisions allocation step is caught', () => {
+  const problems = checkOrchestratorReleaseRevisionWiring(orchestratorRevisionFixture({ withRevisionsStep: false }));
+  assert.equal(problems.filter((p) => /DEV must produce an empty release revision map/.test(p)).length, 1);
 });
 
 test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml passes', () => {
@@ -452,17 +500,26 @@ test('checkOrchestratorReleaseRevisionWiring: real deployment-orchestrator.yml p
   assert.deepEqual(checkOrchestratorReleaseRevisionWiring(text), []);
 });
 
-function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, withAliasJob = true } = {}) {
+const DEPLOY_MAIN_REVISION_JOB_INPUTS = Object.freeze({
+  'dgfy-api': 'release_revision_api',
+  'dgfy-migration-runner': 'release_revision_api',
+  'frontend-ims-prod': 'release_revision_frontend_ims',
+  'frontend-pos-prod': 'release_revision_frontend_pos',
+  'frontend-storefront-prod': 'release_revision_frontend_storefront',
+});
+
+function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, skipPlanEnvironment = true, withAliasJob = true } = {}) {
   const inputBlock = withInput
-    ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision:\n        required: false\n        type: string\n        default: ''\n\n"
+    ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
   const jobBlocks = DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES
-    .map(([jobName]) => `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.release_revision }}\n    secrets: inherit\n`)
+    .map(([jobName]) => `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.${DEPLOY_MAIN_REVISION_JOB_INPUTS[jobName]} }}\n    secrets: inherit\n`)
     .join('\n');
-  const skipStep = skipPlanRevision
-    ? '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc --release-revision r16\n'
-    : '      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js --revision abc\n';
-  const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n' : '';
+  const skipArgs = [ '--revision abc' ];
+  if (skipPlanEnvironment) skipArgs.push('--environment PROD');
+  if (skipPlanRevision) skipArgs.push('--release-revisions-json {"a":"r1"}');
+  const skipStep = `      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js ${skipArgs.join(' ')}\n`;
+  const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n      - run: echo ${{ inputs.release_revision_api }} ${{ inputs.release_revision_frontend_ims }} ${{ inputs.release_revision_frontend_pos }} ${{ inputs.release_revision_frontend_storefront }}\n' : '';
   return `${inputBlock}jobs:\n${jobBlocks}\n${skipStep}${aliasJob}`;
 }
 
@@ -471,9 +528,14 @@ test('checkDeployMainReleaseRevisionWiring: fully-wired fixture reports no probl
 });
 
 test('checkDeployMainReleaseRevisionWiring: missing input, missing skip-plan flag, and missing alias job are each caught', () => {
-  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withInput: false })).filter((p) => /missing a "release_revision" string input/.test(p)).length, 1);
-  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanRevision: false })).filter((p) => /does not pass "--release-revision"/.test(p)).length, 1);
+  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withInput: false })).filter((p) => /missing a "release_revision_api" string input/.test(p)).length, 1);
+  assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanRevision: false })).filter((p) => /does not pass "--release-revisions-json"/.test(p)).length, 1);
   assert.equal(checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ withAliasJob: false })).filter((p) => /no "promote-aliases" job found/.test(p)).length, 1);
+});
+
+test('checkDeployMainReleaseRevisionWiring: missing PROD environment on skip plan is caught', () => {
+  const problems = checkDeployMainReleaseRevisionWiring(deployMainRevisionFixture({ skipPlanEnvironment: false }));
+  assert.equal(problems.filter((p) => /does not pass "--environment PROD"/.test(p)).length, 1);
 });
 
 test('checkDeployMainReleaseRevisionWiring: real deploy-main.yml passes', () => {

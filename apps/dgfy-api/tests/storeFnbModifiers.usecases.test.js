@@ -65,10 +65,11 @@ const buildCartQuoteUseCase = (repository) => buildStoreCartQuoteUseCase({
   revenueSharingEnabled: false
 });
 
-const buildCheckoutUseCase = (repository) => {
+const buildCheckoutUseCase = (repository, dependencies = {}) => {
   const useCase = buildStoreCheckoutUseCase({
     storeRepository: repository,
-    revenueSharingEnabled: false
+    revenueSharingEnabled: false,
+    ...dependencies
   });
 
   return async ({ tenantId: requestTenantId, payload, storeCustomer, ...options }) => {
@@ -162,6 +163,41 @@ describe('storefront F&B modifier checkout contract', () => {
         extended_price_delta: 45
       })]
     }));
+  });
+
+  it('waives the convenience fee only for enabled dine-in pay-at-store quotes', async () => {
+    const repository = buildRepository([burgerItem], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_dine_in_pay_at_store: true,
+        allow_out_of_stock_sales: true
+      })
+    });
+    const useCase = buildCartQuoteUseCase(repository);
+    const basePayload = {
+      location_id: 4,
+      order_method: 'dine_in',
+      scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      customer_name: 'Ana',
+      customer_phone: '09170000000',
+      lines: [{ item_id: 20, quantity: 1 }]
+    };
+
+    const cashResult = await useCase({ payload: { ...basePayload, payment_type: 'cash' } });
+    expect(cashResult.success).toBe(true);
+    expect(cashResult.data.service_fee_amount).toBe(0);
+    expect(cashResult.data.total_amount).toBe(100);
+
+    const onlineResult = await useCase({ payload: { ...basePayload, payment_type: 'gcash' } });
+    expect(onlineResult.success).toBe(true);
+    expect(onlineResult.data.service_fee_amount).toBe(1);
+    expect(onlineResult.data.total_amount).toBe(101);
   });
 
   it('preflights linked modifier stock using the selected location and line quantity', async () => {
@@ -609,6 +645,47 @@ describe('storefront F&B modifier checkout contract', () => {
       })]
     }), expect.objectContaining({
       transaction: expect.any(Object)
+    }));
+  });
+
+  it('allows checkout with a price-only modifier when strict inventory reservation is enabled', async () => {
+    const repository = buildRepository([burgerItem], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_out_of_stock_sales: false
+      })
+    });
+    const inventoryReservationService = {
+      reserveOnlineOrderInventory: jest.fn().mockResolvedValue({ reserved: true })
+    };
+    const useCase = buildCheckoutUseCase(repository, { inventoryReservationService });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-fnb-price-only-modifier',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 1,
+          line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(inventoryReservationService.reserveOnlineOrderInventory).toHaveBeenCalledWith(expect.objectContaining({
+      effects: [expect.objectContaining({ item_id: 20, effect_type: 'line_item' })]
     }));
   });
 

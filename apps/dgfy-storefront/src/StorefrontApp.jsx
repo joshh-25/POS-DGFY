@@ -1855,7 +1855,7 @@ export default function StorefrontApp() {
     // Phase 150 (#866): paymentElection changes the split the quote would compute at a
     // customer_choice store -- an election change must invalidate the quote exactly like changing
     // the order method already does, or the UI shows a stale split against the new election.
-  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, paymentElection, isStorePage]);
+  }, [cart, orderMethod, selectedLocationId, customerPin, serviceAppointmentAt, servicePaymentTiming, checkoutPromoCode, checkoutVoucherCode, paymentElection, fnbPaymentType, isStorePage]);
   useEffect(() => {
     if (!isSimpleMode) return;
     if (orderMethod === 'pickup' || orderMethod === 'delivery') return;
@@ -2287,6 +2287,7 @@ export default function StorefrontApp() {
     isDgfyCustomerSignedIn,
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     orderMethod,
+    fnbPaymentType,
     paymentElection,
     readDgfyAuthToken,
     readStoreAuthToken,
@@ -3424,6 +3425,7 @@ export default function StorefrontApp() {
     isStorePage,
     normalizeStorefrontErrorMessage,
     orderMethod,
+    fnbPaymentType,
     paymentElection,
     quoteNeedsRefresh,
     requestQuote,
@@ -3880,6 +3882,7 @@ export default function StorefrontApp() {
     isFnbMode,
     money,
     orderMethod,
+    fnbScheduledFor,
     pinLocationError,
     pinLocationLoading,
     quoteError,

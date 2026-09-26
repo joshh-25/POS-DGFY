@@ -907,6 +907,7 @@ export const usePosCheckoutWorkflow = ({
                 quantity: Number(line.quantity),
                 base_sale_price: Number(line.base_sale_price || 0),
                 sale_price: Number(line.sale_price),
+                ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                 price_override_reason: line.price_override_reason || null,
                 unit_of_measure: line.unit_of_measure || null,
                 category: line.category || null,

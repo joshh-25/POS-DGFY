@@ -656,6 +656,18 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         const loaded = await loadSession(posRepository, normalizedSessionId, { transaction, lock: true });
         if (!loaded) throw paymentError(DomainErrorCode.RESOURCE_NOT_FOUND, 'POS payment session not found.', 404);
         assertSessionScope(loaded.session, scope);
+        if (isEmployeeCredit) {
+            const storedSnapshot = parseStoredSnapshot(loaded.session.snapshot);
+            const sourceSnapshot = isPlainObject(storedSnapshot?.checkout_payload)
+                ? storedSnapshot.checkout_payload
+                : storedSnapshot;
+            const storedAccountCode = String(sourceSnapshot?.employee_credit?.account_code || '').trim().toUpperCase();
+            if (storedAccountCode && storedAccountCode !== employeeCreditAccountCode) {
+                throw paymentError(DomainErrorCode.CONFLICT, 'Employee Credit account does not match the payment session.', 409, {
+                    reason_code: 'EMPLOYEE_CREDIT_ACCOUNT_MISMATCH'
+                });
+            }
+        }
 
         const existing = await posRepository.findPosPaymentAllocationByIdempotencyKey(normalizedSessionId, idempotencyKey, { transaction, lock: true });
         const requestHash = hashPayload({

@@ -31,6 +31,7 @@ describe('parked sale POS route contract', () => {
         expect(routeSource).toContain("router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateClaimPosParkedSale, posController.requireActiveOperatorForMutation, posController.claimParkedSale);");
         expect(routeSource).toContain("router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateReparkPosParkedSale, posController.requireActiveOperatorForMutation, posController.reparkParkedSale);");
         expect(routeSource).toContain("router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateCancelPosParkedSale, posController.requireActiveOperatorForMutation, posController.cancelParkedSale);");
+        expect(routeSource).toContain("router.post('/approvals/:id/:decision', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validatePosExceptionApprovalParam, validatePosExceptionApprovalBody, posController.decidePosExceptionApproval);");
     });
 
     it('validates the lifecycle payloads and strips unsupported top-level fields', () => {

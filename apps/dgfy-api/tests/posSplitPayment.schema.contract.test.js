@@ -146,6 +146,7 @@ describe('split payment schema contract', () => {
         expect(tenantSchemaSource).toContain('ADD COLUMN `pos_payment_allocation_id`');
         expect(tenantSchemaSource).toContain('idx_pos_payment_allocations_session_reversal_status');
         expect(tenantSchemaSource).toContain('idx_pos_transaction_adjustments_allocation_created');
+        expect(tenantSchemaSource).toContain("payment_method` enum('cash','gcash','maya','card','bank_transfer','cheque','employee_credit')");
         expect(TENANT_LOCATION_REFERENCE_SOURCES).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 modelName: 'PosPaymentSession',

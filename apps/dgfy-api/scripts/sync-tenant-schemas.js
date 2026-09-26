@@ -1073,6 +1073,37 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_parked_sales_ibfk_8` FOREIGN KEY (`cancelled_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
+    // High-risk POS actions are tenant-local approval evidence. Keep this
+    // minimal table in the schema repair registry so parked-sale cancellation
+    // works for tenants provisioned before the approval workflow shipped.
+    business_admin_approval_requests: Object.freeze({
+        sql: "CREATE TABLE `business_admin_approval_requests` (\n"
+            + "  `business_admin_approval_request_id` int unsigned NOT NULL AUTO_INCREMENT,\n"
+            + "  `action_type` enum('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL,\n"
+            + "  `entity_type` varchar(60) NOT NULL,\n"
+            + "  `entity_id` int unsigned NOT NULL,\n"
+            + "  `payload` json NOT NULL,\n"
+            + "  `payload_hash` char(64) NOT NULL,\n"
+            + "  `status` enum('pending','approved','rejected','executed','expired','cancelled') NOT NULL DEFAULT 'pending',\n"
+            + "  `reason` varchar(500) NOT NULL,\n"
+            + "  `idempotency_key` varchar(120) NOT NULL,\n"
+            + "  `requested_by` int unsigned NOT NULL,\n"
+            + "  `approved_by` int unsigned DEFAULT NULL,\n"
+            + "  `rejected_by` int unsigned DEFAULT NULL,\n"
+            + "  `approval_note` varchar(500) DEFAULT NULL,\n"
+            + "  `expires_at` datetime DEFAULT NULL,\n"
+            + "  `approved_at` datetime DEFAULT NULL,\n"
+            + "  `rejected_at` datetime DEFAULT NULL,\n"
+            + "  `executed_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`business_admin_approval_request_id`),\n"
+            + "  UNIQUE KEY `uq_business_admin_approval_action_idempotency` (`action_type`,`idempotency_key`),\n"
+            + "  KEY `idx_business_admin_approval_status_created` (`status`,`created_at`),\n"
+            + "  KEY `idx_business_admin_approval_entity_created` (`entity_type`,`entity_id`,`created_at`),\n"
+            + "  KEY `idx_business_admin_approval_requested_created` (`requested_by`,`created_at`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // Created by migration 20260812000006-create-pos-split-payment-sessions.cjs.
     // Split-payment sessions and allocations are tenant-local financial
     // evidence and must be backfilled onto tenants provisioned before Phase 58.
@@ -2991,6 +3022,10 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         payment_status: Object.freeze({
             enumValues: Object.freeze(['unpaid', 'payment_pending', 'paid', 'partially_paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_status` ENUM('unpaid','payment_pending','paid','partially_paid','failed','refund_pending','partial_refunded','refunded') NOT NULL DEFAULT 'paid'"
+        }),
+        payment_timing: Object.freeze({
+            enumValues: Object.freeze(['upfront', 'on_pickup', 'on_delivery', 'on_dine_in']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery','on_dine_in') NOT NULL DEFAULT 'upfront'"
         }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),

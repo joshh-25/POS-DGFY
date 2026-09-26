@@ -548,7 +548,7 @@ describe('POS terminal view-mode contracts', () => {
   it('removes redundant workspace card chrome from settings views while retaining shell spacing', () => {
     expect(terminalOperationsWorkspaceContent).toContain('const SETTINGS_VIEW_MODES = new Set([');
     expect(terminalOperationsWorkspaceContent).toContain('const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);');
-    expect(terminalOperationsWorkspaceContent).toContain('bare={isSettingsView}');
+    expect(terminalOperationsWorkspaceContent).toContain('bare={usesOwnPageFrame}');
     expect(terminalOperationsPanelsContent).toContain("className = 'p-5', bare = false");
     expect(terminalOperationsPanelsContent).toContain('if (bare) {');
   });
@@ -562,11 +562,12 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
     expect(terminalWorkspaceSidebarContent).not.toContain("onOpenBackOffice({ path: '/backoffice/settings/profile' })");
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Daily Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Monthly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Yearly Report');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('Sales Comparison');
-    expect(posReportsAnalyticsWorkspaceContent).toContain('POS Profit/Loss');
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Sales'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Comparison'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Top Selling Items'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Profit/Loss'");
+    expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
   });
 
   it('keeps receipt preview empty-state branch with history fallback action', () => {
@@ -639,7 +640,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain("orderSource: [");
     expect(posHistoryPanelContent).toContain("{ value: 'all', label: 'All' }");
     expect(posHistoryPanelContent).toContain('Transaction sources');
-    expect(posHistoryPanelContent).toContain('data-testid={`pos-history-source-tab-${sourceTab.value}`}');
+    expect(posHistoryPanelContent).toContain('testId: `pos-history-source-tab-${sourceTab.value}`');
     expect(posHistoryPanelContent).not.toContain('testId="pos-history-filter-source"');
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');

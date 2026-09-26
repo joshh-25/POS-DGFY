@@ -25,6 +25,19 @@ import { getActiveRunMembership } from './deliveryRunEligibility.js';
 // and `deps`, and returns a fresh array of <Button> elements on every call. It does not read any
 // component state directly.
 
+const CASH_COLLECTION_TIMING_BY_ORDER_METHOD = Object.freeze({
+  pickup: 'on_pickup',
+  delivery: 'on_delivery',
+  dine_in: 'on_dine_in'
+});
+
+export const isCashCollectionTimingValid = (order = {}) => {
+  const orderMethod = String(order?.order_method || '').trim().toLowerCase();
+  const expectedPaymentTiming = CASH_COLLECTION_TIMING_BY_ORDER_METHOD[orderMethod];
+  if (!expectedPaymentTiming) return true;
+  return String(order?.payment_timing || '').trim().toLowerCase() === expectedPaymentTiming;
+};
+
 const getStatusIcon = (statusName) => {
   switch (statusName) {
   case 'confirmed':
@@ -80,6 +93,7 @@ export function buildIncomingQueueOrderActions(order = {}, {
     && order.payment_status === 'unpaid'
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const orderBalanceDue = Number(order.balance_due || 0);

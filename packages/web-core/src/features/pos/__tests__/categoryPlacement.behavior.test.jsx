@@ -321,7 +321,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.getByRole('tab', { name: 'Menu modifiers' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Item Options' })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Service add-ons' })).toBeNull();
 
     rerender(<TerminalOperationsWorkspace {...buildProps({
@@ -330,7 +330,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.queryByRole('tab', { name: 'Menu modifiers' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Item Options' })).toBeNull();
   });
 
   it('shows the online-only explanation without queueing an item draft', () => {

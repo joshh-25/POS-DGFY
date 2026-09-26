@@ -26,6 +26,8 @@ import {
     validateCancelPosParkedSale,
     validateReparkPosParkedSale,
     validateParkedSaleIdParam,
+    validatePosExceptionApprovalParam,
+    validatePosExceptionApprovalBody,
     validateCreatePosPaymentSession,
     validateAddPosPaymentAllocation,
     validateCancelPosPayment,
@@ -299,6 +301,7 @@ router.get('/parked-sales', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), v
 router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateClaimPosParkedSale, posController.requireActiveOperatorForMutation, posController.claimParkedSale);
 router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateReparkPosParkedSale, posController.requireActiveOperatorForMutation, posController.reparkParkedSale);
 router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateCancelPosParkedSale, posController.requireActiveOperatorForMutation, posController.cancelParkedSale);
+router.post('/approvals/:id/:decision', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validatePosExceptionApprovalParam, validatePosExceptionApprovalBody, posController.decidePosExceptionApproval);
 router.post('/payment-sessions', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateCreatePosPaymentSession, posController.requireActiveOperatorForMutation, posController.createPaymentSession);
 router.get('/payment-sessions/active', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateSplitPaymentSessionScopeQuery, posController.getActivePaymentSession);
 router.get('/payment-sessions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateSplitPaymentSessionIdParam, validateSplitPaymentSessionScopeQuery, posController.getPaymentSession);

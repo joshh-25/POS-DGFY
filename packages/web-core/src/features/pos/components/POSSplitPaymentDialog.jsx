@@ -76,8 +76,15 @@ const statusClassName = (status) => ({
     reversed: 'border-slate-200 bg-slate-100 text-slate-500'
 }[status] || 'border-slate-200 bg-slate-100 text-slate-600');
 
-const buildSnapshot = (cart, checkoutSnapshot = null) => ({
+const buildSnapshot = (cart, checkoutSnapshot = null, employeeCreditOption = null) => ({
     ...(checkoutSnapshot && typeof checkoutSnapshot === 'object' ? checkoutSnapshot : {}),
+    ...(employeeCreditOption?.account_code
+        ? {
+            employee_credit: {
+                account_code: String(employeeCreditOption.account_code).trim().toUpperCase()
+            }
+        }
+        : {}),
     lines: (Array.isArray(cart) ? cart : []).map((line) => ({
         item_id: Number(line?.item_id),
         quantity: Number(line?.quantity),
@@ -220,7 +227,7 @@ export default function POSSplitPaymentDialog({
             terminal_id: terminalId,
             location_id: locationId || undefined,
             parked_sale_id: parkedSaleId || undefined,
-            snapshot: buildSnapshot(cart, checkoutSnapshot)
+            snapshot: buildSnapshot(cart, checkoutSnapshot, employeeCreditRow ? selectedEmployeeCreditOption : null)
         }).then((created) => {
             applySession(created);
             return created;
@@ -270,9 +277,10 @@ export default function POSSplitPaymentDialog({
         sessionIdempotencyKeyRef.current = null;
         sessionCreationPromiseRef.current = null;
         setPaymentRows(createDefaultPaymentRows());
+        resetEmployeeCredit();
         nextPaymentRowIdRef.current = 3;
         paymentRowIdempotencyKeysRef.current.clear();
-    }, [open]);
+    }, [open, resetEmployeeCredit]);
 
     const updatePaymentRow = (rowId, updates) => {
         setPaymentRows((currentRows) => currentRows.map((row) => {
@@ -340,6 +348,10 @@ export default function POSSplitPaymentDialog({
     const handleCompletePaymentRows = async () => {
         if (!hasEnteredPayment) {
             setError('Enter an amount for at least one payment method.');
+            return;
+        }
+        if (!employeeCreditReady) {
+            setError('Select and verify an eligible Employee Credit account before recording payment.');
             return;
         }
         if (duplicatePaymentMethod) {

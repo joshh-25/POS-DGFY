@@ -617,6 +617,9 @@ describe('usePosCheckoutWorkflow', () => {
                 parked_original_quantity: 1
             })
         ]);
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
+            description: 'Add items as needed, then checkout.'
+        });
     });
 
     it('rejects local parked-sale blockers before fetching the catalog', async () => {

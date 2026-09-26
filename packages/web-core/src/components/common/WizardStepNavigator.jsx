@@ -16,13 +16,21 @@ export default function WizardStepNavigator({
   completedStep = Math.max(0, currentStep - 1),
   onStepChange,
   className = '',
-  ariaLabel = 'Wizard steps'
+  ariaLabel = 'Wizard steps',
+  showLabels = false,
+  compact = false,
+  centered = false
 }) {
   const normalizedSteps = steps.map(normalizeStep);
   if (normalizedSteps.length <= 1) return null;
 
   return (
-    <nav className={cn('wizard-step-navigator', className)} aria-label={ariaLabel}>
+    <nav className={cn(
+      'wizard-step-navigator',
+      compact && 'wizard-step-navigator--compact',
+      centered && 'wizard-step-navigator--centered',
+      className
+    )} aria-label={ariaLabel}>
       <div className="wizard-step-navigator__track">
         {normalizedSteps.map((step, index) => {
           const isActive = step.number === currentStep;
@@ -41,7 +49,8 @@ export default function WizardStepNavigator({
                   'wizard-step-navigator__button',
                   isActive && 'wizard-step-navigator__button--active',
                   isCompleted && 'wizard-step-navigator__button--completed',
-                  step.disabled && 'wizard-step-navigator__button--disabled'
+                  step.disabled && 'wizard-step-navigator__button--disabled',
+                  compact && 'wizard-step-navigator__button--compact'
                 )}
                 onClick={() => {
                   if (isClickable) onStepChange(step.number);
@@ -54,6 +63,11 @@ export default function WizardStepNavigator({
               >
                 {step.number}
               </button>
+              {showLabels && (
+                <span className="wizard-step-navigator__label">
+                  {step.label}
+                </span>
+              )}
               <span id={tooltipId} className="wizard-step-navigator__tooltip" role="tooltip">
                 {tooltipText}
               </span>

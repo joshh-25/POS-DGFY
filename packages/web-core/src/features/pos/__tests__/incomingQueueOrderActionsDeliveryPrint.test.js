@@ -14,6 +14,15 @@ const outForDeliveryOrder = {
   deliveryJob: { status: 'picked_up' }
 };
 
+const dineInCashOrder = {
+  pos_transaction_id: 778,
+  order_method: 'dine_in',
+  fulfillment_status: 'ready_for_pickup',
+  payment_type: 'cash',
+  payment_status: 'unpaid',
+  payment_timing: 'on_dine_in'
+};
+
 describe('buildIncomingQueueOrderActions delivery handoff print action (#1319)', () => {
   it('offers Dine-In checkout for any unpaid tender, not only cash', () => {
     const handleOpenCashCollection = vi.fn();
@@ -96,6 +105,57 @@ describe('buildIncomingQueueOrderActions delivery handoff print action (#1319)',
     expect(handleOpenIncomingOrderReceipt).toHaveBeenCalledWith(777, {
       printMode: true,
       retryPrint: true
+    });
+  });
+});
+
+describe('buildIncomingQueueOrderActions cash collection timing guard', () => {
+  it('does not offer dine-in cash collection when legacy timing is blank', () => {
+    const buttons = buildIncomingQueueOrderActions({
+      ...dineInCashOrder,
+      payment_timing: ''
+    }, {
+      canTransactPos: true,
+      isOnline: true,
+      hasActiveShift: true
+    });
+
+    expect(buttons.some((button) => button.key === 'collect_cash')).toBe(false);
+  });
+
+  it('offers dine-in cash collection only after timing is normalized', () => {
+    const buttons = buildIncomingQueueOrderActions(dineInCashOrder, {
+      canTransactPos: true,
+      isOnline: true,
+      hasActiveShift: true
+    });
+
+    expect(buttons.some((button) => button.key === 'collect_cash')).toBe(true);
+  });
+
+  it('keeps pickup and delivery collection aligned with their server timings', () => {
+    const base = {
+      pos_transaction_id: 779,
+      fulfillment_status: 'ready_for_pickup',
+      payment_type: 'cash',
+      payment_status: 'unpaid'
+    };
+    const eligible = [
+      { ...base, order_method: 'pickup', payment_timing: 'on_pickup' },
+      { ...base, order_method: 'delivery', fulfillment_status: 'out_for_delivery', payment_timing: 'on_delivery' }
+    ];
+    const ineligible = [
+      { ...base, order_method: 'pickup', payment_timing: '' },
+      { ...base, order_method: 'delivery', fulfillment_status: 'out_for_delivery', payment_timing: '' }
+    ];
+
+    eligible.forEach((order) => {
+      expect(buildIncomingQueueOrderActions(order, { canTransactPos: true, hasActiveShift: true })
+        .some((button) => button.key === 'collect_cash')).toBe(true);
+    });
+    ineligible.forEach((order) => {
+      expect(buildIncomingQueueOrderActions(order, { canTransactPos: true, hasActiveShift: true })
+        .some((button) => button.key === 'collect_cash')).toBe(false);
     });
   });
 });

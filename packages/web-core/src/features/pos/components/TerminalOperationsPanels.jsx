@@ -110,7 +110,7 @@ function useSplitViewportEligible() {
   return isEligible;
 }
 
-function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false }) {
+function WorkspaceShell({ title, children, locked, className = 'p-5', bare = false, borderless = false }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -128,9 +128,8 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
     );
   }
 
-  // Settings already owns its inner cards and navigation surfaces. Keep the shell
-  // spacing for consistent content alignment, while removing the redundant card
-  // chrome that constrains small viewports.
+  // Bare workspaces own their page frame, so the caller controls their outer
+  // spacing while this shell removes only the redundant card chrome.
   if (bare) {
     return (
       <section className={`min-w-0 max-w-full ${className}`}>
@@ -140,7 +139,9 @@ function WorkspaceShell({ title, children, locked, className = 'p-5', bare = fal
   }
 
   return (
-    <section className={`min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
+    <section className={`${borderless
+      ? 'min-w-0 max-w-full rounded-xl bg-white shadow-sm shadow-slate-200/70'
+      : 'min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70'} ${className}`}>
       {children}
     </section>
   );
@@ -933,6 +934,7 @@ function IncomingQueueWorkspace({
   // mode-flip so it never survives into an unsupported mode.
   React.useEffect(() => {
     if ((activeView === 'runs' || activeView === 'split') && !isDeliveryRunMode) setActiveView('active');
+    if (activeView === 'dine_in_schedule' && !isFnbMode) setActiveView('active');
     if (activeView === 'split' && !isSplitViewportEligible) setActiveView('active');
     if (activeView === 'dine_in_schedule' && !isFnbMode) setActiveView('active');
     if (isAdminBranchMonitor && (activeView === 'runs' || activeView === 'split')) setActiveView('active');
@@ -1301,6 +1303,15 @@ function IncomingQueueWorkspace({
         </div>
       </div>
 
+      {isDineInScheduleView ? (
+        <div className="flex items-start gap-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-3 text-sm leading-5 text-[#334155]">
+          <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+            <CalendarClock className="h-4 w-4" />
+          </span>
+          <p>Scheduled dine-in orders are sorted by serving time. Prepare them before the scheduled time and use <strong>Ready to Serve</strong> when the order reaches the handover stage.</p>
+        </div>
+      ) : null}
+
       {!isOnline ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
@@ -1362,9 +1373,8 @@ function IncomingQueueWorkspace({
           </Button>
         </div>
       ) : viewMode === QUEUE_VIEW_MODES.TABLE ? (
-        // Phase 231 (#1290): orders={visibleIncomingOrders}, not sortedIncomingOrders -- the
-        // table view must respect the run filter exactly like the card view below, or switching
-        // to Table would silently bypass it.
+        // Both views use displayedIncomingOrders: run-filtered active orders, or the separately
+        // sorted dine-in schedule when that tab is selected.
         <QueueOrderTableView
           orders={displayedIncomingOrders}
           isDeliveryRunMode={isDeliveryRunMode && !isDineInScheduleView}
@@ -1593,6 +1603,18 @@ function IncomingQueueWorkspace({
                           <div className="flex items-center flex-1 min-w-0">
                             <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
                             <span className="text-xs font-semibold text-slate-900 break-words flex-1">{scheduledDineIn ? getDineInScheduleCountdownLabel(order, scheduleNow) : 'Immediate service'}</span>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {scheduledDineIn ? (
+                        <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                            <CalendarClock className="h-4 w-4" />
+                          </div>
+                          <div className="flex items-center flex-1 min-w-0">
+                            <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
+                            <span className="text-xs font-semibold text-slate-900 break-words flex-1">{getDineInScheduleCountdownLabel(order, scheduleNow)}</span>
                           </div>
                         </div>
                       ) : null}

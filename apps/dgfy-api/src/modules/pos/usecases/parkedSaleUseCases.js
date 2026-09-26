@@ -147,6 +147,28 @@ const normalizeSnapshot = (snapshot) => {
     return normalized;
 };
 
+const markReparkedSnapshotLines = (snapshot, previousSnapshot) => {
+    const previousLines = Array.isArray(previousSnapshot?.lines) ? previousSnapshot.lines : [];
+    if (previousLines.length === 0) return snapshot;
+    const consumedPreviousIndexes = new Set();
+    const lines = snapshot.lines.map((line) => {
+        if (line?.parked_snapshot_line === true) return line;
+        const currentLineKey = String(line?.line_key || line?.line_ref || '').trim();
+        const previousIndex = previousLines.findIndex((previousLine, index) => {
+            if (consumedPreviousIndexes.has(index)) return false;
+            const previousLineKey = String(previousLine?.line_key || previousLine?.line_ref || '').trim();
+            if (currentLineKey && previousLineKey) return currentLineKey === previousLineKey;
+            return toPositiveInt(previousLine?.item_id) === toPositiveInt(line?.item_id)
+                && Number(previousLine?.quantity) === Number(line?.quantity)
+                && Number(previousLine?.sale_price) === Number(line?.sale_price);
+        });
+        if (previousIndex < 0) return line;
+        consumedPreviousIndexes.add(previousIndex);
+        return { ...line, parked_snapshot_line: true };
+    });
+    return { ...snapshot, lines };
+};
+
 const normalizeTerminalId = (value) => {
     const terminalId = String(value || '').trim().toUpperCase();
     return TERMINAL_ID_PATTERN.test(terminalId) ? terminalId : null;

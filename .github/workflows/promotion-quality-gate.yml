@@ -1367,31 +1367,30 @@ jobs:
             echo "GHA_EOF_1066"
           } >> "$GITHUB_OUTPUT"
 
-  # #1712: new, advisory-only job -- the second half of this issue's "no functional check runs
-  # pre-staging/main" gap, distinct from Decision 1's lint coverage above. Runs the repaired
+  # #1712: advisory-only job -- the second half of this issue's "no functional check runs
+  # pre-staging/main" gap, distinct from Decision 1's lint coverage above. Runs
   # apps/dgfy-api/tests/frontend.imsPosSalesJourney.e2e.test.js (its own frontendDir path was stale
-  # since the apps/dgfy-api absorption, 50ec10d9f, 2026-07-20 -- fixed in this same PR) plus one new
-  # assertion (added in this PR) that actually drives TerminalOperationsWorkspace's admin "Items"
+  # since the apps/dgfy-api absorption, 50ec10d9f, 2026-07-20 -- fixed in the #1712 PR) plus one new
+  # assertion (added in that PR) that actually drives TerminalOperationsWorkspace's admin "Items"
   # tab -- the code path #1698 broke, never exercised by this file's pre-existing checkout/history/
   # receipt-only scenarios.
   #
-  # Ships advisory ONLY, same #1063/#1066 mechanism as every other job in this file -- not yet
-  # proven green on a real promotion run. Two honest, verified-live findings from this PR's own
-  # investigation, neither yet fixed here, both reasons this stays advisory:
-  #   1. The suite's own `ensureBrowserE2EUser()` registers a browser E2E user against the
-  #      "Original Legacy Data" tenant (`COMPANY_TOKEN = 'token-original'`) via
-  #      `POST /api/v1/auth/register` -- that tenant does not exist on a freshly migrated DB (no
-  #      seeder creates it), so this job provisions it via the already-documented, already-existing
-  #      `scripts/register_original_tenant.js` (docs/guides/SCRIPTS_GUIDE.md #9) below, run once per
-  #      job before the suite itself.
-  #   2. Even with that tenant provisioned, `ensureBrowserE2EUser()`'s own registration payload
-  #      (username/email/password only) is missing `phone_number`, which
-  #      `apps/dgfy-api/src/validators/authValidator.js` now requires unconditionally -- confirmed
-  #      live, HTTP 422 "Phone number is required". This is a real, pre-existing defect in the test
-  #      file itself, independent of the #1712 path fix, not introduced or fixed by this PR -- named
-  #      here rather than silently discovered later when this job's first real run reds out on it.
-  #      Tracked in this PR's own follow-up issue (flip-to-blocking) as a prerequisite, not treated
-  #      as already resolved.
+  # Ships advisory ONLY, same #1063/#1066 mechanism as every other job in this file -- deliberately,
+  # while reliability work continues (Pat's call, #1749; the advisory-to-blocking transition in that
+  # issue's original Definition of Done is deferred, not part of the #1749 non-blocking slice).
+  # The two setup blockers the #1712 PR named as the reasons this stays advisory are now resolved:
+  #   1. The suite's `ensureBrowserE2EUser()` registers its browser E2E user against the
+  #      "Original Legacy Data" tenant (`COMPANY_TOKEN = 'token-original'`), which does not exist
+  #      on a freshly migrated DB (no seeder creates it) -- this job provisions it via the
+  #      already-documented, already-existing `scripts/register_original_tenant.js`
+  #      (docs/guides/SCRIPTS_GUIDE.md #9) below, run once per job before the suite itself.
+  #   2. `ensureBrowserE2EUser()`'s registration payload now sends `phone_number`, which
+  #      `apps/dgfy-api/src/validators/authValidator.js` requires unconditionally (previously
+  #      confirmed live as HTTP 422 "Phone number is required").
+  # Five recent runs completed successfully including the E2E step (run IDs 35881140769,
+  # 35769529780, 35681287827, 35642102406, 35388351166), so execution evidence exists -- but those
+  # greens predate the required export-download assertion (#1749), which is what makes future
+  # green evidence proof of this journey rather than a vacuous pass.
   frontend-ims-pos-sales-e2e-quality:
     needs: gate
     if: needs.gate.outputs.is_promotion == 'true' && needs.gate.outputs.is_staging_leg != 'true'
@@ -1592,10 +1591,10 @@ jobs:
           DB_USER: root
           DB_PASSWORD: testpassword
 
-      # See this job's own header comment for known, unfixed reason #2 (`phone_number` required by
-      # authValidator.js, not sent by this suite's own `ensureBrowserE2EUser()`) this step is
-      # expected to still fail on until that's separately fixed -- advisory-only exists precisely
-      # so that doesn't block a promotion.
+      # Advisory-only by deliberate rollout posture (Pat's call, #1749 -- the blocking flip is
+      # deferred), not by unresolved setup: the tenant fixture above and the suite's own
+      # `phone_number` payload fix are both in place. Real per-step failures still surface
+      # through record_outcomes below.
       - name: Run frontend IMS/POS sales journey e2e
         id: run_ims_pos_sales_e2e
         if: steps.wait_services.outcome == 'success'
@@ -2307,7 +2306,7 @@ jobs:
         # blocking on the release/*->main leg since #1431 Phase 1
         timeout-minutes: 5
 
-      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): validates a release/<candidate_id>-rN -> main
+      # ADR 0082 Decision 8 / #1278 PR 2 (Phase 298): validates a release/<candidate_id> -> main
       # promotion PR carries a matching docs/releases/notes/<candidate_id>.md (schema, candidate_id,
       # production_date, production_commit -- either pending or a real 40-hex SHA -- the app version
       # table, and the required Included/Operational notes sections). Exits 0 ("not applicable") on

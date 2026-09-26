@@ -19,6 +19,8 @@ export const PAYMENT_TYPE_LABELS = Object.freeze({
   maya: 'Maya',
   card: 'Card',
   bank_transfer: 'Bank Transfer',
+  employee_credit: 'Employee Credit',
+  other: 'Other',
   qrph: 'QR Ph'
 });
 

@@ -32,7 +32,10 @@ import {
 import { resolvePosDeviceDriver } from './integrations/resolvePosDeviceDriver.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as posTerminalDeviceService from './services/posTerminalDeviceEnrollmentService.js';
-import { employeeCreditService } from '../employeeCredit/index.js';
+import {
+    employeeCreditService,
+    getEmployeeCreditReportUseCase
+} from '../employeeCredit/index.js';
 import { serviceRepository } from '../services/repositories/serviceRepository.js';
 import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
 import { buildCalculateServiceQuoteUseCase } from '../services/usecases/calculateServiceQuoteUseCase.js';
@@ -359,7 +362,10 @@ export const completePosPaymentSessionUseCase = buildCompletePosPaymentSessionUs
 export const getMerchantTenderReconciliationUseCase = buildGetMerchantTenderReconciliationUseCase({ posRepository });
 export const reviewMerchantTenderReconciliationUseCase = buildReviewMerchantTenderReconciliationUseCase({ posRepository });
 export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
-export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
+export const exportPosReportsUseCase = buildExportPosReportsUseCase({
+    posRepository,
+    employeeCreditReportUseCase: getEmployeeCreditReportUseCase
+});
 export const exportProcurementCsvUseCase = buildExportProcurementCsvUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });

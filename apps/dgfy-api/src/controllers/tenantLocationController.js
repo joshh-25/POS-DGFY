@@ -24,6 +24,7 @@ export default {
     listTenantLocations,
     createTenantLocation,
     updateTenantLocation,
+    updateDineInPaymentPolicy,
     deactivateTenantLocation,
     deleteTenantLocation
 };

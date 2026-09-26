@@ -25,22 +25,26 @@ describe('POS F&B modifier manager edit sessions', () => {
   it('hydrates the selected group in the click action and starts a blank new-group session', () => {
     render(<PosFnbModifierManager groups={groups} items={[]} locations={[]} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Size.*Active/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit option group Size' }));
     expect(screen.getByLabelText('Group name').value).toBe('size');
-    expect(screen.getByLabelText('Customer-facing name').value).toBe('Size');
+    expect(screen.getByRole('heading', { name: 'Add/Edit Option Name' })).toBeTruthy();
     expect(screen.getByLabelText('Option 1 name').value).toBe('Large');
 
-    fireEvent.click(screen.getByRole('button', { name: /New group/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Option Group' }));
     expect(screen.getByLabelText('Group name').value).toBe('');
-    expect(screen.getByLabelText('Customer-facing name').value).toBe('');
     expect(screen.getByLabelText('Option 1 name').value).toBe('');
   });
 
   it('keeps long add-on option lists inside a scrollable bounded panel', () => {
     render(<PosFnbModifierManager groups={groups} items={[]} locations={[]} />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Option Group' }));
+    const editorScroll = screen.getByTestId('fnb-option-group-editor-scroll');
     const optionsList = screen.getByTestId('fnb-modifier-options-list');
-    expect(optionsList.className).toContain('max-h-96');
+    expect(editorScroll.className).toContain('overflow-y-auto');
+    expect(editorScroll.className).toContain('pos-fnb-option-group-editor-body');
+    expect(screen.getByRole('button', { name: 'Reset All' }).parentElement.className).toContain('pos-fnb-option-group-editor-footer');
+    expect(optionsList.className).toContain('max-h-[32rem]');
     expect(optionsList.className).toContain('overflow-y-auto');
   });
 
@@ -48,24 +52,13 @@ describe('POS F&B modifier manager edit sessions', () => {
     const onCreate = vi.fn().mockResolvedValue();
     render(<PosFnbModifierManager groups={[]} items={[]} locations={[]} onCreate={onCreate} />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Add an Option Group' }));
     fireEvent.change(screen.getByLabelText('Group name'), { target: { value: 'Extras' } });
     fireEvent.change(screen.getByLabelText('Option 1 name'), { target: { value: 'Cheese' } });
     const required = screen.getByRole('checkbox', { name: 'Required' });
-    const minimum = screen.getByLabelText('Minimum selections');
 
     expect(required.checked).toBe(false);
-    expect(minimum.value).toBe('0');
-    expect(minimum.disabled).toBe(true);
-
-    fireEvent.click(required);
-    expect(minimum.value).toBe('1');
-    expect(minimum.disabled).toBe(false);
-    fireEvent.change(minimum, { target: { value: '2' } });
-    fireEvent.click(required);
-
-    expect(minimum.value).toBe('0');
-    expect(minimum.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Create group' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(onCreate.mock.calls[0][0]).toEqual(expect.objectContaining({

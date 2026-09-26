@@ -4,6 +4,7 @@ import { Check, Info, KeyRound, ListChecks, Search, ShieldCheck, Trash2, UserRou
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+import { POS_TABLE_SURFACE_CLASS } from '../components/PosTableSurface.jsx';
 
 const permissionSwitchClass = (enabled) => `relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors ${
   enabled ? 'border-[#2563EB] bg-[#2563EB]' : 'border-slate-300 bg-slate-200'
@@ -244,7 +245,7 @@ function MobileCashierTable({
     <div className="min-w-0 md:hidden">
       <p className="mb-2 px-1 text-[11px] font-medium text-slate-500">Swipe horizontally to view all permissions.</p>
       <div
-        className="min-w-0 overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200"
+        className={`${POS_TABLE_SURFACE_CLASS} min-w-0 overflow-x-auto overscroll-x-contain`}
         role="region"
         aria-label="Cashier permissions table on mobile"
         tabIndex={0}
@@ -420,7 +421,7 @@ function CashierScopeInfo() {
   );
 }
 
-function PermissionColumnHeader({ label, description }) {
+function PermissionColumnHeader({ label, description, className = '' }) {
   const tooltipId = `pos-terminal-column-help-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
   const infoButtonRef = useRef(null);
   const [tooltipHovered, setTooltipHovered] = useState(false);
@@ -459,7 +460,7 @@ function PermissionColumnHeader({ label, description }) {
   }, [tooltipOpen]);
 
   return (
-    <span role="columnheader" className="inline-flex items-center gap-1.5">
+    <span role="columnheader" className={`inline-flex items-center gap-1.5 ${className}`}>
       <span>{label}</span>
       <span className="group relative inline-flex shrink-0">
         <button
@@ -646,27 +647,31 @@ export default function PosTerminalCashierAccessTable({
             locked={locked}
             loading={loading}
           />
-          <div className="hidden overflow-hidden rounded-xl border border-slate-200 md:block">
+          <div className={`${POS_TABLE_SURFACE_CLASS} hidden md:block`}>
           <div className="overflow-x-auto">
-            <div className="min-w-[1080px]" role="table" aria-label="Cashier permissions for selected terminal">
+            <div className="pos-cashier-permissions-table min-w-[1080px]" role="table" aria-label="Cashier permissions for selected terminal">
             <div
               role="row"
-              className="grid grid-cols-[minmax(220px,1.25fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(150px,0.8fr)] gap-4 bg-[#F8FAFC] px-4 py-3 text-[11px] font-extrabold text-[#334155]"
+              className="pos-cashier-permissions-header grid grid-cols-[minmax(220px,1.25fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(150px,0.8fr)] gap-4 bg-[#F8FAFC] px-4 py-3 text-[11px] font-extrabold text-[#334155]"
             >
-              <span role="columnheader">Cashier</span>
+              <span role="columnheader" data-pos-cashier-name-header="true">Cashier</span>
               <PermissionColumnHeader
                 label="POS Discount Authorization"
                 description="Controls this cashier account&apos;s permission to authorize POS discounts."
+                className="pos-cashier-permission-subheader"
               />
               <PermissionColumnHeader
                 label="Day Close Access"
                 description="Controls this cashier account&apos;s permission to generate Z-reading reports."
+                className="pos-cashier-permission-subheader"
               />
               <PermissionColumnHeader
                 label="Cashier Void and Cash Authorization"
                 description="Controls separate POS void and cash refund or drawer adjustment permissions."
+                className="pos-cashier-permission-subheader"
               />
-              <span role="columnheader">Assigned terminals</span>
+              <span role="columnheader" data-pos-cashier-terminals-header="true">Assigned terminals</span>
+              <span role="columnheader" className="hidden min-[768px]:block min-[1200px]:hidden" data-pos-cashier-permissions-header="true">Permissions</span>
             </div>
             <div role="rowgroup">
               {visibleCashiers.map((cashier) => {
@@ -688,12 +693,12 @@ export default function PosTerminalCashierAccessTable({
                   <div
                     key={`terminal-cashier-row-${cashier.user_id}`}
                     role="row"
-                    className="grid grid-cols-[minmax(220px,1.25fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(150px,0.8fr)] items-center gap-4 border-t border-slate-100 px-4 py-3"
+                    className="pos-cashier-permissions-data-row grid grid-cols-[minmax(220px,1.25fr)_minmax(180px,1fr)_minmax(170px,1fr)_minmax(230px,1.2fr)_minmax(150px,0.8fr)] items-center gap-4 border-t border-slate-100 px-4 py-3"
                   >
                     <div role="cell" className="min-w-0">
                       <CashierName cashier={cashier} canRemoveCashiers={canRemoveCashiers} onRemove={setCashierRemoveUser} disabled={locked || loading} />
                     </div>
-                    <div role="cell" className="min-w-0">
+                    <div role="cell" data-pos-cashier-permission="discount" aria-label={`POS discount authorization for ${cashierLabel}`} className="min-w-0">
                       <div className="flex flex-col items-start gap-2">
                         <PermissionSwitch
                           label={hasDiscountAccess ? 'Enabled' : 'Disabled'}
@@ -725,7 +730,7 @@ export default function PosTerminalCashierAccessTable({
                         ) : null}
                       </div>
                     </div>
-                    <div role="cell" className="min-w-0">
+                    <div role="cell" data-pos-cashier-permission="day-close" aria-label={`Day close access for ${cashierLabel}`} className="min-w-0">
                       <div className="flex flex-col items-start gap-2">
                         <PermissionSwitch
                           label={hasDayCloseAccess ? 'Enabled' : 'Disabled'}
@@ -754,7 +759,7 @@ export default function PosTerminalCashierAccessTable({
                         ) : null}
                       </div>
                     </div>
-                    <div role="cell" className="min-w-0">
+                    <div role="cell" data-pos-cashier-permission="cashier-void" aria-label={`Void and cash authorization for ${cashierLabel}`} className="min-w-0">
                       <div className="inline-grid max-w-full grid-cols-[minmax(0,max-content)_auto] items-center gap-x-2 gap-y-2">
                         <PermissionSwitch
                           label={hasVoidAccess ? 'Void enabled' : 'Can void POS transactions'}
@@ -776,7 +781,7 @@ export default function PosTerminalCashierAccessTable({
                         />
                       </div>
                     </div>
-                    <div role="cell" className="relative min-w-0">
+                    <div role="cell" data-pos-cashier-terminals-cell="true" className="relative min-w-0">
                       <TerminalAssignmentControl
                         cashier={cashier}
                         terminals={assignmentTerminals}

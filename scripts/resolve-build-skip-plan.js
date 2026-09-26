@@ -62,11 +62,15 @@
  * CLI:
  *   node scripts/resolve-build-skip-plan.js --revision <github.sha> [--apps app1,app2,...]
  *     [--project-root <path>] [--environment <DEV|STAGING|PROD>] [--release-revision <rN>]
+ *     [--release-revisions-json '{"<app>":"<rN>",...}']
  *
  *   `--release-revision` (#1977, Phase 342) is the candidate-wide release revision; when set,
  *   each app's checked tag is its revision-aware matrix tag (frontend `X.Y.Z-rN-staging`,
  *   backend `X.Y.Z-rN`, PROD `X.Y.Z-rN`) instead of the legacy uniform `X.Y.Z[-channel]` tag.
  *   Omit it for DEV/ad-hoc dispatches (unchanged legacy behavior).
+ *
+ *   `--release-revisions-json` is the per-app revision map for STAGING/PROD release builds.
+ *   DEV bypasses registry inspection and always rebuilds selected apps to move the shared `dev` alias.
  *
  *   Prints one JSON blob on its own stdout line (mirrors `check-promotion-candidate.js
  *   --resolve-app-shas`'s own "machine-readable, on its own stdout line" convention):
@@ -81,8 +85,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { decideImmutability, runInspect } = require('./check-tag-immutability');
-const { APPS, resolveFileDependencyPackages, readVersionAt } = require('./check-app-version-bump');
+const { APPS, resolveFileDependencyPackages, readVersionAt, fileExistsAtRef } = require('./check-app-version-bump');
 const { IMAGE_NAME_BY_APP } = require('./check-image-version-parity');
+const { resolveAppReachabilityVerdict, REACHABILITY_SCOPE_DIRS } = require('./resolve-web-core-reachability');
+const { resolveNarrowingEnabled } = require('./lib/web-core-reachability-gate-toggle');
 // #1977 (Phase 342): revision-aware tag derivation -- a candidate dispatch checks the
 // revision tag (X.Y.Z-rN[-staging]), not the legacy uniform X.Y.Z[-channel] tag.
 const { resolveReleaseTags } = require('./resolve-release-tags');
@@ -107,7 +113,7 @@ function deriveChannelSuffix(environment) {
     case '':
       return '';
     case 'DEV':
-      return '-dev';
+      return ''; // DEV uses the moving, versionless `dev` alias.
     case 'STAGING':
       return '-staging';
     case 'PROD':
@@ -165,10 +171,22 @@ function gitDiffChangedFiles({ repoRoot, fromRevision, toRevision, paths }) {
  *   - repoRoot (default: this repo).
  *   - inspectFn (default: runInspect from check-tag-immutability.js).
  *   - diffFn (default: gitDiffChangedFiles above).
+ *   - reachabilityFn (default: resolveAppReachabilityVerdict above).
+ *   - narrowingEnabledFn (default: resolveNarrowingEnabled above).
  *
  * Returns { skip: boolean, code, detail }.
  */
-function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles }) {
+async function decideBuildSkip({
+  app,
+  image,
+  versionTag,
+  currentRevision,
+  repoRoot = REPO_ROOT,
+  inspectFn = runInspect,
+  diffFn = gitDiffChangedFiles,
+  reachabilityFn = resolveAppReachabilityVerdict,
+  narrowingEnabledFn = resolveNarrowingEnabled,
+}) {
   const imageRef = `${image}:${versionTag}`;
   const inspectResult = inspectFn(imageRef);
   const verdict = decideImmutability({
@@ -228,6 +246,23 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
     };
   }
 
+  const onlyReachabilityScopedFiles = changedFiles.every((file) =>
+    REACHABILITY_SCOPE_DIRS.some((directory) => file === directory || file.startsWith(`${directory}/`)));
+
+  if (narrowingEnabledFn() && onlyReachabilityScopedFiles) {
+    const reachabilityVerdict = await reachabilityFn(repoRoot, app, changedFiles, {
+      fileExistsAtRef: (file) => fileExistsAtRef(repoRoot, currentRevision, file),
+    });
+
+    if (reachabilityVerdict.applicable && !reachabilityVerdict.changed) {
+      return {
+        skip: true,
+        code: 'content-equivalent-narrowed',
+        detail: `${existingRevision}..${currentRevision}: ${changedFiles.length} changed file(s) under ${REACHABILITY_SCOPE_DIRS.join('/')} are not reachable from ${app}'s production entry, skipping`,
+      };
+    }
+  }
+
   // Outcome 4: content genuinely differs -- do NOT skip. Build normally; the existing, unmodified
   // Decision 7 guard refuses it at the end, exactly as it does today. This is not a new failure
   // path -- "don't skip" already produces the required "fail loudly" behavior (plan §1).
@@ -257,18 +292,41 @@ function decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot = R
  * environment-neutral `X.Y.Z-rN`, PROD `X.Y.Z-rN`); without one, the legacy uniform
  * `X.Y.Z[-channel]` derivation applies unchanged (DEV dispatches and any ad-hoc dispatch
  * outside a tracked candidate never set a revision).
+ *
+ * #2071: DEV always resolves to the versionless shared `dev` alias; `prRef` is ignored for
+ * compatibility with callers that have not yet dropped the old optional flag.
  */
-function deriveVersionTag({ version, environment, app, revision }) {
+function deriveVersionTag({ version, environment, app, revision, prRef }) {
+  if (String(environment || '').toUpperCase() === 'DEV') return 'dev';
   if (revision === undefined || revision === null || String(revision).trim() === '') {
+    if (prRef !== undefined && prRef !== null && String(prRef).trim() !== '') {
+      return resolveReleaseTags({ app, version, environment, prRef }).tag;
+    }
     return `${version}${deriveChannelSuffix(environment)}`;
   }
   return resolveReleaseTags({ app, version, environment, revision }).tag;
 }
 
-function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revision, repoRoot = REPO_ROOT, inspectFn = runInspect, diffFn = gitDiffChangedFiles } = {}) {
+async function resolveBuildSkipPlan({
+  apps = APPS,
+  currentRevision,
+  environment,
+  revision,
+  revisionsByApp = null,
+  prRef = null,
+  repoRoot = REPO_ROOT,
+  inspectFn = runInspect,
+  diffFn = gitDiffChangedFiles,
+  reachabilityFn = resolveAppReachabilityVerdict,
+  narrowingEnabledFn = resolveNarrowingEnabled,
+} = {}) {
   const plan = {};
   for (const app of apps) {
     try {
+      if (String(environment || '').toUpperCase() === 'DEV') {
+        plan[app] = { skip: false, code: 'dev-moving-tag', detail: 'DEV always rebuilds selected apps so the shared dev tag moves to this dispatch SHA' };
+        continue;
+      }
       const image = IMAGE_NAME_BY_APP(app);
       const rawVersion = readVersionAt(repoRoot, currentRevision, `apps/${app}`);
       if (!rawVersion) {
@@ -279,8 +337,23 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revis
         };
         continue;
       }
-      const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision });
-      plan[app] = decideBuildSkip({ app, image, versionTag, currentRevision, repoRoot, inspectFn, diffFn });
+      // #2055: an explicit per-app entry wins; otherwise the shared candidate-wide
+      // revision (v1-style dispatch), if any, still applies to every app.
+      const appRevision = (revisionsByApp && revisionsByApp[app] !== undefined && revisionsByApp[app] !== null && String(revisionsByApp[app]).trim() !== '')
+        ? revisionsByApp[app]
+        : revision;
+      const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision: appRevision, prRef });
+      plan[app] = await decideBuildSkip({
+        app,
+        image,
+        versionTag,
+        currentRevision,
+        repoRoot,
+        inspectFn,
+        diffFn,
+        reachabilityFn,
+        narrowingEnabledFn,
+      });
     } catch (error) {
       plan[app] = {
         skip: false,
@@ -296,14 +369,20 @@ function resolveBuildSkipPlan({ apps = APPS, currentRevision, environment, revis
 
 function parseArgs(argv) {
   // Note: `--revision` here is github.sha for this build (pre-existing); the #1977 candidate
-  // revision rides on the separate, optional `--release-revision` (rN).
-  const options = { revision: '', releaseRevision: '', apps: null, projectRoot: REPO_ROOT, environment: undefined };
+  // revision rides on the separate, optional `--release-revision` (rN), and #2055's per-app
+  // revisions ride on `--release-revisions-json` (an explicit per-app entry wins over the
+  // shared one). `--dev-pr-ref` covers DEV ad-hoc dispatches with no allocated revision.
+  const options = { revision: '', releaseRevision: '', releaseRevisionsJson: '', devPrRef: '', apps: null, projectRoot: REPO_ROOT, environment: undefined };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--revision') {
       options.revision = argv[++index] || '';
     } else if (arg === '--release-revision') {
       options.releaseRevision = argv[++index] || '';
+    } else if (arg === '--release-revisions-json') {
+      options.releaseRevisionsJson = argv[++index] || '';
+    } else if (arg === '--dev-pr-ref') {
+      options.devPrRef = argv[++index] || '';
     } else if (arg === '--apps') {
       const raw = argv[++index] || '';
       options.apps = raw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -321,7 +400,18 @@ function parseArgs(argv) {
   if (!options.revision) {
     throw new Error('--revision is required (github.sha for this build)');
   }
-  return options;
+  let revisionsByApp = null;
+  if (options.releaseRevisionsJson) {
+    try {
+      revisionsByApp = JSON.parse(options.releaseRevisionsJson);
+    } catch (error) {
+      throw new Error(`--release-revisions-json is not valid JSON: ${error.message}`);
+    }
+    if (!revisionsByApp || typeof revisionsByApp !== 'object' || Array.isArray(revisionsByApp)) {
+      throw new Error('--release-revisions-json must be a JSON object mapping app name to revision (e.g. \'{"dgfy-api":"r16"}\')');
+    }
+  }
+  return { ...options, revisionsByApp };
 }
 
 function printPlan(plan) {
@@ -343,13 +433,15 @@ function writeGithubOutput(plan) {
   fs.appendFileSync(outputPath, `${lines}\n`);
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const plan = resolveBuildSkipPlan({
+  const plan = await resolveBuildSkipPlan({
     apps: options.apps || undefined,
     currentRevision: options.revision,
     environment: options.environment,
     revision: options.releaseRevision === '' ? undefined : options.releaseRevision,
+    revisionsByApp: options.revisionsByApp,
+    prRef: options.devPrRef === '' ? null : options.devPrRef,
     repoRoot: options.projectRoot,
   });
   printPlan(plan);
@@ -357,7 +449,10 @@ function main() {
 }
 
 if (require.main === module) {
-  main();
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
 }
 
 module.exports = {

@@ -417,13 +417,13 @@ return (
                     currentViewMode === 'checkout'
                         ? 'contents'
                         : (currentViewMode === 'history'
-                            ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-5 sm:pb-0 max-sm:p-2 max-sm:pb-0'
+                            ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden'
                             : 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-5')
                 }
             >
             {currentViewMode === 'history' && (
                 <div key="view-history" className="catalog-slide-enter h-full min-h-0 min-w-0 max-w-full max-sm:animate-pos-slide-in">
-                <Suspense fallback={<section className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS sales history...</section>}>
+                <Suspense fallback={<section className="text-sm text-slate-500">Loading POS sales history...</section>}>
                     <POSTransactionHistoryPanel
                         historySearch={historySearch}
                         setHistorySearch={setHistorySearch}

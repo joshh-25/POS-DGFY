@@ -22,13 +22,15 @@ export const buildFnbCheckoutPayload = ({
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, only meaningful at a
   // payment_mode='customer_choice' store -- storeValidator.js ignores it otherwise. Defaults to
   // 'full' so every pre-#866 caller of this shared builder (which never passes this) is unaffected.
-  paymentElection = 'full'
+  paymentElection = 'full',
+  paymentType = 'cash'
 }) => ({
   location_id: selectedLocationId ?? selectedStore?.location_id,
   order_method: orderMethod,
   customer_name: String(customerName || '').trim(),
   customer_phone: String(customerPhone || '').trim(),
   customer_email: String(customerEmail || '').trim(),
+  payment_type: String(paymentType || 'cash').trim().toLowerCase(),
   payment_election: paymentElection === 'downpayment' ? 'downpayment' : 'full',
   promo_code: String(promoCode || '').trim().toUpperCase(),
   // #672: voucher_code is a separate field from promo_code -- the two are independent checkout

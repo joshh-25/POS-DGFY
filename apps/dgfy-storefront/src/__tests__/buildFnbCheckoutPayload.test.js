@@ -160,4 +160,16 @@ describe('buildFnbCheckoutPayload', () => {
     expect(buildFnbCheckoutPayload({ ...base, paymentElection: 'downpayment' }).payment_election).toBe('downpayment');
     expect(buildFnbCheckoutPayload({ ...base, paymentElection: 'not_a_real_choice' }).payment_election).toBe('full');
   });
+
+  it('includes the selected payment type so quote totals use the same payment policy as checkout', () => {
+    const base = {
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed' },
+      orderMethod: 'dine_in',
+      cart: [{ item_id: 1, quantity: 1 }]
+    };
+
+    expect(buildFnbCheckoutPayload({ ...base, paymentType: 'gcash' }).payment_type).toBe('gcash');
+    expect(buildFnbCheckoutPayload(base).payment_type).toBe('cash');
+  });
 });

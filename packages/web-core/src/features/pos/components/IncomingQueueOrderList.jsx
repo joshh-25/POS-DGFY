@@ -77,10 +77,10 @@ export default function IncomingQueueOrderList({
   onRequestReject = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
+  scheduleNow = null,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel = () => {},
   handleUpdateOnlineOrderDeliveryAddress = () => {},
-  scheduleNow = null,
   columns = 'auto',
   draggable = false
 }) {
@@ -146,10 +146,10 @@ export default function IncomingQueueOrderList({
           onRequestReject={onRequestReject}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
+          scheduleNow={scheduleNow}
           deliveryPersonnelState={deliveryPersonnelState}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
-          scheduleNow={scheduleNow}
           draggable={draggable}
         />
       ))}
@@ -178,10 +178,10 @@ function OrderCard({
   onRequestReject,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
+  scheduleNow,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel,
   handleUpdateOnlineOrderDeliveryAddress,
-  scheduleNow,
   draggable
 }) {
   const orderId = Number(order.pos_transaction_id);
@@ -197,6 +197,7 @@ function OrderCard({
     && order.payment_status === 'unpaid'
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
@@ -208,6 +209,7 @@ function OrderCard({
     && orderBalanceDue > 0
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const deliveryCoords = parseDeliveryCoords(order);
