@@ -68,9 +68,9 @@ export function useCheckoutTotalsAndGating({
     // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
     // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).
     const voucherDiscountAmount = quoteResult?.voucher_discount_amount != null ? Number(quoteResult.voucher_discount_amount) : 0;
-    const totalAmount = isDineInPayAtStore
-      ? subtotal - discountAmount - voucherDiscountAmount + deliveryFee
-      : quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount - voucherDiscountAmount + deliveryFee + serviceFee;
+    const totalAmount = quoteResult?.total_amount != null
+      ? Number(quoteResult.total_amount)
+      : subtotal - discountAmount - voucherDiscountAmount + deliveryFee + serviceFee;
     return {
       subtotal_amount: subtotal,
       discount_amount: discountAmount,
@@ -94,7 +94,7 @@ export function useCheckoutTotalsAndGating({
       balance_due_amount: quoteResult?.balance_due_amount ?? null,
       downpayment_refundable: quoteResult?.downpayment_refundable ?? null
     };
-  }, [allowDineInPayAtStore, cartTotal, fnbPaymentType, isFnbMode, orderMethod, quoteResult]);
+  }, [cartTotal, quoteResult]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
   const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
   const promoStatusTone = checkoutError || quoteError
