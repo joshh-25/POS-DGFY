@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as maplibreModule from 'maplibre-gl';
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
 // via StoresMapLazy.jsx's dynamic import(), so the CSS loads only when a
@@ -38,7 +38,8 @@ import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.j
 import { useStoreRoute } from '../../shared/hooks/useStoreRoute.js';
 
 // Vite's dependency optimizer can point MapLibre at an internal, non-served worker URL.
-// Pin the worker to the emitted asset so the discovery map works in both dev and production builds.
+// ?worker&url bundles the worker's shared module into a self-contained asset; pin that emitted
+// asset so the discovery map works in both dev and production builds.
 if (typeof maplibregl.setWorkerUrl === 'function' && maplibreWorkerUrl) {
   maplibregl.setWorkerUrl(maplibreWorkerUrl);
 }
