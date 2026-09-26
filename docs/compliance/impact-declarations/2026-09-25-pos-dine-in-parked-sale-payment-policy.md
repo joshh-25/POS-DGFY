@@ -62,3 +62,5 @@ permission, inventory-authority, and payment settlement boundaries.
   contract required by the payment-timing guard.
 - API route coverage verifies branch-scoped dine-in payment-policy updates
   honor UserLocationGrant access without relying on an undefined permission group.
+- The aggregate staging merge restores the canonical POS downpayment-settings contract mocks and removes a stale unused import from the older staging tree; no product behavior changes in these integration cleanups.
+- The aggregate staging merge binds the dine-in cash idempotency-key branch to the existing `isDineInOrder` helper; this preserves the staged dine-in cash-collection behavior and resolves the integrated file's missing helper reference.

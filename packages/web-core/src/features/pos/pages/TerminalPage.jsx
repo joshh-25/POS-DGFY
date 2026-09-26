@@ -6,6 +6,7 @@ import {
   getDineInScheduleAlertCandidates,
   isDineInScheduleAlertsEnabled
 } from '../utils/dineInScheduleAlerts.js';
+import { isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
@@ -6253,7 +6254,9 @@ export default function TerminalPage() {
       await collectCash(orderId, {
         terminal_id: terminalId,
         cash_received: cashReceived,
-        idempotency_key: createIdempotencyKey(isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash')
+        idempotency_key: createIdempotencyKey(
+          isDineInOrder ? 'pos-dine-in-cash' : isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash'
+        )
       });
       try {
         await printOnlineOrderReceiptById(orderId, { automatic: true });

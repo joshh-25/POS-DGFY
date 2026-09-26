@@ -22,7 +22,7 @@ export const VAT_DISCLOSURE_NOTE = 'VAT shown above is already included in item 
  * quote/order response cannot reintroduce the removed customer-facing fee. The VAT row is
  * informational and is never added into the total because it is already included in subtotal_amount.
  */
-export const buildFeeAndVatSummaryRows = ({ totals = {}, money } = {}) => {
+export const buildFeeAndVatSummaryRows = ({ totals = {}, money, includeServiceFee = true } = {}) => {
   if (typeof money !== 'function') return [];
   const vatAmount = Number(totals.vat_amount || 0);
   return [{ label: VAT_DISCLOSURE_LABEL, value: money(vatAmount) }];
