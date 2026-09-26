@@ -101,6 +101,9 @@ export function StorefrontHeaderNav({
   if (typeof onTrack === 'function') {
     drawerRows.push({ key: 'track', label: 'Track Order', icon: Package, onClick: onTrack });
   }
+  if (!isAuthenticated && typeof onAccount === 'function') {
+    drawerRows.push({ key: 'account', label: 'Log in / Sign up', icon: User, onClick: onAccount });
+  }
 
   const textStyle = {
     border: 'none',
@@ -381,9 +384,11 @@ export function StorefrontHeaderNav({
                           </div>
                           <div
                             style={{
+                              width: '100%',
                               minWidth: 0,
                               minHeight: 52,
-                              display: 'flex',
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(0, 1fr)',
                               alignItems: 'center'
                             }}
                           >

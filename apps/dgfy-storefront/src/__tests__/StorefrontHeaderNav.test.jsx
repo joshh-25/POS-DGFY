@@ -51,6 +51,32 @@ describe('StorefrontHeaderNav', () => {
 
     await user.click(menuButton);
     expect(screen.getByRole('dialog', { name: 'Mobile navigation' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Log in / Sign up' })).toBeNull();
+  });
+
+  it('shows a direct login action for signed-out mobile shoppers and fills the branch row', async () => {
+    const user = userEvent.setup();
+    const onAccount = vi.fn();
+
+    render(
+      <StorefrontHeaderNav
+        {...baseProps}
+        isMobileViewport
+        isAuthenticated={false}
+        onAccount={onAccount}
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Open navigation menu' }));
+
+    const branchButton = screen.getByRole('button', { name: 'Space Bar Festive (2nd Floor)' });
+    expect(branchButton.parentElement.style.width).toBe('100%');
+    expect(branchButton.parentElement.style.display).toBe('grid');
+
+    await user.click(screen.getByRole('button', { name: 'Log in / Sign up' }));
+
+    expect(onAccount).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog', { name: 'Mobile navigation' })).toBeNull();
   });
 
   it('shows initials without the first name in desktop signed-in storefront header', () => {
