@@ -16,7 +16,7 @@ export function resolveOrderTimingPolicy(location = null) {
 export function formatLeadTimeRangePhrase(minDays, maxDays) {
   const min = dayCount(minDays); const max = dayCount(maxDays);
   if (min === null || max === null || max < min) return '';
-  return min === max ? `within ${min} ${min === 1 ? 'day' : 'days'}` : `in ${min}-${max} days`;
+  return min === max ? `in ${min} ${min === 1 ? 'day' : 'days'}` : `in ${min}-${max} days`;
 }
 export function buildLeadTimeExpectationMessage({ policy, isDeliveryOrder }) {
   const phrase = formatLeadTimeRangePhrase(policy?.leadTimeMinDays, policy?.leadTimeMaxDays);
