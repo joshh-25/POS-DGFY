@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-09-26
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-09-26-pos-frontend-workflow-contracts
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance,payments,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.26
 verification_evidence: npm --prefix apps/dgfy-ims run lint,npm --prefix apps/dgfy-ims run build,npm --prefix apps/dgfy-pos run build,npm --prefix apps/dgfy-storefront run lint,npm --prefix apps/dgfy-storefront run build,npm --prefix apps/dgfy-storefront test -- --reporter=dot,focused POS regression tests,git diff --check,node scripts/check-app-version-bump.js
