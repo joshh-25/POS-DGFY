@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { canCheckout, getCheckoutBlockReason } from '../../../../shared/model/checkoutRules.js';
-import { DGFY_CONVENIENCE_FEE_LABEL, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
+import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import {
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
@@ -59,8 +59,8 @@ export function useCheckoutTotalsAndGating({
     const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
     const discountAmount = quoteResult?.discount_amount != null ? Number(quoteResult.discount_amount) : 0;
     // Phase 333: the Storefront no longer derives a customer-facing DGFY fee
-    // locally when a quote is unavailable. The API remains authoritative and
-    // new Storefront quotes return service_fee_amount=0.
+    // locally when a quote is unavailable. Keep the legacy field only for
+    // compatibility with quote consumers; it is never rendered to customers.
     const serviceFee = quoteResult?.service_fee_amount != null
       ? Number(quoteResult.service_fee_amount)
       : 0;
@@ -70,7 +70,7 @@ export function useCheckoutTotalsAndGating({
     const voucherDiscountAmount = quoteResult?.voucher_discount_amount != null ? Number(quoteResult.voucher_discount_amount) : 0;
     const totalAmount = quoteResult?.total_amount != null
       ? Number(quoteResult.total_amount)
-      : subtotal - discountAmount - voucherDiscountAmount + deliveryFee + serviceFee;
+      : subtotal - discountAmount - voucherDiscountAmount + deliveryFee;
     return {
       subtotal_amount: subtotal,
       discount_amount: discountAmount,
@@ -78,7 +78,6 @@ export function useCheckoutTotalsAndGating({
       discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
       voucher_discount_amount: voucherDiscountAmount,
       service_fee_amount: serviceFee,
-      service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
       delivery_fee: deliveryFee,
       vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
       vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,

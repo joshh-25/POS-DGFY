@@ -20,7 +20,6 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
     dgfyPrimary,
     finalStatusLabel,
     hasDeliveryFee,
-    hasServiceFee,
     hasSubtotal,
     isPickup,
     orderTypeLabel,
@@ -176,11 +175,6 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
                               {hasDeliveryFee && (
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 6 }}>
                                   <span>Delivery fee</span><span>{money(trackingResult.deliveryFee)}</span>
-                                </div>
-                              )}
-                              {hasServiceFee && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 6 }}>
-                                  <span>Service fee</span><span>{money(trackingResult.serviceFeeAmount)}</span>
                                 </div>
                               )}
                             </>

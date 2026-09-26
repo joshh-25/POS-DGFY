@@ -71,7 +71,7 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
     const totals = { ...baseTotals, service_fee_amount: 0, total_amount: 94.5 };
 
     it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
     });
 
     it('desktop shows the split rows and the disclosure note', () => {
@@ -95,34 +95,36 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
     });
   });
 
-  describe('1%-fee scenario -- PHP 95.55 total', () => {
-    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 95.55 };
+  describe('legacy fee payload -- customer fee remains hidden', () => {
+    const totals = { ...baseTotals, service_fee_amount: 1.05, service_fee_label: 'DGFY convenience fee', total_amount: 94.5 };
 
-    it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+    it('reconciles without adding the legacy service fee', () => {
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
     });
 
-    it('desktop shows the nonzero fee, unchanged VAT figure, and new total', () => {
+    it('desktop hides the legacy fee and keeps the current total', () => {
       render(<SimpleCheckoutSummaryContent {...desktopBaseProps} totals={totals} />);
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('DGFY convenience fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 95.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
     });
 
-    it('mobile summary sheet shows the same nonzero fee and new total', () => {
+    it('mobile summary sheet hides the legacy fee and keeps the current total', () => {
       render(<SimpleCheckoutMobileSummaryPanel {...mobileBaseProps} totals={totals} />);
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('DGFY convenience fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 95.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
     });
   });
 
   describe('voucher applied -- VAT figure is unchanged (pre-discount basis)', () => {
-    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 85.55 };
+    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 84.5 };
     const voucherDiscountSummaryRow = { label: 'Voucher', value: '- PHP 10.00' };
 
     it('still shows the same pre-discount vat_amount the backend sent, not a recomputed figure', () => {
@@ -136,23 +138,23 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
       expect(screen.getByText('Voucher')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 85.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 84.50').length).toBeGreaterThan(0);
     });
   });
 
   describe('nonzero delivery fee', () => {
-    const totals = { ...baseTotals, delivery_fee: 50, service_fee_amount: 1.05, total_amount: 145.55 };
+    const totals = { ...baseTotals, delivery_fee: 50, service_fee_amount: 1.05, total_amount: 144.5 };
 
     it('reconciles with the delivery fee included and leaves the Delivery Fee row untouched', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
 
       render(<SimpleCheckoutSummaryContent {...desktopBaseProps} totals={totals} isDeliveryOrder />);
       expect(screen.getByText('Delivery Fee')).toBeTruthy();
       expect(screen.getByText('PHP 50.00')).toBeTruthy();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
-      expect(screen.getAllByText('PHP 145.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 144.50').length).toBeGreaterThan(0);
     });
   });
 });

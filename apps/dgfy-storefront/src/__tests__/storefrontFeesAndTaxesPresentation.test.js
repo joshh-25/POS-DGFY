@@ -20,13 +20,12 @@ describe('buildFeeAndVatSummaryRows', () => {
     expect(rows).toEqual([{ label: VAT_DISCLOSURE_LABEL, value: 'PHP 11.25' }]);
   });
 
-  it('nonzero (1%) fee + nonzero VAT', () => {
+  it('ignores a legacy nonzero fee and preserves only the VAT disclosure', () => {
     const rows = buildFeeAndVatSummaryRows({
       totals: { service_fee_amount: 1.05, vat_amount: 11.25 },
       money
     });
     expect(rows).toEqual([
-      { label: 'Service Fee', value: 'PHP 1.05' },
       { label: VAT_DISCLOSURE_LABEL, value: 'PHP 11.25' }
     ]);
   });
@@ -36,23 +35,15 @@ describe('buildFeeAndVatSummaryRows', () => {
       totals: { service_fee_amount: 1.05, vat_amount: 0 },
       money
     });
-    expect(rows[1]).toEqual({ label: VAT_DISCLOSURE_LABEL, value: 'PHP 0.00' });
+    expect(rows[0]).toEqual({ label: VAT_DISCLOSURE_LABEL, value: 'PHP 0.00' });
   });
 
-  it('missing service_fee_label falls back to "Service Fee"', () => {
-    const rows = buildFeeAndVatSummaryRows({
-      totals: { service_fee_amount: 1.05, vat_amount: 11.25 },
-      money
-    });
-    expect(rows[0].label).toBe('Service Fee');
-  });
-
-  it('present service_fee_label is used verbatim (ADR 0012 Decision 1 label snapshot)', () => {
+  it('ignores a legacy service fee label', () => {
     const rows = buildFeeAndVatSummaryRows({
       totals: { service_fee_amount: 1.05, vat_amount: 11.25, service_fee_label: 'DGFY convenience fee' },
       money
     });
-    expect(rows[0].label).toBe('DGFY convenience fee');
+    expect(rows).toEqual([{ label: VAT_DISCLOSURE_LABEL, value: 'PHP 11.25' }]);
   });
 
   it('missing totals defaults every figure to 0 rather than throwing or rendering NaN', () => {

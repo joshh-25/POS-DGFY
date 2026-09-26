@@ -1,8 +1,7 @@
 /* @vitest-environment jsdom */
 // #1615: F&B has no existing render-level summary test -- this covers the split fee/VAT rows
 // (replacing the old combined "Fees & Taxes" row) across desktop (both `detailed` and `compact`
-// variants) and mobile. The zero-fee scenario represents the current Storefront contract; the
-// positive-fee scenarios preserve rendering compatibility for older quote/order responses.
+// variants) and mobile. Legacy positive-fee payloads must not reintroduce the removed customer fee.
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -16,7 +15,7 @@ const cart = [{ item_id: 1, cart_line_id: 'l1', name: 'Silog Meal', quantity: 1,
 
 // PHP 105 gross subtotal, PHP 10.50 promo discount, PHP 11.25 VAT already included in the gross
 // (pre-discount basis -- unaffected by the promo/voucher below). Reconciliation:
-// subtotal - discount + deliveryFee + serviceFee === total_amount.
+// subtotal - discount + deliveryFee === total_amount.
 const baseTotals = {
   subtotal_amount: 105,
   delivery_fee: 0,
@@ -81,7 +80,7 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     const totals = { ...baseTotals, service_fee_amount: 0, total_amount: 94.5 };
 
     it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
     });
 
     it('desktop detailed variant shows the split rows and the disclosure note', () => {
@@ -115,34 +114,36 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
     });
   });
 
-  describe('1%-fee scenario -- PHP 95.55 total', () => {
-    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 95.55 };
+  describe('legacy fee payload -- customer fee remains hidden', () => {
+    const totals = { ...baseTotals, service_fee_amount: 1.05, service_fee_label: 'DGFY convenience fee', total_amount: 94.5 };
 
-    it('reconciles subtotal - discount + deliveryFee + serviceFee === total_amount', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+    it('reconciles without adding the legacy service fee', () => {
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
     });
 
-    it('desktop detailed variant shows the nonzero fee, unchanged VAT figure, and new total', () => {
+    it('desktop detailed variant hides the legacy fee and keeps the current total', () => {
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} variant="detailed" />);
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('DGFY convenience fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 95.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
     });
 
-    it('mobile summary sheet shows the same nonzero fee and new total', () => {
+    it('mobile summary sheet hides the legacy fee and keeps the current total', () => {
       render(<FnbCheckoutMobileSummaryPanel {...mobileBaseProps} totals={totals} />);
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('DGFY convenience fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 95.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 94.50').length).toBeGreaterThan(0);
     });
   });
 
   describe('voucher applied -- VAT figure is unchanged (pre-discount basis)', () => {
-    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 85.55 };
+    const totals = { ...baseTotals, service_fee_amount: 1.05, total_amount: 84.5 };
     const voucherDiscountSummaryRow = { label: 'Voucher', value: '- PHP 10.00' };
 
     it('still shows the same pre-discount vat_amount the backend sent, not a recomputed figure', () => {
@@ -157,23 +158,23 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
       expect(screen.getByText('Voucher')).toBeTruthy();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getByText('PHP 11.25')).toBeTruthy();
-      expect(screen.getAllByText('PHP 85.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 84.50').length).toBeGreaterThan(0);
     });
   });
 
   describe('nonzero delivery fee', () => {
-    const totals = { ...baseTotals, delivery_fee: 50, service_fee_amount: 1.05, total_amount: 145.55 };
+    const totals = { ...baseTotals, delivery_fee: 50, service_fee_amount: 1.05, total_amount: 144.5 };
 
     it('reconciles with the delivery fee included and leaves the Delivery Fee row untouched', () => {
-      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee + totals.service_fee_amount).toBeCloseTo(totals.total_amount, 2);
+      expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
 
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} isDeliveryOrder variant="detailed" />);
       expect(screen.getByText('Delivery Fee')).toBeTruthy();
       expect(screen.getByText('PHP 50.00')).toBeTruthy();
-      expect(screen.getByText('Service Fee')).toBeTruthy();
-      expect(screen.getByText('PHP 1.05')).toBeTruthy();
+      expect(screen.queryByText('Service Fee')).toBeNull();
+      expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
-      expect(screen.getAllByText('PHP 145.55').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('PHP 144.50').length).toBeGreaterThan(0);
     });
   });
 });

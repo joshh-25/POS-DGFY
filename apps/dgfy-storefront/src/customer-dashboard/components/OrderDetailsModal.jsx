@@ -142,7 +142,6 @@ export function OrderDetailsModal({
   const scheduledFor = display.scheduled_for || order.scheduled_for;
   const subtotal = order.subtotal_amount ?? display.subtotal_amount;
   const deliveryFee = order.delivery_fee ?? display.delivery_fee;
-  const serviceFee = order.service_fee ?? order.service_fee_amount ?? display.service_fee;
   const discountAmount = order.discount_amount ?? display.discount_amount;
   const orderStatus = order.status_label || order.status;
   const placedDate = formatDate(order.occurred_at);
@@ -161,9 +160,6 @@ export function OrderDetailsModal({
   const totalRows = [
     { label: 'Subtotal', value: subtotal },
     { label: 'Delivery fee', value: deliveryFee },
-    ...(toFiniteNumber(serviceFee) !== null && Number(serviceFee) > 0
-      ? [{ label: 'Service fee', value: serviceFee }]
-      : []),
     ...(toFiniteNumber(discountAmount) !== null ? [{ label: 'Discount', value: -Math.abs(Number(discountAmount)) }] : [])
   ].filter((row) => toFiniteNumber(row.value) !== null);
   const disclosureIconStyle = {

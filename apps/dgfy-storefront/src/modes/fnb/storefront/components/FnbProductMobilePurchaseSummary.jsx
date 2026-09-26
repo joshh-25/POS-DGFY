@@ -20,7 +20,6 @@ export function FnbProductMobilePurchaseSummary({
   onOpen,
   quantity,
   selectedModifiersTotal,
-  serviceFee,
   spacing,
   subtotalPrice,
   totalPrice
@@ -153,8 +152,7 @@ export function FnbProductMobilePurchaseSummary({
               <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: spacing(1.5), display: 'grid', gap: 10 }}>
                 {[
                   ['Subtotal', formatMoney(subtotalPrice)],
-                  ['Add-ons', formatMoney(selectedModifiersTotal)],
-                  ...(Number(serviceFee || 0) > 0 ? [['Service Fee', formatMoney(serviceFee)]] : [])
+                  ['Add-ons', formatMoney(selectedModifiersTotal)]
                 ].map(([label, value]) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#475569' }}>
                     <span>{label}</span>
