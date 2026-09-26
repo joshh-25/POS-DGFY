@@ -10,6 +10,7 @@ import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstan
 import { getUnavailableFulfillmentMessage } from '../../../../shared/model/storefrontFulfillmentOptions.js';
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
+import { StorefrontScheduledDateTimePicker } from '../../../../shared/components/checkout/StorefrontScheduledDateTimePicker.jsx';
 import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
 import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutAddLocationActionStyle, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
@@ -81,9 +82,11 @@ export function RetailOrderFulfillmentStep({
   showExpandedDeliveryMap = false,
   showMobileAddressModal = false,
   specialInstructions = '',
-  orderTimingPolicy = resolveOrderTimingPolicy()
+  orderTimingPolicy = resolveOrderTimingPolicy(),
+  storefrontHours
 }) {
   const [unavailableMessage, setUnavailableMessage] = useState('');
+  const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
   const isDeliveryOrder = orderMethod === 'delivery';
   const resolvedOrderMethodOptions = orderMethodOptions || RETAIL_ORDER_METHOD_OPTIONS;
   // #1217: nothing to choose when the location supports exactly one method -- the chooser and
@@ -93,6 +96,8 @@ export function RetailOrderFulfillmentStep({
   const activeAddress = deliverySavedLocations.find((location) => String(location.id) === String(selectedSavedLocationId)) || null;
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
   const showTimingSection = showTimingStep && (showTimingChooser || showSchedule);
+  const showScheduledDateTimePicker = (showSchedule && !showImmediate)
+    || (showTimingChooser && scheduleMode === 'schedule');
   const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection, isDeliveryOrder });
   const typography = getCheckoutStepTypography();
 
@@ -157,7 +162,10 @@ export function RetailOrderFulfillmentStep({
           <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
           {showTimingChooser ? <div data-testid="order-timing-choice-grid" style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
             <SelectableOptionCard
-              onClick={() => onScheduleModeChange('asap')}
+              onClick={() => {
+                setDateTimePickerOpen(false);
+                onScheduleModeChange('asap');
+              }}
               label="NOW"
               icon={({ size }) => <Zap size={size} />}
               active={scheduleMode === 'asap'}
@@ -201,36 +209,22 @@ export function RetailOrderFulfillmentStep({
               fontFamily={CHECKOUT_FONT_FAMILY}
             />
           </div> : null}
-          {showSchedule && !showImmediate ? <>
+          {showSchedule && !showImmediate ? (
             <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
-            <label style={{ display: 'grid', gap: 6, ...typography.fieldLabel, color: '#475569' }}>Scheduled date and time<input type="datetime-local" value={scheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', ...typography.control, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px', background: '#f8fafc', color: '#1e293b', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }} /></label>
-          </> : null}
-          {showTimingChooser && scheduleMode === 'schedule' ? (
-            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-              Scheduled date and time
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <style>{`.retail-modern-datetime-input::-webkit-calendar-picker-indicator { display: none !important; -webkit-appearance: none !important; }`}</style>
-                <div style={{ position: 'absolute', left: 14, color: RETAIL_ACCENT, pointerEvents: 'none' }}><CalendarDays size={18} /></div>
-                <input
-                  type="datetime-local"
-                  className="retail-modern-datetime-input"
-                  value={scheduledFor}
-                  onChange={(event) => onScheduledForChange(event.target.value)}
-                  onClick={(event) => {
-                    try {
-                      event.target.showPicker();
-                    } catch (error) {
-                      // The native picker is optional and not supported by every browser.
-                    }
-                  }}
-                  style={{ width: '100%', ...typography.control, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 42px', background: '#f8fafc', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }}
-                  onMouseEnter={(event) => { event.target.style.borderColor = RETAIL_ACCENT; event.target.style.background = '#ffffff'; }}
-                  onMouseLeave={(event) => { if (document.activeElement !== event.target) { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; } }}
-                  onFocus={(event) => { event.target.style.borderColor = RETAIL_ACCENT; event.target.style.background = '#ffffff'; event.target.style.boxShadow = `0 0 0 3px ${RETAIL_ACCENT_SHADOW_STRONG}, inset 0 2px 4px rgba(15,23,42,0.02)`; }}
-                  onBlur={(event) => { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; event.target.style.boxShadow = 'inset 0 2px 4px rgba(15,23,42,0.02)'; }}
-                />
-              </div>
-            </label>
+          ) : null}
+          {showScheduledDateTimePicker ? (
+            <StorefrontScheduledDateTimePicker
+              brandColor={RETAIL_ACCENT}
+              brandShadow={RETAIL_ACCENT_SHADOW_STRONG}
+              isResponsive={isMobileViewport}
+              onApply={onScheduledForChange}
+              onOpenChange={setDateTimePickerOpen}
+              open={dateTimePickerOpen}
+              storefrontHours={storefrontHours}
+              leadTimeMinDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMinDays : null}
+              leadTimeMaxDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMaxDays : null}
+              value={scheduledFor}
+            />
           ) : null}</> : <FulfillmentMethodNotice accentColor={RETAIL_ACCENT} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
         </div>
       </div>
