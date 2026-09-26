@@ -11,7 +11,6 @@ export function PaymentMethodSelectorBlock({
   options = [],
   emptyMessage,
   DropdownComponent,
-  portalMenu = false,
   triggerStyle,
   menuStyle,
   optionStyle,
@@ -53,7 +52,6 @@ export function PaymentMethodSelectorBlock({
           onChange={(nextValue) => onChange(String(nextValue))}
           options={options}
           emptyMessage={emptyMessage}
-          portalMenu={portalMenu}
           triggerStyle={triggerStyle}
           menuStyle={paymentMenuStyle}
           optionStyle={paymentOptionStyle}
