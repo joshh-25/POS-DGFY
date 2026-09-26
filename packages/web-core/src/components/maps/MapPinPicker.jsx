@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as maplibreModule from 'maplibre-gl';
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Crosshair, Maximize2, Search as SearchIcon, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
@@ -24,7 +24,8 @@ import {
 const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
 
 // Vite's dependency optimizer can point MapLibre at an internal, non-served worker URL.
-// Pin the worker to the emitted asset so the picker works in both dev and production builds.
+// ?worker&url makes Vite bundle the worker's shared module into a self-contained asset.
+// Pin that emitted asset so the picker works in both dev and production builds.
 if (typeof maplibregl.setWorkerUrl === 'function' && maplibreWorkerUrl) {
   maplibregl.setWorkerUrl(maplibreWorkerUrl);
 }
