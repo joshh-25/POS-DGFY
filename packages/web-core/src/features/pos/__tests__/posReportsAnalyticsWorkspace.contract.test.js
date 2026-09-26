@@ -88,7 +88,7 @@ describe('POS report category filter contract', () => {
     expect(salesTableSource).toContain('Transaction/Invoice');
     expect(salesTableSource).toContain('label: `POS Profit/Loss (${symbol})`');
     expect(workspaceSource).toContain('ariaLabel="POS reports"');
-    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
+    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">');
     expect(workspaceSource).toContain('data-testid="pos-reports-sticky-tabs"');
     expect(workspaceSource).toContain('POS_MOBILE_STICKY_TAB_ROW_CLASS');
     expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4');

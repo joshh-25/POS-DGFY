@@ -892,7 +892,7 @@ function PosReportsAnalyticsWorkspace({
   );
 
   return (
-    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">
+    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">
       {renderReportFilterPanel()}
       {renderReportDateFilterPanel()}
       <div
