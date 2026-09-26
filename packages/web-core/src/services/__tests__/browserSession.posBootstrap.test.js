@@ -86,16 +86,6 @@ describe('standalone POS browser session bootstrap', () => {
     ]);
   });
 
-  it.each(['#/backoffice/overview', '#/business-admin/overview'])('allows cookie refresh for a fresh Back Office route (%s)', async (hash) => {
-    globalThis.window.location.hash = hash;
-    const session = await import('../browserSession.js');
-
-    expect(session.canRefreshBrowserSession()).toBe(true);
-    await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
-    expect(session.getAccessToken()).toBe('refreshed-access-token');
-    expect(session.getCompanyToken()).toBe('tenant-company-token');
-  });
-
   it('restores the standalone POS session after a page reload', async () => {
     const firstSession = await import('../browserSession.js');
     firstSession.setBrowserSession({

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarClock, ChefHat, ClipboardList, LayoutGrid, Percent, Plus, RefreshCcw, Utensils } from 'lucide-react';
 import { toast } from 'sonner';
 import { getItems } from '../../../services/itemService.js';
@@ -16,7 +16,12 @@ import {
   listFnbKitchenStations,
   listFnbModifierGroups,
   listFnbReservations,
+  mergeFnbChecks,
   replaceFnbItemModifierGroups,
+  splitFnbCheck,
+  transferFnbCheck,
+  updateFnbCheckStatus,
+  updateFnbKitchenTicketStatus,
   updateFnbReservationStatus,
   updateFnbServiceChargeSettings,
   upsertFnbItemKitchenRoute
@@ -93,10 +98,9 @@ const ActionButton = ({ children, className = '', ...props }) => (
   </button>
 );
 
-export default function FnbPage({ embedded = false }) {
+export default function FnbPage() {
   const [activeTab, setActiveTab] = useState('floor');
   const [loading, setLoading] = useState(true);
-  const [refreshingPanel, setRefreshingPanel] = useState('');
   const [busy, setBusy] = useState('');
   const [dashboard, setDashboard] = useState(null);
   const [diningAreas, setDiningAreas] = useState([]);
@@ -113,6 +117,9 @@ export default function FnbPage({ embedded = false }) {
   const [modifierForm, setModifierForm] = useState({ name: 'Doneness', min_select: 1, max_select: 1, options_text: 'Rare\nMedium\nWell done' });
   const [routeForm, setRouteForm] = useState({ item_id: '', kitchen_station_id: '', default_course: 'main' });
   const [modifierAssignmentForm, setModifierAssignmentForm] = useState({ item_id: '', modifier_group_ids: [] });
+  const [checkLineSelections, setCheckLineSelections] = useState({});
+  const [checkTransferTargets, setCheckTransferTargets] = useState({});
+  const [checkMergeSources, setCheckMergeSources] = useState({});
   const [reservationTableSelections, setReservationTableSelections] = useState({});
   const [reservationForm, setReservationForm] = useState({
     customer_name: '',
@@ -136,6 +143,7 @@ export default function FnbPage({ embedded = false }) {
   )), [checks]);
 
   const loadAll = useCallback(async () => {
+    setLoading(true);
     try {
       const [
         dashboardData,
@@ -177,104 +185,15 @@ export default function FnbPage({ embedded = false }) {
       setReservations(Array.isArray(reservationData?.reservations) ? reservationData.reservations : []);
       setServiceCharge(serviceChargeData?.service_charge || { enabled: false, label: 'Restaurant service charge', rate: 0, taxable: false });
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to load F&B setup.');
+      toast.error(error?.response?.data?.message || 'Unable to load Food & Beverage console.');
     } finally {
       setLoading(false);
     }
   }, [reservationFilters]);
 
-  const refreshPanel = useCallback(async (panelKey) => {
-    setRefreshingPanel(panelKey);
-    try {
-      switch (panelKey) {
-        case 'floor': {
-          const [dashboardData, diningData] = await Promise.all([
-            getFnbDashboard(),
-            listFnbDiningAreas()
-          ]);
-          setDashboard(dashboardData || null);
-          setDiningAreas(Array.isArray(diningData?.dining_areas) ? diningData.dining_areas : []);
-          break;
-        }
-        case 'checks': {
-          const [dashboardData, checkData] = await Promise.all([
-            getFnbDashboard(),
-            listFnbChecks({ statuses: 'open,sent_to_kitchen,partially_paid', limit: 100 })
-          ]);
-          setDashboard(dashboardData || null);
-          setChecks(Array.isArray(checkData?.checks) ? checkData.checks : []);
-          break;
-        }
-        case 'kitchen': {
-          const [dashboardData, checkData, stationData] = await Promise.all([
-            getFnbDashboard(),
-            listFnbChecks({ statuses: 'open,sent_to_kitchen,partially_paid', limit: 100 }),
-            listFnbKitchenStations()
-          ]);
-          setDashboard(dashboardData || null);
-          setChecks(Array.isArray(checkData?.checks) ? checkData.checks : []);
-          setStations(Array.isArray(stationData?.kitchen_stations) ? stationData.kitchen_stations : []);
-          break;
-        }
-        case 'menu': {
-          const [modifierData, routeData, itemModifierData, itemData] = await Promise.all([
-            listFnbModifierGroups(),
-            listFnbItemKitchenRoutes(),
-            listFnbItemModifierGroups(),
-            getItems({ limit: 200 })
-          ]);
-          setModifierGroups(Array.isArray(modifierData?.modifier_groups) ? modifierData.modifier_groups : []);
-          setItemKitchenRoutes(Array.isArray(routeData?.item_kitchen_routes) ? routeData.item_kitchen_routes : []);
-          setItemModifierGroups(Array.isArray(itemModifierData?.item_modifier_groups) ? itemModifierData.item_modifier_groups : []);
-          setMenuItems(Array.isArray(itemData?.items) ? itemData.items : []);
-          break;
-        }
-        case 'reservations': {
-          const [dashboardData, diningData, reservationData] = await Promise.all([
-            getFnbDashboard(),
-            listFnbDiningAreas(),
-            listFnbReservations({
-              limit: 100,
-              ...(reservationFilters.status ? { status: reservationFilters.status } : {}),
-              ...(reservationFilters.table_id ? { table_id: reservationFilters.table_id } : {}),
-              ...(reservationFilters.from ? { from: new Date(reservationFilters.from).toISOString() } : {}),
-              ...(reservationFilters.to ? { to: new Date(reservationFilters.to).toISOString() } : {})
-            })
-          ]);
-          setDashboard(dashboardData || null);
-          setDiningAreas(Array.isArray(diningData?.dining_areas) ? diningData.dining_areas : []);
-          setReservations(Array.isArray(reservationData?.reservations) ? reservationData.reservations : []);
-          break;
-        }
-        case 'settings': {
-          const serviceChargeData = await getFnbServiceChargeSettings();
-          setServiceCharge(serviceChargeData?.service_charge || { enabled: false, label: 'Restaurant service charge', rate: 0, taxable: false });
-          break;
-        }
-        default:
-          await loadAll();
-      }
-    } finally {
-      setRefreshingPanel('');
-    }
-  }, [loadAll, reservationFilters]);
-
-  const initialLoadStartedRef = useRef(false);
-  const previousReservationFiltersRef = useRef(reservationFilters);
-
   useEffect(() => {
-    if (initialLoadStartedRef.current) return;
-    initialLoadStartedRef.current = true;
-    void loadAll();
+    loadAll();
   }, [loadAll]);
-
-  useEffect(() => {
-    if (loading || previousReservationFiltersRef.current === reservationFilters) return;
-    previousReservationFiltersRef.current = reservationFilters;
-    void refreshPanel('reservations').catch((error) => {
-      toast.error(error?.response?.data?.message || 'Unable to refresh reservations.');
-    });
-  }, [loading, refreshPanel, reservationFilters]);
 
   const tableCount = useMemo(
     () => diningAreas.reduce((sum, area) => sum + (Array.isArray(area.tables) ? area.tables.length : 0), 0),
@@ -300,14 +219,14 @@ export default function FnbPage({ embedded = false }) {
     return Array.from(groups.entries());
   }, [reservations]);
 
-  const submitWithRefresh = async (key, action, successMessage, panelKey = activeTab) => {
+  const submitWithRefresh = async (key, action, successMessage) => {
     setBusy(key);
     try {
       await action();
-      await refreshPanel(panelKey);
+      await loadAll();
       toast.success(successMessage);
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Unable to save F&B setup changes.');
+      toast.error(error?.response?.data?.message || 'Unable to save Food & Beverage changes.');
     } finally {
       setBusy('');
     }
@@ -325,11 +244,11 @@ export default function FnbPage({ embedded = false }) {
       service_type: areaForm.service_type,
       tables
     });
-  }, 'Dining area created.', 'floor');
+  }, 'Dining area created.');
 
   const createStation = () => submitWithRefresh('station', async () => {
     await createFnbKitchenStation(stationForm);
-  }, 'Kitchen station created.', 'kitchen');
+  }, 'Kitchen station created.');
 
   const createModifier = () => submitWithRefresh('modifier', async () => {
     const options = String(modifierForm.options_text || '')
@@ -344,14 +263,14 @@ export default function FnbPage({ embedded = false }) {
       required: Number(modifierForm.min_select || 0) > 0,
       options
     });
-  }, 'Modifier group created.', 'menu');
+  }, 'Modifier group created.');
 
   const saveItemKitchenRoute = () => submitWithRefresh('item-route', async () => {
     await upsertFnbItemKitchenRoute(Number(routeForm.item_id), {
       kitchen_station_id: Number(routeForm.kitchen_station_id),
       default_course: routeForm.default_course
     });
-  }, 'Item kitchen route saved.', 'menu');
+  }, 'Item kitchen route saved.');
 
   const saveItemModifierGroups = () => submitWithRefresh('item-modifiers', async () => {
     await replaceFnbItemModifierGroups(Number(modifierAssignmentForm.item_id), {
@@ -360,7 +279,7 @@ export default function FnbPage({ embedded = false }) {
         sort_order: index
       }))
     });
-  }, 'Item modifier assignments saved.', 'menu');
+  }, 'Item modifier assignments saved.');
 
   const selectMenuItemForAssignment = (itemId) => {
     const normalizedItemId = String(itemId || '');
@@ -379,6 +298,34 @@ export default function FnbPage({ embedded = false }) {
     });
   };
 
+  const transferSelectedCheck = (check) => submitWithRefresh(`transfer-${check.check_id}`, async () => {
+    await transferFnbCheck(check.check_id, { table_id: Number(checkTransferTargets[check.check_id]) });
+  }, 'Check transferred.');
+
+  const splitSelectedCheck = (check) => submitWithRefresh(`split-${check.check_id}`, async () => {
+    const lineIds = Array.from(checkLineSelections[check.check_id] || [])
+      .map((entry) => Number(entry))
+      .filter((entry) => Number.isInteger(entry) && entry > 0);
+    await splitFnbCheck(check.check_id, { line_ids: lineIds });
+    setCheckLineSelections((prev) => ({ ...prev, [check.check_id]: new Set() }));
+  }, 'Check split.');
+
+  const mergeSelectedChecks = (check) => submitWithRefresh(`merge-${check.check_id}`, async () => {
+    await mergeFnbChecks(check.check_id, { source_check_id: Number(checkMergeSources[check.check_id]) });
+  }, 'Checks merged.');
+
+  const toggleSplitLine = (checkId, lineId, checked) => {
+    setCheckLineSelections((prev) => {
+      const next = new Set(prev[checkId] || []);
+      if (checked) {
+        next.add(Number(lineId));
+      } else {
+        next.delete(Number(lineId));
+      }
+      return { ...prev, [checkId]: next };
+    });
+  };
+
   const createReservation = () => submitWithRefresh('reservation', async () => {
     await createFnbReservation({
       ...reservationForm,
@@ -390,7 +337,7 @@ export default function FnbPage({ embedded = false }) {
       requested_at: new Date(reservationForm.requested_at).toISOString()
     });
     setReservationForm((prev) => ({ ...prev, customer_name: '', customer_phone: '', notes: '', table_ids: [] }));
-  }, 'Reservation request created.', 'reservations');
+  }, 'Reservation request created.');
 
   const updateReservation = (reservation, status) => submitWithRefresh(
     `reservation-${reservation.reservation_request_id}-${status}`,
@@ -400,8 +347,7 @@ export default function FnbPage({ embedded = false }) {
       duration_minutes: Number(reservation.duration_minutes || 90),
       buffer_minutes: Number(reservation.buffer_minutes || 15)
     }),
-    'Reservation updated.',
-    'reservations'
+    'Reservation updated.'
   );
 
   const saveServiceCharge = () => submitWithRefresh('service-charge', async () => {
@@ -409,87 +355,41 @@ export default function FnbPage({ embedded = false }) {
       ...serviceCharge,
       rate: Number(serviceCharge.rate || 0)
     });
-  }, 'Restaurant service charge settings saved.', 'settings');
-
-  const handleRefresh = () => {
-    void refreshPanel(activeTab).catch((error) => {
-      toast.error(error?.response?.data?.message || 'Unable to refresh this F&B section.');
-    });
-  };
+  }, 'Restaurant service charge settings saved.');
 
   return (
-    <div className="business-admin-fnb-workspace" data-testid="business-admin-fnb-workspace">
-      {!embedded ? (
-        <div className="business-admin-fnb-page-header flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">F&B Setup</h1>
-            <p className="text-sm text-slate-500">Configure restaurant setup and monitor activity. Live service actions happen in the POS terminal.</p>
-          </div>
-          <ActionButton type="button" onClick={handleRefresh} disabled={Boolean(refreshingPanel)}>
-            <RefreshCcw className={`h-4 w-4 ${refreshingPanel === activeTab ? 'animate-spin' : ''}`} />
-            {refreshingPanel === activeTab ? 'Refreshing...' : 'Refresh'}
-          </ActionButton>
-        </div>
-      ) : null}
-
-      <section className="business-admin-fnb-overview" aria-labelledby="fnb-overview-title">
-        <div className="business-admin-fnb-overview-heading">
-          <div>
-            <span className="business-admin-fnb-overview-kicker">F&amp;B setup status</span>
-            <h2 id="fnb-overview-title">Service at a glance</h2>
-          </div>
-          <span className="business-admin-fnb-live-badge"><span aria-hidden="true" />POS live</span>
-        </div>
-        <div className="business-admin-fnb-summary">
-          <div className={`business-admin-fnb-metric ${Number(dashboard?.open_checks ?? checks.length) > 0 ? 'has-activity' : ''}`}>
-            <div className="business-admin-fnb-metric-icon"><ClipboardList className="h-4 w-4" /></div>
-            <div className="business-admin-fnb-metric-copy">
-              <span>Open checks</span>
-              <strong>{dashboard?.open_checks ?? checks.length}</strong>
-              <small>In progress</small>
-            </div>
-          </div>
-          <div className="business-admin-fnb-metric">
-            <div className="business-admin-fnb-metric-icon"><LayoutGrid className="h-4 w-4" /></div>
-            <div className="business-admin-fnb-metric-copy">
-              <span>Tables</span>
-              <strong>{tableCount}</strong>
-              <small>On floor</small>
-            </div>
-          </div>
-          <div className="business-admin-fnb-metric">
-            <div className="business-admin-fnb-metric-icon"><ChefHat className="h-4 w-4" /></div>
-            <div className="business-admin-fnb-metric-copy">
-              <span>Kitchen</span>
-              <strong>{stations.length}</strong>
-              <small>Configured</small>
-            </div>
-          </div>
-          <div className={`business-admin-fnb-metric ${reservations.some((entry) => entry.status === 'requested') ? 'has-activity' : ''}`}>
-            <div className="business-admin-fnb-metric-icon"><CalendarClock className="h-4 w-4" /></div>
-            <div className="business-admin-fnb-metric-copy">
-              <span>Reservations</span>
-              <strong>{reservations.filter((entry) => entry.status === 'requested').length}</strong>
-              <small>Needs review</small>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div className="business-admin-fnb-boundary-note" data-testid="fnb-live-monitor-notice">
-        <span className="business-admin-fnb-boundary-icon" aria-hidden="true"><Utensils className="h-4 w-4" /></span>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <strong>Setup &amp; monitoring only</strong>
-          <span>Open checks, kitchen actions, payments, and table changes happen in the POS terminal.</span>
+          <h1 className="text-2xl font-semibold text-slate-900">Food & Beverage</h1>
+          <p className="text-sm text-slate-500">Run floor service, checks, kitchen routing, menu modifiers, reservation requests, and restaurant service charge.</p>
+        </div>
+        <ActionButton type="button" onClick={loadAll} disabled={loading}>
+          <RefreshCcw className="h-4 w-4" />
+          Refresh
+        </ActionButton>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">Open Checks</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{dashboard?.open_checks ?? checks.length}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">Tables</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{tableCount}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">Kitchen Stations</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{stations.length}</p>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <p className="text-xs font-semibold uppercase text-slate-500">Pending Reservations</p>
+          <p className="mt-2 text-2xl font-semibold text-slate-900">{reservations.filter((entry) => entry.status === 'requested').length}</p>
         </div>
       </div>
 
-      <nav className="business-admin-fnb-tabs" aria-label="Food & Beverage sections">
-        <div className="business-admin-fnb-tabs-heading">
-          <span>Manage F&amp;B setup</span>
-          <small>Choose a section to configure</small>
-        </div>
-        <div className="business-admin-fnb-tabs-scroll" role="tablist">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const active = tab.key === activeTab;
@@ -497,50 +397,24 @@ export default function FnbPage({ embedded = false }) {
             <button
               key={tab.key}
               type="button"
-              id={`fnb-tab-${tab.key}`}
-              role="tab"
-              aria-selected={active}
-              aria-controls="fnb-active-panel"
               onClick={() => setActiveTab(tab.key)}
-              className={`business-admin-fnb-tab ${active ? 'active' : ''}`}
+              className={`inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-semibold ${active ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-900'}`}
             >
               <Icon className="h-4 w-4" />
-              <span>{tab.label}</span>
+              {tab.label}
             </button>
           );
         })}
-        </div>
-        <span className="business-admin-fnb-tabs-hint" aria-hidden="true">Swipe for more</span>
-      </nav>
+      </div>
 
       {loading ? (
-        <p className="business-admin-fnb-loading">Loading F&amp;B setup...</p>
+        <p className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading Food & Beverage console...</p>
       ) : (
-        <div
-          id="fnb-active-panel"
-          className="business-admin-fnb-tab-panel"
-          role="tabpanel"
-          aria-busy={refreshingPanel === activeTab}
-          aria-labelledby={`fnb-tab-${activeTab}`}
-        >
-        {refreshingPanel === activeTab ? (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 text-sm text-teal-800" role="status">
-            <RefreshCcw className="h-4 w-4 animate-spin" />
-            Refreshing this section...
-          </div>
-        ) : null}
         <>
           {activeTab === 'floor' && (
-            <div className="business-admin-fnb-layout business-admin-fnb-layout--tables grid gap-4 xl:grid-cols-[1fr_360px]">
-              <section className="business-admin-fnb-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Floor setup</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Tables</h2>
-                    <p className="business-admin-fnb-panel-description">Organize dining areas and seating for the POS floor.</p>
-                  </div>
-                  <span className="business-admin-fnb-panel-count">{tableCount} tables</span>
-                </div>
+            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Floor</h2>
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   {diningAreas.map((area) => (
                     <article key={area.dining_area_id} className="rounded-lg border border-slate-200 p-3">
@@ -561,22 +435,10 @@ export default function FnbPage({ embedded = false }) {
                       </div>
                     </article>
                   ))}
-                  {diningAreas.length === 0 && (
-                    <div className="business-admin-fnb-inline-empty">
-                      <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-                      <span>No dining areas configured yet.</span>
-                    </div>
-                  )}
                 </div>
               </section>
-              <section className="business-admin-fnb-panel business-admin-fnb-setup-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Add to floor</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Create Area</h2>
-                    <p className="business-admin-fnb-panel-description">Add a dining area and generate its tables.</p>
-                  </div>
-                </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Create Area</h2>
                 <div className="mt-3 space-y-3">
                   <Field label="Area Name"><TextInput value={areaForm.name} onChange={(event) => setAreaForm({ ...areaForm, name: event.target.value })} /></Field>
                   <Field label="Service Type">
@@ -601,16 +463,9 @@ export default function FnbPage({ embedded = false }) {
           )}
 
           {activeTab === 'checks' && (
-            <section className="business-admin-fnb-panel rounded-lg border border-slate-200 bg-white p-4" data-testid="fnb-checks-read-only">
-              <div className="business-admin-fnb-panel-header flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <span className="business-admin-fnb-panel-kicker">POS live view</span>
-                  <h2 className="text-lg font-semibold text-slate-900">Open Checks</h2>
-                  <p className="business-admin-fnb-panel-description">Active guest bills from the POS terminal.</p>
-                </div>
-                <span className="business-admin-fnb-read-only-pill">Read only</span>
-              </div>
-              <div className="business-admin-fnb-record-grid mt-4 grid gap-3 lg:grid-cols-2">
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
+              <h2 className="text-lg font-semibold text-slate-900">Open Checks</h2>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {checks.map((check) => (
                   <article key={check.check_id} className="rounded-lg border border-slate-200 p-3">
                     <div className="flex items-start justify-between gap-3">
@@ -620,46 +475,63 @@ export default function FnbPage({ embedded = false }) {
                       </div>
                       <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusBadgeClass(check.status)}`}>{check.status}</span>
                     </div>
-                    <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Line snapshot</p>
-                      <div className="mt-2 space-y-1">
-                        {(check.lines || []).slice(0, 5).map((line, index) => (
-                          <div key={line.check_line_id || `${check.check_id}-${line.item_id || index}`} className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-medium text-slate-700">{line.item?.name || line.item_name || `Item #${line.item_id || index + 1}`}</span>
-                            <span className="shrink-0 text-slate-500">x{formatKitchenQuantity(line.quantity)}</span>
-                          </div>
-                        ))}
-                        {(check.lines || []).length === 0 && <p className="text-xs text-slate-500">No line snapshot available.</p>}
-                        {(check.lines || []).length > 5 && <p className="text-xs text-slate-500">+{(check.lines || []).length - 5} more lines</p>}
-                      </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {['sent_to_kitchen', 'partially_paid', 'paid', 'voided'].map((status) => (
+                        <ActionButton key={status} type="button" onClick={() => submitWithRefresh(`check-${check.check_id}-${status}`, () => updateFnbCheckStatus(check.check_id, { status }), 'Check updated.')} disabled={Boolean(busy)}>
+                          {status.replace(/_/g, ' ')}
+                        </ActionButton>
+                      ))}
+                    </div>
+                    <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 md:grid-cols-3">
+                      <Field label="Transfer To">
+                        <SelectInput value={checkTransferTargets[check.check_id] || ''} onChange={(event) => setCheckTransferTargets((prev) => ({ ...prev, [check.check_id]: event.target.value }))}>
+                          <option value="">Table</option>
+                          {allTables.filter((table) => Number(table.table_id) !== Number(check.table_id)).map((table) => (
+                            <option key={table.table_id} value={table.table_id}>{table.area_name} - {table.label || table.table_number}</option>
+                          ))}
+                        </SelectInput>
+                        <ActionButton type="button" onClick={() => transferSelectedCheck(check)} disabled={Boolean(busy) || !checkTransferTargets[check.check_id]} className="mt-2 w-full">Transfer</ActionButton>
+                      </Field>
+                      <Field label="Split Lines">
+                        <div className="mt-1 max-h-32 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                          {(check.lines || []).map((line) => (
+                            <label key={line.check_line_id} className="flex items-center justify-between gap-2 text-xs text-slate-700">
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={(checkLineSelections[check.check_id] || new Set()).has(Number(line.check_line_id))}
+                                  onChange={(event) => toggleSplitLine(check.check_id, line.check_line_id, event.target.checked)}
+                                />
+                                {line.item?.name || `Item #${line.item_id}`}
+                              </span>
+                              <span className="text-slate-500">x{line.quantity}</span>
+                            </label>
+                          ))}
+                          {(check.lines || []).length === 0 && <p className="text-xs text-slate-500">No lines to split.</p>}
+                        </div>
+                        <ActionButton type="button" onClick={() => splitSelectedCheck(check)} disabled={Boolean(busy) || (checkLineSelections[check.check_id] || new Set()).size === 0} className="mt-2 w-full">Split</ActionButton>
+                      </Field>
+                      <Field label="Merge Source">
+                        <SelectInput value={checkMergeSources[check.check_id] || ''} onChange={(event) => setCheckMergeSources((prev) => ({ ...prev, [check.check_id]: event.target.value }))}>
+                          <option value="">Check</option>
+                          {checks.filter((entry) => Number(entry.check_id) !== Number(check.check_id)).map((entry) => (
+                            <option key={entry.check_id} value={entry.check_id}>Check #{entry.check_id}</option>
+                          ))}
+                        </SelectInput>
+                        <ActionButton type="button" onClick={() => mergeSelectedChecks(check)} disabled={Boolean(busy) || !checkMergeSources[check.check_id]} className="mt-2 w-full">Merge</ActionButton>
+                      </Field>
                     </div>
                   </article>
                 ))}
-                {checks.length === 0 && (
-                  <div className="business-admin-fnb-empty-state" data-testid="fnb-checks-empty">
-                    <span className="business-admin-fnb-empty-icon" aria-hidden="true"><ClipboardList className="h-5 w-5" /></span>
-                    <div className="business-admin-fnb-empty-copy">
-                      <h3>No open checks.</h3>
-                      <p>Checks opened on the POS terminal will appear here.</p>
-                    </div>
-                    <span className="business-admin-fnb-empty-status">All clear</span>
-                  </div>
-                )}
+                {checks.length === 0 && <p className="text-sm text-slate-500">No open checks.</p>}
               </div>
             </section>
           )}
 
           {activeTab === 'kitchen' && (
-            <div className="business-admin-fnb-layout business-admin-fnb-layout--kitchen grid gap-4 xl:grid-cols-[1fr_360px]">
-              <section className="business-admin-fnb-panel rounded-lg border border-slate-200 bg-white p-4" data-testid="fnb-kitchen-read-only">
-                <div className="business-admin-fnb-panel-header flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">POS live view</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Kitchen Queue</h2>
-                    <p className="business-admin-fnb-panel-description">Ticket status from the POS kitchen queue.</p>
-                  </div>
-                  <span className="business-admin-fnb-read-only-pill">Read only</span>
-                </div>
+            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Kitchen Queue</h2>
                 <div className="mt-4 grid gap-3">
                   {kitchenTickets.map((ticket) => (
                     <article key={ticket.kitchen_ticket_id} className="rounded-lg border border-slate-200 p-3">
@@ -695,28 +567,20 @@ export default function FnbPage({ embedded = false }) {
                           </p>
                         )}
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {['preparing', 'ready', 'served', 'cancelled'].map((status) => (
+                          <ActionButton key={status} type="button" onClick={() => submitWithRefresh(`ticket-${ticket.kitchen_ticket_id}-${status}`, () => updateFnbKitchenTicketStatus(ticket.kitchen_ticket_id, { status }), 'Kitchen ticket updated.')} disabled={Boolean(busy)}>
+                            {status}
+                          </ActionButton>
+                        ))}
+                      </div>
                     </article>
                   ))}
-                  {kitchenTickets.length === 0 && (
-                    <div className="business-admin-fnb-empty-state" data-testid="fnb-kitchen-empty">
-                      <span className="business-admin-fnb-empty-icon" aria-hidden="true"><ChefHat className="h-5 w-5" /></span>
-                      <div className="business-admin-fnb-empty-copy">
-                        <h3>No active kitchen tickets.</h3>
-                        <p>Tickets sent from the POS terminal will appear here.</p>
-                      </div>
-                      <span className="business-admin-fnb-empty-status">All clear</span>
-                    </div>
-                  )}
+                  {kitchenTickets.length === 0 && <p className="text-sm text-slate-500">No active kitchen tickets.</p>}
                 </div>
               </section>
-              <section className="business-admin-fnb-panel business-admin-fnb-setup-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Kitchen setup</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Create Station</h2>
-                    <p className="business-admin-fnb-panel-description">Define where POS tickets should print or appear.</p>
-                  </div>
-                </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Create Station</h2>
                 <div className="mt-3 space-y-3">
                   <Field label="Station Name"><TextInput value={stationForm.name} onChange={(event) => setStationForm({ ...stationForm, name: event.target.value })} /></Field>
                   <Field label="Type">
@@ -741,16 +605,9 @@ export default function FnbPage({ embedded = false }) {
           )}
 
           {activeTab === 'menu' && (
-            <div className="business-admin-fnb-layout business-admin-fnb-layout--menu grid gap-4 xl:grid-cols-[1fr_360px]">
-              <section className="business-admin-fnb-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Menu setup</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Modifier Groups</h2>
-                    <p className="business-admin-fnb-panel-description">Set menu choices and connect them to kitchen routing.</p>
-                  </div>
-                  <span className="business-admin-fnb-panel-count">{modifierGroups.length} groups</span>
-                </div>
+            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Modifier Groups</h2>
                 <div className="mt-4 grid gap-3 lg:grid-cols-2">
                   {modifierGroups.map((group) => (
                     <article key={group.modifier_group_id} className="rounded-lg border border-slate-200 p-3">
@@ -797,14 +654,8 @@ export default function FnbPage({ embedded = false }) {
                   </div>
                 </div>
               </section>
-              <section className="business-admin-fnb-panel business-admin-fnb-setup-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Add menu rules</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Create Modifier</h2>
-                    <p className="business-admin-fnb-panel-description">Create options, then assign them to menu items.</p>
-                  </div>
-                </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Create Modifier</h2>
                 <div className="mt-3 space-y-3">
                   <Field label="Group Name"><TextInput value={modifierForm.name} onChange={(event) => setModifierForm({ ...modifierForm, name: event.target.value })} /></Field>
                   <div className="grid grid-cols-2 gap-2">
@@ -894,14 +745,10 @@ export default function FnbPage({ embedded = false }) {
           )}
 
           {activeTab === 'reservations' && (
-            <div className="business-admin-fnb-layout business-admin-fnb-layout--reservations grid gap-4 xl:grid-cols-[1fr_360px]">
-              <section className="business-admin-fnb-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Guest planning</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Reservation Schedule</h2>
-                    <p className="business-admin-fnb-panel-description">Review requests and assign tables for upcoming guests.</p>
-                  </div>
+            <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h2 className="text-lg font-semibold text-slate-900">Reservation Schedule</h2>
                   <div className="grid gap-2 sm:grid-cols-4">
                     <SelectInput value={reservationFilters.table_id} onChange={(event) => setReservationFilters((prev) => ({ ...prev, table_id: event.target.value }))}>
                       <option value="">All tables</option>
@@ -976,26 +823,11 @@ export default function FnbPage({ embedded = false }) {
                       </div>
                     </div>
                   ))}
-                  {reservations.length === 0 && (
-                    <div className="business-admin-fnb-empty-state" data-testid="fnb-reservations-empty">
-                      <span className="business-admin-fnb-empty-icon" aria-hidden="true"><CalendarClock className="h-5 w-5" /></span>
-                      <div className="business-admin-fnb-empty-copy">
-                        <h3>No reservation requests.</h3>
-                        <p>New guest requests will be listed here for planning.</p>
-                      </div>
-                      <span className="business-admin-fnb-empty-status">All clear</span>
-                    </div>
-                  )}
+                  {reservations.length === 0 && <p className="text-sm text-slate-500">No reservation requests.</p>}
                 </div>
               </section>
-              <section className="business-admin-fnb-panel business-admin-fnb-setup-panel rounded-lg border border-slate-200 bg-white p-4">
-                <div className="business-admin-fnb-panel-header">
-                  <div>
-                    <span className="business-admin-fnb-panel-kicker">Guest planning</span>
-                    <h2 className="text-lg font-semibold text-slate-900">Create Request</h2>
-                    <p className="business-admin-fnb-panel-description">Capture a reservation request and preferred tables.</p>
-                  </div>
-                </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <h2 className="text-lg font-semibold text-slate-900">Create Request</h2>
                 <div className="mt-3 space-y-3">
                   <Field label="Customer"><TextInput value={reservationForm.customer_name} onChange={(event) => setReservationForm({ ...reservationForm, customer_name: event.target.value })} /></Field>
                   <Field label="Phone"><TextInput value={reservationForm.customer_phone} onChange={(event) => setReservationForm({ ...reservationForm, customer_phone: event.target.value })} /></Field>
@@ -1041,14 +873,8 @@ export default function FnbPage({ embedded = false }) {
           )}
 
           {activeTab === 'settings' && (
-            <section className="business-admin-fnb-panel business-admin-fnb-setup-panel business-admin-fnb-settings-panel max-w-xl rounded-lg border border-slate-200 bg-white p-4">
-              <div className="business-admin-fnb-panel-header">
-                <div>
-                  <span className="business-admin-fnb-panel-kicker">Checkout setup</span>
-                  <h2 className="text-lg font-semibold text-slate-900">Restaurant Service Charge</h2>
-                  <p className="business-admin-fnb-panel-description">Choose how the POS applies service charge to guest bills.</p>
-                </div>
-              </div>
+            <section className="max-w-xl rounded-lg border border-slate-200 bg-white p-4">
+              <h2 className="text-lg font-semibold text-slate-900">Restaurant Service Charge</h2>
               <div className="mt-4 space-y-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                   <input type="checkbox" checked={serviceCharge.enabled === true} onChange={(event) => setServiceCharge({ ...serviceCharge, enabled: event.target.checked })} />
@@ -1067,7 +893,6 @@ export default function FnbPage({ embedded = false }) {
             </section>
           )}
         </>
-        </div>
       )}
     </div>
   );

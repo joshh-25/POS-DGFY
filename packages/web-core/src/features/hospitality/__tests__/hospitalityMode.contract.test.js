@@ -8,16 +8,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('Hospitality frontend contract', () => {
-  it('owns the Hospitality workspace in POS Back Office and retires the IMS merchant route', () => {
-    const main = read('apps/dgfy-ims/src/main.jsx');
-    const posMain = read('apps/dgfy-pos/src/main.jsx');
-    const businessAdmin = read('apps/dgfy-pos/src/features/businessAdmin/BusinessAdminPage.jsx');
-
-    expect(main).toContain('<Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />');
-    expect(posMain).toContain('<Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />');
-    expect(businessAdmin).toContain('hospitality: MERCHANT_BACKOFFICE_MODULE_META.hospitality');
-  });
-
   it('keeps manufacturing production modules out of Hospitality by capability, not by a hardcoded mode list', () => {
     // Previously asserted as the literal source text `blockInHospitality
     // moduleLabel="Job Orders"`. Both surfaces now derive from

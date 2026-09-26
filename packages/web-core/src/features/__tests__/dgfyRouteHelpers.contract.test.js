@@ -13,9 +13,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
-const skupervisorMainPath = resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
 const routeHelperSource = readFileSync(routeHelperPath, 'utf8');
-const skupervisorMainSource = readFileSync(skupervisorMainPath, 'utf8');
 
 describe('DGFY route helper contracts', () => {
   it('routes POS terminal handoffs through the configured terminal URL', () => {
@@ -42,13 +40,6 @@ describe('DGFY route helper contracts', () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it('retires IMS merchant routes while preserving the POS handoff', () => {
-    expect(skupervisorMainSource).toContain("import MerchantSurfaceRetired from './pages/MerchantSurfaceRetired.jsx'");
-    expect(skupervisorMainSource).toContain('<Route path="/terminal" element={<MerchantSurfaceRetired target="/terminal" title="POS terminal moved" />} />');
-    expect(skupervisorMainSource).toContain('<Route path="/items" element={<LegacyMerchantRoute target="/backoffice/catalog" title="Catalog workspace moved" />} />');
-    expect(skupervisorMainSource).not.toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
   });
 
   it('builds a saved-item Storefront detail URL without exposing inventory routes', () => {

@@ -41,12 +41,9 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceProofError,
     balanceProofViewerUrl,
     balanceProofViewerLoading,
-    backOfficeConfirmOpen,
-    backOfficeTargetPath,
     setBalanceProofFile,
     handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
-    canAccessBusinessAdmin,
     canOpenShift,
     canSubmitOpenShift,
     cashCollectionOrder,
@@ -72,8 +69,6 @@ export default function TerminalPageDialogLayer({ model }) {
     handleBackToCashierResume,
     handleCashierResumeSubmit,
     handleCashierTakeoverSubmit,
-    handleConfirmOpenBackOffice,
-    handleOpenBackOffice,
     handleOpenCashierTakeover,
     handleCloseDay,
     handleCollectCash,
@@ -127,7 +122,6 @@ export default function TerminalPageDialogLayer({ model }) {
     setBalanceSettlementMethod,
     setBalanceSettlementOrder,
     setBalanceSettlementReference,
-    setBackOfficeConfirmOpen,
     setCashCollectionOrder,
     setCashReceivedInput,
     setCashierResumeForm,
@@ -506,7 +500,7 @@ export default function TerminalPageDialogLayer({ model }) {
                         </>
                       )}
                       <p className="text-[11px] text-[#64748B]">
-                        Enter the registered terminal ID from Back Office &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.
+                        Enter the registered terminal ID from POS Setup &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.
                       </p>
                     </div>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
@@ -608,17 +602,6 @@ export default function TerminalPageDialogLayer({ model }) {
                     Back to Resume Shift
                   </Button>
                 )}
-                {canAccessBusinessAdmin && terminalUser && handleOpenBackOffice ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    data-testid="pos-unlock-open-backoffice"
-                    onClick={handleOpenBackOffice}
-                    disabled={submitting}
-                  >
-                    Open Back Office
-                  </Button>
-                ) : null}
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
                   <Button
                     type="button"
@@ -700,17 +683,6 @@ export default function TerminalPageDialogLayer({ model }) {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
-                {canAccessBusinessAdmin && terminalUser && handleOpenBackOffice ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    data-testid="pos-shift-opening-open-backoffice"
-                    onClick={handleOpenBackOffice}
-                    disabled={shiftActionLoading.open}
-                  >
-                    Open Back Office
-                  </Button>
-                ) : null}
                 {canAdminBypassShiftPrompt && (
                   <Button
                     type="button"
@@ -952,30 +924,6 @@ export default function TerminalPageDialogLayer({ model }) {
                 </Button>
               </DialogFooter>
             </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={backOfficeConfirmOpen} onOpenChange={setBackOfficeConfirmOpen}>
-          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-black text-slate-950">Open Back Office?</DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-slate-600">
-                {backOfficeTargetPath === '/backoffice/overview'
-                  ? 'Back Office will open in a new window at Overview. Continue?'
-                  : 'Back Office will open in a new window at Business settings. Continue?'}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:gap-2">
-              <Button type="button" variant="outline" onClick={() => setBackOfficeConfirmOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleConfirmOpenBackOffice}
-                className="bg-[#1A4E8D] font-bold text-white hover:bg-[#143F73]"
-              >
-                Open Back Office
-              </Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
         <Dialog open={closeShiftConfirmOpen} onOpenChange={setCloseShiftConfirmOpen}>

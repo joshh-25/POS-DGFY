@@ -81,24 +81,3 @@ export async function signIn(page, credentials, options = {}) {
   }
   await expect(catalogHeading).toBeVisible();
 }
-
-export async function signInBackOffice(page, credentials, options = {}) {
-  const requestedCompany = options.companyName?.trim() || process.env.E2E_TEST_COMPANY_NAME?.trim();
-  const currentUrl = page.url();
-  if (!/#\/backoffice\/login(?:[?]|$)/.test(currentUrl)) {
-    await page.goto('/?view=reports#/backoffice/overview', { waitUntil: 'domcontentloaded' });
-  }
-
-  await expect(page.getByRole('heading', { name: 'Back Office sign in' })).toBeVisible();
-  await page.getByLabel('DGFY account email').fill(credentials.email);
-  await page.getByRole('textbox', { name: 'Password' }).fill(credentials.password);
-  await page.getByRole('button', { name: 'Continue to Back Office', exact: true }).click();
-
-  await expect(page.getByLabel('Business')).toBeVisible({ timeout: 20_000 });
-  const businessSelect = page.getByLabel('Business');
-  if (requestedCompany) {
-    await businessSelect.selectOption({ label: requestedCompany });
-  }
-  await page.getByRole('button', { name: 'Open Back Office', exact: true }).click();
-  await expect(page.getByText('Business back office', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
-}

@@ -2185,7 +2185,7 @@ export default function PosSettingsWorkspace({
           data-testid="pos-settings-external-refresh-pending"
           className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
         >
-          <p className="font-extrabold">Back Office settings changed</p>
+          <p className="font-extrabold">POS settings changed</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             Your unsaved changes are protected. Save or cancel them to load the latest settings.
           </p>

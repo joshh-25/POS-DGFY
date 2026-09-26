@@ -64,8 +64,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
     expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
-    expect(terminalLayoutContent).toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'");
-    expect(terminalLayoutContent).not.toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup Context' : 'POS Setup'");
+    expect(terminalLayoutContent).toContain("terminal_setup: 'POS Setup'");
+    expect(terminalLayoutContent).not.toContain('canAccessBusinessAdmin');
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
   });
