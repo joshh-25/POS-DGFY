@@ -5,7 +5,7 @@ owner: engineering
 last_reviewed: 2026-09-21
 declaration_id: 2026-09-21-inventory-health-phase-443
 classification: major
-surfaces: inventory
+surfaces: inventory,pos
 reason_codes_impacted: INVENTORY_READ_MODEL,ALLOWED
 policy_version: 2026.09.21
 verification_evidence: Inventory Health contract tests; valuation and affected API suites; API lint; architecture guardrails; POS inventory contract; documentation and git diff checks
@@ -30,7 +30,7 @@ history, recipe composition, payment, fiscal, or tenant data owner changes.
 - Inventory stock-health classification, expiry buckets, and weighted valuation
   projections.
 - Dashboard, alert, AI, legacy-report, and tenant Business Admin consumers of
-  those projections.
+  those projections, including the POS Back Office inventory workspace.
 
 ## Compliance Preconditions
 
