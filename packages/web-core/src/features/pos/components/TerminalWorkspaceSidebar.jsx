@@ -120,7 +120,9 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
-  const shouldShowPosOnlySetup = canAccessPosOnlySetup && !onboardingRestricted;
+  const shouldShowPosOnlySetup = canAccessPosOnlySetup
+    && !onboardingRestricted
+    && settingsTargetViewMode !== 'terminal_setup';
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
@@ -397,7 +399,8 @@ export default function TerminalWorkspaceSidebar({
           <NavButton
             label="Settings"
             icon={Settings2}
-            active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
+            active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
+              || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
             onClick={() => onSelectViewMode(settingsTargetViewMode)}
             onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
             disabled={locked || !isOnline}
@@ -405,6 +408,19 @@ export default function TerminalWorkspaceSidebar({
             testId="pos-nav-settings"
             collapsed={isCollapsed}
           />
+          {shouldShowPosOnlySetup && (
+            <NavButton
+              label="Terminal setup"
+              icon={Settings2}
+              active={currentViewMode === 'terminal_setup'}
+              onClick={() => onSelectViewMode('terminal_setup')}
+              onPrefetch={() => onPrefetchViewMode('terminal_setup')}
+              disabled={locked || !isOnline}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Queue scope and local sound; device, printer, and terminal controls')}
+              testId="pos-nav-terminal-setup"
+              collapsed={isCollapsed}
+            />
+          )}
           {/* RF-4 (PR #762 review): #732's own decision record places Vouchers/Pricelists
               between Settings and Affiliates -- shipped order had them after Affiliates instead.
               Gated on canViewVouchers (mirrors routes/pricelists.js's own server-side dual-gate:

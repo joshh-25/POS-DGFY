@@ -568,6 +568,15 @@ describe('POS terminal view-mode contracts', () => {
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Operations'");
   });
 
+  it('routes Settings to the full workspace while preserving scoped Terminal setup', () => {
+    expect(terminalPageContent).toContain(": (isCashierRole ? 'terminal_setup' : 'settings_profile')");
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-terminal-setup"');
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('terminal_setup')}");
+    expect(terminalOperationsWorkspaceContent).toContain("allowedTabIds={['pos_setup']}");
+    expect(terminalOperationsWorkspaceContent).toContain('showTerminalOnlyControls={showTerminalOnlyControlsPane}');
+    expect(posSettingsWorkspaceContent).toContain('return <PosStorefrontSettingsPane {...storefrontPaneProps} />;');
+  });
+
   it('keeps receipt preview empty-state branch with history fallback action', () => {
     expect(posCheckoutTerminalContent).toContain('No receipt selected yet.');
     expect(posCheckoutTerminalContent).toContain('onClick={() => setCurrentViewMode(\'history\')}');

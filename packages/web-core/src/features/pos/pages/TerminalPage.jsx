@@ -7279,7 +7279,7 @@ function PosRestorationLoadingScreen() {
           settingsEntryViewMode={
             setupFlowActive
               ? resolveTenantSetupViewMode(tenantSetupStep)
-              : 'terminal_setup'
+              : (isCashierRole ? 'terminal_setup' : 'settings_profile')
           }
           onSelectTerminal={handleSelectTerminalFromSetup}
           hardwareDriverLabel={posHardware.driverLabel}
