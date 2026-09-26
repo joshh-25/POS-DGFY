@@ -94,7 +94,8 @@ import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryE
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
-    isDateWithinStorefrontBusinessHours
+    isDateWithinStorefrontBusinessHours,
+    normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import {
     buildCommercialPromoUsageUpdate,
@@ -749,11 +750,11 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod, sch
             { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_REQUIRED' } }
         );
     }
-    if (normalizedOrderMethod === 'dine_in' && scheduledFor.getTime() <= Date.now()) {
+    if (scheduledFor && scheduledFor.getTime() <= Date.now()) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'scheduled_for must be in the future for dine-in orders',
-            { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_MUST_BE_FUTURE' } }
+            'scheduled_for must be in the future',
+            { statusCode: 422, details: { reason_code: normalizedOrderMethod === 'dine_in' ? 'DINE_IN_SCHEDULE_MUST_BE_FUTURE' : 'SCHEDULE_MUST_BE_FUTURE' } }
         );
     }
 
@@ -842,6 +843,32 @@ const assertCheckoutTimeWithinStorefrontHours = ({ scheduledFor, settings }) => 
                     reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
                 }
             }
+        );
+    }
+};
+
+const branchDayNumber = (date, timezone) => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date).map((part) => [part.type, Number(part.value)]));
+    return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+};
+
+const assertCheckoutLeadTimeWindow = ({ scheduledFor, location, settings }) => {
+    if (!scheduledFor) return;
+    const minimum = Number(location?.fulfillment_lead_time_min_days);
+    const maximum = Number(location?.fulfillment_lead_time_max_days);
+    if (location?.fulfillment_lead_time_min_days == null || location?.fulfillment_lead_time_max_days == null
+        || !Number.isInteger(minimum) || !Number.isInteger(maximum) || minimum < 0 || maximum < minimum) return;
+    const schedule = normalizeStorefrontBusinessHours(settings?.storefront_hours?.value);
+    const timezone = typeof schedule === 'object' && schedule?.timezone ? schedule.timezone : 'Asia/Manila';
+    const daysAhead = branchDayNumber(scheduledFor, timezone) - branchDayNumber(new Date(), timezone);
+    if (daysAhead < minimum || daysAhead > maximum) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `scheduled_for must be ${minimum} to ${maximum} days ahead in the branch timezone`,
+            { statusCode: 422, details: { reason_code: 'SCHEDULE_OUTSIDE_LEAD_TIME_WINDOW' } }
         );
     }
 };
@@ -1934,6 +1961,7 @@ const resolveCheckoutContext = async ({
         scheduledFor,
         settings
     });
+    assertCheckoutLeadTimeWindow({ scheduledFor, location, settings });
 
     normalized.location_id = location.location_id;
 
