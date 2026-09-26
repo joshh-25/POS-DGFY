@@ -28,6 +28,7 @@ const DROPDOWN_MENU_Z_INDEX = 3000;
 export function StorefrontDropdown({
   value,
   options,
+  emptyMessage = 'No options available.',
   onChange,
   placeholder = 'Select',
   disabled = false,
@@ -223,7 +224,9 @@ export function StorefrontDropdown({
           ...menuStyle
         }}
     >
-      {options.map((option) => {
+      {options.length === 0 ? (
+        <span style={{ padding: '11px 14px', color: '#64748b', fontSize: 14 }}>{emptyMessage}</span>
+      ) : options.map((option) => {
         const isSelected = String(option.value) === String(value);
         return (
           <button
