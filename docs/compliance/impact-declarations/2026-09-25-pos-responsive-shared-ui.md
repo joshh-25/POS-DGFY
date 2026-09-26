@@ -12,8 +12,8 @@ verification_evidence: 29 focused POS UI test files passed (290 tests),npm run b
 rollback_note: Revert the responsive POS UI implementation commits and this declaration together; these changes add no schema migration or persisted-data writes.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-25T17:00:11+08:00
-preflight_request_ref: NOT-EXECUTED-2079-POS-RESPONSIVE-UI-20260925
+preflight_run_at: 2026-09-26T04:48:35.620Z
+preflight_request_ref: PREFLIGHT-36218725662-2026-09-25-POS-RESPONSIVE-SHARED-UI
 ---
 
 # POS responsive shared UI across History, Reports, and Settings
