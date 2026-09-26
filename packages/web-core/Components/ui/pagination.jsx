@@ -26,7 +26,7 @@ const normalizePageSizeOptions = (options, pageSize) => {
 
 const getControlId = (prefix, testId, suffix) => `${prefix || testId || 'pagination'}-${suffix}`;
 
-const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onChange, ariaLabel, optionsAriaLabel }) => {
+const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onChange }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const menuId = `${controlId}-options`;
@@ -64,7 +64,7 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         id={controlId}
         data-testid={controlId}
         type="button"
-        aria-label={ariaLabel}
+        aria-label="Items per page"
         aria-haspopup="listbox"
         aria-controls={menuId}
         aria-expanded={open}
@@ -72,16 +72,14 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         onClick={() => setOpen((current) => !current)}
         className="dgfy-global-pagination__page-size-trigger inline-flex h-10 min-w-[5.75rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm outline-none transition hover:border-[#1A4E8D]/50 hover:bg-[#F8FBFF] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15 disabled:cursor-not-allowed disabled:opacity-50 lg:text-[13px]"
       >
-        <span className="dgfy-global-pagination__page-size-value whitespace-nowrap">
-          {selectedPageSize}<span className="dgfy-global-pagination__page-size-suffix"> / page</span>
-        </span>
+        <span className="dgfy-global-pagination__page-size-value whitespace-nowrap">{selectedPageSize} / page</span>
         <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div
           id={menuId}
           role="listbox"
-          aria-label={optionsAriaLabel}
+          aria-label="Items per page options"
           className="dgfy-global-pagination__page-size-menu absolute bottom-[calc(100%+0.375rem)] left-0 z-50 min-w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.14)]"
         >
           {options.map((option) => (
@@ -120,10 +118,6 @@ export function GlobalPagination({
   showPageSize = true,
   showGoTo = true,
   accentColor = '#1A4E8D',
-  pageSizeLabel = 'Items per page',
-  pageInputLabel = 'Go to page',
-  previousLabel = 'Previous page',
-  nextLabel = 'Next page',
   className,
   testId,
   controlTestIdPrefix,
@@ -184,8 +178,6 @@ export function GlobalPagination({
             selectedPageSize={selectedPageSize}
             disabled={isDisabled}
             onChange={onPageSizeChange}
-            ariaLabel={pageSizeLabel}
-            optionsAriaLabel={`${pageSizeLabel} options`}
           />
         ) : null}
       </div>
@@ -195,8 +187,8 @@ export function GlobalPagination({
           type="button"
           variant="outline"
           data-testid={previousPageId}
-          aria-label={previousLabel}
-          title={previousLabel}
+          aria-label="Previous page"
+          title="Previous page"
           disabled={isDisabled || safeCurrentPage <= 1}
           onClick={() => changePage(safeCurrentPage - 1)}
           style={{ color: accentColor }}
@@ -211,8 +203,8 @@ export function GlobalPagination({
           type="button"
           variant="outline"
           data-testid={nextPageId}
-          aria-label={nextLabel}
-          title={nextLabel}
+          aria-label="Next page"
+          title="Next page"
           disabled={isDisabled || safeCurrentPage >= safeTotalPages}
           onClick={() => changePage(safeCurrentPage + 1)}
           style={{ color: accentColor }}
@@ -224,11 +216,11 @@ export function GlobalPagination({
           <>
             <span className="dgfy-global-pagination__mobile-go-to-label text-xs lg:text-[13px]" aria-hidden="true">Go to Page</span>
             <form className="dgfy-global-pagination__go-to flex items-center gap-2" onSubmit={submitPage}>
-              <label htmlFor={goToPageId} className="dgfy-global-pagination__go-to-label whitespace-nowrap text-xs font-medium lg:text-[13px]">{pageInputLabel.replace(/\s+page$/i, '')}</label>
+              <label htmlFor={goToPageId} className="dgfy-global-pagination__go-to-label whitespace-nowrap text-xs font-medium lg:text-[13px]">Go to</label>
               <input
                 id={goToPageId}
                 data-testid={goToPageId}
-                aria-label={pageInputLabel}
+                aria-label="Go to page"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 value={goToPage}

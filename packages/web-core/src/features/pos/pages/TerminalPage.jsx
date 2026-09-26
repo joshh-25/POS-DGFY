@@ -155,7 +155,7 @@ import {
   safeLocalStorageRemove,
   safeLocalStorageSet
 } from '../utils/posTerminalStorage.js';
-import { isPosTabletViewport } from '../utils/posTabletViewport.js';
+import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
@@ -868,7 +868,7 @@ export default function TerminalPage() {
   });
   const [isTabletLayout, setIsTabletLayout] = useState(() => {
     if (!IS_DGFY_POS_SURFACE || typeof window === 'undefined') return false;
-    return isPosTabletViewport({
+    return isPosTabletPortraitViewport({
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       isDgfyPosSurface: IS_DGFY_POS_SURFACE,
@@ -6325,7 +6325,7 @@ export default function TerminalPage() {
     const handleResize = () => {
       const viewportWidth = window.innerWidth;
       setIsDesktopWide(viewportWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX);
-      setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletViewport({
+      setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletPortraitViewport({
         viewportWidth,
         viewportHeight: window.innerHeight,
         isDgfyPosSurface: IS_DGFY_POS_SURFACE,

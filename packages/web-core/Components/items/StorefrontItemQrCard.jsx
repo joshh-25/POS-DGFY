@@ -25,6 +25,7 @@ export default function StorefrontItemQrCard({
   itemUrl = '',
   helperText = 'Scan to open this item in Storefront View Details.',
   compact = false,
+  fullWidth = false,
   qrSize = null
 }) {
   const [qrDataUrl, setQrDataUrl] = useState('');
@@ -78,6 +79,8 @@ export default function StorefrontItemQrCard({
         style={{
           display: 'grid',
           justifyItems: 'center',
+          width: fullWidth ? '100%' : undefined,
+          boxSizing: 'border-box',
           gap: compact ? 8 : 10,
           padding: compact ? 14 : 16,
           color: '#475569',
@@ -152,6 +155,8 @@ export default function StorefrontItemQrCard({
       style={{
         display: 'grid',
         justifyItems: 'center',
+        width: fullWidth ? '100%' : undefined,
+        boxSizing: 'border-box',
         gap: compact ? 8 : 10,
         padding: compact ? 14 : 16,
         border: '1px solid #E2E8F0',
@@ -161,12 +166,19 @@ export default function StorefrontItemQrCard({
         textAlign: 'center'
       }}
     >
-      <p style={{ margin: 0, fontSize: compact ? 15 : 16, lineHeight: 1.25, fontWeight: 800 }}>
+      <p style={{ margin: 0, fontSize: compact ? 14 : 16, lineHeight: 1.25, fontWeight: 800 }}>
         {normalizedItemName}
       </p>
 
       {qrDataUrl ? (
-        <div style={{ position: 'relative', width: resolvedQrSize, maxWidth: '100%' }}>
+        <div
+          style={{
+            position: 'relative',
+            width: resolvedQrSize,
+            maxWidth: '100%',
+            aspectRatio: '1'
+          }}
+        >
           <button
             type="button"
             onClick={handleDownload}
@@ -175,6 +187,8 @@ export default function StorefrontItemQrCard({
             style={{
               display: 'block',
               width: '100%',
+              height: '100%',
+              aspectRatio: '1',
               padding: 0,
               border: 0,
               borderRadius: 12,
@@ -190,13 +204,16 @@ export default function StorefrontItemQrCard({
               style={{
                 display: 'block',
                 width: '100%',
-                height: 'auto',
+                height: '100%',
+                aspectRatio: '1',
+                objectFit: 'contain',
                 borderRadius: 12
               }}
             />
           </button>
           <button
             type="button"
+            data-pos-qr-share="true"
             onClick={handleShare}
             disabled={sharing}
             title="Share QR code"
@@ -209,6 +226,10 @@ export default function StorefrontItemQrCard({
               placeItems: 'center',
               width: 34,
               height: 34,
+              minWidth: 34,
+              minHeight: 34,
+              flex: '0 0 34px',
+              aspectRatio: '1',
               padding: 0,
               border: '2px solid #FFFFFF',
               borderRadius: '50%',
@@ -255,7 +276,7 @@ export default function StorefrontItemQrCard({
         href={normalizedItemUrl}
         target="_blank"
         rel="noreferrer"
-        style={{ color: '#1D4ED8', fontSize: 12, fontWeight: 800, textDecoration: 'underline' }}
+        style={{ color: '#1A4E8D', fontSize: 12, fontWeight: 800, textDecoration: 'underline' }}
       >
         Open Storefront item
       </a>

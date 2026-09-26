@@ -90,7 +90,7 @@ describe('Items category placement', () => {
     expect(drinksHandle.compareDocumentPosition(mainsHandle) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(drinksHandle.disabled).toBe(false);
 
-    fireEvent.change(screen.getByPlaceholderText('Search categories'), { target: { value: 'Drink' } });
+    fireEvent.change(screen.getByPlaceholderText('Search Categories'), { target: { value: 'Drink' } });
     expect(screen.getByRole('button', { name: 'Move Drinks' }).disabled).toBe(true);
   });
 
@@ -287,7 +287,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.getByRole('tab', { name: 'Menu modifiers' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Item Options' })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: 'Service add-ons' })).toBeNull();
 
     rerender(<TerminalOperationsWorkspace {...buildProps({
@@ -296,7 +296,7 @@ describe('Items category placement', () => {
       canManageFnbModifiers: true
     })} />);
 
-    expect(screen.queryByRole('tab', { name: 'Menu modifiers' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Item Options' })).toBeNull();
   });
 
   it('shows the online-only explanation without queueing an item draft', () => {
