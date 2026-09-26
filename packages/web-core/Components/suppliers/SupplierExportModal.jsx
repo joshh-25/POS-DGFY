@@ -14,7 +14,8 @@ import {
     Filter,
     Loader2,
     CheckSquare,
-    Search
+    Search,
+    X
 } from 'lucide-react';
 import { useSuppliers } from '../../src/hooks/useSuppliers.js';
 import { useSupplierCSV } from '../../src/hooks/useSupplierCSV.js';
@@ -44,7 +45,13 @@ export default function SupplierExportModal({
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
 
+    const handleClose = () => {
+        if (loading) return;
+        onClose();
+    };
+
     const handleExport = async () => {
+        if (loading) return;
         let result;
         try {
             if (exportMode === EXPORT_MODES.ALL) {
@@ -87,6 +94,7 @@ export default function SupplierExportModal({
     ) || [];
 
     const toggleSelection = (id) => {
+        if (loading) return;
         setSelectedIds(prev =>
             prev.includes(id)
                 ? prev.filter(item => item !== id)
@@ -95,6 +103,7 @@ export default function SupplierExportModal({
     };
 
     const toggleAll = () => {
+        if (loading) return;
         if (selectedIds.length === filteredSelectionSuppliers.length) {
             setSelectedIds([]);
         } else {
@@ -103,18 +112,34 @@ export default function SupplierExportModal({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onClose}>
+        <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
             <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <FileDown className="w-5 h-5 text-teal-600" />
-                        Export Suppliers to CSV
-                    </DialogTitle>
+                    <div className="flex items-start justify-between gap-3">
+                        <DialogTitle className="flex min-w-0 items-center gap-2">
+                            <FileDown className="w-5 h-5 shrink-0 text-teal-600" />
+                            <span className="truncate">Export Suppliers to CSV</span>
+                        </DialogTitle>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={handleClose}
+                            disabled={loading}
+                            aria-label="Close supplier export"
+                            title="Close"
+                        >
+                            <X className="h-5 w-5" />
+                        </Button>
+                    </div>
                 </DialogHeader>
 
                 <div className="py-4 space-y-4">
                     <div className="grid grid-cols-3 gap-3">
                         <button
+                            type="button"
+                            disabled={loading}
                             className={cn(
                                 "p-4 rounded-lg border-2 text-left transition-all",
                                 exportMode === EXPORT_MODES.ALL
@@ -132,6 +157,8 @@ export default function SupplierExportModal({
                         </button>
 
                         <button
+                            type="button"
+                            disabled={loading}
                             className={cn(
                                 "p-4 rounded-lg border-2 text-left transition-all",
                                 exportMode === EXPORT_MODES.FILTERED
@@ -149,6 +176,8 @@ export default function SupplierExportModal({
                         </button>
 
                         <button
+                            type="button"
+                            disabled={loading}
                             className={cn(
                                 "p-4 rounded-lg border-2 text-left transition-all",
                                 exportMode === EXPORT_MODES.MANUAL
@@ -194,7 +223,7 @@ export default function SupplierExportModal({
                                 <span className="text-xs text-slate-500 font-medium ml-2">
                                     {filteredSelectionSuppliers.length} suppliers found
                                 </span>
-                                <Button variant="ghost" size="sm" onClick={toggleAll} className="h-6 text-xs text-teal-600">
+                                <Button type="button" variant="ghost" size="sm" onClick={toggleAll} disabled={loading} className="h-6 text-xs text-teal-600">
                                     {selectedIds.length === filteredSelectionSuppliers.length ? 'Deselect All' : 'Select All'}
                                 </Button>
                             </div>
@@ -219,6 +248,7 @@ export default function SupplierExportModal({
                                                     <Checkbox
                                                         checked={selectedIds.includes(sId)}
                                                         onCheckedChange={() => toggleSelection(sId)}
+                                                        disabled={loading}
                                                     />
                                                     <div className="flex-1 overflow-hidden">
                                                         <p className="text-sm font-medium truncate text-slate-700">{supplier.name}</p>
@@ -247,10 +277,11 @@ export default function SupplierExportModal({
                 </div>
 
                 <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>
+                    <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
                         Cancel
                     </Button>
                     <Button
+                        type="button"
                         onClick={handleExport}
                         disabled={loading || (exportMode === EXPORT_MODES.MANUAL && selectedIds.length === 0)}
                         className="bg-teal-600 hover:bg-teal-700"

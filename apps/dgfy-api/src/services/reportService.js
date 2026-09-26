@@ -5,6 +5,12 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { getItemsCostMetrics, getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+import {
+  buildStockHealthWhere,
+  classifyExpiry,
+  getStockHealthStatus,
+  STOCK_HEALTH_STATUS
+} from '../modules/inventory/services/inventoryHealthService.js';
 import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 const toNumberOrZero = (value) => {
@@ -141,16 +147,23 @@ export const getExpiryReport = async (filters = {}) => {
       location_name: batch.location?.name || null
     };
 
-    if (daysUntilExpiry < 0) {
+    const expiryStatus = classifyExpiry({
+      daysUntilExpiry,
+      criticalDays,
+      warningDays,
+      upcomingDays
+    });
+
+    if (expiryStatus === 'expired') {
       expired.push({ ...batchData, days_expired: Math.abs(daysUntilExpiry) });
       totalExpiredValue += valueAtRisk;
-    } else if (daysUntilExpiry <= criticalDays) {
+    } else if (expiryStatus === 'critical') {
       critical.push(batchData);
       totalCriticalValue += valueAtRisk;
-    } else if (daysUntilExpiry <= warningDays) {
+    } else if (expiryStatus === 'warning') {
       warning.push(batchData);
       totalWarningValue += valueAtRisk;
-    } else if (daysUntilExpiry <= upcomingDays) {
+    } else if (expiryStatus === 'upcoming') {
       upcoming.push(batchData);
       totalUpcomingValue += valueAtRisk;
     }
@@ -829,16 +842,12 @@ export const getExecutiveSummary = async (filters = {}) => {
   const lowStockItems = await Item.findAll({
     where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
-      min_threshold: { [Op.ne]: null },
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.lte,
-          sequelize.col('min_threshold')
-        )
-      ]
+      [Op.and]: [buildStockHealthWhere({
+        statuses: [STOCK_HEALTH_STATUS.LOW_STOCK, STOCK_HEALTH_STATUS.OUT_OF_STOCK],
+        sequelize
+      })]
     })),
-    attributes: ['item_id', 'name', 'sku_code', 'current_stock', 'min_threshold']
+    attributes: ['item_id', 'name', 'sku_code', 'current_stock', 'min_threshold', 'max_capacity']
   });
 
   // Get top movers from stock movements
@@ -878,6 +887,16 @@ export const getExecutiveSummary = async (filters = {}) => {
 
   const sortedByMovement = Object.values(itemMovement)
     .sort((a, b) => b.total_movement - a.total_movement);
+  const stockHealthRows = lowStockItems.map((item) => ({
+    ...item,
+    stock_status: getStockHealthStatus({
+      currentStock: item.current_stock,
+      minThreshold: item.min_threshold,
+      maxCapacity: item.max_capacity
+    })
+  }));
+  const lowStockOnlyItems = stockHealthRows.filter((item) => item.stock_status === STOCK_HEALTH_STATUS.LOW_STOCK);
+  const outOfStockItems = stockHealthRows.filter((item) => item.stock_status === STOCK_HEALTH_STATUS.OUT_OF_STOCK);
 
   return {
     generated_at: new Date().toISOString(),
@@ -896,13 +915,22 @@ export const getExecutiveSummary = async (filters = {}) => {
       average_item_value: financialData.average_item_value
     },
     stock_health: {
-      low_stock_count: lowStockItems.length,
-      low_stock_items: lowStockItems.slice(0, 10).map(i => ({
+      low_stock_count: lowStockOnlyItems.length,
+      out_of_stock_count: outOfStockItems.length,
+      low_stock_items: lowStockOnlyItems.slice(0, 10).map(i => ({
         item_id: i.item_id,
         name: i.name,
         sku_code: i.sku_code,
         current_stock: parseFloat(i.current_stock),
-        min_threshold: parseFloat(i.min_threshold)
+        min_threshold: parseFloat(i.min_threshold),
+        stock_status: i.stock_status
+      })),
+      out_of_stock_items: outOfStockItems.slice(0, 10).map(i => ({
+        item_id: i.item_id,
+        name: i.name,
+        sku_code: i.sku_code,
+        current_stock: parseFloat(i.current_stock),
+        stock_status: i.stock_status
       }))
     },
     expiry_risk: {
@@ -1391,7 +1419,12 @@ export const getSurplusShortageReport = async () => {
     const minThreshold = parseFloat(item.min_threshold) || 0;
 
     const stockPercentage = maxCapacity > 0 ? (currentStock / maxCapacity) * 100 : 0;
-    const isLowStock = currentStock <= minThreshold;
+    const stockHealthStatus = getStockHealthStatus({
+      currentStock,
+      minThreshold: item.min_threshold,
+      maxCapacity: item.max_capacity
+    });
+    const isLowStock = [STOCK_HEALTH_STATUS.LOW_STOCK, STOCK_HEALTH_STATUS.OUT_OF_STOCK].includes(stockHealthStatus);
     const isSurplus = stockPercentage > 80;
 
     return {
@@ -1402,7 +1435,8 @@ export const getSurplusShortageReport = async () => {
       max_capacity: maxCapacity,
       min_threshold: minThreshold,
       stock_percentage: stockPercentage,
-      status: isLowStock ? 'shortage' : isSurplus ? 'surplus' : 'normal'
+      status: isLowStock ? 'shortage' : isSurplus ? 'surplus' : 'normal',
+      stock_health_status: stockHealthStatus
     };
   });
 
@@ -1420,11 +1454,8 @@ export const getFinancialSummary = async () => {
     getWeightedInventoryValueOverview()
   ]);
 
-  const totalValue = items.reduce((sum, item) => {
-    const stock = parseFloat(item.current_stock) || 0;
-    const cost = parseFloat(item.cost_per_unit) || 0;
-    return sum + (stock * cost);
-  }, 0);
+  const totalValue = Number(weightedOverview.weighted_total_inventory_value || 0);
+  const legacyTotalValue = Number(weightedOverview.legacy_total_inventory_value || 0);
 
   const totalItems = items.length;
   const itemsWithValue = items.filter(item =>
@@ -1433,14 +1464,14 @@ export const getFinancialSummary = async () => {
 
   return {
     total_inventory_value: totalValue,
-    legacy_total_inventory_value: totalValue,
+    legacy_total_inventory_value: legacyTotalValue,
     weighted_total_inventory_value: weightedOverview.weighted_total_inventory_value,
     weighted_total_available_qty: weightedOverview.weighted_total_available_qty,
     weighted_average_cost_per_unit: weightedOverview.weighted_average_cost_per_unit,
     total_items: totalItems,
     items_with_value: itemsWithValue,
     average_item_value: itemsWithValue > 0 ? totalValue / itemsWithValue : 0,
-    inventory_value_delta: round4(weightedOverview.weighted_total_inventory_value - totalValue)
+    inventory_value_delta: round4(totalValue - legacyTotalValue)
   };
 };
 

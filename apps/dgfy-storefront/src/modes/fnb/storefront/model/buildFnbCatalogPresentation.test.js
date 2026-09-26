@@ -108,6 +108,26 @@ describe('buildFnbCatalogPresentation', () => {
     expect(result.visibleItems.map((item) => item.item_id)).toEqual(['a', 'b', 'c']);
   });
 
+  it('orders the unfiltered catalog by primary category order before item name', () => {
+    const result = buildFnbCatalogPresentation({
+      activeSection: '',
+      fnbViewModel: {
+        menuItems: [
+          { item_id: 3, name: 'Meal item', categorySortOrder: 2 },
+          { item_id: 1, name: 'Main item', categorySortOrder: 0 },
+          { item_id: 4, name: 'Unassigned item', categorySortOrder: null },
+          { item_id: 2, name: 'Shake item', categorySortOrder: 1 }
+        ],
+        menuSections: []
+      },
+      page: 1,
+      pageSize: 8,
+      sortOption: 'name_asc'
+    });
+
+    expect(result.visibleItems.map((item) => item.item_id)).toEqual([1, 2, 3, 4]);
+  });
+
   it('sorts and clamps the requested page before exposing visible items', () => {
     const result = buildFnbCatalogPresentation({
       activeSection: '',

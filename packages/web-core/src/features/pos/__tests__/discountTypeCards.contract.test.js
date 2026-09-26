@@ -29,16 +29,14 @@ const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${che
 const discountModalContent = discountWorkspaceContent;
 
 describe('Apply Discount type-card navigation contract', () => {
-  it('uses six visible type cards and no Discount Type select', () => {
-    expect(checkoutRenderContent.indexOf("{ value: 'employee', label: 'Employee'")).toBeLessThan(
-      checkoutRenderContent.indexOf("{ value: 'senior', label: 'Senior Citizen'")
-    );
-    expect(checkoutRenderContent).toContain("{ value: 'senior', label: 'Senior Citizen'");
-    expect(checkoutRenderContent).toContain("{ value: 'pwd', label: 'PWD'");
-    expect(checkoutRenderContent).toContain("{ value: 'employee', label: 'Employee'");
-    expect(checkoutRenderContent).toContain("{ value: 'promo', label: 'Promo'");
-    expect(checkoutRenderContent).toContain("{ value: 'voucher', label: 'Voucher'");
-    expect(checkoutRenderContent).toContain("{ value: 'manual', label: 'Others'");
+  it('uses server-provided configured type cards with specialized compatibility fallbacks', () => {
+    expect(checkoutRenderContent).toContain('buildPosDiscountTypeOptions(');
+    expect(checkoutRenderContent).toContain('POS_DISCOUNT_FALLBACK_OPTIONS');
+    expect(checkoutRenderContent).toContain('POS_DISCOUNT_TYPE_OPTIONS = POS_DISCOUNT_FALLBACK_OPTIONS');
+    expect(checkoutRenderContent).not.toContain("{ value: 'employee', label: 'Employee'");
+    expect(checkoutRenderContent).not.toContain("{ value: 'senior', label: 'Senior Citizen'");
+    expect(checkoutRenderContent).not.toContain("{ value: 'pwd', label: 'PWD'");
+    expect(checkoutRenderContent).not.toContain("{ value: 'manual', label: 'Others'");
     expect(discountModalContent).toContain('role="tablist"');
     expect(discountModalContent).toContain('role="tab"');
     expect(discountModalContent).toContain('aria-selected={active}');
@@ -46,10 +44,10 @@ describe('Apply Discount type-card navigation contract', () => {
   });
 
   it('switches the existing draft type and preserves dynamic panels', () => {
-    expect(checkoutRenderContent).toContain("type: 'employee', method: 'percentage', rate: '15'");
+    expect(checkoutRenderContent).toContain("type: 'employee', method: 'percentage', rate: ''");
     expect(checkoutRenderContent).toContain('activeShiftCashierId = null');
     expect(checkoutRenderContent).toContain('Number(approver?.user_id) === shiftCashierId');
-    expect(checkoutRenderContent).toContain('approver_user_id = shiftCashierApprover?.user_id || \'\';');
+    expect(checkoutRenderContent).toContain("approver_user_id: shiftCashierApprover?.user_id || ''");
     expect(checkoutRenderContent).toContain('handleDiscountTypeChange(option.value)');
     expect(discountModalContent).toContain('handleDiscountTypeChange(option.value)');
     expect(discountModalContent).toContain("['senior', 'pwd'].includes(discountDraft.type)");

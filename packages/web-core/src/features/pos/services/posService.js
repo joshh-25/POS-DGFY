@@ -51,7 +51,7 @@ export const fetchPosCatalogPage = async (params = {}) => {
     void reconcilePosImageUploads(items);
     return {
         items,
-        pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
+        pagination: payload.pagination || { page: 1, page_size: 20, total: 0, total_pages: 1 }
     };
 };
 
@@ -147,14 +147,6 @@ export const createPosPaymentSession = async (payload = {}) => {
     return response.data?.data;
 };
 
-export const fetchActivePosPaymentSession = async (scope = {}) => {
-    const response = await api.get('/pos/payment-sessions/active', {
-        params: scope,
-        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
-    });
-    return response.data?.data || null;
-};
-
 export const fetchPosPaymentSession = async (paymentSessionId, scope = {}) => {
     const response = await api.get(`/pos/payment-sessions/${paymentSessionId}`, {
         params: scope,
@@ -199,6 +191,11 @@ export const fetchPosDiscountApprovers = async () => {
 export const fetchPosDiscountEmployees = async () => {
     const response = await api.get('/pos/discount-employees');
     return response.data?.data?.employees || [];
+};
+
+export const fetchPosDiscountRules = async () => {
+    const response = await api.get('/pos/discount-rules');
+    return response.data?.data?.discount_rules || [];
 };
 
 export const verifyPosDiscountApproval = async (payload = {}) => {
@@ -272,6 +269,16 @@ export const fetchPosDeviceStatus = async () => {
     const response = await api.get('/pos/device/status', {
         // Device status is a background capability probe. In tablet/APK deployments
         // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
+export const testPosPrinter = async (payload = {}) => {
+    const response = await api.post('/pos/device/test-print', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined,
         skipGlobalErrorToast: true
     });
     return response.data?.data;
@@ -869,6 +876,13 @@ export const collectCashDineInOrder = async (posTransactionId, payload = {}) => 
     return response.data?.data;
 };
 
+export const collectDineInPaymentOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-payment`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 // Phase 148 (#825): settles the remaining balance on a partially-paid downpayment order. A
 // separate endpoint from the two collect-cash calls above, not a variant of them -- those own the
 // plain-COD `unpaid` path and are deliberately untouched.
@@ -1039,6 +1053,7 @@ export default {
     fetchPosTransactions,
     fetchPosTransactionById,
     fetchPosDeviceStatus,
+    testPosPrinter,
     printPosReceipt,
     printPosShiftSummary,
     printPosZReading,
@@ -1070,6 +1085,7 @@ export default {
     collectCashPickupOrder,
     collectCashDeliveryOrder,
     collectCashDineInOrder,
+    collectDineInPaymentOrder,
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,

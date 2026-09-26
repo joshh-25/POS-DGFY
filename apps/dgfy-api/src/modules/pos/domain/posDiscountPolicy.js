@@ -1,8 +1,9 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { resolveCommercialPromoApplication } from '../../shared/utils/commercialPromoPolicy.js';
+import { normalizePosTaxPolicies } from '../../shared/constants/posTaxPolicy.js';
 
 const STATUTORY_TYPES = new Set(['senior', 'pwd']);
-const RULE_TYPES = new Set(['senior', 'pwd', 'employee', 'manual']);
+const RULE_TYPES = new Set(['senior', 'pwd', 'employee', 'promo', 'manual', 'custom']);
 const text = (value) => String(value || '').trim();
 const positiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -99,10 +100,16 @@ const resolveRuleApplication = ({ draft, rule }) => {
         ...draft,
         label: text(rule.name) || draft.label,
         rule_id: positiveInt(rule.id),
+        discount_key: text(rule.discount_key) || text(draft.discount_key) || null,
         method,
         rate: method === 'percentage' ? (configuredRate ?? Number(draft.rate || 0)) : null,
         amount: method === 'fixed' ? (configuredAmount ?? Number(draft.amount || 0)) : null,
-        max_discount_amount: rule.max_discount_amount == null ? null : Number(rule.max_discount_amount)
+        max_discount_amount: rule.max_discount_amount == null ? null : Number(rule.max_discount_amount),
+        description: text(rule.description) || null,
+        requires_customer_id: rule.requires_customer_id === true,
+        requires_employee_id: rule.requires_employee_id === true,
+        requires_manager_approval: rule.requires_manager_approval === true,
+        configuration_version: Number(rule.configuration_version || 1)
     };
 };
 
@@ -127,11 +134,19 @@ export const resolvePosGovernedDiscount = async ({
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const type = text(draft.type).toLowerCase();
-    if (requireCustomerName && type && type !== 'employee' && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
+    const taxPolicy = normalizePosTaxPolicies(settings?.pos_tax_policies?.value);
+    const hasConfiguredRuleIdentity = Boolean(positiveInt(draft.rule_id) || text(draft.discount_key));
+    const legacyCustomerNameRequired = requireCustomerName
+        && type
+        && type !== 'employee'
+        && type !== 'custom'
+        && !STATUTORY_TYPES.has(type)
+        && !hasConfiguredRuleIdentity;
+    if (legacyCustomerNameRequired && !text(draft.customer_name)) {
         validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
     }
 
-    if (type === 'promo') {
+    if (type === 'promo' && !hasConfiguredRuleIdentity) {
         const requestedItems = normalizeSelectedDiscountItems(draft);
         const requestedItemIds = requestedItems.map((entry) => entry.item_id);
         const scopedPreparedLines = requestedItemIds.length > 0
@@ -159,6 +174,7 @@ export const resolvePosGovernedDiscount = async ({
                 rate: promo.discountRate,
                 amount: null,
                 promo_code: promo.enteredPromoCode,
+                tax_policy: taxPolicy,
                 lines: requestedItems.length > 0
                     ? requestedItems.filter((entry) => promo.eligibleItemIds.includes(entry.item_id))
                     : promo.eligibleItemIds.map((itemId) => ({ item_id: itemId }))
@@ -210,6 +226,7 @@ export const resolvePosGovernedDiscount = async ({
                     ? round4(Number(voucher.percentOffBps || 0) / 100)
                     : null,
                 amount: null,
+                tax_policy: taxPolicy,
                 // Reuses the fiscal `promo_code` column -- matches the storefront's
                 // `buildVoucherDiscountRecord` (storeUseCases.js:1413-1432) and is why
                 // ReceiptPrintView.jsx already prints "Voucher Code" off this same field.
@@ -232,10 +249,13 @@ export const resolvePosGovernedDiscount = async ({
     if (typeof findActiveRule !== 'function') {
         throw new Error('findActiveRule dependency is required for governed discounts');
     }
-    const rule = await findActiveRule(type);
+    const rule = await findActiveRule(type, {
+        ruleId: positiveInt(draft.rule_id),
+        discountKey: text(draft.discount_key)
+    });
     if (!rule) validationError('The selected discount rule is inactive or unavailable.', 'DISCOUNT_RULE_INACTIVE', { discount_type: type });
 
-    const application = resolveRuleApplication({ draft: { ...draft, type }, rule });
+    const application = resolveRuleApplication({ draft: { ...draft, type, tax_policy: taxPolicy }, rule });
     if (STATUTORY_TYPES.has(type)) {
         const rawBeneficiaries = Array.isArray(draft.beneficiaries) && draft.beneficiaries.length > 0
             ? draft.beneficiaries
@@ -290,7 +310,7 @@ export const resolvePosGovernedDiscount = async ({
             }
         }
         application.method = 'percentage';
-        application.rate = Number(rule.rate ?? 20);
+        application.rate = Number(rule.rate ?? application.rate ?? 0);
         application.amount = null;
         application.lines = selectedItems.map((entry) => ({ ...entry }));
         application.beneficiaries = beneficiaries;
@@ -298,7 +318,13 @@ export const resolvePosGovernedDiscount = async ({
         application.id_number = beneficiaries.length === 1 ? beneficiaries[0].id_number : null;
     }
 
-    if (['employee', 'manual'].includes(type)) {
+    if (requireCustomerName
+        && (application.requires_customer_id === true || legacyCustomerNameRequired)
+        && !text(application.customer_name)) {
+        validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
+    }
+
+    if (['employee', 'manual', 'promo', 'custom'].includes(type)) {
         const selectedItems = normalizeSelectedDiscountItems(draft);
         const selectedItemIds = selectedItems.map((entry) => entry.item_id);
         if (selectedItemIds.length > 0) {
@@ -324,7 +350,7 @@ export const resolvePosGovernedDiscount = async ({
         application.employee_user_id = null;
     }
 
-    if (['employee', 'manual'].includes(type)) {
+    if (['employee', 'manual', 'promo', 'custom'].includes(type)) {
         if (application.method === 'percentage' && (!(application.rate > 0) || application.rate > 100)) {
             validationError('Discount rate must be from 0.01 to 100.', 'DISCOUNT_RATE_INVALID');
         }

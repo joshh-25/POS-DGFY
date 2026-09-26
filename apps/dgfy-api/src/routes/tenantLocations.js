@@ -15,8 +15,10 @@ const router = express.Router();
 
 const hasTenantWideBranchAccess = (req) => {
     const role = String(req.user?.role || '').trim().toLowerCase();
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
     return req.user?.is_master_admin === true
-        || role === 'admin';
+        || role === 'admin'
+        || permissions.includes(PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES);
 };
 
 const checkDineInPaymentPolicyLocationAccess = async (req, res, next) => {

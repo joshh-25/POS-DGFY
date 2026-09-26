@@ -1,13 +1,35 @@
-function sortItems(items, sortOption) {
-  return [...items].sort((left, right) => {
-    if (sortOption === 'price_asc') {
-      return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
-    }
-    if (sortOption === 'price_desc') {
-      return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
-    }
-    return String(left?.name || '').localeCompare(String(right?.name || ''));
-  });
+const getCategorySortOrder = (item) => {
+  const rawSortOrder = item?.categorySortOrder ?? item?.folder_sort_order;
+  if (rawSortOrder === null || rawSortOrder === undefined || String(rawSortOrder).trim() === '') {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const sortOrder = Number(rawSortOrder);
+  return Number.isFinite(sortOrder) ? sortOrder : Number.MAX_SAFE_INTEGER;
+};
+
+function sortItems(items, sortOption, categoryFirst = false) {
+  return [...items]
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      if (sortOption === 'price_asc') {
+        return Number(left.item?.default_sale_price || 0)
+          - Number(right.item?.default_sale_price || 0)
+          || left.index - right.index;
+      }
+      if (sortOption === 'price_desc') {
+        return Number(right.item?.default_sale_price || 0)
+          - Number(left.item?.default_sale_price || 0)
+          || left.index - right.index;
+      }
+      if (categoryFirst) {
+        const categoryDifference = getCategorySortOrder(left.item) - getCategorySortOrder(right.item);
+        if (categoryDifference !== 0) return categoryDifference;
+      }
+      return String(left.item?.name || '').localeCompare(String(right.item?.name || ''))
+        || String(left.item?.item_id || '').localeCompare(String(right.item?.item_id || ''))
+        || left.index - right.index;
+    })
+    .map(({ item }) => item);
 }
 
 /**
@@ -41,7 +63,7 @@ export function buildFnbCatalogPresentation({
     : null;
   const menuItems = Array.isArray(fnbViewModel?.menuItems) ? fnbViewModel.menuItems : [];
   const selectedItems = resolvedSection ? (activeSectionModel?.items || []) : menuItems;
-  const sortedItems = sortItems(selectedItems, sortOption);
+  const sortedItems = sortItems(selectedItems, sortOption, !resolvedSection);
   const normalizedPageSize = Math.max(1, Number(pageSize || 8));
   const totalPages = Math.max(1, Math.ceil(sortedItems.length / normalizedPageSize));
   const resolvedPage = Math.min(Math.max(1, Number(page || 1)), totalPages);

@@ -91,7 +91,10 @@ export default function JODetailsModal({ jo, open, onClose, onComplete }) {
     setQuantityProduced(remaining > 0 ? remaining : displayJO.quantity_to_produce);
     setQualityCheck('passed');
 
-    if (activeLocations.length >= 2) {
+    if (displayJO.source_location_id && displayJO.destination_location_id) {
+      setSourceLocationId(String(displayJO.source_location_id));
+      setDestinationLocationId(String(displayJO.destination_location_id));
+    } else if (activeLocations.length >= 2) {
       setSourceLocationId(String(activeLocations[0].location_id));
       setDestinationLocationId(String(activeLocations[1].location_id));
     } else {

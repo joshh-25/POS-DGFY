@@ -23,6 +23,7 @@ describe('Phase 160 POS operator mutation attribution contract', () => {
             "'/transactions/:id/void'",
             "'/transactions/:id/cash-refund'",
             "'/orders/:id/collect-cash'",
+            "'/orders/:id/collect-dine-in-cash'",
             "'/orders/:id/record-payment'"
         ];
         protectedFragments.forEach((fragment) => {

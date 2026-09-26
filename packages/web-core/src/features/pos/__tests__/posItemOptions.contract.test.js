@@ -17,9 +17,10 @@ describe('POS Current Sale item options contract', () => {
     expect(checkoutContent).toContain("import('./ItemOptionsDialog.jsx')");
     expect(checkoutContent).toContain('data-testid={`pos-item-options-trigger-${lineKey}`}');
     expect(checkoutContent).toContain('role="button"');
-    expect(checkoutContent).toContain('if (!sessionLocked) setItemOptionsLineKey(lineKey);');
+    expect(checkoutContent).toContain('if (!sessionLocked && !isLockedParkedLine) setItemOptionsLineKey(lineKey);');
     expect(checkoutContent).toContain('event.stopPropagation();');
     expect(checkoutContent).toContain('Tap item to customize');
+    expect(checkoutContent).not.toContain('Original parked line locked');
     expect(checkoutContent).toContain('border border-blue-300 bg-clip-padding bg-slate-50 p-2.5');
     expect(checkoutContent).toContain('hover:border-blue-400 hover:bg-blue-50');
     expect(checkoutContent).not.toContain('pos-item-note-trigger-');

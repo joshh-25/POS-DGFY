@@ -1,7 +1,27 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-08-26
+Last reviewed: 2026-09-14
+
+## Phase 354 policy and runtime status
+
+The [Phase 354 contract](POS_CASHIER_LOCATION_ACCESS_PHASE_354.md) governs the
+approved next implementation: authorized branch access, one active register
+operator per tenant user, and view-only cashier defaults with explicit edit
+delegation. Phase 354 changes documentation only; implementation and acceptance
+are Phases 355-357.
+
+The view-only cashier descriptions below are the target policy, not the current
+runtime. Current backend defaults and `resolveEffectivePermissions` grant
+`items:edit`, and the POS client also permits editing by cashier role, following
+ADR 0020's September 1 amendment. Its September 14 amendment replaces that
+default for the upcoming implementation. Existing stored grants must be
+reconciled before claiming the target is active. Create/delete/import remain
+separate permissions; this policy change does not grant them.
+
+An operator handoff preserves the register shift and its opening owner. A
+parked-sale handoff, screen lock, logout, or closed browser does not by itself
+release all register/attendance obligations for moving to another branch.
 
 ## Scope
 

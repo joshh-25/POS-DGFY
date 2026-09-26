@@ -25,7 +25,7 @@ import { resolvePosTerminalUrl } from '../../../../../packages/web-core/src/feat
 import IndustrySelect from '../../../../../packages/web-core/src/features/registration/IndustrySelect.jsx';
 
 import { writeDgfyAuthToken } from '../../auth/storefrontSessionStorage.js';
-import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';
+import { resolveStorefrontInternalUrl } from '../../auth/storefrontInternalLink.js';
 import { buildBusinessRegistrationSubmissionPath } from '../model/businessRegistrationSubmission.js';
 
 const getFlowSnapshot = (legalTerms, flowKey) => legalTerms?.flows?.[flowKey]?.snapshot || {};
@@ -127,7 +127,7 @@ const LegalAcknowledgementBox = ({
                   </h3>
                   <p className="mt-2 text-xs leading-5 text-slate-600">{legalDocument.summary}</p>
                   {legalDocument.href ? (
-                    <a className="mt-2 inline-block text-xs font-medium text-[#1f5f9f] hover:underline" href={resolveSkupervisorUrl(legalDocument.href)} target="_blank" rel="noreferrer">
+                    <a className="mt-2 inline-block text-xs font-medium text-[#1f5f9f] hover:underline" href={resolveStorefrontInternalUrl(legalDocument.href)} target="_blank" rel="noreferrer">
                       Open full terms
                     </a>
                   ) : null}

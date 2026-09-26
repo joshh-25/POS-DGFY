@@ -1,7 +1,8 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
-import { getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+import { getItemsCostMetrics, getWeightedInventoryValueOverview } from '../modules/inventory/services/costValuationService.js';
+import { buildStockHealthWhere, STOCK_HEALTH_STATUS, getStockHealthStatus } from '../modules/inventory/services/inventoryHealthService.js';
 import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 export const getDashboardStats = async () => {
@@ -17,10 +18,10 @@ export const getDashboardStats = async () => {
     lowStockItems,
     healthyStockItems,
     overStockItems,
+    outOfStockItems,
     pendingPOs,
     activeJOs,
     pendingDispatchOrders,
-    inventoryValueResult,
     weightedOverview,
     itemsMissingCost,
     itemsWithZeroStock
@@ -30,63 +31,46 @@ export const getDashboardStats = async () => {
     Item.count({
       where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
-        min_threshold: { [Op.ne]: null },
-        [Op.and]: [
-          sequelize.where(
-            sequelize.col('current_stock'),
-            Op.lte,
-            sequelize.col('min_threshold')
-          )
-        ]
+        [Op.and]: [buildStockHealthWhere({
+          status: STOCK_HEALTH_STATUS.LOW_STOCK,
+          sequelize
+        })]
       }))
     }),
 
-    // Calculate healthy stock (items with stock between min threshold and max capacity)
     Item.count({
       where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
-        min_threshold: { [Op.ne]: null },
-        [Op.and]: [
-          sequelize.where(
-            sequelize.col('current_stock'),
-            Op.gt,
-            sequelize.col('min_threshold')
-          ),
-          sequelize.where(
-            sequelize.col('current_stock'),
-            Op.lte,
-            sequelize.col('max_capacity')
-          )
-        ]
+        [Op.and]: [buildStockHealthWhere({
+          status: STOCK_HEALTH_STATUS.HEALTHY,
+          sequelize
+        })]
       }))
     }),
 
-    // Calculate overstock (items exceeding max capacity)
     Item.count({
       where: buildStockBearingItemWhere(buildVisibleWhere({
         status: 'active',
-        [Op.and]: [
-          sequelize.where(
-            sequelize.col('current_stock'),
-            Op.gt,
-            sequelize.col('max_capacity')
-          )
-        ]
+        [Op.and]: [buildStockHealthWhere({
+          status: STOCK_HEALTH_STATUS.OVERSTOCK,
+          sequelize
+        })]
+      }))
+    }),
+
+    Item.count({
+      where: buildStockBearingItemWhere(buildVisibleWhere({
+        status: 'active',
+        [Op.and]: [buildStockHealthWhere({
+          status: STOCK_HEALTH_STATUS.OUT_OF_STOCK,
+          sequelize
+        })]
       }))
     }),
 
     PurchaseOrder.count({ where: { status: 'pending' } }),
     JobOrder.count({ where: { status: 'in_progress' } }),
     DispatchOrder.count({ where: { status: ['draft', 'confirmed', 'partial'], archived_at: null } }),
-
-    // Calculate total inventory value using DB aggregation
-    Item.findAll({
-      where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
-      attributes: [
-        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
-      ],
-      raw: true
-    }),
 
     getWeightedInventoryValueOverview(),
 
@@ -107,10 +91,10 @@ export const getDashboardStats = async () => {
     })
   ]);
 
-  const totalValue = parseFloat(inventoryValueResult[0]?.total_value || 0);
   const weightedTotalValue = Number(weightedOverview?.weighted_total_inventory_value || 0);
   const weightedAverageCostPerUnit = Number(weightedOverview?.weighted_average_cost_per_unit || 0);
   const weightedTotalAvailableQty = Number(weightedOverview?.weighted_total_available_qty || 0);
+  const legacyTotalValue = Number(weightedOverview?.legacy_total_inventory_value || 0);
 
   // Return camelCase field names to match frontend expectations
   return {
@@ -118,11 +102,13 @@ export const getDashboardStats = async () => {
     lowStockCount: lowStockItems,
     healthyCount: healthyStockItems,
     overStockCount: overStockItems,
-    totalValue,
+    outOfStockCount: outOfStockItems,
+    totalValue: weightedTotalValue,
+    legacyTotalValue,
     weightedTotalValue,
     weightedAverageCostPerUnit,
     weightedTotalAvailableQty,
-    inventoryValueDelta: Math.round((weightedTotalValue - totalValue) * 10000) / 10000,
+    inventoryValueDelta: Math.round((weightedTotalValue - legacyTotalValue) * 10000) / 10000,
     // Keep these for backward compatibility
     pending_purchase_orders: pendingPOs,
     active_job_orders: activeJOs,
@@ -143,14 +129,10 @@ export const getLowStockItems = async () => {
   const items = await Item.findAll({
     where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
-      min_threshold: { [Op.ne]: null }, // Only include items with thresholds set
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.lte,
-          sequelize.col('min_threshold')
-        )
-      ]
+      [Op.and]: [buildStockHealthWhere({
+        statuses: [STOCK_HEALTH_STATUS.LOW_STOCK, STOCK_HEALTH_STATUS.OUT_OF_STOCK],
+        sequelize
+      })]
     })),
     order: [['current_stock', 'ASC']],
     limit: 20
@@ -163,7 +145,12 @@ export const getLowStockItems = async () => {
     current_stock: item.current_stock,
     min_threshold: item.min_threshold,
     max_capacity: item.max_capacity,
-    category: item.category
+    category: item.category,
+    stock_status: getStockHealthStatus({
+      currentStock: item.current_stock,
+      minThreshold: item.min_threshold,
+      maxCapacity: item.max_capacity
+    })
   }));
 };
 
@@ -208,18 +195,14 @@ export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort =
     cost_per_unit: { [Op.gt]: 0 }
   }));
 
-  // Always compute the accurate grand total from ALL qualifying items (not paginated)
-  const [grandTotalResult, totalMatchingItems] = await Promise.all([
-    Item.findAll({
-      where: valueItemWhere,
-      attributes: [
-        [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
-      ],
-      raw: true
-    }),
+  // The inventory cost service is authoritative for the grand total. Keep the
+  // legacy item filter for pagination compatibility, but do not recalculate
+  // valuation here with a second current_stock * cost_per_unit formula.
+  const [weightedOverview, totalMatchingItems] = await Promise.all([
+    getWeightedInventoryValueOverview(),
     Item.count({ where: valueItemWhere })
   ]);
-  const grandTotal = parseFloat(grandTotalResult[0]?.total_value || 0);
+  const grandTotal = Number(weightedOverview?.weighted_total_inventory_value || 0);
 
   // Determine sort order
   const orderMap = {
@@ -240,10 +223,14 @@ export const getInventoryValueBreakdown = async ({ limit = 100, page = 1, sort =
     offset
   });
 
+  const metricsByItem = await getItemsCostMetrics({ items });
+
   const rows = items.map(item => {
-    const stock = parseFloat(item.current_stock) || 0;
+    const itemId = Number(item.item_id);
+    const metrics = metricsByItem.get(itemId)?.global;
+    const stock = Number(metrics?.available_qty ?? item.current_stock) || 0;
     const cost = parseFloat(item.cost_per_unit) || 0;
-    const value = Math.round(stock * cost * 100) / 100;
+    const value = Math.round(Number(metrics?.inventory_value ?? (stock * cost)) * 100) / 100;
     return {
       item_id: item.item_id,
       sku_code: item.sku_code,

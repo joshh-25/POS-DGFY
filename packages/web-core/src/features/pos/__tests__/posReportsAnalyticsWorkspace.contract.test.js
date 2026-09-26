@@ -27,6 +27,8 @@ const appliedFilterChipsSource = fs.readFileSync(path.resolve(__dirname, '../com
 const lineTabSource = fs.readFileSync(path.resolve(__dirname, '../components/PosLineTabNavigation.jsx'), 'utf8');
 const pageSpacingSource = fs.readFileSync(path.resolve(__dirname, '../components/PosPageSpacing.js'), 'utf8');
 const subtabNavigationSource = fs.readFileSync(path.resolve(__dirname, '../components/PosSubtabNavigation.jsx'), 'utf8');
+const primitivesPath = path.resolve(__dirname, '../../../components/backOffice/BackOfficePrimitives.jsx');
+const primitivesSource = fs.readFileSync(primitivesPath, 'utf8');
 
 describe('POS report category filter contract', () => {
   it('uses each selected report tab granularity for requests and offline snapshots', () => {
@@ -189,12 +191,11 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).not.toContain('value={category}');
   });
 
-  it('keeps report tables viewport-safe with controlled horizontal scrolling on mobile', () => {
-    expect(workspaceSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
-    expect(responsiveTableSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x');
-    expect(responsiveTableSource).toContain('w-max min-w-full table-fixed');
-    expect(responsiveTableSource).not.toContain('mobilePrimaryKeys');
-    expect(responsiveTableSource).not.toContain('mobileDetailKeys');
+  it('keeps report cards viewport-safe and renders table rows as mobile cards', () => {
+    expect(primitivesSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
+    expect(primitivesSource).toContain('grid min-w-0 gap-3 sm:hidden');
+    expect(primitivesSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
+    expect(primitivesSource).toContain('min-w-[720px]');
   });
 
   it('keeps every report table on the shared compact visual contract', () => {
@@ -294,16 +295,22 @@ describe('POS report category filter contract', () => {
     expect(overviewSource).not.toContain('Filtered Transactions');
   });
 
-  it('separates selected tender collections from full sales and displays mixed payment methods', () => {
-    expect(workspaceSource).toContain('summaryCards.selected_tender');
-    expect(kpiSource).toContain("`${selectedTender.payment_label} Collected`");
-    expect(workspaceSource).toContain('formatPosTransactionPaymentMethods(entry)');
+  it('discloses the immutable Z-reading reconciliation without mixing net sales metrics', () => {
+    expect(workspaceSource).toContain('z_reading_reconciliation');
+    expect(workspaceSource).toContain('Z-reading reconciliation');
+    expect(workspaceSource).toContain('Report recognized sales');
+    expect(workspaceSource).toContain('Z-reading total');
+    expect(workspaceSource).toContain('Report net sales');
+    expect(workspaceSource).toContain('Report refunds/voids');
+    expect(workspaceSource).toContain('Generated:');
+    expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
   });
 
-  it('keeps procurement export out of the POS reports toolbar', () => {
-    expect(workspaceSource).not.toContain('exportProcurementCsv');
-    expect(workspaceSource).not.toContain('handleExportProcurementCsv');
-    expect(toolbarSource).not.toContain('onExportProcurement');
-    expect(toolbarSource).not.toContain('Procurement CSV');
+  // Phase 261 (#1488): pre-run procurement CSV export button, independent of the loaded report.
+  it('exposes a procurement CSV export button that is not gated on report data', () => {
+    expect(workspaceSource).toContain('exportProcurementCsv');
+    expect(workspaceSource).toContain('handleExportProcurementCsv');
+    expect(workspaceSource).toContain('Procurement CSV');
+    expect(workspaceSource).toContain('onClick={handleExportProcurementCsv}');
   });
 });

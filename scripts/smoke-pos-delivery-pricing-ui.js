@@ -256,7 +256,15 @@ const collectFailures = (entry) => {
 const run = async () => {
   await fs.mkdir(artifactRoot, { recursive: true });
   const managedServer = await startManagedPosServer();
-  const browser = await playwright.chromium.launch({ headless: true });
+  const launchOptions = {
+    headless: true,
+    channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL || 'chrome'
+  };
+  if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH) {
+    launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+    delete launchOptions.channel;
+  }
+  const browser = await playwright.chromium.launch(launchOptions);
   const evidence = [];
   let accessGate = null;
   try {

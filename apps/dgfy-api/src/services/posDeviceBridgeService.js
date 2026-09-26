@@ -131,6 +131,13 @@ export const posDeviceBridgeService = {
         return requestBridge('/device/status');
     },
 
+    async testPrint(payload = {}) {
+        return requestBridge('/device/test-print', {
+            method: 'POST',
+            body: payload
+        });
+    },
+
     async printReceipt(payload = {}) {
         return requestBridge('/device/print-receipt', {
             method: 'POST',

@@ -63,7 +63,8 @@ export const assertLocationAccess = async ({
   locationId,
   transaction = null,
   lock = false,
-  operationLabel = 'inventory operation'
+  operationLabel = 'inventory operation',
+  requireGrant = false
 } = {}) => {
   const normalizedUserId = parsePositiveInt(userId);
   const normalizedLocationId = parsePositiveInt(locationId);
@@ -75,12 +76,24 @@ export const assertLocationAccess = async ({
   }
 
   if (!normalizedUserId) {
+    if (requireGrant) {
+      const error = new Error(`Authenticated user is required to perform ${operationLabel}.`);
+      error.statusCode = 401;
+      throw error;
+    }
     return;
   }
 
   const User = dbStore.get('User');
   const UserLocationGrant = dbStore.get('UserLocationGrant');
-  if (!User || !UserLocationGrant) return;
+  if (!User || !UserLocationGrant) {
+    if (requireGrant) {
+      const error = new Error(`Location grants are unavailable to perform ${operationLabel}.`);
+      error.statusCode = 503;
+      throw error;
+    }
+    return;
+  }
 
   const user = await User.findByPk(normalizedUserId, {
     ...toTransactionOptions({ transaction, lock })
@@ -96,7 +109,7 @@ export const assertLocationAccess = async ({
 
   const multiLocationEnabled = await isMultiLocationInventoryEnabled({ transaction });
   if (!Array.isArray(grants) || grants.length === 0) {
-    if (multiLocationEnabled) {
+    if (multiLocationEnabled || requireGrant) {
       const error = new Error(
         `You do not have configured location grants to perform ${operationLabel}. `
         + 'Contact your administrator to assign at least one location.'

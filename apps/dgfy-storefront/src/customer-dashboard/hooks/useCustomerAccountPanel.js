@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { mapCustomerBusinessCompanies } from '../model/customerBusinessAssets.js';
 import { getTrackingRetryAfterSeconds } from '../../tracking/customerTrackingRefresh.js';
 
 export function useCustomerAccountPanel({
   EMPTY_ACCOUNT_PANEL,
   selectedStore,
+  selectedLocation,
+  selectedLocationId,
+  isGlobalAccountPage,
   knownStoreRouteCandidates,
   isDgfyCustomerSignedIn,
   dgfySessionAccount,
@@ -19,6 +22,35 @@ export function useCustomerAccountPanel({
 }) {
   const [accountPanel, setAccountPanel] = useState(EMPTY_ACCOUNT_PANEL);
   const loadRequestRef = useRef(0);
+  const loadedScopeRef = useRef('');
+  const loadingScopeRef = useRef('');
+  const selectedStoreSlug = isGlobalAccountPage ? '' : String(selectedStore?.slug || '').trim().toLowerCase();
+  const normalizedLocationId = isGlobalAccountPage
+    ? ''
+    : (selectedLocationId == null || selectedLocationId === ''
+    ? ''
+    : String(Number.parseInt(selectedLocationId, 10)));
+  const historyScopeKey = selectedStoreSlug
+    ? `store:${selectedStoreSlug}:location:${normalizedLocationId || 'all'}`
+    : 'all-stores';
+  const historyScope = useMemo(() => (selectedStoreSlug
+    ? {
+        mode: normalizedLocationId ? 'branch' : 'store',
+        storeSlug: selectedStoreSlug,
+        storeName: String(selectedStore?.tenant_name || selectedStore?.name || '').trim(),
+        locationId: normalizedLocationId ? Number(normalizedLocationId) : null,
+        locationName: String(selectedLocation?.name || '').trim(),
+        label: normalizedLocationId
+          ? `${String(selectedStore?.tenant_name || selectedStore?.name || 'Selected store').trim()} · ${String(selectedLocation?.name || `Branch ${normalizedLocationId}`).trim()}`
+          : `${String(selectedStore?.tenant_name || selectedStore?.name || 'Selected store').trim()} · All branches`
+      }
+    : { mode: 'all_stores', label: 'All stores', storeSlug: '', storeName: '', locationId: null, locationName: '' }), [
+    normalizedLocationId,
+    selectedLocation?.name,
+    selectedStore?.name,
+    selectedStore?.tenant_name,
+    selectedStoreSlug
+  ]);
 
   const handleLoadAccountPanel = useCallback(async ({ silent = false } = {}) => {
     const requestId = loadRequestRef.current + 1;
@@ -32,15 +64,29 @@ export function useCustomerAccountPanel({
       }
       return;
     }
-    if (!silent) {
-      setAccountPanel((previous) => ({ ...previous, loading: true, error: '', affiliateAccessStatus: 'loading' }));
+    loadingScopeRef.current = historyScopeKey;
+    if (!silent || loadedScopeRef.current !== historyScopeKey) {
+      setAccountPanel((previous) => ({
+        ...previous,
+        loading: true,
+        error: '',
+        activities: [],
+        orders: [],
+        bookings: [],
+        orderHistoryScope: historyScope,
+        affiliateAccessStatus: 'loading'
+      }));
     }
 
     const loadDgfyPanel = async (authToken = '') => {
+      const activityQuery = new URLSearchParams({ limit: '100' });
+      if (selectedStoreSlug) activityQuery.set('store_slug', selectedStoreSlug);
+      if (normalizedLocationId) activityQuery.set('location_id', normalizedLocationId);
+      const hasScopedHistory = Boolean(selectedStoreSlug);
       const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsResult, affiliateEarningsData, affiliatePayoutMethodsData, affiliateCashoutsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
-        requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
+        requestJson(`/api/v1/dgfy/customer/activities?${activityQuery.toString()}`, { authToken, cache: 'no-store' }).catch(() => (hasScopedHistory ? { activities: [] } : {})),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
         requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
         requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 })),
@@ -91,8 +137,10 @@ export function useCustomerAccountPanel({
           affiliateEarnings: affiliateEarningsData?.earnings || null,
           affiliateEarningsByStore: Array.isArray(affiliateEarningsData?.by_store) ? affiliateEarningsData.by_store : [],
           affiliatePayoutMethods: Array.isArray(affiliatePayoutMethodsData?.payout_methods) ? affiliatePayoutMethodsData.payout_methods : [],
-          affiliateCashouts: Array.isArray(affiliateCashoutsData?.cashouts) ? affiliateCashoutsData.cashouts : []
+          affiliateCashouts: Array.isArray(affiliateCashoutsData?.cashouts) ? affiliateCashoutsData.cashouts : [],
+          orderHistoryScope: historyScope
         };
+        loadedScopeRef.current = historyScopeKey;
         setAccountPanel(nextAccountPanel);
         // Avoid publishing an equivalent account object on every dashboard
         // refresh. The session store is an external subscription and can
@@ -112,9 +160,11 @@ export function useCustomerAccountPanel({
         return;
       }
 
+      const orderQuery = new URLSearchParams({ limit: '25' });
+      if (normalizedLocationId) orderQuery.set('location_id', normalizedLocationId);
       const [me, ordersData, bookingsData] = await Promise.all([
         requestJson('/api/v1/store/auth/me', { storeSlug: selectedStore.slug, authToken: storeToken }),
-        requestJson('/api/v1/store/orders?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }),
+        requestJson(`/api/v1/store/orders?${orderQuery.toString()}`, { storeSlug: selectedStore.slug, authToken: storeToken, cache: 'no-store' }),
         requestJson('/api/v1/store/services/bookings?limit=25', { storeSlug: selectedStore.slug, authToken: storeToken }).catch(() => ({ bookings: [] }))
       ]);
       if (requestId !== loadRequestRef.current) return;
@@ -137,16 +187,19 @@ export function useCustomerAccountPanel({
         affiliateEarnings: null,
         affiliateEarningsByStore: [],
         affiliatePayoutMethods: [],
-        affiliateCashouts: []
+        affiliateCashouts: [],
+        orderHistoryScope: historyScope
       });
+      loadedScopeRef.current = historyScopeKey;
     } catch (error) {
       if (requestId !== loadRequestRef.current) return;
+      loadedScopeRef.current = historyScopeKey;
       if (error?.status === 401) {
         clearDgfyAuthToken();
         setDgfyAuthTokenState('');
         setDgfySessionAccount(null);
       }
-      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, affiliateAccessStatus: 'error', error: normalizeStorefrontErrorMessage(error, 'Unable to load account.') });
+      setAccountPanel({ ...EMPTY_ACCOUNT_PANEL, affiliateAccessStatus: 'error', error: normalizeStorefrontErrorMessage(error, 'Unable to load account.'), orderHistoryScope: historyScope });
       // Surface retryAfterSeconds (never thrown further -- this function
       // always resolves) so a caller polling on an interval, e.g.
       // useCustomerDashboardLiveSync, can back off instead of retrying at
@@ -165,6 +218,10 @@ export function useCustomerAccountPanel({
     normalizeStorefrontErrorMessage,
     readDgfyAuthToken,
     readStoreAuthToken,
+    historyScope,
+    historyScopeKey,
+    normalizedLocationId,
+    selectedStoreSlug,
     requestJson,
     selectedStore,
     setDgfyAuthTokenState,
@@ -172,7 +229,9 @@ export function useCustomerAccountPanel({
   ]);
 
   useEffect(() => {
-    if (!isDgfyCustomerSignedIn || accountPanel?.loading) return;
+    if (!isDgfyCustomerSignedIn) return;
+    const scopeChanged = loadedScopeRef.current !== historyScopeKey;
+    if (accountPanel?.loading && loadingScopeRef.current === historyScopeKey) return;
     const hasLoadedData = Boolean(
       accountPanel?.me
       || accountPanel?.orders?.length
@@ -181,8 +240,8 @@ export function useCustomerAccountPanel({
       || accountPanel?.loyalty
       || accountPanel?.error
     );
-    if (!hasLoadedData) void handleLoadAccountPanel();
-  }, [accountPanel, handleLoadAccountPanel, isDgfyCustomerSignedIn]);
+    if (scopeChanged || !hasLoadedData) void handleLoadAccountPanel();
+  }, [accountPanel, handleLoadAccountPanel, historyScopeKey, isDgfyCustomerSignedIn]);
 
   return { accountPanel, setAccountPanel, handleLoadAccountPanel };
 }

@@ -1770,6 +1770,10 @@ export const storeRepository = {
             store_customer_id: customerId
         };
 
+        if (filters.location_id !== undefined && filters.location_id !== null) {
+            where.location_id = Number.parseInt(filters.location_id, 10);
+        }
+
         if (filters.fulfillment_status) {
             where.fulfillment_status = String(filters.fulfillment_status).trim();
         }

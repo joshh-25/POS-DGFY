@@ -181,7 +181,7 @@ export const buildCreateDeliveryRunUseCase = ({
     deliveryRunRepository,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    return async ({ payload = {}, user = {}, auditContext = {} } = {}) => {
+    return async ({ payload = {}, user = {} } = {}) => {
         const actorUserId = parsePositiveInt(user?.user_id);
         const label = String(payload?.label || '').trim();
 

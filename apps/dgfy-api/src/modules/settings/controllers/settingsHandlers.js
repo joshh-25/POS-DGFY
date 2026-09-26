@@ -122,8 +122,10 @@ export const getSettingByKey = async (req, res, next) => {
  */
 export const updateSettings = async (req, res, next) => {
   try {
+    const { expected_updated_at: expectedUpdatedAt, ...settingsData } = req.validatedData || {};
     const result = await updateSettingsUseCase({
-      settingsData: req.validatedData,
+      settingsData,
+      expectedUpdatedAt,
       actorUser: req.user
     });
     if (result?.success) {
@@ -158,7 +160,7 @@ export const updateSettings = async (req, res, next) => {
       action: 'update_settings',
       result,
       successMetadataResolver: () => ({
-        key_count: req.validatedData ? Object.keys(req.validatedData).length : 0
+        key_count: Object.keys(settingsData).length
       })
     });
     return sendUseCaseResult(res, result, {
@@ -186,6 +188,7 @@ export const updateSettingByKey = async (req, res, next) => {
     const result = await updateSettingByKeyUseCase({
       key: req.params.key,
       value: req.validatedData.value,
+      expectedUpdatedAt: req.validatedData.expected_updated_at,
       actorUser: req.user
     });
     if (result?.success) {

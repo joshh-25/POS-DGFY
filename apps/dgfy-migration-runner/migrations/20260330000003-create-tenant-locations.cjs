@@ -76,6 +76,11 @@ module.exports = {
                     allowNull: false,
                     defaultValue: true
                 },
+                allow_dine_in_pay_at_store: {
+                    type: Sequelize.BOOLEAN,
+                    allowNull: false,
+                    defaultValue: false
+                },
                 created_at: {
                     type: Sequelize.DATE,
                     allowNull: false,

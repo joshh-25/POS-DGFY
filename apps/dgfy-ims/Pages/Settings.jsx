@@ -75,6 +75,7 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '../../../packages/web-core/src/features/settings/deliveryRadius.js';
 import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { evaluateFulfillmentLeadTime } from '../../../packages/web-core/src/features/settings/fulfillmentLeadTime.js';
 import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
@@ -82,6 +83,7 @@ import { ResponsiveImage } from '../../../packages/web-core/src/components/media
 import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
 import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
+import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];
@@ -611,7 +613,7 @@ const serializeDeliveryFeeCalcForSave = (calc) => {
   const minFee = parseNullableNumberInput(calc.min_fee, { min: 0, precision: 4 });
   const includedKm = parseNullableNumberInput(calc.included_km, { min: 0, precision: 4 });
   const perKmRate = parseNullableNumberInput(calc.per_km_rate, { min: 0, precision: 4 });
-  const incrementKm = parseNullableNumberInput(calc.increment_km, { min: 0.0001, precision: 4 });
+  const incrementKm = parseNullableNumberInput(calc.increment_km, { min: MIN_DELIVERY_INCREMENT_KM, precision: 4 });
   const maxDistanceKm = parseNullableNumberInput(calc.max_distance_km, { min: 0.0001, precision: 4 });
 
   if ([minFee, includedKm, perKmRate, incrementKm, maxDistanceKm].some((value) => value == null)) {
@@ -1603,7 +1605,7 @@ export default function Settings() {
       longitude: location?.longitude == null ? '' : String(location.longitude),
       pin_confirmed: pinConfirmed,
       location_version: String(location?.updated_at || ''),
-      delivery_radius_km: location?.delivery_radius_km == null ? '5' : String(location.delivery_radius_km),
+      delivery_radius_km: String(normalizeDeliveryRadiusKm(location?.delivery_radius_km)),
       current_wait_time_minutes: location?.current_wait_time_minutes == null ? '15' : String(location.current_wait_time_minutes),
       is_open: location?.is_open !== false,
       is_active: location?.is_active !== false,
@@ -1625,7 +1627,7 @@ export default function Settings() {
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open === true,
       is_active: locationForm.is_active !== false,
@@ -2877,8 +2879,8 @@ export default function Settings() {
                         <Label className="text-xs text-slate-500">Charge Increment (km)</Label>
                         <Input
                           type="number"
-                          min="0.0001"
-                          step="0.0001"
+                          min={String(MIN_DELIVERY_INCREMENT_KM)}
+                          step={String(MIN_DELIVERY_INCREMENT_KM)}
                           value={settings.storeDeliveryFeeCalc?.increment_km ?? ''}
                           onChange={(e) => handleDeliveryFeeCalcChange('increment_km', e.target.value)}
                           placeholder="0.5"
@@ -2898,7 +2900,8 @@ export default function Settings() {
                     </div>
                     <p className="text-xs text-slate-500">
                       All five fields are required together to save the formula -- an incomplete
-                      set is left unsaved rather than partially applied.
+                      set is left unsaved rather than partially applied. Charge increment must be at
+                      least {MIN_DELIVERY_INCREMENT_KM} km (1 meter).
                     </p>
                   </div>
                 )}

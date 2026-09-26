@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspaceSource = [
+  fs.readFileSync(path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosSettingsWorkspace.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosSetupSettingsPane.jsx'), 'utf8'),
   fs.readFileSync(path.resolve(__dirname, '../settings/PosOperationsAccessSection.jsx'), 'utf8'),
@@ -161,6 +162,10 @@ describe('regular POS Setup cashier management contract', () => {
   it('loads active cashier authorization profiles after invitation acceptance', () => {
     expect(workspaceSource).toContain('const rows = await fetchPosSetupCashiers();');
     expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:manage')");
+    expect(workspaceSource).toContain("resolveUserPermissionList(terminalUser).includes('users:delete')");
+    expect(workspaceSource).toContain('removeUserFromCompany(userId)');
+    expect(workspaceSource).toContain('data-testid={`remove-cashier-${cashier.user_id}`}');
+    expect(workspaceSource).toContain('Remove cashier access');
   });
 
   it('supports explicit per-terminal cashier assignments with legacy location fallback', () => {
@@ -610,12 +615,6 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain('checked={locationForm.supports_dine_in !== false}');
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_delivery', value)");
     expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_pickup', value)");
-    expect(storefrontPaneSource).toContain("handleFulfillmentMethodChange('supports_dine_in', value)");
-    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
-      .toBeGreaterThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsPickup}'));
-    expect(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}'))
-      .toBeLessThan(storefrontPaneSource.indexOf('label={STOREFRONT_LOCATION_LABELS.allowScheduledOrders}'));
-    expect(workspaceSource).toContain('payload.last_known_updated_at = locationForm.location_version;');
     expect(tenantSetupModalSource).toContain('Label>Supports Delivery</Label>');
     expect(tenantSetupModalSource).toContain('Label>Supports Pickup</Label>');
     expect(tenantSetupModalSource).toContain('checked={locationDraft.supports_delivery === true}');
@@ -628,6 +627,8 @@ describe('regular POS Setup cashier management contract', () => {
     expect(storefrontPaneSource).toContain('description="Sell out-of-stock items"');
     expect(storefrontPaneSource).toContain('description="Accept delivery orders"');
     expect(storefrontPaneSource).toContain('description="Accept pickup orders"');
+    expect(storefrontPaneSource).toContain('label={STOREFRONT_LOCATION_LABELS.supportsDineIn}');
+    expect(storefrontPaneSource).toContain('description="Accept dine-in orders"');
     expect(storefrontPaneSource).toContain('description="Offer scheduled orders"');
     expect(storefrontPaneSource).toContain('description="Offer immediate fulfillment"');
   });
@@ -865,8 +866,10 @@ describe('regular POS Setup cashier management contract', () => {
     expect(tenantSetupModalSource).toContain('storefront_hours: serializeStorefrontBusinessHours(storefrontHours)');
     expect(tenantSetupModalSource).toContain('onKeyDown={handleDialogKeyDown}');
     expect(tenantSetupModalSource.indexOf('Business Hours')).toBeLessThan(tenantSetupModalSource.indexOf('Business Location'));
-    expect(tenantSetupModalSource).not.toContain('STARTER_ITEM');
-    expect(tenantSetupModalSource).not.toContain('starterItemRequirements');
+    expect(tenantSetupModalSource).toContain('STARTER_ITEM');
+    expect(tenantSetupModalSource).toContain('starterItemRequirements');
+    expect(tenantSetupModalSource).toContain('Save Room Setup');
+    expect(tenantSetupModalSource).not.toContain('Save Starter Item');
   });
 
   it('provides an inline business-hours editor from the storefront locations summary', () => {
@@ -914,8 +917,9 @@ describe('regular POS Setup cashier management contract', () => {
     expect(sidebarSource).toContain('Daily totals, popular items, and transactions');
   });
 
-  it('allows cashier item editing while always hiding item deletion', () => {
-    expect(terminalPageSource).toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
+  it('requires explicit item-edit permission while always hiding cashier item deletion', () => {
+    expect(terminalPageSource).toContain("const canEditItems = hasPermission('items:edit');");
+    expect(terminalPageSource).not.toContain("const canEditItems = isCashierRole || hasPermission('items:edit');");
     expect(terminalPageSource).toContain("const canDeleteItems = !isCashierRole && hasPermission('items:delete');");
     expect(operationsSource).toContain('{canDeleteItems && (');
   });

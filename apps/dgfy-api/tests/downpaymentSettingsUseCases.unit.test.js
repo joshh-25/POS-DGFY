@@ -9,6 +9,7 @@
 // 6/7). There is no `resolveWorkflowMode` injectable anymore; tests that used to assert it was or
 // wasn't called have been removed or rewritten to assert the corrected behavior instead.
 
+import { jest } from '@jest/globals';
 import {
     buildGetDownpaymentSettingsUseCase,
     buildUpdateDownpaymentSettingsUseCase
@@ -207,5 +208,31 @@ describe('buildUpdateDownpaymentSettingsUseCase', () => {
         const result = await useCase({ tenantId: TENANT_ID, body: { allowed_capture_methods: null } });
         expect(result.success).toBe(true);
         expect(result.data.settings.allowed_capture_methods).toBeNull();
+    });
+
+    test('rejects a stale version before writing the canonical row', async () => {
+        const upsertSettings = jest.fn();
+        const repository = {
+            getSettings: jest.fn().mockResolvedValue({
+                tenant_id: TENANT_ID,
+                ...DEFAULT_SETTINGS,
+                updated_at: '2026-09-15T01:00:00.000Z'
+            }),
+            upsertSettings
+        };
+        const useCase = buildUpdateDownpaymentSettingsUseCase({ repository });
+
+        const result = await useCase({
+            tenantId: TENANT_ID,
+            body: {
+                payment_mode: 'full_payment',
+                expected_updated_at: '2026-09-15T00:00:00.000Z'
+            }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.code).toBe('CONFLICT');
+        expect(upsertSettings).not.toHaveBeenCalled();
     });
 });

@@ -119,7 +119,9 @@ The SKUpervisor AI Assistant provides natural language interaction with the inve
 - `packages/web-core/Components/ai/ConfirmActionDialog.jsx` - Write operation confirmation
 - `packages/web-core/Components/ai/AiDiagnosticsPanel.jsx` - AI capability & knowledge gap checker panel
 
-The AI Chat route itself is IMS-only: `apps/dgfy-ims/Pages/AiChat.jsx`.
+The AI Chat route is POS Back Office-owned: `packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx`,
+mounted by the POS Back Office manifest. IMS retains only authentication, platform-admin, legal,
+and explicitly retained compatibility/settings surfaces.
 
 **Files**: See `docs/ai/AI_GUIDELINES.md` for full documentation.
 
@@ -216,7 +218,7 @@ design. Once the cutover in that runbook has executed:
 │   ├── dgfy-android-bridge/    # Android hosts for POS hardware (formerly android/)
 │   │   └── imin-wrapper/       # iMin WebView wrapper + native printer/drawer bridge
 │   ├── dgfy-ims/               # React/Vite IMS (SKUpervisor) app — dev port 5173
-│   │   ├── Pages/              # IMS route views (incl. AiChat.jsx, admin/)
+│   │   ├── Pages/              # IMS auth, legal, retained settings, and admin views
 │   │   ├── src/main.jsx        # Vite entry point
 │   │   └── vite.config.js
 │   ├── dgfy-pos/               # React/Vite POS app — dev port 5174

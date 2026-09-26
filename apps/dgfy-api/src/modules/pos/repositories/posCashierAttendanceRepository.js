@@ -48,6 +48,21 @@ const idempotencyWhere = ({ userId, action, key, attendanceSessionId = null } = 
  * model lookup stays lazy so tenant requests never use the landlord model.
  */
 export const createPosCashierAttendanceRepository = (models = null) => Object.freeze({
+    async lockUserOperatingState({ userId, transaction }) {
+        if (!transaction) throw new Error('POS operating scope requires a transaction');
+        const options = transactionOptions({ transaction, lock: true });
+        const user = await requireModel(models, 'User').findByPk(userId, options);
+        const shifts = await requireModel(models, 'PosTerminalShift').findAll({
+            where: { cashier_id: userId, status: 'open' }, ...options
+        });
+        const operators = await requireModel(models, 'PosTerminalOperatorSession').findAll({
+            where: { user_id: userId, status: 'active' }, ...options
+        });
+        const attendance = await requireModel(models, 'EmployeeAttendanceSession').findAll({
+            where: { user_id: userId, status: 'open' }, ...options
+        });
+        return { user, shifts, operators, attendance };
+    },
     async findOpenAttendanceByUser({ userId, locationId, transaction, lock = false } = {}) {
         const Model = requireModel(models, 'EmployeeAttendanceSession');
         const where = { user_id: userId, status: 'open' };

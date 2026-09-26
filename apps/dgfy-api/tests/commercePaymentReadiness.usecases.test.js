@@ -137,7 +137,7 @@ describe('tenant PayMongo readiness evidence', () => {
       metadata: expect.objectContaining({
         fee_contract: {
           dgfy_fee_basis: 'subtotal',
-          dgfy_fee_charged_to: 'customer',
+          dgfy_fee_charged_to: 'tenant',
           provider_fee_shoulder: 'tenant_company'
         }
       })

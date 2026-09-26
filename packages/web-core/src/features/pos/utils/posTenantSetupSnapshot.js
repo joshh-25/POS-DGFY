@@ -10,12 +10,14 @@ export const buildTenantSetupStateSnapshot = ({
   companyPayload = {},
   usersPayload = [],
   locationsPayload = [],
-  itemsPayload = []
+  itemsPayload = [],
+  onboardingPayload = null,
+  workflowMode = ''
 } = {}) => {
   const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
   const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
   const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
-  const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
+  const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload, onboardingPayload, workflowMode);
   const onboardingState = String(
     settingsPayload?.tenant_onboarding_state?.value || 'not_started'
   ).trim().toLowerCase();

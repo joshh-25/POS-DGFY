@@ -83,8 +83,13 @@ beforeEach(() => {
 });
 
 describe('Dine-in Schedule tab', () => {
-  it('is available only in F&B mode and filters the existing queue payload', () => {
+  it('removes every dine-in order from Active Queue and shows scheduled plus immediate service in the schedule', () => {
     const scheduled = buildOrder();
+    const immediate = buildOrder({
+      pos_transaction_id: 9103,
+      customer_name: 'Immediate Guest',
+      scheduled_for: null
+    });
     const pickup = buildOrder({
       pos_transaction_id: 9102,
       customer_name: 'Pickup Guest',
@@ -93,17 +98,25 @@ describe('Dine-in Schedule tab', () => {
     });
 
     render(<IncomingQueueWorkspace {...baseProps({
-      incomingOrdersState: { orders: [scheduled, pickup], accessState: 'allowed', errorMessage: '' }
+      incomingOrdersState: { orders: [scheduled, immediate, pickup], accessState: 'allowed', errorMessage: '' }
     })} />);
 
+    const activeTab = screen.getByRole('tab', { name: /Active Queue/i });
+    expect(activeTab.textContent).toContain('1');
+    expect(screen.queryByText('Scheduled Guest')).toBeNull();
+    expect(screen.queryByText('Immediate Guest')).toBeNull();
+    expect(screen.getAllByText('Pickup Guest').length).toBeGreaterThan(0);
+
     const scheduleTab = screen.getByRole('tab', { name: /Dine-in Schedule/i });
-    expect(scheduleTab.textContent).toContain('1');
+    expect(scheduleTab.textContent).toContain('2');
     fireEvent.click(scheduleTab);
 
     expect(screen.getAllByText('Scheduled Guest').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Immediate Guest').length).toBeGreaterThan(0);
     expect(screen.queryByText('Pickup Guest')).toBeNull();
     expect(screen.getByText('Serve By')).toBeTruthy();
     expect(screen.getByText('Upcoming')).toBeTruthy();
+    expect(screen.getAllByText('Immediate service').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/In \d{2,}h \d{2}m \d{2}s/).length).toBeGreaterThan(0);
   });
 
@@ -113,4 +126,43 @@ describe('Dine-in Schedule tab', () => {
     expect(screen.queryByRole('tab', { name: /Dine-in Schedule/i })).toBeNull();
   });
 
+  it('shows and filters the schedule tab in the read-only admin branch monitor', () => {
+    const scheduled = buildOrder();
+    const immediate = buildOrder({
+      pos_transaction_id: 9103,
+      customer_name: 'Immediate Guest',
+      scheduled_for: null
+    });
+    const pickup = buildOrder({
+      pos_transaction_id: 9102,
+      customer_name: 'Pickup Guest',
+      order_method: 'pickup',
+      scheduled_for: null
+    });
+
+    render(<IncomingQueueWorkspace {...baseProps({
+      shiftState: { shift: null },
+      canViewAdminLocationMonitor: true,
+      viewingLocationId: 10,
+      adminLocationMonitorState: {
+        loading: false,
+        locationId: 10,
+        orders: [scheduled, immediate, pickup],
+        errorMessage: ''
+      }
+    })} />);
+
+    const scheduleTab = screen.getByRole('tab', { name: /Dine-in Schedule/i });
+    expect(scheduleTab.textContent).toContain('2');
+    fireEvent.click(scheduleTab);
+
+    expect(screen.getByText('Dine-in service:')).toBeTruthy();
+    expect(screen.getAllByText('Scheduled Guest').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Immediate Guest').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Pickup Guest')).toBeNull();
+    expect(screen.getByText(/Serve by/)).toBeTruthy();
+    expect(screen.getByText('Upcoming')).toBeTruthy();
+    expect(screen.getAllByText('Immediate service').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Read-only admin view/)).toBeTruthy();
+  });
 });

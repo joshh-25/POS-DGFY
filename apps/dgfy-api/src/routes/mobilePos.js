@@ -2,6 +2,7 @@ import express from 'express';
 import * as mobilePosController from '../controllers/mobilePosController.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { mobilePosFreeSyncRoundLimiter, posLimiter } from '../middleware/rateLimiter.js';
+import { requirePosDeviceProof } from '../middleware/posDeviceProof.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateMobilePosCatalogBootstrapQuery,
@@ -20,6 +21,7 @@ const router = express.Router();
 
 router.use(authenticate);
 router.use(posLimiter);
+router.use(requirePosDeviceProof);
 
 // No requirePremium gate here (B2): free tenants get the same offline-sync
 // API as premium, just capped at 2 pushes/day server-side via

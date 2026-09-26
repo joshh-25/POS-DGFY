@@ -3,7 +3,8 @@ import * as jobOrderController from '../controllers/jobOrderController.js';
 import {
   validateCreateJobOrder,
   validateCreateJobOrderDraft,
-  validateCompleteJobOrder
+  validateCompleteJobOrder,
+  validateFinalizeJobOrder
 } from '../validators/jobOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -29,11 +30,10 @@ router.post('/', checkPermission(PERMISSIONS.ORDERS.actions.CREATE_JO), (req, re
 router.post('/:jo_id/complete', checkPermission(PERMISSIONS.ORDERS.actions.COMPLETE_JO), validateCompleteJobOrder, jobOrderController.completeJobOrder);
 
 // Finalize draft - managers and admins only
-router.patch('/:jo_id/finalize', checkPermission(PERMISSIONS.ORDERS.actions.APPROVE_JO), jobOrderController.finalizeJobOrder);
+router.patch('/:jo_id/finalize', checkPermission(PERMISSIONS.ORDERS.actions.APPROVE_JO), validateFinalizeJobOrder, jobOrderController.finalizeJobOrder);
 
 // Archive/restore - managers and admins only
 router.post('/:jo_id/archive', checkPermission(PERMISSIONS.ORDERS.actions.DELETE_JO), jobOrderController.archiveJobOrder);
 router.post('/:jo_id/restore', checkPermission(PERMISSIONS.ORDERS.actions.DELETE_JO), jobOrderController.restoreJobOrder);
 
 export default router;
-

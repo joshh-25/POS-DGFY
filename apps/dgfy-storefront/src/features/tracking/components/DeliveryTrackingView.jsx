@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
 import {
   Check,
   CheckCircle2,
@@ -20,6 +20,10 @@ import { ensureMapImage, ensureRouteLineLayer, setGeoJsonSourceData, setRouteLin
 import { renderDeliveryPinSpriteSvg } from '../../../discovery/model/businessModePins.js';
 import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../packages/web-core/src/components/maps/mapLibreShared.js';
 import { useStoreRoute } from '../../../shared/hooks/useStoreRoute.js';
+
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep this map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
 
 const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-pins';
 const TRACKING_PIN_LAYER_ID = 'dgfy-tracking-pin-symbols';

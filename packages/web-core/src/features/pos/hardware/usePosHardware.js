@@ -11,6 +11,7 @@ const NO_HARDWARE_CAPABILITIES = Object.freeze([]);
 // `capabilities` for UI state. See ADR 0053.
 export const usePosHardware = ({ enabled = true } = {}) => {
     const [driver, setDriver] = useState(null);
+    const [status, setStatus] = useState(null);
     const [loading, setLoading] = useState(true);
     const mountedRef = useRef(true);
 
@@ -21,7 +22,18 @@ export const usePosHardware = ({ enabled = true } = {}) => {
             const resolved = forceRefresh
                 ? await refreshPosHardwareDriver()
                 : await resolvePosHardwareDriver();
-            if (mountedRef.current) setDriver(resolved);
+            let resolvedStatus = null;
+            if (resolved && typeof resolved.getStatus === 'function') {
+                try {
+                    resolvedStatus = await resolved.getStatus();
+                } catch {
+                    resolvedStatus = { available: false, printersDetected: 0, raw: null };
+                }
+            }
+            if (mountedRef.current) {
+                setDriver(resolved);
+                setStatus(resolvedStatus);
+            }
             return resolved;
         } finally {
             if (mountedRef.current) setLoading(false);
@@ -32,6 +44,7 @@ export const usePosHardware = ({ enabled = true } = {}) => {
         mountedRef.current = true;
         if (!enabled) {
             setDriver(null);
+            setStatus(null);
             setLoading(false);
             return () => {
                 mountedRef.current = false;
@@ -68,12 +81,16 @@ export const usePosHardware = ({ enabled = true } = {}) => {
     const printShiftSummary = useCallback((args) => withDriver('printShiftSummary', args), [withDriver]);
     const printZReading = useCallback((args) => withDriver('printZReading', args), [withDriver]);
     const printOrderTicket = useCallback((args) => withDriver('printOrderTicket', args), [withDriver]);
+    const testPrint = useCallback((args) => withDriver('testPrint', args), [withDriver]);
     const openDrawer = useCallback((args) => withDriver('openDrawer', args), [withDriver]);
     const capabilities = driver?.capabilities || NO_HARDWARE_CAPABILITIES;
     const supportsCapability = useCallback(
         (capability) => capabilities.includes(capability),
         [capabilities]
     );
+    const refresh = useCallback(() => load({ forceRefresh: true }), [load]);
+    const isPrinterAvailable = capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT)
+        && (typeof status?.available !== 'boolean' || status.available);
 
     return {
         driver,
@@ -82,16 +99,19 @@ export const usePosHardware = ({ enabled = true } = {}) => {
         // Honest UI state: true only once a real driver (not the noop fallback)
         // has been resolved. Print/drawer controls should read this instead of
         // failing silently on click.
-        isPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT),
+        isPrinterAvailable,
         isOrderPrinterAvailable: capabilities.includes(POS_HARDWARE_CAPABILITIES.PRINT_ORDER_TICKET),
+        status,
+        printersDetected: Number(status?.printersDetected || 0),
         capabilities,
         supportsCapability,
         loading,
-        refresh: () => load({ forceRefresh: true }),
+        refresh,
         printReceipt,
         printShiftSummary,
         printZReading,
         printOrderTicket,
+        testPrint,
         openDrawer
     };
 };

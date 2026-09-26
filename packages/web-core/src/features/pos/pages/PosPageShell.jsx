@@ -154,7 +154,7 @@ export default function PosPageShell({ CheckoutTerminal }) {
             )}
             {hasCapability('fnbDining') && (
                 <Suspense fallback={<section className="rounded-lg border border-red-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Food & Beverage service controls...</section>}>
-                    <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />
+                <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} canTransact={canTransactPos} />
                 </Suspense>
             )}
             <Suspense fallback={<section className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading POS checkout...</section>}>

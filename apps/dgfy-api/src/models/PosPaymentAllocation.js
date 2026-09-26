@@ -31,11 +31,15 @@ const PosPaymentAllocation = sequelize.define('PosPaymentAllocation', {
     },
     payment_method: {
         // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202
-        // (#1085). SPLIT_PAYMENT_METHODS (posValidator.js) is this column's request-side gate.
-        // Employee Credit is appended by the DGFY-2067 split-tender migration so existing
-        // MySQL ENUM ordinals remain stable.
+        // (#1085). Employee Credit is stored as a split-tender method and debited only during
+        // final checkout completion. SPLIT_PAYMENT_METHODS (posValidator.js) is this column's
+        // request-side gate.
         type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit'),
         allowNull: false
+    },
+    employee_credit_account_code: {
+        type: DataTypes.STRING(40),
+        allowNull: true
     },
     payment_handoff_mode: {
         type: DataTypes.ENUM('external', 'internal'),

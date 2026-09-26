@@ -13,6 +13,13 @@ import { onboardingRepository } from '../modules/onboarding/repositories/onboard
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
 import { updateOwnPosDayClosePinForVerifiedDgfyAccount } from './userService.js';
 
+const isEnabledFlag = (value) => (
+  value === true
+  || value === 1
+  || value === '1'
+  || (typeof value === 'string' && value.trim().toLowerCase() === 'true')
+);
+
 const findAcceptedMembership = async ({ account, tenantId, companyToken }) => {
   const where = {
     dgfy_account_id: account.id,
@@ -95,12 +102,13 @@ export const createTenantSessionForDgfyAccount = async ({
       throw error;
     }
 
+    const isMasterAdmin = isEnabledFlag(user.is_master_admin);
     const token = generateToken(user, { tenantId: tenant.id });
     const refreshToken = generateRefreshToken(user, { tenantId: tenant.id });
     await user.update({ last_login: new Date() });
 
     let onboarding = null;
-    if (user.is_master_admin === true) {
+    if (isMasterAdmin) {
       onboarding = await onboardingRepository.getStatus({
         storeNameBaseline: tenant.name || ''
       }).catch(() => null);
@@ -114,7 +122,7 @@ export const createTenantSessionForDgfyAccount = async ({
       role: user.role,
       permissions: resolveEffectivePermissions(user),
       pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
-      is_master_admin: user.is_master_admin || false,
+      is_master_admin: isMasterAdmin,
       onboarding,
       token,
       refreshToken,

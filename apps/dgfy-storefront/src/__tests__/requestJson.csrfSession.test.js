@@ -61,6 +61,29 @@ describe('Storefront requestJson CSRF/session helper', () => {
     expect(headers['x-csrf-token']).toBeUndefined();
   });
 
+  it('bootstraps the CSRF cookie before an unsafe request when the page has no token yet', async () => {
+    document.cookie = '';
+    fetch.mockImplementation(async (url) => {
+      if (String(url).includes('/auth/csrf-token')) {
+        document.cookie = 'sku_csrf_token=csrf-bootstrapped';
+      }
+      return {
+        ok: true,
+        json: async () => ({ success: true, data: { ok: true } })
+      };
+    });
+
+    await requestJson('/api/v1/store/cart/quote', {
+      method: 'POST',
+      storeSlug: 'space-bar',
+      body: { lines: [{ item_id: 1, quantity: 1 }] }
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toContain('/api/v1/auth/csrf-token');
+    expect(fetch.mock.calls[1][1].headers['x-csrf-token']).toBe('csrf-bootstrapped');
+  });
+
   it('supports overriding credentials for public storefront requests', async () => {
     await requestJson('/api/v1/store/follow/status?storefront_slug=space-bar&visitor_id=visitor-1234567890abcd', {
       method: 'GET',

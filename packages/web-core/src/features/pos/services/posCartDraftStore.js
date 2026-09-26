@@ -5,8 +5,10 @@ const CART_DRAFT_TTL_MS = 24 * 60 * 60 * 1000;
 
 const CART_LINE_FIELDS = [
   'line_key',
+  'line_ref',
   'item_id',
   'item_name',
+  'sku_code',
   'quantity',
   'base_sale_price',
   'sale_price',
@@ -20,8 +22,18 @@ const CART_LINE_FIELDS = [
   'fnbKitchenRoutes',
   'modifier_groups',
   'line_modifiers',
+  'service_option_ids',
+  'service_option_details',
   'special_instructions',
-  'scan_metadata'
+  'scan_metadata',
+  // Resumed parked-sale lines must keep their identity and edit boundary when
+  // the cart draft is written between resume, update, and checkout.
+  'parked_snapshot_line',
+  'parked_original_quantity',
+  'parked_line_item_missing',
+  'parked_line_price_changed',
+  'parked_line_can_increase',
+  'parked_line_current_price'
 ];
 
 const getStorage = () => {
@@ -60,10 +72,29 @@ const sanitizeActiveParkedSale = (value) => {
   const revision = Number(value.revision);
   if (!Number.isInteger(parkedSaleId) || parkedSaleId <= 0) return null;
   if (!Number.isInteger(revision) || revision <= 0) return null;
+  const snapshot = value.snapshot && typeof value.snapshot === 'object'
+    ? {
+      ...value.snapshot,
+      lines: (Array.isArray(value.snapshot.lines) ? value.snapshot.lines : [])
+        .map(sanitizeCartLine)
+        .filter(Boolean)
+    }
+    : null;
   return {
     pos_parked_sale_id: parkedSaleId,
     park_reference: String(value.park_reference || '').trim().slice(0, 40) || null,
-    revision
+    revision,
+    ...(snapshot && snapshot.lines.length > 0 ? { snapshot } : {}),
+    removed_line_reasons: (Array.isArray(value.removed_line_reasons) ? value.removed_line_reasons : [])
+      .map((entry) => ({
+        line_ref: String(entry?.line_ref || '').trim().slice(0, 120) || null,
+        item_id: Number.isInteger(Number(entry?.item_id)) && Number(entry.item_id) > 0
+          ? Number(entry.item_id)
+          : null,
+        item_name: String(entry?.item_name || '').trim().slice(0, 255) || null,
+        reason: String(entry?.reason || '').trim().slice(0, 255)
+      }))
+      .filter((entry) => entry.reason.length >= 3 && (entry.line_ref || entry.item_id))
   };
 };
 

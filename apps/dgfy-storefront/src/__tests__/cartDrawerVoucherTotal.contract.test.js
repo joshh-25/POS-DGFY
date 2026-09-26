@@ -75,6 +75,23 @@ describe('cart drawer voucher/promo total', () => {
     expect(arm).toMatch(/hasAppliedDiscountCode/);
   });
 
+  it('quotes F&B delivery during fulfillment and keys the quote to the selected pin', () => {
+    const source = read('StorefrontApp.jsx');
+    const arm = source.slice(
+      source.indexOf('const shouldAutoSyncFnbQuote'),
+      source.indexOf('// #746 (second occurrence)')
+    );
+
+    expect(source).toMatch(/const isFnbCheckoutSurface = checkoutTab === 'checkout'/);
+    expect(arm).toMatch(/isFnbCheckoutSurface/);
+    expect(arm).toMatch(/fnbOrderStep >= 2/);
+    expect(arm).toMatch(/fnbOrderStep <= 4/);
+    expect(arm).toMatch(/fnbFulfillmentStepComplete/);
+    expect(arm).not.toMatch(/fnbCustomerStepComplete/);
+    expect(source).toMatch(/const deliveryPinSignature = isDeliveryOrder/);
+    expect(source).toMatch(/activePinnedDeliveryAddress \|\| '',\s*deliveryPinSignature/);
+  });
+
   it('the shared voucher removal path clears the quote and re-quotes without a code', () => {
     const quoteSource = read('modes/fnb/checkout/hooks/useFnbCheckoutQuote.js');
     const rendererSource = read('modes/fnb/checkout/hooks/useFnbCheckoutPromoRenderers.jsx');
@@ -83,7 +100,7 @@ describe('cart drawer voucher/promo total', () => {
     expect(quoteSource).toMatch(/setCheckoutVoucherCode\(''\)/);
     expect(quoteSource).toMatch(/setQuoteResult\(null\)/);
     expect(quoteSource).toMatch(/requestQuote\(\{ voucherCodeOverride: '', silent: true \}\)/);
-    expect(rendererSource).toMatch(/onClear=\{handleVoucherCardRemove\}/);
+    expect(rendererSource).toMatch(/onClear=\{checkoutPromoCode \? handlePromoCardRemove : handleVoucherCardRemove\}/);
   });
 
   // #746: live-verified 2026-08-20 -- a signed-in DGFY customer applied a voucher and it still

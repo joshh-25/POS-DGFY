@@ -21,7 +21,8 @@ import {
 import {
   Star,
   Package,
-  Loader2
+  Loader2,
+  X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { addSupplierItem } from '../../src/services/supplierService.js';
@@ -54,6 +55,7 @@ export default function QuickAssignSupplierModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading) return;
 
     if (!selectedSupplierId) {
       toast.error('Please select a supplier');
@@ -104,19 +106,33 @@ export default function QuickAssignSupplierModal({
   if (!item) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) handleClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="w-5 h-5 text-teal-600" />
-            Assign to Existing Supplier
-          </DialogTitle>
+          <div className="flex items-start justify-between gap-3">
+            <DialogTitle className="flex min-w-0 items-center gap-2">
+              <Package className="w-5 h-5 shrink-0 text-teal-600" />
+              <span className="truncate">Assign to Existing Supplier</span>
+            </DialogTitle>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              onClick={handleClose}
+              disabled={loading}
+              aria-label="Close supplier assignment"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
           <DialogDescription>
             Link &quot;{item.name}&quot; to one of your suppliers
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" aria-busy={loading}>
           {/* Supplier Selection */}
           <div className="space-y-2">
             <Label htmlFor="supplier">Supplier *</Label>

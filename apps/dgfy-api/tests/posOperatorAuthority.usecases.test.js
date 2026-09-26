@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { createPosOperatorAuthorityUseCases } from '../src/modules/pos/usecases/posOperatorAuthorityUseCases.js';
 import { assertPosAttendanceLifecyclePermission } from '../src/modules/pos/services/posAttendancePermissionPolicy.js';
 
-const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
+const buildFixture = ({ featureEnabled = true, pin = '2468', assertUserOperatingScope } = {}) => {
     const users = new Map([
         [1, { user_id: 1, username: 'alice', role: 'cashier', is_active: true, permissions: ['pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-a', pos_cashier_pin_failed_attempts: 0 }],
         [2, { user_id: 2, username: 'bob', role: 'cashier', is_active: true, permissions: ['pos:attendance:view', 'pos:attendance:operate'], pos_cashier_pin_hash: 'hash-b', pos_cashier_pin_failed_attempts: 0 }]
@@ -67,6 +67,7 @@ const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
         }
     };
     const useCases = createPosOperatorAuthorityUseCases({
+        assertUserOperatingScope,
         repository,
         resolveFeature: async () => ({ enabled: featureEnabled }),
         authorityService,
@@ -92,6 +93,40 @@ const buildFixture = ({ featureEnabled = true, pin = '2468' } = {}) => {
     });
     return { useCases, repository, users, events, getTakeoverAttendanceCalls: () => takeoverAttendanceCalls };
 };
+
+describe('Phase 355 protected operator permissions', () => {
+    const request = { authorityToken: 'authority-10', tenantId: 'tenant-1', scope: { terminalId: 'REG-1', locationId: 7, shiftId: 99 }, operationKey: 'phase355', requiredPermissions: ['pos:transact'] };
+    test('a relief operator cannot borrow the browser account permissions', async () => {
+        const { useCases, repository } = buildFixture();
+        const update = jest.spyOn(repository, 'updateOperatorSession');
+        const result = await useCases.authorizeMutation(request);
+        expect(result).toMatchObject({ success: false, error: { statusCode: 403, details: { required_permission: 'pos:transact' } } });
+        expect(update).not.toHaveBeenCalled();
+    });
+    test('permissions are read again after revocation', async () => {
+        const { useCases, users } = buildFixture();
+        users.get(1).permissions.push('pos:transact');
+        const permitted = await useCases.authorizeMutation(request);
+        expect(permitted.success).toBe(true);
+        expect(permitted.data.operator_user).toMatchObject({ is_master_admin: false, permissions: expect.arrayContaining(['pos:transact']) });
+        users.get(1).permissions = ['pos:attendance:view'];
+        expect((await useCases.authorizeMutation(request)).error.statusCode).toBe(403);
+    });
+    test('legacy fallback still checks the tenant-user scope and fresh permissions', async () => {
+        const guard = jest.fn(async () => ({ user_id: 1, role: 'cashier', permissions: ['pos:view'] }));
+        const { useCases } = buildFixture({ featureEnabled: false, assertUserOperatingScope: guard });
+        const result = await useCases.authorizeMutation({ ...request, userId: 1 });
+        expect(guard).toHaveBeenCalledWith(expect.objectContaining({ userId: 1, terminalId: 'REG-1', locationId: 7 }));
+        expect(result.error.statusCode).toBe(403);
+    });
+    test('a wrong PIN cannot reveal a target cashier operating-scope conflict', async () => {
+        const guard = jest.fn();
+        const { useCases } = buildFixture({ assertUserOperatingScope: guard });
+        const result = await useCases.takeOver({ tenantId: 'tenant-1', scope: request.scope, user: { user_id: 1 }, payload: { user_id: 2, pin: '0000', idempotency_key: 'phase355-wrong-pin' } });
+        expect(result.success).toBe(false);
+        expect(guard).not.toHaveBeenCalled();
+    });
+});
 
 describe('Phase 159 POS operator authority use cases', () => {
     test('takeover ends the current operator and creates exactly one replacement session', async () => {

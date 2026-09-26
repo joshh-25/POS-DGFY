@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-    Accessibility,
     BadgeCheck,
     ChevronDown,
     CreditCard,
@@ -9,7 +8,6 @@ import {
     Lock,
     MessageSquare,
     Minus,
-    Pencil,
     Percent,
     Plus,
     Tag,
@@ -23,6 +21,12 @@ import { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import { formatQuantity, money, resolvePosCatalogImageSources, toArray } from '../utils/posCheckoutTerminalUtils.js';
 import {
+    buildPosDiscountTypeOptions,
+    getDiscountRuleSelectionKey,
+    normalizeAvailablePosDiscountRules,
+    POS_DISCOUNT_FALLBACK_OPTIONS
+} from '../utils/posDiscountOptions.js';
+import {
     buildDiscountAllocationTotals,
     buildDiscountItemSelection,
     getAvailableDiscountQuantity,
@@ -33,14 +37,7 @@ import {
     isStatutoryDiscountType
 } from '../utils/posDiscountSelection.js';
 
-export const POS_DISCOUNT_TYPE_OPTIONS = [
-    { value: 'employee', label: 'Employee', icon: BadgeCheck },
-    { value: 'senior', label: 'Senior Citizen', icon: UserRound },
-    { value: 'pwd', label: 'PWD', icon: Accessibility },
-    { value: 'promo', label: 'Promo', icon: Tag },
-    { value: 'voucher', label: 'Voucher', icon: Ticket },
-    { value: 'manual', label: 'Others', icon: Pencil }
-];
+export const POS_DISCOUNT_TYPE_OPTIONS = POS_DISCOUNT_FALLBACK_OPTIONS;
 
 export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = false }) {
     const {
@@ -50,6 +47,9 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
         discountDraft = {},
         discountModalOpen,
         discountPreviewTotals = {},
+        discountRules = [],
+        discountRulesReady = false,
+        discountTypeOptions: providedDiscountTypeOptions = null,
         employeeDiscountRateOptions = [],
         handleApplyGovernedDiscount,
         isCartLineSeniorPwdEligible,
@@ -64,6 +64,16 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
         showDiscountPin
     } = viewModel;
     const [discountQuantityInput, setDiscountQuantityInput] = React.useState(null);
+    const discountTypeOptions = providedDiscountTypeOptions || buildPosDiscountTypeOptions(
+        discountRules,
+        POS_DISCOUNT_TYPE_OPTIONS,
+        { rulesReady: discountRulesReady }
+    );
+    const normalizedDiscountRules = normalizeAvailablePosDiscountRules(discountRules);
+    const selectedDiscountRule = normalizedDiscountRules.find((rule) => (
+        (Number(discountDraft.rule_id) > 0 && Number(rule.discount_rule_id) === Number(discountDraft.rule_id))
+        || (!Number(discountDraft.rule_id) && rule.type !== 'custom' && rule.type === discountDraft.type)
+    )) || null;
 
     const selectableDiscountLines = getSelectableDiscountLines(
         safeCart,
@@ -103,6 +113,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
     const isStatutoryDiscount = isStatutoryDiscountType(discountDraft.type);
     const isDesktopIdentityHeader = !isTabletViewport
         && (isStatutoryDiscount || discountDraft.type === 'employee');
+    const requiresCustomerIdentity = !selectedDiscountRule || selectedDiscountRule.requires_customer_id === true;
 
     React.useEffect(() => {
         if (!discountModalOpen) setDiscountQuantityInput(null);
@@ -135,9 +146,12 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
         });
     };
 
-    const handleDiscountTypeChange = (type) => {
+    const handleDiscountTypeChange = (selectionKey) => {
         setDiscountQuantityInput(null);
         setDiscountDraft((previous) => {
+            const selectedOption = discountTypeOptions.find((option) => option.value === selectionKey) || null;
+            const type = selectedOption?.type || selectionKey;
+            const rule = selectedOption?.rule || null;
             const nextSelection = buildDiscountItemSelection({
                 cart: safeCart,
                 type,
@@ -148,7 +162,15 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                 ...previous,
                 ...nextSelection,
                 type,
-                rate: type === 'employee' ? '15' : (isStatutoryDiscountType(type) ? '20' : previous.rate),
+                rule_id: rule?.discount_rule_id || null,
+                discount_key: rule?.discount_key || null,
+                label: rule?.name || null,
+                method: rule?.method || previous.method,
+                rate: rule?.method === 'percentage' && rule?.percentage != null ? String(rule.percentage) : '',
+                amount: rule?.method === 'fixed' && rule?.fixed_amount != null ? String(rule.fixed_amount) : '',
+                requires_customer_id: rule?.requires_customer_id === true,
+                requires_employee_id: rule?.requires_employee_id === true,
+                requires_manager_approval: rule?.requires_manager_approval === true,
                 beneficiaries: isStatutoryDiscountType(type)
                     ? toArray(previous.beneficiaries).map((beneficiary) => ({ ...beneficiary, category: type }))
                     : []
@@ -223,8 +245,11 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                     <p className="text-[11px] font-black text-[#0F172A]">Apply Discount</p>
 
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="tablist" aria-label="Discount Type">
-                        {POS_DISCOUNT_TYPE_OPTIONS.map((option) => {
-                            const active = discountDraft.type === option.value;
+                        {discountTypeOptions.map((option) => {
+                            const active = getDiscountRuleSelectionKey({
+                                type: discountDraft.type,
+                                rule_id: discountDraft.rule_id
+                            }) === option.value;
                             return (
                                 <button
                                     key={option.value}
@@ -249,7 +274,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
 
             {isTabletViewport ? employeeDiscountIdentityFields : null}
 
-            {isTabletViewport && discountDraft.type && discountDraft.type !== 'employee' ? (
+            {isTabletViewport && discountDraft.type && discountDraft.type !== 'employee' && requiresCustomerIdentity ? (
                 <div className="space-y-1">
                     <label className="text-[11px] font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
                     <div className="relative">
@@ -475,13 +500,15 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                     {discountDraft.type && discountDraft.type !== 'employee' && (
                         <div className="grid gap-2.5 sm:grid-cols-2">
                             {!isTabletViewport && (
-                                <div className={`space-y-1 ${isDesktopIdentityHeader ? 'lg:space-y-0' : ''}`}>
-                                    <label className={`text-[11px] font-extrabold leading-[14px] text-[#0F172A] ${isDesktopIdentityHeader ? 'lg:hidden' : ''}`}>Customer Name <span className="text-rose-500">*</span></label>
-                                    <div className="relative">
-                                        <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-9 pl-8 pr-2.5 text-[11px]" maxLength={["senior", "pwd"].includes(discountDraft.type) ? 120 : 255} placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
+                                requiresCustomerIdentity && (
+                                    <div className={`space-y-1 ${isDesktopIdentityHeader ? 'lg:space-y-0' : ''}`}>
+                                        <label className={`text-[11px] font-extrabold leading-[14px] text-[#0F172A] ${isDesktopIdentityHeader ? 'lg:hidden' : ''}`}>Customer Name <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input className="h-9 pl-8 pr-2.5 text-[11px]" maxLength={["senior", "pwd"].includes(discountDraft.type) ? 120 : 255} placeholder="Enter customer name" value={discountDraft.customer_name || ''} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, customer_name: event.target.value }))} />
+                                        </div>
                                     </div>
-                                </div>
+                                )
                             )}
                             {['senior', 'pwd'].includes(discountDraft.type) && (
                                 <div className={`space-y-1 ${isDesktopIdentityHeader ? 'lg:space-y-0' : ''}`}>
@@ -492,7 +519,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                     </div>
                                 </div>
                             )}
-                            {discountDraft.type === 'promo' && (
+                            {discountDraft.type === 'promo' && !selectedDiscountRule && (
                                 <div className="space-y-1">
                                     <label className="text-[11px] font-semibold text-[#0F172A]">Promo Code <span className="text-rose-500">*</span></label>
                                     <div className="relative">
@@ -510,6 +537,16 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {selectedDiscountRule && !isStatutoryDiscount && (
+                        <div className="rounded-lg border border-blue-100 bg-[#EFF7FF] px-3 py-2 text-[11px] text-[#1A4E8D]" data-testid="pos-configured-discount-summary">
+                            <span className="font-extrabold">Configured rate:</span>{' '}
+                            {selectedDiscountRule.method === 'fixed'
+                                ? `₱${money(selectedDiscountRule.fixed_amount)}`
+                                : `${selectedDiscountRule.percentage}%`}
+                            {selectedDiscountRule.description ? <span className="ml-1 text-slate-500">— {selectedDiscountRule.description}</span> : null}
                         </div>
                     )}
 
@@ -573,7 +610,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
 
                     {!isTabletViewport ? employeeDiscountIdentityFields : null}
 
-                    {discountDraft.type === 'manual' && (
+                    {discountDraft.type === 'manual' && !selectedDiscountRule && (
                         <div className="grid gap-2.5 sm:grid-cols-2">
                             <div className="space-y-1">
                                 <label className="text-[11px] font-semibold text-[#0F172A]">Method <span className="text-rose-500">*</span></label>
@@ -606,7 +643,7 @@ export function POSDiscountWorkspace({ viewModel = {}, onCancel, embedded = fals
                     )}
 
                     <div className="grid gap-2.5 sm:grid-cols-2">
-                        {discountDraft.type === 'employee' && (
+                        {discountDraft.type === 'employee' && !selectedDiscountRule && (
                             <div className="space-y-1 sm:col-span-2">
                                 <label className="text-[11px] font-semibold text-[#0F172A]">Discount Rate <span className="text-rose-500">*</span></label>
                                 <div className="relative">

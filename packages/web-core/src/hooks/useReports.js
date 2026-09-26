@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import api from '../services/api';
 
 /**
@@ -14,6 +14,7 @@ export const useReports = () => {
     const [executiveSummary, setExecutiveSummary] = useState(null);
     const [complianceBooksPackage, setComplianceBooksPackage] = useState(null);
     const [snapshots, setSnapshots] = useState([]);
+    const reportRequestRef = useRef(0);
 
     // Build query string from filters
     const buildQuery = (filters = {}) => {
@@ -24,125 +25,77 @@ export const useReports = () => {
         return params.toString();
     };
 
-    // Fetch Expiry Report
-    const fetchExpiryReport = useCallback(async (filters = {}) => {
+    const executeReportRequest = useCallback(async ({ endpoint, filters, onSuccess, logMessage }) => {
+        const requestId = reportRequestRef.current + 1;
+        reportRequestRef.current = requestId;
         setLoading(true);
         setError(null);
+
         try {
             const query = buildQuery(filters);
-            const response = await api.get(`/reports/expiry${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setExpiryReport(response.data.data);
+            const response = await api.get(`${endpoint}${query ? `?${query}` : ''}`);
+            if (response.data.success && reportRequestRef.current === requestId) {
+                onSuccess(response.data.data);
                 return response.data.data;
             }
         } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching expiry report:', err);
+            if (reportRequestRef.current === requestId) {
+                setError(err.response?.data?.error || err.response?.data?.message || err.message);
+                console.error(logMessage, err);
+            }
         } finally {
-            setLoading(false);
+            if (reportRequestRef.current === requestId) setLoading(false);
         }
         return null;
     }, []);
+
+    // Fetch Expiry Report
+    const fetchExpiryReport = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/expiry',
+        filters,
+        onSuccess: setExpiryReport,
+        logMessage: 'Error fetching expiry report:'
+    }), [executeReportRequest]);
 
     // Fetch Enhanced Stock Aging Report
-    const fetchStockAgingReport = useCallback(async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const query = buildQuery(filters);
-            const response = await api.get(`/reports/stock-aging-enhanced${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setStockAgingReport(response.data.data);
-                return response.data.data;
-            }
-        } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching stock aging report:', err);
-        } finally {
-            setLoading(false);
-        }
-        return null;
-    }, []);
+    const fetchStockAgingReport = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/stock-aging-enhanced',
+        filters,
+        onSuccess: setStockAgingReport,
+        logMessage: 'Error fetching stock aging report:'
+    }), [executeReportRequest]);
 
     // Fetch Production Report
-    const fetchProductionReport = useCallback(async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const query = buildQuery(filters);
-            const response = await api.get(`/reports/production${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setProductionReport(response.data.data);
-                return response.data.data;
-            }
-        } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching production report:', err);
-        } finally {
-            setLoading(false);
-        }
-        return null;
-    }, []);
+    const fetchProductionReport = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/production',
+        filters,
+        onSuccess: setProductionReport,
+        logMessage: 'Error fetching production report:'
+    }), [executeReportRequest]);
 
     // Fetch PO Analysis Report
-    const fetchPOAnalysisReport = useCallback(async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const query = buildQuery(filters);
-            const response = await api.get(`/reports/po-analysis${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setPoAnalysisReport(response.data.data);
-                return response.data.data;
-            }
-        } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching PO analysis report:', err);
-        } finally {
-            setLoading(false);
-        }
-        return null;
-    }, []);
+    const fetchPOAnalysisReport = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/po-analysis',
+        filters,
+        onSuccess: setPoAnalysisReport,
+        logMessage: 'Error fetching PO analysis report:'
+    }), [executeReportRequest]);
 
     // Fetch Executive Summary
-    const fetchExecutiveSummary = useCallback(async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const query = buildQuery(filters);
-            const response = await api.get(`/reports/executive-summary${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setExecutiveSummary(response.data.data);
-                return response.data.data;
-            }
-        } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching executive summary:', err);
-        } finally {
-            setLoading(false);
-        }
-        return null;
-    }, []);
+    const fetchExecutiveSummary = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/executive-summary',
+        filters,
+        onSuccess: setExecutiveSummary,
+        logMessage: 'Error fetching executive summary:'
+    }), [executeReportRequest]);
 
     // Fetch compliance books package (Sales Journal / Purchase Journal / Inventory Book)
-    const fetchComplianceBooksPackage = useCallback(async (filters = {}) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const query = buildQuery(filters);
-            const response = await api.get(`/reports/compliance-package${query ? `?${query}` : ''}`);
-            if (response.data.success) {
-                setComplianceBooksPackage(response.data.data);
-                return response.data.data;
-            }
-        } catch (err) {
-            setError(err.response?.data?.error || err.response?.data?.message || err.message);
-            console.error('Error fetching compliance books package:', err);
-        } finally {
-            setLoading(false);
-        }
-        return null;
-    }, []);
+    const fetchComplianceBooksPackage = useCallback((filters = {}) => executeReportRequest({
+        endpoint: '/reports/compliance-package',
+        filters,
+        onSuccess: setComplianceBooksPackage,
+        logMessage: 'Error fetching compliance books package:'
+    }), [executeReportRequest]);
 
     // Fetch Snapshots
     const fetchSnapshots = useCallback(async (reportType, limit = 20) => {

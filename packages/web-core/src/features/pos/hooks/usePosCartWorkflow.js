@@ -18,12 +18,14 @@ import {
     getFnbModifierGroups,
     resolveModifierDelta
 } from '../utils/posCheckoutTerminalModifiers.js';
+import { getParkedLineEditState, isParkedSaleOriginalLine } from '../utils/posParkedSaleResume.js';
 
 export const QTY_METER_LONG_PRESS_MS = 300;
 export const QTY_METER_MOVE_CANCEL_PX = 10;
 export const QTY_METER_MAX_DRAG_PX = 96;
 export const QTY_METER_MIN_QTY = 0;
 export const QTY_METER_MAX_QTY = 20;
+export const PARKED_LINE_DELETION_MIN_REASON_LENGTH = 3;
 
 const EMPTY_SERVICE_OPTIONS_MODAL = { open: false, item: null, groups: [] };
 
@@ -46,6 +48,7 @@ export const usePosCartWorkflow = ({
     setOrderMethod = () => {},
     onCartBecameEmpty = () => {},
     onCartLineRemoved = () => {},
+    onParkedLineDeleted = () => {},
     onCatalogAddAnimation = () => {}
 } = {}) => {
     const [cart, setCart] = useState([]);
@@ -55,6 +58,8 @@ export const usePosCartWorkflow = ({
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
     const [quantityInputValue, setQuantityInputValue] = useState('');
     const [addToCartToasts, setAddToCartToasts] = useState([]);
+    const [parkedLineDeletionRequest, setParkedLineDeletionRequest] = useState(null);
+    const [parkedLineDeletionReason, setParkedLineDeletionReason] = useState('');
     const [qtyMeterState, setQtyMeterState] = useState(null);
     const qtyMeterTimerRef = useRef(null);
     const qtyMeterGestureRef = useRef(null);
@@ -81,6 +86,29 @@ export const usePosCartWorkflow = ({
         })),
         [catalog]
     );
+
+    const findBestCatalogLine = (item) => {
+        const itemId = Number(item?.item_id);
+        const candidates = safeCart.filter((line) => Number(line?.item_id) === itemId);
+        if (candidates.length === 0) return null;
+        const isOriginalParkedLine = (line) => isParkedSaleOriginalLine(line, activeParkedSale);
+
+        const currentPrice = Number(item?.default_sale_price);
+        const currentPricedNewLine = candidates.find((line) => (
+            !isOriginalParkedLine(line)
+            && Number.isFinite(currentPrice)
+            && Math.abs(Number(line?.sale_price) - currentPrice) <= 0.0001
+        ));
+        if (currentPricedNewLine) return currentPricedNewLine;
+
+        const editableOriginalLine = candidates.find((line) => (
+            isOriginalParkedLine(line)
+            && getParkedLineEditState(line, item, activeParkedSale).canIncrease
+        ));
+        if (editableOriginalLine) return editableOriginalLine;
+
+        return candidates.find((line) => !isOriginalParkedLine(line)) || candidates[0];
+    };
 
     const triggerAddToCartToast = useCallback((item, addedQty = 1) => {
         if (!item) return;
@@ -191,29 +219,50 @@ export const usePosCartWorkflow = ({
         }
         let stockWarning = '';
         setCart((prev) => {
-            const existing = modifierGroups.length > 0 || serviceOptionIds.length > 0
-                ? prev.find((line) => (
-                    line.item_id === item.item_id
-                    && [...new Set((Array.isArray(line.service_option_ids) ? line.service_option_ids : [])
-                        .map((id) => Number(id))
-                        .filter((id) => Number.isInteger(id) && id > 0))]
-                        .sort((left, right) => left - right)
-                        .join(',') === serviceOptionSignature
-                ))
-                : prev.find((line) => line.item_id === item.item_id);
+            const matchesLineIdentity = (line) => (
+                line.item_id === item.item_id
+                && [...new Set((Array.isArray(line.service_option_ids) ? line.service_option_ids : [])
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isInteger(id) && id > 0))]
+                    .sort((left, right) => left - right)
+                    .join(',') === serviceOptionSignature
+            );
+            const matchingLines = prev.filter((line) => (
+                (modifierGroups.length > 0 || serviceOptionIds.length > 0)
+                    ? matchesLineIdentity(line)
+                    : line.item_id === item.item_id
+            ));
+            const parkedLine = matchingLines.find((line) => isParkedSaleOriginalLine(line, activeParkedSale));
+            const parkedLineState = parkedLine
+                ? getParkedLineEditState(parkedLine, item, activeParkedSale)
+                : null;
+            const existing = parkedLine && parkedLineState?.canIncrease
+                ? parkedLine
+                : matchingLines.find((line) => !isParkedSaleOriginalLine(line, activeParkedSale));
             if (existing) {
                 const requestedQty = Number(existing.quantity) + requestedAddQty;
-                const safeQty = Number.isFinite(maxStock) ? round4(Math.min(requestedQty, maxStock)) : round4(requestedQty);
-                if (Number.isFinite(maxStock) && requestedQty > maxStock) {
+                const existingIsOriginal = isParkedSaleOriginalLine(existing, activeParkedSale);
+                const originalQuantity = existingIsOriginal
+                    ? (Number(parkedLineState?.originalQuantity || existing.quantity) || 0)
+                    : 0;
+                const lineMaxStock = Number.isFinite(maxStock)
+                    ? maxStock + originalQuantity
+                    : maxStock;
+                const safeQty = Number.isFinite(lineMaxStock)
+                    ? round4(Math.min(requestedQty, lineMaxStock))
+                    : round4(requestedQty);
+                if (Number.isFinite(lineMaxStock) && requestedQty > lineMaxStock) {
                     stockWarning = buildStockExceededMessage({
                         itemName: item.name,
-                        requestedQty,
+                        requestedQty: existingIsOriginal
+                            ? requestedQty - originalQuantity
+                            : requestedQty,
                         availableStock: maxStock,
                         unit: item.unit_of_measure || ''
                     });
                 }
                 return prev.map((line) => (
-                    line.item_id === item.item_id
+                    getLineKey(line) === getLineKey(existing)
                         ? {
                             ...line,
                             quantity: safeQty,
@@ -298,6 +347,25 @@ export const usePosCartWorkflow = ({
             notifyPosActionBlocked();
             return false;
         }
+        const currentLine = safeCart.find((line) => getLineKey(line) === lineKey);
+        const protectedFields = [
+            'item_id',
+            'base_sale_price',
+            'sale_price',
+            'price_override_reason',
+            'line_modifiers',
+            'modifiers',
+            'service_option_ids',
+            'service_option_details',
+            'special_instructions',
+            'course',
+            'kitchen_station_id'
+        ];
+        if (isParkedSaleOriginalLine(currentLine, activeParkedSale)
+            && Object.keys(patch || {}).some((key) => protectedFields.includes(key))) {
+            toast.error('Original parked items cannot be edited. Add a new item instead.');
+            return false;
+        }
         setCart((prev) => prev.map((line) => (
             getLineKey(line) === lineKey ? { ...line, ...patch } : line
         )));
@@ -317,13 +385,28 @@ export const usePosCartWorkflow = ({
             .map((line) => {
                 if (getLineKey(line) !== lineKey) return line;
                 const maxStock = itemStockById.get(Number(line.item_id));
-                const safeMax = Number.isFinite(maxStock) ? maxStock : Number.POSITIVE_INFINITY;
-                const safeQty = round4(Math.max(0, Math.min(parsedQty, safeMax)));
-                if (Number.isFinite(safeMax) && parsedQty > safeMax) {
+                const catalogItem = catalog.find((item) => Number(item?.item_id) === Number(line.item_id));
+                const parkedLineState = getParkedLineEditState(line, catalogItem, activeParkedSale);
+                const originalQuantity = parkedLineState.isOriginal ? parkedLineState.originalQuantity : 0;
+                if (parkedLineState.isOriginal && parsedQty < originalQuantity) {
+                    toast.error('Original parked quantity cannot be reduced or removed.');
+                    return line;
+                }
+                if (parkedLineState.isOriginal && parsedQty > originalQuantity && !parkedLineState.canIncrease) {
+                    toast.error(parkedLineState.itemMissing
+                        ? 'This parked item is no longer available. Additions are disabled.'
+                        : 'This item price changed while parked. Add it as a separate line instead.');
+                    return line;
+                }
+                const safeMax = Number.isFinite(maxStock)
+                    ? maxStock + originalQuantity
+                    : Number.POSITIVE_INFINITY;
+                const safeQty = round4(Math.max(originalQuantity, Math.min(parsedQty, safeMax)));
+                if (Number.isFinite(maxStock) && parsedQty - originalQuantity > maxStock) {
                     stockWarning = buildStockExceededMessage({
                         itemName: line.item_name,
-                        requestedQty: parsedQty,
-                        availableStock: safeMax,
+                        requestedQty: Math.max(0, parsedQty - originalQuantity),
+                        availableStock: maxStock,
                         unit: line.unit_of_measure || ''
                     });
                 }
@@ -348,10 +431,17 @@ export const usePosCartWorkflow = ({
             notifyPosActionBlocked();
             return;
         }
-        const existing = safeCart.find((line) => line.item_id === item.item_id);
+        const existing = findBestCatalogLine(item);
         if (!existing) {
             if (delta > 0) addCatalogItemToCart(item, { quantity: delta });
             return;
+        }
+        if (delta > 0 && isParkedSaleOriginalLine(existing, activeParkedSale)) {
+            const parkedLineState = getParkedLineEditState(existing, item, activeParkedSale);
+            if (!parkedLineState.canIncrease) {
+                addCatalogItemToCart(item, { quantity: delta });
+                return;
+            }
         }
         updateCartQuantity(getLineKey(existing), Number(existing.quantity || 0) + delta);
     };
@@ -361,7 +451,14 @@ export const usePosCartWorkflow = ({
             ? Math.max(0, round4(Number(quantityInputValue)) || 0)
             : Math.max(0, Math.floor(Number(quantityInputValue)) || 0);
         setEditingQuantityItemId(null);
-        const existing = safeCart.find((line) => line.item_id === item.item_id);
+        const existing = findBestCatalogLine(item);
+        if (existing && isParkedSaleOriginalLine(existing, activeParkedSale)) {
+            const parkedLineState = getParkedLineEditState(existing, item, activeParkedSale);
+            if (!parkedLineState.canIncrease && parsedQuantity > parkedLineState.originalQuantity) {
+                if (parsedQuantity > 0) addCatalogItemToCart(item, { quantity: parsedQuantity });
+                return;
+            }
+        }
         if (existing) updateCartQuantity(getLineKey(existing), parsedQuantity);
         else if (parsedQuantity > 0) addCatalogItemToCart(item, { quantity: parsedQuantity });
     };
@@ -510,6 +607,12 @@ export const usePosCartWorkflow = ({
             notifyPosActionBlocked();
             return;
         }
+        const line = safeCart.find((entry) => getLineKey(entry) === lineKey);
+        if (isParkedSaleOriginalLine(line, activeParkedSale)) {
+            setParkedLineDeletionRequest({ lineKey, line });
+            setParkedLineDeletionReason('');
+            return;
+        }
         const nextCart = safeCart.filter((line) => getLineKey(line) !== lineKey);
         if (nextCart.length === 0 && activeParkedSale?.pos_parked_sale_id) {
             void onCartBecameEmpty();
@@ -518,6 +621,37 @@ export const usePosCartWorkflow = ({
         onCartLineRemoved(lineKey);
         setCart(nextCart);
     };
+
+    const cancelParkedLineDeletion = useCallback(() => {
+        setParkedLineDeletionRequest(null);
+        setParkedLineDeletionReason('');
+    }, []);
+
+    const confirmParkedLineDeletion = useCallback(() => {
+        if (posActionsBlocked) {
+            notifyPosActionBlocked();
+            return false;
+        }
+        const request = parkedLineDeletionRequest;
+        const reason = String(parkedLineDeletionReason || '').trim();
+        if (!request?.lineKey) return false;
+        if (reason.length < PARKED_LINE_DELETION_MIN_REASON_LENGTH) {
+            toast.error('Enter at least 3 characters explaining why this parked item is being deleted.');
+            return false;
+        }
+
+        const line = safeCart.find((entry) => getLineKey(entry) === request.lineKey);
+        if (!line || !isParkedSaleOriginalLine(line, activeParkedSale)) {
+            cancelParkedLineDeletion();
+            return false;
+        }
+
+        onCartLineRemoved(request.lineKey);
+        setCart((prev) => prev.filter((entry) => getLineKey(entry) !== request.lineKey));
+        onParkedLineDeleted({ line, reason });
+        cancelParkedLineDeletion();
+        return true;
+    }, [activeParkedSale, cancelParkedLineDeletion, notifyPosActionBlocked, onCartLineRemoved, onParkedLineDeleted, parkedLineDeletionReason, parkedLineDeletionRequest, posActionsBlocked, safeCart]);
 
     return {
         cart,
@@ -552,6 +686,11 @@ export const usePosCartWorkflow = ({
         handleCartQtyButtonPointerUp,
         handleCartQtyButtonPointerCancel,
         removeCartLine,
+        parkedLineDeletionRequest,
+        parkedLineDeletionReason,
+        setParkedLineDeletionReason,
+        cancelParkedLineDeletion,
+        confirmParkedLineDeletion,
         QTY_METER_MIN_QTY,
         QTY_METER_MAX_QTY
     };

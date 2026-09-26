@@ -79,7 +79,7 @@ const Dialog = ({ open, onOpenChange, overlayClassName, mobileSheet = false, chi
       >
         <div
           data-dialog-overlay="true"
-          className={cn('fixed inset-0 bg-black/50 backdrop-blur-none', overlayClassName)}
+          className={cn('fixed inset-0 bg-slate-950/60 backdrop-blur-sm', overlayClassName)}
           onClick={() => onOpenChange && onOpenChange(false)}
         />
         {/*

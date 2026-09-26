@@ -1,4 +1,5 @@
 const toArray = (value) => (Array.isArray(value) ? value : []);
+const normalizeAvailableRules = (value) => toArray(value);
 
 export const parseTerminalPermissions = (permissions) => {
     if (Array.isArray(permissions)) return permissions;
@@ -21,6 +22,8 @@ export const normalizePosTerminalDraftState = ({
     catalog,
     cart,
     discountProfiles,
+    discountRules,
+    discountRulesReady = false,
     commercialPromoConfig,
     discountApprovers,
     activeShiftCashierId,
@@ -30,6 +33,7 @@ export const normalizePosTerminalDraftState = ({
     const safeCatalog = toArray(catalog);
     const safeCart = toArray(cart);
     const safeDiscountProfiles = toArray(discountProfiles);
+    const safeDiscountRules = normalizeAvailableRules(discountRules);
     const safeCommercialPromoConfig = toArray(commercialPromoConfig);
     const safeDiscountApprovers = toArray(discountApprovers);
     const activeShiftCashierApprover = safeDiscountApprovers.find((approver) => (
@@ -39,17 +43,24 @@ export const normalizePosTerminalDraftState = ({
     const safeEligibleDiscountItemIds = toArray(discountDraft?.eligible_item_ids);
     const safeEligibleDiscountItems = toArray(discountDraft?.eligible_items);
     const employeeDiscountRateOptions = Array.from(new Set([
-        ...safeDiscountProfiles
-            .filter((profile) => profile?.active !== false)
-            .map((profile) => Number(profile?.percentage))
+        ...safeDiscountRules
+            .filter((rule) => (
+                rule?.type === 'employee'
+                && rule?.is_enabled !== false
+                && rule?.is_active !== false
+                && rule?.is_approved === true
+                && rule?.method === 'percentage'
+            ))
+            .map((rule) => Number(rule?.percentage ?? rule?.rate))
             .filter((percentage) => Number.isFinite(percentage) && percentage > 0 && percentage <= 100),
-        Number(discountDraft?.rate || 15),
-        15
-    ])).sort((left, right) => left - right);
+        Number(discountDraft?.rate)
+    ].filter((percentage) => Number.isFinite(percentage) && percentage > 0 && percentage <= 100))).sort((left, right) => left - right);
     return {
         safeCatalog,
         safeCart,
         safeDiscountProfiles,
+        safeDiscountRules,
+        discountRulesReady: discountRulesReady === true,
         safeCommercialPromoConfig,
         safeDiscountApprovers,
         activeShiftCashierApprover,

@@ -20,7 +20,10 @@ export const getCompanyInfoUseCase = buildGetCompanyInfoUseCase({
     tenantRepository
 });
 
-export const getAllSettingsUseCase = buildGetAllSettingsUseCase({ settingsRepository });
+export const getAllSettingsUseCase = buildGetAllSettingsUseCase({
+    settingsRepository,
+    storefrontAssetStorage
+});
 export const getSettingByKeyUseCase = buildGetSettingByKeyUseCase({ settingsRepository });
 export const updateSettingsUseCase = buildUpdateSettingsUseCase({
     settingsRepository,

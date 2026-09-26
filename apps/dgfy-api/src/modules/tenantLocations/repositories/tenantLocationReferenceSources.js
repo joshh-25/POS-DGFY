@@ -74,6 +74,27 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'posLocationItemOverrides',
+        label: 'POS branch item overrides',
+        modelName: 'PosLocationItemOverride',
+        association: 'PosLocationItemOverride.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'jobOrderLocations',
+        label: 'job order source and destination locations',
+        modelName: 'JobOrder',
+        association: 'JobOrder.sourceLocation,JobOrder.destinationLocation',
+        foreignKeys: ['source_location_id', 'destination_location_id'],
+        where: (locationId) => ({
+            [Op.or]: [
+                { source_location_id: locationId },
+                { destination_location_id: locationId }
+            ]
+        })
+    },
+    {
         key: 'fifoBatches',
         label: 'FIFO batches',
         modelName: 'FIFOBatch',

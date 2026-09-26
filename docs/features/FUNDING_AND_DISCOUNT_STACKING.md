@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product_engineering
-last_reviewed: 2026-09-02
+last_reviewed: 2026-09-12
 applies_to: platform_funding_fees_discounts_stacking
 topic: platform_funding_and_discount_stacking
 ---
@@ -27,27 +27,25 @@ Part 2 section that proves it, so the two halves can't quietly drift apart.
 
 ## 1. How DGFY earns money
 
-DGFY has **two structurally different ways of earning revenue on a sale**, and today only one of
-them is active.
+DGFY has **two structurally different funding/settlement regimes on a sale**. The customer-facing
+Storefront convenience fee described below has been retired for new orders; the tenant-revenue
+sharing regime remains available when enabled.
 
 **The switch is one server setting**, `TENANT_REVENUE_SHARING_ENABLED` — see
 [§7](#7-fee-computation-both-regimes). It is currently **OFF** everywhere it has been checked.
 
-### Regime A — "Convenience Fee" (currently active)
+### Regime A — "Convenience Fee" (retired for new Storefront orders)
 
-The **buyer** pays DGFY an extra **1% of the cart subtotal** on top of their order, labeled "DGFY
-convenience fee" on the receipt. The merchant is paid directly by the payment processor and never
-sees this fee move through DGFY's own books.
+Historically, the **buyer** paid DGFY an extra **1% of the cart subtotal** on top of their order,
+labeled "DGFY convenience fee" on the receipt. New Storefront quotes and orders now set this fee to
+`0`, so the buyer is not charged it. The existing `service_fee_*` fields remain for compatibility
+and historical reads; positive persisted legacy values are not recomputed.
 
 - **In-store (POS cashier) sales: this fee is `0`.** It applies to storefront (online) orders only.
-- The 1% is charged on the subtotal **before** any discount is subtracted — so even a fully
-  discounted (100%-off voucher) order still carries the fee.
-- **This 1% is not recorded anywhere in DGFY's own financial ledger.** It exists only as a line item
-  on the customer's receipt and inside the payment processor's own split-payment records. See
-  [§6](#6-known-gaps-and-open-decisions) — this is flagged as a bookkeeping gap, not a design choice
-  stated in any authoritative doc.
-- The rate is **hardcoded** in two separate places in the codebase (backend and storefront), not
-  configurable per tenant or from any settings screen. Tracked as open decision **#814**.
+- For new Storefront orders, the customer total is the discounted subtotal plus the delivery fee;
+  restaurant service charge remains a separate F&B concept.
+- In the legacy non-revenue-sharing QR Ph path, any configured DGFY platform settlement is kept
+  separate from the customer total and is tenant-funded. It is not a new customer-facing fee.
 
 ### Regime B — "Tenant Revenue Sharing" (built, not currently active)
 
@@ -71,14 +69,14 @@ See [§7](#7-fee-computation-both-regimes).
 ```mermaid
 flowchart TD
     A["Order checkout begins"] --> B{"TENANT_REVENUE_SHARING_ENABLED?"}
-    B -->|"OFF — current default"| C["Regime A: Convenience Fee"]
+    B -->|"OFF — current default"| C["Regime A: Retired customer fee"]
     B -->|"ON"| D["Regime B: Tenant Revenue Sharing"]
 
     C --> C1{"Sales channel?"}
-    C1 -->|"Storefront (online)"| C2["Fee = round4(subtotal × 1%)<br/>charged to the BUYER"]
+    C1 -->|"Storefront (online)"| C2["Customer fee = ₱0<br/>legacy service_fee fields retained"]
     C1 -->|"POS (in-store cashier)"| C3["Fee = ₱0"]
-    C2 --> C4["Collected via PayMongo split,<br/>paid straight to DGFY's merchant account"]
-    C4 --> C5["NOT posted to DGFY's own<br/>tenant-revenue ledger"]
+    C2 --> C4["Legacy QR Ph platform settlement,<br/>if configured, is tenant-funded"]
+    C4 --> C5["Not included in the customer's<br/>Storefront total"]
 
     D --> D1["Fee = round(gross × dgfy_rate_bps ÷ 10,000)<br/>deducted from the MERCHANT's payout"]
     D1 --> D2["DGFY collects the full payment"]
@@ -88,21 +86,22 @@ flowchart TD
 
 ## 2. Worked examples
 
-All figures are illustrative, using the rates actually hardcoded/defaulted in the codebase today,
-formatted as a receipt would show them.
+All figures are illustrative, using the rates currently defaulted in the codebase where applicable,
+formatted as a receipt would show them. New Storefront examples exclude the retired customer-facing
+convenience fee.
 
-**A. Plain online sale, Regime A (current default):**
+**A. Plain online sale, new Storefront behavior:**
 ```text
-  DGFY STOREFRONT — ONLINE ORDER  (Regime A, current default)
+  DGFY STOREFRONT — ONLINE ORDER
   --------------------------------------------------------
   Cart subtotal                                 ₱ 1,000.00
   + Delivery fee                                  (varies)
-  + DGFY convenience fee (1% of subtotal)       ₱    10.00
   --------------------------------------------------------
-  TOTAL CHARGED TO BUYER          ₱ 1,010.00  + delivery
+  TOTAL CHARGED TO BUYER          ₱ 1,000.00  + delivery
   ==========================================================
-  DGFY's ₱10.00 fee is NOT posted to DGFY's own ledger —
-  it moves only through the PayMongo split payment. (§1)
+  DGFY convenience fee                         ₱     0.00
+  The compatibility service_fee fields remain available
+  for historical reads; no new customer fee is charged.
 ```
 
 **B. Same sale, in-store at a POS cashier:**
@@ -147,19 +146,16 @@ formatted as a receipt would show them.
   not the ~1% the headline rate implies. (§7)
 ```
 
-**E. Voucher sale, ₱200 voucher discount, Regime A:**
+**E. Voucher sale, ₱200 voucher discount, new Storefront behavior:**
 ```text
-  DGFY STOREFRONT — VOUCHER SALE  (Regime A)
+  DGFY STOREFRONT — VOUCHER SALE
   --------------------------------------------------------
   Cart subtotal                                 ₱ 1,000.00
   − Voucher discount                            ₱  (200.00)
   --------------------------------------------------------
   Amount buyer pays for the goods                ₱   800.00
-  + DGFY convenience fee            ₱    10.00  ← 1% of the ₱1,000
-                                                    SUBTOTAL, not the
-                                                    ₱800 actually paid
   --------------------------------------------------------
-  TOTAL CHARGED TO BUYER                        ₱   810.00
+  TOTAL CHARGED TO BUYER                        ₱   800.00
 ```
 
 **F. PWD/Senior Citizen sale (in-store only — see §3), VAT-inclusive item:**
@@ -237,7 +233,7 @@ flowchart TD
     DelCode -->|"free_delivery voucher"| DelApply["Waive delivery fee<br/>(up to delivery_amount_off_centavos,<br/>or the whole fee when null)"]
     DelApply --> DelTotal
 
-    ItemTotal --> Total["Total = subtotal − item discount<br/>+ (delivery − waiver, floored at ₱0) + fee"]
+    ItemTotal --> Total["Total = subtotal − item discount<br/>+ (delivery − waiver, floored at ₱0)"]
     DelTotal --> Total
 ```
 
@@ -257,7 +253,7 @@ thing that can ever occupy it.
 | Voucher + PWD/Senior Citizen discount | n/a (statutory not available online — see below) | ❌ blocked | POS allows only one "governed" discount per sale, and a voucher and a statutory discount both compete for that one slot |
 | PWD/Senior Citizen discount + a per-item discount | n/a | ✅ **allowed, with no restriction in the code** | The per-item discount reduces the price first; the 20% statutory discount is then computed on the already-discounted amount |
 | PWD/Senior Citizen discount online | ❌ **not available at all** | ✅ available | There is no statutory-discount feature built into the online storefront today |
-| DGFY convenience fee + any discount | ✅ (fee still applies, see §2E) | n/a (fee is 0 at POS) | Fee (Regime A) is computed before discounts are subtracted |
+| DGFY convenience fee + any discount | ✅ only for positive legacy fee payloads; `0` for new orders | n/a (fee is 0 at POS) | New Storefront totals omit the fee; legacy positive values remain readable during rolling compatibility windows |
 
 **The single most important line in this table for legal review: a PWD or Senior Citizen customer
 shopping online today cannot receive their statutory discount at all — the feature only exists for
@@ -275,8 +271,9 @@ Fully governed by `docs/features/TENANT_REVENUE_SETTLEMENT.md` (authoritative) �
 not restated: under Regime B, a merchant's payment is held (`on_hold`) until DGFY confirms the order
 was actually fulfilled, then becomes eligible for payout after a 15- or 30-day cycle, then goes
 through a two-person (preparer + separate approver) manual batch-approval process before money
-actually moves. Under Regime A (current default), the merchant is paid directly by the payment
-processor at time of sale minus the processor's own cut — DGFY is not in that money's path at all.
+actually moves. For new Storefront orders with revenue sharing disabled, the merchant is paid directly
+by the payment processor at time of sale minus the processor's own cut; any legacy QR Ph platform
+settlement remains separate and tenant-funded. Under Regime B, the settlement flow below applies.
 
 ## 5. Refunds and chargebacks
 
@@ -285,9 +282,8 @@ processor at time of sale minus the processor's own cut — DGFY is not in that 
   refunds always sum correctly. See [§7](#7-fee-computation-both-regimes).
 - A refund never reopens a merchant payout that's already settled; unresolved refund amounts are
   carried forward to the *next* settlement batch instead.
-- **Regime A has no equivalent mechanism described in code for reversing the 1% convenience fee on
-  a refund** — because Regime A doesn't post the fee into any DGFY ledger in the first place (§1),
-  there is nothing there to reverse. Flagged in [§6](#6-known-gaps-and-open-decisions).
+- **New Storefront Regime A orders have no customer convenience fee to reverse.** Historical orders
+  retain their original snapshots and are not recomputed or backfilled.
 
 ## 6. Known gaps and open decisions
 
@@ -298,8 +294,8 @@ a code defect this audit surfaced (filed as its own issue, not fixed as part of 
 
 | # | Question | Current behavior |
 |---|---|---|
-| #817 | What fee basis applies to a downpayment order? | Fee charged on downpayment only; balance leg is fee-free (§2D) |
-| #814 | Should the 1% convenience fee be configurable? | No — hardcoded in two places today |
+| #817 | What fee basis applies to a downpayment order? | Regime B platform fee is charged on the captured downpayment only; balance leg is fee-free (§2D) |
+| #814 | Should the 1% convenience fee be configurable? | Retired for new Storefront orders in Phase 333; historical compatibility fields remain |
 | #872 | Who funds the affiliate program — the business or DGFY? | Not resolved in this doc's scope |
 | #605 | Should a fixed-price voucher be allowed with a statutory discount? | Currently blocked by the single-discount-slot rule (§3), same as any other combination |
 | #782 | Should voucher-to-voucher stacking (e.g. a free-delivery voucher category) ever be allowed? | Partially resolved. Cross-axis stacking (one item voucher + one delivery voucher) shipped in Phase 240 (#1331). Same-axis stacking (two item vouchers, or two delivery vouchers) remains impossible; #782 now scopes to that narrower question |
@@ -338,14 +334,19 @@ Default rate (`:18-21`): `TENANT_REVENUE_DEFAULT_RATE_BPS`, fallback `100` (1%),
 Default settlement cycle (`:22-26`): `TENANT_REVENUE_DEFAULT_SETTLEMENT_CYCLE_DAYS`, fallback `15`,
 only `15` or `30` ever resolve.
 
-**The single decision point** — `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js:3812-3814`:
+**The payment-session settlement decision point** — `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`:
 ```js
 const platformFeeCentavos = tenantRevenueSharingEnabled
     ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
-    : toCentavos(resolved.serviceFeeAmount);
+    : toCentavos(computeDgfyConvenienceFee(resolved.prepared.subtotalAmount));
 ```
 
-**Regime A — the buyer-paid convenience fee**, whole file
+For new Storefront orders, `resolved.serviceFeeAmount` is always `0`, so the platform settlement
+shown above is not included in the customer's `total_amount`. In the legacy non-revenue-sharing QR Ph
+path it is a separate tenant-funded settlement amount; in the tenant-revenue-sharing path it remains
+the configured tenant policy fee.
+
+**Legacy convenience-fee calculation**, retained only for settlement compatibility and historical reads:
 `apps/dgfy-api/src/modules/shared/utils/dgfyConvenienceFee.js:1-13`:
 ```js
 const DGFY_CONVENIENCE_FEE_RATE = 0.01;
@@ -356,22 +357,16 @@ export const computeDgfyConvenienceFee = (grossSubtotal) => {
     return round4(normalizedGrossSubtotal * DGFY_CONVENIENCE_FEE_RATE);
 };
 ```
-Called at `storeUseCases.js:1782-1784`:
+The Storefront quote/checkout calculation now uses:
 ```js
-const serviceFeeAmount = revenueSharingEnabled
-    ? 0
-    : computeDgfyConvenienceFee(prepared.subtotalAmount);
+const serviceFeeAmount = 0;
 ```
-POS cashier zeroing is not a separate flag — POS checkout (`posUseCases.js`) simply never calls
-`computeDgfyConvenienceFee`; no service fee is ever set for an in-store sale.
 
-Storefront duplicate of the same constant (not imported from the API package — a maintenance risk,
-not just a citation): `apps/dgfy-storefront/src/shared/model/storefrontConstants.js:10-11`,
-`apps/dgfy-storefront/src/modes/fnb/checkout/hooks/useCheckoutTotalsAndGating.js:52`.
+The Storefront duplicate rate constant was removed. Positive legacy `service_fee_amount` values may
+still render in summary compatibility paths, but new zero-valued rows are omitted.
 
-**Basis for Regime A**: `prepared.subtotalAmount` — the **pre-discount, pre-delivery** subtotal
-(`storeUseCases.js:1782-1784`), confirmed by the order-total formula in
-[§8](#8-the-order-total-pipeline).
+The legacy settlement basis remains `prepared.subtotalAmount` — the **pre-discount, pre-delivery**
+subtotal — while the new customer-facing Storefront fee basis is zero.
 
 **Regime B — the authoritative fee, recomputed at webhook time.** The checkout-time figure above is
 advisory metadata only; the ledger-of-record fee is recomputed from the payment processor's reported
@@ -399,7 +394,7 @@ return {
 ```
 **Identity: `tenant_net_payable = gross − dgfy_fee − tenant_share_of_provider_fee`.**
 
-**Downpayment substitution** — `storeUseCases.js:3806-3814`:
+**Downpayment substitution** — `storeUseCases.js`:
 ```js
 const isDownpaymentCapture = resolved.downpayment.payment_mode === 'downpayment_required';
 const orderTotalCentavos = toCentavos(resolved.totalAmount);
@@ -408,7 +403,7 @@ const totalAmountCentavos = isDownpaymentCapture
     : orderTotalCentavos;
 const platformFeeCentavos = tenantRevenueSharingEnabled
     ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
-    : toCentavos(resolved.serviceFeeAmount);
+    : toCentavos(computeDgfyConvenienceFee(resolved.prepared.subtotalAmount));
 ```
 `totalAmountCentavos` — the fee basis — is substituted to the **downpayment amount**, not the order
 total, whenever a downpayment is captured. `orderTotalCentavos` is stored for reference
@@ -443,7 +438,7 @@ return (dgfyFee * cappedRefund + (grossAmount / 2n)) / grossAmount;
 // applied as a delta: proportionalPlatformFee(updatedRefund) - proportionalPlatformFee(previousRefund)
 ```
 
-**Regime A posts nothing to DGFY's own ledger** —
+**New non-revenue-sharing Storefront orders post no customer convenience fee to DGFY's own ledger** —
 `tenantRevenueUseCases.js:460-462`:
 ```js
 if (!tenantRevenueSharingEnabled) {
@@ -462,16 +457,17 @@ const totalAmount = round4(
 ```
 Step order: affiliate price rule rewrites each line's unit price → subtotal formed → promo *or*
 voucher discount on the item axis (never both) → `+ delivery fee (base − any free-delivery voucher
-waiver, floored at ₱0)` → `+ convenience fee`, computed on the pre-discount subtotal (not discounted)
-→ total. VAT is derived separately, from pre-discount line subtotals. The delivery-fee term's formula
+waiver, floored at ₱0)` → total. For new Storefront orders, `serviceFeeAmount` is `0`; positive
+legacy service-fee values are retained only when reading older payloads. VAT is derived separately,
+from pre-discount line subtotals. The delivery-fee term's formula
 is ADR 0078's `finalFee = max(0, baseFee − waiverAmount)`, persisted as `delivery_fee_base` /
 `delivery_fee_waiver` / `delivery_fee` (Phase 240, #1331) — an independent, second discount axis from
 the promo/voucher term two steps earlier, not a further reduction of it.
 
 **POS** — `posUseCases.js`, roughly lines 3020-3475. Step order: subtotal → per-item discounts
 reduce each line's base → one governed (order-level) discount (promo, voucher, senior, pwd,
-employee, or manual — exactly one) applied against the item-discounted base → service fee on the
-**gross pre-discount** subtotal (always 0 today — no code path sets it for POS) → restaurant service
+employee, or manual — exactly one) applied against the item-discounted base → legacy DGFY service-fee
+field on the **gross pre-discount** subtotal (always 0 today — no code path sets it for POS) → restaurant service
 charge (F&B only) on the **net post-discount** total → order total. VAT is derived from
 **post-discount** line amounts — the opposite basis from storefront.
 
@@ -488,7 +484,7 @@ flowchart TD
         SF2 --> SF3["VAT derived from<br/>PRE-discount line subtotals"]
         SF2 --> SF4["Promo OR voucher discount<br/>(never both)"]
         SF4 --> SF5["+ delivery fee (base − any free-delivery<br/>voucher waiver, floored at ₱0)"]
-        SF5 --> SF6["+ convenience fee, on the<br/>PRE-discount subtotal (not discounted)"]
+        SF5 --> SF6["+ Storefront convenience fee = ₱0<br/>(legacy positive values only for historical reads)"]
         SF6 --> SF7["= Total"]
     end
 
@@ -658,7 +654,7 @@ around lines 1174-1202):
 |---|---|---|---|
 | Peso 4dp normalize | `storeUseCases.js:138` | `Math.round(value * 10000) / 10000` | round-half |
 | Peso → centavos | `storeUseCases.js:139` | `Math.round(round4(value) * 100)` | double rounding |
-| Convenience fee | `dgfyConvenienceFee.js:8` | `round4(subtotal * 0.01)` | round4 |
+| Legacy QR Ph settlement basis | `dgfyConvenienceFee.js:8` | `round4(subtotal * 0.01)` | round4 |
 | VAT extraction | `posDiscountCalculator.js:74` / `storeUseCases.js:1021-1022` | `round4(gross / 1.12)` | round4 |
 | Checkout-time platform fee | `storeUseCases.js:3813` | `Math.round(amount * bps / 10000)` | float `Math.round` |
 | Webhook-time (authoritative) platform fee | `tenantRevenueUseCases.js:47` | `(amount * bps + 5000n) / 10000n` | BigInt half-up |
@@ -680,9 +676,9 @@ persisted as DGFY's actual revenue.
 3. **Min-spend voucher evaluation point differs** — storefront checks against the pre-discount,
    affiliate-adjusted subtotal; POS checks against the post-item-discount subtotal. The same voucher
    code can qualify on one channel and not the other for the same cart contents.
-4. **Service-fee basis differs within POS itself** — the DGFY service fee (always 0 today) would use
-   the gross pre-discount subtotal, while the F&B restaurant service charge uses the net
-   post-discount total, in the same order total.
+4. **Service-charge concepts remain separate** — the DGFY Storefront service-fee compatibility field
+   is zero for new orders, while the F&B restaurant service charge uses the net post-discount total
+   when configured. They must not be combined or treated as the same charge.
 5. **A storefront frontend fallback path can sum promo + voucher discounts** — a state the backend's
    own guard makes impossible — when the backend's quote result isn't available and the frontend
    recomputes locally.
@@ -704,7 +700,7 @@ persisted as DGFY's actual revenue.
   and [§7](#7-fee-computation-both-regimes) state the fee-basis behavior that doc's own Residual
   Risks section flags as open (#817)
 - [ADR 0012](../architecture/adr/0012-dgfy-global-convenience-fee-and-ui-brand-separation.md) —
-  convenience fee policy and its POS-zeroing amendment
+  convenience fee policy, its POS-zeroing amendment, and the Phase 333 Storefront retirement
 - [ADR 0033](../architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md) —
   statutory vs. commercial discount boundary, PIN authorization, single-slot rule
 - [ADR 0036](../architecture/adr/0036-affiliates-program-commission-and-cashout.md) — affiliate
@@ -719,5 +715,5 @@ persisted as DGFY's actual revenue.
 - [ADR 0078](../architecture/adr/0078-customer-delivery-fee-modes.md) — customer delivery fee modes
   (fixed/calculated/free) and the `finalFee = max(0, baseFee − waiverAmount)` formula this doc's §7/§8
   now describe
-- Open policy decisions: #817, #814, #872, #605, #782
+- Open policy decisions: #817, #872, #605, #782
 - Code defects filed from this audit: #937, #938, #939, #940, #941, #942, #943

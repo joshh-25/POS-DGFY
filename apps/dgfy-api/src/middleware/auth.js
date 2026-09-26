@@ -235,7 +235,8 @@ export const authenticate = async (req, res, next) => {
     const cacheKey = `${contextTenantId}:${decoded.user_id}`;
     const cached = _userCache.get(cacheKey);
     let user;
-    if (cached && cached.expiresAt > Date.now()) {
+    const readOnlyRequest = ['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase());
+    if (readOnlyRequest && cached && cached.expiresAt > Date.now()) {
       user = cached.user;
     } else {
       const User = dbStore.get('User');
@@ -362,6 +363,8 @@ export const authenticate = async (req, res, next) => {
 
 export const checkPermission = (requiredPermission) => {
   return (req, res, next) => {
+    // An active operator must satisfy these checks independently of the browser account.
+    req.requiredPermissions = [...new Set([...(req.requiredPermissions || []), requiredPermission])];
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -530,6 +533,7 @@ export const checkAnyPermission = (requiredPermissions) => {
   }
 
   return async (req, res, next) => {
+    req.requiredPermissionAlternatives = [...(req.requiredPermissionAlternatives || []), permissions];
     if (!req.user) {
       return res.status(401).json({
         success: false,

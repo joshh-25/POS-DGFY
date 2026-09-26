@@ -32,6 +32,12 @@ export function useStorefrontCartPersistence({
   const skipNextWriteKeyRef = useRef('');
 
   useEffect(() => {
+    if (enabled) return;
+    hydratedKeyRef.current = '';
+    skipNextWriteKeyRef.current = '';
+  }, [enabled]);
+
+  useEffect(() => {
     if (!enabled || !persistenceKey || typeof setCart !== 'function') return;
     if (hydratedKeyRef.current === persistenceKey) return;
 
@@ -92,6 +98,6 @@ export function useStorefrontCartPersistence({
   }, [cart, enabled, normalizedMode, normalizedStoreSlug, persistenceKey, promoCode, voucherCode]);
 
   return useCallback(() => {
-    clearStorefrontCartSnapshot(normalizedStoreSlug);
-  }, [normalizedStoreSlug]);
+    clearStorefrontCartSnapshot(normalizedStoreSlug, { mode: normalizedMode });
+  }, [normalizedMode, normalizedStoreSlug]);
 }

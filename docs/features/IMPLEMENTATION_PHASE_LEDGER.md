@@ -23801,210 +23801,208 @@ Not yet merged — set at merge time.
 345 after Phase 344's implementation, review, merge, and deployed QA evidence are complete
 (re-check the ledger before reserving it).
 
-## Phase 345 - Whole-repository test cost/dependency inventory (fast vs. opt-in) (#438)
+## Phase 345 - Deduct parked-sale stock at park and route void/cancellation through Back Office approval
 
 ### Initiative and release
 
-Test-tier routing evidence for Worker Tier 2 and real-DB testing, current release.
+POS parked-sale lifecycle and high-risk operational approvals, current release.
 
 ### Objective and scope
 
-Provide one durable, generated, checkable inventory of every existing unit/component test
-file across `apps/dgfy-api`, `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`,
-`packages/web-core` (via the IMS Vitest invocation, ADR 0071), and the migration-runner's
-operational commands — each classified `fast-pure`, `fast-mocked-external`, `db-required`,
-`redis-required`, `network/provider-required`, `browser-e2e`, or `opt-in/legacy` — plus a
-concise guide defining the default fast subset, opt-in tiers, decision rules, refresh/check
-commands, and the #378 cross-reference. Reuses the backend DB manifest/matrix as execution
-source of truth; creates no competing DB list, no new test runner, no CI gate change, no
-migration, no runtime/API change.
+Deduct Inventory-owned stock movements when a POS sale is parked; atomically
+reconcile movements when the claimed sale is re-parked; prevent checkout from
+deducting the stored snapshot twice; and require an audited reason plus
+independent Back Office approval before voiding a completed POS sale or
+cancelling a parked sale. Preserve stored parked prices and note-only
+settlement for historical lines whose catalog item is no longer usable. No PR,
+commit, deployment, or production data mutation is part of this local task.
 
 ### Status
 
-`in_progress` — implementation and local validation are in progress; PR review, merge, and
-deployed QA remain outstanding.
+`in_progress` — implementation and focused local validation are underway;
+authenticated cashier/approver acceptance, PR review, merge, and deployed QA
+remain outstanding.
 
 ### Dependencies
 
-Issue #438; #436 Worker Tier 2 consumer; #372 real-DB consumer; #378 baseline-failure
-cross-reference; #344 (location/structure question — explicitly not this issue);
-authoritative `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
-`docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0071, `docs/architecture/apps-layout-migration.md`,
-`docs/testing/README.md`; Phase 344 (continuous ledger predecessor).
+Operator approval on 2026-09-24; ADR 0086 (scoped supersession of ADR 0065
+Decision 8); ADR 0029 (Inventory-owned stock truth); Phase 344 is the continuous
+ledger predecessor.
 
 ### Acceptance and validation evidence
 
-- [ ] `npm run test:audit-test-cost` passes (discovery, stale-record, runner-exclusion,
-      manifest-reuse, classification, safe-subset coverage).
-- [ ] `npm run audit:test-cost:check` passes against the real checkout (1334 records current,
-      no stale/missing entries, all #378 basenames matched).
-- [ ] Default-subset proof: backend fast file, IMS web-core file, and Storefront file timed
-      and passing with no DB/Redis/network/browser service.
-- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
-      `git diff --check` clean.
-- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+- [ ] Parking records Inventory-owned goods issues atomically with the parked
+      snapshot; failed movement rolls back the park.
+- [ ] Re-parking reverses old active movements and issues the revised snapshot
+      atomically; cache invalidation covers old and new affected items.
+- [ ] Payment does not issue already-deducted parked lines twice; historical
+      prices and missing-item note-only behavior remain intact.
+- [ ] Void and parked-sale cancellation require a reason, create pending
+      requests, and do not change sale/stock until an independent reviewer
+      approves; rejection leaves stock unchanged.
+- [ ] Targeted backend/frontend suites, migration/schema tests, architecture
+      checks, compliance declaration check, lint, builds, and `git diff --check`
+      pass.
+- [ ] A real tenant database with separate cashier and approver accounts
+      validates park/re-park/pay, void, cancellation approval/rejection, stock
+      quantities, audit records, and terminal/Back Office behavior before
+      release.
 
 ### Links
 
-- Issue: #438 (`Closes`).
-- Handoff: `.tmp/plan-438.md` (planning head `de26008bb82db0a1a0423d8ab16e263ba35be45c`).
-- Implementation: `scripts/audit-test-cost-inventory.js` (+ test),
-  `docs/testing/test-cost-inventory.json`, `docs/testing/test-cost-inventory.md`,
-  `docs/testing/README.md`.
-- Authoritative architecture sources: `docs/START_HERE.md`,
+- ADR: `docs/architecture/adr/0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-24-pos-parked-sale-lifecycle-approvals.md`.
+- Implementation: `apps/dgfy-api/src/modules/pos/usecases/parkedSaleUseCases.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posExceptionApprovalUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`,
+  and the Back Office approval workspace.
+- Architecture sources: `docs/START_HERE.md`,
   `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
-  `docs/architecture/ARCHITECTURE_GOVERNANCE.md` (no ADR impact; testing
-  documentation/tooling within existing boundaries).
+  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0065, and ADR
+  0029.
 
 ### Completion date
 
-Not yet merged — set at merge time.
+Not complete; set only after required acceptance gates and deployed QA pass.
 
 ### Next eligible phase
 
-346 after Phase 345's implementation, review, merge, and deployed QA evidence are complete
-(re-check the ledger before reserving it).
+346 after Phase 345's implementation, review, merge, and deployed QA evidence
+are complete (re-check the ledger before reserving it).
 
-## Phase 346 - Trace container revisions from DEV through PROD, per app (#2055)
+## Phase 346 - POS Settings Taxes: tenant VAT-treatment policy
 
 ### Initiative and release
 
-Epic #1548 follow-up (reverses Phase 342's candidate-wide-uniform-`rN` design); current release.
+POS Settings and governed discount financial-policy configuration, current release.
 
 ### Objective and scope
 
-Give eligible DEV container builds immutable per-app revision identities (`X.Y.Z-rN-dev`,
-GHCR-sourced max-plus-one per app+floor, same-source retry reuse, Decision 7 race net) that
-a frozen v2 promotion candidate selects (`dev_artifacts`) and carries through staging
-repairs (fresh allocation per touched app, cosmetic `repair_seq`, `fix/staging/<id>-<seq>`
-branches) to PROD (per-app `release_revision` map, plain `release/<id>` cut), preserving
-each app's `X.Y.Z` floor, ADR 0081 Decision 7 (`[binding]`, untouched), frontend
-environment-qualified vs backend environment-neutral artifact distinctions, and legacy
-bare `X.Y.Z-dev` tags as untouched history. Feature-branch DEV dispatches publish
-non-promotion-eligible `X.Y.Z-<slug>-dev` (sha tag only, never the moving `develop` tag).
-Out of scope: per-app floor bump policy, routine DEV deployment defaults (#982),
-app/package version ownership, production approval gates, unrelated container naming.
+Add a POS-only **Taxes** settings surface for the six governed discount and
+promotion categories: Senior Citizen, PWD, Other (`manual`), Employee, Promo,
+and Voucher. The setting is tenant-wide and controls only whether item VAT is
+kept or embedded VAT is removed for future POS calculations. Preserve
+server-owned statutory rates, discount eligibility and methods, approval PINs,
+promo/voucher ownership, receipt/report snapshots, and historical parked or
+completed financial values. Add immutable tax-treatment/policy-version
+snapshots and signed offline-policy invalidation when the setting changes.
 
 ### Status
 
-`in_progress` — implementation and local validation are in progress; PR review, merge, and
-deployed QA remain outstanding.
+`in_progress` — the approved local implementation and focused validation are
+complete; the upgraded local schemas are migrated, while fresh-tenant rehearsal,
+authenticated rendered acceptance, PR review, merge, and deployed QA remain
+outstanding.
 
 ### Dependencies
 
-Issue #2055 (with the 2026-09-23 revision-allocation decision recorded on it);
-`.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`);
-ADR 0039 (amendment path), ADR 0081 (2026-09-23 amendment, Decisions 1/3/4/8),
-ADR 0082 (2026-09-23 amendment, Decisions 6/8); Phase 342 (reversed design);
-Phase 345 (continuous ledger predecessor).
+User approval on 2026-09-25; ADR 0033 and ADR 0075; the existing tenant
+settings authorization and POS discount contracts. Phase 345 is the continuous
+ledger predecessor and was still `in_progress` when this phase was reserved;
+the Taxes implementation has no runtime dependency on the parked-sale approval
+lifecycle.
 
 ### Acceptance and validation evidence
 
-- [ ] `npm run test:release-tags` passes (revisioned/ad-hoc/legacy DEV, `parseRevisionTag`,
-      `sanitizePrRef`, unchanged STAGING/PROD matrix).
-- [ ] `npm run test:artifact-revision` passes (max-plus-one, same-source reuse, fail-closed
-      probe, `--select-dev` selection).
-- [ ] `npm run test:promotion-candidate` passes (v2 manifest, `repair_seq`, per-app map,
-      frozen v1 legacy path).
-- [ ] `npm run test:tag-immutability`, `npm run test:image-alias`, `npm run test:release-notes`
-      pass (revisioned-DEV guard cases, unchanged alias creation, plain `release/<id>`).
-- [ ] Parity/build-skip/workflow-shape suites pass (per-app revision verification,
-      `app-not-in-candidate` skip, `--release-revisions-json`/`--dev-pr-ref`, grouped
-      workflow wiring, `dev_pr_ref` builder contract).
-- [ ] `npm run lint:docs`, `npm run check:architecture`, `npm run check:compliance` pass;
-      `git diff --check` clean.
-- [ ] PR review, merge, and deployed QA remain outstanding (this phase never merges or deploys).
+- [x] `pos_tax_policies` is validated, normalized, versioned on write, and
+      audited as a tenant-scoped future-transaction setting under existing
+      settings permissions.
+- [x] POS Settings exposes the Taxes tab with six category controls, preserved
+      Senior/PWD defaults, dirty-state protection, save/cancel behavior, and a
+      VAT calculation preview.
+- [x] Governed POS discount, voucher, item-snapshot, and signed mobile-policy
+      paths resolve the server-owned policy; discount rows snapshot
+      `tax_treatment` and `tax_policy_version` without rewriting history.
+- [x] Focused backend coverage passes: 7 suites, 41 tests; POS Settings
+      behavior coverage passes: 38 tests.
+- [x] POS, Storefront, and IMS production builds pass; architecture and docs
+      checks pass; scoped compliance validation for this change passes.
+- [x] The additive migration was applied to the local landlord database and all
+      15 active local tenant databases (16 schemas total); both nullable snapshot
+      columns were verified in every schema, and tenant-schema coverage passed.
+- [ ] Fresh-tenant migration rehearsal is complete.
+- [ ] Authenticated desktop/mobile acceptance covers representative statutory,
+      employee, promo, voucher, receipt/report, and stale-offline-policy flows.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge
+      or deploy.
 
 ### Links
 
-- Issue: #2055 (`Closes`).
-- Handoff: `.tmp/plan-2055.md` (planning head `e91c99cabcf59e90cf62bc5e46ce64d1ad3aa75b`).
-- Implementation: `scripts/resolve-release-tags.js` (+ test),
-  `scripts/allocate-artifact-revision.js` (+ test),
-  `scripts/check-promotion-candidate.js` (+ test),
-  `scripts/check-image-version-parity.js` (+ test),
-  `scripts/resolve-build-skip-plan.js` (+ test),
-  `scripts/check-deploy-version-stamping-workflow.js` (+ test),
-  `scripts/check-release-notes.js` (+ test),
-  `scripts/check-tag-immutability.test.js`,
-  `scripts/build-release-candidate-evidence.test.js`,
-  `.github/workflows/deploy.yml` / `deployment-orchestrator.yml` / `deploy-main.yml` /
-  `deploy-api.yml` / `deploy-frontend.yml` / `deploy-migration-runner.yml` /
-  `promotion-quality-gate.yml`,
-  `.agents/skills/promoter/SKILL.md` /
-  `.agents/skills/promoter/references/promotion-runbook.md`.
-- Authoritative architecture sources: `docs/START_HERE.md`,
-  `docs/architecture/ARCHITECTURE_BOUNDARIES.md`,
-  `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0039, ADR 0081 (2026-09-23 amendment),
-  ADR 0082 (2026-09-23 amendment), `docs/ops/RELEASE_CANDIDATE_POLICY.md` (2026-09-23 entry),
-  `docs/ops/GATE_RELEASE_LOCAL_CI_MAPPING.md`.
+- ADR: `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-09-25-pos-tax-policy.md`.
+- Implementation plan: `Implementation.md` (`POS Settings - Taxes`).
+- Implementation: `packages/web-core/src/features/pos/settings/`,
+  `apps/dgfy-api/src/modules/shared/constants/posTaxPolicy.js`, the POS
+  discount/settings modules, and
+  `apps/dgfy-migration-runner/migrations/20260925000001-add-pos-tax-policy-snapshot.cjs`;
+  tenant-schema registry: `apps/dgfy-api/scripts/sync-tenant-schemas.js`.
 
 ### Completion date
 
-Not yet merged — set at merge time.
+Not complete; set only after all required acceptance gates and deployed QA pass.
 
 ### Next eligible phase
 
-347 after Phase 346's implementation, review, merge, and deployed QA evidence are complete
-(re-check the ledger before reserving it).
+347 after Phase 346's implementation, review, merge, and deployed QA evidence
+are complete (re-check the ledger before reserving it).
 
-## Phase 347 - Decouple shared DEV from release floors and promotion lineage (#2071)
+## Phase 347 - Online order confirmation-time inventory hardening
 
 ### Initiative and release
 
-Epic #1548 release-versioning follow-up; current release.
+Online order lifecycle and deleted-catalog-item fulfillment, current release.
 
 ### Objective and scope
 
-Replace new DEV artifact tags with one mutable `dev` alias plus SHA identity, usable by manual
-DEV dispatches from `develop` or experimental branches. Keep immutable per-app `rN` tags for
-STAGING/PROD. Build promotion candidates from the frozen `develop` SHA directly on STAGING,
-with no DEV artifact, deployment, server, or availability dependency. Keep package floors steady
-on ordinary develop changes and staging repairs; bump changed apps to their next minor floors at
-promotion start; reserve patch bumps for direct main hotfixes. Preserve v1/v2 candidate validation
-for historical/in-flight manifests while writing v3 manifests for the revised lineage.
+Issue online-order stock exactly once when an order is confirmed for every workflow
+mode, preserve the legacy completion fallback for orders without inventory evidence,
+reverse the recorded issue on eligible cancel/reject transitions, and allow only the
+scoped online fulfillment path to use a soft-deleted historical item row. Keep normal
+manual/POS/dispatch stock operations active-item-only. No database migration is needed;
+the existing `inventory_issued_at` and `inventory_reversed_at` evidence columns are reused.
 
 ### Status
 
-`in_progress` — implementation and local validation are underway; PR review, merge, and deployed
-QA remain outstanding.
+`in_progress` — implementation and focused regression validation are underway; full
+repository checks, authenticated order-flow acceptance, PR review, and deployed QA remain.
 
 ### Dependencies
 
-Issue #2071 and the user's 2026-09-24 scope clarification; Phase 346's deployed per-app revision
-implementation (retained for STAGING/PROD and legacy manifest compatibility); ADR 0039; ADR 0081;
-ADR 0082; `docs/ops/RELEASE_CANDIDATE_POLICY.md`.
+Phase 346 is the continuous ledger predecessor; ADR 0029's 2026-09-25 amendment;
+existing online inventory reservation and stock-command contracts.
 
 ### Acceptance and validation evidence
 
-- [ ] DEV resolver returns `dev` without reading a package floor or revision; all manually selected
-  branches can move the tag and SHA tags remain available.
-- [ ] DEV skip-plan always rebuilds selected apps so the mutable alias points at the dispatched SHA.
-- [ ] Promotion candidate creation and STAGING dispatch work from a frozen develop SHA without a
-  DEV deploy or DEV artifact lookup; v3 manifests do not contain `dev_artifacts`.
-- [ ] STAGING/PROD revisions are allocated only from release-channel tags; immutable release tag
-  and parity checks remain intact.
-- [ ] Version checks enforce unchanged floors on develop and staging repairs, minor floor bumps at
-  promotion, and patch-only direct main hotfixes.
-- [ ] Focused resolver, revision, candidate, parity, workflow-shape, and version-policy suites pass;
-  docs/architecture/compliance checks and `git diff --check` pass.
-- [ ] PR review, merge, and deployed QA remain outstanding; this phase never deploys.
+- [ ] Confirmation issues and converts inventory once for Retail and non-Retail online orders.
+- [ ] Completion does not re-issue an order with `inventory_issued_at`; legacy no-evidence
+      orders still use the completion fallback.
+- [ ] Eligible cancel/reject reverses once for every mode and remains atomic with reservation
+      release and status update.
+- [ ] A soft-deleted item already present in an online order can complete; a hard-deleted or
+      unrelated inactive item still fails safely.
+- [ ] Focused backend lifecycle, stock-service, and regression tests pass.
+- [ ] Architecture/docs checks and the relevant build pass; no migration is generated because
+      the required evidence columns already exist.
+- [ ] PR review, merge, and deployed QA are complete; this phase does not merge or deploy.
 
 ### Links
 
-- Issue: #2071 (scope clarified in the 2026-09-24 conversation; current issue body still describes
-  the superseded revisioned-DEV approach).
-- Related: #982, #1548, #2055, #2054, #2069.
-- Implementation: `scripts/resolve-release-tags.js`, `scripts/allocate-artifact-revision.js`,
-  `scripts/resolve-build-skip-plan.js`, `scripts/check-app-version-bump.js`,
-  `scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`, deployment and
-  promotion workflows/runbook, ADR 0081, release candidate policy.
+- ADR: `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md`.
+- Implementation: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`,
+  `apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`,
+  `apps/dgfy-api/src/modules/inventory/commands/stockCommandService.js`, and
+  `apps/dgfy-api/src/services/stockMovementService.js`.
+- Tests: `apps/dgfy-api/tests/posOnlineInventoryReservationLifecycle.unit.test.js`,
+  `apps/dgfy-api/tests/storeCancelInventoryReversal.unit.test.js`, and
+  `apps/dgfy-api/tests/stockMovementService.serviceMode.test.js`.
 
 ### Completion date
 
-Not yet merged — set at merge time.
+Not complete; set only after required acceptance gates and deployed QA pass.
 
 ### Next eligible phase
 
-348 after Phase 347's implementation, review, merge, and deployed QA evidence are complete
-(re-check the ledger before reserving it).
+348 after Phase 347's implementation, review, merge, and deployed QA evidence are
+complete (re-check the ledger before reserving it).

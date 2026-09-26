@@ -13,7 +13,7 @@ Food & Beverage Mode (`fnb`) is the restaurant workflow mode. It is labeled `Foo
 
 ## Operator Workflow
 
-- IMS exposes a mode-native F&B console for menu modifiers, selectable menu-item modifier assignments, item-to-kitchen routing, dining areas and tables, kitchen stations, open checks, visual line split, check merge/transfer, multi-table reservation schedules, restaurant service-charge settings, and reports.
+- POS Back Office exposes F&B setup and read-only monitoring for menu modifiers, selectable menu-item modifier assignments, item-to-kitchen routing, dining areas and tables, kitchen station setup, open-check and kitchen-ticket visibility, multi-table reservation schedules, restaurant service-charge settings, and reports. Live check changes and kitchen-ticket actions remain POS-terminal-owned.
 - POS supports restaurant context through table, open-check, guest-count, server, course, modifier, kitchen-station, and restaurant-service-charge snapshots. POS modifier selections are validated against the item modifier assignments and active modifier options; caller-provided modifier price deltas are not trusted. POS can override a line kitchen station from active F&B stations before checkout. F&B checkout creates or links restaurant-native kitchen/check records when F&B context is present.
 - Storefront exposes restaurant menu browsing through the shared catalog endpoint with additive `fnb_modifier_groups`, `allergens`, and `nutrition` fields. Storefront quote/checkout accepts additive `line_modifiers`; the backend validates selected options against the published menu item and computes modifier deltas from database state. Accepted F&B Storefront checkout creates a restaurant-native kitchen/check record in the checkout transaction when recipe or F&B line context is present. Storefront reservation and map components are lazy-loaded so public catalog first load is not coupled to the restaurant reservation panel or MapLibre runtime.
 - Storefront exposes a public F&B reservation request endpoint at `/api/v1/store/fnb/reservations`, guarded to F&B tenants and stored with `source=storefront`. Admin/POS reservation handling validates assigned table IDs and can filter schedules by status, table, and date range.
@@ -43,7 +43,7 @@ F&B-specific side tables own restaurant-only concepts:
 
 ## Charge Boundary
 
-Restaurant service charge is optional and separate from the DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`, which remains the DGFY convenience fee contract. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving DGFY convenience fee VAT behavior unchanged.
+Restaurant service charge is optional and separate from the retired customer-facing DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`: it remains a compatibility field, resolves to `0` for new Storefront orders, and is not used for restaurant service charge. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving the zero Storefront convenience-fee behavior unchanged.
 
 ## Menu Inventory
 
@@ -78,7 +78,7 @@ New F&B rows persist `items.mode_item_preset` with the selected preset key. This
 
 POS item create and edit forms present active food categories through an editable combobox. Operators may select an existing active category from the explicit dropdown or type a new category name; only authorized category managers can create that typed category when the item is saved.
 
-During tenant onboarding, the starter item selector intentionally presents only `Menu Item` for F&B merchants. The submitted and persisted preset remains `menu_item`; the created starter row remains a product item internally and appears as a customer-facing menu item on Storefront/POS surfaces. Ingredients, packaging, and retail beverage/product setup remain available after onboarding in full item management.
+During tenant onboarding, F&B merchants do not need to create a starter item. POS onboarding proceeds from Profile and Storefront setup directly to POS Setup, so a new F&B tenant may complete onboarding with an empty menu. The normal item-management/catalog surfaces remain available for creating `Menu Item`, `Ingredient`, `Packaged Beverage / Retail Item`, and `Packaging / To-go Supply` rows after onboarding; when a merchant creates a menu item through onboarding-compatible APIs, the persisted preset remains `menu_item` and the row appears as a customer-facing menu item on Storefront/POS surfaces.
 
 F&B accepts valid presentation and packaging UOMs such as `serving`, `portion`, `bottle`, `can`, `pack`, and `case`, but automatic conversion remains limited to weight, volume, and count units. Legacy rows outside the F&B presets remain editable until the operator changes category, product type, mode preset, UOM, or finalizes a draft.
 

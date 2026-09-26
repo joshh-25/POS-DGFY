@@ -64,6 +64,7 @@ const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) 
             ...payload
         })),
         getParkedSaleById: jest.fn(async () => currentParkedSale),
+        findSellableItemsByIds: jest.fn().mockResolvedValue([]),
         updateParkedSale: jest.fn(async (id, payload) => {
             currentParkedSale = {
                 ...(currentParkedSale || { pos_parked_sale_id: id, shift_id: 41, cashier_id: 15, location_id: 3, status: 'parked' }),
@@ -140,6 +141,32 @@ describe('parked sale use cases', () => {
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
         expect(harness.transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('rolls back when inventory planning returns a malformed effect', async () => {
+        const harness = buildHarness();
+        const useCase = buildCreatePosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: jest.fn().mockResolvedValue([
+                { item_id: 7, quantity: 2, location_id: null }
+            ]),
+            inventoryCommandService: harness.inventoryCommandService
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            payload: basePayload(),
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_INVENTORY_EFFECT_INVALID',
+            effect_index: 0
+        }));
+        expect(harness.transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(harness.transaction.commit).not.toHaveBeenCalled();
+        expect(harness.inventoryCommandService.issueStockForPosSale).not.toHaveBeenCalled();
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 
     it('replays the same idempotent park request without creating a duplicate', async () => {
@@ -288,6 +315,70 @@ describe('parked sale use cases', () => {
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 
+    it('re-parks a sale after a reasoned original-line deletion and records the reason', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            revision: 1,
+            inventory_deducted_at: new Date(),
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            snapshot: {
+                lines: [{
+                    line_key: 'parked-line-1',
+                    item_id: 7,
+                    quantity: 1,
+                    base_sale_price: 100,
+                    sale_price: 100,
+                    line_modifiers: []
+                }]
+            }
+        };
+        const harness = buildHarness({ parkedSale });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 1;
+        payload.snapshot.lines = [{
+            line_key: 'new-line-1',
+            item_id: 8,
+            quantity: 1,
+            base_sale_price: 120,
+            sale_price: 120,
+            line_modifiers: []
+        }];
+        payload.removed_line_reasons = [{
+            line_ref: 'parked-line-1',
+            item_id: 7,
+            reason: 'Customer removed item'
+        }];
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_parked_sale_reparked',
+            changes: expect.objectContaining({
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-1',
+                    item_id: 7,
+                    reason: 'Customer removed item'
+                }]
+            })
+        }), expect.objectContaining({ transaction: harness.transaction }));
+    });
+
     it('allows another cashier in the same location to resume and own a parked sale', async () => {
         const parkedSale = {
             pos_parked_sale_id: 101,
@@ -417,80 +508,16 @@ describe('parked sale use cases', () => {
             claimed_by: null,
             line_count: 1
         }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
-        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith(expect.objectContaining({
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
             parked_sale_id: 101,
-            reason: 'Re-park inventory reconciliation for parked sale 101',
-            preserve_item_ids: [7]
-        }), 15, harness.transaction);
+            reason: 'Re-park inventory reconciliation for parked sale 101'
+        }, 15, harness.transaction);
         expect(harness.inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
             item_id: 8,
             quantity: 1,
             reference_type: 'POS_PARKED_SALE',
             reference_id: 'PARKED:101:3:1'
         }), 15, harness.transaction);
-    });
-
-    it('keeps a physically removed parked item resumable without issuing duplicate stock', async () => {
-        const parkedSale = {
-            pos_parked_sale_id: 101,
-            park_reference: 'PARK-ABC123',
-            status: 'claimed',
-            revision: 2,
-            inventory_deducted_at: new Date(),
-            snapshot: {
-                lines: [{ item_id: 134, quantity: 1, sale_price: 90, line_key: 'saved-134' }]
-            },
-            shift_id: 41,
-            cashier_id: 15,
-            location_id: 3,
-            claimed_by: 15,
-            claimed_terminal_id: 'COUNTER-01'
-        };
-        const harness = buildHarness({ parkedSale });
-        harness.inventoryCommandService.reverseParkedSaleGoodsIssue.mockResolvedValue([{
-            preserved: true,
-            item_id: 134,
-            quantity: 1,
-            location_id: 3
-        }]);
-        const resolveInventoryEffects = jest.fn().mockResolvedValue([]);
-        const useCase = buildReparkPosParkedSaleUseCase({
-            posRepository: harness.posRepository,
-            resolveInventoryEffects,
-            inventoryCommandService: harness.inventoryCommandService
-        });
-        const payload = basePayload();
-        delete payload.idempotency_key;
-        payload.expected_revision = 2;
-        payload.snapshot = {
-            lines: [{ item_id: 134, quantity: 1, sale_price: 90, line_key: 'saved-134' }]
-        };
-
-        const result = await runInTenant(harness.sequelize, () => useCase({
-            parkedSaleId: 101,
-            payload,
-            user: { user_id: 15 }
-        }));
-
-        expect(result.success).toBe(true);
-        expect(resolveInventoryEffects).toHaveBeenCalledWith(expect.objectContaining({
-            isRepark: true,
-            preservedInventoryEffects: [{
-                preserved: true,
-                item_id: 134,
-                quantity: 1,
-                location_id: 3
-            }]
-        }));
-        expect(harness.inventoryCommandService.issueStockForPosSale).not.toHaveBeenCalled();
-        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
-            inventory_effects: [{
-                item_id: 134,
-                quantity: 1,
-                location_id: 3,
-                preserve_existing: true
-            }]
-        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
     });
 
     it('rejects a stale re-park revision without overwriting the parked sale', async () => {
@@ -518,6 +545,59 @@ describe('parked sale use cases', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.details).toEqual(expect.objectContaining({ reason_code: 'PARKED_SALE_REVISION_CONFLICT' }));
+        expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
+    });
+
+    it('rejects re-parking when an original parked line is removed', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            revision: 1,
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            snapshot: {
+                lines: [{
+                    line_key: 'parked-line-1',
+                    item_id: 7,
+                    quantity: 1,
+                    base_sale_price: 100,
+                    sale_price: 100,
+                    line_modifiers: []
+                }]
+            }
+        };
+        const harness = buildHarness({ parkedSale });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 1;
+        payload.snapshot.lines = [{
+            line_key: 'replacement-line',
+            item_id: 8,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            line_modifiers: []
+        }];
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_ORIGINAL_LINE_REMOVED'
+        }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).not.toHaveBeenCalled();
         expect(harness.posRepository.updateParkedSale).not.toHaveBeenCalled();
     });
 

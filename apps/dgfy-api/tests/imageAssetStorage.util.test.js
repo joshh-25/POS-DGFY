@@ -6,6 +6,7 @@ import {
     classifyImageAsset,
     deriveImageAssetVariantUrls,
     ensurePosImageThumbnail,
+    readAvailableImageAsset,
     readPosImageVariantUrls,
     deriveVariantsFromAcceptedLarge,
     MAX_PUBLIC_IMAGE_BYTES,
@@ -264,6 +265,51 @@ describe('imageAssetStorage utility', () => {
             expect(variants.avif).toBeUndefined();
             expect(variants.webp).toBeDefined();
             expect(variants.version).toBe(3);
+        });
+    });
+
+    describe('readAvailableImageAsset', () => {
+        it('removes missing generated sibling formats before they reach the POS client', async () => {
+            const storedPath = 'pos-catalog/tenant-x/item-1-1700000000000-v2-a1b2c3d4/large.webp';
+            const assetDirectory = path.join(uploadsRoot, path.dirname(storedPath));
+            await fs.mkdir(assetDirectory, { recursive: true });
+            await Promise.all([
+                fs.writeFile(path.join(assetDirectory, 'thumb.webp'), 'thumb'),
+                fs.writeFile(path.join(assetDirectory, 'medium.webp'), 'medium'),
+                fs.writeFile(path.join(assetDirectory, 'large.webp'), 'large')
+            ]);
+
+            const available = await readAvailableImageAsset({
+                uploadsRoot,
+                storedPath,
+                storedUrl: `/uploads/${storedPath}`
+            });
+
+            expect(available.path).toBe(storedPath);
+            expect(available.url).toBe(`/uploads/${storedPath}`);
+            expect(available.variants.webp.thumbnail_url).toMatch(/\/thumb\.webp$/);
+            expect(available.variants.placeholder_url).toBeNull();
+            expect(available.variants.avif).toBeUndefined();
+        });
+
+        it('suppresses a missing versioned source but preserves legacy flat-path compatibility', async () => {
+            const stalePath = 'storefront-catalog/tenant-x/item-1-1700000000000-v3-a1b2c3d4/large.webp';
+            const stale = await readAvailableImageAsset({
+                uploadsRoot,
+                storedPath: stalePath,
+                storedUrl: `/uploads/${stalePath}`
+            });
+            expect(stale).toEqual({ path: null, url: null, variants: null });
+
+            const legacyPath = 'storefront-catalog/tenant-x/item-legacy.png';
+            const legacy = await readAvailableImageAsset({
+                uploadsRoot,
+                storedPath: legacyPath,
+                storedUrl: `/uploads/${legacyPath}`
+            });
+            expect(legacy.path).toBe(legacyPath);
+            expect(legacy.url).toBe(`/uploads/${legacyPath}`);
+            expect(legacy.variants.thumbnail_url).toBe(`/uploads/${legacyPath}`);
         });
     });
 

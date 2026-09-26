@@ -1,83 +1,9 @@
-import { Plus, Tag, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Tag } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 
 const switchClassName = (enabled) => (
   enabled ? 'bg-[#1A4E8D] focus-visible:ring-[#1A4E8D]' : 'bg-slate-200 focus-visible:ring-[#1A4E8D]'
 );
-
-function DiscountPresetRow({ profile, index, locked, loading, onChange, onRemove }) {
-  const active = profile.active !== false;
-
-  return (
-    <div className="grid gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_8rem_auto_auto] sm:items-end sm:gap-4 sm:px-4">
-      <div className="grid min-w-0 gap-1.5">
-        <Label htmlFor={`pos-discount-name-${index}`} className="text-[12px] font-extrabold uppercase tracking-[0.1em] text-[#64748B]">
-          Discount name
-        </Label>
-        <Input
-          id={`pos-discount-name-${index}`}
-          className="h-9 rounded-lg border-slate-200 text-[13px] font-semibold text-[#0F172A] sm:text-[14px]"
-          value={profile.name || ''}
-          placeholder="e.g. Employee discount"
-          onChange={(event) => onChange(index, 'name', event.target.value)}
-          disabled={locked || loading}
-        />
-      </div>
-
-      <div className="grid gap-1.5">
-        <Label htmlFor={`pos-discount-percent-${index}`} className="text-[12px] font-extrabold uppercase tracking-[0.1em] text-[#64748B]">
-          Rate
-        </Label>
-        <div className="relative">
-          <Input
-            id={`pos-discount-percent-${index}`}
-            className="h-9 rounded-lg border-slate-200 pr-7 text-[13px] font-semibold text-[#0F172A] sm:text-[14px]"
-            type="number"
-            min="0"
-            max="100"
-            step="0.01"
-            value={profile.percentage ?? ''}
-            placeholder="20"
-            aria-label={`Discount rate for preset ${index + 1}`}
-            onChange={(event) => onChange(index, 'percentage', event.target.value)}
-            disabled={locked || loading}
-          />
-          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[12px] font-bold text-[#64748B]">%</span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-3 sm:min-w-24 sm:justify-start">
-        <div>
-          <p className="text-[12px] font-extrabold text-[#0F172A]">Active</p>
-          <p className={`text-[10px] font-semibold ${active ? 'text-[#1A4E8D]' : 'text-[#64748B]'}`}>{active ? 'Enabled' : 'Disabled'}</p>
-        </div>
-        <Switch
-          aria-label={`Active discount preset ${index + 1}`}
-          checked={active}
-          onCheckedChange={(checked) => onChange(index, 'active', checked === true)}
-          disabled={locked || loading}
-          className={switchClassName(active)}
-        />
-      </div>
-
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="h-9 w-9 justify-self-end rounded-lg border-rose-200 bg-rose-50 text-rose-600 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-700 focus-visible:ring-2 focus-visible:ring-rose-500/30"
-          onClick={() => onRemove(index)}
-        disabled={locked || loading}
-        aria-label={`Remove discount profile ${index + 1}`}
-        title="Remove discount"
-      >
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-      </Button>
-    </div>
-  );
-}
 
 function AutomationRule({ id, label, description, checked, onCheckedChange, locked, loading }) {
   return (
@@ -104,7 +30,7 @@ function AutomationRule({ id, label, description, checked, onCheckedChange, lock
 }
 
 export default function PosDiscountAutomationSection({
-  locked, loading, posForm, setPosForm, handleDiscountProfileChange, addDiscountProfile, removeDiscountProfile
+  locked, loading, posForm, setPosForm
 }) {
   const discountProfiles = Array.isArray(posForm.discountProfiles) ? posForm.discountProfiles : [];
 
@@ -117,43 +43,30 @@ export default function PosDiscountAutomationSection({
               <Tag className="h-5 w-5" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h3 id="pos-discount-presets-title" className="text-[16px] font-extrabold text-[#0F172A]">POS Discount Presets</h3>
-              <p className="mt-1 text-[12px] leading-5 text-[#64748B]">Create reusable discounts that cashiers can select during checkout.</p>
+              <h3 id="pos-discount-presets-title" className="text-[16px] font-extrabold text-[#0F172A]">Discount Management</h3>
+              <p className="mt-1 text-[12px] leading-5 text-[#64748B]">Discounts are now managed with Enabled and Approved controls in the Discount Management tab.</p>
             </div>
-          </div>
-          <div className="flex w-full sm:w-auto sm:shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-9 w-full gap-1.5 rounded-lg border-slate-200 px-3 text-[13px] font-extrabold text-[#1A4E8D] hover:border-[#1A4E8D] hover:bg-blue-50 sm:w-auto sm:text-[14px]"
-              onClick={addDiscountProfile}
-              disabled={locked || loading}
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Add Discount
-            </Button>
           </div>
         </div>
 
         {discountProfiles.length > 0 ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white sm:mt-4" aria-label="POS discount presets">
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white sm:mt-4" aria-label="Migrated POS discount presets">
             {discountProfiles.map((profile, index) => (
-              <DiscountPresetRow
-                key={`discount-profile-${index}`}
-                profile={profile}
-                index={index}
-                locked={locked}
-                loading={loading}
-                onChange={handleDiscountProfileChange}
-                onRemove={removeDiscountProfile}
-              />
+              <div key={`discount-profile-${index}`} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0 sm:px-4">
+                <span className="min-w-0 truncate text-[13px] font-bold text-[#0F172A]">{profile.name || 'Unnamed discount'}</span>
+                <span className="shrink-0 text-[12px] font-semibold text-[#64748B]">{Number(profile.percentage || 0)}% · migrated</span>
+              </div>
             ))}
           </div>
         ) : (
           <div className="mt-3 rounded-xl border border-dashed border-slate-300 px-4 py-4 text-[12px] font-semibold text-[#64748B] sm:mt-4">
-            No discount presets configured yet. Add one to make a reusable checkout discount available to cashiers.
+            No legacy discount presets detected. Use Discount Management to create and approve a configurable discount.
           </div>
         )}
+
+        <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-3 text-[11px] leading-5 text-blue-900 sm:px-4">
+          Existing presets are preserved for migration and compatibility. They are no longer edited or used as the browser POS transaction source.
+        </p>
 
         <div className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-3 sm:mt-4 sm:px-4">
           <div className="min-w-0">

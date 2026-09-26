@@ -82,7 +82,11 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260824000002-add-pos-attendance-idempotency.cjs',
     '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs',
     '20260825000001-add-pos-operator-protected-operation-lease.cjs',
-    '20260904000001-create-pos-discount-beneficiaries.cjs'
+    '20260904000001-create-pos-discount-beneficiaries.cjs',
+    '20260914000002-create-pos-location-item-overrides.cjs',
+    '20260914000003-add-job-order-location-scope.cjs',
+    '20260914000004-create-pos-terminal-device-enrollment.cjs',
+    '20260921000002-add-employee-credit-split-tender.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -120,6 +124,23 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     // Phase 257 (#1318) — on the tenant-schema crash-loop critical path (#860/#639 class); see ADR 0080.
     item_folder_memberships: ['item_folder_membership_id', 'item_id', 'folder_id', 'sort_order'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
+    pos_location_item_overrides: ['pos_location_item_override_id', 'item_id', 'location_id', 'pos_available'],
+    pos_terminal_device_enrollments: [
+        'pos_terminal_device_enrollment_id', 'device_id', 'public_key', 'key_algorithm', 'client_type',
+        'terminal_id', 'location_id', 'status', 'version', 'enrolled_by', 'enrolled_at', 'last_seen_at',
+        'revoked_by', 'revoked_at', 'revoked_reason', 'replaced_by', 'active_terminal_key', 'active_device_key',
+        'metadata', 'created_at', 'updated_at'
+    ],
+    pos_terminal_device_activations: [
+        'pos_terminal_device_activation_id', 'activation_hash', 'terminal_id', 'location_id', 'issued_by',
+        'issued_reason', 'expires_at', 'consumed_at', 'consumed_by_device_id', 'metadata', 'created_at', 'updated_at'
+    ],
+    pos_terminal_device_challenges: [
+        'pos_terminal_device_challenge_id', 'challenge_hash', 'device_id', 'terminal_id', 'location_id',
+        'purpose', 'request_path', 'request_method', 'session_id', 'expires_at', 'consumed_at',
+        'consumed_request_id', 'created_at', 'updated_at'
+    ],
+    job_orders: ['jo_id', 'product_id', 'source_location_id', 'destination_location_id'],
     pos_transactions: [
         'pos_transaction_id',
         'document_type',
@@ -192,31 +213,13 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'inventory_effects',
         'inventory_deducted_at'
     ],
-    business_admin_approval_requests: [
-        'business_admin_approval_request_id',
-        'action_type',
-        'entity_type',
-        'entity_id',
-        'payload',
-        'payload_hash',
-        'status',
-        'reason',
-        'idempotency_key',
-        'requested_by',
-        'approved_by',
-        'rejected_by',
-        'approval_note',
-        'expires_at',
-        'approved_at',
-        'rejected_at',
-        'executed_at'
-    ],
     pos_payment_allocations: [
         'pos_payment_allocation_id',
         'allocation_reference',
         'session_id',
         'status',
         'payment_method',
+        'employee_credit_account_code',
         'applied_amount',
         'provider_event_id',
         'provider_refund_ids',
@@ -506,6 +509,13 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
     pos_catalog_overrides: {
         pos_always_available: { allowNull: false },
         pos_best_seller_mode: { allowNull: false }
+    },
+    pos_location_item_overrides: {
+        pos_available: { allowNull: false }
+    },
+    job_orders: {
+        source_location_id: { allowNull: true },
+        destination_location_id: { allowNull: true }
     },
     pos_transaction_lines: {
         stock_effect_type: { allowNull: false },

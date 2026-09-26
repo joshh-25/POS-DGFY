@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { resolveApiBaseUrl } from "../../src/utils/runtimeConfig.js";
 
 /**
  * Dialog for choosing export output preference
@@ -147,9 +148,16 @@ export function DownloadLinkCard({ download }) {
   const { url, filename, expires_at, expires_in } = download;
 
   const handleDownload = () => {
-    // Use the full URL including the base API path
-    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    window.open(`${baseUrl}${url}`, '_blank');
+    const rawUrl = String(url || '').trim();
+    if (!rawUrl) return;
+
+    const targetUrl = /^https?:\/\//i.test(rawUrl)
+      ? rawUrl
+      : `${resolveApiBaseUrl(
+          import.meta.env,
+          typeof window !== 'undefined' ? window.location : undefined
+        )}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   return (

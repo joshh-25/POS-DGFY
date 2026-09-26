@@ -121,7 +121,6 @@ export function SimpleTrackingRoutePage({
       dgfySoftText: '#64748b',
       guidance,
       hasDiscount: Number.isFinite(trackingResult.discountAmount) && trackingResult.discountAmount > 0,
-      hasServiceFee: Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0,
       isMatchingTrackingPin,
       isPickup,
       mapCoordinates: trackingMapCoordinates,
@@ -242,7 +241,6 @@ export function SimpleTrackingRoutePage({
                 {hasSubtotal ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Subtotal</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.subtotalAmount)}</span></div> : null}
                 {viewModel.hasDiscount ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}><span>{viewModel.trackingResult.discountLabel || 'Promo / Discount'}</span><span>- {money(viewModel.trackingResult.discountAmount)}</span></div> : null}
                 {hasDeliveryFee ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Delivery fee</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.deliveryFee)}</span></div> : null}
-                {viewModel.hasServiceFee ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Service fee</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.serviceFeeAmount)}</span></div> : null}
               </div>
               {hasTotal ? <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span><span style={{ fontSize: 18, fontWeight: 800, color: dgfyPrimary, fontFamily: servicesDisplayFont }}>{money(viewModel.trackingResult.totalAmount)}</span></div> : null}
               <DownpaymentTrackingSummary trackingResult={viewModel.trackingResult} money={money} orderMethod={viewModel.isPickup ? 'pickup' : 'delivery'} />

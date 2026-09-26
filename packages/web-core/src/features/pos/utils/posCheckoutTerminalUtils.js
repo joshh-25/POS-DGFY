@@ -37,6 +37,7 @@ export const SPLIT_PAYMENT_METHOD_LABELS = {
     maya: 'Maya',
     card: 'Card',
     bank_transfer: 'Bank Transfer',
+    employee_credit: 'Employee Credit',
     qrph: 'QR Ph'
 };
 
@@ -166,7 +167,7 @@ export const resolveEmployeeDiscountCreditPreference = (appliedDiscount, cart = 
 };
 
 export const EMPTY_DISCOUNT_DRAFT = {
-    type: 'employee', method: 'percentage', rate: '15', amount: '', customer_name: '',
+    type: 'employee', method: 'percentage', rate: '', amount: '', customer_name: '',
     id_number: '', employee_name: '', employee_id: '', employee_directory_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], beneficiaries: [], promo_code: '', voucher_code: ''
 };
 
@@ -281,6 +282,7 @@ export const calculateGovernedDiscount = (cart, application) => {
         });
         return { vatRemoved: 0, vatExemptAmount: 0, discountAmount: round4(discountAmount), total: round4(subtotal - discountAmount), lines };
     }
+    const statutoryRate = Math.min(100, Math.max(0, Number(application.rate || 0))) / 100;
     let vatRemoved = 0;
     let vatExemptAmount = 0;
     const lines = cartRows.map((line) => {
@@ -309,13 +311,13 @@ export const calculateGovernedDiscount = (cart, application) => {
         return {
             line_key: line.line_key || line.line_id || null,
             item_id: Number(line.item_id),
-            discount_amount: round4(exempt * 0.20),
+            discount_amount: round4(exempt * statutoryRate),
             vat_removed: round4(gross - exempt),
             vat_exempt_amount: exempt,
             eligible_quantity: quantity
         };
     });
-    const discountAmount = round4(vatExemptAmount * 0.20);
+    const discountAmount = round4(vatExemptAmount * statutoryRate);
     return { vatRemoved, vatExemptAmount, discountAmount, total: round4(subtotal - vatRemoved - discountAmount), lines };
 };
 

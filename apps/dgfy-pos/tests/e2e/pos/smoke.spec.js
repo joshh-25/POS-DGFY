@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
+import { hasTestCredentials, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
 import { registerCrashDetection } from '../helpers/assertions.js';
 
 test.describe('POS Smoke & Crash Regression Tests', () => {
   test('POS loads and has no runtime crashes', async ({ page }) => {
+    test.skip(!hasTestCredentials, 'Provide E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in .env.e2e.');
     const crashChecker = registerCrashDetection(page);
     
     // Standalone POS keeps the terminal lock drawer on the POS route when unauthenticated.

@@ -28,6 +28,13 @@ export const clientManagedDeviceDriver = {
             timestamp: new Date().toISOString()
         };
     },
+    async testPrint() {
+        throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'No server printer is configured for this terminal. Use the native POS printer or configure a LAN printer bridge.',
+            { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
+        );
+    },
     async printReceipt() {
         throw new DomainError(
             DomainErrorCode.SERVICE_UNAVAILABLE,

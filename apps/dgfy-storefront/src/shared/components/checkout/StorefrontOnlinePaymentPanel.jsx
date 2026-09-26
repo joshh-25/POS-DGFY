@@ -132,14 +132,18 @@ export function StorefrontOnlinePaymentPanel({
   const paymentLabel = getStorefrontOnlinePaymentLabel(paymentType);
   const directPayment = isStorefrontDirectPaymentSession(paymentSession);
   const isTestEnvironment = paymentEnvironment === 'test';
-  const paymentReturnPending = paymentType === 'card'
-    && typeof window !== 'undefined'
+  const paymentReturnPending = typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).get('payment_status') === 'return'
     && !terminal;
   const hosted = isStorefrontHostedPaymentType(paymentType) && !directPayment && !paymentReturnPending;
   const processing = paymentInFlight && (directCard
     ? cardSubmitting || cardAuthorizationSubmitted || paymentReturnPending
-    : true);
+    : directPayment
+      ? paymentSession.status === 'paid' || paymentReturnPending
+      : true);
+  const awaitingDirectPaymentAuthorization = directPayment
+    && paymentSession.status === 'awaiting_payment'
+    && !paymentReturnPending;
   const canChooseAnotherPaymentMethod = retryablePayment
     || (directCard && Boolean(cardError) && !cardSubmitting && !cardAuthorizationSubmitted && !paymentReturnPending);
 
@@ -207,7 +211,7 @@ export function StorefrontOnlinePaymentPanel({
     >
       <div style={{ fontSize: 15, fontWeight: 800, color: failed ? '#991b1b' : '#1e3a8a' }}>
         {paymentReturnPending
-          ? 'Confirming card payment'
+          ? `Confirming ${paymentLabel} payment`
           : directPayment
             ? `Pay via ${paymentLabel}`
             : hosted
@@ -216,7 +220,9 @@ export function StorefrontOnlinePaymentPanel({
       </div>
       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5, color: '#334155' }}>
         {paymentReturnPending
-          ? '3-D Secure returned. Payment confirmation updates automatically; please do not submit the card again.'
+          ? directCard
+            ? '3-D Secure returned. Payment confirmation updates automatically; please do not submit the card again.'
+            : `${paymentLabel} authorization returned. Payment confirmation updates automatically; please do not pay again.`
           : directCard
             ? 'Enter your card details below. PayMongo will open 3-D Secure authentication when your bank requires it.'
             : directPayment
@@ -335,6 +341,23 @@ export function StorefrontOnlinePaymentPanel({
       </div>
       {paymentSession.failure_reason ? (
         <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{paymentSession.failure_reason}</p>
+      ) : null}
+      {awaitingDirectPaymentAuthorization ? (
+        <div
+          role="status"
+          style={{
+            borderRadius: 10,
+            background: '#fff',
+            border: '1px solid #bfdbfe',
+            padding: 10,
+            color: '#1e3a8a'
+          }}
+        >
+          <strong style={{ display: 'block', fontSize: 13 }}>Awaiting {paymentLabel} authorization</strong>
+          <span style={{ display: 'block', marginTop: 3, fontSize: 12, lineHeight: 1.45 }}>
+            Complete the authorization in {paymentLabel}. This page will update when you return.
+          </span>
+        </div>
       ) : null}
       {processing ? (
         <div

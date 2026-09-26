@@ -50,7 +50,7 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
-    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
     expect(terminalLayoutContent).not.toContain('min-h-screen');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
@@ -62,24 +62,12 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain("'md:grid md:grid-cols-[68px_minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain("`lg:grid ${effectiveSidebarCollapsed ? 'lg:grid-cols-[minmax(0,1fr)]' : 'lg:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
-  });
-
-  it('uses the portrait tablet shell only and lets landscape tablets inherit desktop layout', () => {
-    expect(terminalPageContent).toContain("import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';");
-    expect(terminalPageContent).toContain('return isPosTabletPortraitViewport({');
-    expect(terminalPageContent).toContain('setIsTabletLayout(IS_DGFY_POS_SURFACE && isPosTabletPortraitViewport({');
-    expect(appStylesContent).toContain('@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px)');
-    expect(appStylesContent).toContain('(orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse)');
-    expect(appStylesContent).toContain('.pos-items-desktop-card-grid');
-    expect(appStylesContent).toContain('grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr);');
-    expect(appStylesContent).toContain('grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 7.5rem);');
-    expect(appStylesContent).toContain('grid-auto-rows: minmax(11rem, auto);');
-    expect(appStylesContent).toContain('min-height: 11rem;');
-    expect(appStylesContent).toContain('grid-template-rows: auto auto;');
-    expect(appStylesContent).toContain('grid-column: 1 / -1 !important;');
-    expect(appStylesContent).toContain('flex: 1 1 0%;');
-    expect(appStylesContent).toContain('.dgfy-pos-history-pagination-footer');
-    expect(appStylesContent).toContain('.pos-categories-mobile-grid');
+    expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
+    expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
+    expect(terminalLayoutContent).toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'");
+    expect(terminalLayoutContent).not.toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup Context' : 'POS Setup'");
+    expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
+    expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
   });
 
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {

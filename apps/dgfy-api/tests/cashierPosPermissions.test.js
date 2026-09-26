@@ -7,7 +7,6 @@ describe('cashier POS least-privilege defaults', () => {
 
     expect(permissions).toEqual(new Set([
       PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
-      PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
       PERMISSIONS.POS.actions.VIEW_POS,
       PERMISSIONS.POS.actions.TRANSACT_POS,
       // Added to the cashier role by b86b01704 ("feat(pos): add cashier attendance and operator

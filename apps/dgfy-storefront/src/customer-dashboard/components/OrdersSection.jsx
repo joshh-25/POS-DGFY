@@ -18,6 +18,7 @@ export function OrdersSection({
   inProgressOrders,
   completedOrders,
   reviews,
+  orderHistoryScope,
   isMobileViewport,
   customerTrackLoadingReference,
   onGetOrderDetails,
@@ -198,7 +199,12 @@ export function OrdersSection({
     <div style={{ display: 'grid', gap: isMobileViewport ? 18 : 22 }}>
       <div>
         <h2 style={{ fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitle.desktop, fontWeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageTitleWeight, color: theme.text, margin: 0 }}>Orders</h2>
-        <p style={{ margin: '8px 0 0', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageSubtitle, color: theme.muted, lineHeight: 1.5 }}>Track your in-progress orders, review completed purchases, and revisit your feedback.</p>
+        <p style={{ margin: '8px 0 0', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.pageSubtitle, color: theme.muted, lineHeight: 1.5 }}>
+          Track your in-progress orders, review completed purchases, and revisit your feedback.
+          <span data-testid="customer-order-history-scope" style={{ display: 'block', marginTop: 6, color: theme.primary, fontWeight: 700 }}>
+            Showing: {orderHistoryScope?.label || 'All stores'}
+          </span>
+        </p>
       </div>
 
       <div

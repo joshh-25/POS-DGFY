@@ -73,6 +73,43 @@ describe('shared Items / Sell image renderer', () => {
     expect(container.querySelector('img[src="/uploads/new144.webp"]')).toBeNull();
   });
 
+  it('uses responsive variants for persisted catalog images', () => {
+    const { container } = render(
+      <PosItemImage
+        item={{
+          item_id: 23,
+          storefront_image_url: 'https://cdn.example.test/items/large.jpg',
+          storefront_image_variants: {
+            thumbnail_url: 'https://cdn.example.test/items/thumb.jpg',
+            medium_url: 'https://cdn.example.test/items/medium.jpg',
+            large_url: 'https://cdn.example.test/items/large.jpg',
+            webp: {
+              thumbnail_url: 'https://cdn.example.test/items/thumb.webp',
+              medium_url: 'https://cdn.example.test/items/medium.webp',
+              large_url: 'https://cdn.example.test/items/large.webp'
+            }
+          }
+        }}
+        alt="meal"
+        sizes="144px"
+      />
+    );
+
+    expect(container.querySelector('img').getAttribute('src')).toBe('https://cdn.example.test/items/thumb.jpg');
+    expect(container.querySelector('img').getAttribute('srcset')).toContain('thumb.jpg 400w');
+    expect(container.querySelector('img').getAttribute('sizes')).toBe('144px');
+    expect(container.querySelector('source[type="image/webp"]').getAttribute('srcset')).toContain('thumb.webp 400w');
+  });
+
+  it('shows a catalog fallback tile immediately when the persisted image fails', () => {
+    const { container } = render(<PosItemImage item={{ ...item, name: 'Chicken Rice Bowl' }} alt="meal" />);
+
+    fireEvent.error(container.querySelector('img'));
+
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('[data-pos-item-image-fallback="true"]')?.textContent).toContain('Chicken Rice Bowl');
+  });
+
   it('stops after three automatic retries and a new URL is visible without a hidden DOM flag', () => {
     const { container, rerender } = render(<PosItemImage item={item} alt="meal" />);
     for (const delay of [1000, 2000, 4000]) {

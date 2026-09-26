@@ -375,10 +375,6 @@ export function StorefrontCheckoutSummaryContainer({
                 <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.subtotal_amount)}</strong>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, opacity: .95 }}>{totalsForDisplay.service_fee_label} (1%)</span>
-                <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.service_fee_amount)}</strong>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13, opacity: .95 }}>Delivery Fee</span>
                 <strong style={{ fontSize: 14 }}>{money(totalsForDisplay.delivery_fee)}</strong>
               </div>

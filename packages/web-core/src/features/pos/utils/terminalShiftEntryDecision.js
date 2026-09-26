@@ -174,6 +174,22 @@ export const isPosOperatorPermissionDeniedError = (error) => (
   isPosAttendancePermissionDeniedReason(readOperatorReasonCode(error))
 );
 
+// Checkout mutations can fail after the operator screen was opened when the
+// short-lived authority cookie/JWT expires or is revoked. Keep this classifier
+// narrower than a generic 403 so permission failures and scope mismatches still
+// follow their existing security paths.
+export const isPosOperatorAuthorityInvalidError = (error) => {
+  if (!error) return false;
+
+  const reasonCode = readOperatorReasonCode(error);
+  if (reasonCode === 'POS_OPERATOR_AUTHORITY_INVALID') return true;
+
+  const status = Number(error?.response?.status || 0);
+  const message = String(error?.response?.data?.message || '').trim();
+  return status === 403
+    && /(?:operator|cashier) authority (?:has expired or been revoked|is no longer valid for this checkout)/i.test(message);
+};
+
 export const shouldRestorePosOperatorAuthority = ({
   authorityValid = false,
   operatorUserId = null,

@@ -59,7 +59,7 @@ export const getDgfyCustomerDashboard = async (req, res, next) => {
 
 export const listDgfyCustomerOrders = async (req, res, next) => {
     try {
-        return send(res, await listDgfyCustomerOrdersUseCase({ account: req.dgfyAccount, query: req.query }));
+        return send(res, await listDgfyCustomerOrdersUseCase({ account: req.dgfyAccount, query: req.validatedQuery || req.query }));
     } catch (error) {
         next(error);
     }
@@ -78,7 +78,8 @@ export const getDgfyCustomerOrderDetails = async (req, res, next) => {
 
 export const listDgfyCustomerActivities = async (req, res, next) => {
     try {
-        return send(res, await listDgfyCustomerActivitiesUseCase({ account: req.dgfyAccount, query: req.query, type: req.query?.type || null }));
+        const query = req.validatedQuery || req.query;
+        return send(res, await listDgfyCustomerActivitiesUseCase({ account: req.dgfyAccount, query, type: query?.type || null }));
     } catch (error) {
         next(error);
     }

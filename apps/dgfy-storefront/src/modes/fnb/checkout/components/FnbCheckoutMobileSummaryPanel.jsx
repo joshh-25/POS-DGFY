@@ -56,11 +56,7 @@ export function FnbCheckoutMobileSummaryPanel({
     money,
     orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup')
   });
-  const feeAndVatRows = buildFeeAndVatSummaryRows({
-    totals,
-    money,
-    includeServiceFee: Number(totals.service_fee_amount || 0) > 0
-  });
+  const feeAndVatRows = buildFeeAndVatSummaryRows({ totals, money });
   const showDeliveryFee = orderMethod
     ? String(orderMethod).trim().toLowerCase() === 'delivery'
     : isDeliveryOrder;

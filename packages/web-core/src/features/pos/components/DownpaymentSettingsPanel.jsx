@@ -19,8 +19,13 @@ import {
     settingsToForm,
     validateDownpaymentForm
 } from '../utils/downpaymentSettingsForm.js';
+import {
+    getSettingsUpdatedAt,
+    getSettingsWriteFailureMessage
+} from '../utils/settingsWorkspaceModel.js';
 
 const formatDisplayMoney = (value) => `₱${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const noop = () => {};
 
 // Phase 143 (#848). Modelled on AffiliatesWorkspacePanel.jsx: a self-contained tenant-settings
 // panel with its own fetch/save and its own permission gate, rendered as a tab inside
@@ -71,7 +76,9 @@ export default function DownpaymentSettingsPanel({
     locked = false,
     sectionId,
     locationScopeId = null,
-    locationOptions = []
+    locationOptions = [],
+    onDirtyChange = noop,
+    onSaved = noop
 }) {
     const isMasterAdmin = terminalUser?.is_master_admin === true;
     const permissionList = useMemo(() => resolveUserPermissionList(terminalUser), [terminalUser]);
@@ -82,6 +89,7 @@ export default function DownpaymentSettingsPanel({
     const [error, setError] = useState('');
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState(createDefaultDownpaymentForm());
+    const [settingsUpdatedAt, setSettingsUpdatedAt] = useState(null);
     const [validationErrors, setValidationErrors] = useState([]);
     const [sampleTotalPesos, setSampleTotalPesos] = useState('1000');
     const [locationRows, setLocationRows] = useState(() => normalizeLocationOptions(locationOptions));
@@ -177,21 +185,24 @@ export default function DownpaymentSettingsPanel({
         try {
             const settings = await fetchDownpaymentSettings();
             setForm(settingsToForm(settings));
+            setSettingsUpdatedAt(getSettingsUpdatedAt(settings));
+            onDirtyChange(false);
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to load downpayment settings.');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [onDirtyChange]);
 
     useEffect(() => {
         if (!canView) return;
         loadData();
-        // Stable initial load, mirrors AffiliatesWorkspacePanel's own effect -- loadData is not a dependency.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [locked, canView]);
+    }, [canView, loadData]);
 
-    const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+    const updateField = (key, value) => {
+        setForm((prev) => ({ ...prev, [key]: value }));
+        onDirtyChange(true);
+    };
 
     const splitConfigurable = isSplitConfigurable(form.payment_mode);
     const isCustomerChoice = form.payment_mode === 'customer_choice';
@@ -222,13 +233,18 @@ export default function DownpaymentSettingsPanel({
             // Always PUTs the full six-field payload, never a single dirty field -- the backend
             // re-validates the whole merged (effective) row on every write, so a partial diff can
             // 422 an already-configured downpayment_required tenant.
-            const updated = await updateDownpaymentSettings(formToPayload(form));
+            const payload = formToPayload(form);
+            if (settingsUpdatedAt) payload.expected_updated_at = settingsUpdatedAt;
+            const updated = await updateDownpaymentSettings(payload);
             setForm(settingsToForm(updated));
+            setSettingsUpdatedAt(getSettingsUpdatedAt(updated));
+            onDirtyChange(false);
+            await onSaved?.();
             toast.success('Downpayment settings updated');
         } catch (err) {
             const serverErrors = Array.isArray(err?.response?.data?.errors) ? err.response.data.errors : [];
             if (serverErrors.length > 0) setValidationErrors(serverErrors);
-            toast.error(err?.response?.data?.message || 'Failed to update downpayment settings.');
+            toast.error(getSettingsWriteFailureMessage(err, 'Failed to update downpayment settings.'));
         } finally {
             setSaving(false);
         }
@@ -363,7 +379,7 @@ export default function DownpaymentSettingsPanel({
                             disabled={locked || !canManage || dineInPolicySaving || !dineInPolicyDirty || !selectedLocation}
                             onClick={() => void handleSaveDineInPaymentPolicy()}
                         >
-                            <Save className="mr-2 h-4 w-4" /> {dineInPolicySaving ? 'Updating…' : 'Update Dine-in Policy'}
+                            <Save className="mr-2 h-4 w-4" /> {dineInPolicySaving ? 'Saving…' : 'Save Dine-in Policy'}
                         </Button>
                     </div>
                 </div>

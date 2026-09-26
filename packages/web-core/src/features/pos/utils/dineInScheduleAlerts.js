@@ -50,6 +50,7 @@ export const getDineInScheduleAlertCandidates = (
     })
     .filter(Boolean);
 };
+
 export const appendDineInScheduleAlertQueue = (currentQueue = [], additions = []) => {
   const queue = Array.isArray(currentQueue) ? currentQueue : [];
   const queuedKeys = new Set(queue.map((alert) => alert?.alertKey));

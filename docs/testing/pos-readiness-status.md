@@ -1,7 +1,7 @@
 # POS Readiness Status (Canonical)
 
 Status: authoritative-for-pos-readiness
-Last updated: 2026-07-13
+Last updated: 2026-09-15
 Overall status: in_progress
 
 ## 1) Canonical Blockers
@@ -12,7 +12,7 @@ Overall status: in_progress
 4. Source-separation manual UAT parity proof (POS History source filter vs Sales POS channel filter vs CSV `pos_order_source`) is pending human evidence capture.
 5. Strict location-binding rollout cutover remains gated until legacy shift-location remediation evidence is fully reviewed and accepted by operations.
 6. PR #11 DGFY POS surface split local release blockers are closed as of this pass: POS-specific lint, full frontend lint errors, frontend budget drift, shared checkout contract drift, local release gate, production deploy, exact deployed-SHA verification, and production POS smoke now pass. Production readiness still requires human operator UAT.
-7. The POS/SKUpervisor surface split requires explicit operator verification that standalone POS checkout, SKUpervisor `/pos`, Sales handoff, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface.
+7. The POS Back Office merchant-surface consolidation requires explicit operator verification that standalone POS checkout, Back Office catalog/procurement/production/inventory/dispatch modules, QR receiving, Sales/Reports routes, receipt preview, barcode scan, Sync Queue, and mode-specific panels still reach the intended surface. IMS merchant URLs are compatibility handoffs only; IMS `/admin/*` remains platform administration.
 8. Frontend build toolchain requirements are now documented for release: the merged lockfile targets Vite 8 / `@vitejs/plugin-react` 6, so deterministic frontend builds require a Node version accepted by that toolchain (`^20.19.0 || ^22.12.0 || >=24.0.0`).
 9. POS terminal-unlock hardening and POS configuration/compliance metadata changes are production-deployed in the current commit chain. Operational UAT still must prove admin approval, cashier login, checkout, receipt/history, and source-separation workflows with real operators.
 10. Item/product modal wizard image upload fixes are production-deployed in the current commit chain. POS Controls no longer has a separate image upload action; Storefront Catalog is the single wizard item-image upload surface, POS terminal catalog rows fall back to the shared primary item image when no legacy POS-only image exists, and Storefront gallery append updates load the primary key so existing galleries can grow beyond one image up to the five-image cap.
@@ -163,12 +163,12 @@ Overall status: in_progress
 - tenant-local foreign-key references are covered by tenant model factory tests so mode-specific tables such as Services and F&B cannot be omitted from new tenant schemas
 - approval/auto-approval provisioning failures restore a valid retryable landlord status and drop zombie tenant databases before the admin retries approval
 - future workflow modes must include provisioning graph and disposable schema sync proof before readiness is claimed
-42. DGFY POS/SKUpervisor surface split is production-deployed with UAT pending:
-- standalone POS (`frontend/apps/pos`) owns the cashier terminal route and redirects Sales reporting to SKUpervisor through `skupervisorHandoff`
-- SKUpervisor IMS `/pos` now loads `SkupervisorPOSPage` and keeps Services/F&B/Hospitality panels in the admin app
-- both checkout surfaces now use a shared checkout payload and DGFY fee-label/rate contract for terminal identity, payment handoff, discount, F&B metadata, modifiers, scan metadata, and receipt fee fallback
-- the split preserves backend POS checkout contracts and local POS/backend/checkout-surface contract tests pass
-- production deploy completed through the governed `scripts/deploy-remote.sh --yes` path; exact deployed-head verification and production POS smoke pass, while human cashier/admin UAT remains the final readiness gate
+42. DGFY POS Back Office merchant-surface consolidation is implemented locally with UAT and deployment pending:
+- standalone POS owns the cashier terminal and the canonical merchant Back Office route boundary; Sales and Reports stay inside POS instead of redirecting to IMS
+- catalog, suppliers, purchase orders, job orders, stock movements, dispatch, Services, F&B, Hospitality, AI assistant, and QR receiving are reachable from the one POS Back Office shell
+- IMS merchant URLs are authenticated compatibility handoffs to POS; IMS `/admin/*`, auth, invite, and legal compatibility routes remain available for their separate responsibilities
+- Storefront business inventory/company actions use the tenant-scoped POS handoff builder; the obsolete SKUpervisor handoff builder is removed from active source
+- existing backend command/data ownership and POS checkout contracts remain unchanged; local migration contracts and POS/Storefront builds pass, while authenticated desktop/mobile module and handoff UAT remains the final readiness gate
 43. DGFY POS software identity is platform-admin controlled:
 - tenant admins can submit receipt metadata edits, but they land in `pos_receipt_metadata_pending_changes` until platform admin approves them
 - platform admin configures software name, software version, and software serial number through the tenant POS Metadata function, and those fields are not shown on the tenant admin settings form
@@ -178,7 +178,7 @@ Overall status: in_progress
 - auth lookup throttling is scoped by client IP plus normalized email, defaults to 5 minutes, and can be tuned with `RATE_LIMIT_LOOKUP_WINDOW_MS` / `RATE_LIMIT_LOOKUP_MAX_REQUESTS`, so shared store networks do not cross-throttle different cashier emails
 - fallback to the current browser company token is limited to transient lookup outages (`network`, timeout, or `5xx`) so wrong-tenant contexts do not mask account/mapping issues
 - terminal unlock diagnostics now classify invalid credentials, missing tenant mapping, multiple tenant membership, POS capability disabled, POS permission denial, rate limiting, and optional `/pos/device/status` bridge `503` separately
-- standalone POS development auto-login is opt-in through `VITE_POS_DEV_AUTO_LOGIN=true`; development no longer auto-binds every POS session to the legacy `token-original` tenant by default
+- standalone POS development auto-login is opt-in through `VITE_POS_DEV_AUTO_LOGIN=true` and requires explicit `VITE_POS_DEV_COMPANY_TOKEN`, `VITE_POS_DEV_EMAIL`, and `VITE_POS_DEV_PASSWORD` values in ignored local configuration; there are no credential fallbacks and production builds reject these settings
 45. POS fiscal-prep runtime schema drift is now guarded:
 - the runtime doctor checks the June 2026 RMO fiscal-prep migration plus nullable fiscal buyer/snapshot columns such as `pos_transactions.buyer_tin`
 - non-compliant/non-fiscal checkout keeps buyer fiscal fields nullable and persists them as `null`; a missing `buyer_tin` column is deployment/migration drift, not a customer buyer-TIN requirement

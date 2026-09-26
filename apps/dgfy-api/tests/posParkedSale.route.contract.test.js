@@ -7,7 +7,8 @@ import {
     validateCreatePosParkedSale,
     validateListPosParkedSales,
     validateParkedSaleIdParam,
-    validateReparkPosParkedSale
+    validateReparkPosParkedSale,
+    validatePosCheckout
 } from '../src/validators/posValidator.js';
 
 const routeSource = fs.readFileSync(
@@ -41,7 +42,7 @@ describe('parked sale POS route contract', () => {
             snapshot: { lines: [{ item_id: 7, quantity: 1, sale_price: 10 }] },
             unsupported: 'removed'
         });
-        const list = runValidator(validateListPosParkedSales, 'query', { shift_id: '41', status: 'parked' });
+        const list = runValidator(validateListPosParkedSales, 'query', { shift_id: '41', status: 'cancel_pending' });
         const claim = runValidator(validateClaimPosParkedSale, 'body', { shift_id: 41, terminal_id: 'counter-01' });
         const cancel = runValidator(validateCancelPosParkedSale, 'body', { shift_id: 41, terminal_id: 'counter-01', reason: 'Customer cancelled' });
         const repark = runValidator(validateReparkPosParkedSale, 'body', {
@@ -49,8 +50,24 @@ describe('parked sale POS route contract', () => {
             terminal_id: 'counter-01',
             expected_revision: 2,
             snapshot: { lines: [{ item_id: 7, quantity: 2, sale_price: 10 }] },
+            removed_line_reasons: [{
+                line_ref: 'parked-line-1',
+                item_id: 7,
+                reason: 'Customer removed item'
+            }],
             subtotal_amount: 20,
             total_amount: 20
+        });
+        const checkout = runValidator(validatePosCheckout, 'body', {
+            idempotency_key: 'checkout-request-001',
+            terminal_id: 'counter-01',
+            parked_sale_id: 101,
+            removed_line_reasons: [{
+                line_ref: 'parked-line-1',
+                item_id: 7,
+                reason: 'Customer removed item'
+            }],
+            lines: [{ item_id: 7, quantity: 1, sale_price: 10 }]
         });
         const id = runValidator(validateParkedSaleIdParam, 'params', { id: '101' });
 
@@ -63,6 +80,17 @@ describe('parked sale POS route contract', () => {
         expect(cancel.nextCalled).toBe(true);
         expect(repark.nextCalled).toBe(true);
         expect(repark.req.validatedData.expected_revision).toBe(2);
+        expect(repark.req.validatedData.removed_line_reasons).toEqual([{
+            line_ref: 'parked-line-1',
+            item_id: 7,
+            reason: 'Customer removed item'
+        }]);
+        expect(checkout.nextCalled).toBe(true);
+        expect(checkout.req.validatedData.removed_line_reasons).toEqual([{
+            line_ref: 'parked-line-1',
+            item_id: 7,
+            reason: 'Customer removed item'
+        }]);
         expect(id.nextCalled).toBe(true);
         expect(id.req.validatedParams.id).toBe(101);
     });

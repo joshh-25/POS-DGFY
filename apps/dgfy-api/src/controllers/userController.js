@@ -40,7 +40,6 @@ import {
   updateUserPermissions,
   updatePosApprovalPin,
   updatePosDayClosePin,
-  updateOwnPosDayClosePin,
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,
