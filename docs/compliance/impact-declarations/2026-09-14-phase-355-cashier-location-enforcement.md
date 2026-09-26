@@ -12,8 +12,8 @@ verification_evidence: scoped API and permission regressions; migrated MySQL con
 rollback_note: Revert only Phase 355 authorization/composition/default-permission hunks and tests together after security review. No schema or saved permission changes to reverse. Preserve unrelated worktree changes, shifts, sales, tenders, stock and handoff history.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-14T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-355-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-14-PHASE-355-CASHIER-LOCATION-ENFORCEMENT
 ---
 
 # Phase 355 cashier location enforcement

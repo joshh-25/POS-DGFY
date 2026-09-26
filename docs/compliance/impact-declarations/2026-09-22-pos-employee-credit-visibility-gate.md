@@ -12,9 +12,9 @@ policy_version: 2026.09.22
 verification_evidence: split-payment UI behavior and contract tests; POS production build; git diff check
 rollback_note: Remove the Employee Credit visibility gate, focused regression coverage, contract wording, declaration, and ledger entry; no transaction, ledger, tenant, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: EMPLOYEE_CREDIT_VISIBILITY_GATE
-preflight_run_at: 2026-09-22T09:40:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-451-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-22-POS-EMPLOYEE-CREDIT-VISIBILITY-GATE
 ---
 
 # POS Employee Credit split-payment visibility gate

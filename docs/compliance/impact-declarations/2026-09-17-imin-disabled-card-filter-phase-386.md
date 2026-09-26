@@ -13,8 +13,8 @@ verification_evidence: focused iMin performance contract, POS unit suite, POS/IM
 rollback_note: Revert the Phase 386 iMin disabled-card selector, focused contract, baseline/ADR/ledger entries, and this declaration together. No API, schema, payment, fiscal, authorization, persistence, tenant, inventory, catalog, or hardware command rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-386-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-17-IMIN-DISABLED-CARD-FILTER-PHASE-386
 ---
 
 # iMin disabled-card filter closure

@@ -11,9 +11,9 @@ policy_version: 2026.09.21
 verification_evidence: F&B checkout integrity contracts; F&B operational readiness contracts; API source lint; architecture guardrails; POS, IMS, and Storefront production builds; migration syntax and local tenant-schema verification; documentation and git diff checks
 rollback_note: Revert the F&B checkout guard, location binding, check-line persistence, integrity migration, focused contracts, documentation, and ledger entry together. No historical sales, stock, payment, fiscal, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: FNB_CHECK_SETTLEMENT_INTEGRITY
-preflight_run_at: 2026-09-21T20:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-444-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-21-FNB-CHECK-SETTLEMENT-INTEGRITY-PHASE-444
 ---
 
 # F&B check settlement integrity — Phase 444

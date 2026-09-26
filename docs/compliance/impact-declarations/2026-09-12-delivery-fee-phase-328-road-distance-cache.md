@@ -12,8 +12,8 @@ verification_evidence: road-distance provider cache identity and finite-result t
 rollback_note: Revert the Phase 328 provider, tests, documentation, and declaration together. The change only affects in-process road-distance cache reuse and invalid-result handling; no persisted fee, payment, tenant, or schema data is modified.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-DELIVERY-FEE-PHASE-328-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-DELIVERY-FEE-PHASE-328-ROAD-DISTANCE-CACHE
 ---
 
 # Origin-aware road-distance cache identity and collision policy

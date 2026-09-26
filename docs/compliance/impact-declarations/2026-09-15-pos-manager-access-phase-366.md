@@ -11,9 +11,9 @@ policy_version: 2026.09.15
 verification_evidence: focused POS navigation and terminal view-mode contract tests, tenant-terminal location fallback coverage, credential-gated manager-access E2E coverage, documentation lint, compliance checks, git diff check
 rollback_note: Revert the Phase 366 manager-entry, locked-terminal refresh, authentication feedback, navigation wording and focused tests/declaration together; preserve cashier shift, cart, terminal lock and server authorization behavior.
 preflight_result: no_breach
-preflight_reason_code: LOCAL_ONLY
-preflight_run_at: 2026-09-15T20:46:59+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-366-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-15-POS-MANAGER-ACCESS-PHASE-366
 ---
 
 # POS manager access while terminal checkout is locked

@@ -10,9 +10,9 @@ policy_version: 2026.09.24
 verification_evidence: focused parked-sale checkout contracts,split-payment route and use-case contracts,shared POS resume and split-payment contracts,POS Storefront SKUpervisor production builds,architecture guardrails,controller boundary check,API and shared frontend lint,git diff check
 rollback_note: Revert the historical parked-sale settlement use-case/repository/validator changes, shared resume and split-payment marker propagation, focused tests, and this declaration together; no schema migration or historical-row rewrite is required.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-24T15:12:00+08:00
-preflight_request_ref: NOT-EXECUTED-PARKED-SALE-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-24-POS-PARKED-SALE-SNAPSHOT-SETTLEMENT
 ---
 
 # Historical parked-sale snapshot settlement

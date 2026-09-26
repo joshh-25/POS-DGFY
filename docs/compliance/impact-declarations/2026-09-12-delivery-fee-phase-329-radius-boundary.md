@@ -12,8 +12,8 @@ verification_evidence: zero-radius persistence, map overlay, road-distance bound
 rollback_note: Revert the Phase 329 radius helper, location-save wiring, tests, documentation, and declaration together. The change preserves existing tenant-location fields and checkout fee semantics; no persisted tenant, payment, or schema data is modified.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-DELIVERY-FEE-PHASE-329-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-DELIVERY-FEE-PHASE-329-RADIUS-BOUNDARY
 ---
 
 # Zero-radius persistence and map/checkout boundary

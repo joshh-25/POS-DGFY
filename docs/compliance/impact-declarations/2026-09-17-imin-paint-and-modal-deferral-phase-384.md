@@ -13,8 +13,8 @@ verification_evidence: focused shared contracts, POS unit suite, POS/IMS/Storefr
 rollback_note: Revert the Phase 384 lazy modal imports, iMin paint selectors, focused contracts, baseline note, ledger entry, and this declaration together. No API, schema, payment, fiscal, authorization, persistence, tenant, inventory, or hardware command rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-384-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-17-IMIN-PAINT-AND-MODAL-DEFERRAL-PHASE-384
 ---
 
 # iMin paint-cost and remaining modal deferral

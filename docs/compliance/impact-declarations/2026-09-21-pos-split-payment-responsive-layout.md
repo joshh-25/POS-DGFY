@@ -12,9 +12,9 @@ policy_version: 2026.09.21
 verification_evidence: POS split-payment UI contract; POS manual-tender behavior contract; app-local frontend ESLint; POS production build; git diff check
 rollback_note: Restore the horizontally scrollable split-payment method row and its focused contract expectation; no payment, transaction, tenant, ledger, or production-data rollback is required.
 preflight_result: no_breach
-preflight_reason_code: POS_SPLIT_PAYMENT_LAYOUT
-preflight_run_at: 2026-09-21T20:20:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-447-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-21-POS-SPLIT-PAYMENT-RESPONSIVE-LAYOUT
 ---
 
 # POS split-payment responsive layout

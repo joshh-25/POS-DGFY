@@ -11,9 +11,9 @@ policy_version: 2026.09.16
 verification_evidence: Business Admin attendance use-case and POS lifecycle repository tests; POS attendance workspace contract; authenticated local Playwright route acceptance; API/POS lint and POS production build; architecture, documentation, compliance and whitespace checks
 rollback_note: Revert the Phase 371 attendance adapter, POS workspace, tests, documentation, and declaration together; no schema or historical attendance/operator-session data rollback is required.
 preflight_result: no_breach
-preflight_reason_code: BUSINESS_ADMIN_READ_MODEL
-preflight_run_at: 2026-09-16T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-371-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-16-BUSINESS-ADMIN-ATTENDANCE-READ-MODEL
 ---
 
 # Business Admin attendance read model

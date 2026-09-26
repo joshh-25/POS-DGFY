@@ -11,9 +11,9 @@ policy_version: 2026.09.15
 verification_evidence: Business Admin contract tests; authenticated API smoke; desktop/mobile Playwright render; API/POS lint and build; architecture and documentation checks; migration status; git diff check
 rollback_note: Revert the Business Admin module, additive migrations, POS workspace, payment query adapters, routes, permissions, tests, documentation, and declaration together; no historical transaction, payment, inventory, or fiscal record is rewritten.
 preflight_result: no_breach
-preflight_reason_code: BUSINESS_ADMIN_READ_MODEL
-preflight_run_at: 2026-09-15T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-351-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-15-BUSINESS-ADMIN-PARITY
 ---
 
 # Business Admin / Back Office parity

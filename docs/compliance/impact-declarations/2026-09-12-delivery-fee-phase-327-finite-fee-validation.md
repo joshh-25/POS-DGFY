@@ -12,8 +12,8 @@ verification_evidence: delivery-fee minimum-boundary and finite-result tests, AP
 rollback_note: Revert the Phase 327 runtime, test, documentation, and declaration changes together. Valid-input fee math and the persisted settings shape remain unchanged; invalid sub-meter configurations fail closed through the existing fixed-fee fallback.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-12T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-DELIVERY-FEE-PHASE-327-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-12-DELIVERY-FEE-PHASE-327-FINITE-FEE-VALIDATION
 ---
 
 # Delivery-fee minimum increment and finite-result validation

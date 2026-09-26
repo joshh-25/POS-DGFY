@@ -10,9 +10,9 @@ policy_version: 2026.09.25
 verification_evidence: focused POS tax-policy backend suites 41/41; POS Settings web-core behavior suite 38/38; API/POS lint; POS/Storefront/IMS builds; architecture guardrails; controller-boundary check; docs and ADR lint; git diff check; upgraded local migration applied and verified across 16 schemas
 rollback_note: Revert the POS Taxes settings UI, canonical policy normalization and validation, discount/voucher calculation wiring, immutable snapshot columns, mobile policy propagation, focused tests, and this declaration together. Do not rewrite historical transaction discount rows; any deployed migration rollback requires an explicit retention review.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-25T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-POS-TAX-POLICY-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-25-POS-TAX-POLICY
 ---
 
 # POS Taxes policy configuration
