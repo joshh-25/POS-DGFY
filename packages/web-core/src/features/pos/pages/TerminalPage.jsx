@@ -12,6 +12,8 @@ import {
   closeTerminalShift,
   forceCloseStaleTerminalShift,
   fetchAdminLocationMonitor,
+  fetchPosBranchDirectory,
+  recordPosBranchViewEvent,
   fetchIncomingOnlineOrders,
   fetchPosCatalog,
   fetchPosSettingsBootstrap,
@@ -65,10 +67,6 @@ import {
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
-import {
-  shouldRefreshBusinessAdminSettingsUpdate,
-  subscribeToBusinessAdminSettingsUpdates
-} from '../utils/businessAdminSettingsSync.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { getOnboardingStatus } from '@/services/onboardingService.js';
@@ -223,6 +221,16 @@ const buildTerminalBusinessSettings = (settings = {}) => ({
 });
 
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
+// Branch view is a read-only POS surface. These modes are safe to open against the
+// selected branch; checkout, settings, fulfillment mutations, and shift mutations
+// remain outside the branch-view surface.
+const BRANCH_VIEW_READ_ONLY_MODES = new Set([
+  'shift_controls',
+  'incoming_queue',
+  'history',
+  'reports',
+  'items'
+]);
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
   'settings_profile',
@@ -542,7 +550,6 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
-  const [backOfficeConfirmOpen, setBackOfficeConfirmOpen] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [closeShiftBlocker, setCloseShiftBlocker] = useState(null);
   const [closedShiftReport, setClosedShiftReport] = useState(null);
@@ -640,7 +647,6 @@ export default function TerminalPage() {
   const [settingsAccessPinValue, setSettingsAccessPinValue] = useState('');
   const [settingsAccessPinVerified, setSettingsAccessPinVerified] = useState(false);
   const [pendingSettingsViewMode, setPendingSettingsViewMode] = useState('');
-  const [backOfficeTargetPath, setBackOfficeTargetPath] = useState('/backoffice/overview');
   const [pendingStorefrontContentViewMode, setPendingStorefrontContentViewMode] = useState('');
   const storefrontContentGuardRef = useRef({ dirty: false, discard: null });
 
@@ -806,6 +812,14 @@ export default function TerminalPage() {
     locationId: null,
     errorMessage: ''
   });
+  const [branchDirectoryState, setBranchDirectoryState] = useState({
+    loading: false,
+    locations: [],
+    scope: '',
+    errorMessage: ''
+  });
+  const [branchViewLocationId, setBranchViewLocationId] = useState(null);
+  const branchViewReturnModeRef = useRef('shift_controls');
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
@@ -1007,18 +1021,8 @@ export default function TerminalPage() {
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
-  const canAccessBusinessAdmin = !isCashierRole && (
-    isMasterAdminOperator
-    || normalizedTerminalRole === 'admin'
-    || hasPermission('business_admin:access')
-  );
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
-  // Terminal setup is a POS operational surface, not a second Business Admin
-  // editor. Any authenticated operator who can use POS needs the local
-  // terminal, printer, branch-queue, and order-sound controls even when the
-  // tenant/user has no Business Admin entitlement. Business Admin remains
-  // independently guarded above and below.
-  const canAccessPosOnlySetup = !canAccessBusinessAdmin && canViewPos;
+  const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
   // apps/dgfy-api/src/routes/vouchers.js on it OR the legacy settings:edit pair for one release.
   //
@@ -1056,12 +1060,12 @@ export default function TerminalPage() {
       .filter((mode) => mode !== 'audit' || canViewAudit)
       .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
-      .filter((mode) => mode !== 'terminal_setup' || canAccessBusinessAdmin || canAccessSettingsDirectly);
+      .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
     if (normalizedRole === 'cashier') {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canAccessBusinessAdmin, canAccessFnbService, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -1104,6 +1108,10 @@ export default function TerminalPage() {
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
+  // Branch viewing is intentionally separate from the governed cash/shift switch. A user must
+  // receive the dedicated read-only capability; pos:switch_location only authorizes the
+  // privileged shift relocation flow.
+  const canViewBranchLocations = hasPermission('pos:branch_view');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
@@ -1130,7 +1138,11 @@ export default function TerminalPage() {
     serviceOperationsPermissions.viewClients
   ].some(Boolean);
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
-  const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
+  const canOpenShift = canTransactPos && (
+    !canAdminBypassShiftPrompt
+    || isMasterAdminOperator
+    || canViewBranchLocations
+  );
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
@@ -1940,9 +1952,9 @@ export default function TerminalPage() {
     const { loadPosOrderHistoryState } = await import('../utils/posOrderHistoryLoader.js');
     const result = await loadPosOrderHistoryState({
       locked,
-      canViewPos,
+      canViewPos: canViewPos || (Boolean(branchViewLocationId) && canViewBranchLocations),
       isOnline,
-      locationId: Number(queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0),
+      locationId: Number(branchViewLocationId || queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0),
       search,
       fulfillmentStatus,
       paymentStatus,
@@ -1951,7 +1963,96 @@ export default function TerminalPage() {
     });
     setOrderHistoryState(result.state);
     if (!silent && result.toastMessage) toast.error(result.toastMessage);
-  }, [canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
+  }, [branchViewLocationId, canViewBranchLocations, canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
+
+  const refreshBranchDirectory = useCallback(async ({ silent = false } = {}) => {
+    if (locked || !canViewBranchLocations || !isOnline) {
+      setBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        ...(locked || !canViewBranchLocations ? { locations: [], scope: '' } : {})
+      }));
+      return null;
+    }
+
+    setBranchDirectoryState((previous) => ({
+      ...previous,
+      loading: true,
+      errorMessage: ''
+    }));
+    try {
+      const payload = await fetchPosBranchDirectory(
+        silent ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
+      const nextState = {
+        loading: false,
+        locations: Array.isArray(payload?.locations) ? payload.locations : [],
+        scope: String(payload?.scope || '').trim(),
+        errorMessage: ''
+      };
+      setBranchDirectoryState(nextState);
+      return nextState;
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to load the branch directory.';
+      setBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        errorMessage: message
+      }));
+      if (!silent) toast.error(message);
+      return null;
+    }
+  }, [canViewBranchLocations, isOnline, locked]);
+
+  useEffect(() => {
+    refreshBranchDirectory({ silent: true });
+  }, [refreshBranchDirectory]);
+
+  const handleViewBranch = useCallback(async ({ locationId } = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!canViewBranchLocations || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+      toast.error('You do not have permission to view that branch.');
+      return false;
+    }
+    if (!branchViewLocationId) {
+      branchViewReturnModeRef.current = posViewMode || 'shift_controls';
+    }
+    setBranchViewLocationId(normalizedLocationId);
+    setViewingLocationId(normalizedLocationId);
+    commitViewModeSelection('shift_controls');
+    try {
+      await recordPosBranchViewEvent({
+        location_id: normalizedLocationId,
+        event: 'enter',
+        operating_location_id: Number(shiftState?.shift?.location_id || operatingLocationId || 0) || undefined,
+        active_shift_id: Number(shiftState?.shift?.pos_terminal_shift_id || 0) || undefined
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+    } catch {
+      // The view itself remains safe and usable if audit telemetry is temporarily unavailable.
+    }
+    return true;
+  }, [branchViewLocationId, canViewBranchLocations, commitViewModeSelection, operatingLocationId, posViewMode, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
+
+  const handleExitBranchView = useCallback(async ({ returnMode = null } = {}) => {
+    const previousLocationId = Number.parseInt(branchViewLocationId, 10);
+    if (Number.isInteger(previousLocationId) && previousLocationId > 0) {
+      try {
+        await recordPosBranchViewEvent({
+          location_id: previousLocationId,
+          event: 'exit',
+          operating_location_id: Number(shiftState?.shift?.location_id || operatingLocationId || 0) || undefined,
+          active_shift_id: Number(shiftState?.shift?.pos_terminal_shift_id || 0) || undefined
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch {
+        // Do not strand the operator in read-only mode when audit telemetry is unavailable.
+      }
+    }
+    setBranchViewLocationId(null);
+    setViewingLocationId(null);
+    const nextMode = returnMode || branchViewReturnModeRef.current || 'shift_controls';
+    branchViewReturnModeRef.current = 'shift_controls';
+    commitViewModeSelection(nextMode);
+  }, [branchViewLocationId, commitViewModeSelection, operatingLocationId, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
     const requestSequence = adminLocationMonitorRequestSequenceRef.current + 1;
@@ -1972,7 +2073,7 @@ export default function TerminalPage() {
       currentScopeKey: adminLocationMonitorScopeRef.current
     });
 
-    if (locked || !canSwitchPosLocation || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
+    if (locked || !canViewBranchLocations || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
       if (!isCurrentRequest()) return;
       setAdminLocationMonitorState({
         loading: false,
@@ -2020,7 +2121,7 @@ export default function TerminalPage() {
       });
       if (!silent) toast.error(message);
     }
-  }, [activeTenantId, activeTerminalId, canSwitchPosLocation, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
+  }, [activeTenantId, activeTerminalId, canViewBranchLocations, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
 
   useEffect(() => {
     refreshAdminLocationMonitor({ silent: true });
@@ -3646,7 +3747,7 @@ export default function TerminalPage() {
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
     if (activeTerminalRegistry.length === 0) {
-      toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
+      toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
       return false;
     }
     if (!selectedTerminalId) {
@@ -3658,7 +3759,7 @@ export default function TerminalPage() {
       return false;
     }
     if (terminalUnlockMode !== 'relock' && registryEntry && Number(registryEntry.location_id || 0) <= 0) {
-      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+      toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
       return false;
     }
     return true;
@@ -4137,7 +4238,7 @@ export default function TerminalPage() {
         }
         const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
         if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
-          throw new Error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+          throw new Error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         }
         if (typeof window !== 'undefined') {
           safeLocalStorageSet(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
@@ -4187,7 +4288,7 @@ export default function TerminalPage() {
       const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find((entry) => String(entry?.terminal_id || '') === selectedTerminalId);
       if (selectedTenantActiveRegistry.length === 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('No active terminals configured. Add one in Back Office > Registers & terminal policy.');
+        toast.error('No active terminals configured. Add one in POS Setup > Registers & terminal policy.');
         return;
       }
       if (!selectedTerminalId || !selectedTenantRegistryEntry) {
@@ -4198,7 +4299,7 @@ export default function TerminalPage() {
       const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
       if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
         setTerminalUnlockModalOpen(false);
-        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+        toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         return;
       }
       if (Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
@@ -4788,7 +4889,7 @@ export default function TerminalPage() {
         : Number(operatingLocationId || 0);
 
       if (!Number.isInteger(resolvedLocationId) || resolvedLocationId <= 0) {
-        toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+        toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
         return;
       }
 
@@ -5212,8 +5313,8 @@ export default function TerminalPage() {
   }, []);
 
   const handleOpenShift = async () => {
-    if (canAdminBypassShiftPrompt && !isMasterAdminOperator) {
-      toast.error('Administrator navigation is read-only. Sign in as the cashier to open the shift.');
+    if (canAdminBypassShiftPrompt && !isMasterAdminOperator && !canViewBranchLocations) {
+      toast.error('Administrator navigation is read-only unless branch-view operating access is explicitly granted.');
       return;
     }
     if (terminalUnlockRequired) {
@@ -5246,7 +5347,7 @@ export default function TerminalPage() {
       ? registryLocationId
       : Number(operatingLocationId);
     if (!Number.isInteger(scopedOperatingLocationId) || scopedOperatingLocationId <= 0) {
-      toast.error('This terminal has no assigned store location. Set it in Back Office > Registers & terminal policy.');
+      toast.error('This terminal has no assigned store location. Set it in POS Setup > Registers & terminal policy.');
       return;
     }
 
@@ -5855,7 +5956,9 @@ export default function TerminalPage() {
 
     let detail = transaction;
     if (!detail) {
-      detail = await fetchPosTransactionById(normalizedId);
+      detail = await fetchPosTransactionById(normalizedId, {
+        location_id: branchViewLocationId || undefined
+      });
     }
     if (automatic && String(detail?.receipt_print_status || '').trim().toLowerCase() === 'printed') {
       return { skipped: true, success: true };
@@ -5881,7 +5984,7 @@ export default function TerminalPage() {
       toast.success('Online order receipt printed.');
     }
     return outcome;
-  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
+  }, [activeTerminalId, branchViewLocationId, posHardware, terminalMeta.businessSettings]);
 
   const printOnlineOrderKitchenTicket = useCallback(async (order) => {
     const lines = Array.isArray(order?.lines) ? order.lines : [];
@@ -6409,7 +6512,9 @@ export default function TerminalPage() {
 
     setIncomingReceiptOpeningId(normalizedId);
     try {
-      const detail = await fetchPosTransactionById(normalizedId);
+      const detail = await fetchPosTransactionById(normalizedId, {
+        location_id: branchViewLocationId || undefined
+      });
       setIncomingOrderDetail(detail || null);
       if (printOrder) {
         await printOnlineOrderKitchenTicket(detail);
@@ -6507,80 +6612,6 @@ export default function TerminalPage() {
     window.history.replaceState({}, '', `${url.pathname}${url.search}`);
   }, []);
 
-  const handleOpenBackOffice = useCallback((target = {}) => {
-    if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;
-    setMobileNavOpen(false);
-    const requestedPath = typeof target === 'string' ? target : target?.path;
-    const normalizedPath = String(requestedPath || '/backoffice/overview').trim();
-    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
-      ? normalizedPath
-      : '/backoffice/overview';
-    const activeBranchId = Number(
-      shiftState?.shift?.location_id
-      || viewingLocationId
-      || operatingLocationId
-      || queueLocationScopeId
-      || 0
-    );
-    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
-      && Number.isInteger(activeBranchId)
-      && activeBranchId > 0) {
-      const [pathOnly, queryString = ''] = safePath.split('?');
-      const params = new URLSearchParams(queryString);
-      params.set('branch_id', String(activeBranchId));
-      safePath = `${pathOnly}?${params.toString()}`;
-    }
-    setBackOfficeTargetPath(safePath);
-    setBackOfficeConfirmOpen(true);
-  }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
-
-  const buildPosBackOfficeHandoffPath = useCallback((path) => {
-    const [pathOnly, queryString = ''] = String(path || '/backoffice/overview').split('?');
-    const params = new URLSearchParams(queryString);
-    params.set('pos_handoff', '1');
-    return `${pathOnly}?${params.toString()}`;
-  }, []);
-
-  const handleConfirmOpenBackOffice = useCallback(() => {
-    if (typeof window === 'undefined') return;
-
-    const url = new URL('/', window.location.origin);
-    const handoffPath = buildPosBackOfficeHandoffPath(backOfficeTargetPath);
-    if (backOfficeTargetPath === '/backoffice/overview') {
-      url.search = '?view=reports';
-      url.hash = `#${handoffPath}`;
-    } else {
-      url.search = '';
-      url.hash = `#${handoffPath}`;
-    }
-    // Open a blank tab synchronously from the confirmation click so popup
-    // blocking is detectable. Detach the opener before navigating so the new
-    // same-origin Back Office page remains an independent browser context.
-    const openedWindow = window.open('', '_blank');
-    setBackOfficeConfirmOpen(false);
-
-    if (!openedWindow) {
-      toast.error('Your browser blocked the Back Office window. Allow pop-ups and try again.');
-      return;
-    }
-
-    try {
-      openedWindow.opener = null;
-      openedWindow.location.replace(url.toString());
-    } catch {
-      try {
-        openedWindow.close();
-      } catch {
-        // The browser may deny closing a newly opened context; the error below
-        // still gives the operator an actionable recovery path.
-      }
-      toast.error('Back Office could not open. Allow pop-ups and try again.');
-      return;
-    }
-
-  const destinationLabel = backOfficeTargetPath === '/backoffice/overview' ? 'Overview' : 'Business settings';
-    toast.success(`Back Office opened in a new window at ${destinationLabel}.`);
-  }, [backOfficeTargetPath, buildPosBackOfficeHandoffPath]);
   const handleStorefrontContentStateChange = useCallback(({ dirty = false, discard = null } = {}) => {
     storefrontContentGuardRef.current = {
       dirty: dirty === true,
@@ -6594,14 +6625,24 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (!activeViewModes.includes(nextMode)) {
+    const branchViewReadOnlyNavigation = Boolean(
+      branchViewLocationId
+      && canViewBranchLocations
+      && BRANCH_VIEW_READ_ONLY_MODES.has(nextMode)
+    );
+    if (branchViewLocationId && !branchViewReadOnlyNavigation) {
+      toast.error('This module is not available in branch view. Exit the read-only branch viewer before returning to terminal operations.');
+      setMobileNavOpen(false);
+      return;
+    }
+    if (!activeViewModes.includes(nextMode) && !branchViewReadOnlyNavigation) {
       if (isCashierRole) {
         toast.error('Cashier access is limited to Sell, History, Items, Orders, and Shift.');
       }
       setMobileNavOpen(false);
       return;
     }
-    if (nextMode === 'items' && !canViewPos && !canManageCategories) {
+    if (nextMode === 'items' && !canViewPos && !canManageCategories && !branchViewReadOnlyNavigation) {
       toast.error('POS view or category-management permission is required.');
       setMobileNavOpen(false);
       return;
@@ -6623,9 +6664,9 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
+    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode) || branchViewReadOnlyNavigation;
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
-    if (setupFlowActive) {
+    if (setupFlowActive && !branchViewReadOnlyNavigation) {
       const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'items']);
       if (!allowedSetupModes.has(nextMode)) {
         toast.error(
@@ -6662,7 +6703,7 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (isPinProtectedViewMode && !canAccessSettingsDirectly && !isAuthorizedPosOnlyTerminalSetup) {
+    if (isPinProtectedViewMode && !branchViewReadOnlyNavigation && !canAccessSettingsDirectly && !isAuthorizedPosOnlyTerminalSetup) {
       let pinEnabled = settingsAccessPinEnabled;
       if (!pinEnabled) {
         const refreshedMeta = await hydrateTerminalMeta({ suppressGlobalErrors: true });
@@ -6695,6 +6736,8 @@ export default function TerminalPage() {
     commitViewModeSelection(nextMode);
   }, [
     activeViewModes,
+    branchViewLocationId,
+    canViewBranchLocations,
     canAccessSettingsDirectly,
     canAccessPosOnlySetup,
     canAdminBypassShiftPrompt,
@@ -6814,39 +6857,6 @@ export default function TerminalPage() {
       }));
     }
   }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
-
-  useEffect(() => {
-    if (!activeTenantId || typeof window === 'undefined') return undefined;
-
-    return subscribeToBusinessAdminSettingsUpdates((payload) => {
-      const selectedTerminalBranchId = Number(
-        terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id || 0
-      );
-      const activeBranchId = Number(
-        shiftState?.shift?.location_id
-        || operatingLocationId
-        || viewingLocationId
-        || queueLocationScopeId
-        || selectedTerminalBranchId
-        || 0
-      );
-      if (!shouldRefreshBusinessAdminSettingsUpdate({ payload, activeTenantId, activeBranchId })) return;
-
-      setSettingsRefreshKey((previous) => previous + 1);
-      const refreshTasks = [
-        hydrateUser({ suppressGlobalErrors: true }),
-        hydrateTerminalMeta({ suppressGlobalErrors: true }),
-        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true }),
-        refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })
-      ];
-      if (!locked && canViewPos) {
-        refreshTasks.push(refreshOperationalContext({ suppressGlobalErrors: true }));
-      }
-      void Promise.all(refreshTasks).catch(() => {
-        // The POS remains usable on its current snapshot when a background refresh fails.
-      });
-    });
-  }, [activeTenantId, activeTerminalId, canViewPos, hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, locked, operatingLocationId, queueLocationScopeId, refreshOperationalContext, refreshTenantLocations, shiftState?.shift?.location_id, terminalRegistryLookup, terminalUser, viewingLocationId]);
 
   const handleCompleteTenantSetup = useCallback(async () => {
     if (tenantSetupCompletionInFlightRef.current) return;
@@ -7172,7 +7182,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -7192,9 +7202,6 @@ function PosRestorationLoadingScreen() {
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
-              backOfficeConfirmOpen,
-              backOfficeTargetPath,
-              canAccessBusinessAdmin,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -7221,8 +7228,6 @@ function PosRestorationLoadingScreen() {
               handleBackToCashierResume,
               handleCashierResumeSubmit,
               handleCashierTakeoverSubmit,
-              handleConfirmOpenBackOffice,
-              handleOpenBackOffice,
               handleOpenCashierTakeover,
               handleCloseDay,
               handleCollectCash,
@@ -7278,7 +7283,6 @@ function PosRestorationLoadingScreen() {
               setBalanceSettlementReference,
               setBalanceProofFile,
               handleCloseBalancePaymentProofViewer,
-              setBackOfficeConfirmOpen,
               setCashCollectionOrder,
               setCashReceivedInput,
               setCashierResumeForm,
@@ -7368,7 +7372,6 @@ function PosRestorationLoadingScreen() {
           canManageVouchers={canManageVouchers}
           canManagePricelists={canManagePricelists}
           canViewVouchers={canViewVouchers}
-          canAccessBusinessAdmin={canAccessBusinessAdmin}
           canAccessPosOnlySetup={canAccessPosOnlySetup}
           showFnbService={canAccessFnbService}
           showIncomingQueue={onlineOrderQueueEnabled}
@@ -7395,6 +7398,12 @@ function PosRestorationLoadingScreen() {
           incomingOrdersState={incomingOrdersState}
           orderHistoryState={orderHistoryState}
           adminLocationMonitorState={adminLocationMonitorState}
+          branchDirectoryState={branchDirectoryState}
+          branchViewLocationId={branchViewLocationId}
+          canViewBranchLocations={canViewBranchLocations}
+          onViewBranch={handleViewBranch}
+          onExitBranchView={handleExitBranchView}
+          refreshBranchDirectory={refreshBranchDirectory}
           adminTerminalSwitching={adminTerminalSwitching}
           onSelectAdminTerminal={handleSelectAdminTerminal}
           refreshAdminLocationMonitor={refreshAdminLocationMonitor}
@@ -7409,7 +7418,7 @@ function PosRestorationLoadingScreen() {
           settingsEntryViewMode={
             setupFlowActive
               ? resolveTenantSetupViewMode(tenantSetupStep)
-              : 'terminal_setup'
+              : (isCashierRole ? 'terminal_setup' : 'settings_profile')
           }
           onSelectTerminal={handleSelectTerminalFromSetup}
           hardwareDriverLabel={posHardware.driverLabel}
@@ -7418,7 +7427,6 @@ function PosRestorationLoadingScreen() {
           isPrinterAvailable={posHardware.isPrinterAvailable}
           printersDetected={posHardware.printersDetected}
           onTestPrinter={handleTestPrinter}
-          onOpenBackOffice={handleOpenBackOffice}
           handleLock={handleLock}
           handleCashierSignIn={handleCashierSignIn}
           onCheckoutAuthorityInvalid={handleCheckoutAuthorityInvalid}

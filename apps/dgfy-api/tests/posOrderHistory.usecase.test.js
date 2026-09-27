@@ -42,6 +42,8 @@ describe('POS online order history use-case', () => {
         expect(resolveLocationScope).toHaveBeenCalledWith({
             requestedLocationId: 7,
             userId: 15,
+            user: { user_id: 15 },
+            allowTenantWideBranchAccess: false,
             operationLabel: 'POS online order history read'
         });
         expect(listOnlineOrderHistory).toHaveBeenCalledWith({

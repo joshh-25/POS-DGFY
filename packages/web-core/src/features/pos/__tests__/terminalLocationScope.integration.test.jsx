@@ -181,6 +181,23 @@ describe('POS terminal location UX integration', () => {
           cash_sales_amount: 80
         }
       },
+      canViewBranchLocations: true,
+      branchDirectoryState: {
+        loading: false,
+        locations: [{
+          location_id: 1,
+          name: 'Masu Cafe',
+          open_shift_count: 1,
+          is_open: true,
+          can_view: true,
+          terminals: [{
+            terminal_id: 'MASU-01',
+            label: 'Masu Register',
+            status: 'occupied',
+            shift: { cashier: { display_name: 'Admin' } }
+          }]
+        }]
+      },
       setQueueLocationScopeId,
       setOperatingLocationId
     });
@@ -188,6 +205,9 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Masu Cafe')).toBeTruthy();
+    expect(screen.getByTestId('pos-view-branch-1')).toBeTruthy();
+    expect(screen.queryByText('View authorized branches and their current cashier/terminal occupancy. Branch viewing is read-only.')).toBeNull();
     expect(screen.getByText('Current Shift Location')).toBeTruthy();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();

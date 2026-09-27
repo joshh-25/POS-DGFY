@@ -88,7 +88,7 @@ describe('POS report category filter contract', () => {
     expect(salesTableSource).toContain('Transaction/Invoice');
     expect(salesTableSource).toContain('label: `POS Profit/Loss (${symbol})`');
     expect(workspaceSource).toContain('ariaLabel="POS reports"');
-    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
+    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">');
     expect(workspaceSource).toContain('data-testid="pos-reports-sticky-tabs"');
     expect(workspaceSource).toContain('POS_MOBILE_STICKY_TAB_ROW_CLASS');
     expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4');
@@ -161,15 +161,16 @@ describe('POS report category filter contract', () => {
     expect(profitLossTabSource).not.toContain('MetricCard');
   });
 
-  it('spaces the comparison snapshot from the trend and removes its outer card shell', () => {
-    const snapshotStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
-    const snapshotEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", snapshotStart);
-    const snapshotSource = workspaceSource.slice(snapshotStart, snapshotEnd);
+  it('uses the full main-branch comparison workspace without changing the report shell', () => {
+    const comparisonStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
+    const comparisonEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", comparisonStart);
+    const comparisonSource = workspaceSource.slice(comparisonStart, comparisonEnd);
 
-    expect(snapshotSource).toContain('<section aria-labelledby="sales-comparison-snapshot-title" className="mt-4">');
-    expect(snapshotSource).toContain('<h3 id="sales-comparison-snapshot-title"');
-    expect(snapshotSource).toContain('grid gap-3 md:grid-cols-2 xl:grid-cols-4');
-    expect(snapshotSource).not.toContain('<SectionCard');
+    expect(comparisonSource).toContain('<PosReportsComparisonPanel');
+    expect(comparisonSource).toContain('comparison={comparisonReport}');
+    expect(comparisonSource).toContain('granularity={displayGranularity}');
+    expect(comparisonSource).toContain('onGranularityChange={setGranularity}');
+    expect(comparisonSource).not.toContain('sales-comparison-snapshot-title');
   });
 
   it('maps the Top Selling Items table to the supported report aggregates', () => {
@@ -306,11 +307,11 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
   });
 
-  // Phase 261 (#1488): pre-run procurement CSV export button, independent of the loaded report.
-  it('exposes a procurement CSV export button that is not gated on report data', () => {
-    expect(workspaceSource).toContain('exportProcurementCsv');
-    expect(workspaceSource).toContain('handleExportProcurementCsv');
-    expect(workspaceSource).toContain('Procurement CSV');
-    expect(workspaceSource).toContain('onClick={handleExportProcurementCsv}');
+  it('keeps the report toolbar focused on the primary print and CSV exports', () => {
+    expect(workspaceSource).toContain('exportPosReportCsv');
+    expect(workspaceSource).not.toContain('exportProcurementCsv');
+    expect(workspaceSource).not.toContain('handleExportProcurementCsv');
+    expect(workspaceSource).not.toContain('Procurement CSV');
+    expect(workspaceSource).toContain('{renderReportToolbar()}');
   });
 });

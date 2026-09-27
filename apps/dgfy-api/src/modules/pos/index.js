@@ -113,6 +113,11 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { posBranchDirectoryRepository } from './repositories/posBranchDirectoryRepository.js';
+import {
+    buildGetPosBranchDirectoryUseCase,
+    buildRecordPosBranchViewEventUseCase
+} from './usecases/posBranchDirectoryUseCases.js';
 import {
     buildCreatePosDiscountRuleUseCase,
     buildDeletePosDiscountRuleUseCase,
@@ -471,6 +476,14 @@ export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseC
 export const listOnlineOrderHistoryUseCase = buildListOnlineOrderHistoryUseCase({ posRepository });
 export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonnelUseCase({ posRepository });
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
+export const getPosBranchDirectoryUseCase = buildGetPosBranchDirectoryUseCase({
+    branchDirectoryRepository: posBranchDirectoryRepository,
+    posRepository
+});
+export const recordPosBranchViewEventUseCase = buildRecordPosBranchViewEventUseCase({
+    branchDirectoryRepository: posBranchDirectoryRepository,
+    posRepository
+});
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
 export const collectCashDineInOrderUseCase = buildCollectCashDineInOrderUseCase({ posRepository });

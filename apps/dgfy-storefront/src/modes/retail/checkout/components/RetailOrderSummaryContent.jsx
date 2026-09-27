@@ -2,7 +2,7 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
-import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { buildStorefrontOrderBreakdownRows } from '../../../../shared/model/storefrontOrderBreakdownPresentation.js';
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 
 const RETAIL_ACCENT = '#1a4e8d';
@@ -75,12 +75,15 @@ export function RetailOrderSummaryContent({
     orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
   });
   const totalsRows = [
-    { label: 'Subtotal', value: money(totals.subtotal_amount) },
-    { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    ...(promoDiscountSummaryRow ? [{ ...promoDiscountSummaryRow, color: '#15803d' }] : []),
-    ...(voucherDiscountSummaryRow ? [{ ...voucherDiscountSummaryRow, color: '#7c3aed' }] : []),
-    ...buildFeeAndVatSummaryRows({ totals, money }),
-    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
+    ...buildStorefrontOrderBreakdownRows({
+      discountRows: [
+        promoDiscountSummaryRow ? { ...promoDiscountSummaryRow, color: '#15803d' } : null,
+        voucherDiscountSummaryRow ? { ...voucherDiscountSummaryRow, color: '#7c3aed' } : null,
+      ].filter(Boolean),
+      money,
+      orderMethod: isDeliveryOrder ? 'delivery' : 'pickup',
+      totals,
+    }),
     ...downpaymentRows
   ];
 

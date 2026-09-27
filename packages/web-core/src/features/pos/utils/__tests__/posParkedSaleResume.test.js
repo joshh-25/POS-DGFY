@@ -4,6 +4,7 @@ import {
     formatParkedSaleDisplayName,
     getParkedSaleCatalogLookupQueries,
     mergeParkedSaleCatalogResults,
+    isParkedSaleOriginalLine,
     validateParkedSaleResume
 } from '../posParkedSaleResume.js';
 
@@ -37,10 +38,21 @@ const parkedSale = {
 };
 
 describe('POS parked-sale resume validation', () => {
-    it('shows the customer or order name with the short ID without changing the stored reference', () => {
-        expect(formatParkedSaleDisplayName(parkedSale)).toBe('Maria Santos · Parked Sale #17');
+    it('recognizes an original line after draft hydration rebuilds its line reference', () => {
+        expect(isParkedSaleOriginalLine({
+            line_key: 'rebuilt-line-7',
+            line_ref: 'rebuilt-ref-7',
+            item_id: parkedSale.snapshot.lines[0].item_id,
+            sale_price: parkedSale.snapshot.lines[0].sale_price,
+            course: parkedSale.snapshot.lines[0].course,
+            line_modifiers: parkedSale.snapshot.lines[0].line_modifiers
+        }, parkedSale)).toBe(true);
+    });
+
+    it('shows the customer or order name without exposing the parked-sale number', () => {
+        expect(formatParkedSaleDisplayName(parkedSale)).toBe('Maria Santos');
         expect(parkedSale.park_reference).toBe('PARK-ABC123');
-        expect(formatParkedSaleDisplayName({ pos_parked_sale_id: 18, snapshot: {} })).toBe('Parked Sale #18');
+        expect(formatParkedSaleDisplayName({ pos_parked_sale_id: 18, snapshot: {} })).toBe('Parked Sale');
         expect(formatParkedSaleDisplayName({})).toBe('Parked Sale');
     });
 

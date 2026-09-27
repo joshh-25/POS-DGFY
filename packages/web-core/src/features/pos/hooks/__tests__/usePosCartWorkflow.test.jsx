@@ -213,7 +213,41 @@ describe('usePosCartWorkflow', () => {
         }));
     });
 
+    it('releases a claimed parked sale when its final original line is deleted', () => {
+        const onCartBecameEmpty = vi.fn(() => Promise.resolve(true));
+        const onParkedLineDeleted = vi.fn();
+        const { result } = renderCart({
+            activeParkedSale: { pos_parked_sale_id: 44 },
+            onCartBecameEmpty,
+            onParkedLineDeleted
+        });
+        const parkedLine = {
+            ...retailItem,
+            line_key: 'parked-coffee',
+            item_name: retailItem.name,
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            parked_snapshot_line: true,
+            parked_original_quantity: 1,
+            service_option_ids: []
+        };
+
+        act(() => result.current.setCart([parkedLine]));
+        act(() => result.current.removeCartLine('parked-coffee'));
+        act(() => result.current.setParkedLineDeletionReason('Customer removed item'));
+        act(() => result.current.confirmParkedLineDeletion());
+
+        expect(onParkedLineDeleted).toHaveBeenCalledWith(expect.objectContaining({
+            reason: 'Customer removed item',
+            line: expect.objectContaining({ line_key: 'parked-coffee' })
+        }));
+        expect(onCartBecameEmpty).toHaveBeenCalledTimes(1);
+        expect(result.current.cart).toHaveLength(1);
+    });
+
     it('requires a reason when the parked-line marker is missing but the snapshot identity matches', () => {
+        const onCartBecameEmpty = vi.fn(() => Promise.resolve(true));
         const onParkedLineDeleted = vi.fn();
         const { result } = renderCart({
             activeParkedSale: {
@@ -228,6 +262,7 @@ describe('usePosCartWorkflow', () => {
                     }]
                 }
             },
+            onCartBecameEmpty,
             onParkedLineDeleted
         });
         const parkedLineWithoutMarker = {
@@ -249,7 +284,8 @@ describe('usePosCartWorkflow', () => {
 
         act(() => result.current.setParkedLineDeletionReason('Customer removed item'));
         act(() => result.current.confirmParkedLineDeletion());
-        expect(result.current.cart).toEqual([]);
+        expect(onCartBecameEmpty).toHaveBeenCalledTimes(1);
+        expect(result.current.cart).toHaveLength(1);
         expect(onParkedLineDeleted).toHaveBeenCalledWith(expect.objectContaining({
             reason: 'Customer removed item',
             line: expect.objectContaining({ line_key: 'parked-coffee' })

@@ -24,7 +24,7 @@ describe('POS mobile page spacing contract', () => {
     expect(spacingSource).not.toContain('POS_PAGE_CLASS');
     expect(pageFrameSource).toContain('data-pos-page-frame={page || undefined}');
     expect(historySource).toContain('<PosPageFrame page="history"');
-    expect(reportsSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip"');
+    expect(reportsSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0"');
     expect(settingsSource).toContain('<PosPageFrame id={sectionId} page="settings"');
     expect(terminalLayoutSource).toContain('const STANDARD_POS_PAGE_FRAME_MODES = new Set([');
     expect(terminalLayoutSource).toContain("usesStandardPosPageFrame ? 'p-0' : 'p-2'");

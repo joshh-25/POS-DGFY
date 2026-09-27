@@ -54,7 +54,7 @@ describe('tenant-location dine-in payment policy route', () => {
         state.updateDineInPaymentPolicy.mockClear();
     });
 
-    it('allows a non-admin user with a grant for the selected branch', async () => {
+    it('does not throw before checking a non-admin user grant for the selected branch', async () => {
         state.findOne.mockResolvedValue({ user_id: 42, location_id: 7 });
 
         const response = await request(buildApp())
@@ -62,6 +62,7 @@ describe('tenant-location dine-in payment policy route', () => {
             .send({ allow_dine_in_pay_at_store: true });
 
         expect(response.status).toBe(200);
+        expect(response.body).toEqual({ success: true });
         expect(state.findOne).toHaveBeenCalledWith({
             where: { user_id: 42, location_id: 7 }
         });

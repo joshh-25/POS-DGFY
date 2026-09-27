@@ -3,7 +3,7 @@ import { Bell, Menu, X } from 'lucide-react';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY, prettyCustomerStatus } from '../model/customerDashboardPresentation.jsx';
 
 const DGFY_LOGO_URL = '/dgfy-logo.png';
-const FEEDBACK_ICON_URL = '/feedback%20icon.jpg';
+const FEEDBACK_ICON_URL = '/feedback-icon.jpg';
 
 export function CustomerDashboardHeader({ style, theme, isMobileViewport, isDrawer, onOpenMenu, onClose, onGoDiscovery = () => {}, onFeedback = () => {}, notifications, unreadCount, isOpen, setIsOpen, onMarkRead, onMarkAllRead, onTrackReference }) {
   const openNotification = (notification) => {

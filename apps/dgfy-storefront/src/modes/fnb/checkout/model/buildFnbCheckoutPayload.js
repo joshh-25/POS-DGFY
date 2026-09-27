@@ -1,3 +1,5 @@
+import { branchScheduleToIso } from '../../../../shared/model/storefrontScheduleTimezone.js';
+
 const toNumberOrNull = (value) => {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
@@ -44,7 +46,7 @@ export const buildFnbCheckoutPayload = ({
   // but the payload remains defensive so a restored/stale mode cannot silently drop the
   // required handover time.
   scheduled_for: (fnbScheduleMode === 'schedule' || orderMethod === 'dine_in') && fnbScheduledFor
-    ? new Date(fnbScheduledFor).toISOString()
+    ? branchScheduleToIso(fnbScheduledFor, selectedStore?.storefront_hours)
     : null,
   special_instructions: String(fnbSpecialInstructions || '').trim(),
   lines: (Array.isArray(cart) ? cart : []).map((line) => ({

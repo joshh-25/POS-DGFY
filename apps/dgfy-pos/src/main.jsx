@@ -2,11 +2,10 @@
 // runs before any other module code (including bundled deps like
 // maplibre-gl). See ADR 0067 / #666.
 import '../../../packages/web-core/src/compat/chrome80Runtime.js';
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
-import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx';
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -33,13 +32,7 @@ import {
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
-import {
-  buildBackOfficeLoginPath,
-  clearBackOfficeSession,
-  isBackOfficePosHandoff,
-  isBackOfficeSessionGranted,
-  subscribeToBackOfficeSession
-} from './features/businessAdmin/businessAdminAuth.js';
+import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 
 // Keep POS-only body portals (dialogs, menus, and notifications) on the same
 // typography stack as the shell, including routes that render before the
@@ -74,7 +67,7 @@ function PosRouteNotFound() {
         <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
         <h1 className="mt-2 text-2xl font-black text-slate-950">Route not available</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This standalone POS app serves the DGFY terminal and merchant Back Office.
+          This standalone POS app serves the DGFY terminal. Sales reports open in SKUpervisor.
         </p>
         <Link
           to="/terminal"
@@ -87,40 +80,23 @@ function PosRouteNotFound() {
   );
 }
 
-function LegacyBackOfficeRoute({ section = 'overview' }) {
-  const location = useLocation();
-  return <Navigate to={`/backoffice/${section}${location.search || ''}`} replace />;
-}
-
-function BackOfficeRouteGuard() {
-  const location = useLocation();
-  const [granted, setGranted] = useState(isBackOfficeSessionGranted);
-
+function SkupervisorSalesRedirect() {
   useEffect(() => {
-    const handleSessionInvalidation = () => {
-      clearBackOfficeSession();
-      setGranted(false);
-    };
-    const unsubscribe = subscribeToBackOfficeSession(setGranted);
-    window.addEventListener('auth:session-expired', handleSessionInvalidation);
-    window.addEventListener('auth:session-cleared', handleSessionInvalidation);
-    window.addEventListener('auth:logout', handleSessionInvalidation);
-    window.addEventListener('auth:tenant-switched', handleSessionInvalidation);
-    return () => {
-      unsubscribe();
-      window.removeEventListener('auth:session-expired', handleSessionInvalidation);
-      window.removeEventListener('auth:session-cleared', handleSessionInvalidation);
-      window.removeEventListener('auth:logout', handleSessionInvalidation);
-      window.removeEventListener('auth:tenant-switched', handleSessionInvalidation);
-    };
+    const query = typeof window === 'undefined' ? '' : window.location.search;
+    window.location.replace(buildSkupervisorPath('/sales', query));
   }, []);
 
-  if (!granted && !isBackOfficePosHandoff(location.search)) {
-    const returnTo = `${location.pathname}${location.search || ''}`;
-    return <Navigate to={buildBackOfficeLoginPath(returnTo)} replace />;
-  }
-
-  return <BusinessAdminPage />;
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
+      <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+        <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
+        <h1 className="mt-2 text-2xl font-black text-slate-950">Opening SKUpervisor</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Sales reports are handled in the SKUpervisor app context.
+        </p>
+      </section>
+    </main>
+  );
 }
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
@@ -137,9 +113,6 @@ const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAut
 const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
 const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'));
 const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
-const MobileReceivePage = lazy(() => import('../../../packages/web-core/src/features/merchantBackOffice/pages/MobileReceivePage.jsx'));
-const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));
-const BackOfficeLoginPage = lazy(() => import('./features/businessAdmin/BackOfficeLoginPage.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -378,12 +351,7 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
-                  <Route path="/backoffice/login" element={<BackOfficeLoginPage />} />
-                  <Route path="/business-admin/*" element={<BackOfficeRouteGuard />} />
-                  <Route path="/backoffice/*" element={<BackOfficeRouteGuard />} />
-                  <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
-                  <Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />
-                  <Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />
+                  <Route path="/sales" element={<SkupervisorSalesRedirect />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />

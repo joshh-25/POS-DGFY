@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
+const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
@@ -18,10 +19,12 @@ const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurr
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
+const paginationPath = path.resolve(__dirname, '../../../../Components/ui/pagination.jsx');
 const appStylesPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
+  let terminalOperationsWorkspaceContent = '';
   let posCheckoutContent = '';
   let workflowPanelContent = '';
   let posTerminalLayoutContent = '';
@@ -30,10 +33,12 @@ describe('POS terminal responsive scroll contracts', () => {
   let posHistoryContent = '';
  let terminalSidebarContent = '';
   let terminalPageContent = '';
+  let paginationContent = '';
  let appStylesContent = '';
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
+    terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
@@ -46,6 +51,7 @@ describe('POS terminal responsive scroll contracts', () => {
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
    terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
     terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
+    paginationContent = fs.readFileSync(paginationPath, 'utf8');
    appStylesContent = fs.readFileSync(appStylesPath, 'utf8');
   });
 
@@ -64,8 +70,8 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain(": `xl:grid ${effectiveSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[244px_minmax(0,1fr)]'}`");
     expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
     expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
-    expect(terminalLayoutContent).toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'");
-    expect(terminalLayoutContent).not.toContain("terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup Context' : 'POS Setup'");
+    expect(terminalLayoutContent).toContain("terminal_setup: 'POS Setup'");
+    expect(terminalLayoutContent).not.toContain('canAccessBusinessAdmin');
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
   });
@@ -109,19 +115,23 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
-    expect(terminalLayoutContent).toContain("'flex h-full min-h-0 min-w-0 max-w-full flex-col catalog-slide-enter'");
+    expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
+    expect(terminalOperationsWorkspaceContent).toContain('content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results');
+    expect(terminalOperationsWorkspaceContent).not.toContain('dgfy-pos-items-catalog-results xl:flex-none');
+    expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
     expect(terminalLayoutContent).toContain('data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter"');
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
   });
 
   it('keeps checkout split into catalog and current-sale panes', () => {
     expect(posTerminalLayoutContent).toContain("shellClassName: 'h-full min-h-0 overflow-hidden'");
-    expect(posTerminalLayoutContent).toContain('checkoutGridClassName: isTabletViewport');
+    expect(posTerminalLayoutContent).toContain('checkoutGridClassName: isTabletPortraitMobileLayout');
     expect(posTerminalLayoutContent).toContain('overflow-hidden pb-16 md:');
     expect(posTerminalLayoutContent).not.toContain('overflow-hidden pb-20 md:');
-    expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]");
+    expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_280px]");
+    expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_320px]");
     expect(posTerminalLayoutContent).toContain("md:grid-cols-[minmax(0,1fr)_325px]");
-    expect(posTerminalLayoutContent).toContain('checkoutGridClassName: isTabletViewport\n        ? \'grid h-full min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-1 gap-2');
+    expect(posTerminalLayoutContent).toContain("? 'grid h-full min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-1 gap-2 overflow-hidden pb-16'");
     expect(posTerminalLayoutContent).toContain(": 'grid h-full min-h-0 grid-rows-[minmax(0,1fr)] grid-cols-1 gap-2 overflow-hidden");
     expect(posCheckoutContent).toContain('aria-label="POS catalog contents"');
     expect(posCheckoutContent).toContain('aria-label="Current sale contents"');
@@ -131,68 +141,56 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps responsive catalog cards and paginated catalog slices', () => {
-    const catalogContractContent = `${posCheckoutContent}\n${posCatalogWorkflowContent}`;
+    const catalogContractContent = `${posCheckoutContent}\n${posCatalogWorkflowContent}\n${paginationContent}`;
     expect(catalogContractContent).toContain('repeat(auto-fill, minmax(min(100%');
     expect(posCheckoutContent).toContain('max-sm:px-2 max-sm:pt-2 max-sm:pb-2 sm:grid sm:grid-rows-[minmax(0,1fr)_auto]');
     expect(posCheckoutContent).toContain("'max-sm:w-[128px]'");
     expect(catalogContractContent).toContain('new window.ResizeObserver(scheduleCapacityMeasurement)');
     expect(catalogContractContent).toContain('catalogPageSize');
     expect(catalogContractContent).toContain('catalogPageSizeOverride');
-    expect(catalogContractContent).toContain('CatalogPageSizeControl');
+    expect(catalogContractContent).toContain('GlobalPagination');
     expect(catalogContractContent).toContain('role="listbox"');
     expect(catalogContractContent).toContain('role="option"');
-    expect(catalogContractContent).toContain('aria-label={`Products per page, currently ${selectedLabel}`}');
+    expect(catalogContractContent).toContain('aria-label="Items per page"');
     expect(posCheckoutContent).toContain('catalogPageSizeOptions,');
     expect(catalogContractContent).toContain('handleCatalogPageSizeChange');
     expect(catalogContractContent).toContain('data-catalog-page-size={catalogPageSize}');
     expect(catalogContractContent).toContain('getVisibleCatalogItems(catalogForDisplay, catalogPage, catalogPageSize)');
-    expect(catalogContractContent).toContain('const getCatalogPageNumbers = (currentPage, totalPages) =>');
-    expect(posCheckoutContent).toContain('{!isCompactTabletCatalogPagination && catalogPageNumbers.map((page) => {');
-    expect(posCheckoutContent).toContain('{isCompactTabletCatalogPagination && (');
-    expect(posCheckoutContent).toContain("onClick={() => handleCatalogPageChange('previous')}");
-    expect(posCheckoutContent).toContain("onClick={() => handleCatalogPageChange('next')}");
-    expect(posCheckoutContent).not.toContain("onClick={() => handleCatalogPageChange('first')}");
-    expect(posCheckoutContent).not.toContain("onClick={() => handleCatalogPageChange('last')}");
-    expect(posCheckoutContent).toContain('aria-label="Go to previous catalog page"');
-    expect(posCheckoutContent).toContain('aria-label="Go to next catalog page"');
-    expect(posCheckoutContent).toContain('CatalogPageJumpControl');
-    expect(posCheckoutContent).toContain('aria-label="Go to catalog page"');
-    expect(posCheckoutContent).toContain('hideLabels = false');
-    expect(posCheckoutContent).toContain('{!hideLabels && <label');
-    expect(posCheckoutContent).toContain('hideLabels\n                                    />');
-    expect(posCheckoutContent).toContain('value={inputValue}');
-    expect(posCheckoutContent).toContain("setInputValue(event.target.value.replace(/[^0-9]/g, ''))");
-    expect(posCheckoutContent).toContain('const nextPage = Math.min(safeTotalPages, Math.max(1, requestedPage));');
-    expect(posCheckoutContent).toContain('showPageSuffix');
-    expect(catalogContractContent).toContain('aria-current={isCurrentPage ? \'page\' : undefined}');
-    expect(catalogContractContent).toContain('const hasManyCatalogPages = totalCatalogPages > 5;');
-    expect(catalogContractContent).toContain("'hidden sm:inline-flex'");
+    expect(paginationContent).toContain('const changePage = (nextPage) =>');
+    expect(paginationContent).toContain('data-testid={previousPageId}');
+    expect(paginationContent).toContain('aria-label="Previous page"');
+    expect(paginationContent).toContain('data-testid={nextPageId}');
+    expect(paginationContent).toContain('aria-label="Next page"');
+    expect(paginationContent).not.toContain('onClick={() => onPageChange(\'first\')}');
+    expect(paginationContent).not.toContain('onClick={() => onPageChange(\'last\')}');
+    expect(paginationContent).toContain('aria-label="Go to page"');
+    expect(paginationContent).toContain('value={goToPage}');
+    expect(paginationContent).toContain("setGoToPage(event.target.value.replace(/[^0-9]/g, ''))");
+    expect(paginationContent).toContain('const normalizedPage = Math.min(safeTotalPages, Math.max(1, Number(nextPage) || 1));');
+    expect(paginationContent).toContain('showGoTo = true');
+    expect(paginationContent).toContain('aria-label="Go to page"');
+    expect(paginationContent).toContain('aria-live="polite"');
+    expect(paginationContent).toContain('max-md:flex-col');
     expect(catalogContractContent).not.toContain('Page {catalogPage} of {totalCatalogPages}');
     expect(catalogContractContent).not.toContain('Catalog Footer');
     expect(catalogContractContent).toContain('data-testid="pos-catalog-footer"');
-    expect(catalogContractContent).toContain('data-testid="pos-catalog-pagination"');
-    expect(catalogContractContent).toContain('aria-label="Product catalog pagination"');
-    expect(posCheckoutContent).toContain('const drawerDialogButtonClassName = isCompactTabletCatalogPagination');
+    expect(catalogContractContent).toContain('testId="pos-catalog-pagination"');
+    expect(catalogContractContent).toContain('ariaLabel="Product catalog pagination"');
+    expect(posCheckoutContent).toContain('const drawerDialogButtonClassName = IS_DGFY_POS_SURFACE && isTabletViewport');
     expect(posCheckoutContent).toContain('min-h-11 w-full min-w-0 whitespace-nowrap px-3 sm:w-auto sm:flex-1');
-    expect(posCheckoutContent).toContain('className={drawerDialogButtonClassName}');
     expect(catalogContractContent).toContain('data-testid="pos-catalog-controls"');
     expect(catalogContractContent).toContain('data-testid="pos-catalog-scroll"');
-    expect(catalogContractContent).toContain('dgfy-pos-scroll-region dgfy-pos-catalog-scroll relative mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pt-4 pb-1 max-sm:pt-[18px] sm:pt-6');
+    expect(catalogContractContent).toContain("isTabletPortraitMobileLayout ? 'pt-3' : isTabletViewport ? 'pt-4' : 'pt-4 max-sm:pt-[18px] sm:pt-6'");
     expect(appStylesContent).toContain('scrollbar-gutter: auto;');
-    expect(posCheckoutContent).toContain('relative z-10 mt-auto flex min-h-[56px] w-full shrink-0 items-center border-t');
+    expect(posCheckoutContent).toContain('relative z-10 mt-auto w-full shrink-0 border-t border-slate-200 bg-white shadow-[0_-1px_0_rgba(148,163,184,0.14)]');
     expect(posCheckoutContent).toContain('bg-white p-4 pb-0 shadow-sm shadow-slate-200/70 sm:p-6 sm:pb-0');
-    expect(posCheckoutContent).toContain("? 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto]'\n                            : 'sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto]'");
-    expect(posCheckoutContent).toContain('className="flex min-w-0 shrink-0 items-center justify-end gap-1.5 sm:justify-self-center max-sm:col-span-2 max-sm:row-start-2 max-sm:w-max max-sm:justify-self-center max-sm:justify-center max-sm:gap-1"');
-    expect(posCheckoutContent).toContain('mr-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white');
-    expect(posCheckoutContent).toContain('ml-1 h-9 w-9 shrink-0 touch-manipulation border-slate-200 bg-white');
-    expect(posCheckoutContent).toContain('h-9 w-9 shrink-0 touch-manipulation border-[#1A4E8D] bg-[#1A4E8D]');
-    expect(posCheckoutContent).toContain('className={`inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-300');
-    expect(posCheckoutContent).toContain("showPageSuffix ? 'min-w-[6.25rem]' : 'min-w-[4.25rem]'");
-    expect(posCheckoutContent).toContain('<span className="text-slate-500">/ page</span>');
-    expect(posCheckoutContent).toContain('text-[11px] font-medium leading-none text-slate-900');
-    expect(posCheckoutContent).toContain('hover:border-slate-400 hover:bg-white hover:text-slate-900 focus-visible:ring-slate-300');
-    expect(posCheckoutContent).toContain('className="hidden sm:inline-flex"');
-    expect(posCheckoutContent).toContain('max-sm:min-h-0 max-sm:py-2');
+    expect(posCheckoutContent).toContain("className={`${isTabletViewport ? 'rounded-none border-0 px-2 py-2 shadow-none' : 'rounded-none border-0 px-3 py-3 shadow-none max-sm:px-2 max-sm:py-2'}`}");
+    expect(paginationContent).toContain('dgfy-global-pagination__controls');
+    expect(paginationContent).toContain('dgfy-global-pagination__next h-10 w-10 rounded-lg');
+    expect(paginationContent).toContain('dgfy-global-pagination__page-size-value whitespace-nowrap');
+    expect(paginationContent).toContain('{selectedPageSize} / page');
+    expect(paginationContent).toContain('focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15');
+    expect(paginationContent).toContain('max-md:flex-col max-md:items-stretch');
     expect(posCheckoutContent).not.toContain('border-t border-slate-100 pt-1 sm:w-auto sm:border-t-0');
     expect(posCheckoutContent).toContain('flex min-h-0 flex-col overflow-hidden`}>');
     expect(posCatalogWorkflowContent).toContain('const horizontalPadding = computedStyle');
@@ -209,7 +207,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(catalogContractContent).toContain('event.currentTarget.setPointerCapture?.(event.pointerId);');
     expect(catalogContractContent).toContain('if (!drag.hasPointerCapture)');
     expect(catalogContractContent).toContain('event.currentTarget.releasePointerCapture(event.pointerId);');
-    expect(posCheckoutContent).toContain('className="mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-1 dgfy-pos-scrollbar-hidden"');
+    expect(posCheckoutContent).toContain('mb-0 flex cursor-grab items-center gap-2 overflow-x-auto px-1 py-1 dgfy-pos-scrollbar-hidden');
     expect(catalogContractContent).toContain('onClickCapture={handleFolderStripClickCapture}');
     expect(catalogContractContent).toContain('onWheel={handleFolderStripWheel}');
     expect(catalogContractContent).toContain('cursor-grab');
@@ -224,24 +222,25 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-2xl');
     expect(posCheckoutContent).toContain('md:static md:z-auto md:h-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none');
     expect(posCheckoutContent).toContain('<div className="flex items-center justify-between gap-3">');
-    expect(posTerminalLayoutContent).toContain("currentSaleBodyClassName: 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y'");
+    expect(posTerminalLayoutContent).toContain('currentSaleBodyClassName: isTabletPortraitMobileLayout');
+    expect(posTerminalLayoutContent).toContain("'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y'");
     expect(posTerminalLayoutContent).toContain("currentSaleItemsListClassName: 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y'");
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-panel"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-items"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-totals"');
     expect(posCheckoutContent).toContain('<ShoppingCart size={16} className="mr-1.5" aria-hidden="true" />');
     expect(posCheckoutContent).toContain("'Cart'");
-    expect(posCheckoutContent).toContain('pos-modal-scroll-content grid min-h-0 min-w-0 max-w-full flex-1');
+    expect(posCheckoutContent).toContain('pos-modal-scroll-content pos-checkout-scroll-region grid min-h-0 min-w-0 max-w-full flex-1');
     expect(posCheckoutContent).toContain('flex-1 content-start gap-0 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 pt-2 lg:grid-cols-2');
     expect(posCheckoutContent).toContain('overflow-x-hidden overflow-y-auto overscroll-contain');
     expect(posCheckoutContent).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain');
     expect(posCheckoutContent).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
     expect(posCheckoutContent).toContain('mobileSheet');
     expect(posCheckoutContent).toContain('pos-mobile-bottom-sheet pos-checkout-mobile-sheet');
-    expect(posCheckoutContent).toContain("discountModalOpen ? 'pos-checkout-mobile-sheet-expanded' : ''");
+    expect(posCheckoutContent).toContain("checkoutDiscountWorkspaceExpanded ? 'pos-checkout-mobile-sheet-expanded' : ''");
     expect(posCheckoutContent).toContain('pos-checkout-mobile-scroll-locked');
     expect(posCheckoutContent).toContain('pos-checkout-mobile-scroll-expanded');
-    expect(posCheckoutContent).toContain('max-sm:w-full max-sm:max-w-none max-sm:rounded-t-2xl max-sm:rounded-b-none max-sm:border-x max-sm:border-t max-sm:border-b-0');
+    expect(posCheckoutContent).toContain('max-md:w-full max-md:max-w-none max-md:rounded-t-2xl max-md:rounded-b-none max-md:border-x max-md:border-t max-md:border-b-0');
     expect(posCheckoutContent).toContain('max-h-[16rem] flex-none overflow-y-auto overscroll-contain bg-white p-4');
     expect(appStylesContent).toContain('@media (max-width: 639.98px)');
     expect(appStylesContent).toContain('body[data-pos-text-size] .pos-checkout-confirm-dialog');
@@ -251,14 +250,14 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('body[data-pos-text-size] .pos-checkout-mobile-sheet-expanded');
     expect(appStylesContent).toContain('overflow-y: hidden;');
     expect(appStylesContent).toContain('overflow-y: auto;');
-    expect(appStylesContent).toContain('transition: height 280ms cubic-bezier(0.16, 1, 0.3, 1), max-height 280ms cubic-bezier(0.16, 1, 0.3, 1);');
+    expect(appStylesContent).toContain('transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease;');
     expect(appStylesContent).not.toContain('animation: pos-mobile-bottom-sheet-enter');
-    expect(posCheckoutContent).toContain('grid min-w-[680px] grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(80px,1fr))] gap-2');
+    expect(posCheckoutContent).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
     expect(posCheckoutContent).toContain('h-9 whitespace-nowrap rounded-lg border px-2 text-[11px] font-extrabold');
     expect(posCheckoutContent).toContain('className="block text-[11px] font-bold text-slate-600">');
     expect(posCheckoutContent).toContain('<legend className="text-[11px] font-bold text-slate-600">Payment Type</legend>');
     expect(posCheckoutContent).toContain('className="w-full min-w-0 max-w-full space-y-1 py-[5px]" aria-label="Payment Type"');
-    expect(posCheckoutContent).toContain('grid min-w-[720px] grid-cols-6 gap-2');
+    expect(posCheckoutContent).toContain('grid min-w-[768px] shrink-0 grid-cols-6 gap-1.5');
     expect(posCheckoutContent).toContain("isStatutoryDiscountSelected ? 'grid-cols-6 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'");
     expect(posCheckoutContent).toContain('relative box-border w-full min-w-0 cursor-pointer overflow-hidden rounded-lg border border-blue-300 bg-clip-padding');
     expect(posCheckoutContent).toContain('focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500');
@@ -274,7 +273,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('Increase quantity for ${line.item_name}');
     expect(posCheckoutContent).toContain('max-w-[5.5rem] shrink-0 items-center justify-center overflow-hidden');
     expect(posCheckoutContent).toContain('text-ellipsis whitespace-nowrap');
-    expect(posCheckoutContent).toContain('<div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">');
+    expect(posCheckoutContent).toContain('col-span-2 flex min-h-0 flex-col overflow-hidden ${isTabletPortraitMobileLayout ?');
     expect(posCheckoutContent).toContain('<div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">');
     expect(posCheckoutContent).toContain('data-testid="pos-no-printer-notice"');
     expect(posCheckoutContent).toContain('No printer detected on this device.');
@@ -287,9 +286,12 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCurrentSaleActionsContent).toContain('className={`dgfy-pos-current-sale-actions ${tabletLayout ? \'dgfy-pos-tablet-action-grid\' : \'\'} grid shrink-0 ${gridClassName}');
     expect(posCurrentSaleActionsContent).toContain('grid shrink-0 ${gridClassName} gap-2 pt-2');
     expect(posCurrentSaleActionsContent).toContain("const gridClassName = compactParkedLayout ? 'grid-cols-6' : 'grid-cols-2 sm:grid-cols-2';");
-    expect(posCurrentSaleActionsContent).toContain("const checkoutActionClassName = compactParkedLayout ? 'order-2 col-span-3' : '';");
-    expect(posCurrentSaleActionsContent).toContain("const printActionClassName = compactParkedLayout ? 'order-1 col-span-3' : '';");
-    expect(posCurrentSaleActionsContent).toContain("const bottomActionClassName = compactParkedLayout ? 'order-3 col-span-2' : '';");
+    expect(posCurrentSaleActionsContent).toContain('const checkoutActionClassName = compactParkedLayout');
+    expect(posCurrentSaleActionsContent).toContain("'order-2 col-span-3'");
+    expect(posCurrentSaleActionsContent).toContain('const printActionClassName = compactParkedLayout');
+    expect(posCurrentSaleActionsContent).toContain("'order-1 col-span-3'");
+    expect(posCurrentSaleActionsContent).toContain('const bottomActionClassName = compactParkedLayout');
+    expect(posCurrentSaleActionsContent).toContain("'order-3 col-span-2'");
     expect(posCurrentSaleActionsContent).toContain('dgfy-pos-tablet-action-grid');
     expect(posCurrentSaleActionsContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
     expect(posCheckoutContent).not.toContain('max-h-[25rem] overflow-y-auto');
@@ -368,12 +370,12 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps history filters and table scrolling inside the history panel', () => {
-    expect(posHistoryContent).toContain('grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4');
+    expect(posHistoryContent).toContain('className={`grid min-w-0 ${isDesktopFilterDialog');
     // The panel owns vertical scrolling while only the table owns horizontal
     // scrolling, so filters and the surrounding card never pan sideways.
-    expect(posHistoryContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col gap-4 overflow-x-hidden');
-    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y');
-    expect(posHistoryContent).toContain('w-full min-w-0 max-w-full overscroll-x-contain overflow-x-auto border-t border-slate-200');
+    expect(posHistoryContent).toContain('dgfy-pos-history-panel flex h-full min-h-0 min-w-0 max-w-full flex-col gap-0 overflow-x-hidden');
+    expect(posHistoryContent).toContain('data-testid="pos-history-scroll-region" className={`dgfy-pos-scrollbar-hidden min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y');
+    expect(posHistoryContent).toContain('w-full min-w-0 max-w-full overscroll-x-contain');
     expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 

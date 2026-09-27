@@ -635,10 +635,6 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
-const businessAdminApprovalSchema = Joi.object({
-    note: Joi.string().trim().max(1000).allow('', null).default('')
-});
-
 // Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
 // GET has no body at all.
 const balancePaymentProofParamsSchema = Joi.object({
@@ -773,6 +769,13 @@ const deliveryPersonnelListQuerySchema = Joi.object({
 const adminLocationMonitorQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().required(),
     limit: Joi.number().integer().min(1).max(500).default(200)
+});
+
+const branchViewEventSchema = Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    event: Joi.string().trim().lowercase().valid('enter', 'exit').required(),
+    operating_location_id: Joi.number().integer().positive().optional(),
+    active_shift_id: Joi.number().integer().positive().optional()
 });
 
 const shiftIdParamSchema = Joi.object({
@@ -1604,7 +1607,6 @@ export const validatePosTerminalDeviceRevoke = validateSchema(posTerminalDeviceR
 export const validateSetupCashier = validateSchema(setupCashierSchema, 'body', 'validatedData');
 export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverridesQuerySchema, 'query', 'validatedQuery');
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
-export const validateDecideBusinessAdminApproval = validateSchema(businessAdminApprovalSchema, 'body', 'validatedData');
 export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
 export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
@@ -1623,6 +1625,7 @@ export const validateProcurementExportQuery = validateSchema(procurementExportQu
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
+export const validateBranchViewEvent = validateSchema(branchViewEventSchema, 'body', 'validatedData');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateAttendanceMutation = validateSchema(attendanceMutationSchema, 'body', 'validatedData');

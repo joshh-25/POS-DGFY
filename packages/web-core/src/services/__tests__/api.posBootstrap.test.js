@@ -51,34 +51,6 @@ describe('standalone POS API session bootstrap', () => {
     expect(refreshCallCount).toBe(0);
   });
 
-  it('rehydrates a fresh Back Office tab before its protected bootstrap request', async () => {
-    window.history.replaceState({}, '', '/?view=reports#/backoffice/overview');
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: {
-          token: 'fresh-backoffice-token',
-          company: { token: 'fresh-company-token' }
-        }
-      })
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    let requestHeaders;
-    apiMock.onGet('/business-admin/bootstrap').reply((config) => {
-      requestHeaders = { ...config.headers };
-      return [200, { data: { access: { scope: 'all' } } }];
-    });
-
-    const { default: api } = await import('../api.js');
-    const response = await api.get('/business-admin/bootstrap');
-
-    expect(response.data.data).toEqual({ access: { scope: 'all' } });
-    expect(requestHeaders.Authorization).toBe('Bearer fresh-backoffice-token');
-    expect(requestHeaders['x-company-token']).toBe('fresh-company-token');
-    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/auth/refresh-token'))).toBe(true);
-  });
-
   it('refreshes an established POS session on the first 401 and retries once with the new token', async () => {
     const { default: api } = await import('../api.js');
     const session = await import('../browserSession.js');

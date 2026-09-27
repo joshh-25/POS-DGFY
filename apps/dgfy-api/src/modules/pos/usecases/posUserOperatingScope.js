@@ -17,7 +17,7 @@ export const normalizePosOperatingConflict = (error) => {
 // lock is retained by the caller's acquisition/mutation transaction, including
 // when this location uses legacy shifts and another uses operator sessions.
 export const createAssertPosUserOperatingScope = ({ repository }) => async ({
-    userId, terminalId, locationId, transaction
+    userId, terminalId, locationId, transaction, allowTenantWideLocationAccess = false
 }) => {
     if (!Number.isSafeInteger(Number(userId)) || Number(userId) <= 0
         || !Number.isSafeInteger(Number(locationId)) || Number(locationId) <= 0 || !terminal(terminalId)) {
@@ -29,7 +29,7 @@ export const createAssertPosUserOperatingScope = ({ repository }) => async ({
             statusCode: 403, details: { reason_code: 'POS_OPERATOR_INACTIVE' }
         });
     }
-    if (!state.user.is_master_admin) {
+    if (!state.user.is_master_admin && !allowTenantWideLocationAccess) {
         const grant = await repository.findUserLocationGrant({ userId, locationId, transaction, lock: true });
         if (!grant) {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This cashier is not assigned to this location.', {

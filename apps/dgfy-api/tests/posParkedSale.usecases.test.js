@@ -379,6 +379,76 @@ describe('parked sale use cases', () => {
         }), expect.objectContaining({ transaction: harness.transaction }));
     });
 
+    it('re-parks a retained deleted catalog line after resume rebuilds its reference', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'claimed',
+            revision: 1,
+            inventory_deducted_at: new Date(),
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            claimed_by: 15,
+            claimed_terminal_id: 'COUNTER-01',
+            snapshot: {
+                lines: [{
+                    line_key: 'parked-line-deleted-catalog-item',
+                    item_id: 104,
+                    quantity: 1,
+                    base_sale_price: 435,
+                    sale_price: 435,
+                    line_modifiers: []
+                }]
+            }
+        };
+        const harness = buildHarness({ parkedSale });
+        const useCase = buildReparkPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            resolveInventoryEffects: harness.resolveInventoryEffects,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+        const payload = basePayload();
+        delete payload.idempotency_key;
+        payload.expected_revision = 1;
+        payload.snapshot.lines = [{
+            line_key: 'rebuilt-line-deleted-catalog-item',
+            line_ref: 'rebuilt-ref-deleted-catalog-item',
+            item_id: 104,
+            quantity: 1,
+            base_sale_price: 435,
+            sale_price: 435,
+            line_modifiers: []
+        }];
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload,
+            user: { user_id: 15 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.resolveInventoryEffects).toHaveBeenCalledWith(expect.objectContaining({
+            parkedSaleId: 101,
+            snapshot: expect.objectContaining({
+                lines: [expect.objectContaining({
+                    item_id: 104,
+                    line_key: 'rebuilt-line-deleted-catalog-item'
+                })]
+            }),
+            previousSnapshot: expect.objectContaining({
+                lines: [expect.objectContaining({ item_id: 104 })]
+            })
+        }));
+        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
+            revision: 2,
+            status: 'parked'
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
+            parked_sale_id: 101,
+            reason: 'Re-park inventory reconciliation for parked sale 101'
+        }, 15, harness.transaction);
+    });
+
     it('allows another cashier in the same location to resume and own a parked sale', async () => {
         const parkedSale = {
             pos_parked_sale_id: 101,

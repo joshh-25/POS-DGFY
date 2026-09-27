@@ -1,7 +1,8 @@
 export const PERMISSIONS = {
-    // --- BUSINESS ADMIN DASHBOARD ---
-    // Business Admin is a tenant-scoped read/orchestration surface. It delegates
-    // writes to the owning domain modules and never becomes a second ledger.
+    // --- BUSINESS ADMINISTRATION ---
+    // Cross-branch read authority is intentionally separate from POS shift switching.
+    // The former is safe, read-only branch visibility; the latter is a governed cash/shift
+    // mutation and must remain independently grantable.
     BUSINESS_ADMIN: {
         label: "Business Admin Dashboard",
         actions: {
@@ -13,9 +14,6 @@ export const PERMISSIONS = {
     },
 
     // --- OPERATIONAL EXPENSES ---
-    // This is a tenant-local operational ledger. It is intentionally separate
-    // from POS drawer cash events and does not grant statutory accounting or tax
-    // filing authority.
     EXPENSES: {
         label: "Operational Expenses",
         actions: {
@@ -113,6 +111,7 @@ export const PERMISSIONS = {
             MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage", // Register and verify fiscal terminals
             MANAGE_ESALES_REPORTS: "pos:esales:manage", // Generate and update eSales reporting packages
             SWITCH_LOCATION_POS: "pos:switch_location", // Switch terminal shift location using governed flow
+            VIEW_BRANCH_POS: "pos:branch_view", // View another authorized branch without changing terminal/shift scope
             MANAGE_EMPLOYEES: "pos:employees:manage", // Manage non-login employee directory records
             VIEW_ATTENDANCE: "pos:attendance:view", // View the signed-in cashier's attendance state
             OPERATE_ATTENDANCE: "pos:attendance:operate", // Time in/out and start/end breaks for self
@@ -299,7 +298,6 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
         PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
         PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
-        ...Object.values(PERMISSIONS.EXPENSES.actions),
         // #1493: manager keeps read access to voucher campaigns but no longer manages them.
         // `vouchers:manage` is now Admin plus the mode-native `*_accounting` presets only -- see
         // modeRolePresets.js and ADR 0020's 2026-09-03 amendment.

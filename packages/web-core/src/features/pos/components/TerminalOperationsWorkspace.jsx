@@ -18,6 +18,7 @@ import {
   CircleDollarSign,
   ClipboardList,
   Barcode,
+  Eye,
   Filter,
   History,
   ImagePlus,
@@ -482,6 +483,12 @@ function ShiftControlsWorkspace({
   setCashEventForm,
   handleRecordCashEvent,
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
+  branchViewLocationId = null,
+  canViewBranchLocations = false,
+  onViewBranch = async () => false,
+  onExitBranchView = async () => {},
+  refreshBranchDirectory = async () => null,
   adminTerminalSwitching = false,
   onSelectAdminTerminal = async () => false,
   refreshAdminLocationMonitor = async () => {},
@@ -581,6 +588,7 @@ function ShiftControlsWorkspace({
     && Number(adminLocationMonitorState?.locationId || 0) === Number(viewingLocationId || operatingLocationId || 0)
     ? adminLocationMonitorState.terminalShifts
     : [];
+  const isBranchReadOnlyView = Boolean(branchViewLocationId);
   const switchTargetLocation = activeLocations.find(
     (location) => Number(location?.location_id || 0) === Number(switchTargetLocationId || 0)
   );
@@ -593,6 +601,9 @@ function ShiftControlsWorkspace({
     { id: 'cash_drawer', label: 'Cash Drawer', icon: Banknote },
     { id: 'cashier_history', label: 'Cashier History', icon: History }
   ];
+  const visibleShiftTabs = isBranchReadOnlyView
+    ? SHIFT_TABS.filter((tab) => tab.id === 'shift_location')
+    : SHIFT_TABS;
   const resolveTabIndex = (tabId) => {
     const index = SHIFT_TABS.findIndex((tab) => tab.id === tabId);
     return index >= 0 ? index : 0;
@@ -632,6 +643,7 @@ function ShiftControlsWorkspace({
   }, [shiftLocationId, activeShift?.pos_terminal_shift_id]);
 
   const handleTabChange = useCallback((nextTab) => {
+    if (isBranchReadOnlyView && nextTab !== 'shift_location') return;
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
 
@@ -666,7 +678,7 @@ function ShiftControlsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers]);
+  }, [activeTab, clearAnimationTimers, isBranchReadOnlyView]);
 
   const summaryRows = activeShift ? [
     {
@@ -764,6 +776,12 @@ function ShiftControlsWorkspace({
     return (
       <>
         <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+          {canViewBranchLocations ? (
+            <p className="text-[11px] leading-4 text-[#475569]">
+              Choose a branch from the Location directory above. Terminal selection remains an advanced device operation.
+            </p>
+          ) : (
+            <>
           <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
             Register Branch
           </Label>
@@ -788,6 +806,8 @@ function ShiftControlsWorkspace({
           <p className="mt-2 text-[11px] leading-4 text-[#475569]">
             Admin navigation can use this location without a shift for read-only monitoring. Select an available terminal below before opening a shift or transacting.
           </p>
+            </>
+          )}
 
           <div className="mt-4 border-t border-blue-100 pt-3">
             <Label htmlFor="admin-operating-terminal" className="block text-[12px] font-black text-[#0F172A]">
@@ -826,7 +846,7 @@ function ShiftControlsWorkspace({
                 );
               })}
             </select>
-          {canViewAdminLocationMonitor ? (
+          {canViewAdminLocationMonitor && !canViewBranchLocations ? (
             <div className="mt-4 border-t border-blue-100 pt-3">
               <Label htmlFor="admin-viewing-location" className="block text-[12px] font-black text-[#0F172A]">
                 Viewing Branch
@@ -1014,13 +1034,237 @@ function ShiftControlsWorkspace({
     );
   };
 
+  const renderBranchDirectory = ({ compact = false } = {}) => {
+    if (!canViewBranchLocations) return null;
+
+    const branchLocations = Array.isArray(branchDirectoryState?.locations)
+      ? branchDirectoryState.locations
+      : [];
+    const branchViewOrders = branchViewLocationId
+      ? branchMonitorOrders.slice(0, 6)
+      : [];
+
+    return (
+      <section
+        data-testid="pos-branch-directory"
+        className={compact ? 'mt-4' : 'mt-4 rounded-xl border border-blue-100 bg-blue-50/30 p-3'}
+      >
+        {!compact ? (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm">
+                <MapPinned className="h-4.5 w-4.5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[13px] font-black text-[#0F172A]">Locations</p>
+                <p className="mt-1 text-[11px] leading-4 text-[#475569]">
+                  View authorized branches and their current cashier/terminal occupancy. Branch viewing is read-only.
+                </p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-lg border-blue-200 bg-white px-3 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+              onClick={() => refreshBranchDirectory?.()}
+              disabled={branchDirectoryState?.loading || !isOnline}
+            >
+              <RefreshCcw className="mr-1.5 h-3.5 w-3.5" />
+              {branchDirectoryState?.loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
+        ) : null}
+
+        {branchDirectoryState?.errorMessage ? (
+          <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+            {branchDirectoryState.errorMessage}
+          </p>
+        ) : branchDirectoryState?.loading && branchLocations.length === 0 ? (
+          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-500">
+            Loading branch availability...
+          </p>
+        ) : branchLocations.length === 0 ? (
+          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
+            No authorized active branches are available for this account.
+          </p>
+        ) : (
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {branchLocations.map((location) => {
+              const locationId = Number(location?.location_id || 0);
+              const terminals = Array.isArray(location?.terminals) ? location.terminals : [];
+              const firstAvailableTerminal = terminals.find((terminal) => terminal?.can_open === true);
+              const activeTerminalKey = String(activeTerminalId || '').trim().toUpperCase();
+              const firstAvailableTerminalKey = String(firstAvailableTerminal?.terminal_id || '').trim().toUpperCase();
+              const canUseCurrentTerminal = Boolean(
+                firstAvailableTerminalKey && activeTerminalKey && firstAvailableTerminalKey === activeTerminalKey
+              );
+              const isViewing = Number(branchViewLocationId || 0) === locationId;
+              return (
+                <article
+                  key={`pos-branch-directory-${locationId}`}
+                  className={`rounded-lg border bg-white p-3 ${isViewing ? 'border-[#1A4E8D] ring-1 ring-blue-100' : 'border-slate-200'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-black text-[#0F172A]">{location.name}</p>
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        {location.open_shift_count || 0} active shift{Number(location.open_shift_count || 0) === 1 ? '' : 's'}
+                        {' · '}{location.is_open === false ? 'Closed' : 'Open'}
+                      </p>
+                    </div>
+                    <span className={`rounded-md border px-2 py-1 text-[10px] font-extrabold ${
+                      isViewing
+                        ? 'border-blue-200 bg-blue-50 text-[#1A4E8D]'
+                        : 'border-slate-200 bg-slate-50 text-slate-600'
+                    }`}>
+                      {isViewing ? 'Viewing' : 'Authorized'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {terminals.length === 0 ? (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+                        No active terminal is registered at this branch.
+                      </p>
+                    ) : terminals.map((terminal) => {
+                      const shiftOwner = terminal?.shift?.cashier?.display_name || 'No shift owner';
+                              const currentOperator = terminal?.current_operator?.display_name
+                                || (terminal?.current_operator_status === 'unavailable'
+                                  ? 'Operator status unavailable'
+                                  : '');
+                      const terminalStatus = terminal.status === 'stale'
+                        ? 'Stale'
+                        : (terminal.status === 'occupied' ? 'In use' : 'Available');
+                      return (
+                        <div key={`${locationId}-${terminal.terminal_id}`} className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-[11px] font-black text-[#0F172A]">
+                                {terminal.label || terminal.terminal_id}
+                              </p>
+                              <p className="mt-0.5 truncate text-[10px] text-slate-600">
+                                {terminal.status === 'available' ? 'No active shift' : `Shift owner: ${shiftOwner}`}
+                              </p>
+                              {currentOperator ? (
+                                <p className={`mt-0.5 truncate text-[10px] ${terminal?.current_operator_status === 'unavailable' ? 'text-amber-700' : 'text-slate-600'}`}>
+                                  Current operator: {currentOperator}
+                                </p>
+                              ) : null}
+                            </div>
+                            <span className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-extrabold ${
+                              terminal.status === 'stale'
+                                ? 'bg-amber-100 text-amber-900'
+                                : (terminal.status === 'occupied'
+                                  ? 'bg-amber-50 text-amber-800'
+                                  : 'bg-emerald-50 text-emerald-700')
+                            }`}>
+                              {terminalStatus}
+                            </span>
+                          </div>
+                          {terminal.reason_code ? (
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              {String(terminal.reason_code).replace(/^POS_/, '').replace(/_/g, ' ').toLowerCase()}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg border-blue-200 bg-white px-3 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+                      onClick={() => onViewBranch?.({ locationId })}
+                      disabled={!location.can_view || !isOnline}
+                      data-testid={`pos-view-branch-${locationId}`}
+                    >
+                      <Eye className="mr-1.5 h-3.5 w-3.5" />
+                      {isViewing ? 'Viewing Branch' : 'View Branch'}
+                    </Button>
+                    {location.can_open && canOpenShift && firstAvailableTerminal && canUseCurrentTerminal && !activeShift ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 rounded-lg border-emerald-200 bg-emerald-50 px-3 text-[11px] font-extrabold text-emerald-800 hover:bg-emerald-100"
+                        onClick={async () => {
+                          if (branchViewLocationId) await onExitBranchView?.({ returnMode: 'shift_controls' });
+                          setOperatingLocationId(locationId);
+                          setViewingLocationId(null);
+                          setRequestedAdminTerminalId(String(firstAvailableTerminal.terminal_id || '').trim());
+                        }}
+                        data-testid={`pos-prepare-open-shift-${locationId}`}
+                      >
+                        <Monitor className="mr-1.5 h-3.5 w-3.5" />
+                        Open Shift
+                      </Button>
+                    ) : location.can_open && canOpenShift && firstAvailableTerminal && !activeShift ? (
+                      <p className="w-full rounded-md border border-blue-100 bg-blue-50 px-2.5 py-2 text-[10px] leading-4 text-blue-800">
+                        Select terminal {firstAvailableTerminal.label || firstAvailableTerminal.terminal_id} in Terminal Setup before opening this branch.
+                      </p>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+
+        {branchViewLocationId ? (
+          <div className="mt-3 rounded-lg border border-blue-200 bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-black text-[#0F172A]">Read-only branch view</p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-600">
+                  Selling, checkout, shift takeover, cash movement, and settings changes are disabled while viewing this branch.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-lg border-slate-300 bg-white px-3 text-[11px] font-extrabold text-slate-700 hover:bg-slate-50"
+                onClick={() => onExitBranchView?.()}
+              >
+                Exit Branch View
+              </Button>
+            </div>
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Active online orders</p>
+              {branchMonitorOrders.length === 0 ? (
+                <p className="mt-2 text-[11px] text-slate-600">No active online orders for this branch.</p>
+              ) : (
+                <div className="mt-2 space-y-1.5">
+                  {branchViewOrders.map((order) => (
+                    <div key={`branch-view-order-${order.pos_transaction_id}`} className="flex items-center justify-between gap-2 rounded-md bg-slate-50 px-2.5 py-2 text-[11px]">
+                      <span className="truncate font-semibold text-slate-700">{order.customer_name || 'Guest Buyer'}</span>
+                      <span className="shrink-0 text-slate-500">{String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
   const renderShiftLocationPane = () => {
+    if (branchViewLocationId) {
+      return (
+        <div className="rounded-xl border border-blue-200 bg-white p-4 shadow-sm shadow-blue-100/70">
+          {renderBranchDirectory()}
+        </div>
+      );
+    }
     if (!activeShift) {
       return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
+          {renderBranchDirectory()}
           {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
@@ -1070,6 +1314,7 @@ function ShiftControlsWorkspace({
             <MapPinned className="h-4.5 w-4.5" />
           </div>
           <div className="min-w-0 flex-1">
+            {renderBranchDirectory({ compact: true })}
             <p className="text-[13px] font-black text-[#0F172A]">Shift Location</p>
             <p className="mt-1 text-[12px] leading-5 text-[#475569]">
               Current location used by catalog, checkout, and dashboard for this terminal.
@@ -1593,6 +1838,7 @@ function ShiftControlsWorkspace({
   );
 
   const renderActivePane = () => {
+    if (isBranchReadOnlyView) return renderShiftLocationPane();
     if (renderedTab === 'close_shift') return renderCloseShiftPane();
     if (renderedTab === 'cash_drawer') return renderCashDrawerPane();
     if (renderedTab === 'cashier_history') return renderCashierHistoryPane();
@@ -1605,7 +1851,7 @@ function ShiftControlsWorkspace({
       <h2 className="sr-only">Shift Controls</h2>
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70">
         <div className="hidden gap-2 sm:grid md:grid-cols-4">
-          {SHIFT_TABS.map((tab) => {
+          {visibleShiftTabs.map((tab) => {
             const TabIcon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -1627,7 +1873,7 @@ function ShiftControlsWorkspace({
         </div>
 
         <div className="flex items-center gap-2 sm:hidden">
-          {SHIFT_TABS.map((tab) => {
+          {visibleShiftTabs.map((tab) => {
             const TabIcon = tab.icon;
             const active = activeTab === tab.id;
             return (
@@ -4064,7 +4310,7 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          <div data-testid="pos-items-results" className="pos-items-mobile-results dgfy-pos-scroll-region min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results xl:flex-none">
+          <div data-testid="pos-items-results" className="pos-items-mobile-results dgfy-pos-scroll-region min-h-0 min-w-0 flex-1 content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results">
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const imageSources = resolvePosCatalogImageSources(item);
@@ -6170,6 +6416,12 @@ export default function TerminalOperationsWorkspace({
   incomingOrdersState = { loading: false, orders: [] },
   orderHistoryState = { loading: false, orders: [], pagination: null },
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
+  branchViewLocationId = null,
+  canViewBranchLocations = false,
+  onViewBranch = async () => false,
+  onExitBranchView = async () => {},
+  refreshBranchDirectory = async () => null,
   adminTerminalSwitching = false,
   onSelectAdminTerminal = async () => false,
   refreshAdminLocationMonitor = async () => {},
@@ -6212,12 +6464,17 @@ export default function TerminalOperationsWorkspace({
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
+  const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
   const canImportItems = IS_DGFY_POS_SURFACE && (
     terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('items:import')
   );
+  const isBranchReadOnlyView = Boolean(branchViewLocationId);
+  const workspaceLocationId = isBranchReadOnlyView
+    ? (branchViewLocationId || viewingLocationId || operatingLocationId)
+    : operatingLocationId;
   const handleNavigateToOrders = useCallback(() => {
     if (typeof window === 'undefined') {
       onSelectViewMode('incoming_queue');
@@ -6264,7 +6521,7 @@ export default function TerminalOperationsWorkspace({
       return (
         <IncomingQueueWorkspace
           canViewPos={canViewPos}
-          canTransactPos={canTransactPos}
+          canTransactPos={isBranchReadOnlyView ? false : canTransactPos}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
           orderHistoryState={orderHistoryState}
@@ -6283,6 +6540,7 @@ export default function TerminalOperationsWorkspace({
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
           viewingLocationId={viewingLocationId}
+          branchViewLocationId={branchViewLocationId}
           canViewAdminLocationMonitor={canViewAdminLocationMonitor}
           adminLocationMonitorState={adminLocationMonitorState}
           refreshAdminLocationMonitor={refreshAdminLocationMonitor}
@@ -6359,6 +6617,12 @@ export default function TerminalOperationsWorkspace({
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
           adminLocationMonitorState={adminLocationMonitorState}
+          branchDirectoryState={branchDirectoryState}
+          branchViewLocationId={branchViewLocationId}
+          canViewBranchLocations={canViewBranchLocations}
+          onViewBranch={onViewBranch}
+          onExitBranchView={onExitBranchView}
+          refreshBranchDirectory={refreshBranchDirectory}
           adminTerminalSwitching={adminTerminalSwitching}
           onSelectAdminTerminal={onSelectAdminTerminal}
           refreshAdminLocationMonitor={refreshAdminLocationMonitor}
@@ -6410,6 +6674,12 @@ export default function TerminalOperationsWorkspace({
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
           adminLocationMonitorState={adminLocationMonitorState}
+          branchDirectoryState={branchDirectoryState}
+          branchViewLocationId={branchViewLocationId}
+          canViewBranchLocations={canViewBranchLocations}
+          onViewBranch={onViewBranch}
+          onExitBranchView={onExitBranchView}
+          refreshBranchDirectory={refreshBranchDirectory}
           adminTerminalSwitching={adminTerminalSwitching}
           onSelectAdminTerminal={onSelectAdminTerminal}
           refreshAdminLocationMonitor={refreshAdminLocationMonitor}
@@ -6426,7 +6696,7 @@ export default function TerminalOperationsWorkspace({
           todayDashboard={todayDashboard}
           terminalMeta={terminalMeta}
           activeTerminalId={activeTerminalId}
-          operatingLocationId={operatingLocationId}
+          operatingLocationId={workspaceLocationId}
           reportRefreshKey={reportRefreshKey}
           employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
           isOnline={isOnline}
@@ -6476,15 +6746,15 @@ export default function TerminalOperationsWorkspace({
       return (
         <ItemsCatalogWorkspace
           canViewPos={canViewPos}
-          canCreateItems={canCreateItems}
-          canImportItems={canImportItems}
-          canEditItems={canEditItems}
-          canDeleteItems={canDeleteItems}
-          canManageCategories={canManageCategories}
-          canManageServiceCatalog={canManageServiceCatalog}
-          canManageServiceOptions={canManageServiceCatalog}
+          canCreateItems={isBranchReadOnlyView ? false : canCreateItems}
+          canImportItems={isBranchReadOnlyView ? false : canImportItems}
+          canEditItems={isBranchReadOnlyView ? false : canEditItems}
+          canDeleteItems={isBranchReadOnlyView ? false : canDeleteItems}
+          canManageCategories={isBranchReadOnlyView ? false : canManageCategories}
+          canManageServiceCatalog={isBranchReadOnlyView ? false : canManageServiceCatalog}
+          canManageServiceOptions={isBranchReadOnlyView ? false : canManageServiceCatalog}
           canViewFnbModifiers={canViewFnbModifiers}
-          canManageFnbModifiers={canManageFnbModifiers}
+          canManageFnbModifiers={isBranchReadOnlyView ? false : canManageFnbModifiers}
           locations={locationsState?.locations || []}
           serviceOperationsPermissions={serviceOperationsPermissions}
           shiftState={shiftState}
@@ -6495,7 +6765,7 @@ export default function TerminalOperationsWorkspace({
           locked={locked}
           isOnline={isOnline}
           onQueueOfflineItemDraft={onQueueOfflineItemDraft}
-          operatingLocationId={operatingLocationId}
+          operatingLocationId={workspaceLocationId}
           storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
         />
@@ -6520,6 +6790,14 @@ export default function TerminalOperationsWorkspace({
     canAdjustCashDrawer,
     canAdminBypassShiftPrompt,
     canViewAdminLocationMonitor,
+    branchDirectoryState,
+    branchViewLocationId,
+    isBranchReadOnlyView,
+    workspaceLocationId,
+    canViewBranchLocations,
+    onViewBranch,
+    onExitBranchView,
+    refreshBranchDirectory,
     canOpenShift,
     canCloseShift,
     canCloseDay,
@@ -6652,7 +6930,7 @@ export default function TerminalOperationsWorkspace({
       subtitle={modeMeta.subtitle}
       terminalUser={terminalUser}
       locked={locked}
-      bare={isSettingsView}
+      bare={usesOwnPageFrame}
       borderless={effectiveViewMode === 'items'}
       className={effectiveViewMode === 'items'
       ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2' + ' pos-items-workspace-shell'
