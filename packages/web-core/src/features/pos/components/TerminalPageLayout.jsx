@@ -123,7 +123,6 @@ export default function TerminalPageLayout({
     canManageVouchers = false,
     canManagePricelists = false,
     canViewVouchers = false,
-    canAccessBusinessAdmin = false,
     canAccessPosOnlySetup = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
@@ -167,7 +166,6 @@ export default function TerminalPageLayout({
     queueLocationScopeId,
     handleSelectViewMode,
     settingsEntryViewMode = 'settings_profile',
-    onOpenBackOffice = () => {},
     handleLock,
     handleCashierSignIn = () => {},
     checkoutOperatorLocked = false,
@@ -290,7 +288,6 @@ export default function TerminalPageLayout({
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
-  const workspaceBackOfficeHandler = onOpenBackOffice;
   const operatorScopeKey = `${operatingLocationId || ''}:${normalizedActiveTerminalId}:${activeShiftId || ''}`;
   const incomingOrders = useMemo(() => (
     showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
@@ -315,10 +312,10 @@ export default function TerminalPageLayout({
       shift_controls: 'Shift',
       cash_drawer: 'Cash Drawer Event',
       close_shift: 'Shift',
-      terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'
+      terminal_setup: 'POS Setup'
     };
     return titles[posViewMode] || 'POS Catalog';
-  }, [canAccessBusinessAdmin, posViewMode]);
+  }, [posViewMode]);
   const activeHeaderSubtitle = posViewMode === 'items' ? 'Catalog Description' : '';
 
   const handleFnbCheckoutContext = useCallback((context) => {
@@ -447,7 +444,7 @@ export default function TerminalPageLayout({
   const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedSidebarSurfaceClassName = locked
-    ? (canAccessBusinessAdmin ? 'select-none opacity-80' : 'pointer-events-none select-none opacity-80 blur-[2px]')
+    ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
@@ -707,7 +704,6 @@ export default function TerminalPageLayout({
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
               canViewAudit={canViewAudit}
-              canAccessBusinessAdmin={canAccessBusinessAdmin}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
@@ -739,7 +735,6 @@ export default function TerminalPageLayout({
               onSelectTerminal={onSelectTerminal}
               onSelectViewMode={handleSelectViewMode}
               onPrefetchViewMode={preloadWorkspaceForViewMode}
-              onOpenBackOffice={onOpenBackOffice}
               onUnlock={() => setDrawerOpen(true)}
               onLock={handleLock}
             />
@@ -763,15 +758,15 @@ export default function TerminalPageLayout({
             <button
               type="button"
               onClick={() => {
-                if (locked && !canAccessBusinessAdmin) return;
+                if (locked) return;
                 if (!isFloatingSidebarLayout) {
                   setSidebarCollapsed((collapsed) => !collapsed);
                   return;
                 }
                 setMobileNavOpen(true);
               }}
-              disabled={locked && !canAccessBusinessAdmin}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked && !canAccessBusinessAdmin ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
+              disabled={locked}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
               aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
               aria-pressed={!isFloatingSidebarLayout ? effectiveSidebarCollapsed : undefined}
             >
@@ -962,7 +957,6 @@ export default function TerminalPageLayout({
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
                 canViewAudit={canViewAudit}
-                canAccessBusinessAdmin={canAccessBusinessAdmin}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
                 canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
@@ -994,7 +988,6 @@ export default function TerminalPageLayout({
                 onSelectTerminal={onSelectTerminal}
                 onSelectViewMode={handleSelectViewMode}
                 onPrefetchViewMode={preloadWorkspaceForViewMode}
-                onOpenBackOffice={onOpenBackOffice}
                 onUnlock={() => {
                   setDrawerOpen(true);
                   setMobileNavOpen(false);
@@ -1105,7 +1098,6 @@ export default function TerminalPageLayout({
                 activeTerminalId={normalizedActiveTerminalId}
                 terminalRegistry={terminalRegistry}
                 terminalIdOptions={terminalIdOptions}
-                posOnlyMode={!canAccessBusinessAdmin}
                 locked={locked}
                 terminalMeta={terminalMeta}
                 shiftState={shiftState}
@@ -1194,7 +1186,6 @@ export default function TerminalPageLayout({
                 setDrawerOpen={setDrawerOpen}
                 refreshTerminalUser={refreshTerminalUser}
                 refreshTerminalMeta={refreshTerminalMeta}
-                onOpenBackOffice={workspaceBackOfficeHandler}
                 onPosSetupSaved={onPosSetupSaved}
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
                 onStorefrontContentStateChange={onStorefrontContentStateChange}
@@ -1244,9 +1235,7 @@ export default function TerminalPageLayout({
           onIdentityChange={handleIdentityChange}
           onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
-          canAccessBusinessAdmin={canAccessBusinessAdmin}
           terminalUser={terminalUser}
-          onOpenBackOffice={onOpenBackOffice}
           posTextSize={posTextSize}
           onPosTextSizeChange={onPosTextSizeChange}
         />

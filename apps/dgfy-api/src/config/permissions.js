@@ -1,30 +1,4 @@
 export const PERMISSIONS = {
-    // --- BUSINESS ADMIN DASHBOARD ---
-    // Business Admin is a tenant-scoped read/orchestration surface. It delegates
-    // writes to the owning domain modules and never becomes a second ledger.
-    BUSINESS_ADMIN: {
-        label: "Business Admin Dashboard",
-        actions: {
-            ACCESS: "business_admin:access",
-            VIEW_ALL_BRANCHES: "business_admin:branches:view_all",
-            VIEW_COSTS: "business_admin:costs:view",
-            APPROVE_HIGH_RISK: "business_admin:high_risk:approve"
-        }
-    },
-
-    // --- OPERATIONAL EXPENSES ---
-    // This is a tenant-local operational ledger. It is intentionally separate
-    // from POS drawer cash events and does not grant statutory accounting or tax
-    // filing authority.
-    EXPENSES: {
-        label: "Operational Expenses",
-        actions: {
-            VIEW: "expenses:view",
-            CREATE: "expenses:create",
-            VOID: "expenses:void"
-        }
-    },
-
     // --- INVENTORY MANAGEMENT ---
     INVENTORY: {
         label: "Inventory Management",
@@ -299,7 +273,6 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
         PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES,
         PERMISSIONS.DOWNPAYMENT.actions.VIEW_DOWNPAYMENT_SETTINGS,
-        ...Object.values(PERMISSIONS.EXPENSES.actions),
         // #1493: manager keeps read access to voucher campaigns but no longer manages them.
         // `vouchers:manage` is now Admin plus the mode-native `*_accounting` presets only -- see
         // modeRolePresets.js and ADR 0020's 2026-09-03 amendment.

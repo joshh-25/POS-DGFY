@@ -5,7 +5,6 @@ import {
   ClipboardCheck,
   ClipboardList,
   History,
-  LayoutDashboard,
   ListChecks,
   LogIn,
   Lock,
@@ -78,7 +77,6 @@ export default function TerminalWorkspaceSidebar({
   isMsmeMode = false,
   canViewPos = false,
   canViewAudit = false,
-  canAccessBusinessAdmin = false,
   canAccessPosOnlySetup = false,
   canViewVouchers = false,
   canManageCategories = false,
@@ -103,13 +101,11 @@ export default function TerminalWorkspaceSidebar({
   settingsTargetViewMode = 'settings_profile',
   onSelectViewMode = () => {},
   onPrefetchViewMode = () => {},
-  onOpenBackOffice = () => {},
   onUnlock = () => {},
   onLock = () => {}
 }) {
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const shouldShowBusinessAdmin = canAccessBusinessAdmin && !isCashierRole;
   const shouldShowIncomingQueue = showIncomingQueue;
   const hasActiveShift = Boolean(shiftState?.shift);
   const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
@@ -124,8 +120,9 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
-  const shouldRouteSettingsToBackOffice = shouldShowBusinessAdmin && !onboardingRestricted;
-  const shouldShowPosOnlySetup = canAccessPosOnlySetup && !onboardingRestricted;
+  const shouldShowPosOnlySetup = canAccessPosOnlySetup
+    && !onboardingRestricted
+    && settingsTargetViewMode !== 'terminal_setup';
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
@@ -399,31 +396,19 @@ export default function TerminalWorkspaceSidebar({
         <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
         {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>}
         <div className="space-y-2">
-          {shouldShowBusinessAdmin && (
-            <NavButton
-              label="Back Office"
-              icon={LayoutDashboard}
-              onClick={onOpenBackOffice}
-              disabled={!isOnline}
-              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : 'Business overview, reports, and branch operations')}
-              testId="pos-nav-backoffice"
-              collapsed={isCollapsed}
-            />
-          )}
-          {onboardingRestricted && (
-            <NavButton
-              label="Settings"
-              icon={Settings2}
-              active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
-              onClick={() => onSelectViewMode(settingsTargetViewMode)}
-              onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Profile, POS setup, and storefront tools')}
-              testId="pos-nav-settings"
-              collapsed={isCollapsed}
-            />
-          )}
-          {shouldRouteSettingsToBackOffice && (
+          <NavButton
+            label="Settings"
+            icon={Settings2}
+            active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
+              || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
+            onClick={() => onSelectViewMode(settingsTargetViewMode)}
+            onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
+            disabled={locked || !isOnline}
+            caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Profile, POS setup, and storefront tools')}
+            testId="pos-nav-settings"
+            collapsed={isCollapsed}
+          />
+          {shouldShowPosOnlySetup && (
             <NavButton
               label="Terminal setup"
               icon={Settings2}
@@ -433,19 +418,6 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Queue scope and local sound; device, printer, and terminal controls')}
               testId="pos-nav-terminal-setup"
-              collapsed={isCollapsed}
-            />
-          )}
-          {shouldShowPosOnlySetup && (
-            <NavButton
-              label="POS setup"
-              icon={Settings2}
-              active={currentViewMode === 'terminal_setup'}
-              onClick={() => onSelectViewMode('terminal_setup')}
-              onPrefetch={() => onPrefetchViewMode('terminal_setup')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Terminal identity, branch queue, printer, and order sound')}
-              testId="pos-nav-pos-setup"
               collapsed={isCollapsed}
             />
           )}

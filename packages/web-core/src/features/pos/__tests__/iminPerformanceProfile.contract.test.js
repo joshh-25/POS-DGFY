@@ -9,10 +9,6 @@ const posEntrySource = fs.readFileSync(
   'utf8'
 );
 const sharedStyles = fs.readFileSync(path.join(webCoreRoot, 'src/index.css'), 'utf8');
-const businessAdminStyles = fs.readFileSync(
-  path.join(repositoryRoot, 'apps/dgfy-pos/src/features/businessAdmin/businessAdmin.css'),
-  'utf8'
-);
 const catalogWorkflowSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js'),
   'utf8'
@@ -150,12 +146,6 @@ describe('iMin POS performance profile contract', () => {
     expect(terminalOperationsSource).toContain('{showCreateServiceModal ? (');
     expect(terminalOperationsSource).toContain('{editingServiceItem ? (');
     expect(terminalOperationsSource).toContain('{itemImagePreview ? (');
-  });
-
-  it('removes the direct Back Office action-bar backdrop filter only under the iMin marker', () => {
-    expect(businessAdminStyles).toContain('html.dgfy-imin-performance .business-admin-settings-editor .business-admin-storefront-location-actions');
-    expect(businessAdminStyles).toContain('-webkit-backdrop-filter: none;');
-    expect(businessAdminStyles).toContain('backdrop-filter: none;');
   });
 
   it('defers the large operations workspace on iMin and prefetches the selected view on intent', () => {

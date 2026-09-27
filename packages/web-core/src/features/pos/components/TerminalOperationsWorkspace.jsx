@@ -6212,6 +6212,7 @@ export default function TerminalOperationsWorkspace({
   const modeMeta = MODE_META[effectiveViewMode] || MODE_META.shift_controls;
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
+  const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
   const canImportItems = IS_DGFY_POS_SURFACE && (
@@ -6652,7 +6653,7 @@ export default function TerminalOperationsWorkspace({
       subtitle={modeMeta.subtitle}
       terminalUser={terminalUser}
       locked={locked}
-      bare={isSettingsView}
+      bare={usesOwnPageFrame}
       borderless={effectiveViewMode === 'items'}
       className={effectiveViewMode === 'items'
       ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2' + ' pos-items-workspace-shell'
