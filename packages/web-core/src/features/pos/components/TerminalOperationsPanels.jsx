@@ -563,6 +563,7 @@ function IncomingQueueWorkspace({
   locationsState,
   operatingLocationId,
   viewingLocationId,
+  branchViewLocationId = null,
   queueLocationScopeId,
   adminLocationMonitorState,
   canViewAdminLocationMonitor = false,
@@ -878,7 +879,7 @@ function IncomingQueueWorkspace({
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hasActiveShift = Boolean(shiftState?.shift);
-  const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
+  const isAdminBranchMonitor = Boolean(branchViewLocationId) || (!hasActiveShift && canViewAdminLocationMonitor);
 
   // Phase 232 review RF-2 (#1305): the access/error/shift_required/loading ladder used to live only
   // inline in the default (tab) branch below, so the split branch skipped it entirely and rendered

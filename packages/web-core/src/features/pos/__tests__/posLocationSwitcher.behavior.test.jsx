@@ -8,8 +8,8 @@ afterEach(() => {
   cleanup();
 });
 
-describe('POS global location switch entry', () => {
-  it('routes the sidebar switcher through the governed Shift controls flow', () => {
+describe('POS Shift-owned branch directory entry', () => {
+  it('removes the standalone switcher and keeps Location ownership inside Shift', () => {
     const onSelectViewMode = vi.fn();
 
     render(
@@ -25,11 +25,12 @@ describe('POS global location switch entry', () => {
       />
     );
 
-    const switcher = screen.getByTestId('pos-location-switcher');
-    expect(switcher.textContent).toContain('Switch Location');
-    expect(switcher.textContent).toContain('Operating location: Main Branch');
+    expect(screen.queryByTestId('pos-location-switcher')).toBeNull();
 
-    fireEvent.click(switcher);
+    const shiftButton = screen.getByRole('button', { name: /^Shift/ });
+    expect(shiftButton.textContent).toContain('Shift');
+
+    fireEvent.click(shiftButton);
     expect(onSelectViewMode).toHaveBeenCalledWith('shift_controls');
   });
 });

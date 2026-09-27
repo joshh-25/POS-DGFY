@@ -84,6 +84,7 @@ export default function POSCheckoutTerminal({
     fnbContext = null,
     workflowMode = null,
     effectiveCapabilities = null,
+    readOnlyBranchView = false,
     dineInCashCheckout = null,
     dineInCashCheckoutSaving = false,
     dineInCashCheckoutError = '',
@@ -480,7 +481,9 @@ export default function POSCheckoutTerminal({
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
     );
     const terminalPermissionList = useMemo(() => parseTerminalPermissions(terminalUser?.permissions), [terminalUser?.permissions]);
-    const canVoidTransactions = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void');
+    const canVoidTransactions = !readOnlyBranchView && (
+        terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void')
+    );
     const canUseEmployeeCredit = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:employee_credit:use');
     const isAdminOperator = terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
     const safeAppliedDiscount = useMemo(() => normalizeAppliedDiscount(appliedDiscount), [appliedDiscount]);

@@ -8,7 +8,6 @@ import {
   ListChecks,
   LogIn,
   Lock,
-  MapPinned,
   Percent,
   Settings2,
   ShoppingCart,
@@ -91,10 +90,10 @@ export default function TerminalWorkspaceSidebar({
   incomingOrdersState = { orders: [] },
   adminLocationMonitorState = { orders: [] },
   canViewAdminLocationMonitor = false,
+  branchViewLocationId = null,
   locationsState = { locations: [] },
   operatingLocationId = null,
   viewingLocationId = null,
-  canSwitchPosLocation = false,
   terminalMeta = null,
   queueLocationScopeId = null,
   queueSummary = {},
@@ -109,7 +108,8 @@ export default function TerminalWorkspaceSidebar({
   const isCashierRole = normalizedRole === 'cashier';
   const shouldShowIncomingQueue = showIncomingQueue;
   const hasActiveShift = Boolean(shiftState?.shift);
-  const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
+  const isBranchReadOnlyView = Boolean(branchViewLocationId);
+  const isAdminBranchMonitor = isBranchReadOnlyView || (!hasActiveShift && canViewAdminLocationMonitor);
   const activeIncomingOrders = Array.isArray(incomingOrdersState?.orders)
     ? incomingOrdersState.orders.filter((order) => !isDineInOrder(order))
     : [];
@@ -179,22 +179,6 @@ export default function TerminalWorkspaceSidebar({
     || resolvedRegisterBranchName
     || ''
   ).trim();
-  const locationContextLabel = isAdminBranchMonitor || viewingLocationId ? 'Viewing location' : 'Operating location';
-  const locationContextName = isAdminBranchMonitor || viewingLocationId
-    ? (resolvedViewingBranchName || 'Not selected')
-    : (resolvedRegisterBranchName || 'Not assigned');
-  const locationSwitcherCaption = locked
-    ? 'Unlock terminal to manage location context'
-    : (onboardingRestricted
-      ? onboardingCaption
-      : (!isOnline
-        ? 'Reconnect before switching locations'
-        : (!canSwitchPosLocation
-          ? 'Permission required; current location remains read-only'
-          : (hasActiveShift
-            ? 'Close the current shift, count cash, and open the destination shift'
-            : 'Open Shift to choose the operating location'))));
-
   return (
     <aside
       className={`${className} h-full min-h-0 overflow-hidden rounded-none border-0 border-r border-slate-200 bg-white shadow-sm`}
@@ -276,32 +260,6 @@ export default function TerminalWorkspaceSidebar({
         )}
 
         <div className={isCollapsed ? 'px-2 py-3' : `px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
-        <button
-          type="button"
-          data-testid="pos-location-switcher"
-          onClick={() => onSelectViewMode('shift_controls')}
-          disabled={locked || onboardingRestricted || !isOnline}
-          title={isCollapsed ? `Switch Location: ${locationContextName}` : undefined}
-          aria-label={isCollapsed ? 'Switch Location' : undefined}
-          className={`flex min-w-0 w-full rounded-xl border text-left transition ${isCollapsed
-            ? 'h-11 items-center justify-center px-0'
-            : 'items-start gap-2.5 px-2.5 py-2.5'} ${
-            locked || onboardingRestricted || !isOnline
-              ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
-              : 'border-blue-200 bg-blue-50/60 hover:border-blue-300 hover:bg-blue-50'
-          }`}
-        >
-          <MapPinned className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#1A4E8D]" />
-          {!isCollapsed && (
-            <span className="min-w-0">
-              <span className="block break-words text-[12px] font-extrabold leading-4 text-[#0F172A]">Switch Location</span>
-              <span className="mt-1 block truncate text-[10.5px] font-bold leading-[14px] text-[#1A4E8D]" title={locationContextName}>
-                {locationContextLabel}: {locationContextName}
-              </span>
-              <span className="mt-1 block line-clamp-2 text-[10.5px] leading-[14px] text-[#64748B]">{locationSwitcherCaption}</span>
-            </span>
-          )}
-        </button>
         {!isCollapsed && <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
         <div className={isCollapsed ? 'space-y-2' : 'mt-3 space-y-2'}>
           <NavButton
@@ -310,8 +268,8 @@ export default function TerminalWorkspaceSidebar({
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
             onPrefetch={() => onPrefetchViewMode('checkout')}
-            disabled={locked || onboardingRestricted || !navigationShiftReady}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
+            disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to sell or manage the cart' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened'))))}
             collapsed={isCollapsed}
           />
           {showFnbService && (
@@ -321,8 +279,8 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'fnb_service'}
               onClick={() => onSelectViewMode('fnb_service')}
               onPrefetch={() => onPrefetchViewMode('fnb_service')}
-              disabled={locked || onboardingRestricted || !navigationShiftReady}
-              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets'))}
+              disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
+              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to operate F&B service' : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets')))}
               testId="pos-nav-fnb-service"
               collapsed={isCollapsed}
             />
@@ -445,8 +403,8 @@ export default function TerminalWorkspaceSidebar({
               || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
             onClick={() => onSelectViewMode(settingsTargetViewMode)}
             onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
-            disabled={locked || !isOnline}
-            caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Profile, POS setup, and storefront tools')}
+            disabled={locked || !isOnline || isBranchReadOnlyView}
+            caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change settings' : 'Profile, POS setup, and storefront tools'))}
             testId="pos-nav-settings"
             collapsed={isCollapsed}
           />
@@ -457,8 +415,8 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'terminal_setup'}
               onClick={() => onSelectViewMode('terminal_setup')}
               onPrefetch={() => onPrefetchViewMode('terminal_setup')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Queue scope and local sound; device, printer, and terminal controls')}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change terminal settings' : 'Queue scope and local sound; device, printer, and terminal controls'))}
               testId="pos-nav-terminal-setup"
               collapsed={isCollapsed}
             />
@@ -477,7 +435,7 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'settings_vouchers'}
               onClick={() => onSelectViewMode('settings_vouchers')}
               onPrefetch={() => onPrefetchViewMode('settings_vouchers')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -494,7 +452,7 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'settings_pricelists'}
               onClick={() => onSelectViewMode('settings_pricelists')}
               onPrefetch={() => onPrefetchViewMode('settings_pricelists')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -510,7 +468,7 @@ export default function TerminalWorkspaceSidebar({
               icon={Percent}
               active={currentViewMode === 'settings_affiliates'}
               onClick={() => onSelectViewMode('settings_affiliates')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -527,8 +485,8 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'audit'}
               onClick={() => onSelectViewMode('audit')}
               onPrefetch={() => onPrefetchViewMode('audit')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Admin-only activity log for POS and account changes')}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to open the tenant audit log' : 'Admin-only activity log for POS and account changes'))}
               testId="pos-nav-audit"
               collapsed={isCollapsed}
             />

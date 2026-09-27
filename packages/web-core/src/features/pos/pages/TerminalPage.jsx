@@ -12,6 +12,8 @@ import {
   closeTerminalShift,
   forceCloseStaleTerminalShift,
   fetchAdminLocationMonitor,
+  fetchPosBranchDirectory,
+  recordPosBranchViewEvent,
   fetchIncomingOnlineOrders,
   fetchPosCatalog,
   fetchPosSettingsBootstrap,
@@ -219,6 +221,16 @@ const buildTerminalBusinessSettings = (settings = {}) => ({
 });
 
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
+// Branch view is a read-only POS surface. These modes are safe to open against the
+// selected branch; checkout, settings, fulfillment mutations, and shift mutations
+// remain outside the branch-view surface.
+const BRANCH_VIEW_READ_ONLY_MODES = new Set([
+  'shift_controls',
+  'incoming_queue',
+  'history',
+  'reports',
+  'items'
+]);
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
   'settings_profile',
@@ -800,6 +812,14 @@ export default function TerminalPage() {
     locationId: null,
     errorMessage: ''
   });
+  const [branchDirectoryState, setBranchDirectoryState] = useState({
+    loading: false,
+    locations: [],
+    scope: '',
+    errorMessage: ''
+  });
+  const [branchViewLocationId, setBranchViewLocationId] = useState(null);
+  const branchViewReturnModeRef = useRef('shift_controls');
   const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
@@ -1088,6 +1108,10 @@ export default function TerminalPage() {
   const canViewAttendance = hasPermission('pos:attendance:view');
   const canOperateAttendance = hasPermission('pos:attendance:operate');
   const canSwitchPosLocation = hasPermission('pos:switch_location');
+  // Branch viewing is intentionally separate from the governed cash/shift switch. A user must
+  // receive the dedicated read-only capability; pos:switch_location only authorizes the
+  // privileged shift relocation flow.
+  const canViewBranchLocations = hasPermission('pos:branch_view');
   const canAdjustCashDrawer = hasPermission('pos:cash_drawer_adjust');
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
@@ -1114,7 +1138,11 @@ export default function TerminalPage() {
     serviceOperationsPermissions.viewClients
   ].some(Boolean);
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
-  const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
+  const canOpenShift = canTransactPos && (
+    !canAdminBypassShiftPrompt
+    || isMasterAdminOperator
+    || canViewBranchLocations
+  );
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = !isCashierRole && hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
@@ -1924,9 +1952,9 @@ export default function TerminalPage() {
     const { loadPosOrderHistoryState } = await import('../utils/posOrderHistoryLoader.js');
     const result = await loadPosOrderHistoryState({
       locked,
-      canViewPos,
+      canViewPos: canViewPos || (Boolean(branchViewLocationId) && canViewBranchLocations),
       isOnline,
-      locationId: Number(queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0),
+      locationId: Number(branchViewLocationId || queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0),
       search,
       fulfillmentStatus,
       paymentStatus,
@@ -1935,7 +1963,96 @@ export default function TerminalPage() {
     });
     setOrderHistoryState(result.state);
     if (!silent && result.toastMessage) toast.error(result.toastMessage);
-  }, [canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
+  }, [branchViewLocationId, canViewBranchLocations, canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
+
+  const refreshBranchDirectory = useCallback(async ({ silent = false } = {}) => {
+    if (locked || !canViewBranchLocations || !isOnline) {
+      setBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        ...(locked || !canViewBranchLocations ? { locations: [], scope: '' } : {})
+      }));
+      return null;
+    }
+
+    setBranchDirectoryState((previous) => ({
+      ...previous,
+      loading: true,
+      errorMessage: ''
+    }));
+    try {
+      const payload = await fetchPosBranchDirectory(
+        silent ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
+      const nextState = {
+        loading: false,
+        locations: Array.isArray(payload?.locations) ? payload.locations : [],
+        scope: String(payload?.scope || '').trim(),
+        errorMessage: ''
+      };
+      setBranchDirectoryState(nextState);
+      return nextState;
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to load the branch directory.';
+      setBranchDirectoryState((previous) => ({
+        ...previous,
+        loading: false,
+        errorMessage: message
+      }));
+      if (!silent) toast.error(message);
+      return null;
+    }
+  }, [canViewBranchLocations, isOnline, locked]);
+
+  useEffect(() => {
+    refreshBranchDirectory({ silent: true });
+  }, [refreshBranchDirectory]);
+
+  const handleViewBranch = useCallback(async ({ locationId } = {}) => {
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!canViewBranchLocations || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) {
+      toast.error('You do not have permission to view that branch.');
+      return false;
+    }
+    if (!branchViewLocationId) {
+      branchViewReturnModeRef.current = posViewMode || 'shift_controls';
+    }
+    setBranchViewLocationId(normalizedLocationId);
+    setViewingLocationId(normalizedLocationId);
+    commitViewModeSelection('shift_controls');
+    try {
+      await recordPosBranchViewEvent({
+        location_id: normalizedLocationId,
+        event: 'enter',
+        operating_location_id: Number(shiftState?.shift?.location_id || operatingLocationId || 0) || undefined,
+        active_shift_id: Number(shiftState?.shift?.pos_terminal_shift_id || 0) || undefined
+      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+    } catch {
+      // The view itself remains safe and usable if audit telemetry is temporarily unavailable.
+    }
+    return true;
+  }, [branchViewLocationId, canViewBranchLocations, commitViewModeSelection, operatingLocationId, posViewMode, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
+
+  const handleExitBranchView = useCallback(async ({ returnMode = null } = {}) => {
+    const previousLocationId = Number.parseInt(branchViewLocationId, 10);
+    if (Number.isInteger(previousLocationId) && previousLocationId > 0) {
+      try {
+        await recordPosBranchViewEvent({
+          location_id: previousLocationId,
+          event: 'exit',
+          operating_location_id: Number(shiftState?.shift?.location_id || operatingLocationId || 0) || undefined,
+          active_shift_id: Number(shiftState?.shift?.pos_terminal_shift_id || 0) || undefined
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      } catch {
+        // Do not strand the operator in read-only mode when audit telemetry is unavailable.
+      }
+    }
+    setBranchViewLocationId(null);
+    setViewingLocationId(null);
+    const nextMode = returnMode || branchViewReturnModeRef.current || 'shift_controls';
+    branchViewReturnModeRef.current = 'shift_controls';
+    commitViewModeSelection(nextMode);
+  }, [branchViewLocationId, commitViewModeSelection, operatingLocationId, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
     const requestSequence = adminLocationMonitorRequestSequenceRef.current + 1;
@@ -1956,7 +2073,7 @@ export default function TerminalPage() {
       currentScopeKey: adminLocationMonitorScopeRef.current
     });
 
-    if (locked || !canSwitchPosLocation || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
+    if (locked || !canViewBranchLocations || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
       if (!isCurrentRequest()) return;
       setAdminLocationMonitorState({
         loading: false,
@@ -2004,7 +2121,7 @@ export default function TerminalPage() {
       });
       if (!silent) toast.error(message);
     }
-  }, [activeTenantId, activeTerminalId, canSwitchPosLocation, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
+  }, [activeTenantId, activeTerminalId, canViewBranchLocations, isOnline, locked, operatingLocationId, shiftState?.shift?.pos_terminal_shift_id, viewingLocationId]);
 
   useEffect(() => {
     refreshAdminLocationMonitor({ silent: true });
@@ -5196,8 +5313,8 @@ export default function TerminalPage() {
   }, []);
 
   const handleOpenShift = async () => {
-    if (canAdminBypassShiftPrompt && !isMasterAdminOperator) {
-      toast.error('Administrator navigation is read-only. Sign in as the cashier to open the shift.');
+    if (canAdminBypassShiftPrompt && !isMasterAdminOperator && !canViewBranchLocations) {
+      toast.error('Administrator navigation is read-only unless branch-view operating access is explicitly granted.');
       return;
     }
     if (terminalUnlockRequired) {
@@ -5839,7 +5956,9 @@ export default function TerminalPage() {
 
     let detail = transaction;
     if (!detail) {
-      detail = await fetchPosTransactionById(normalizedId);
+      detail = await fetchPosTransactionById(normalizedId, {
+        location_id: branchViewLocationId || undefined
+      });
     }
     if (automatic && String(detail?.receipt_print_status || '').trim().toLowerCase() === 'printed') {
       return { skipped: true, success: true };
@@ -5865,7 +5984,7 @@ export default function TerminalPage() {
       toast.success('Online order receipt printed.');
     }
     return outcome;
-  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
+  }, [activeTerminalId, branchViewLocationId, posHardware, terminalMeta.businessSettings]);
 
   const printOnlineOrderKitchenTicket = useCallback(async (order) => {
     const lines = Array.isArray(order?.lines) ? order.lines : [];
@@ -6393,7 +6512,9 @@ export default function TerminalPage() {
 
     setIncomingReceiptOpeningId(normalizedId);
     try {
-      const detail = await fetchPosTransactionById(normalizedId);
+      const detail = await fetchPosTransactionById(normalizedId, {
+        location_id: branchViewLocationId || undefined
+      });
       setIncomingOrderDetail(detail || null);
       if (printOrder) {
         await printOnlineOrderKitchenTicket(detail);
@@ -6504,14 +6625,24 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (!activeViewModes.includes(nextMode)) {
+    const branchViewReadOnlyNavigation = Boolean(
+      branchViewLocationId
+      && canViewBranchLocations
+      && BRANCH_VIEW_READ_ONLY_MODES.has(nextMode)
+    );
+    if (branchViewLocationId && !branchViewReadOnlyNavigation) {
+      toast.error('This module is not available in branch view. Exit the read-only branch viewer before returning to terminal operations.');
+      setMobileNavOpen(false);
+      return;
+    }
+    if (!activeViewModes.includes(nextMode) && !branchViewReadOnlyNavigation) {
       if (isCashierRole) {
         toast.error('Cashier access is limited to Sell, History, Items, Orders, and Shift.');
       }
       setMobileNavOpen(false);
       return;
     }
-    if (nextMode === 'items' && !canViewPos && !canManageCategories) {
+    if (nextMode === 'items' && !canViewPos && !canManageCategories && !branchViewReadOnlyNavigation) {
       toast.error('POS view or category-management permission is required.');
       setMobileNavOpen(false);
       return;
@@ -6533,9 +6664,9 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode);
+    const isShiftExemptViewMode = SHIFT_EXEMPT_VIEW_MODES.has(nextMode) || branchViewReadOnlyNavigation;
     const isPinProtectedViewMode = PIN_PROTECTED_VIEW_MODES.has(nextMode);
-    if (setupFlowActive) {
+    if (setupFlowActive && !branchViewReadOnlyNavigation) {
       const allowedSetupModes = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'items']);
       if (!allowedSetupModes.has(nextMode)) {
         toast.error(
@@ -6572,7 +6703,7 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
-    if (isPinProtectedViewMode && !canAccessSettingsDirectly && !isAuthorizedPosOnlyTerminalSetup) {
+    if (isPinProtectedViewMode && !branchViewReadOnlyNavigation && !canAccessSettingsDirectly && !isAuthorizedPosOnlyTerminalSetup) {
       let pinEnabled = settingsAccessPinEnabled;
       if (!pinEnabled) {
         const refreshedMeta = await hydrateTerminalMeta({ suppressGlobalErrors: true });
@@ -6605,6 +6736,8 @@ export default function TerminalPage() {
     commitViewModeSelection(nextMode);
   }, [
     activeViewModes,
+    branchViewLocationId,
+    canViewBranchLocations,
     canAccessSettingsDirectly,
     canAccessPosOnlySetup,
     canAdminBypassShiftPrompt,
@@ -7265,6 +7398,12 @@ function PosRestorationLoadingScreen() {
           incomingOrdersState={incomingOrdersState}
           orderHistoryState={orderHistoryState}
           adminLocationMonitorState={adminLocationMonitorState}
+          branchDirectoryState={branchDirectoryState}
+          branchViewLocationId={branchViewLocationId}
+          canViewBranchLocations={canViewBranchLocations}
+          onViewBranch={handleViewBranch}
+          onExitBranchView={handleExitBranchView}
+          refreshBranchDirectory={refreshBranchDirectory}
           adminTerminalSwitching={adminTerminalSwitching}
           onSelectAdminTerminal={handleSelectAdminTerminal}
           refreshAdminLocationMonitor={refreshAdminLocationMonitor}
