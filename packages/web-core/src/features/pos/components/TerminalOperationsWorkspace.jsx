@@ -4064,7 +4064,7 @@ function ItemsWorkspace({
         </div>
       ) : (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-          <div data-testid="pos-items-results" className="pos-items-mobile-results dgfy-pos-scroll-region min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results xl:flex-none">
+          <div data-testid="pos-items-results" className="pos-items-mobile-results dgfy-pos-scroll-region min-h-0 min-w-0 flex-1 content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results">
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const imageSources = resolvePosCatalogImageSources(item);
