@@ -10,9 +10,9 @@ policy_version: 2026.09.25
 verification_evidence: npm run check:architecture,npm run check:compliance,npm run build:pos,npx vitest run packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js,git diff --check
 rollback_note: Revert the three responsive Items scroll changes and this declaration together, then rerun the POS build, compliance check, and focused responsive-scroll contract test. No API, database schema, item data, stock, pricing, checkout, payment, or migration change is included.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED
-preflight_run_at: 2026-09-27T16:02:00+08:00
-preflight_request_ref: NOT-EXECUTED-2100-POS-ITEMS-SCROLL
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-27T15:57:35.804Z
+preflight_request_ref: PREFLIGHT-36331195614-2026-09-27-POS-ITEMS-SCROLL-FOLLOWUP
 ---
 
 # POS Items Catalog Scroll Follow-up
