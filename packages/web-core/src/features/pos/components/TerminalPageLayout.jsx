@@ -722,6 +722,7 @@ export default function TerminalPageLayout({
               locationsState={locationsState}
               operatingLocationId={operatingLocationId}
               viewingLocationId={viewingLocationId}
+              canSwitchPosLocation={canSwitchPosLocation}
               accessibleCompanies={accessibleCompanies}
               terminalMeta={terminalMeta}
               queueLocationScopeId={queueLocationScopeId}
@@ -975,6 +976,7 @@ export default function TerminalPageLayout({
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
                 viewingLocationId={viewingLocationId}
+                canSwitchPosLocation={canSwitchPosLocation}
                 accessibleCompanies={accessibleCompanies}
                 terminalMeta={terminalMeta}
                 queueLocationScopeId={queueLocationScopeId}

@@ -94,6 +94,7 @@ export default function TerminalWorkspaceSidebar({
   locationsState = { locations: [] },
   operatingLocationId = null,
   viewingLocationId = null,
+  canSwitchPosLocation = false,
   terminalMeta = null,
   queueLocationScopeId = null,
   queueSummary = {},
@@ -178,6 +179,21 @@ export default function TerminalWorkspaceSidebar({
     || resolvedRegisterBranchName
     || ''
   ).trim();
+  const locationContextLabel = isAdminBranchMonitor || viewingLocationId ? 'Viewing location' : 'Operating location';
+  const locationContextName = isAdminBranchMonitor || viewingLocationId
+    ? (resolvedViewingBranchName || 'Not selected')
+    : (resolvedRegisterBranchName || 'Not assigned');
+  const locationSwitcherCaption = locked
+    ? 'Unlock terminal to manage location context'
+    : (onboardingRestricted
+      ? onboardingCaption
+      : (!isOnline
+        ? 'Reconnect before switching locations'
+        : (!canSwitchPosLocation
+          ? 'Permission required; current location remains read-only'
+          : (hasActiveShift
+            ? 'Close the current shift, count cash, and open the destination shift'
+            : 'Open Shift to choose the operating location'))));
 
   return (
     <aside
@@ -260,6 +276,32 @@ export default function TerminalWorkspaceSidebar({
         )}
 
         <div className={isCollapsed ? 'px-2 py-3' : `px-3 ${showBrand ? 'py-6' : 'pb-6 pt-3'}`}>
+        <button
+          type="button"
+          data-testid="pos-location-switcher"
+          onClick={() => onSelectViewMode('shift_controls')}
+          disabled={locked || onboardingRestricted || !isOnline}
+          title={isCollapsed ? `Switch Location: ${locationContextName}` : undefined}
+          aria-label={isCollapsed ? 'Switch Location' : undefined}
+          className={`flex min-w-0 w-full rounded-xl border text-left transition ${isCollapsed
+            ? 'h-11 items-center justify-center px-0'
+            : 'items-start gap-2.5 px-2.5 py-2.5'} ${
+            locked || onboardingRestricted || !isOnline
+              ? 'cursor-not-allowed border-slate-200 bg-slate-50 opacity-60'
+              : 'border-blue-200 bg-blue-50/60 hover:border-blue-300 hover:bg-blue-50'
+          }`}
+        >
+          <MapPinned className="mt-0.5 h-[18px] w-[18px] shrink-0 text-[#1A4E8D]" />
+          {!isCollapsed && (
+            <span className="min-w-0">
+              <span className="block break-words text-[12px] font-extrabold leading-4 text-[#0F172A]">Switch Location</span>
+              <span className="mt-1 block truncate text-[10.5px] font-bold leading-[14px] text-[#1A4E8D]" title={locationContextName}>
+                {locationContextLabel}: {locationContextName}
+              </span>
+              <span className="mt-1 block line-clamp-2 text-[10.5px] leading-[14px] text-[#64748B]">{locationSwitcherCaption}</span>
+            </span>
+          )}
+        </button>
         {!isCollapsed && <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Primary Modes</p>}
         <div className={isCollapsed ? 'space-y-2' : 'mt-3 space-y-2'}>
           <NavButton
