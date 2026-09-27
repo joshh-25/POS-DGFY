@@ -1068,7 +1068,12 @@ export default function TerminalPageLayout({
           )}
 
           {isOperationsWorkspaceMode && (
-            <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
+            <div
+              key="operations-workspace"
+              className={isItemsCatalogWorkspace
+                ? 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'
+                : 'min-w-0 max-w-full catalog-slide-enter'}
+            >
             {posViewMode === 'fnb_service' ? (
               <div id={TERMINAL_SECTION_IDS.fnbService} data-testid="pos-fnb-service-workspace">
                 {locked ? (

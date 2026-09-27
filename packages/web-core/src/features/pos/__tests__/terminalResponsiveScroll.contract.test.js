@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
+const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
@@ -22,6 +23,7 @@ const appStylesPath = path.resolve(__dirname, '../../../index.css');
 
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
+  let terminalOperationsWorkspaceContent = '';
   let posCheckoutContent = '';
   let workflowPanelContent = '';
   let posTerminalLayoutContent = '';
@@ -34,6 +36,7 @@ describe('POS terminal responsive scroll contracts', () => {
 
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
+    terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
@@ -109,6 +112,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
+    expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
+    expect(terminalOperationsWorkspaceContent).toContain('content-start auto-rows-max overflow-y-auto overscroll-contain pr-1 touch-pan-y grid gap-2 xl:grid-cols-2 dgfy-pos-items-catalog-results');
+    expect(terminalOperationsWorkspaceContent).not.toContain('dgfy-pos-items-catalog-results xl:flex-none');
     expect(terminalLayoutContent).toContain("'flex h-full min-h-0 min-w-0 max-w-full flex-col catalog-slide-enter'");
     expect(terminalLayoutContent).toContain('data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter"');
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
