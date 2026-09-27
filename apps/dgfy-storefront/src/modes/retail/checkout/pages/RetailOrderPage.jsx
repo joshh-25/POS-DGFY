@@ -283,6 +283,7 @@ export function RetailOrderPage({
               canAddPinnedLocation={canAddPinnedLocation}
               orderMethodOptions={orderMethodOptions}
               orderTimingPolicy={orderTimingPolicy}
+              storefrontHours={selectedStore?.storefront_hours}
               customerAddress={customerAddress}
               customerPin={customerPin}
               deliveryLocationAction={deliveryLocationAction}

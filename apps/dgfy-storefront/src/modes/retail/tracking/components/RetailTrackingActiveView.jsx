@@ -14,9 +14,8 @@ import {
   ShoppingBag,
   Store,
 } from 'lucide-react';
-import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
-import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
 import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
 import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
@@ -122,55 +121,17 @@ export function RetailTrackingActiveView({ actions, formatters, isMobileViewport
                       {/* Right Column: Order Details Sidebar */}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-                        {/* Receipt Box */}
-                        <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,.03)' }}>
-                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                              <h4 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontFamily: servicesDisplayFont }}>Order Details</h4>
-                           </div>
-                           <div style={{ display: 'grid', gap: 16 }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <div style={{ fontSize: 12, color: dgfySoftText }}>Order PIN</div>
-                                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontFamily: servicesBodyFont }}>{trackingResult.tracking_pin}</div>
-                                </div>
-                                <button type="button" onClick={() => copyTextToClipboard(trackingResult.tracking_pin, 'Order PIN copied.')} style={{ color: dgfyPrimary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13, fontFamily: servicesBodyFont }}>Copy</button>
-                              </div>
-                               <div style={{ paddingBottom: 4 }}>
-                                 <div style={{ fontSize: 12, color: dgfySoftText }}>Order time</div>
-                                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', fontFamily: servicesBodyFont }}>{trackingResult.createdAt ? formatTicketDate(trackingResult.createdAt) : (trackingResult.updatedAt ? formatTicketDate(trackingResult.updatedAt) : 'Today')}</div>
-                               </div>
-                               <StorefrontOrderInstructions value={trackingResult.specialInstructions} accentColor={dgfyPrimary} bodyFont={servicesBodyFont} compact />
-                               <div style={{ display: 'grid', gap: 12 }}>
-                                {trackingResult.items && trackingResult.items.map((item, idx) => (
-                                  <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                                    <div style={{ color: '#334155', flex: 1, paddingRight: 10 }}>{item.name} <span style={{ color: dgfySoftText }}>{'\u00D7'} {item.qty}</span></div>
-                                    <div style={{ fontWeight: 600, color: '#0f172a', fontFamily: servicesBodyFont }}>{money(item.amount)}</div>
-                                  </div>
-                                ))}
-                              </div>
-                              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 16, display: 'grid', gap: 8, fontSize: 14 }}>
-                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                   <span style={{ color: dgfySoftText }}>Subtotal</span>
-                                   <span style={{ fontWeight: 600, fontFamily: servicesBodyFont }}>{money(trackingResult.subtotalAmount ?? 0)}</span>
-                                 </div>
-                                 {viewModel.hasDiscount ? (
-                                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d' }}>
-                                     <span>{viewModel.discountLabel || 'Promo / Discount'}</span>
-                                     <span style={{ fontWeight: 700, fontFamily: servicesBodyFont }}>- {money(trackingResult.discountAmount)}</span>
-                                   </div>
-                                 ) : null}
-                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: dgfySoftText }}>Delivery fee</span>
-                                   <span style={{ fontWeight: 600, fontFamily: servicesBodyFont }}>{money(trackingResult.deliveryFee ?? 0)}</span>
-                                 </div>
-                              </div>
-                              <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                 <span style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span>
-                                 <span style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: servicesDisplayFont }}>{money(trackingResult.totalAmount || 0)}</span>
-                              </div>
-                              <DownpaymentTrackingSummary trackingResult={trackingResult} money={money} orderMethod={isPickup ? 'pickup' : 'delivery'} />
-                           </div>
-                        </div>
+                        <StorefrontTrackingOrderSummary
+                          accentColor={dgfyPrimary}
+                          bodyFont={servicesBodyFont}
+                          displayFont={servicesDisplayFont}
+                          formatTicketDate={formatTicketDate}
+                          money={money}
+                          onCopyPin={(pin) => copyTextToClipboard(pin, 'Order PIN copied.')}
+                          softText={dgfySoftText}
+                          statusLabel={finalStatusLabel}
+                          trackingResult={trackingResult}
+                        />
 
                         {/* Delivery/Pickup Location Box */}
                         {!isPickup ? (

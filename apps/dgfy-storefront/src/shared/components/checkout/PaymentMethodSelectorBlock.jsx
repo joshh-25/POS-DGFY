@@ -9,6 +9,7 @@ export function PaymentMethodSelectorBlock({
   value,
   onChange,
   options = [],
+  emptyMessage,
   DropdownComponent,
   triggerStyle,
   menuStyle,
@@ -50,6 +51,7 @@ export function PaymentMethodSelectorBlock({
           value={value}
           onChange={(nextValue) => onChange(String(nextValue))}
           options={options}
+          emptyMessage={emptyMessage}
           triggerStyle={triggerStyle}
           menuStyle={paymentMenuStyle}
           optionStyle={paymentOptionStyle}

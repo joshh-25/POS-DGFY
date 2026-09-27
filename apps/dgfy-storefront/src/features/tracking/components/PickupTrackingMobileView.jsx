@@ -1,15 +1,14 @@
 import React from 'react';
 import {
   Check,
-  Copy,
   Store,
   ChefHat,
   ShoppingBag,
   FileText,
   RotateCcw
 } from 'lucide-react';
-import { StorefrontOrderInstructions } from '../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingOrderSummary } from '../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 import { StorefrontTrackingStatusCard } from '../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
 import { StorefrontTrackingTimeline } from '../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
 import { TRACKING_MAP_HEIGHT } from '../../../tracking/trackingMapSizing.js';
@@ -27,16 +26,10 @@ export const PickupTrackingMobileView = ({
   TrackingRouteMap,
   mapProps
 }) => {
-  const activeTrackingPin = trackingResult?.tracking_pin || trackingPinInput || 'N/A';
-  const hasSubtotal = Number.isFinite(Number(trackingResult?.subtotalAmount));
-  const hasDiscount = Number.isFinite(Number(trackingResult?.discountAmount)) && Number(trackingResult?.discountAmount) > 0;
-  const hasDeliveryFee = Number.isFinite(Number(trackingResult?.deliveryFee));
-  const discountLabel = String(trackingResult?.discountLabel || 'Promo / Discount').trim();
-
   // Extract theme colors
   const { primary, bg, border, softText } = theme;
   const { copyTextToClipboard, goStoreCatalogPage } = actions;
-  const { money, formatTicketDate } = formatters;
+  const { money, formatTicketDate, servicesBodyFont, servicesDisplayFont } = formatters;
   const isCompleted = activeStatus === 'completed';
   const handleBackToMenu = () => {
     goStoreCatalogPage();
@@ -102,55 +95,17 @@ export const PickupTrackingMobileView = ({
 
       {/* 4. Order Details Outline */}
       <div data-tracking-slot="details" style={{ order: 4 }}>
-      <div style={{ border: '1px solid #e2e8f0', borderRadius: 20, padding: 20, background: '#fff', boxShadow: '0 2px 8px rgba(15,23,42,.02)' }}>
-        <h4 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 800 }}>Order Details</h4>
-        <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: 4, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: softText }}>Order time</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{trackingResult.createdAt ? formatTicketDate(trackingResult.createdAt) : (trackingResult.updatedAt ? formatTicketDate(trackingResult.updatedAt) : 'Today')}</div>
-        </div>
-        <div style={{ paddingBottom: 16, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, color: softText }}>Order PIN</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', overflowWrap: 'anywhere' }}>{activeTrackingPin}</div>
-            <button type="button" onClick={() => copyTextToClipboard(activeTrackingPin, 'Order PIN copied.')} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: primary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              <Copy size={14} /> Copy
-            </button>
-          </div>
-        </div>
-        <StorefrontOrderInstructions value={trackingResult.specialInstructions} accentColor={primary} compact />
-        <div style={{ display: 'grid', gap: 12 }}>
-          {trackingResult.items && trackingResult.items.map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-              <div style={{ color: '#334155', flex: 1, paddingRight: 10 }}>{item.name} <span style={{ color: softText }}>{'\u00D7'} {item.qty}</span></div>
-              <div style={{ fontWeight: 600, color: '#0f172a' }}>{money(item.amount)}</div>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'grid', gap: 8, marginTop: 16, paddingTop: 16, borderTop: '1px solid #e2e8f0', fontSize: 13 }}>
-          {hasSubtotal ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-              <span>Subtotal</span>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>{money(trackingResult.subtotalAmount)}</span>
-            </div>
-          ) : null}
-          {hasDiscount ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}>
-              <span>{discountLabel || 'Promo / Discount'}</span>
-              <span style={{ fontWeight: 800 }}>- {money(trackingResult.discountAmount)}</span>
-            </div>
-          ) : null}
-          {hasDeliveryFee ? (
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b' }}>
-              <span>Delivery fee</span>
-              <span style={{ fontWeight: 700, color: '#0f172a' }}>{money(trackingResult.deliveryFee)}</span>
-            </div>
-          ) : null}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}>
-          <span style={{ fontSize: 15, fontWeight: 800, color: '#0f172a' }}>Total</span>
-          <span style={{ fontSize: 18, fontWeight: 900, color: primary }}>{money(trackingResult.totalAmount || 0)}</span>
-        </div>
-      </div>
+      <StorefrontTrackingOrderSummary
+        accentColor={primary}
+        bodyFont={servicesBodyFont}
+        displayFont={servicesDisplayFont}
+        formatTicketDate={formatTicketDate}
+        money={money}
+        onCopyPin={(pin) => copyTextToClipboard(pin, 'Order PIN copied.')}
+        softText={softText}
+        statusLabel={trackingResult?.status_label || activeStatus}
+        trackingResult={{ ...trackingResult, tracking_pin: trackingResult?.tracking_pin || trackingPinInput }}
+      />
       </div>
 
       {/* 5. Footer Actions */}

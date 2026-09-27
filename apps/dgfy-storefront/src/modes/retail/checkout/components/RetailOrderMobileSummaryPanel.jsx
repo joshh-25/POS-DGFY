@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ShoppingBag, X } from 'lucide-react';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
-import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { buildStorefrontOrderBreakdownRows } from '../../../../shared/model/storefrontOrderBreakdownPresentation.js';
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 import { StorefrontMobileCheckoutFooter } from '../../../../shared/components/StorefrontMobileCheckoutFooter.jsx';
 import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
@@ -48,7 +48,15 @@ export function RetailOrderMobileSummaryPanel({
     money,
     orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
   });
-  const feeAndVatRows = buildFeeAndVatSummaryRows({ totals, money });
+  const totalsRows = buildStorefrontOrderBreakdownRows({
+    discountRows: [
+      promoDiscountSummaryRow ? { ...promoDiscountSummaryRow, color: '#15803d' } : null,
+      voucherDiscountSummaryRow ? { ...voucherDiscountSummaryRow, color: '#7c3aed' } : null,
+    ].filter(Boolean),
+    money,
+    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup',
+    totals,
+  });
   const guestCheckoutVerificationRequired = !isDgfyCustomerSignedIn && !guestCheckoutOtpVerified;
   const handleBack = () => {
     if (orderStep === 1) {
@@ -112,17 +120,9 @@ export function RetailOrderMobileSummaryPanel({
               </div>
               {promoPanel}
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
-                <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
-                <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
-                {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} color="#15803d" /> : null}
-                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} color="#7c3aed" /> : null}
-                {feeAndVatRows.map((row) => (
-                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                {totalsRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} color={row.color || (row.emphasis ? '#0f172a' : '#334155')} emphasis={row.emphasis} borderTop={row.borderTop} />
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
-                  <span style={{ fontWeight: 700 }}>Total</span>
-                  <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
-                </div>
                 {downpaymentRows.map((row) => (
                   <SummaryRow key={row.label} label={row.label} value={row.value} />
                 ))}
@@ -169,8 +169,8 @@ export function RetailOrderMobileSummaryPanel({
   );
 }
 
-function SummaryRow({ label, value, color = '#334155' }) {
-  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color }}><span>{label}</span><strong>{value}</strong></div>;
+function SummaryRow({ label, value, color = '#334155', emphasis = false, borderTop = false }) {
+  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: borderTop ? 10 : 0, borderTop: borderTop ? '1px solid #e2e8f0' : 'none', fontSize: emphasis ? 18 : 14, color }}><span style={{ fontWeight: emphasis ? 700 : 400 }}>{label}</span><strong style={{ fontWeight: emphasis ? 800 : 700 }}>{value}</strong></div>;
 }
 
 const secondaryButtonStyle = {
