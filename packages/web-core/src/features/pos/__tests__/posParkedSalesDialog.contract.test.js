@@ -48,7 +48,7 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).not.toContain('>Refresh</');
     });
 
-    it('shows the customer or order name with the short parked-sale ID instead of the long stored reference', () => {
+    it('shows the customer or order name without exposing the parked-sale number or stored reference', () => {
         expect(dialogSource).toContain('formatParkedSaleDisplayName(row)');
         expect(workflowSource).toContain('formatParkedSaleDisplayName(claimedSale)');
         expect(workflowSource).toContain('formatParkedSaleDisplayName(parkedSale)');

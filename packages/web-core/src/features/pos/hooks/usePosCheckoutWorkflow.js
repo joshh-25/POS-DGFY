@@ -702,6 +702,13 @@ export const usePosCheckoutWorkflow = ({
         }
         const validatedCatalog = resumeContext.catalog;
         const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: validatedCatalog });
+        const resumedCartTotal = resumedLines.reduce((total, line) => (
+            total + (Number(line?.quantity || 0) * Number(line?.sale_price || 0))
+        ), 0);
+        const savedParkedSaleTotal = Number(claimedSale?.total_amount);
+        const paymentTotal = Number.isFinite(savedParkedSaleTotal) && savedParkedSaleTotal > 0
+            ? savedParkedSaleTotal
+            : resumedCartTotal;
         const historicalWarnings = Array.isArray(resumeContext?.warnings)
             ? resumeContext.warnings.filter(Boolean).slice(0, 2)
             : [];
@@ -790,7 +797,7 @@ export const usePosCheckoutWorkflow = ({
         }
         if (normalizedAction === 'pay') {
             setCurrentViewMode('checkout');
-            setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));
+            setCustomerPaymentAmountInput(round4(paymentTotal).toFixed(2));
             setCustomerPaymentAmountAutoFilled(true);
             setCheckoutConfirmModalOpen(true);
             setMobileCheckoutPanelOpen(false);
@@ -799,7 +806,6 @@ export const usePosCheckoutWorkflow = ({
             toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Add items as needed, then checkout.${historicalWarningNote}`);
         }
     }, [
-        cartTotal,
         discountApprovalRef,
         itemDiscountApprovalRef,
         posWorkflow,

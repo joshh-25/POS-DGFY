@@ -28,6 +28,29 @@ const getLineReferences = (line = {}) => [line?.line_key, line?.line_ref]
     .map((value) => String(value || '').trim())
     .filter(Boolean);
 
+const normalizeParkedLineModifiers = (line = {}) => toArray(line?.line_modifiers || line?.modifiers)
+    .map((modifier) => ({
+        modifier_group_id: positiveInteger(modifier?.modifier_group_id),
+        modifier_option_id: positiveInteger(modifier?.modifier_option_id),
+        quantity: Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1))
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+
+const parkedLineConfigurationFingerprint = (line = {}) => JSON.stringify({
+    course: String(line?.course || '').trim() || 'main',
+    modifiers: normalizeParkedLineModifiers(line),
+    selected_option_ids: [...new Set(toArray(line?.selected_option_ids || line?.service_option_ids)
+        .map((optionId) => positiveInteger(optionId))
+        .filter(Boolean))].sort((left, right) => left - right),
+    special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
+});
+
+const matchesParkedSaleSnapshotIdentity = (line, snapshotLine) => (
+    Number(line?.item_id) === Number(snapshotLine?.item_id)
+    && samePrice(line?.sale_price, snapshotLine?.sale_price)
+    && parkedLineConfigurationFingerprint(line) === parkedLineConfigurationFingerprint(snapshotLine)
+);
+
 export const isParkedSaleOriginalLine = (line = {}, parkedSale = null) => {
     if (line?.parked_snapshot_line === true) return true;
 
@@ -36,18 +59,18 @@ export const isParkedSaleOriginalLine = (line = {}, parkedSale = null) => {
 
     const lineReferences = new Set(getLineReferences(line));
     if (lineReferences.size > 0) {
-        return snapshotLines.some((snapshotLine) => (
+        const hasReferencedSnapshotLine = snapshotLines.some((snapshotLine) => (
             getLineReferences(snapshotLine).some((reference) => lineReferences.has(reference))
         ));
+        if (hasReferencedSnapshotLine) return true;
     }
 
     const itemId = Number(line?.item_id);
     if (!Number.isInteger(itemId) || itemId <= 0) return false;
-    const sameItemSnapshotLines = snapshotLines.filter((snapshotLine) => (
-        Number(snapshotLine?.item_id) === itemId
+    const identityMatches = snapshotLines.filter((snapshotLine) => (
+        matchesParkedSaleSnapshotIdentity(line, snapshotLine)
     ));
-    return sameItemSnapshotLines.length === 1
-        && getLineReferences(sameItemSnapshotLines[0]).length === 0;
+    return identityMatches.length === 1;
 };
 
 export const getParkedLineEditState = (line = {}, item = null, parkedSale = null) => {
