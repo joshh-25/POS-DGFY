@@ -6103,10 +6103,11 @@ export const posRepository = {
         return PosParkedSale.count({
             where: {
                 shift_id: toPositiveInt(shiftId),
-                // An unclaimed cart is branch-shared handoff work and may outlive
-                // the shift that originally parked it. Only an actively claimed
-                // cart remains an unresolved obligation of this shift.
-                status: { [Op.in]: ['claimed', 'cancel_pending'] }
+                // Unclaimed carts are branch-shared handoff work and may outlive
+                // the shift that originally parked them. A cancellation request
+                // is also no longer payable or editable, so only an actively
+                // claimed cart remains an unresolved obligation of this shift.
+                status: 'claimed'
             },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined

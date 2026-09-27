@@ -11,7 +11,7 @@ export const STAFF_CAPABILITIES = Object.freeze([
   'do:view', 'do:create', 'do:dispatch', 'do:delete',
   'pos:view', 'pos:transact', 'pos:discount_authorize', 'pos:price_override', 'pos:delivery_fee_override',
   'pos:cash_drawer_adjust', 'pos:delivery_run_variance_resolve', 'pos:shift_close', 'pos:close_day', 'pos:reprint', 'pos:void', 'pos:refund', 'pos:shift_force_close',
-  'pos:fiscal_terminals:manage', 'pos:esales:manage', 'pos:switch_location', 'pos:employees:manage',
+  'pos:fiscal_terminals:manage', 'pos:esales:manage', 'pos:switch_location', 'pos:branch_view', 'pos:employees:manage',
   'pos:attendance:view', 'pos:attendance:operate', 'pos:attendance:manage', 'pos:employee_credit:use',
   'pos:employee_credit:manage', 'pos:employee_credit:report',
   'affiliates:view', 'affiliates:manage', 'affiliates:settings', 'affiliates:cashout_approve', 'affiliates:cashout_pay',

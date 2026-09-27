@@ -161,6 +161,11 @@ const POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS = 1000;
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
+const PERMISSION_VIEW_BRANCH = 'pos:branch_view';
+const hasTenantWideBranchAccessForOpenShift = (user) => (
+    user?.is_master_admin === true
+    || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+);
 const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 // Phase 204 (#965): mirrors uploadConfig.js's PAYMENT_PROOF_SOURCE_MAX_BYTES -- kept as a local
@@ -1450,9 +1455,11 @@ const mapLocationScopeResolutionError = (error, { requestedLocationId = null, op
 const resolvePosReadLocationScope = async ({
     requestedLocationId = null,
     userId = null,
+    user = null,
     transaction = null,
     operationLabel = 'POS read operation',
-    allowNullWhenUnresolved = false
+    allowNullWhenUnresolved = false,
+    allowTenantWideBranchAccess = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null
@@ -1464,6 +1471,28 @@ const resolvePosReadLocationScope = async ({
             reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED,
             statusCode: 422
         });
+    }
+
+    if (allowTenantWideBranchAccess && (
+        user?.is_master_admin === true
+        || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+    )) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        const tenantWideLocation = await TenantLocation?.findByPk(normalizedRequestedLocationId, {
+            transaction
+        });
+        if (!tenantWideLocation || tenantWideLocation.is_active === false) {
+            throw buildLocationScopeDeniedError({
+                message: `Access denied for ${operationLabel} location scope.`,
+                reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED,
+                statusCode: 403,
+                details: { location_id: normalizedRequestedLocationId }
+            });
+        }
+        return {
+            location_id: Number(tenantWideLocation.location_id),
+            location: toSerializable(tenantWideLocation)
+        };
     }
 
     let resolvedLocation = null;
@@ -1510,9 +1539,11 @@ const resolvePosReadLocationScope = async ({
 export const resolvePosOperationalLocationScope = async ({
     requestedLocationId = null,
     userId = null,
+    user = null,
     transaction = null,
     operationLabel = 'POS operation',
-    allowNullWhenUnresolved = false
+    allowNullWhenUnresolved = false,
+    allowTenantWideBranchAccess = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null
@@ -1524,6 +1555,30 @@ export const resolvePosOperationalLocationScope = async ({
             reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED,
             statusCode: 422
         });
+    }
+
+    if (allowTenantWideBranchAccess && (
+        user?.is_master_admin === true
+        || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+    )) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        if (TenantLocation?.findByPk) {
+            const tenantWideLocation = await TenantLocation.findByPk(normalizedRequestedLocationId, {
+                transaction
+            });
+            if (!tenantWideLocation || tenantWideLocation.is_active === false) {
+                throw buildLocationScopeDeniedError({
+                    message: `Access denied for ${operationLabel} location scope.`,
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED,
+                    statusCode: 403,
+                    details: { location_id: normalizedRequestedLocationId }
+                });
+            }
+            return {
+                location_id: Number(tenantWideLocation.location_id),
+                location: toSerializable(tenantWideLocation)
+            };
+        }
     }
 
     let resolvedLocation = null;
@@ -6699,6 +6754,8 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
             const locationScope = await resolvePosReadLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS history read'
             });
             const data = await posRepository.listTransactions({
@@ -6751,6 +6808,8 @@ const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, fail
             const locationScope = await resolvePosReadLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS reports read'
             });
             const data = await repositoryMethod.call(posRepository, {
@@ -6992,8 +7051,11 @@ export const buildScanPosBarcodeUseCase = ({
     };
 };
 
-export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
-    return async ({ posTransactionId }) => {
+export const buildGetPosTransactionByIdUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ posTransactionId, query = {}, user = null }) => {
         const normalizedId = parsePositiveInt(posTransactionId);
         if (!normalizedId) {
             return fail(new DomainError(
@@ -7011,6 +7073,36 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                     'POS transaction not found',
                     { statusCode: 404 }
                 ));
+            }
+            if (query?.location_id != null) {
+                const normalizedUserId = parsePositiveInt(user?.user_id);
+                if (!normalizedUserId) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHENTICATION_FAILED,
+                        'Authenticated user is required to view POS transactions',
+                        { statusCode: 401 }
+                    ));
+                }
+                const locationScope = await resolveLocationScope({
+                    requestedLocationId: query.location_id,
+                    userId: normalizedUserId,
+                    user,
+                    allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
+                    operationLabel: 'POS transaction detail read'
+                });
+                const transactionLocationId = Number(
+                    data?.location_id
+                    || data?.location?.location_id
+                    || data?.pos_terminal_shift?.location_id
+                    || 0
+                );
+                if (!transactionLocationId || transactionLocationId !== Number(locationScope.location_id)) {
+                    return fail(new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'POS transaction not found',
+                        { statusCode: 404 }
+                    ));
+                }
             }
             const serialized = toPublicPosTransaction(data);
             const adjustments = typeof posRepository?.listPosTransactionAdjustmentsForTransaction === 'function'
@@ -7560,6 +7652,8 @@ export const buildListPosCatalogUseCase = ({
                 locationScope = await resolveLocationScope({
                     requestedLocationId: query?.location_id,
                     userId: normalizedUserId,
+                    user,
+                    allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                     operationLabel: 'POS catalog read'
                 });
             } catch (error) {
@@ -8565,10 +8659,13 @@ export const buildOpenTerminalShiftUseCase = ({
             ));
         }
 
-        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS) && user?.is_master_admin !== true) {
+        const canUseBranchDirectoryToOpen = hasEffectivePermission(user, PERMISSION_VIEW_BRANCH);
+        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS)
+            && user?.is_master_admin !== true
+            && !canUseBranchDirectoryToOpen) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'Administrator navigation is read-only. Sign in as the cashier to open the shift.',
+                'Administrator navigation is read-only unless branch-view operating access is explicitly granted. Sign in as the cashier or request the required POS branch capability.',
                 {
                     statusCode: 403,
                     details: { reason_code: 'ADMIN_SHIFT_OPEN_NOT_ALLOWED' }
@@ -8634,6 +8731,8 @@ export const buildOpenTerminalShiftUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId: requestedLocationId || terminalPolicyContext.registry_entry?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasTenantWideBranchAccessForOpenShift(user),
                 operationLabel: 'POS shift open',
                 allowNullWhenUnresolved: true
             });
@@ -8660,7 +8759,11 @@ export const buildOpenTerminalShiftUseCase = ({
             // Revalidate the current branch grant before an idempotent replay;
             // a revoked grant must not receive a previously successful unlock.
             await assertUserOperatingScope?.({
-                userId: normalizedUserId, terminalId, locationId: enforcedShiftLocationId, transaction
+                userId: normalizedUserId,
+                terminalId,
+                locationId: enforcedShiftLocationId,
+                transaction,
+                allowTenantWideLocationAccess: hasTenantWideBranchAccessForOpenShift(user)
             });
             const replay = await findOperationReplayEntry({
                 posRepository,
@@ -8707,6 +8810,7 @@ export const buildOpenTerminalShiftUseCase = ({
                         {
                             statusCode: 409,
                             details: {
+                                reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
                                 existing_shift_id: existing.pos_terminal_shift_id,
                                 existing_terminal_id: existing.terminal_id || null,
                                 requested_terminal_id: terminalId || null
@@ -8771,6 +8875,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     {
                         statusCode: 409,
                         details: {
+                            reason_code: 'POS_TARGET_TERMINAL_OCCUPIED',
                             existing_shift_id: terminalShift.pos_terminal_shift_id,
                             terminal_id: terminalId,
                             active_cashier_id: terminalShift.cashier_id || null,
@@ -8803,6 +8908,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     {
                         statusCode: 409,
                         details: {
+                            reason_code: 'POS_TARGET_TERMINAL_OCCUPIED',
                             terminal_id: terminalId,
                             requested_cashier_id: normalizedUserId
                         }
@@ -10459,6 +10565,8 @@ export const buildListOnlineOrderHistoryUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS online order history read'
             });
             const history = await posRepository.listOnlineOrderHistory({
@@ -10502,10 +10610,11 @@ export const buildGetAdminLocationMonitorUseCase = ({
                 { statusCode: 401 }
             ));
         }
-        if (!hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
+        if (!hasEffectivePermission(user, PERMISSION_VIEW_BRANCH)
+            && !hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'POS location switching permission is required to monitor another branch without an active shift.',
+                'POS branch view permission is required to monitor another branch without an active shift.',
                 { statusCode: 403 }
             ));
         }
@@ -10523,6 +10632,8 @@ export const buildGetAdminLocationMonitorUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: true,
                 operationLabel: 'POS administrator branch monitor'
             });
             const [orders, terminalShifts] = await Promise.all([

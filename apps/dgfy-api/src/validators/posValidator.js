@@ -771,6 +771,13 @@ const adminLocationMonitorQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(200)
 });
 
+const branchViewEventSchema = Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    event: Joi.string().trim().lowercase().valid('enter', 'exit').required(),
+    operating_location_id: Joi.number().integer().positive().optional(),
+    active_shift_id: Joi.number().integer().positive().optional()
+});
+
 const shiftIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
@@ -1618,6 +1625,7 @@ export const validateProcurementExportQuery = validateSchema(procurementExportQu
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
+export const validateBranchViewEvent = validateSchema(branchViewEventSchema, 'body', 'validatedData');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateAttendanceMutation = validateSchema(attendanceMutationSchema, 'body', 'validatedData');

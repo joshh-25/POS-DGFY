@@ -60,6 +60,7 @@ import {
     validateOnlineOrderHistoryQuery,
     validateDeliveryPersonnelListQuery,
     validateAdminLocationMonitorQuery,
+    validateBranchViewEvent,
     validateCollectCashPickupOrder,
     validateCollectCashDeliveryOrder,
     validateCollectCashDineInOrder,
@@ -276,7 +277,7 @@ router.post('/terminal/operator/shared-relief/end', checkPermission(PERMISSIONS.
 router.post('/terminal/operator/handoff/count', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateOperatorTransition, posController.countedCustodyHandoff);
 router.post('/terminal/operator/end', checkPermission(PERMISSIONS.POS.actions.OPERATE_ATTENDANCE), posController.requirePairedTerminal, validateOperatorEnd, posController.endOperatorSession);
 
-router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
+router.get('/catalog', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosCatalogQuery, posController.listCatalog);
 router.get('/catalog/events', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.streamCatalogEvents);
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
@@ -335,8 +336,8 @@ router.get('/discount-approvers', checkPermission(PERMISSIONS.POS.actions.TRANSA
 router.get('/discount-employees', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountEmployees);
 router.get('/discount-rules', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountRules);
 router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosDiscountApproval, posController.requireActiveOperatorForMutation, posController.verifyDiscountApproval);
-router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
-router.get('/transactions/:id', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionIdParam, posController.getTransactionById);
+router.get('/transactions', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosTransactionsQuery, posController.listTransactions);
+router.get('/transactions/:id', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosTransactionIdParam, posController.getTransactionById);
 router.get('/terminal/shifts/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalCurrentShiftQuery, posController.getCurrentTerminalShift);
 router.get('/terminal/shifts/history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalShiftHistoryQuery, posController.getCashierShiftHistory);
 router.post('/terminal/shifts/open', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateOpenTerminalShift, posController.openTerminalShift);
@@ -350,8 +351,8 @@ router.post('/terminal/shifts/:id/force-close', checkPermission(PERMISSIONS.POS.
 router.get('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, posController.getMerchantTenderReconciliation);
 router.post('/terminal/shifts/:id/merchant-tender-reconciliation', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), validateShiftIdParam, validateReviewMerchantTenderReconciliation, posController.reviewMerchantTenderReconciliation);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
-router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
-router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
+router.get('/reports/overview', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosReportsQuery, posController.getReportsOverview);
+router.get('/reports/export', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validatePosReportsExportQuery, posController.exportReports);
 // Phase 261 (#1488): pre-run procurement CSV export, deliberately no shift_id requirement --
 // usable before a run is built, unlike the shift-bound incoming-orders queue below.
 router.get('/reports/procurement-export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateProcurementExportQuery, posController.exportProcurementCsv);
@@ -383,7 +384,7 @@ router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.
 router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
 router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
-router.get('/order-history', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateOnlineOrderHistoryQuery, posController.listOnlineOrderHistory);
+router.get('/order-history', checkAnyPermission([PERMISSIONS.POS.actions.VIEW_POS, PERMISSIONS.POS.actions.VIEW_BRANCH_POS]), validateOnlineOrderHistoryQuery, posController.listOnlineOrderHistory);
 router.get('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateDeliveryPersonnelListQuery, posController.listActiveDeliveryPersonnel);
 router.get('/delivery-personnel/registry', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelRegistryQuery, deliveryPersonnelController.listDeliveryPersonnelRegistry);
 router.post('/delivery-personnel', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateDeliveryPersonnelCreate, deliveryPersonnelController.createDeliveryPersonnel);
@@ -410,7 +411,18 @@ router.post('/delivery-runs/:deliveryRunId/remittances/:remittanceId/variances/:
 // gate below is additive and admits assigned delivery staff alongside broad POS operators.
 // router.post('/delivery-runs/:deliveryRunId/dispatch', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);
 router.post('/delivery-runs/:deliveryRunId/dispatch', checkAnyPermission([PERMISSIONS.POS.actions.TRANSACT_POS, PERMISSIONS.STAFF_FULFILLMENT.actions.ACT_ASSIGNED_DELIVERY_RUNS]), validateDeliveryRunIdParam, validateDeliveryRunDispatch, deliveryRunController.dispatchDeliveryRun);
-router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
+// Branch directory/viewing has a dedicated read-only capability. The governed
+// switch-location capability remains separate and is never used to authorize this surface.
+const branchViewPermission = PERMISSIONS.POS.actions.VIEW_BRANCH_POS;
+const branchMonitorPermissions = [
+    branchViewPermission,
+    PERMISSIONS.POS.actions.SWITCH_LOCATION_POS
+];
+router.get('/branch-directory', checkPermission(branchViewPermission), posController.getPosBranchDirectory);
+router.post('/branch-directory/view-events', checkPermission(branchViewPermission), validateBranchViewEvent, posController.recordPosBranchViewEvent);
+// Preserve the existing monitor contract for already-provisioned switch-location operators;
+// new branch-view clients are also allowed to use its bounded read-only order/shift payload.
+router.get('/admin/location-monitor', checkAnyPermission(branchMonitorPermissions), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.requireActiveOperatorForMutation, posController.collectCashPickupOrder);
 router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.requireActiveOperatorForMutation, posController.collectCashDeliveryOrder);
 router.post('/orders/:id/collect-dine-in-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDineInOrder, posController.requireActiveOperatorForMutation, posController.collectCashDineInOrder);
