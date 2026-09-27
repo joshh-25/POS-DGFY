@@ -10,9 +10,9 @@ policy_version: 2026.09.25
 verification_evidence: npm run check:architecture,npm run check:compliance,npm run build:pos,npx vitest run packages/web-core/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js,git diff --check
 rollback_note: Revert the three responsive Items scroll changes and this declaration together, then rerun the POS build, compliance check, and focused responsive-scroll contract test. No API, database schema, item data, stock, pricing, checkout, payment, or migration change is included.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
+preflight_reason_code: NOT_EXECUTED
 preflight_run_at: 2026-09-27T16:02:00+08:00
-preflight_request_ref: POS-ITEMS-SCROLL-2026-09-27
+preflight_request_ref: NOT-EXECUTED-2100-POS-ITEMS-SCROLL
 ---
 
 # POS Items Catalog Scroll Follow-up
@@ -28,6 +28,7 @@ Major. This follow-up changes the responsive presentation and scroll ownership o
 
 ## Compliance Preconditions
 
+- Live request-time preflight was not executed for this local PR. The documented `NOT-EXECUTED-*` reference keeps this declaration discoverable to the continuous sweep, which must reconcile it against the real preflight before promotion; `no_breach` is not claimed as a completed live evaluation here.
 - Existing POS authorization, tenant scoping, item persistence, filters, categories, pagination, and modal workflows remain unchanged.
 - The change must not introduce page-level overflow behavior that hides required actions or alters saved item values.
 - The Items workspace remains isolated from checkout/payment state and from non-POS IMS-only screens.
