@@ -82,27 +82,26 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    not a finding on any PR — recording a `minor` declaration whose surfaces the live endpoint cannot
    evaluate at all; a `major`/`regulatory` declaration reaching this state instead of a real
    `no_breach` is a `should-fix` at PR time, since `check-compliance-impact.js` will fail it closed.
-4. **Version level** — run `node scripts/propose-version-level.js --base <base> --head <head>`;
-   compare its proposed level per changed app against `check-app-version-bump.js`'s own pass/fail
-   for the PR's actual `(base, head)` mode (`npm run check:app-versions`). **`check:app-versions`
-   blocking is base-aware (#1774, epic #1548, revised 2026-09-10 from #1592/Phase 283's 2026-09-05
-   global flip) — blocking on a promotion-leg PR (a `staging`/`main`-base PR: `to-staging/*`,
-   `fix/staging/*`, `release/*`, or a plain hotfix branch), advisory on a `develop`-base PR.** On a
-   promotion-leg PR, a missing or insufficient bump (the check's own FAIL) fails CI outright on both
-   consuming surfaces (`shared-changed-paths.yml`, `scripts/pr-checks.js`); that failure mode should
-   already show up as a red check under Merge readiness (item 8 below), not something this item has
-   to catch by hand. On a `develop`-base PR, a missing bump only warns — `develop -> staging`'s own
-   minor-floor bump (ADR 0081 Decision 6) is what actually enforces the requirement at promotion
-   time, so a missing bump here is a `should-fix`, not a blocker. What this item still catches that
-   CI does not, on either base: a proposed level *higher* than what the diff's actual bump satisfies
-   (e.g. the commits look like a `feat` but the PR only bumped patch). CI checks package-floor
-   policy, not Conventional Commit semantic level: develop work and staging repairs require an
-   unchanged floor, promotion requires a minor floor advance for changed apps, and direct main
-   hotfixes require patch-only. Evaluate semantic level from the actual code change separately from
-   that floor policy. A mismatch is a **`blocker`** on a promotion-leg PR and a **`should-fix`** on a
-   `develop`-base PR, since CI's develop result remains advisory. A proposed level *lower* than the
-   actual bump is never a finding — bumping more than the diff calls for is never wrong. Add one row
-   to the fixed `## Review` table shape for this finding when it fires.
+4. **Version level — staging/main only** — determine the PR's actual base first.
+   **On every `develop`-base PR, skip the version-level audit entirely**, regardless
+   of head prefix: do not run the version proposer/checker for this audit, report a
+   version-bump RF row, post an advisory or cleanup comment, or request a version
+   change. Unchanged app versions or a proposed semantic level do not affect the
+   verdict: if all other audits pass and checks are green, return `APPROVE` under
+   the existing verdict and merge rules (#2048). Promotion owns version cleanup.
+   **On a `staging`/`main`-base PR**, including `to-staging/*`,
+   `fix/staging/*`, `release/*`, and direct hotfixes, retain strict auditing:
+   read ADR 0081 and `docs/ops/RELEASE_CANDIDATE_POLICY.md`, including their latest
+   amendments; run `node scripts/propose-version-level.js --base <base> --head <head>`
+   and compare with `check-app-version-bump.js` for the actual PR mode
+   (`npm run check:app-versions`). A missing, insufficient, or disallowed floor
+   change is a `blocker`; account for an existing CI failure under Merge readiness
+   rather than duplicating the same finding. Assess semantic under-bumps as blockers
+   where applicable to the governing promotion path. The advisory semantic proposal
+   does not override unchanged-floor staging repairs or patch-only direct-main
+   hotfixes; never propose a bump forbidden by that path. A larger bump is acceptable
+   only when the actual mode permits it. Put genuine version findings in the fixed
+   `## Review` table with a concrete policy-correct fix.
 5. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
 6. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
