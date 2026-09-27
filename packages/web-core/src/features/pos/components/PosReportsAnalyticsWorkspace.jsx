@@ -238,6 +238,7 @@ const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
 function PosReportsAnalyticsWorkspace({
   terminalUser = null,
   terminalMeta,
+  operatingLocationId = null,
   reportRefreshKey = 0,
   employeeCreditReportRefreshKey = 0,
   isOnline = true,
@@ -344,6 +345,7 @@ function PosReportsAnalyticsWorkspace({
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
+    locationId: operatingLocationId || null,
     granularity: displayGranularity,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
@@ -355,6 +357,7 @@ function PosReportsAnalyticsWorkspace({
     categoryId,
     cashierId,
     displayGranularity,
+    operatingLocationId,
     normalizedDateRange.dateFrom,
     normalizedDateRange.dateTo,
     paymentType,
@@ -481,7 +484,8 @@ function PosReportsAnalyticsWorkspace({
           cashier_id: cashierId || undefined,
           payment_type: paymentType || undefined,
           source: source || undefined,
-          category_id: categoryId || undefined
+          category_id: categoryId || undefined,
+          location_id: operatingLocationId || undefined
         });
         if (!cancelled) {
           setReportData(payload);
@@ -512,6 +516,7 @@ function PosReportsAnalyticsWorkspace({
     normalizedDateRange.dateTo,
     offlineReportKey,
     offlineSnapshotScope,
+    operatingLocationId,
     paymentType,
     reportRefreshKey,
     source
@@ -604,6 +609,7 @@ function PosReportsAnalyticsWorkspace({
   const handleExportCsv = async () => {
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
     const { blob, filename } = await exportPosReportCsv({
+      location_id: operatingLocationId || undefined,
       section: activeTab === 'operations' ? operationSection : selectedTab.exportSection,
       granularity: displayGranularity,
       date_from: normalizedDateRange.dateFrom,

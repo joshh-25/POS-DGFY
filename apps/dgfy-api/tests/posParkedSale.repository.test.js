@@ -96,7 +96,7 @@ describe('parked sale repository contract', () => {
         expect(model.findAll.mock.calls[0][0].where).not.toHaveProperty('shift_id');
     });
 
-    it('updates and counts unresolved parked-sale rows for shift close', async () => {
+    it('updates and counts only claimed parked-sale rows for shift close', async () => {
         const model = buildModel();
         const row = {
             update: jest.fn(async () => undefined),
@@ -119,7 +119,7 @@ describe('parked sale repository contract', () => {
         expect(model.count).toHaveBeenCalledWith(expect.objectContaining({
             where: expect.objectContaining({
                 shift_id: 41,
-                status: expect.objectContaining({})
+                status: 'claimed'
             }),
             transaction
         }));

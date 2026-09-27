@@ -646,12 +646,17 @@ export const usePosCartWorkflow = ({
             return false;
         }
 
+        const nextCart = safeCart.filter((entry) => getLineKey(entry) !== request.lineKey);
         onCartLineRemoved(request.lineKey);
-        setCart((prev) => prev.filter((entry) => getLineKey(entry) !== request.lineKey));
         onParkedLineDeleted({ line, reason });
         cancelParkedLineDeletion();
+        if (nextCart.length === 0 && activeParkedSale?.pos_parked_sale_id) {
+            void onCartBecameEmpty();
+            return true;
+        }
+        setCart(nextCart);
         return true;
-    }, [activeParkedSale, cancelParkedLineDeletion, notifyPosActionBlocked, onCartLineRemoved, onParkedLineDeleted, parkedLineDeletionReason, parkedLineDeletionRequest, posActionsBlocked, safeCart]);
+    }, [activeParkedSale, cancelParkedLineDeletion, notifyPosActionBlocked, onCartBecameEmpty, onCartLineRemoved, onParkedLineDeleted, parkedLineDeletionReason, parkedLineDeletionRequest, posActionsBlocked, safeCart]);
 
     return {
         cart,

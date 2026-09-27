@@ -322,6 +322,51 @@ describe('pos use-cases application result contract', () => {
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     });
 
+    it('scopes transaction detail reads to the requested branch', async () => {
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 7 });
+        const getTransactionById = jest.fn().mockResolvedValue({
+            pos_transaction_id: 44,
+            location_id: 7,
+            status: 'completed',
+            total_amount: 125
+        });
+        const useCase = buildGetPosTransactionByIdUseCase({
+            posRepository: { getTransactionById },
+            resolveLocationScope
+        });
+        const user = { user_id: 15, permissions: ['pos:branch_view'] };
+
+        const result = await useCase({
+            posTransactionId: 44,
+            query: { location_id: 7 },
+            user
+        });
+
+        expect(result.success).toBe(true);
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: 7,
+            userId: 15,
+            user,
+            allowTenantWideBranchAccess: true,
+            operationLabel: 'POS transaction detail read'
+        });
+
+        getTransactionById.mockResolvedValueOnce({
+            pos_transaction_id: 44,
+            location_id: 8,
+            status: 'completed',
+            total_amount: 125
+        });
+        const mismatchedResult = await useCase({
+            posTransactionId: 44,
+            query: { location_id: 7 },
+            user
+        });
+
+        expect(mismatchedResult.success).toBe(false);
+        expect(mismatchedResult.error.code).toBe(DomainErrorCode.RESOURCE_NOT_FOUND);
+    });
+
     it('getDailyZReading validates YYYY-MM-DD date format', async () => {
         const useCase = buildGetDailyZReadingUseCase({
             posRepository: { getZReadingSummary: jest.fn() },
@@ -356,6 +401,8 @@ describe('pos use-cases application result contract', () => {
         expect(resolveLocationScope).toHaveBeenCalledWith({
             requestedLocationId: undefined,
             userId: 15,
+            user: { user_id: 15 },
+            allowTenantWideBranchAccess: false,
             operationLabel: 'POS catalog read'
         });
         expect(listCatalog).toHaveBeenCalledWith({

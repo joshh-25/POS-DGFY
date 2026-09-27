@@ -617,9 +617,7 @@ describe('usePosCheckoutWorkflow', () => {
                 parked_original_quantity: 1
             })
         ]);
-        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
-            description: 'Add items as needed, then checkout.'
-        });
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale. Add items as needed, then checkout.');
     });
 
     it('rejects local parked-sale blockers before fetching the catalog', async () => {
@@ -710,6 +708,50 @@ describe('usePosCheckoutWorkflow', () => {
 
         expect(validation.ok).toBe(true);
         expect(validation.resumeContext.warnings.join(' ')).toContain('Coffee is no longer available');
+    });
+
+    it('opens Pay with the saved parked total when a parked item was removed from the catalog', async () => {
+        fetchPosCatalog.mockResolvedValue([]);
+        const { result, props } = renderCheckout({ safeCart: [], cartTotal: 0 });
+        const parkedSale = {
+            pos_parked_sale_id: 30,
+            total_amount: 435,
+            snapshot: {
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 104,
+                    item_name: 'Performance Item 030',
+                    sku_code: 'PERF-030',
+                    quantity: 1,
+                    base_sale_price: 435,
+                    sale_price: 435
+                }]
+            }
+        };
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume(parkedSale, 'pay');
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Performance Item 030 is no longer available');
+
+        await act(async () => {
+            await result.current.handleParkedSaleClaimed(parkedSale, 'pay', validation.resumeContext);
+        });
+
+        expect(props.setCart).toHaveBeenCalledWith([
+            expect.objectContaining({
+                item_id: 104,
+                item_name: 'Performance Item 030',
+                sale_price: 435,
+                parked_snapshot_line: true,
+                parked_line_item_missing: true
+            })
+        ]);
+        expect(props.setCustomerPaymentAmountInput).toHaveBeenCalledWith('435.00');
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(true);
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

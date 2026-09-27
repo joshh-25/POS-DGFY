@@ -105,6 +105,7 @@ export const PERMISSION_GROUPS = {
             MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage",
             MANAGE_ESALES_REPORTS: "pos:esales:manage",
             SWITCH_LOCATION_POS: "pos:switch_location",
+            VIEW_BRANCH_POS: "pos:branch_view",
             MANAGE_EMPLOYEES: "pos:employees:manage",
             VIEW_ATTENDANCE: "pos:attendance:view",
             OPERATE_ATTENDANCE: "pos:attendance:operate",

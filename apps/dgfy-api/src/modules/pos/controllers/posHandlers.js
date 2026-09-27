@@ -56,6 +56,8 @@ import {
     listOnlineOrderHistoryUseCase,
     listActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase,
+    getPosBranchDirectoryUseCase,
+    recordPosBranchViewEventUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
     collectCashDineInOrderUseCase,
@@ -2092,6 +2094,53 @@ export const getAdminLocationMonitor = async (req, res, next) => {
     }
 };
 
+export const getPosBranchDirectory = async (req, res, next) => {
+    try {
+        const result = await getPosBranchDirectoryUseCase({
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const recordPosBranchViewEvent = async (req, res, next) => {
+    try {
+        const result = await recordPosBranchViewEventUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                requestId: requestId(req, res),
+                terminalId: req.get('x-pos-terminal-id') || null,
+                operatingLocationId: req.validatedData?.operating_location_id || null,
+                activeShiftId: req.validatedData?.active_shift_id || null
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateOnlineOrderStatus = async (req, res, next) => {
     try {
         const result = await updateOnlineOrderStatusUseCase({
@@ -2799,7 +2848,9 @@ export const listTransactions = async (req, res, next) => {
 export const getTransactionById = async (req, res, next) => {
     try {
         const result = await getPosTransactionByIdUseCase({
-            posTransactionId: req.validatedParams?.id || req.params.id
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            query: req.validatedQuery || req.query || {},
+            user: req.user
         });
         await trackProductUsageFromResult({
             req,

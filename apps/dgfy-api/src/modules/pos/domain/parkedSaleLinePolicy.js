@@ -75,9 +75,10 @@ export const findParkedSaleLineRemovalReason = ({ snapshotLine, previousLines = 
 const findOriginalLineIndex = ({ snapshotLine, nextLines, consumedIndexes }) => {
     const snapshotRef = lineReference(snapshotLine);
     if (snapshotRef) {
-        return nextLines.findIndex((line, index) => (
+        const referencedIndex = nextLines.findIndex((line, index) => (
             !consumedIndexes.has(index) && lineReference(line) === snapshotRef
         ));
+        if (referencedIndex >= 0) return referencedIndex;
     }
 
     return nextLines.findIndex((line, index) => (

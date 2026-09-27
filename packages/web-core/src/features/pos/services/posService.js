@@ -208,8 +208,8 @@ export const fetchPosTransactions = async (params = {}) => {
     return response.data?.data;
 };
 
-export const fetchPosTransactionById = async (id) => {
-    const response = await api.get(`/pos/transactions/${id}`);
+export const fetchPosTransactionById = async (id, params = {}) => {
+    const response = await api.get(`/pos/transactions/${id}`, { params });
     return response.data?.data;
 };
 
@@ -840,6 +840,16 @@ export const fetchAdminLocationMonitor = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchPosBranchDirectory = async (requestConfig = {}) => {
+    const response = await api.get('/pos/branch-directory', requestConfig);
+    return response.data?.data || { locations: [] };
+};
+
+export const recordPosBranchViewEvent = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/branch-directory/view-events', payload, requestConfig);
+    return response.data?.data;
+};
+
 export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
@@ -1082,6 +1092,9 @@ export default {
     fetchIncomingOnlineOrders,
     fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,
+    fetchAdminLocationMonitor,
+    fetchPosBranchDirectory,
+    recordPosBranchViewEvent,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
     collectCashDineInOrder,
