@@ -192,7 +192,17 @@ const buildParkedSaleError = (code, message, statusCode, details = undefined) =>
     new DomainError(code, message, { statusCode, ...(details ? { details } : {}) })
 );
 
-const resolveParkedSaleInventoryEffects = async ({ resolver, snapshot, scope, user, payload, transaction, parkedSaleId, revision }) => {
+const resolveParkedSaleInventoryEffects = async ({
+    resolver,
+    snapshot,
+    previousSnapshot = null,
+    scope,
+    user,
+    payload,
+    transaction,
+    parkedSaleId,
+    revision
+}) => {
     if (typeof resolver !== 'function') {
         throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'POS inventory-effect planning is unavailable.', 503, {
             reason_code: 'PARKED_SALE_INVENTORY_PLANNER_UNAVAILABLE'
@@ -200,6 +210,7 @@ const resolveParkedSaleInventoryEffects = async ({ resolver, snapshot, scope, us
     }
     const effects = await resolver({
         snapshot,
+        previousSnapshot,
         scope,
         user,
         payload,

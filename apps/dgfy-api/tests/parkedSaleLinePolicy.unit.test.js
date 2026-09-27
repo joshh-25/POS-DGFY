@@ -31,6 +31,20 @@ describe('parked-sale original line policy', () => {
         expect(snapshot.lines[1]).not.toHaveProperty('parked_snapshot_line');
     });
 
+    it('matches a retained original when resume rebuilds its line reference', () => {
+        const snapshot = markRetainedParkedSaleLines({
+            previousSnapshot: { lines: [originalLine()] },
+            snapshot: {
+                lines: [originalLine({ line_key: 'rebuilt-line-1', line_ref: 'rebuilt-ref-1' })]
+            }
+        });
+
+        expect(snapshot.lines[0]).toEqual(expect.objectContaining({
+            line_key: 'rebuilt-line-1',
+            parked_snapshot_line: true
+        }));
+    });
+
     it('rejects removal of an original parked line', () => {
         expect(validateParkedSaleSnapshotRevision({
             previousSnapshot: { lines: [originalLine()] },

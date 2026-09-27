@@ -2709,11 +2709,12 @@ const resolveParkedSaleSnapshotLines = ({ parkedSale, lines = [], removedLineRea
     const historicalLinesByCheckoutIndex = new Map();
 
     lines.forEach((line, index) => {
-        if (line?.parked_snapshot_line !== true) return;
+        const explicitlyMarkedHistoricalLine = line?.parked_snapshot_line === true;
         const snapshotIndex = snapshotLines.findIndex((snapshotLine, candidateIndex) => (
             !consumedSnapshotIndexes.has(candidateIndex)
             && parkedSaleSnapshotLineMatches(snapshotLine, line)
         ));
+        if (snapshotIndex < 0 && !explicitlyMarkedHistoricalLine) return;
         if (snapshotIndex < 0) {
             throw new DomainError(
                 DomainErrorCode.CONFLICT,
