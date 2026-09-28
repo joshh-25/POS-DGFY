@@ -153,6 +153,9 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
     expect(openDate.getAttribute('aria-pressed')).toBe('true');
   });
   it('keeps the shortcuts compact while preserving mobile calendar touch targets', () => {
+    vi.useFakeTimers();
+    // Noon in Asia/Manila keeps the selected 14:30 time before closing at 22:00.
+    vi.setSystemTime(new Date('2026-09-28T04:00:00.000Z'));
     render(
       <StorefrontScheduledDateTimePicker
         isResponsive
