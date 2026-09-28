@@ -164,12 +164,37 @@ describe('iMin POS performance profile contract', () => {
       'PosFnbModifiersWorkspace',
       'PosServiceOptionsWorkspace',
       'VoucherManagementPanel',
-      'PricelistManagementPanel',
-      'DownpaymentSettingsPanel',
-      'PosCashierAttendanceSettingsCard',
-      'TerminalStorefrontStatusCard'
+      'PricelistManagementPanel'
     ].forEach((componentName) => {
       expect(terminalOperationsSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
+    });
+    // The remaining optional settings panels are owned (and deferred) by the
+    // settings boundary, not the operations workspace: each renders behind a
+    // closed-by-default gate (payments tab / attendance editor) and loads
+    // through its own lazy boundary. Rendered proof lives in their behavior
+    // tests (downpaymentSettingsPanel, PosCashierAttendanceSettingsCard,
+    // terminalStorefrontStatusCard).
+    const settingsWorkspaceSource = fs.readFileSync(
+      path.join(webCoreRoot, 'src/features/pos/settings/PosSettingsWorkspace.jsx'),
+      'utf8'
+    );
+    const operationsAccessSource = fs.readFileSync(
+      path.join(webCoreRoot, 'src/features/pos/settings/PosOperationsAccessSection.jsx'),
+      'utf8'
+    );
+    expect(settingsWorkspaceSource).toContain('const DownpaymentSettingsPanel = lazyWithChunkRetry');
+    expect(settingsWorkspaceSource).not.toContain("import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';");
+    expect(settingsWorkspaceSource).toContain("<Suspense fallback={null}>");
+    expect(operationsAccessSource).toContain('const PosCashierAttendanceSettingsCard = lazyWithChunkRetry');
+    expect(operationsAccessSource).not.toContain("import PosCashierAttendanceSettingsCard from '../components/PosCashierAttendanceSettingsCard.jsx';");
+    expect(operationsAccessSource).toContain("<Suspense fallback={null}>");
+    // TerminalStorefrontStatusCard has no render site on mainline (its only
+    // references are its own module and behavior test): pin that it stays out
+    // of every eager settings/operations import graph rather than asserting a
+    // lazy boundary that no render path would ever cross.
+    [terminalOperationsSource, settingsWorkspaceSource, operationsAccessSource].forEach((source) => {
+      expect(source).not.toContain("from '../components/TerminalStorefrontStatusCard.jsx'");
+      expect(source).not.toContain('from ./TerminalStorefrontStatusCard.jsx');
     });
     expect(terminalOperationsSource).toContain('<Suspense fallback={null}>');
     expect(terminalOperationsSource).toContain('showCsvImport && canImportItems');

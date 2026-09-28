@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { Banknote, BadgePercent, KeyRound, Receipt, Save, Settings2, Store, Truck, Undo2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -40,7 +40,8 @@ import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadiu
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import { fetchPosSetupCashiers } from '../services/posService.js';
-import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+const DownpaymentSettingsPanel = lazyWithChunkRetry(() => import('../components/DownpaymentSettingsPanel.jsx'));
 import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSettingsCard.jsx';
 import PosEmployeesSettingsPane from './PosEmployeesSettingsPane.jsx';
 import PosProfileSettingsPane from './PosProfileSettingsPane.jsx';
@@ -2120,13 +2121,15 @@ export default function PosSettingsWorkspace({
     }
     if (renderedTab === 'payments' && canViewDownpayment) {
       return (
-        <DownpaymentSettingsPanel
-          terminalUser={terminalUser}
-          locked={locked}
-          sectionId={sectionId}
-          locationScopeId={locationScopeId}
-          locationOptions={locations}
-        />
+        <Suspense fallback={null}>
+          <DownpaymentSettingsPanel
+            terminalUser={terminalUser}
+            locked={locked}
+            sectionId={sectionId}
+            locationScopeId={locationScopeId}
+            locationOptions={locations}
+          />
+        </Suspense>
       );
     }
     if (renderedTab === 'delivery_pricing' && canEditSettings) {
