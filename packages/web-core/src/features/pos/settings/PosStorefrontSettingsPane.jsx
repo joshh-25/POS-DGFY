@@ -5,6 +5,7 @@ import {
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -2030,7 +2031,7 @@ export default function PosStorefrontSettingsPane({
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#1A4E8D]" aria-hidden="true" /><h4 className={STOREFRONT_TYPOGRAPHY.itemLabel}>Operational Settings</h4></div>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
+                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /><p className="text-xs text-slate-500">Saves as {normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)} km</p></div>
                       <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.estimatedWaitTime}<RequiredMark /></Label><Input value={locationForm.current_wait_time_minutes} onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))} placeholder="15" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
                     </div>
 
