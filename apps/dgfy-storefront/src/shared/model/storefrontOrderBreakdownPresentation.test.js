@@ -22,7 +22,7 @@ describe('buildStorefrontOrderBreakdownRows', () => {
     expect(rows.map(({ label }) => label)).toEqual([
       'Subtotal',
       'Weekend promo',
-      'Delivery fee',
+      'Delivery Fee',
       'VAT (included in item prices)',
       'Total',
     ]);
