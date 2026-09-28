@@ -504,8 +504,11 @@ export default function TerminalPageLayout({
   const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
+  const checkoutWorkspaceRowsClassName = isBranchReadOnlyView
+    ? 'grid-rows-[auto_minmax(0,1fr)]'
+    : 'grid-rows-[minmax(0,1fr)]';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
+    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
     : isItemsCatalogWorkspace
       ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ''}`
       : `grid min-w-0 max-w-full grid-cols-1 gap-2 ${usesStandardPosPageFrame ? 'p-0' : 'p-2'}`;
