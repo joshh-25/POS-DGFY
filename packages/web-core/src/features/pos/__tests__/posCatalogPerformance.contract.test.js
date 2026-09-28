@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const checkoutViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const checkoutHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
 const catalogWorkflowPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js');
 const catalogImageFailureStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posCatalogImageFailureStore.js');
 const checkoutUtilsPath = path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js');
@@ -16,7 +18,7 @@ const operationsPath = path.resolve(webCoreRoot, 'src/features/pos/components/Te
 const pendingPreviewStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posPendingItemImagePreviewStore.js');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
-const readCheckoutRenderSource = () => [checkoutPath, checkoutViewPath].map(readSource).join('\n');
+const readCheckoutRenderSource = () => [checkoutPath, checkoutHookPath, checkoutViewPath].map(readSource).join('\n');
 
 describe('hosted POS catalog performance contracts', () => {
   it('uses optimized thumbnail variants and bounded image-loading priorities', () => {

@@ -8,7 +8,15 @@ const checkoutPath = path.resolve(
   webCoreRoot,
   'src/features/pos/components/POSCheckoutTerminal.jsx'
 );
-const checkoutContent = fs.readFileSync(checkoutPath, 'utf8');
+// The terminal shell was split in staging repair 2026-09-28-01 (#2110): state,
+// effects, and the view-model assembly moved to usePosTerminalViewModel, leaving
+// a thin compatibility shell. Read both so behavior markers validate at the
+// extracted boundary.
+const checkoutHookContent = fs.readFileSync(
+  path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js'),
+  'utf8'
+);
+const checkoutContent = `${fs.readFileSync(checkoutPath, 'utf8')}\n${checkoutHookContent}`;
 const checkoutViewContent = fs.readFileSync(
   path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
   'utf8'

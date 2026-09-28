@@ -9,6 +9,8 @@ const __dirname = path.dirname(__filename);
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const posCheckoutHookPath = path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
 const fnbWorkflowPanelPath = path.resolve(__dirname, '../components/FnbWorkflowPanel.jsx');
@@ -39,7 +41,7 @@ describe('POS terminal responsive scroll contracts', () => {
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
-    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
+    posCheckoutContent = [posCheckoutPath, posCheckoutHookPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     workflowPanelContent = [fnbWorkflowPanelPath, counterWorkflowPanelPath]
