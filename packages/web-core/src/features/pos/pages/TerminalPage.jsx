@@ -1,11 +1,8 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
-import {
-  appendDineInScheduleAlertQueue,
-  getDineInScheduleAlertCandidates,
-  isDineInScheduleAlertsEnabled
-} from '../utils/dineInScheduleAlerts.js';
+// orderFulfillmentUi + dineInScheduleAlerts load on demand (background order
+// enrichment only): they are never on the mount/render path, so the route
+// chunk stays lean. Both chunks load once and are cached for later effects.
 import { isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -802,8 +799,12 @@ export default function TerminalPage() {
   useEffect(() => {
     const orders = incomingOrdersState.orders;
     if (!Array.isArray(orders) || orders.length === 0) return;
-    const hasManualDeliveryJob = orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}));
-    if (hasManualDeliveryJob) ensureDeliveryPersonnelLoaded();
+    let cancelled = false;
+    void import('../components/orderFulfillmentUi.js').then(({ isManualDeliveryJob }) => {
+      if (cancelled) return;
+      if (orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}))) ensureDeliveryPersonnelLoaded();
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [incomingOrdersState.orders, ensureDeliveryPersonnelLoaded]);
   const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
     loading: false,
@@ -3242,29 +3243,41 @@ export default function TerminalPage() {
       closed_at: shiftState?.shift?.closed_at,
       closedAt: shiftState?.shift?.closedAt
     });
-    const alertsEnabled = isDineInScheduleAlertsEnabled({
+    const alertsEnabledPayload = {
       workflowMode,
       onlineOrderQueueEnabled,
       incomingOrdersAccessState: incomingOrdersState?.accessState,
       hasActiveShift,
       canTransactPos,
       locked
-    });
-
-    if (!alertsEnabled) {
-      setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
-      return;
-    }
-
-    const newAlerts = getDineInScheduleAlertCandidates(incomingOrdersState?.orders, {
-      now: scheduledDineInNow,
-      scopeKey,
-      alertedKeys: scheduledDineInAlertKeysRef.current
-    });
-
-    if (newAlerts.length === 0) return;
-    newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
-    setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+    };
+    const alertOrders = incomingOrdersState?.orders;
+    const alertScopeKey = scopeKey;
+    const alertNow = scheduledDineInNow;
+    let cancelled = false;
+    // Deferred with the module above: alert computation is background-only
+    // (1s polling context); a chunk-load failure simply skips one cycle.
+    void import('../utils/dineInScheduleAlerts.js').then(({
+      isDineInScheduleAlertsEnabled,
+      getDineInScheduleAlertCandidates,
+      appendDineInScheduleAlertQueue
+    }) => {
+      if (cancelled) return;
+      const alertsEnabled = isDineInScheduleAlertsEnabled(alertsEnabledPayload);
+      if (!alertsEnabled) {
+        setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
+        return;
+      }
+      const newAlerts = getDineInScheduleAlertCandidates(alertOrders, {
+        now: alertNow,
+        scopeKey: alertScopeKey,
+        alertedKeys: scheduledDineInAlertKeysRef.current
+      });
+      if (newAlerts.length === 0) return;
+      newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
+      setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [canTransactPos, incomingOrdersState?.accessState, incomingOrdersState?.orders, locked, onlineOrderQueueEnabled, scheduledDineInNow, shiftState?.shift?.closedAt, shiftState?.shift?.closed_at, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.status, workflowMode]);
 
   const handleScheduledDineInAlertOpenChange = useCallback((open) => {
