@@ -345,8 +345,8 @@ function PosReportsAnalyticsWorkspace({
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
-    locationId: operatingLocationId || null,
     granularity: displayGranularity,
+    locationId: operatingLocationId || null,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
     cashierId,

@@ -1719,6 +1719,8 @@ export default function Items() {
     try {
       const {
         pos_always_available: requestedPosAlwaysAvailable = false,
+        pos_visible: requestedPosVisible,
+        storefront_visible: requestedStorefrontVisible,
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
@@ -1730,12 +1732,24 @@ export default function Items() {
       const existingPosAlwaysAvailable = isEditingExistingItem
         ? resolvePosConfig(editingItem).pos_always_available === true
         : false;
+      const existingPosVisible = isEditingExistingItem
+        ? resolvePosConfig(editingItem).pos_visible !== false
+        : null;
+      const existingStorefrontVisible = isEditingExistingItem
+        ? resolveStorefrontConfig(editingItem).storefront_visible !== false
+        : null;
       const posAlwaysAvailableChanged = requestedPosAlwaysAvailable !== existingPosAlwaysAvailable;
+      const posVisibilityChanged = typeof requestedPosVisible === 'boolean'
+        && (!isEditingExistingItem || requestedPosVisible !== existingPosVisible);
+      const storefrontVisibilityChanged = typeof requestedStorefrontVisible === 'boolean'
+        && (!isEditingExistingItem || requestedStorefrontVisible !== existingStorefrontVisible);
       if (
         isEditingExistingItem
         && isMsmeMode
         && Object.keys(resolvedItemPayload).length === 0
         && !posAlwaysAvailableChanged
+        && !posVisibilityChanged
+        && !storefrontVisibilityChanged
         && !supplierLinksDirty
       ) {
         toast.message('No item changes detected.');
@@ -1766,6 +1780,9 @@ export default function Items() {
 
       if (requestedPosAlwaysAvailable !== existingPosAlwaysAvailable) {
         posOverridePatch.pos_always_available = requestedPosAlwaysAvailable === true;
+      }
+      if (posVisibilityChanged) {
+        posOverridePatch.pos_visible = requestedPosVisible === true;
       }
 
       await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
@@ -1810,6 +1827,25 @@ export default function Items() {
           } else {
             toast.warning('Item was saved, but POS availability settings did not update. Please retry from item edit.');
           }
+        }
+      }
+
+      if (
+        Number.isInteger(targetItemId)
+        && targetItemId > 0
+        && storefrontVisibilityChanged
+        && canConfigureStorefrontCatalog
+      ) {
+        try {
+          const updatedOverride = await updateStorefrontCatalogOverride(targetItemId, {
+            storefront_visible: requestedStorefrontVisible === true
+          });
+          setStorefrontCatalogOverrides((prev) => ({
+            ...prev,
+            [targetItemId]: { ...(prev[targetItemId] || {}), ...updatedOverride }
+          }));
+        } catch (overrideError) {
+          toast.warning('Item was saved, but Storefront visibility settings did not update. Please retry from item edit.');
         }
       }
 
