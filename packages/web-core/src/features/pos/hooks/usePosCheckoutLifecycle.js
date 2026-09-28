@@ -74,10 +74,11 @@ export const usePosCheckoutLifecycle = ({
         if (typeof onCheckoutLifecycleChange !== 'function') return undefined;
         onCheckoutLifecycleChange({
             clearTransientSaleForSessionEnd,
-            requestViewModeChange
+            requestViewModeChange,
+            hasBlockingCurrentSale: safeCartLength > 0 || Boolean(activeParkedSale?.pos_parked_sale_id)
         });
         return () => onCheckoutLifecycleChange(null);
-    }, [clearTransientSaleForSessionEnd, onCheckoutLifecycleChange, requestViewModeChange]);
+    }, [activeParkedSale?.pos_parked_sale_id, clearTransientSaleForSessionEnd, onCheckoutLifecycleChange, requestViewModeChange, safeCartLength]);
 
     return { clearTransientSale, confirmClearCurrentSale, handleClearSaleDialogOpenChange, pendingViewModeAfterSaleClear };
 };

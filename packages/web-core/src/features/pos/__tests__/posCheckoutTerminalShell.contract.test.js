@@ -39,7 +39,10 @@ describe('POS checkout terminal orchestration shell contract', () => {
     expect(viewSource).toContain("<POSCheckoutConfirmDialog key={viewModel.checkoutConfirmModalOpen ? 'checkout-open' : 'checkout-closed'} viewModel={viewModel} />");
     expect(checkoutDialogSource).toContain('const [paymentAmountDraft, setPaymentAmountDraft] = useState(null);');
     expect(checkoutDialogSource).toContain('onChange={(event) => selectPaymentAmount(event.target.value)}');
-    expect(checkoutDialogSource).toContain('const confirmCheckout = () => handleCheckout({');
+    // The handler dispatches a payment snapshot (existing-order checkouts route
+    // through handleExistingOrderCheckout first); the snapshot call is the
+    // behavior this contract pins.
+    expect(checkoutDialogSource).toContain('return handleCheckout(checkoutPaymentSnapshot);');
     expect(viewSource).not.toContain('id="pos-customer-payment-amount"');
   });
 

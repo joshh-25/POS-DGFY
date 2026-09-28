@@ -123,7 +123,11 @@ export const finalizeJobOrder = async (req, res, next) => {
   try {
     const { jo_id: jobOrderId } = req.params;
     const userId = req.user.user_id;
-    const result = await finalizeJobOrderUseCase({ jobOrderId, userId });
+    const result = await finalizeJobOrderUseCase({
+      jobOrderId,
+      userId,
+      locationData: req.validatedData || req.body || {}
+    });
     await trackProductUsageFromResult({
       req,
       user: req.user,

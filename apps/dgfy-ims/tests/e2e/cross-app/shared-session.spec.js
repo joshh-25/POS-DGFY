@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
+import { hasTestCredentials, loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
 import { POS_URL, SKUPERVISOR_URL, TEST_COMPANY_TOKEN } from '../helpers/urls.js';
 import { registerCrashDetection } from '../helpers/assertions.js';
 
 test.describe('Cross-App Session Synchronization', () => {
   test('shared authenticated session is recognized across SKUpervisor and POS origins', async ({ context }) => {
+    test.skip(!hasTestCredentials, 'Provide E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in .env.e2e.');
     // BroadcastChannel is origin-scoped. This test proves the cross-origin session
     // contract through the shared HttpOnly cookie and each app's bootstrap path.
     const pageSkupervisor = await context.newPage();

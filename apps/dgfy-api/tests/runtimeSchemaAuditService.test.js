@@ -82,7 +82,11 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260824000002-add-pos-attendance-idempotency.cjs' },
         { name: '20260824000003-add-pos-cashier-pin-and-operator-authority.cjs' },
         { name: '20260825000001-add-pos-operator-protected-operation-lease.cjs' },
-        { name: '20260904000001-create-pos-discount-beneficiaries.cjs' }
+        { name: '20260904000001-create-pos-discount-beneficiaries.cjs' },
+        { name: '20260914000002-create-pos-location-item-overrides.cjs' },
+        { name: '20260914000003-add-job-order-location-scope.cjs' },
+        { name: '20260914000004-create-pos-terminal-device-enrollment.cjs' },
+        { name: '20260921000002-add-employee-credit-split-tender.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -151,6 +155,71 @@ const buildHealthySequelizeMock = () => ({
                     pos_image_url: {},
                     pos_always_available: { allowNull: false },
                     pos_best_seller_mode: { allowNull: false }
+                },
+                pos_location_item_overrides: {
+                    pos_location_item_override_id: {},
+                    item_id: {},
+                    location_id: {},
+                    pos_available: { allowNull: false }
+                },
+                pos_terminal_device_enrollments: {
+                    pos_terminal_device_enrollment_id: {},
+                    device_id: {},
+                    public_key: {},
+                    key_algorithm: {},
+                    client_type: {},
+                    terminal_id: {},
+                    location_id: {},
+                    status: {},
+                    version: {},
+                    enrolled_by: {},
+                    enrolled_at: {},
+                    last_seen_at: {},
+                    revoked_by: {},
+                    revoked_at: {},
+                    revoked_reason: {},
+                    replaced_by: {},
+                    active_terminal_key: {},
+                    active_device_key: {},
+                    metadata: {},
+                    created_at: {},
+                    updated_at: {}
+                },
+                pos_terminal_device_activations: {
+                    pos_terminal_device_activation_id: {},
+                    activation_hash: {},
+                    terminal_id: {},
+                    location_id: {},
+                    issued_by: {},
+                    issued_reason: {},
+                    expires_at: {},
+                    consumed_at: {},
+                    consumed_by_device_id: {},
+                    metadata: {},
+                    created_at: {},
+                    updated_at: {}
+                },
+                pos_terminal_device_challenges: {
+                    pos_terminal_device_challenge_id: {},
+                    challenge_hash: {},
+                    device_id: {},
+                    terminal_id: {},
+                    location_id: {},
+                    purpose: {},
+                    request_path: {},
+                    request_method: {},
+                    session_id: {},
+                    expires_at: {},
+                    consumed_at: {},
+                    consumed_request_id: {},
+                    created_at: {},
+                    updated_at: {}
+                },
+                job_orders: {
+                    jo_id: {},
+                    product_id: {},
+                    source_location_id: { allowNull: true },
+                    destination_location_id: { allowNull: true }
                 },
                 pos_transactions: {
                     pos_transaction_id: {},
@@ -265,6 +334,25 @@ const buildHealthySequelizeMock = () => ({
                     idempotency_key: {},
                     note: {}
                 },
+                business_admin_approval_requests: {
+                    business_admin_approval_request_id: {},
+                    action_type: {},
+                    entity_type: {},
+                    entity_id: {},
+                    payload: {},
+                    payload_hash: {},
+                    status: {},
+                    reason: {},
+                    idempotency_key: {},
+                    requested_by: {},
+                    approved_by: {},
+                    rejected_by: {},
+                    approval_note: {},
+                    expires_at: {},
+                    approved_at: {},
+                    rejected_at: {},
+                    executed_at: {}
+                },
                 pos_payment_sessions: {
                     pos_payment_session_id: {},
                     session_reference: {},
@@ -283,6 +371,7 @@ const buildHealthySequelizeMock = () => ({
                     session_id: {},
                     status: {},
                     payment_method: {},
+                    employee_credit_account_code: {},
                     applied_amount: {},
                     provider_event_id: {},
                     provider_refund_ids: {},
@@ -360,7 +449,9 @@ const buildHealthySequelizeMock = () => ({
                     origin_shift_id: {},
                     terminal_id: {},
                     location_id: {},
-                    snapshot: {}
+                    snapshot: {},
+                    inventory_effects: {},
+                    inventory_deducted_at: {}
                 },
                 employee_credit_accounts: {
                     account_id: {},

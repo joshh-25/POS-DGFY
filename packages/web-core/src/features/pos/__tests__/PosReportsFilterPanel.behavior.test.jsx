@@ -54,16 +54,21 @@ describe('POS reports filter modal', () => {
     expect(screen.queryByText('Range', { exact: true })).toBeNull();
 
     const paymentGroup = screen.getByRole('group', { name: 'Payment Type' });
-    const cashierGroup = screen.getByRole('group', { name: 'Cashier' });
-    expect(paymentGroup.className).toContain('overflow-x-auto');
-    expect(cashierGroup.className).toContain('overflow-x-auto');
-    expect(paymentGroup.querySelector('button')?.className).toContain('min-h-9');
-    expect(paymentGroup.querySelector('button')?.className).toContain('min-w-[8rem]');
+    expect(paymentGroup.className).toContain('grid-cols-4');
+    expect(paymentGroup.querySelector('button')?.className).toContain('h-8');
+    expect(paymentGroup.querySelector('button')?.className).toContain('min-w-0');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cash' }));
     fireEvent.click(screen.getByRole('button', { name: 'Delivery' }));
     fireEvent.click(screen.getByRole('button', { name: 'Meals' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ben Cashier' }));
+    const cashierSearch = screen.getByTestId('pos-reports-filter-cashier-search');
+    const cashierToggle = screen.getByTestId('pos-reports-filter-cashier-dropdown-toggle');
+    expect(cashierToggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.change(cashierSearch, { target: { value: 'Ben' } });
+    expect(cashierToggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByTestId('pos-reports-filter-cashier-option-12'));
+    expect(cashierToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(cashierSearch.value).toBe('Ben Cashier');
 
     expect(onApplyFilters).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Apply Filters' }));
@@ -91,14 +96,14 @@ describe('POS reports filter modal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('renders as a non-modal anchored popover and closes on outside pointer input', () => {
+  it('uses the shared History dialog shell and closes on overlay input', () => {
     const onClose = vi.fn();
     render(<PosReportsFilterPanel {...baseProps} onClose={onClose} />);
 
-    expect(screen.getByRole('dialog', { name: 'Filter' }).getAttribute('aria-modal')).toBe('false');
-    expect(screen.queryByRole('presentation')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Filter' }).getAttribute('aria-modal')).toBe('true');
+    expect(document.querySelector('[data-dialog-overlay="true"]')).toBeTruthy();
 
-    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.querySelector('[data-dialog-overlay="true"]'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -113,12 +118,10 @@ describe('POS reports filter modal', () => {
 
     const panel = screen.getByRole('dialog', { name: 'Filter' });
     const content = panel.children[1];
-    expect(panel.style.maxHeight).toBe('268px');
-    expect(panel.className).toContain('lg:max-h-none');
+    expect(panel.style.maxHeight).toBe('');
+    expect(panel.className).toContain('dgfy-pos-history-mobile-sheet');
     expect(content.className).toContain('min-h-0');
     expect(content.className).toContain('overflow-y-auto');
-    expect(content.className).not.toContain('lg:flex-none');
-    expect(content.className).not.toContain('lg:overflow-visible');
     expect(panel.querySelector('header').className).toContain('shrink-0');
     expect(panel.querySelector('footer').className).toContain('shrink-0');
   });

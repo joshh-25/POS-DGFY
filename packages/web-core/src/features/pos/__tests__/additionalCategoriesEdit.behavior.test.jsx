@@ -17,7 +17,6 @@
 //     must render an honest "unavailable" status, never the same "0/10
 //     selected" a genuinely empty membership list would show.
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import React from 'react';
@@ -25,6 +24,17 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalOperationsWorkspace from '../components/TerminalOperationsWorkspace.jsx';
 import { getFolders, listItemFolders, replaceItemFolders } from '@/services/itemService.js';
+import { readSourceForContract } from './readSourceForContract.js';
+
+const updateItemMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/hooks/useItems.js', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    useUpdateItem: () => ({ updateItem: updateItemMock, loading: false })
+  };
+});
 
 vi.mock('../services/posService.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -113,6 +123,10 @@ describe('POS edit-item modal: Additional Categories (#1318)', () => {
     render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
     const section = await openEditAndGetSection();
 
+    expect(screen.getByTestId('pos-edit-item-shared-catalog-notice')).toBeTruthy();
+    expect(screen.getByText(/Item name and selling price are shared across this tenant/i)).toBeTruthy();
+    expect(screen.getByText(/Stock and POS availability apply to the selected branch/i)).toBeTruthy();
+
     // The item's own primary category (Main Course, folder_id 10) must not
     // be offered as a secondary option -- selecting it would be redundant
     // and the API silently drops it anyway (ADR 0080 clause 2).
@@ -128,6 +142,25 @@ describe('POS edit-item modal: Additional Categories (#1318)', () => {
     fireEvent.click(within(section).getByRole('button', { name: 'Save Additional Categories' }));
 
     await waitFor(() => expect(replaceItemFolders).toHaveBeenCalledWith(24, [20]));
+  });
+
+  it('refreshes effective permissions after a server-denied edit and keeps the draft open', async () => {
+    updateItemMock.mockRejectedValueOnce({
+      response: {
+        status: 403,
+        data: { message: 'Item edit permission is required.' }
+      }
+    });
+    const refreshTerminalUser = vi.fn().mockResolvedValue(undefined);
+
+    render(<TerminalOperationsWorkspace {...buildProps({ refreshTerminalUser })} />);
+    await openEditAndGetSection();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Item' }));
+
+    await waitFor(() => expect(refreshTerminalUser).toHaveBeenCalledWith({ suppressGlobalErrors: true }));
+    expect(screen.getByTestId('pos-edit-item-permission-denied')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Save Item' }).disabled).toBe(true);
+    expect(screen.getByDisplayValue('Aloo Paratha')).toBeTruthy();
   });
 
   it('shows the section read-only, not hidden, when the operator cannot manage categories -- matching the primary category field\'s own convention', async () => {
@@ -323,9 +356,8 @@ describe('POS edit-item modal: Additional Categories gate (#1318, source contrac
   // runtime behavior case -- named as such per the PR #1581 review (RF-2).
   it('gates the section on a real persisted item id, not just an open modal', () => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workspace = fs.readFileSync(
-      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'),
-      'utf8'
+    const workspace = readSourceForContract(
+      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx')
     );
 
     expect(workspace).toContain(
@@ -338,9 +370,8 @@ describe('POS edit-item modal: Additional Categories gate (#1318, source contrac
 
   it('resolves the pending primary category the same way handleSave resolves the saved one (RF-1)', () => {
     const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const workspace = fs.readFileSync(
-      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx'),
-      'utf8'
+    const workspace = readSourceForContract(
+      path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx')
     );
 
     expect(workspace).toContain('const pendingPrimaryFolderId = useMemo(() => {');

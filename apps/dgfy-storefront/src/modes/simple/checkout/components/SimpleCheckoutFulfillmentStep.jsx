@@ -33,6 +33,7 @@ export function SimpleCheckoutFulfillmentStep({
   renderGuestCheckoutEntry,
   scheduledFor = '',
   selectedLocation = null,
+  storefrontHours,
   orderTimingPolicy,
   selectedSavedLocationId = '',
   servicesBodyFont,
@@ -99,6 +100,7 @@ export function SimpleCheckoutFulfillmentStep({
         onScheduledForChange={onScheduledForChange}
         orderMethod={orderMethod}
         simpleOrderMethodOptions={simpleOrderMethodOptions}
+        storefrontHours={storefrontHours}
         orderTimingPolicy={orderTimingPolicy || resolveOrderTimingPolicy()}
       />
 
@@ -199,6 +201,7 @@ export function SimpleCheckoutFulfillmentStep({
               pin={customerPin}
               onPinChange={onPinChange}
               disabled={false}
+              scrollZoom={false}
               height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
               highlighted
               highlightColor={SIMPLE_BRAND}

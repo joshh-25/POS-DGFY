@@ -6,8 +6,9 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- native_pos contains session/company tokens; pos_device_identity
+         contains the metadata paired with the non-exportable Keystore key.
+         Neither file may be copied to another installation. -->
+    <exclude domain="sharedpref" path="native_pos" />
+    <exclude domain="sharedpref" path="pos_device_identity" />
 </full-backup-content>

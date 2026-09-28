@@ -1,3 +1,5 @@
+import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
+
 const CSRF_COOKIE_KEY = 'sku_csrf_token';
 const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '').trim().toLowerCase() === 'pos';
 const POS_BROWSER_SESSION_STORAGE_KEY = 'pos_browser_session_v1';
@@ -109,21 +111,10 @@ const bootstrapStandalonePosSession = () => {
 
 bootstrapStandalonePosSession();
 
-const resolveApiBaseUrl = () => {
-  const configured = (import.meta.env.VITE_API_URL || '').trim();
-  if (!configured) return '/api/v1';
-  if (typeof window !== 'undefined') {
-    try {
-      const parsed = new URL(configured, window.location.origin);
-      const configuredLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-      const runtimeLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-      if (configuredLocal && !runtimeLocal) return '/api/v1';
-    } catch {
-      return configured;
-    }
-  }
-  return configured;
-};
+const getApiBaseUrl = () => resolveApiBaseUrl(
+  import.meta.env,
+  typeof window !== 'undefined' ? window.location : undefined
+);
 
 const readCookie = (name) => {
   if (typeof document === 'undefined') return '';
@@ -144,7 +135,7 @@ export const ensureCsrfToken = async ({ force = false } = {}) => {
   if (csrfBootstrapInFlight) return csrfBootstrapInFlight;
 
   csrfBootstrapInFlight = (async () => {
-    const response = await fetch(`${resolveApiBaseUrl()}/auth/csrf-token`, {
+    const response = await fetch(`${getApiBaseUrl()}/auth/csrf-token`, {
       method: 'GET',
       credentials: 'include',
       headers: {
@@ -284,7 +275,7 @@ export const refreshBrowserSession = async () => {
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       await ensureCsrfToken();
-      const response = await fetch(`${resolveApiBaseUrl()}/auth/refresh-token`, {
+      const response = await fetch(`${getApiBaseUrl()}/auth/refresh-token`, {
         method: 'POST',
         credentials: 'include',
         headers: {

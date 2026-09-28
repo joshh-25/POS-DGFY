@@ -20,12 +20,28 @@ const DOWNPAYMENT_ORDER = {
   fulfillment_status: 'out_for_delivery',
   order_method: 'delivery',
   payment_type: 'cash',
+  payment_timing: 'on_delivery',
   payment_status: 'partially_paid',
   amount_paid: 200,
   balance_due: 800,
   total_amount: 1000,
   customer_name: 'Ana Cruz',
   created_at: '2026-08-22T10:00:00Z'
+};
+
+const UNPAID_DINE_IN_ORDER = {
+  pos_transaction_id: 904,
+  invoice_number: 'INV-000904',
+  tracking_pin: 'SK-DINE01',
+  fulfillment_status: 'ready_for_pickup',
+  order_method: 'dine_in',
+  payment_type: 'cash',
+  payment_timing: 'on_dine_in',
+  payment_status: 'unpaid',
+  total_amount: 130,
+  customer_name: 'Admin User',
+  created_at: '2026-09-24T10:00:00Z',
+  scheduled_for: '2026-09-24T14:00:00Z'
 };
 
 const renderQueue = (orders, overrides = {}) => render(
@@ -37,6 +53,7 @@ const renderQueue = (orders, overrides = {}) => render(
     shiftState={{ shift: { pos_terminal_shift_id: 12, location_id: 3 } }}
     incomingOrdersState={{ orders, loading: false, accessState: 'ready' }}
     orderHistoryState={{ orders: [], pagination: {}, accessState: 'ready' }}
+    workflowMode="fnb"
     incomingOrderActionState={{}}
     handleIncomingOrderStatusChange={vi.fn()}
     handleDeliveryJobStatusChange={vi.fn()}
@@ -70,7 +87,31 @@ const renderDialog = (overrides = {}) => render(
   />
 );
 
+const openDineInSchedule = () => {
+  fireEvent.click(screen.getByRole('tab', { name: /dine-in schedule/i }));
+};
+
 describe('POS balance settlement action (Phase 148, #825)', () => {
+  it('offers dine-in checkout and keeps Served blocked until payment is recorded', () => {
+    const handleOpenCashCollection = vi.fn();
+    renderQueue([UNPAID_DINE_IN_ORDER], { handleOpenCashCollection });
+    openDineInSchedule();
+
+    expect(screen.getByRole('button', { name: /^checkout$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: /^checkout$/i }));
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(UNPAID_DINE_IN_ORDER);
+  });
+
+  it('enables Served after a dine-in cash payment is paid', () => {
+    renderQueue([{ ...UNPAID_DINE_IN_ORDER, payment_status: 'paid' }]);
+    openDineInSchedule();
+
+    expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(false);
+    expect(screen.queryByRole('button', { name: /collect dine-in cash/i })).toBeNull();
+  });
+
   it('offers Settle Balance on a partially-paid order at handover', () => {
     renderQueue([DOWNPAYMENT_ORDER]);
 
@@ -78,6 +119,38 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     // The two buttons are mutually exclusive by construction -- collect-cash owns `unpaid`,
     // settlement owns `partially_paid` -- so a downpayment order must never offer both.
     expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
+  });
+
+  it('offers Settle Balance for a dine-in order when it is ready to serve', () => {
+    renderQueue([{
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      fulfillment_status: 'ready_for_pickup'
+    }]);
+    openDineInSchedule();
+
+    expect(screen.getByRole('button', { name: /settle balance/i })).toBeTruthy();
+  });
+
+  it('routes an unpaid cash dine-in order to Checkout when it is ready to serve', () => {
+    const handleOpenCashCollection = vi.fn();
+    const dineInOrder = {
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      payment_type: 'cash',
+      payment_status: 'unpaid',
+      fulfillment_status: 'ready_for_pickup',
+      amount_paid: 0,
+      balance_due: 0
+    };
+    renderQueue([dineInOrder], { handleOpenCashCollection });
+    openDineInSchedule();
+
+    fireEvent.click(screen.getByRole('button', { name: /^checkout$/i }));
+
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(dineInOrder);
+    expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /settle balance/i })).toBeNull();
   });
 
   it('never offers Settle Balance on the plain COD path collect-cash owns', () => {

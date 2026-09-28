@@ -3,7 +3,7 @@
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import PosSettingsPagination from '../settings/PosSettingsPagination.jsx';
+import GlobalPagination from '@/components/ui/pagination';
 
 afterEach(cleanup);
 
@@ -14,34 +14,39 @@ describe('POS Settings pagination', () => {
     const onPageSizeChange = vi.fn();
 
     render(
-      <PosSettingsPagination
-        page={1}
+      <GlobalPagination
+        testId="settings-pagination"
+        currentPage={1}
         totalPages={2}
         pageSize={20}
-        total={35}
+        totalItems={35}
         itemLabel="items"
         pageSizeOptions={[10, 20]}
         onPageChange={onPageChange}
         onPageSizeChange={onPageSizeChange}
+        pageSizeLabel="items per page"
+        pageInputLabel="Go to items page"
+        previousLabel="Previous items page"
+        nextLabel="Next items page"
+        ariaLabel="items pagination"
       />
     );
 
     const pagination = screen.getByRole('navigation', { name: 'items pagination' });
-    expect(pagination.className).toContain('text-[12px]');
-    expect(pagination.className).not.toContain('sm:text-[12px]');
-    expect(pagination.className).not.toContain('border');
+    expect(pagination.className).toContain('dgfy-global-pagination');
     const range = screen.getByText('Showing 1–20 of 35 items');
     expect(range).toBeTruthy();
-    expect(range.className).toContain('whitespace-normal');
+    expect(range.className).toContain('whitespace-nowrap');
     expect(range.className.split(/\s+/)).not.toContain('truncate');
-    expect(screen.getByRole('combobox', { name: 'items per page' }).value).toBe('20');
+    expect(screen.getByRole('button', { name: 'items per page' })).toBeTruthy();
     expect(screen.getByText('1 of 2')).toBeTruthy();
     expect(screen.getByLabelText('Previous items page').disabled).toBe(true);
 
     await user.click(screen.getByRole('button', { name: 'Next items page' }));
     expect(onPageChange).toHaveBeenCalledWith(2);
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'items per page' }), '10');
+    await user.click(screen.getByRole('button', { name: 'items per page' }));
+    await user.click(screen.getByRole('option', { name: '10 / page' }));
     expect(onPageSizeChange).toHaveBeenCalledWith(10);
 
     const pageInput = screen.getByRole('textbox', { name: 'Go to items page' });
@@ -57,14 +62,18 @@ describe('POS Settings pagination', () => {
     const onPageSizeChange = vi.fn();
 
     render(
-      <PosSettingsPagination
-        page={9}
+      <GlobalPagination
+        currentPage={9}
         totalPages={1}
         pageSize={5}
-        total={0}
+        totalItems={0}
         itemLabel="employees"
         onPageChange={onPageChange}
         onPageSizeChange={onPageSizeChange}
+        pageSizeLabel="employees per page"
+        pageInputLabel="Go to employees page"
+        previousLabel="Previous employees page"
+        nextLabel="Next employees page"
       />
     );
 
@@ -73,6 +82,6 @@ describe('POS Settings pagination', () => {
     await user.clear(pageInput);
     await user.type(pageInput, '999');
     await user.keyboard('{Enter}');
-    expect(onPageChange).toHaveBeenLastCalledWith(1);
+    expect(onPageChange).not.toHaveBeenCalled();
   });
 });

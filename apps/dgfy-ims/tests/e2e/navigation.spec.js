@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from './helpers/auth.js';
+import { hasTestCredentials, loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from './helpers/auth.js';
 import { TEST_COMPANY_TOKEN } from './helpers/urls.js';
 import { registerCrashDetection } from './helpers/assertions.js';
 
 test.describe('Skupervisor Navigation and Layout Integrity', () => {
   test.beforeEach(async ({ page }) => {
+    test.skip(!hasTestCredentials, 'Provide E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD in .env.e2e.');
     await page.goto('/login');
     await loginToApp(page, TEST_USER_EMAIL, TEST_USER_PASSWORD, TEST_COMPANY_TOKEN);
     await page.waitForURL('**/');

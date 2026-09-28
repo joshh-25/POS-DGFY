@@ -56,7 +56,7 @@ describe('resolveDownpaymentBalanceLabel', () => {
   it('uses delivery wording only for delivery orders', () => {
     expect(resolveDownpaymentBalanceLabel('delivery')).toBe('Balance due on delivery');
     expect(resolveDownpaymentBalanceLabel('pickup')).toBe('Balance due at pickup');
-    expect(resolveDownpaymentBalanceLabel('dine_in')).toBe('Balance due at pickup');
+    expect(resolveDownpaymentBalanceLabel('dine_in')).toBe('Balance due at dine-in');
   });
 });
 
@@ -235,4 +235,3 @@ describe('resolveTrackingDownpaymentDisplay', () => {
     expect(display.active).toBe(false);
   });
 });
-

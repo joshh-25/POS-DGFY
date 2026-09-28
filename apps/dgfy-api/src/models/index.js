@@ -36,6 +36,7 @@ import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import PosParkedSale from './PosParkedSale.js';
+import BusinessAdminApprovalRequest from './BusinessAdminApprovalRequest.js';
 import PosPaymentSession from './PosPaymentSession.js';
 import PosPaymentAllocation from './PosPaymentAllocation.js';
 import PosTransactionAdjustment from './PosTransactionAdjustment.js';
@@ -60,6 +61,7 @@ import PosInvoiceCounter from './PosInvoiceCounter.js';
 import PosZReadingSnapshot from './PosZReadingSnapshot.js';
 import PosOperationReplay from './PosOperationReplay.js';
 import PosCatalogOverride from './PosCatalogOverride.js';
+import PosLocationItemOverride from './PosLocationItemOverride.js';
 import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
 import PosFiscalEvent from './PosFiscalEvent.js';
 import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
@@ -81,6 +83,9 @@ import PosCashDrawerEvent from './PosCashDrawerEvent.js';
 import EmployeeAttendanceSession from './EmployeeAttendanceSession.js';
 import EmployeeBreakSegment from './EmployeeBreakSegment.js';
 import PosTerminalOperatorSession from './PosTerminalOperatorSession.js';
+import PosTerminalDeviceEnrollment from './PosTerminalDeviceEnrollment.js';
+import PosTerminalDeviceActivation from './PosTerminalDeviceActivation.js';
+import PosTerminalDeviceChallenge from './PosTerminalDeviceChallenge.js';
 import PosDrawerHandoffEvent from './PosDrawerHandoffEvent.js';
 import PosShiftLocationTransition from './PosShiftLocationTransition.js';
 import PosShiftLocationBackfillAudit from './PosShiftLocationBackfillAudit.js';
@@ -545,6 +550,8 @@ POLineItem.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 // JobOrder associations
 JobOrder.belongsTo(Item, { foreignKey: 'product_id', as: 'product' });
 JobOrder.belongsTo(User, { foreignKey: 'responsible_user', as: 'responsibleUser' });
+JobOrder.belongsTo(TenantLocation, { foreignKey: 'source_location_id', as: 'sourceLocation' });
+JobOrder.belongsTo(TenantLocation, { foreignKey: 'destination_location_id', as: 'destinationLocation' });
 JobOrder.belongsTo(User, { foreignKey: 'completed_by', as: 'completedByUser' });
 JobOrder.hasMany(JOIngredient, { foreignKey: 'jo_id', as: 'ingredients' });
 
@@ -614,6 +621,10 @@ ProductComposition.belongsTo(Item, { foreignKey: 'ingredient_id', as: 'ingredien
 
 // AuditLog associations
 AuditLog.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
+
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'requested_by', as: 'requestedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'approved_by', as: 'approvedByUser' });
+BusinessAdminApprovalRequest.belongsTo(User, { foreignKey: 'rejected_by', as: 'rejectedByUser' });
 
 // ReceiveToken associations
 ReceiveToken.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
@@ -705,6 +716,9 @@ User.hasMany(PosParkedSale, { foreignKey: 'claimed_by', as: 'claimedPosParkedSal
 User.hasMany(PosParkedSale, { foreignKey: 'cancelled_by', as: 'cancelledPosParkedSales' });
 PosTransaction.hasMany(PosParkedSale, { foreignKey: 'completed_transaction_id', as: 'parkedSaleCompletions' });
 PosParkedSale.hasMany(PosPaymentSession, { foreignKey: 'parked_sale_id', as: 'paymentSessions' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'requested_by', as: 'requestedBusinessAdminApprovals' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'approved_by', as: 'approvedBusinessAdminApprovals' });
+User.hasMany(BusinessAdminApprovalRequest, { foreignKey: 'rejected_by', as: 'rejectedBusinessAdminApprovals' });
 PosTransaction.hasMany(PosPaymentSession, { foreignKey: 'completed_transaction_id', as: 'paymentSessions' });
 PosTerminalShift.hasMany(PosPaymentSession, { foreignKey: 'shift_id', as: 'paymentSessions' });
 TenantLocation.hasMany(PosPaymentSession, { foreignKey: 'location_id', as: 'posPaymentSessions' });
@@ -791,6 +805,8 @@ Item.hasMany(InventoryReservationLine, { foreignKey: 'item_id', as: 'inventoryRe
 ItemLocationStock.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(PosCatalogOverride, { foreignKey: 'item_id', as: 'posCatalogOverride' });
 PosCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+Item.hasMany(PosLocationItemOverride, { foreignKey: 'item_id', as: 'posLocationItemOverrides' });
+PosLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontCatalogOverride' });
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
@@ -915,6 +931,7 @@ TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTe
 TenantLocation.hasMany(ItemLocationStock, { foreignKey: 'location_id', as: 'itemLocationStocks' });
 TenantLocation.hasMany(InventoryReservation, { foreignKey: 'location_id', as: 'inventoryReservations' });
 TenantLocation.hasMany(StorefrontLocationItemOverride, { foreignKey: 'location_id', as: 'storefrontItemOverrides' });
+TenantLocation.hasMany(PosLocationItemOverride, { foreignKey: 'location_id', as: 'posItemOverrides' });
 TenantLocation.hasMany(FIFOBatch, { foreignKey: 'location_id', as: 'fifoBatches' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'location_id', as: 'stockMovements' });
 TenantLocation.hasMany(StockMovement, { foreignKey: 'source_location_id', as: 'sourceStockMovements' });
@@ -933,6 +950,7 @@ InventoryReservationLine.belongsTo(InventoryReservation, {
 });
 InventoryReservationLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 StorefrontLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosLocationItemOverride.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 User.belongsToMany(TenantLocation, {
   through: UserLocationGrant,
   foreignKey: 'user_id',
@@ -1197,6 +1215,7 @@ const db = {
   DispatchOrderLine,
   PosTransaction,
   PosParkedSale,
+  BusinessAdminApprovalRequest,
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
@@ -1221,6 +1240,7 @@ const db = {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosLocationItemOverride,
   PosFiscalTerminalRegistration,
   PosFiscalEvent,
   PosFiscalPrintEvent,
@@ -1243,6 +1263,9 @@ const db = {
   EmployeeAttendanceSession,
   EmployeeBreakSegment,
   PosTerminalOperatorSession,
+  PosTerminalDeviceEnrollment,
+  PosTerminalDeviceActivation,
+  PosTerminalDeviceChallenge,
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,
@@ -1426,6 +1449,7 @@ export {
   DispatchOrderLine,
   PosTransaction,
   PosParkedSale,
+  BusinessAdminApprovalRequest,
   PosPaymentSession,
   PosPaymentAllocation,
   PosTransactionAdjustment,
@@ -1441,6 +1465,7 @@ export {
   PosZReadingSnapshot,
   PosOperationReplay,
   PosCatalogOverride,
+  PosLocationItemOverride,
   PosFiscalTerminalRegistration,
   PosFiscalEvent,
   PosFiscalPrintEvent,
@@ -1463,6 +1488,9 @@ export {
   EmployeeAttendanceSession,
   EmployeeBreakSegment,
   PosTerminalOperatorSession,
+  PosTerminalDeviceEnrollment,
+  PosTerminalDeviceActivation,
+  PosTerminalDeviceChallenge,
   PosDrawerHandoffEvent,
   PosShiftLocationTransition,
   PosShiftLocationBackfillAudit,

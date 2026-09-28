@@ -6,26 +6,35 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const checkoutViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const checkoutHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
 const catalogWorkflowPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js');
 const catalogImageFailureStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posCatalogImageFailureStore.js');
 const checkoutUtilsPath = path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js');
+const posItemImagePath = path.resolve(webCoreRoot, 'src/features/pos/components/PosItemImage.jsx');
 const layoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx');
 const sidebarPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
+const operationsPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
 const pendingPreviewStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posPendingItemImagePreviewStore.js');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
-const readCheckoutRenderSource = () => [checkoutPath, checkoutViewPath].map(readSource).join('\n');
+const readCheckoutRenderSource = () => [checkoutPath, checkoutHookPath, checkoutViewPath].map(readSource).join('\n');
 
 describe('hosted POS catalog performance contracts', () => {
   it('uses optimized thumbnail variants and bounded image-loading priorities', () => {
     const checkoutSource = readCheckoutRenderSource();
     const catalogWorkflowSource = readSource(catalogWorkflowPath);
     const checkoutUtilsSource = readSource(checkoutUtilsPath);
+    const posItemImageSource = readSource(posItemImagePath);
+    const operationsSource = readSource(operationsPath);
     const pendingPreviewStoreSource = readSource(pendingPreviewStorePath);
     const catalogImageFailureStoreSource = readSource(catalogImageFailureStorePath);
 
     expect(checkoutUtilsSource).toContain("item?.pos_image_url || item?.storefront_image_url");
     expect(checkoutUtilsSource).toContain('fallbackVariants.posThumbnailUrl || fallbackVariants.thumbnailUrl');
+    expect(posItemImageSource).toContain("import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';");
+    expect(posItemImageSource).toContain('sources={targetSources}');
+    expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain("loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('width={144}');

@@ -240,6 +240,7 @@ const toReplayPayload = (
     terminal_id: string;
     shift_id?: number;
     order_method: string;
+    table_number?: string;
     payment_type: string;
     payment_handoff_mode: string;
     lines: LegacyCheckoutLineInput[];
@@ -253,12 +254,14 @@ const toReplayPayload = (
     const lines = Array.isArray(payload.lines) ? payload.lines : [];
     const paymentType = String(paymentSnapshot.payment_type || 'cash').trim().toLowerCase() || 'cash';
     const orderMethod = String(paymentSnapshot.order_method || 'dine_in').trim().toLowerCase() || 'dine_in';
+    const tableNumber = String(paymentSnapshot.table_number || '').trim();
 
     return {
         idempotency_key: String(payload.idempotency_key || entry.local_transaction_id || `standalone-replay-${Date.now()}`),
         terminal_id: String(payload.terminal_id || deviceId).trim(),
         shift_id: payload.shift_id ? Number(payload.shift_id) : undefined,
         order_method: orderMethod,
+        table_number: orderMethod === 'dine_in' && tableNumber ? tableNumber : undefined,
         payment_type: paymentType,
         payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
         lines: lines.map((line) => {
@@ -359,6 +362,7 @@ export class MobilePosClient implements MobilePosSyncApi {
         terminalId: string;
         shiftId?: number | string | null;
         orderMethod?: string;
+        tableNumber?: string;
         paymentType?: string;
         paymentHandoffMode?: string;
         discountAmount?: number;
@@ -372,6 +376,7 @@ export class MobilePosClient implements MobilePosSyncApi {
                 terminal_id: String(input.terminalId || '').trim(),
                 shift_id: input.shiftId ? Number(input.shiftId) : undefined,
                 order_method: String(input.orderMethod || 'dine_in'),
+                table_number: String(input.tableNumber || '').trim() || undefined,
                 payment_type: String(input.paymentType || 'cash'),
                 payment_handoff_mode: String(input.paymentHandoffMode || 'internal'),
                 discount_amount: Number(input.discountAmount ?? 0),
@@ -413,6 +418,7 @@ export class MobilePosClient implements MobilePosSyncApi {
                     terminalId: replayPayload.terminal_id,
                     shiftId: replayPayload.shift_id,
                     orderMethod: replayPayload.order_method,
+                    tableNumber: replayPayload.table_number,
                     paymentType: replayPayload.payment_type,
                     paymentHandoffMode: replayPayload.payment_handoff_mode,
                     idempotencyKey: replayPayload.idempotency_key,

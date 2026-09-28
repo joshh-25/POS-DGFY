@@ -139,7 +139,7 @@ describe('DGFY customer account dashboard', () => {
     expect(feedbackButton.style.borderStyle).toBe('none');
     expect(feedbackButton.style.background).toBe('transparent');
     expect(feedbackButton.style.flexShrink).toBe('0');
-    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback%20icon.jpg');
+    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback-icon.jpg');
     expect(within(feedbackButton).getByTestId('feedback-icon').style.width).toBe('32px');
     expect(screen.getByRole('button', { name: 'Notifications' }).style.flexShrink).toBe('0');
     fireEvent.click(feedbackButton);
@@ -157,7 +157,7 @@ describe('DGFY customer account dashboard', () => {
     expect(feedbackButton.style.borderStyle).toBe('none');
     expect(feedbackButton.style.background).toBe('transparent');
     expect(feedbackButton.style.flexShrink).toBe('0');
-    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback%20icon.jpg');
+    expect(within(feedbackButton).getByTestId('feedback-icon').getAttribute('src')).toContain('feedback-icon.jpg');
     expect(within(feedbackButton).getByTestId('feedback-icon').style.width).toBe('32px');
     expect(screen.getByRole('button', { name: 'Notifications' }).style.flexShrink).toBe('0');
     const discoveryButton = screen.getByRole('button', { name: 'Go to DGFY discovery map' });

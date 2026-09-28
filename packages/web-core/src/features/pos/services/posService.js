@@ -51,7 +51,7 @@ export const fetchPosCatalogPage = async (params = {}) => {
     void reconcilePosImageUploads(items);
     return {
         items,
-        pagination: payload.pagination || { page: 1, page_size: 15, total: 0, total_pages: 1 }
+        pagination: payload.pagination || { page: 1, page_size: 20, total: 0, total_pages: 1 }
     };
 };
 
@@ -147,14 +147,6 @@ export const createPosPaymentSession = async (payload = {}) => {
     return response.data?.data;
 };
 
-export const fetchActivePosPaymentSession = async (scope = {}) => {
-    const response = await api.get('/pos/payment-sessions/active', {
-        params: scope,
-        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
-    });
-    return response.data?.data || null;
-};
-
 export const fetchPosPaymentSession = async (paymentSessionId, scope = {}) => {
     const response = await api.get(`/pos/payment-sessions/${paymentSessionId}`, {
         params: scope,
@@ -201,6 +193,11 @@ export const fetchPosDiscountEmployees = async () => {
     return response.data?.data?.employees || [];
 };
 
+export const fetchPosDiscountRules = async () => {
+    const response = await api.get('/pos/discount-rules');
+    return response.data?.data?.discount_rules || [];
+};
+
 export const verifyPosDiscountApproval = async (payload = {}) => {
     const response = await api.post('/pos/discount-approvals/verify', payload);
     return response.data?.data?.approver || null;
@@ -211,8 +208,8 @@ export const fetchPosTransactions = async (params = {}) => {
     return response.data?.data;
 };
 
-export const fetchPosTransactionById = async (id) => {
-    const response = await api.get(`/pos/transactions/${id}`);
+export const fetchPosTransactionById = async (id, params = {}) => {
+    const response = await api.get(`/pos/transactions/${id}`, { params });
     return response.data?.data;
 };
 
@@ -220,11 +217,14 @@ export const voidPosTransaction = async (id, payload = {}) => {
     const response = await api.post(`/pos/transactions/${id}/void`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
-    trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_VOIDED, {
-        transaction_id: id,
-        reason: payload?.reason
-    });
-    return response.data?.data;
+    const result = response.data?.data;
+    if (result?.pending !== true) {
+        trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_VOIDED, {
+            transaction_id: id,
+            reason: payload?.reason
+        });
+    }
+    return result;
 };
 
 export const refundCashPosTransaction = async (id, payload = {}) => {
@@ -269,6 +269,16 @@ export const fetchPosDeviceStatus = async () => {
     const response = await api.get('/pos/device/status', {
         // Device status is a background capability probe. In tablet/APK deployments
         // the local HTTP bridge can be absent, so this should fail quietly.
+        skipGlobalErrorToast: true
+    });
+    return response.data?.data;
+};
+
+export const testPosPrinter = async (payload = {}) => {
+    const response = await api.post('/pos/device/test-print', payload, {
+        headers: payload?.terminal_id
+            ? { 'x-pos-terminal-id': payload.terminal_id }
+            : undefined,
         skipGlobalErrorToast: true
     });
     return response.data?.data;
@@ -830,6 +840,16 @@ export const fetchAdminLocationMonitor = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchPosBranchDirectory = async (requestConfig = {}) => {
+    const response = await api.get('/pos/branch-directory', requestConfig);
+    return response.data?.data || { locations: [] };
+};
+
+export const recordPosBranchViewEvent = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/branch-directory/view-events', payload, requestConfig);
+    return response.data?.data;
+};
+
 export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
@@ -854,6 +874,20 @@ export const collectCashPickupOrder = async (posTransactionId, payload = {}) => 
 
 export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) => {
     const response = await api.post(`/pos/orders/${posTransactionId}/collect-delivery-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const collectCashDineInOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const collectDineInPaymentOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-payment`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
     return response.data?.data;
@@ -1029,6 +1063,7 @@ export default {
     fetchPosTransactions,
     fetchPosTransactionById,
     fetchPosDeviceStatus,
+    testPosPrinter,
     printPosReceipt,
     printPosShiftSummary,
     printPosZReading,
@@ -1057,8 +1092,13 @@ export default {
     fetchIncomingOnlineOrders,
     fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,
+    fetchAdminLocationMonitor,
+    fetchPosBranchDirectory,
+    recordPosBranchViewEvent,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
+    collectCashDineInOrder,
+    collectDineInPaymentOrder,
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,

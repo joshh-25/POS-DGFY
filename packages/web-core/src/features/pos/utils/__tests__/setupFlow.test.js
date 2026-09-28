@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildTenantSetupSearch,
   clearTenantSetupSearch,
+  getTenantSetupOrder,
   getNextTenantSetupStep,
   getPreviousTenantSetupStep,
+  isStarterItemSetupRequired,
+  isStarterSetupRequired,
   POS_TERMINAL_SETUP_STEPS,
   resolveProfileSetupReadiness,
   resolvePosSetupReadiness,
@@ -103,7 +106,7 @@ describe('setupFlow', () => {
     }));
   });
 
-  it('advances tenant setup from profile to storefront setup to POS setup without a starter-item gate', () => {
+  it('advances non-Hospitality tenant setup from profile to storefront setup to POS setup', () => {
     expect(resolveTenantSetupStep({
       requested: true,
       isMasterAdmin: true,
@@ -153,6 +156,37 @@ describe('setupFlow', () => {
     })).toBe(POS_TERMINAL_SETUP_STEPS.COMPLETE);
   });
 
+  it('retains Hospitality room setup as the only required starter step', () => {
+    expect(isStarterItemSetupRequired('hospitality')).toBe(false);
+    expect(isStarterSetupRequired('hospitality')).toBe(true);
+    expect(getTenantSetupOrder('hospitality')).toEqual([
+      POS_TERMINAL_SETUP_STEPS.PROFILE,
+      POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP,
+      POS_TERMINAL_SETUP_STEPS.STARTER_ITEM,
+      POS_TERMINAL_SETUP_STEPS.POS_SETUP
+    ]);
+    expect(resolveTenantSetupStep({
+      requested: true,
+      isMasterAdmin: true,
+      requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
+      profileReady: true,
+      posSetupReady: false,
+      storefrontSetupReady: true,
+      starterItemReady: false,
+      workflowMode: 'hospitality'
+    })).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    expect(resolveTenantSetupStep({
+      requested: true,
+      isMasterAdmin: true,
+      requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
+      profileReady: true,
+      posSetupReady: false,
+      storefrontSetupReady: true,
+      starterItemReady: true,
+      workflowMode: 'hospitality'
+    })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+  });
+
   it('honors the requested step even when that step is already technically ready', () => {
     expect(resolveTenantSetupStep({
       requested: true,
@@ -175,10 +209,10 @@ describe('setupFlow', () => {
     })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
   });
 
-  it('uses a sellable starter item as the POS onboarding starter-item readiness signal', () => {
+  it('does not require a catalog item for non-Hospitality onboarding readiness', () => {
     expect(resolveStarterItemSetupReadiness([])).toEqual({
-      ready: false,
-      starterItemReady: false,
+      ready: true,
+      starterItemReady: true,
       starterItemId: null
     });
     expect(resolveStarterItemSetupReadiness([{
@@ -193,20 +227,84 @@ describe('setupFlow', () => {
     });
   });
 
+  it('uses the onboarding checklist as the Hospitality room readiness signal', () => {
+    const incompletePayload = {
+      tenant_onboarding_progress: {
+        checklist_snapshot: {
+          missing_requirements: ['has_priced_starter_item']
+        }
+      }
+    };
+    const readyPayload = {
+      tenant_onboarding_progress: {
+        checklist_snapshot: {
+          missing_requirements: []
+        }
+      }
+    };
+
+    expect(resolveStarterItemSetupReadiness([], incompletePayload, 'hospitality')).toEqual({
+      ready: false,
+      starterItemReady: false,
+      starterItemId: null
+    });
+    expect(resolveStarterItemSetupReadiness([], readyPayload, 'hospitality')).toEqual({
+      ready: true,
+      starterItemReady: true,
+      starterItemId: null
+    });
+  });
+
+  it('skips catalog-item readiness and navigation for every non-Hospitality tenant', () => {
+    ['fnb', 'food_manufacturing', 'msme', 'services'].forEach((workflowMode) => {
+      expect(isStarterItemSetupRequired(workflowMode)).toBe(false);
+      expect(isStarterSetupRequired(workflowMode)).toBe(false);
+      expect(getTenantSetupOrder(workflowMode)).toEqual([
+        POS_TERMINAL_SETUP_STEPS.PROFILE,
+        POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP,
+        POS_TERMINAL_SETUP_STEPS.POS_SETUP
+      ]);
+    });
+    expect(resolveStarterItemSetupReadiness([], null, 'fnb')).toEqual({
+      ready: true,
+      starterItemReady: true,
+      starterItemId: null
+    });
+    expect(resolveTenantSetupStep({
+      requested: true,
+      isMasterAdmin: true,
+      requestedStep: POS_TERMINAL_SETUP_STEPS.POS_SETUP,
+      profileReady: true,
+      storefrontSetupReady: true,
+      starterItemReady: false,
+      posSetupReady: false,
+      workflowMode: 'fnb'
+    })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP, 'fnb')).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP, 'fnb')).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+  });
+
   it('centralizes onboarding navigation order and settings targets', () => {
     expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe('');
     expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
-    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
     expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM, 'hospitality')).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP, 'hospitality')).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP, 'hospitality')).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM, 'hospitality')).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe('settings_storefront');
+    expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)).toBe('items');
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe('settings_pos');
     expect(resolveTenantSetupStepValue(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+    expect(resolveTenantSetupStepValue(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM, 'hospitality')).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
   });
 
   it('centralizes onboarding query creation and cleanup', () => {
     expect(buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe('?setup_flow=tenant_onboarding&setup_step=storefront_setup');
     expect(buildTenantSetupSearch('?foo=bar', POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe('?foo=bar&setup_flow=tenant_onboarding&setup_step=pos_setup');
     expect(buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.COMPLETE)).toBe('?setup_flow=tenant_onboarding&setup_step=complete');
+    expect(buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.STARTER_ITEM, 'hospitality')).toBe('?setup_flow=tenant_onboarding&setup_step=starter_item');
     expect(clearTenantSetupSearch('?foo=bar&setup_flow=tenant_onboarding&setup_step=pos_setup')).toBe('?foo=bar');
     expect(resolveTenantSetupStepValue(POS_TERMINAL_SETUP_STEPS.COMPLETE)).toBe(POS_TERMINAL_SETUP_STEPS.COMPLETE);
     expect(resolveTenantSetupStepValue('unknown')).toBe(POS_TERMINAL_SETUP_STEPS.PROFILE);

@@ -1,4 +1,28 @@
 export const PERMISSIONS = {
+    // --- BUSINESS ADMINISTRATION ---
+    // Cross-branch read authority is intentionally separate from POS shift switching.
+    // The former is safe, read-only branch visibility; the latter is a governed cash/shift
+    // mutation and must remain independently grantable.
+    BUSINESS_ADMIN: {
+        label: "Business Admin Dashboard",
+        actions: {
+            ACCESS: "business_admin:access",
+            VIEW_ALL_BRANCHES: "business_admin:branches:view_all",
+            VIEW_COSTS: "business_admin:costs:view",
+            APPROVE_HIGH_RISK: "business_admin:high_risk:approve"
+        }
+    },
+
+    // --- OPERATIONAL EXPENSES ---
+    EXPENSES: {
+        label: "Operational Expenses",
+        actions: {
+            VIEW: "expenses:view",
+            CREATE: "expenses:create",
+            VOID: "expenses:void"
+        }
+    },
+
     // --- INVENTORY MANAGEMENT ---
     INVENTORY: {
         label: "Inventory Management",
@@ -82,9 +106,12 @@ export const PERMISSIONS = {
             CLOSE_DAY_POS: "pos:close_day", // Close active terminal shift and generate day-end reconciliation
             REPRINT_POS_RECEIPT: "pos:reprint", // Reprint historical POS receipts
             VOID_POS_TRANSACTION: "pos:void", // Void completed POS transactions with governed fiscal evidence
+            REFUND_TRANSACTION: "pos:refund", // Request and execute governed POS refunds
+            FORCE_CLOSE_SHIFT: "pos:shift_force_close", // Request or approve governed force-close of an open shift
             MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage", // Register and verify fiscal terminals
             MANAGE_ESALES_REPORTS: "pos:esales:manage", // Generate and update eSales reporting packages
             SWITCH_LOCATION_POS: "pos:switch_location", // Switch terminal shift location using governed flow
+            VIEW_BRANCH_POS: "pos:branch_view", // View another authorized branch without changing terminal/shift scope
             MANAGE_EMPLOYEES: "pos:employees:manage", // Manage non-login employee directory records
             VIEW_ATTENDANCE: "pos:attendance:view", // View the signed-in cashier's attendance state
             OPERATE_ATTENDANCE: "pos:attendance:operate", // Time in/out and start/end breaks for self
@@ -299,7 +326,6 @@ export const DEFAULT_ROLE_PERMISSIONS = {
     ],
     cashier: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
-        PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
         PERMISSIONS.POS.actions.VIEW_ATTENDANCE,

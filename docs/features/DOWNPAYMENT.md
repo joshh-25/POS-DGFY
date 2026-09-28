@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: architecture
-last_reviewed: 2026-09-13
+last_reviewed: 2026-09-23
 applies_to: downpayment_checkout
 topic: downpayment_partial_payment_checkout
 ---
@@ -15,9 +15,12 @@ Closes Phase 149 (#827), the epic's final phase — Implementation Hardening Con
 
 ## 1. What this feature is
 
-A Retail store can require a customer to pay only part of an order online, with the remainder
-collected by staff at handover (delivery or pickup), instead of forcing either full prepayment or
-plain cash-on-delivery. Three per-store payment modes exist:
+A Retail or F&B store can require a customer to pay only part of an order online, with the remainder
+collected by staff at handover (delivery, pickup, or F&B dine-in), instead of forcing either full
+prepayment or plain cash-on-delivery. Three per-store payment modes exist. F&B dine-in checkout
+also requires a future date and time; it does not reserve a dining table. Dine-in availability is a
+branch fulfillment choice (`tenant_locations.supports_dine_in`), while pay-in-store is a separate
+branch payment policy (`tenant_locations.allow_dine_in_pay_at_store`, default `false`).
 
 - **`full_payment`** — the customer always pays the full total online.
 - **`downpayment_required`** — the customer always pays a configured downpayment online; the
@@ -35,21 +38,36 @@ peso amount, with an optional minimum floor (Phase 138/150 settings surface,
 applies in percentage mode — in fixed mode it was a structurally redundant no-op and is hidden
 (Phase 150, #865).
 
+For F&B Dine-in, the branch payment policy has three effective outcomes:
+
+- Dine-in disabled: the branch does not appear as a Dine-in fulfillment option.
+- Dine-in enabled and `allow_dine_in_pay_at_store=false`: checkout offers online full payment or
+  the configured online downpayment; it does not offer cash/pay-in-store.
+- Dine-in enabled and `allow_dine_in_pay_at_store=true`: checkout additionally offers `Pay in
+  store` for that branch. This branch-specific option is allowed even when the tenant-wide
+  delivery/pickup cash capability is disabled; it never enables cash for delivery or pickup.
+
+The switch is managed through `PUT /tenant-locations/:id/dine-in-payment-policy` and is enforced
+again by the checkout use case. Storefront visibility is only a convenience; a direct request with
+`payment_type: 'cash'` is accepted for Dine-in only when the selected branch has this policy enabled.
+
 ## 2. Order lifecycle
 
 1. **Quote/checkout** — server-authoritative resolution of downpayment applicability
-   (`storeUseCases.js`, `DOWNPAYMENT_POLICY_UNRESOLVED` fail-closed guard). Retail-scoped only
-   (ADR 0070, carried from ADR 0069 clause 6 `[binding]`) — F&B/Services/Simple never see this.
+   (`storeUseCases.js`, `DOWNPAYMENT_POLICY_UNRESOLVED` fail-closed guard). The shared Storefront
+   checkout is wired for Retail and F&B. Services bookings and Hospitality reservations remain
+   separate, unwired flows and do not present this contract.
 2. **Capture** (Phase 141, #822) — the downpayment amount is charged online via any enabled
    method, capped to the downpayment amount. The order persists as `payment_type: 'cash'`
-   (the balance is COD by construction), `payment_timing: 'on_pickup'|'on_delivery'`,
+   (the balance is collected by staff at handover), `payment_timing:
+   'on_pickup'|'on_delivery'|'on_dine_in'`,
    `payment_status: 'partially_paid'`, `amount_paid > 0`, `balance_due > 0`. Ledger row 1:
    `pos_order_payments.kind = 'downpayment'`.
 3. **POS accept/reject** (Phase 144, #824) — staff accepts (order proceeds) or rejects. A reject
    refunds exactly the downpayment captured, never the full total; forfeiture is a per-store
    merchant configuration (ADR 0069 clause 8 `[default]`).
 4. **Balance settlement** (Phase 148, #825) — at handover (`ready_for_pickup` /
-   `out_for_delivery`), staff records the remaining balance via a **separate** `Settle Balance`
+   `out_for_delivery`; F&B dine-in uses `ready_for_pickup` as "ready to serve"), staff records the remaining balance via a **separate** `Settle Balance`
    action — never an extension of the plain-COD `Collect Cash` flow, whose own guards
    (`payment_status === 'unpaid'`, `cash_received >= total_amount`) are untouched. Methods are ADR
    0063 clause 4 `[binding]`'s merchant-owned V1 set: `cash`, `gcash`, `maya`, `card` (a store-owned
@@ -62,9 +80,9 @@ applies in percentage mode — in fixed mode it was a structurally redundant no-
    Recording this settlement is the order payment event; it does not establish courier custody
    or hand-back to the business — that separate leg is decided in ADR 0083
    (`docs/architecture/adr/0083-courier-cash-custody-and-remittance.md`, #838).
-5. **Completion** — both the pickup and delivery completion paths require `balance_due === 0`, not
-   merely a `paid` label, so an order can't complete with an unsettled balance
-   (`assertDeliveryCompletionReadiness`, and the pickup branch of
+5. **Completion** — pickup, delivery, and F&B dine-in completion paths require `balance_due === 0`,
+   not merely a `paid` label, so an order cannot complete or be marked served with an unsettled
+   balance (`assertDeliveryCompletionReadiness`, and the pickup/dine-in branch of
    `buildUpdateOnlineOrderStatusUseCase`).
 6. **Customer-facing presentation** (Phase 142/151, #823/#826) — checkout, tracking, and
    confirmation screens all render the amount paid and balance due via one shared module,

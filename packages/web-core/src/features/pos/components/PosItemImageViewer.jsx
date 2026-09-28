@@ -8,6 +8,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
   const gallery = Array.isArray(preview?.gallery) ? preview.gallery : [];
   const [activeIndex, setActiveIndex] = useState(0);
   const [fallbackIndex, setFallbackIndex] = useState(0);
+  const [failedThumbnailIndexes, setFailedThumbnailIndexes] = useState(() => new Set());
   const [zoomIndex, setZoomIndex] = useState(0);
   const [imageMetrics, setImageMetrics] = useState(null);
   const imageRef = useRef(null);
@@ -17,6 +18,7 @@ export default function PosItemImageViewer({ preview, onClose }) {
     if (!preview) return undefined;
     setActiveIndex(0);
     setFallbackIndex(0);
+    setFailedThumbnailIndexes(new Set());
     setZoomIndex(0);
     setImageMetrics(null);
     return undefined;
@@ -190,7 +192,21 @@ export default function PosItemImageViewer({ preview, onClose }) {
                 onClick={() => { setActiveIndex(index); setFallbackIndex(0); setZoomIndex(0); setImageMetrics(null); }}
                 className={`h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 ${index === activeIndex ? 'border-blue-400' : 'border-transparent'}`}
               >
-                {entry.thumbnailSrc ? <img src={entry.thumbnailSrc} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full w-full items-center justify-center bg-white/10 text-xs font-bold text-white">{index + 1}</span>}
+                {entry.thumbnailSrc && !failedThumbnailIndexes.has(index) ? (
+                  <img
+                    src={entry.thumbnailSrc}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    onError={() => setFailedThumbnailIndexes((current) => {
+                      if (current.has(index)) return current;
+                      const next = new Set(current);
+                      next.add(index);
+                      return next;
+                    })}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-white/10 text-xs font-bold text-white">{index + 1}</span>
+                )}
               </button>
             ))}
           </div>

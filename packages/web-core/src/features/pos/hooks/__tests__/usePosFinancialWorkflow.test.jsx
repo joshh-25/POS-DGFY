@@ -67,12 +67,14 @@ describe('usePosFinancialWorkflow', () => {
             appliedDiscount: {
                 type: 'senior',
                 label: 'Senior Discount',
+                rate: 20,
                 eligible_item_ids: [10],
                 eligible_items: []
             },
             safeAppliedDiscount: {
                 type: 'senior',
                 label: 'Senior Discount',
+                rate: 20,
                 eligible_item_ids: [10],
                 eligible_items: []
             },

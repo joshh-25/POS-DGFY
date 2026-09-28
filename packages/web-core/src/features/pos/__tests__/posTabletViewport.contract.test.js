@@ -13,9 +13,11 @@ const tabletViewportSource = readPosSource('utils/posTabletViewport.js');
 
 describe('POS tablet viewport ownership', () => {
   it('uses one classifier for the shell, item catalog, and transaction history', () => {
-    expect(terminalPageSource).toContain("import { isPosTabletViewport } from '../utils/posTabletViewport.js';");
-    expect(catalogWorkflowSource).toContain("import { isPosMobileLandscapeViewport, isPosMobileViewport, isPosTabletLandscapeViewport, isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTabletViewport.js';");
-    expect(historySource).toContain("import { isPosTabletPortraitViewport, isPosTabletViewport } from '../utils/posTabletViewport.js';");
+    expect(terminalPageSource).toContain("import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';");
+    // Catalog and history import the shared classifier alongside its sibling
+    // viewport helpers (same module, same functions — no forked media query).
+    expect(catalogWorkflowSource).toMatch(/import\s*\{[^}]*isPosTabletViewport[^}]*\}\s*from\s*['"]\.\.\/utils\/posTabletViewport\.js['"]/);
+    expect(historySource).toMatch(/import\s*\{[^}]*isPosTabletViewport[^}]*\}\s*from\s*['"]\.\.\/utils\/posTabletViewport\.js['"]/);
     expect(tabletViewportSource).toContain('isIminWrapperRuntime(windowObj)');
   });
 

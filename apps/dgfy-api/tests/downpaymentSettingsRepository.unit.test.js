@@ -2,7 +2,8 @@ import { jest } from '@jest/globals';
 
 const mockTenantDownpaymentSettings = {
     findByPk: jest.fn(),
-    findOrCreate: jest.fn()
+    findOrCreate: jest.fn(),
+    update: jest.fn()
 };
 
 // Also provide a `default` export matching models/index.js's real shape (db as default) -- see
@@ -69,6 +70,46 @@ describe('downpaymentSettingsRepository', () => {
             }));
             expect(row.update).toHaveBeenCalledWith({ payment_mode: 'downpayment_required' });
             expect(result).toEqual({ tenant_id: TENANT_ID, payment_mode: 'downpayment_required' });
+        });
+
+        it('uses the stored timestamp as a compare-and-set precondition', async () => {
+            const current = {
+                tenant_id: TENANT_ID,
+                updated_at: '2026-09-15T01:00:00.000Z'
+            };
+            const refreshed = {
+                ...current,
+                payment_mode: 'downpayment_required',
+                updated_at: '2026-09-15T01:01:00.000Z',
+                toJSON: () => ({
+                    ...current,
+                    payment_mode: 'downpayment_required',
+                    updated_at: '2026-09-15T01:01:00.000Z'
+                })
+            };
+            mockTenantDownpaymentSettings.findOrCreate.mockResolvedValue([current, false]);
+            mockTenantDownpaymentSettings.update.mockResolvedValue([1]);
+            mockTenantDownpaymentSettings.findByPk.mockResolvedValue(refreshed);
+
+            const result = await downpaymentSettingsRepository.upsertSettings(
+                TENANT_ID,
+                { payment_mode: 'downpayment_required' },
+                { expectedUpdatedAt: '2026-09-15T01:00:00.000Z' }
+            );
+
+            expect(mockTenantDownpaymentSettings.update).toHaveBeenCalledWith(
+                { payment_mode: 'downpayment_required' },
+                {
+                    where: {
+                        tenant_id: TENANT_ID,
+                        updated_at: '2026-09-15T01:00:00.000Z'
+                    }
+                }
+            );
+            expect(result).toEqual(expect.objectContaining({
+                payment_mode: 'downpayment_required',
+                updated_at: '2026-09-15T01:01:00.000Z'
+            }));
         });
     });
 });

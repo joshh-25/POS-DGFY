@@ -2631,23 +2631,40 @@ Inventory stock movement for that line.
 ### POS parked-sale lifecycle
 
 Parked sales are tenant-local cashier work items. Parking stores an immutable,
-secret-scrubbed cart snapshot only; it does not create a POS transaction,
-payment, stock movement, or inventory reservation. All endpoints require the
-Premium POS gates above and scope the request to the authenticated cashier's
-open shift and location.
+secret-scrubbed cart snapshot and deducts its server-resolved inventory effects
+through the Inventory owner in the same transaction. It does not create a POS
+transaction or collect payment. All endpoints require the Premium POS gates
+above and scope the request to the authenticated cashier's open shift and
+location.
 
 | Method | Endpoint | Permission | Purpose |
 |--------|----------|------------|---------|
 | `POST` | `/pos/parked-sales` | `pos:transact` | Add a parked sale using a required `idempotency_key`, shift/terminal context, and `snapshot.lines`. |
-| `GET` | `/pos/parked-sales?shift_id=...` | `pos:view` | List active (`parked` and `claimed`) sales for the cashier's open shift. |
+| `GET` | `/pos/parked-sales?shift_id=...` | `pos:view` | List active (`parked`, `claimed`, and `cancel_pending`) sales for the cashier's open shift. |
 | `POST` | `/pos/parked-sales/:id/claim` | `pos:transact` | Claim a parked sale for the current cashier and terminal. |
-| `POST` | `/pos/parked-sales/:id/cancel` | `pos:transact` | Cancel a parked sale with an auditable reason. |
+| `POST` | `/pos/parked-sales/:id/cancel` | `pos:transact` | Submit a cancellation request with a required reason; stock stays deducted until an independent Back Office reviewer approves it. |
 
 The park request is replay-safe: the same idempotency key and payload returns
 the original row, while reusing the key with a different payload returns a
-conflict. Claim and cancel are lifecycle transitions only; checkout completion
-will be the separate operation that creates the financial transaction and
-applies inventory effects.
+conflict. Re-parking reverses the previous active parked-sale issue and applies
+the new snapshot's issue atomically. Payment, receipt, Z-reading, and
+sales-history effects wait for checkout; checkout does not issue already
+deducted snapshot lines a second time. Cancellation remains `cancel_pending`
+until approval; approval reverses the active parked-sale issue, while rejection
+restores its prior state without changing stock.
+
+### Business Admin POS high-risk approvals
+
+| Method | Endpoint | Permission | Purpose |
+|--------|----------|------------|---------|
+| `GET` | `/business-admin/approvals` | Business Admin access, tenant-wide scope, and `business_admin:high_risk:approve` | List requests with their target, reason, requester, and decision status. |
+| `POST` | `/business-admin/approvals/:id/approve` | Same high-risk review permission | Approve a supported POS void or parked-sale cancellation through its canonical POS/Inventory command. The requester cannot approve their own request. |
+| `POST` | `/business-admin/approvals/:id/reject` | Same high-risk review permission | Reject the request; parked-sale state is restored and inventory is unchanged. |
+
+The cashier's POS void or parked-sale cancellation request must include a
+reason. A request does not itself void a transaction or restore stock. A
+completed-sale void does not refund money; paid transactions continue through
+the existing tender-specific refund workflow.
 
 ### POST /pos/terminal/pair
 Optionally enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication. This endpoint is retained for compatibility and hardware-specific flows; normal shift opening and checkout do not require a pairing cookie.
@@ -3555,8 +3572,26 @@ IMS location clients should submit the merchant-editable address with the normal
 | `GET` | `/tenant-locations?include_inactive=true` | List active and inactive tenant location pins plus storefront sync metadata |
 | `POST` | `/tenant-locations` | Create a location pin |
 | `PUT` | `/tenant-locations/:id` | Update location details, active/open state, or primary storefront flag |
+| `PUT` | `/tenant-locations/:id/dine-in-payment-policy` | Update the branch-scoped Dine-in pay-in-store policy |
 | `DELETE` | `/tenant-locations/:id` | Deactivate a location while preserving history |
 | `DELETE` | `/tenant-locations/:id/permanent` | Permanently delete an unused pin only |
+
+The Dine-in payment policy endpoint requires `downpayment:settings` (or master-admin/admin
+authority) and an assigned branch grant for non-tenant-wide users. Its request body is:
+
+```json
+{
+  "allow_dine_in_pay_at_store": true,
+  "expected_updated_at": "2026-09-23T00:00:00.000Z"
+}
+```
+
+`expected_updated_at` is optional and provides optimistic concurrency. The policy defaults to
+`false`, so a Dine-in branch accepts only online full payment or an online downpayment until an
+administrator enables pay-in-store. When enabled, the Storefront exposes `Pay in store` for
+Dine-in only; delivery and pickup payment rules are unchanged. The policy also intentionally
+overrides a tenant-wide cash-off capability for that Dine-in payment path, while the backend
+continues to enforce the branch policy as the source of truth.
 
 **Permanent Delete Contract**
 - Use permanent delete only for pins with no inventory, POS, booking, service, or user-location history.
@@ -4060,11 +4095,11 @@ Route mapping note:
 
 **Pricing Contract**
 - Response totals now include:
-  - `service_fee_amount`
-  - `service_fee_label` (`DGFY convenience fee`, deterministic even when amount is `0`)
+  - `service_fee_amount` (retained for compatibility; `0` for new Storefront quotes)
+  - `service_fee_label` (`DGFY convenience fee`, retained as a deterministic compatibility label)
 - Quote formula:
-  - `service_fee_amount = round4(subtotal_amount * 0.01)`
-  - `total_amount = subtotal_amount + delivery_fee + service_fee_amount`
+  - `service_fee_amount = 0`
+  - `total_amount = subtotal_amount - discount_amount - voucher_discount_amount + delivery_fee`
 
 **Downpayment Contract** (Phase 140, #821, ADR 0069/0070; `customer_choice`/`payment_election`
 added Phase 150, #866)
@@ -4121,6 +4156,7 @@ Route mapping note:
 - Checkout uses the same aggregate stock-bearing `item_id` quantity validation as quote before persisting lines. Separate submitted lines remain separate receipt/order lines, but their combined stock demand must fit available stock unless the selected location explicitly allows out-of-stock sales.
 - When effective Customer Access Mode is not `transaction`, response is `403` with `error_code=CUSTOMER_ACCESS_MODE_BLOCKED` while enforcement is active.
 - When `storefront_hours` contains a valid weekly business-hours schedule, immediate checkout uses the current tenant/server time and scheduled checkout uses `scheduled_for`; product quotes and orders outside configured hours return `422` with `reason_code=OUTSIDE_STOREFRONT_BUSINESS_HOURS`.
+- F&B `order_method=dine_in` requires a future `scheduled_for` date/time. It uses the normal online-order lifecycle and does not create a table reservation. Direct Storefront cash/Pay-in-Store checkout is rejected; the customer must complete an online full payment or online downpayment before the order is created.
 - Server errors (`500`) are not the expected contract for normal checkout validation failures.
 - **(Phase 141, #822)** If the tenant's resolved `payment_mode` is `downpayment_required`, a direct
   request to this endpoint (a customer picking plain `cash`, with no online payment at any point)
@@ -4131,17 +4167,17 @@ Route mapping note:
   call is not reachable from any HTTP client request.
 
 **Persistence Contract**
-- Checkout persists service-fee snapshots from the same fixed policy as quote:
-  - `service_fee_amount`
-  - `service_fee_label_snapshot` (`DGFY convenience fee`, deterministic even when amount is `0`)
-  - `service_fee_method_snapshot` (order method for traceability)
+- Checkout persists the service-fee compatibility snapshots alongside every new Storefront order:
+  - `service_fee_amount = 0`
+  - `service_fee_label_snapshot` (`DGFY convenience fee`, retained for schema/read compatibility)
+  - `service_fee_method_snapshot = NULL` because no customer fee is charged
   - `service_fee_overridden=false`
 - `totals` in the response also carries the same `payment_mode`/`downpayment_amount`/
   `balance_due_amount`/`downpayment_refundable` fields documented under `/store/cart/quote`'s
   Downpayment Contract above.
 - **(Phase 141, #822)** A downpayment order finalized via the webhook is created cash-on-delivery
   for the balance -- `payment_type` is `cash`, `payment_timing` follows the normal
-  delivery/pickup-cash rule (`on_delivery`/`on_pickup`), and `payment_status` lands `partially_paid`
+  delivery/pickup/dine-in handover rule (`on_delivery`/`on_pickup`/`on_dine_in`), and `payment_status` lands `partially_paid`
   with `amount_paid`/`balance_due` reflecting the captured downpayment against the order total. A
   ledger row (`pos_order_payments`, `kind: 'downpayment'`) is written in the same transaction as the
   order.
@@ -4200,20 +4236,24 @@ Create a PayMongo online payment session for Storefront online checkout. This is
     "payment_method": "qrph",
     "qr_code_image_url": "data:image/png;base64,...",
     "expires_at": "2026-05-19T12:30:00.000Z",
-    "service_fee_amount": 10,
+    "service_fee_amount": 0,
     "service_fee_label": "DGFY convenience fee",
     "fee_policy": {
       "dgfy_fee_basis": "subtotal",
-      "dgfy_fee_charged_to": "customer",
+      "dgfy_fee_charged_to": "tenant",
       "provider_fee_shoulder": "tenant_company"
     },
-    "total_amount": 1010
+    "total_amount": 1000
   }
 }
 ```
 
 **Settlement Contract**
 - The Storefront quote remains authoritative for totals.
+- New Storefront customer totals do not include a convenience-fee add-on. The compatibility
+  `service_fee_amount` remains `0` in quote, checkout, and payment-session responses.
+- When the legacy non-revenue-sharing QR Ph split path is enabled, `platform_fee_centavos` is a
+  separate tenant-funded settlement value and is not added to the customer's `total_amount`.
 - With `TENANT_REVENUE_SHARING_ENABLED=true`, `service_fee_amount=0`, no PayMongo split payload is sent, and DGFY records the tenant platform fee after verified payment using the effective tenant fee policy.
 - The legacy child-merchant `transfer_to` path is disabled compatibility behavior and must not be enabled with tenant revenue sharing.
 - PayMongo/provider processing, payout, bank, dispute, and related fees are captured from provider data or reconciliation and allocated according to the versioned tenant policy.
@@ -4224,6 +4264,20 @@ Create a PayMongo online payment session for Storefront online checkout. This is
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
 Read the current public payment-session state for polling after QR Ph creation.
+
+### POST /store/checkout/payment-sessions/:payment_session_id/reconcile-test
+Request a local PayMongo test-mode reconciliation for a direct GCash, Maya, or card session after
+the provider authorization return.
+
+**Auth**: Optional store customer (`Store JWT`)
+**Tenant Context**: Required (`x-store-slug` header for public store tenant resolution)
+**Availability**: Loopback API requests with `PAYMONGO_MODE=test` only; unavailable in live mode or
+from non-loopback clients.
+
+The server retrieves the Payment Intent with the PayMongo secret key and enters the existing audited
+reconciliation/finalization path only when a paid payment record matches the locked session amount,
+currency, configured livemode, tenant, and payment intent. The browser return itself is never trusted
+as payment proof, and the operation is idempotent.
 
 ### Admin PayMongo Commerce Operations
 Platform-admin endpoints for testing and operating the full PayMongo QR Ph commerce method.
@@ -4486,6 +4540,8 @@ clause 14 (2026-08-22 amendment).
    - `GET /admin/tenants/:id/affiliate-slots/audit-logs?limit=10` returns `tenant_admin_audit_logs` rows with `action = affiliate_slots_update`.
 7. Tenant POS operating settings remain tenant-editable when allowed by normal settings/compliance policy:
    - `pos_discount_profiles` (JSON array of `{name, percentage, active}`)
+   - `pos_tax_policies` (versioned JSON object with `senior`, `pwd`, `manual`, `employee`, `promo`, and `voucher` categories; each category has `vat_treatment` of `standard` or `vat_exempt`)
+     - The server normalizes the shape and advances the version on change. The setting controls VAT treatment for future POS discount calculations only; it does not accept a tenant VAT rate or override server-owned statutory rates, eligibility, approval, promo, or voucher rules.
    - `pos_order_method_fees` (deprecated; retained for historical read compatibility only)
    - `pos_petty_cash_symbol`
    - `pos_petty_cash_amount`
@@ -4522,7 +4578,7 @@ Authenticated premium POS routes:
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/pos/transactions/:id/print-events` | `pos:reprint` | Records operator-confirmed fiscal original print or reprint evidence after the browser print dialog is opened; reprints require a reason. |
-| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Voids a transaction, writes fiscal/inventory/internal-adjustment evidence, and returns the server-classified financial follow-up. It does not itself refund customer money. |
+| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Requires a reason and submits a pending Back Office approval request. Approval records fiscal/inventory/internal-void evidence through the canonical POS use case and returns the server-classified financial follow-up; it does not itself refund customer money. |
 | `POST` | `/api/v1/pos/transactions/:id/cash-refund` | `pos:cash_drawer_adjust` | Records a paid-cash refund for an already-voided transaction and atomically creates the linked `cash_out` drawer event on the acting cashier's owned open shift. |
 | `POST` | `/api/v1/pos/transactions/:id/external-refund` | `pos:void` | Records merchant-owned digital reversal evidence. Initial evidence remains manual review; explicit confirmation with the same reference and a new idempotency key completes it. |
 | `POST` | `/api/v1/pos/transactions/:id/provider-refund` | `pos:void` | Submits a server-verified PayMongo refund for a supported provider-owned online transaction. Provider identity, payment ID, amount, currency, and session ownership are server-derived. |
@@ -6071,7 +6127,7 @@ Front-facing customer account endpoints live under `/api/v1/dgfy/customer`. Exce
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/dgfy/customer/dashboard` | Return DGFY profile summary, recent account activity, orders, bookings, addresses, and read-only loyalty summary |
-| `GET` | `/dgfy/customer/activities` | Return paginated normalized cross-store history with filters for `type`, `tenant_id`, `store_slug`, `status`, `payment_status`, date range, page, and limit |
+| `GET` | `/dgfy/customer/activities` | Return paginated normalized account history with filters for `type`, `tenant_id`, `store_slug`, `location_id`, `status`, `payment_status`, date range, page, and limit |
 | `GET` | `/dgfy/customer/orders` | List account-linked order activities |
 | `GET` | `/dgfy/customer/bookings` | List account-linked service/hospitality booking activities |
 | `GET` | `/dgfy/customer/notifications` | List account-scoped customer notifications with optional unread filtering |
@@ -6099,7 +6155,7 @@ Storefront checkout keeps account-saved, temporary checkout, recommended store o
 
 `PATCH /dgfy/customer/addresses/:address_id/default` is a transport alias for updating the address with `is_default=true`; it must remain registered before the generic `PATCH /dgfy/customer/addresses/:address_id` route. Storefront checkout and booking forms consume the default saved address for signed-in customers only when the visible customer address field is still empty.
 
-`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Response cards include `reference`, `store`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`.
+`GET /dgfy/customer/activities` is the canonical customer history endpoint. Activity `type` may be `order`, `service_booking`, `hospitality_booking`, `fnb_order`, `booking`, or `all`; `booking` expands to Services and Hospitality activity. Optional `store_slug` scopes history to one storefront and optional positive `location_id` scopes it to one saved branch. These filters are applied together with the authenticated DGFY account ownership before pagination and counts. Response cards include `reference`, `store`, `location_id`, `branch`, `type`, `status`, `payment_status`, `occurred_at`, `total_amount`, `summary_lines`, `allowed_actions`, and `review_targets`. The Storefront uses the active branch scope by default; the main DGFY account is explicitly labeled `All stores` when no storefront scope is active. Legacy activities without `location_id` are not assigned to a branch by inference.
 
 Dashboard, activities, and account reference tracking reads refresh account-owned order snapshots from the tenant POS transaction before returning data when the activity is already explicitly linked to the signed-in DGFY account. This read-time refresh must not adopt guest orders by email or phone matching.
 

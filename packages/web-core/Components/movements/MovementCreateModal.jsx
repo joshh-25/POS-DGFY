@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -34,7 +35,8 @@ import {
   ChevronsUpDown,
   Check,
   Activity,
-  Barcode
+  Barcode,
+  X
 } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { cn } from "../../src/lib/utils.js";
@@ -77,6 +79,22 @@ const findItemByFormId = (items = [], itemIdValue = '') => {
   if (!Number.isInteger(normalized) || normalized <= 0) return null;
   return items.find((item) => Number(item?.item_id || item?.id) === normalized) || null;
 };
+
+const MovementStepHeading = ({ number, title, optional = false, id }) => (
+  <div className="flex items-center gap-3 border-b border-slate-100 pb-2">
+    <span aria-hidden="true" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-teal-50 text-xs font-bold text-teal-700">
+      {number}
+    </span>
+    <div className="flex min-w-0 items-center gap-2">
+      <h3 id={id} className="text-sm font-semibold text-slate-900">{title}</h3>
+      {optional && (
+        <Badge variant="outline" className="border-slate-200 bg-slate-50 text-[11px] font-medium text-slate-500">
+          Optional
+        </Badge>
+      )}
+    </div>
+  </div>
+);
 
 export default function MovementCreateModal({ open, onClose, onSubmit, items, preselectedItem }) {
   const { locations, loading: loadingLocations } = useLocations();
@@ -375,101 +393,132 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Record Stock Movement</DialogTitle>
+      <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] max-w-2xl flex-col overflow-hidden overflow-y-hidden p-0 sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="shrink-0 space-y-0 border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-teal-600">Inventory operations</p>
+              <DialogTitle className="mt-1 text-xl text-slate-950 sm:text-2xl">Record Stock Movement</DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-slate-500">
+                Choose the movement, item, and quantity, then confirm the location.
+              </DialogDescription>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              onClick={onClose}
+              aria-label="Close record stock movement"
+              title="Close"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          <div className="space-y-2">
-            <Label>Movement Direction</Label>
-            <Select value={formData.movement_direction} onValueChange={handleDirectionChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MOVEMENT_DIRECTION_OPTIONS.map((option) => (
-                  <SelectItem
-                    key={option.value}
-                    value={option.value}
-                    disabled={option.value === 'transfer' && !canTransferAcrossLocations}
-                  >
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {!canTransferAcrossLocations && (
-              <p className="text-xs text-slate-500">
-                Enable at least two active locations to use transfer movements.
-              </p>
-            )}
-          </div>
-
-          <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 space-y-2">
-            <Label className="flex items-center gap-2 text-teal-900">
-              <Barcode className="h-4 w-4" />
-              Scan item, package, shelf, or batch label
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              <Input
-                value={scanCode}
-                onChange={(event) => setScanCode(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    handleResolveBarcodeScan();
-                  }
-                }}
-                placeholder="Scan before recording stock movement"
-                className="min-w-[220px] flex-1 bg-white"
-              />
-              <Button type="button" variant="outline" onClick={handleResolveBarcodeScan} disabled={scanLoading}>
-                {scanLoading ? 'Resolving...' : 'Resolve'}
-              </Button>
-            </div>
-            <p className="text-xs text-teal-900">
-              Scans only prefill item, batch, and suggested quantity. The submitted stock movement still enforces location and stock rules.
-            </p>
-            {scanFeedback && (
-              <p className={cn('text-xs font-medium', scanFeedback.type === 'resolved' ? 'text-teal-700' : 'text-red-600')}>
-                {scanFeedback.message}
-              </p>
-            )}
-          </div>
-
-          {formData.movement_direction !== 'transfer' && (
-            <div className="space-y-2">
-              <Label>Stock {formData.movement_direction === 'stock_in' ? 'In' : 'Out'} Type</Label>
-              <Select value={formData.movement_type} onValueChange={(value) => handleChange('movement_type', value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {movementTypeOptions.map((type) => {
-                    const config = getMovementConfig(type.value);
-                    const Icon = config.icon;
-                    return (
-                      <SelectItem key={type.value} value={type.value}>
-                        <div className="flex items-center gap-2">
-                          <Icon className={cn("w-4 h-4", config.color)} />
-                          {type.label}
-                        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+          <div className="space-y-5">
+          <section className="space-y-3" aria-labelledby="movement-step-heading">
+            <MovementStepHeading id="movement-step-heading" number="1" title="Choose the movement" />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="movement-direction">Movement Direction</Label>
+                <Select value={formData.movement_direction} onValueChange={handleDirectionChange}>
+                  <SelectTrigger id="movement-direction">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MOVEMENT_DIRECTION_OPTIONS.map((option) => (
+                      <SelectItem
+                        key={option.value}
+                        value={option.value}
+                        disabled={option.value === 'transfer' && !canTransferAcrossLocations}
+                      >
+                        {option.label}
                       </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!canTransferAcrossLocations && (
+                  <p className="text-xs text-slate-500">
+                    Enable at least two active locations to use transfer movements.
+                  </p>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            <Label>Item</Label>
-            <Popover>
+              {formData.movement_direction !== 'transfer' && (
+                <div className="space-y-2">
+                  <Label htmlFor="movement-type">Stock {formData.movement_direction === 'stock_in' ? 'In' : 'Out'} Type</Label>
+                  <Select value={formData.movement_type} onValueChange={(value) => handleChange('movement_type', value)}>
+                    <SelectTrigger id="movement-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {movementTypeOptions.map((type) => {
+                        const config = getMovementConfig(type.value);
+                        const Icon = config.icon;
+                        return (
+                          <SelectItem key={type.value} value={type.value}>
+                            <div className="flex items-center gap-2">
+                              <Icon className={cn("w-4 h-4", config.color)} />
+                              {type.label}
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="space-y-3" aria-labelledby="movement-item-step-heading">
+            <MovementStepHeading id="movement-item-step-heading" number="2" title="Select item and quantity" />
+            <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 space-y-2">
+              <Label htmlFor="movement-scan-code" className="flex items-center gap-2 text-teal-900">
+                <Barcode className="h-4 w-4" />
+                Fast item lookup
+              </Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id="movement-scan-code"
+                  value={scanCode}
+                  onChange={(event) => setScanCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      handleResolveBarcodeScan();
+                    }
+                  }}
+                  placeholder="Scan barcode or label"
+                  className="min-w-[220px] flex-1 bg-white"
+                />
+                <Button type="button" variant="outline" onClick={handleResolveBarcodeScan} disabled={scanLoading}>
+                  {scanLoading ? 'Resolving...' : 'Resolve'}
+                </Button>
+              </div>
+              <p className="text-xs text-teal-900">
+                Prefills item, batch, and quantity.
+              </p>
+              {scanFeedback && (
+                <p className={cn('text-xs font-medium', scanFeedback.type === 'resolved' ? 'text-teal-700' : 'text-red-600')}>
+                  {scanFeedback.message}
+                </p>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
+              <div className="space-y-2">
+                <Label htmlFor="movement-item">Item</Label>
+                <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  id="movement-item"
                   variant="outline"
                   role="combobox"
+                  aria-label={selectedItem?.name ? `Change item from ${selectedItem.name}` : 'Select item'}
                   className={cn(
                     "w-full justify-between font-normal",
                     !formData.item_id && "text-slate-500"
@@ -528,25 +577,30 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                   </CommandList>
                 </Command>
               </PopoverContent>
-            </Popover>
-          </div>
+                </Popover>
+              </div>
 
-          <div className="space-y-2">
-            <Label>Quantity</Label>
-            <Input
-              type="number"
-              min={0}
-              value={formData.quantity}
-              onChange={(e) => handleChange('quantity', e.target.value === '' ? '' : Number.parseFloat(e.target.value) || 0)}
-            />
-          </div>
-
-          {showTransferLocations ? (
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Source Location</Label>
+                <Label htmlFor="movement-quantity">Quantity</Label>
+                <Input
+                  id="movement-quantity"
+                  type="number"
+                  min={0}
+                  value={formData.quantity}
+                  onChange={(e) => handleChange('quantity', e.target.value === '' ? '' : Number.parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="space-y-3" aria-labelledby="movement-location-step-heading">
+            <MovementStepHeading id="movement-location-step-heading" number="3" title="Confirm location" />
+            {showTransferLocations ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="movement-source-location">Source Location</Label>
                 <Select value={formData.source_location_id} onValueChange={(value) => handleChange('source_location_id', value)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="movement-source-location">
                     <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select source"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -559,9 +613,9 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Destination Location</Label>
+                <Label htmlFor="movement-destination-location">Destination Location</Label>
                 <Select value={formData.destination_location_id} onValueChange={(value) => handleChange('destination_location_id', value)}>
-                  <SelectTrigger>
+                  <SelectTrigger id="movement-destination-location">
                     <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select destination"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -574,46 +628,50 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                 </Select>
               </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              <Label>Location</Label>
-              <Select value={formData.location_id} onValueChange={(value) => handleChange('location_id', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeLocations.map((location) => (
-                    <SelectItem key={`location-${location.location_id}`} value={String(location.location_id)}>
-                      {location.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {locationIsRequiredHint && !formData.location_id && (
-                <p className="text-xs text-red-600">Required when multiple active locations exist.</p>
-              )}
-            </div>
-          )}
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="movement-location">Location</Label>
+                <Select value={formData.location_id} onValueChange={(value) => handleChange('location_id', value)}>
+                  <SelectTrigger id="movement-location">
+                    <SelectValue placeholder={loadingLocations ? "Loading locations..." : "Select location"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeLocations.map((location) => (
+                      <SelectItem key={`location-${location.location_id}`} value={String(location.location_id)}>
+                        {location.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {locationIsRequiredHint && !formData.location_id && (
+                  <p className="text-xs text-red-600">Required when multiple active locations exist.</p>
+                )}
+              </div>
+            )}
+          </section>
 
-          {formData.movement_type === 'purchase_receipt' && (
-            <div className="space-y-2">
-              <Label>Expiry Date (Optional)</Label>
-              <Input
-                type="date"
-                value={formData.expiry_date}
-                onChange={(e) => handleChange('expiry_date', e.target.value)}
-              />
-              <p className="text-xs text-slate-500">
-                Leave blank to auto-calculate based on shelf life.
-              </p>
-            </div>
-          )}
+          <section className="space-y-3" aria-labelledby="movement-details-step-heading">
+            <MovementStepHeading id="movement-details-step-heading" number="4" title="Add details" optional />
+            {formData.movement_type === 'purchase_receipt' && (
+              <div className="space-y-2">
+                <Label htmlFor="movement-expiry-date">Expiry Date (Optional)</Label>
+                <Input
+                  id="movement-expiry-date"
+                  type="date"
+                  value={formData.expiry_date}
+                  onChange={(e) => handleChange('expiry_date', e.target.value)}
+                />
+                <p className="text-xs text-slate-500">
+                  Leave blank to use shelf life.
+                </p>
+              </div>
+            )}
 
           {showBatchSelector && selectedItem?.fifo_enabled && (
             <div className="space-y-2">
-              <Label>FIFO Batch (Optional)</Label>
+              <Label htmlFor="movement-batch">FIFO Batch (Optional)</Label>
               <Select value={formData.batch_id} onValueChange={(value) => handleChange('batch_id', value)}>
-                <SelectTrigger>
+                <SelectTrigger id="movement-batch">
                   <SelectValue placeholder={loadingBatches ? "Loading batches..." : "Auto-select oldest batch"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -634,48 +692,51 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
             </div>
           )}
 
-          {showLossReason && (
+            {showLossReason && (
+              <div className="space-y-2">
+                <Label htmlFor="movement-loss-reason">Loss Reason (Required)</Label>
+                <Select value={formData.loss_reason} onValueChange={(value) => handleChange('loss_reason', value)}>
+                  <SelectTrigger id="movement-loss-reason">
+                    <SelectValue placeholder="Select reason" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lossReasons.map((reason) => (
+                      <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <Label>Loss Reason</Label>
-              <Select value={formData.loss_reason} onValueChange={(value) => handleChange('loss_reason', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select reason" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lossReasons.map((reason) => (
-                    <SelectItem key={reason.value} value={reason.value}>{reason.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="movement-reference">Reference ID (Optional)</Label>
+              <Input
+                id="movement-reference"
+                value={formData.reference_id}
+                onChange={(e) => handleChange('reference_id', e.target.value)}
+                placeholder="e.g., PO-001"
+              />
             </div>
-          )}
 
-          <div className="space-y-2">
-            <Label>Reference ID (Optional)</Label>
-            <Input
-              value={formData.reference_id}
-              onChange={(e) => handleChange('reference_id', e.target.value)}
-              placeholder="e.g., PO-001, JO-002"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea
-              value={formData.notes}
-              onChange={(e) => handleChange('notes', e.target.value)}
-              placeholder="Add any notes about this movement..."
-              rows={3}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="movement-notes">Notes</Label>
+              <Textarea
+                id="movement-notes"
+                value={formData.notes}
+                onChange={(e) => handleChange('notes', e.target.value)}
+                placeholder="Add a note (optional)"
+                rows={3}
+              />
+            </div>
+          </section>
 
           {selectedItem && Number(formData.quantity) > 0 && (
-            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 text-sm">
-              <h4 className="font-medium text-slate-900 mb-3 flex items-center gap-2">
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm" aria-labelledby="movement-stock-impact-heading">
+              <h4 id="movement-stock-impact-heading" className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
                 <Activity className="w-4 h-4 text-slate-500" />
                 Stock Impact
               </h4>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
                 <div>
                   <p className="text-slate-500 text-xs uppercase tracking-wide">Current</p>
                   <p className="font-medium text-slate-900 mt-0.5">
@@ -710,18 +771,20 @@ export default function MovementCreateModal({ open, onClose, onSubmit, items, pr
                   </p>
                 </div>
               </div>
-            </div>
+            </section>
           )}
+          </div>
         </div>
 
-        <DialogFooter className="pt-8">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <DialogFooter className="shrink-0 flex-row justify-end gap-2 border-t border-slate-200 bg-slate-50/60 px-4 py-4 sm:px-6">
+          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
           <Button
+            type="button"
             onClick={handleSubmit}
             disabled={!formData.item_id || Number(formData.quantity) <= 0}
             className="bg-teal-600 hover:bg-teal-700"
           >
-            Record Movement
+            Record movement
           </Button>
         </DialogFooter>
       </DialogContent>

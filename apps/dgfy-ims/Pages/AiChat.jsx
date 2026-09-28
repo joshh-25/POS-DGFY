@@ -232,7 +232,7 @@ export default function AiChat() {
         // Filter logical max size or type here if needed
         // For now, valid types are handled by backend, frontend just restricts images button
 
-        // Prevent duplicates by name+size check? 
+        // Prevent duplicates by name+size check?
         // For simplicity, just add them. Limit is 5 total.
         setAttachments(prev => {
             const combined = [...prev, ...newFiles];

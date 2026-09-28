@@ -54,8 +54,6 @@ const buildUseCase = ({ order, nextStatus, reservationService: reservationServic
     posRepository,
     inventoryCommandService,
     inventoryReservationService: reservationServiceInput,
-    // #1931: the tenant workflow mode gates Retail's accept-time issue; pin it per test.
-    resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: workflowMode, enabledCapabilities: [] }),
     activityRecorder: jest.fn().mockResolvedValue(null)
   });
   const fakeSequelize = { transaction: jest.fn().mockResolvedValue(transaction) };
@@ -113,11 +111,11 @@ describe('POS online inventory reservation lifecycle', () => {
   });
 });
 
-// #1931: Retail accept-time goods-issue -- placed -> confirmed deducts immediately, exactly
-// once, for Retail only; completion skips when the evidence is already set and still deducts
-// for legacy (pre-change) orders that have none.
-describe('POS retail accept-time inventory issue (#1931)', () => {
-  it('issues stock and converts the hold at acceptance for a Retail order', async () => {
+// Confirmation-time goods-issue -- placed -> confirmed deducts immediately, exactly once for
+// every online order mode; completion skips when evidence is already set and still deducts for
+// legacy (pre-change) orders that have none.
+describe('POS online confirmation-time inventory issue', () => {
+  it('issues stock and converts the hold at acceptance for an online order', async () => {
     const order = makeOrder('placed');
     const reservationService = {
       convertOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'converted' })
@@ -175,10 +173,10 @@ describe('POS retail accept-time inventory issue (#1931)', () => {
     expect(issueStockForOnlineFulfillment).toHaveBeenCalledTimes(1);
   });
 
-  it('does not issue stock at acceptance for a non-Retail order', async () => {
+  it('also issues stock at acceptance for a non-Retail order', async () => {
     const order = makeOrder('placed');
     const reservationService = {
-      convertOnlineOrderInventory: jest.fn()
+      convertOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'converted' })
     };
     const { useCase, posRepository, fakeSequelize, issueStockForOnlineFulfillment } = buildUseCase({
       order,
@@ -194,16 +192,19 @@ describe('POS retail accept-time inventory issue (#1931)', () => {
     }));
 
     expect(result.success).toBe(true);
-    expect(issueStockForOnlineFulfillment).not.toHaveBeenCalled();
-    expect(reservationService.convertOnlineOrderInventory).not.toHaveBeenCalled();
+    expect(issueStockForOnlineFulfillment).toHaveBeenCalledTimes(1);
+    expect(reservationService.convertOnlineOrderInventory).toHaveBeenCalledWith({
+      sourceId: 800,
+      transaction: expect.anything()
+    });
     expect(posRepository.updateOrderById).toHaveBeenCalledWith(
       800,
-      expect.not.objectContaining({ inventory_issued_at: expect.anything() }),
+      expect.objectContaining({ inventory_issued_at: expect.any(Date) }),
       expect.objectContaining({ lock: true })
     );
   });
 
-  it('does not re-issue at completion when the accept-time issue already ran', async () => {
+  it('does not re-issue at completion when the confirmation-time issue already ran', async () => {
     const order = { ...makeOrder('ready_for_pickup'), inventory_issued_at: new Date('2026-09-16T10:00:00.000Z') };
     const reservationService = {
       convertOnlineOrderInventory: jest.fn()
@@ -226,7 +227,7 @@ describe('POS retail accept-time inventory issue (#1931)', () => {
     expect(reservationService.convertOnlineOrderInventory).not.toHaveBeenCalled();
   });
 
-  it('still deducts at completion for a legacy Retail order with no prior evidence', async () => {
+  it('still deducts at completion for a legacy order with no prior evidence', async () => {
     const order = makeOrder('ready_for_pickup');
     const reservationService = {
       convertOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'converted' })
@@ -319,11 +320,10 @@ describe('POS retail accept-time inventory issue (#1931)', () => {
   });
 });
 
-// #1931: one-time reversal -- confirmed -> rejected restores the accepted quantity once for
-// Retail orders with recorded evidence; pre-acceptance rejects and non-Retail modes never
-// add stock.
-describe('POS retail post-acceptance rejection reversal (#1931)', () => {
-  it('reverses the accept-time issue once on staff reject after acceptance', async () => {
+// One-time reversal -- confirmed -> rejected restores the accepted quantity once for any online
+// order with recorded evidence; pre-acceptance rejects never add stock.
+describe('POS online post-acceptance rejection reversal', () => {
+  it('reverses the confirmation-time issue once on staff reject after acceptance', async () => {
     const order = { ...makeOrder('confirmed'), inventory_issued_at: new Date('2026-09-16T10:00:00.000Z') };
     const reservationService = {
       releaseOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'released' })
@@ -355,12 +355,12 @@ describe('POS retail post-acceptance rejection reversal (#1931)', () => {
     );
   });
 
-  it('does not reverse on a pre-acceptance placed -> rejected, even in Retail mode', async () => {
+  it('does not reverse on a pre-acceptance placed -> rejected', async () => {
     const order = makeOrder('placed');
     const reservationService = {
       releaseOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'released' })
     };
-    const { useCase, fakeSequelize, reverseOnlineOrderGoodsIssue } = buildUseCase({
+    const { useCase, posRepository, fakeSequelize, reverseOnlineOrderGoodsIssue } = buildUseCase({
       order,
       nextStatus: 'rejected',
       reservationService,
@@ -377,12 +377,12 @@ describe('POS retail post-acceptance rejection reversal (#1931)', () => {
     expect(reverseOnlineOrderGoodsIssue).not.toHaveBeenCalled();
   });
 
-  it('does not reverse for a non-Retail order even with prior evidence set', async () => {
+  it('also reverses a non-Retail order when prior evidence is set', async () => {
     const order = { ...makeOrder('confirmed'), inventory_issued_at: new Date('2026-09-16T10:00:00.000Z') };
     const reservationService = {
       releaseOnlineOrderInventory: jest.fn().mockResolvedValue({ status: 'released' })
     };
-    const { useCase, fakeSequelize, reverseOnlineOrderGoodsIssue } = buildUseCase({
+    const { useCase, posRepository, fakeSequelize, reverseOnlineOrderGoodsIssue } = buildUseCase({
       order,
       nextStatus: 'rejected',
       reservationService,
@@ -396,6 +396,11 @@ describe('POS retail post-acceptance rejection reversal (#1931)', () => {
     }));
 
     expect(result.success).toBe(true);
-    expect(reverseOnlineOrderGoodsIssue).not.toHaveBeenCalled();
+    expect(reverseOnlineOrderGoodsIssue).toHaveBeenCalledTimes(1);
+    expect(posRepository.updateOrderById).toHaveBeenCalledWith(
+      800,
+      expect.objectContaining({ inventory_reversed_at: expect.any(Date) }),
+      expect.objectContaining({ lock: true })
+    );
   });
 });

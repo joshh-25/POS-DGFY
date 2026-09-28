@@ -14,14 +14,30 @@ const adjustmentKpiSource = fs.readFileSync(path.resolve(__dirname, '../componen
 const overviewTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsOverviewTable.jsx'), 'utf8');
 const salesTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsSalesTable.jsx'), 'utf8');
 const responsiveTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsResponsiveTable.jsx'), 'utf8');
+const filterPartsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFilterDialogParts.jsx'), 'utf8');
+const cashierFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/PosCashierFilterControl.jsx'), 'utf8');
+const dialogShellSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFilterDialogShell.jsx'), 'utf8');
+const datePickerSource = fs.readFileSync(path.resolve(__dirname, '../components/PosDateRangePicker.jsx'), 'utf8');
+const tableSurfaceSource = fs.readFileSync(path.resolve(__dirname, '../components/PosTableSurface.jsx'), 'utf8');
 const attendanceTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsAttendanceTable.jsx'), 'utf8');
 const handoffTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsHandoffTable.jsx'), 'utf8');
 const topItemsTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsTopItemsTable.jsx'), 'utf8');
 const toolbarSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsToolbar.jsx'), 'utf8');
+const appliedFilterChipsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosAppliedFilterChips.jsx'), 'utf8');
 const lineTabSource = fs.readFileSync(path.resolve(__dirname, '../components/PosLineTabNavigation.jsx'), 'utf8');
+const pageSpacingSource = fs.readFileSync(path.resolve(__dirname, '../components/PosPageSpacing.js'), 'utf8');
 const subtabNavigationSource = fs.readFileSync(path.resolve(__dirname, '../components/PosSubtabNavigation.jsx'), 'utf8');
+const primitivesPath = path.resolve(__dirname, '../../../components/backOffice/BackOfficePrimitives.jsx');
+const primitivesSource = fs.readFileSync(primitivesPath, 'utf8');
 
 describe('POS report category filter contract', () => {
+  it('uses each selected report tab granularity for requests and offline snapshots', () => {
+    expect(workspaceSource).toContain("const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;");
+    expect(workspaceSource).toMatch(/const offlineReportKey = useMemo\(\(\) => JSON\.stringify\(\{\s*granularity: displayGranularity,/);
+    expect(workspaceSource).toMatch(/fetchPosReportsOverview\(\{\s*granularity: displayGranularity,/);
+    expect(workspaceSource).toMatch(/\}, \[\s*categoryId,\s*cashierId,\s*displayGranularity,/);
+  });
+
   it('groups operational reports under the Operations tab without removing their views', () => {
     expect(workspaceSource).toContain("{ id: 'operations', label: 'Operations', icon: BarChart3, granularity: 'daily', exportSection: 'cashiers' }");
     expect(workspaceSource).toContain("{ id: 'cashiers', label: 'Cashiers', icon: Users }");
@@ -72,14 +88,31 @@ describe('POS report category filter contract', () => {
     expect(salesTableSource).toContain('Transaction/Invoice');
     expect(salesTableSource).toContain('label: `POS Profit/Loss (${symbol})`');
     expect(workspaceSource).toContain('ariaLabel="POS reports"');
-    expect(workspaceSource).toContain('space-y-4 px-0 sm:space-y-6 sm:px-3');
-    expect(workspaceSource).toContain('gap-4 sm:gap-6');
+    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">');
+    expect(workspaceSource).toContain('data-testid="pos-reports-sticky-tabs"');
+    expect(workspaceSource).toContain('POS_MOBILE_STICKY_TAB_ROW_CLASS');
+    expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4');
+    expect(workspaceSource).toContain('POS_PAGE_CONTENT_STACK_CLASS');
     expect(workspaceSource).not.toContain('showIcons={false}');
     expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('<PosLineTabNavigation'));
     expect(workspaceSource.indexOf('<PosLineTabNavigation')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
     expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('{renderReportToolbar()}'));
     expect(workspaceSource).toContain("const shouldShowOperationsSubtabs = activeTab === 'operations'");
     expect(lineTabSource).toContain('role="tablist" aria-orientation="horizontal"');
+  });
+
+  it('keeps mobile report tabs sticky through the full report content scroll range', () => {
+    const contentStart = workspaceSource.indexOf('data-testid="pos-reports-sticky-content"');
+    const stickyTabs = workspaceSource.indexOf('data-testid="pos-reports-sticky-tabs"');
+    const reportPanel = workspaceSource.indexOf('role="tabpanel"');
+    const contentEnd = workspaceSource.lastIndexOf('</div>', workspaceSource.indexOf('</PosPageFrame>'));
+
+    expect(contentStart).toBeGreaterThanOrEqual(0);
+    expect(contentStart).toBeLessThan(stickyTabs);
+    expect(stickyTabs).toBeLessThan(reportPanel);
+    expect(reportPanel).toBeLessThan(contentEnd);
+    expect(workspaceSource.slice(contentStart, contentEnd)).toContain('POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6');
+    expect(workspaceSource.slice(contentStart, contentEnd)).toContain('data-testid="pos-reports-sticky-tabs"');
   });
 
   it('uses the Settings-style directional transition for report tabs and Operations subtabs', () => {
@@ -128,15 +161,16 @@ describe('POS report category filter contract', () => {
     expect(profitLossTabSource).not.toContain('MetricCard');
   });
 
-  it('spaces the comparison snapshot from the trend and removes its outer card shell', () => {
-    const snapshotStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
-    const snapshotEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", snapshotStart);
-    const snapshotSource = workspaceSource.slice(snapshotStart, snapshotEnd);
+  it('uses the full main-branch comparison workspace without changing the report shell', () => {
+    const comparisonStart = workspaceSource.lastIndexOf("{renderedTab === 'comparison' ? (");
+    const comparisonEnd = workspaceSource.indexOf("{renderedTab === 'profit_loss' ? (", comparisonStart);
+    const comparisonSource = workspaceSource.slice(comparisonStart, comparisonEnd);
 
-    expect(snapshotSource).toContain('<section aria-labelledby="sales-comparison-snapshot-title" className="mt-4">');
-    expect(snapshotSource).toContain('<h3 id="sales-comparison-snapshot-title"');
-    expect(snapshotSource).toContain('grid gap-3 md:grid-cols-2 xl:grid-cols-4');
-    expect(snapshotSource).not.toContain('<SectionCard');
+    expect(comparisonSource).toContain('<PosReportsComparisonPanel');
+    expect(comparisonSource).toContain('comparison={comparisonReport}');
+    expect(comparisonSource).toContain('granularity={displayGranularity}');
+    expect(comparisonSource).toContain('onGranularityChange={setGranularity}');
+    expect(comparisonSource).not.toContain('sales-comparison-snapshot-title');
   });
 
   it('maps the Top Selling Items table to the supported report aggregates', () => {
@@ -153,25 +187,24 @@ describe('POS report category filter contract', () => {
   it('uses active folder IDs rather than date-dependent category names', () => {
     expect(workspaceSource).toContain("const [categoryId, setCategoryId] = useState('');");
     expect(workspaceSource).toContain('category_id: categoryId || undefined');
-    expect(filterPanelSource).toContain("const value = entry.folder_id || '';");
-    expect(filterPanelSource).toContain('{entry.name}');
+    expect(filterPanelSource).toContain("value: entry.folder_id || ''");
+    expect(filterPanelSource).toContain('label: entry.name');
     expect(workspaceSource).not.toContain('value={category}');
   });
 
-  it('keeps report tables viewport-safe with controlled horizontal scrolling on mobile', () => {
-    expect(workspaceSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
-    expect(responsiveTableSource).toContain('overflow-x-auto overflow-y-hidden overscroll-x-contain touch-pan-x');
-    expect(responsiveTableSource).toContain('w-max min-w-full table-fixed');
-    expect(responsiveTableSource).not.toContain('mobilePrimaryKeys');
-    expect(responsiveTableSource).not.toContain('mobileDetailKeys');
+  it('keeps report cards viewport-safe and renders table rows as mobile cards', () => {
+    expect(primitivesSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
+    expect(primitivesSource).toContain('grid min-w-0 gap-3 sm:hidden');
+    expect(primitivesSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
+    expect(primitivesSource).toContain('min-w-[720px]');
   });
 
   it('keeps every report table on the shared compact visual contract', () => {
-    expect(responsiveTableSource).toContain('rounded-xl border border-slate-200 bg-white shadow-sm');
-    expect(responsiveTableSource).toContain('border-b border-slate-200 bg-[#F7FAFF]');
-    expect(responsiveTableSource).toContain('odd:bg-white even:bg-[#F8FBFF]');
-    expect(responsiveTableSource).toContain('hover:bg-[#EEF5FF]');
-    expect(responsiveTableSource).toContain('px-4 py-2.5');
+    expect(responsiveTableSource).toMatch(/<PosTableSurface(?:\s|>)/);
+    expect(tableSurfaceSource).toContain('rounded-xl border border-slate-200 bg-white shadow-sm');
+    expect(tableSurfaceSource).toContain('border-b border-slate-200 bg-white');
+    expect(tableSurfaceSource).toContain('hover:bg-slate-50/70');
+    expect(tableSurfaceSource).toContain('px-2.5 py-4');
     [overviewTableSource, salesTableSource, topItemsTableSource].forEach((source) => {
       expect(source).toContain('<PosReportsResponsiveTable');
     });
@@ -187,38 +220,47 @@ describe('POS report category filter contract', () => {
   });
 
   it('keeps all report filters in a responsive modal with button-based choices', () => {
-    expect(filterPanelSource).toContain('role="dialog"');
-    expect(filterPanelSource).toContain('aria-modal="false"');
-    expect(dateFilterSource).toContain('aria-modal="false"');
-    expect(filterPanelSource).not.toContain('bg-black/20');
-    expect(dateFilterSource).not.toContain('bg-black/20');
-    expect(filterPanelSource).toContain('lg:max-h-none');
-    expect(filterPanelSource).toContain('lg:overflow-visible');
-    expect(dateFilterSource).toContain('lg:max-h-none');
-    expect(dateFilterSource).toContain('lg:overflow-visible');
+    expect(filterPanelSource).toContain('<PosFilterDialogShell');
+    expect(dateFilterSource).toContain('<PosFilterDialogShell');
+    expect(dialogShellSource).toContain('<Dialog');
+    expect(dialogShellSource).toContain('<DialogContent');
+    expect(dialogShellSource).toContain('mobileSheet={isMobileDialog}');
+    expect(dialogShellSource).toContain('dgfy-pos-history-filter-dialog w-auto max-w-none rounded-xl');
+    expect(dialogShellSource).toContain('dgfy-pos-history-calendar-dialog max-w-none rounded-xl');
+    expect(filterPanelSource).toContain('compact={!isMobileDialog}');
+    expect(filterPanelSource).toContain('mobile={isMobileDialog}');
+    expect(filterPanelSource).not.toContain('scrollable');
+    expect(filterPanelSource).not.toContain('showSelectedIcon');
+    expect(dateFilterSource).toContain('mobile={isMobileDialog}');
     expect(filterPanelSource).toContain('Payment Type');
     expect(filterPanelSource).toContain('Sources');
     expect(filterPanelSource).toContain('Categories');
-    expect(filterPanelSource).toContain('Search Cashier');
-    expect(filterPanelSource).toContain('aria-pressed={draft.paymentType === option.value}');
-    expect(filterPanelSource).toContain('Apply Filters');
-    expect(filterPanelSource).toContain('Reset All');
+    expect(filterPanelSource).toContain('<PosCashierFilterControl');
+    expect(cashierFilterSource).toContain('Search Cashier');
+    expect(cashierFilterSource).toContain('Cashier options');
+    expect(cashierFilterSource).toContain('onExpandedChange?.(true)');
+    expect(cashierFilterSource).toContain('focus-within:ring-2');
+    expect(filterPanelSource).toContain('<PosFilterChoiceGroup');
+    expect(filterPartsSource).toContain('aria-pressed={selected}');
+    expect(filterPartsSource).toContain("resetLabel = 'Reset All'");
+    expect(filterPartsSource).toContain("applyLabel = 'Apply Filters'");
     expect(filterPanelSource).not.toContain('<select');
     expect(filterPanelSource).not.toContain('Date range');
     expect(filterPanelSource).not.toContain('RANGE_OPTIONS');
     expect(workspaceSource).toContain('reportFiltersOpen');
     expect(toolbarSource).toContain('aria-controls="pos-reports-filter-dialog"');
     expect(toolbarSource).toContain('aria-controls="pos-reports-date-dialog"');
-    expect(toolbarSource).toContain('Filter by date');
+    expect(toolbarSource).toContain('Filter by Date');
     expect(toolbarSource).toContain('Print / Save PDF');
     expect(toolbarSource).toContain('Export CSV');
+    expect(toolbarSource).toContain('<PosAppliedFilterChips');
     expect(workspaceSource).toContain('PosReportsDateFilterPanel');
     expect(workspaceSource).toContain('onOpenDateFilter={() => setReportDateFilterOpen(true)}');
-    expect(dateFilterSource).toContain('Last 7 Days');
-    expect(dateFilterSource).toContain('Custom Range');
-    expect(dateFilterSource).toContain('onPointerDown');
-    expect(dateFilterSource).toContain('onPointerEnter');
-    expect(dateFilterSource).toContain('Apply Filters');
+    expect(datePickerSource).toContain('Last 7 Days');
+    expect(datePickerSource).toContain('Custom Range');
+    expect(datePickerSource).toContain('onPointerDown');
+    expect(datePickerSource).toContain('onPointerEnter');
+    expect(filterPartsSource).toContain("applyLabel = 'Apply Filters'");
   });
 
   it('shows a compact applied-filter count with removable chips and Clear all', () => {
@@ -226,9 +268,9 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('onRemoveFilter={handleRemoveReportFilter}');
     expect(workspaceSource).toContain('onClearAllFilters={handleClearAllFilters}');
     expect(toolbarSource).toContain('const activeFilterCount = activeFilterChips.length;');
-    expect(toolbarSource).toContain('Applied report filters');
-    expect(toolbarSource).toContain('Clear all');
-    expect(toolbarSource).toContain('Remove filter: ${filter.label}');
+    expect(appliedFilterChipsSource).toContain('Applied filters');
+    expect(appliedFilterChipsSource).toContain('Clear all');
+    expect(appliedFilterChipsSource).toContain('Remove filter: ${filter.label}');
     expect(toolbarSource).not.toContain('Reset Filter');
   });
 
@@ -254,16 +296,22 @@ describe('POS report category filter contract', () => {
     expect(overviewSource).not.toContain('Filtered Transactions');
   });
 
-  it('separates selected tender collections from full sales and displays mixed payment methods', () => {
-    expect(workspaceSource).toContain('summaryCards.selected_tender');
-    expect(kpiSource).toContain("`${selectedTender.payment_label} Collected`");
-    expect(workspaceSource).toContain('formatPosTransactionPaymentMethods(entry)');
+  it('discloses the immutable Z-reading reconciliation without mixing net sales metrics', () => {
+    expect(workspaceSource).toContain('z_reading_reconciliation');
+    expect(workspaceSource).toContain('Z-reading reconciliation');
+    expect(workspaceSource).toContain('Report recognized sales');
+    expect(workspaceSource).toContain('Z-reading total');
+    expect(workspaceSource).toContain('Report net sales');
+    expect(workspaceSource).toContain('Report refunds/voids');
+    expect(workspaceSource).toContain('Generated:');
+    expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
   });
 
-  it('keeps procurement export out of the POS reports toolbar', () => {
+  it('keeps the report toolbar focused on the primary print and CSV exports', () => {
+    expect(workspaceSource).toContain('exportPosReportCsv');
     expect(workspaceSource).not.toContain('exportProcurementCsv');
     expect(workspaceSource).not.toContain('handleExportProcurementCsv');
-    expect(toolbarSource).not.toContain('onExportProcurement');
-    expect(toolbarSource).not.toContain('Procurement CSV');
+    expect(workspaceSource).not.toContain('Procurement CSV');
+    expect(workspaceSource).toContain('{renderReportToolbar()}');
   });
 });

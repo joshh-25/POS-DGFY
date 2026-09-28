@@ -3,8 +3,8 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-08-25
-review_by: 2027-02-24
+last_reviewed: 2026-09-15
+review_by: 2027-03-15
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
@@ -218,3 +218,94 @@ profiles inside the selected tenant, not a separate credential authority.
 - The existing offline queue must not claim a completed close when attendance
   is enabled; the server remains the official source for Time Out and shift
   closure.
+
+### 2026-09-14: Optional Strict POS Device Access (Phase 345)
+
+- Clause 5 (`default`) is clarified: logical terminal selection, accepted
+  membership, permissions, location grants, operator sessions, and shift rules
+  remain sufficient for the default policy. Physical-device pairing remains
+  optional when strict mode is disabled.
+- A tenant may opt into a strict device policy for a registered terminal only
+  after an approved client is enrolled. Strict mode adds a server-verified
+  device proof gate before POS session establishment and protected requests;
+  it does not replace cashier authentication or any existing authorization,
+  operator, shift, CSRF, or audit control.
+- The initial strict client is the signed iMin Android wrapper. Browser and
+  Electron clients remain policy-off until they implement an OS-backed signing
+  provider. The LAN bridge is a hardware transport and is governed separately
+  by ADR 0053 and Phase 349.
+- Strict mode uses the branch/location bound to the registered terminal. GPS,
+  IP, Wi-Fi, and client-reported fingerprints are not authentication proof.
+  Revoke, replace, disable, and recovery operations require authorized admin
+  authentication, a reason, and an audit event.
+- A strict terminal cannot switch its operational location while enforcement is
+  enabled; `SWITCH_LOCATION_POS` does not override the enrolled device's
+  terminal/location binding. Device-policy administration remains available to
+  a privileged administrator as a separate step-up-protected recovery surface.
+- This amendment records the contract only. Runtime enrollment, migrations,
+  challenge verification, and APK changes are deferred to Phases 346-350.
+
+### 2026-09-15: Manager Back Office Entry While Terminal Is Locked (Phase 366)
+
+- An authenticated, accepted non-cashier tenant user who satisfies the existing Business Admin access policy may open the separate Back Office browser page while the POS terminal remains locked or has no cashier shift.
+- This is navigation only: it does not unlock checkout, create or resume a shift, grant `settings:edit`, change terminal/location binding, or alter cart, shift, or operator state.
+- The POS entry is rendered only for the current authenticated manager identity and remains unavailable when the API is unreachable. Back Office bootstrap/API authentication, tenant membership, branch grants, and section permissions remain the server authority. Cashiers and unauthorized users remain denied, including direct URL/API access.
+- Fresh-tab session hydration uses the existing HttpOnly refresh-cookie authority and in-memory token rules from ADR 0026; no access or company credentials are broadcast. Popup feedback distinguishes blocked/open failure from successful navigation, and the Overview destination remains `/?view=reports#/backoffice/overview`.
+- This amendment records the manager-entry contract; it does not create a new storage owner, bypass, migration, or cross-device synchronization guarantee.
+
+### 2026-09-15: Settings Ownership Boundary (Phase 367)
+
+- Business Admin is the canonical editor for business and receipt metadata,
+  tenant POS configuration and discounts, Storefront and branch configuration,
+  payment policies, team/attendance access, and terminal registry and
+  branch-binding policy.
+- POS `terminal_setup` remains the owner of terminal-local queue scope and
+  local order sound, while device/printer bridge operations, terminal
+  selection, shifts, cash drawer actions, and checkout remain in the POS
+  operational surface. Initial tenant onboarding and legacy settings routes
+  remain compatibility paths.
+- The shared settings editor, existing API/storage owners, server-projected
+  view/edit permissions, tenant/branch scope, and terminal/shift protections
+  remain unchanged. This amendment introduces no duplicate mutation path,
+  migration, or authentication bypass.
+
+### 2026-09-15: Settings Access Final Acceptance (Phase 368)
+
+- Business Admin bootstrap requests are sequence-guarded. A refresh or route
+  transition cannot let an older response restore stale tenant, branch, or
+  section data after a newer request or an auth/company invalidation.
+- The Back Office surface distinguishes unavailable service, authenticated but
+  unauthorized access, and missing/expired session state. Existing server
+  authentication, tenant membership, branch grants, and section permissions
+  remain authoritative; the client messages do not grant access.
+- Existing logout, session-expiry, and company-switch events clear mounted
+  Business Admin data and dirty editor state. Branch settings are carried in the
+  hash-route `branch_id` query and remain stable across reload. Navigation,
+  refresh, branch changes, and browser unload require explicit discard
+  confirmation while a canonical settings editor has unsaved changes.
+- An accepted refresh rehydrates the shared settings editor; a cancelled
+  refresh does not overwrite a dirty draft. This final acceptance adds no
+  storage owner, credential broadcast, migration, cross-device sync guarantee,
+  or authorization bypass.
+
+### 2026-09-19: Tenant-owner POS Unlock Authority and Admin-Flag Normalization (Phase 431)
+
+- An accepted DGFY membership for the current tenant owner may establish a POS
+  session without a per-branch location grant when the linked tenant user has
+  the authoritative `admin` role and an effective POS permission. The server
+  derives owner status from the accepted membership and tenant ownership record;
+  the client cannot submit or elevate this authority.
+- This owner/admin authority is limited to the existing tenant-wide exception
+  for branch grants and explicit terminal cashier assignments. Terminal
+  registry membership, terminal location binding, POS permissions, strict
+  device proof, and all operator/shift controls remain enforced.
+- Ordinary admins, managers, cashiers, and users who only have location-switch
+  permission remain subject to explicit location grants and terminal assignment.
+  A database boolean represented as `0`/`1` or a boolean-like string is
+  normalized before the POS role and terminal policy decisions are made.
+- This amendment closes the tenant-owner unlock path and introduces no new
+  schema, data, migration, credential, or cross-tenant authorization contract.
+  The existing additive `staff_roles` migration was rerun as a local
+  tenant-schema drift repair so the session query's optional role association
+  exists for every active local tenant; no existing user or business row was
+  rewritten.

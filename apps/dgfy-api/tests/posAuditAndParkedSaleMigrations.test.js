@@ -4,6 +4,7 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const parkedSaleMigration = require('../../dgfy-migration-runner/migrations/20260815000002-add-pos-parked-sale-origin-ownership.cjs');
 const auditMigration = require('../../dgfy-migration-runner/migrations/20260815000003-align-audit-log-context.cjs');
+const lifecycleEnumRepairMigration = require('../../dgfy-migration-runner/migrations/20260925000003-repair-pos-parked-sale-lifecycle-enums.cjs');
 
 const Sequelize = {
     INTEGER: 'INTEGER',
@@ -12,6 +13,38 @@ const Sequelize = {
 };
 
 describe('parked-sale and audit compatibility migrations', () => {
+    it('fans parked-sale lifecycle ENUM repairs out to the landlord and active tenants', async () => {
+        const alterStatements = [];
+        const query = jest.fn(async (sql, options = {}) => {
+            if (sql === 'SELECT DATABASE() AS dbName') return [[{ dbName: 'sku_inventory_manager' }], {}];
+            if (sql.includes('information_schema.tables')) {
+                const tableName = options.replacements?.[1];
+                return [[{ count: tableName === 'tenants' ? 1 : 0 }], {}];
+            }
+            if (sql.startsWith('SELECT DISTINCT db_name')) {
+                return [[{ db_name: 'sku_tenant_one' }, { db_name: 'sku_tenant_two' }], {}];
+            }
+            if (sql.includes('information_schema.columns')) return [[{ count: 1 }], {}];
+            if (sql.startsWith('ALTER TABLE')) {
+                alterStatements.push(sql);
+                return [[], {}];
+            }
+            throw new Error(`Unexpected migration query: ${sql}`);
+        });
+
+        await lifecycleEnumRepairMigration.up({ sequelize: { query } });
+
+        expect(alterStatements).toHaveLength(6);
+        for (const databaseName of ['sku_inventory_manager', 'sku_tenant_one', 'sku_tenant_two']) {
+            expect(alterStatements).toEqual(expect.arrayContaining([
+                expect.stringContaining(`ALTER TABLE \`${databaseName}\`.\`pos_parked_sales\``),
+                expect.stringContaining(`ALTER TABLE \`${databaseName}\`.\`business_admin_approval_requests\``)
+            ]));
+        }
+        expect(alterStatements.join('\n')).toContain("'cancel_pending'");
+        expect(alterStatements.join('\n')).toContain("'pos_parked_sale_cancel'");
+    });
+
     it('adds only missing parked-sale indexes and propagates index failures', async () => {
         const queryInterface = {
             describeTable: jest.fn().mockResolvedValue({

@@ -72,7 +72,30 @@ describe('EmployeeCreditPaymentPanel', () => {
     expect(onSelectEmployee).toHaveBeenCalledWith(eligibleEmployee);
   });
 
-  it('shows branch and before/after balances for a verified account', () => {
+  it('shows selected employee identity without the account balance summary in split payment', () => {
+    render(
+      <EmployeeCreditPaymentPanel
+        selectedEmployee={eligibleEmployee}
+        onSelectEmployee={() => {}}
+        lookupLoading={false}
+        account={{ employee_name: 'Branch Employee', outstanding_balance: 80, funded_balance: 450 }}
+        totalDue={125}
+        locationId={3}
+        showAccountSummary={false}
+      />
+    );
+
+    expect(screen.getByText('EMP-044')).toBeTruthy();
+    expect(screen.getByText('Employee ID')).toBeTruthy();
+    expect(screen.getByText('Employee')).toBeTruthy();
+    expect(screen.queryByText('Charge amount')).toBeNull();
+    expect(screen.queryByText('Branch')).toBeNull();
+    expect(screen.queryByText('Makati Branch')).toBeNull();
+    expect(screen.queryByText('Current outstanding')).toBeNull();
+    expect(screen.queryByText('Outstanding after sale')).toBeNull();
+  });
+
+  it('shows branch and before/after balances for a full Employee Credit checkout', () => {
     render(
       <EmployeeCreditPaymentPanel
         selectedEmployee={eligibleEmployee}
@@ -84,14 +107,12 @@ describe('EmployeeCreditPaymentPanel', () => {
       />
     );
 
-    expect(screen.getByText('EMP-044')).toBeTruthy();
-    expect(screen.getByText('Employee ID')).toBeTruthy();
-    expect(screen.getByText('Charge amount')).toBeTruthy();
-    expect(screen.getByText('₱125.00')).toBeTruthy();
     expect(screen.getByText('Branch')).toBeTruthy();
     expect(screen.getByText('Makati Branch')).toBeTruthy();
     expect(screen.getByText('Current outstanding')).toBeTruthy();
     expect(screen.getByText('₱80.00')).toBeTruthy();
+    expect(screen.getByText('Charge amount')).toBeTruthy();
+    expect(screen.getByText('₱125.00')).toBeTruthy();
     expect(screen.getByText('Outstanding after sale')).toBeTruthy();
     expect(screen.getByText('₱205.00')).toBeTruthy();
   });
@@ -158,8 +179,6 @@ describe('EmployeeCreditPaymentPanel', () => {
         onPrefillEmployee={onPrefillEmployee}
         onClearPrefill={onClearPrefill}
         lookupLoading={false}
-        account={null}
-        totalDue={125}
         locationId={3}
         preferredEmployeeId={44}
       />
@@ -181,8 +200,6 @@ describe('EmployeeCreditPaymentPanel', () => {
         onPrefillEmployee={onPrefillEmployee}
         onClearPrefill={() => {}}
         lookupLoading={false}
-        account={{ employee_name: 'Cashier Choice' }}
-        totalDue={125}
         locationId={3}
         preferredEmployeeId={44}
         prefillLocked
@@ -214,8 +231,6 @@ describe('EmployeeCreditPaymentPanel', () => {
         selectedEmployee={null}
         onSelectEmployee={() => {}}
         lookupLoading={false}
-        account={null}
-        totalDue={125}
         locationId={3}
       />
     );

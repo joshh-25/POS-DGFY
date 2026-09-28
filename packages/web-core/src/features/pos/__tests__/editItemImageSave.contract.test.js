@@ -7,48 +7,68 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS edit-item image save flow', () => {
-  it('keeps selection local and queues edited images through the deferred upload flow', () => {
+  it('inherits the Add Item modal shell and compact DGFY visual system', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
-    const queueStart = workspace.indexOf('const queueDeferredEditImageFiles = useCallback');
-    const queueEnd = workspace.indexOf('\n  }, []);', queueStart);
-    const queueHandler = workspace.slice(queueStart, queueEnd);
+
+    expect(workspace).toContain('id="pos-items-edit-modal-title" className="text-sm font-black text-white"');
+    expect(workspace).toContain('shared Add/Edit three-column layout');
+    expect(workspace).toContain('min-h-[10rem] cursor-pointer flex-col items-center justify-center rounded-lg');
+    expect(workspace).toContain('grid min-w-0 grid-cols-2 gap-2');
+    expect(workspace.match(/max-w-\[54rem\]/g)).toHaveLength(2);
+    // The shared blue modal header is used by Add/Edit Item and the item filter
+    // surface also uses the same rounded header treatment.
+    expect(workspace.match(/rounded-t-\[17px\] border-b border-\[#143F73\] bg-\[#1A4E8D\]/g)).toHaveLength(3);
+  });
+
+  it('keeps selection local and queues deferred images through the gallery worker flow', () => {
+    const workspace = fs.readFileSync(workspacePath, 'utf8');
+    const saveStart = workspace.indexOf('const handleSave = async () => {');
     const uploadStart = workspace.indexOf('const handleSelectEditImageFile = (files) => {');
+    const saveEnd = uploadStart;
+    const saveHandler = workspace.slice(saveStart, saveEnd);
     const uploadHandler = workspace.slice(uploadStart, workspace.indexOf('const handleRemoveSelectedEditImageFile'));
 
     expect(workspace).toContain('const [selectedEditImageFiles, setSelectedEditImageFiles] = useState([]);');
     expect(workspace).toContain('void handleSelectEditImageFile(files);');
     expect(workspace).not.toContain('handleUploadStorefrontImage');
+    expect(saveHandler).toContain('const editItemId = activeEditItem.item_id;');
+    expect(saveHandler).toContain("let editSaveStage = 'item_details';");
+    expect(saveHandler).toContain('resolveEditItemSaveError(updateError, editSaveStage).message');
     expect(uploadHandler).toContain('setSelectedEditImageFiles(filesToPreview);');
     expect(uploadHandler).toContain('setDeferredEditImageFiles(filesToPreview);');
+    expect(workspace).toContain('const queueDeferredEditImageFiles = useCallback(async ({');
+    expect(workspace).toContain('const filesToUpload = normalizedFiles.slice(0, availableSlots);');
+    expect(workspace).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
+    expect(workspace).toContain('if (!activeEditItem || deferredEditImageFiles.length === 0 || editImageUploadJob || pendingEditImageRefresh) return;');
+    expect(workspace).toContain('const galleryCount = normalizeStorefrontItemGallery(activeEditItem).length;');
+    expect(workspace).toContain('setPendingEditImageRefresh(null);');
     expect(uploadHandler).not.toContain('queueEditImageFiles');
-    expect(queueHandler).toContain('const filesToUpload = normalizedFiles.slice(0, availableSlots);');
-    expect(queueHandler).toContain('await queueStorefrontCatalogImages(itemId, filesToUpload)');
-    expect(queueHandler).toContain('setPendingEditImageRefresh');
-    expect(workspace).toContain('The previous image is still being optimized');
-    expect(uploadHandler).not.toContain('pollEditImageUpload');
+    expect(saveHandler).not.toContain('queueStorefrontCatalogImages');
+    expect(saveHandler).toContain('await updateItem(editItemId, {');
+    expect(saveHandler).toContain('closeEdit({ force: true });');
     expect(workspace).toContain('subscribeToRemotePosCatalogUpdates');
-    expect(uploadHandler).not.toContain('setPersistingEditAssets(true);');
     expect(workspace).toContain("{savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}");
     expect(workspace).toContain('<SelectedItemImageCarousel');
     expect(workspace).toContain('multiple');
     expect(workspace).toContain('onSetPendingPrimary={handleSetPendingEditPrimary}');
-    expect(workspace).toContain('onSetSavedPrimary={handleSetSavedEditPrimary}');
   });
 
-  it('renders selected previews until Save Item queues the worker job', () => {
+  it('renders selected previews while the deferred gallery job is pending', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
     expect(workspace).toContain('files={selectedEditImageFiles}');
-    expect(workspace).toContain('The preview appears immediately. The optimized image is saved automatically and then replaces the preview.');
-    expect(workspace).toContain('queueDeferredEditImageFiles');
+    expect(workspace).toContain('compactRemoveAction');
+    expect(workspace).toContain('Preview ready. Remove existing images to make room; the upload will continue automatically.');
+    expect(workspace).toContain('setSelectedEditImageFiles(remainingFiles);');
+    expect(workspace).toContain('setDeferredEditImageFiles(remainingFiles);');
   });
 
-  it('supports selecting multiple Edit Item images through the file input', () => {
+  it('supports multi-file selection in Edit Item without retaining the input value', () => {
     const workspace = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(workspace).toContain('id="pos-item-edit-image"');
     expect(workspace).toContain('type="file"');
-    expect(workspace).toContain('accept="image/*"');
     expect(workspace).toContain('multiple');
-    expect(workspace).toContain('const files = Array.from(event.target.files || []);');
-    expect(workspace).toContain('handleSelectEditImageFile(files);');
-    expect(workspace).not.toContain('data-testid="pos-edit-item-image-drop-zone"');
+    expect(workspace).toContain('void handleSelectEditImageFile(files);');
+    expect(workspace).toContain("event.target.value = '';\n");
   });
 });

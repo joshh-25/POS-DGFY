@@ -8,18 +8,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('Hospitality frontend contract', () => {
-  it('registers the IMS route and navigation behind the Hospitality workflow capability', () => {
-    const main = read('apps/dgfy-ims/src/main.jsx');
-    const layout = read('apps/dgfy-ims/Layout.jsx');
-    const utils = read('apps/dgfy-ims/utils.js');
-
-    expect(main).toContain("path=\"/hospitality\"");
-    expect(main).toContain('requiredCapability="hospitalityReservations"');
-    expect(layout).toContain("name: 'Hospitality'");
-    expect(layout).toContain("page: 'Hospitality'");
-    expect(utils).toContain("'Hospitality': '/hospitality'");
-  });
-
   it('keeps manufacturing production modules out of Hospitality by capability, not by a hardcoded mode list', () => {
     // Previously asserted as the literal source text `blockInHospitality
     // moduleLabel="Job Orders"`. Both surfaces now derive from

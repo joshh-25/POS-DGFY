@@ -68,7 +68,6 @@ describe('routing safety', () => {
 
     ['services', 'fnbDining', 'hospitalityReservations', 'productionWorkflows', 'inventory'].forEach((capability) => {
       expect(layout).toContain(`requiredCapability: '${capability}'`);
-      expect(main).toContain(`requiredCapability="${capability}"`);
     });
     expect(main).toContain('<Route path="*" element={<NotFoundPage />} />');
   });

@@ -101,6 +101,11 @@ export function useStorefrontNavigation({
     // scope so the old line cannot remain visible during the transition.
     setIsCheckoutOpen(false);
     setCheckoutTab?.('checkout');
+    // The cart itself is hydrated by its store+mode persistence scope. Reset
+    // the in-memory route steps at the same boundary so the destination never
+    // inherits the previous storefront's F&B/payment screen.
+    setFnbOrderStep?.(2);
+    setSimpleOrderStep?.(1);
     setShowFnbMobileOrderSummary(false);
   };
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
@@ -174,6 +179,10 @@ export function useStorefrontNavigation({
             ? { slug: nextRouteSlug, locationId: nextLocationId }
             : null
         );
+        setFnbOrderStep?.(2);
+        setSimpleOrderStep?.(1);
+        setIsCheckoutOpen(false);
+        setCheckoutTab?.('checkout');
       }
       setRouteSlug(nextRouteSlug);
       setRouteSubpage(readStoreSubpage());
@@ -185,7 +194,7 @@ export function useStorefrontNavigation({
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [routeSlug, setHasSelectedBranchFromMenu, setPreferredStoreLocationSelection, setRouteItemId, setRouteReviewToken, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedLocationId]);
+  }, [routeSlug, setCheckoutTab, setFnbOrderStep, setHasSelectedBranchFromMenu, setIsCheckoutOpen, setPreferredStoreLocationSelection, setRouteItemId, setRouteReviewToken, setRouteServiceItemId, setRouteSlug, setRouteSubpage, setSelectedLocationId, setSimpleOrderStep]);
 
   return {
     openServiceDetail,

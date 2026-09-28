@@ -23,6 +23,19 @@ describe('CSV import workflow-mode contracts', () => {
     expect(source).toContain('Download {getWorkflowModeLabel(workflowMode)} Template');
     expect(source).not.toContain('Products Template');
     expect(source).toContain('WORKFLOW_MODE_TEMPLATE_MISMATCH');
+    expect(source).toContain('const resultStatCount = 3');
+    expect(source).toContain("resultStatCount === 3 ? 'grid-cols-3' : 'grid-cols-2'");
+  });
+
+  it('keeps the preview table bounded before the footer actions', () => {
+    const modalPath = path.resolve(webCoreRoot, 'Components/items/CSVImportModal.jsx');
+    const source = fs.readFileSync(modalPath, 'utf8');
+
+    expect(source).toContain('data-testid="csv-import-preview-table-scroll"');
+    expect(source).toContain('csv-import-preview-table-scroll max-h-[13rem] overflow-auto');
+    // Footer restyled slate-200 -> slate-100 with dialog padding; the bounded
+    // preview above is unchanged.
+    expect(source).toContain('gap-2 border-t border-slate-100 p-4 pt-3');
   });
 
   it('passes workflow_mode query/body values for CSV exports', () => {

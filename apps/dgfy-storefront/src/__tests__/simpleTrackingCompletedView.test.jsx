@@ -42,8 +42,9 @@ describe('SimpleTrackingCompletedView', () => {
     expect(screen.getByTestId('simple-tracking-completed')).toBeTruthy();
     expect(screen.getByText('Pickup Completed')).toBeTruthy();
     expect(screen.getByText('Order Picked Up')).toBeTruthy();
+    expect(screen.getByText('Order Summary')).toBeTruthy();
     expect(screen.getByText('Today\'s Promo')).toBeTruthy();
-    expect(screen.getByText('PHP 35.00')).toBeTruthy();
+    expect(screen.getAllByText('PHP 35.00')).toHaveLength(2);
     screen.getByRole('button', { name: 'Order Again' }).click();
     expect(goStoreCatalogPage).toHaveBeenCalledTimes(1);
   });

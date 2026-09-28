@@ -10,6 +10,7 @@ export const POS_HARDWARE_CAPABILITIES = Object.freeze({
     PRINT_Z_READING: 'print_z_reading',
     OPEN_DRAWER: 'open_drawer',
     PRINT_ORDER_TICKET: 'print_order_ticket',
+    TEST_PRINT: 'test_print',
     // Opt-in behavior, separate from basic receipt support. A driver may print
     // on demand without being safe to invoke automatically after checkout.
     AUTO_PRINT_CHECKOUT: 'auto_print_checkout'

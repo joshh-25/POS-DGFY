@@ -225,6 +225,7 @@ export function SimpleCheckoutRoutePage({
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
             scheduledFor={fnbScheduledFor}
             selectedLocation={selectedLocation}
+            storefrontHours={selectedStore?.storefront_hours}
             selectedSavedLocationId={selectedSavedLocationId}
             servicesBodyFont={servicesBodyFont}
             servicesDisplayFont={servicesDisplayFont}

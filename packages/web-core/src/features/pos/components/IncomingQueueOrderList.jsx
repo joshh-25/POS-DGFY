@@ -1,10 +1,9 @@
 import React from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
+import { Info, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Phone, Clipboard, Printer, ExternalLink, Check, Ban, Truck, Package, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
@@ -13,6 +12,7 @@ import {
   isCompletionPaymentPending,
   getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
+  getFulfillmentStatusLabel,
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
   getNextStatusActions,
@@ -26,10 +26,19 @@ import { getRunAssignEligibility, getActiveRunMembership } from '../utils/delive
 import {
   formatOrderDateTime,
   formatOrderAmount,
+  formatCustomerPhone,
+  formatDeliveryCoordinates,
   parseDeliveryCoords,
   resolveOrderDownpaymentSplit,
   resolveBalanceCollectionLabel
 } from '../utils/incomingQueueOrderFormatting.js';
+import {
+  getDineInScheduleCountdownLabel,
+  getDineInScheduleState,
+  getDineInScheduleStateLabel,
+  isDineInOrder,
+  isScheduledDineInOrder
+} from '../utils/dineInSchedule.js';
 
 // Phase 229 (#1289), §2.7. Pure extraction of the Active Queue's order-card grid out of
 // TerminalOperationsPanels.jsx's IncomingQueueWorkspace, so #1288 (view-mode toggle) and #1290
@@ -68,6 +77,7 @@ export default function IncomingQueueOrderList({
   onRequestReject = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
+  scheduleNow = null,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel = () => {},
   handleUpdateOnlineOrderDeliveryAddress = () => {},
@@ -136,6 +146,7 @@ export default function IncomingQueueOrderList({
           onRequestReject={onRequestReject}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
+          scheduleNow={scheduleNow}
           deliveryPersonnelState={deliveryPersonnelState}
           handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
           handleUpdateOnlineOrderDeliveryAddress={handleUpdateOnlineOrderDeliveryAddress}
@@ -167,6 +178,7 @@ function OrderCard({
   onRequestReject,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
+  scheduleNow,
   deliveryPersonnelState,
   handleAssignDeliveryPersonnel,
   handleUpdateOnlineOrderDeliveryAddress,
@@ -176,10 +188,16 @@ function OrderCard({
   const nextActions = getNextStatusActions(order, workflowMode);
   const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
   const utilityActions = getIncomingOrderUtilityActions(order);
-  const canCollectCash = order.payment_type === 'cash'
+  const isDineIn = isDineInOrder(order);
+  const canCollectDineInPayment = isDineIn
+    && order.payment_status === 'unpaid'
+    && order.fulfillment_status === 'ready_for_pickup';
+  const canCollectCash = !isDineIn
+    && order.payment_type === 'cash'
     && order.payment_status === 'unpaid'
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   // Phase 148 (#825): the balance-settlement twin of canCollectCash. Deliberately a
@@ -191,6 +209,7 @@ function OrderCard({
     && orderBalanceDue > 0
     && (
       (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+      || (order.order_method === 'dine_in' && order.fulfillment_status === 'ready_for_pickup')
       || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
     );
   const deliveryCoords = parseDeliveryCoords(order);
@@ -211,6 +230,10 @@ function OrderCard({
     : '';
 
   const bulkAssignEligibility = getRunAssignEligibility(order, {});
+  const scheduledDineIn = isScheduledDineInOrder(order);
+  const [fallbackScheduleNow] = React.useState(() => Date.now());
+  const effectiveScheduleNow = Number.isFinite(Number(scheduleNow)) ? Number(scheduleNow) : fallbackScheduleNow;
+  const dineInScheduleState = getDineInScheduleState(order, effectiveScheduleNow);
 
   // §2.8/§2.10: the same predicate the checkbox already disables on, plus eligibility -- a card
   // that cannot legally join a run is never a drag source, and drag/checkbox can never disagree.
@@ -235,7 +258,7 @@ function OrderCard({
   const handleDragProps = dragEnabled ? { ...listeners, ...attributes } : {};
 
   const buttons = [];
-  if (canCollectCash) {
+  if (canCollectDineInPayment || canCollectCash) {
     buttons.push(
       <Button
         key="collect_cash"
@@ -245,7 +268,9 @@ function OrderCard({
         onClick={() => handleOpenCashCollection?.(order)}
       >
         <Wallet className="mr-2 h-4 w-4 shrink-0" />
-        {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
+        {order.order_method === 'dine_in'
+          ? 'Checkout'
+          : order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
       </Button>
     );
   }
@@ -440,8 +465,19 @@ function OrderCard({
             <p className="text-sm font-extrabold text-[#0F172A]">{order.customer_name || 'Guest Buyer'}</p>
           </div>
           <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-[#1A4E8D]">
-            {FULFILLMENT_STATUS_LABELS[order.fulfillment_status] || order.fulfillment_status || 'Unknown'}
+            {getFulfillmentStatusLabel(order.fulfillment_status, order) || 'Unknown'}
           </span>
+          {isDineIn ? (
+            <span className={`rounded-md border px-2 py-0.5 text-[11px] font-extrabold ${!scheduledDineIn
+              ? 'border-slate-200 bg-slate-50 text-slate-700'
+              : dineInScheduleState === 'late'
+                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                : dineInScheduleState === 'ready'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+              {scheduledDineIn ? getDineInScheduleStateLabel(dineInScheduleState) : 'Immediate service'}
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-0.5">
@@ -572,10 +608,21 @@ function OrderCard({
                 <Calendar className="h-4 w-4" />
               </div>
               <div className="flex items-center flex-1 min-w-0">
-                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Order Time</span>
-                <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(order.created_at)}</span>
+                <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">{scheduledDineIn ? 'Serve By' : isDineIn ? 'Service' : 'Order Time'}</span>
+                <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatOrderDateTime(scheduledDineIn ? order.scheduled_for : order.created_at)}</span>
               </div>
             </div>
+            {isDineIn ? (
+              <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 border border-amber-100/80">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="flex items-center flex-1 min-w-0">
+                  <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Timing</span>
+                  <span className="text-xs font-semibold text-slate-900 break-words flex-1">{scheduledDineIn ? getDineInScheduleCountdownLabel(order, effectiveScheduleNow) : 'Immediate service'}</span>
+                </div>
+              </div>
+            ) : null}
 
             {order.order_method === 'delivery' && (
               <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
@@ -613,6 +660,28 @@ function OrderCard({
                 <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.delivery_address || '').trim() || 'Address not provided'}</span>
               </div>
             </div>
+            {order.order_method === 'delivery' && (
+              <>
+                <div className="flex items-center gap-3 py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                    <Phone className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center flex-1 min-w-0">
+                    <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Phone</span>
+                    <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatCustomerPhone(order.customer_phone)}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 py-1.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <div className="flex items-center flex-1 min-w-0">
+                    <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Pin coordinates</span>
+                    <span className="text-xs font-semibold text-slate-900 break-words flex-1">{formatDeliveryCoordinates(deliveryCoords)}</span>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

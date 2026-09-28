@@ -8,6 +8,11 @@ const toPlain = (row) => (
     : row
 );
 
+const toPositiveInt = (value) => {
+  const normalized = Number.parseInt(value, 10);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
+
 const mapRows = (rows = []) => (Array.isArray(rows) ? rows.map(toPlain) : []);
 
 const safeGetOptionalModel = (name) => {
@@ -331,10 +336,12 @@ export const fnbRepository = {
     return toPlain(row);
   },
 
-  async listChecks({ statuses = ['open', 'sent_to_kitchen', 'partially_paid'], limit = 100 } = {}, options = {}) {
+  async listChecks({ statuses = ['open', 'sent_to_kitchen', 'partially_paid'], locationId = null, limit = 100 } = {}, options = {}) {
     const FnbCheck = dbStore.get('FnbCheck');
     const normalizedStatuses = Array.isArray(statuses) ? statuses.filter(Boolean) : [];
     const where = normalizedStatuses.length > 0 ? { status: { [Op.in]: normalizedStatuses } } : {};
+    const normalizedLocationId = toPositiveInt(locationId);
+    if (normalizedLocationId) where.location_id = normalizedLocationId;
     const rows = await FnbCheck.findAll({
       where,
       include: checkInclude(),

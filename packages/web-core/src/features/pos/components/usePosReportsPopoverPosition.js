@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
-const VIEWPORT_PADDING = 12;
-const ANCHOR_GAP = 8;
+const VIEWPORT_PADDING = 16;
+const ANCHOR_GAP = 12;
 
 export default function usePosReportsPopoverPosition({
   open = false,
@@ -10,7 +10,7 @@ export default function usePosReportsPopoverPosition({
 } = {}) {
   const [position, setPosition] = useState(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) {
       return undefined;
     }

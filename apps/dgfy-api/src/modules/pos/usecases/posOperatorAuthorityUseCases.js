@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import dbStore from '../../../utils/dbStore.js';
+import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
+import { normalizePosOperatingConflict } from './posUserOperatingScope.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
 const PIN_PATTERN = /^[0-9]{4,12}$/;
@@ -70,13 +72,16 @@ const operatorError = (code, message, statusCode = 409, details = null) => new D
     details
 });
 
-const fail = (error) => ({
-    success: false,
-    data: null,
-    error: error instanceof DomainError
-        ? error
-        : operatorError(DomainErrorCode.INTERNAL_ERROR, 'POS operator action failed.', 500)
-});
+const fail = (rawError) => {
+    const error = normalizePosOperatingConflict(rawError);
+    return {
+        success: false,
+        data: null,
+        error: error instanceof DomainError
+            ? error
+            : operatorError(DomainErrorCode.INTERNAL_ERROR, 'POS operator action failed.', 500)
+    };
+};
 
 const ok = (data) => ({ success: true, data });
 
@@ -103,8 +108,20 @@ const operatorUserSummary = (user) => user ? {
     user_id: parsePositiveInt(user.user_id),
     username: String(user.username || '').trim() || null,
     email: String(user.email || '').trim().toLowerCase() || null,
-    role: String(user.role || '').trim().toLowerCase() || null
+    role: String(user.role || '').trim().toLowerCase() || null,
+    is_master_admin: isMasterAdmin(user),
+    permissions: resolveEffectivePermissions(user)
 } : null;
+const assertMutationPermissions = (user, requiredPermissions, alternatives = []) => {
+    const effective = resolveEffectivePermissions(user);
+    const missing = isMasterAdmin(user) ? null : requiredPermissions.find((permission) => !effective.includes(permission));
+    const missingAlternative = !isMasterAdmin(user) && alternatives.find((group) => !group.some((permission) => effective.includes(permission)));
+    if (missing || missingAlternative) {
+        throw operatorError(DomainErrorCode.AUTHORIZATION_FAILED, 'The active cashier lacks permission for this operation.', 403, {
+            reason_code: 'PERMISSION_DENIED', required_permission: missing || missingAlternative
+        });
+    }
+};
 const isManager = (user) => {
     const role = String(user?.role || '').trim().toLowerCase();
     const permissions = Array.isArray(user?.permissions)
@@ -352,6 +369,7 @@ const endCurrentOperator = async ({ repository, current, reason, actorUserId, ac
 const buildTransition = ({ dependencies = {}, eventType = null, custodyMode = null, reason = 'takeover', counted = false } = {}) => {
     const {
         repository,
+        assertUserOperatingScope = null,
         resolveFeature,
         authorityService,
         comparePin = bcrypt.compare,
@@ -377,6 +395,9 @@ const buildTransition = ({ dependencies = {}, eventType = null, custodyMode = nu
             const persistedKey = transitionIdempotencyKey({ reason, targetUserId, key });
             return await executeTransaction(async (transaction) => {
                 await requireFeature({ resolveFeature, locationId: resolvedScope.locationId });
+                // Serialize on the tenant user first, but do not reveal their
+                // operating location until dedicated cashier authentication passes.
+                const targetUser = await repository.findUserById({ userId: targetUserId, transaction, lock: true });
                 const shift = await repository.findOpenTerminalShift({ ...resolvedScope, transaction, lock: true });
                 if (!shift || (resolvedScope.shiftId && Number(shift.pos_terminal_shift_id) !== resolvedScope.shiftId)) {
                     throw operatorError(DomainErrorCode.CONFLICT, 'The register shift is not open for this terminal.', 409);
@@ -384,7 +405,6 @@ const buildTransition = ({ dependencies = {}, eventType = null, custodyMode = nu
                 const actualScope = { ...resolvedScope, shiftId: Number(shift.pos_terminal_shift_id) };
                 const current = await repository.findActiveOperator({ terminalId: actualScope.terminalId, locationId: actualScope.locationId, shiftId: actualScope.shiftId, transaction, lock: true });
                 const replay = await repository.findOperatorByIdempotency({ shiftId: actualScope.shiftId, key: persistedKey, transaction, lock: true });
-                const targetUser = await repository.findUserById({ userId: targetUserId, transaction, lock: true });
                 await assertTargetScope({ repository, targetUser, targetUserId, locationId: actualScope.locationId, transaction });
                 await verifyAndConsumePin({
                     repository,
@@ -401,6 +421,7 @@ const buildTransition = ({ dependencies = {}, eventType = null, custodyMode = nu
                     comparePin,
                     rateLimiter
                 });
+                await assertUserOperatingScope?.({ userId: targetUserId, ...actualScope, transaction });
                 let attendance = await repository.findOpenAttendanceByUser({ userId: targetUserId, locationId: actualScope.locationId, transaction, lock: true });
                 if (!attendance && reason === 'takeover' && typeof ensureAttendanceForTakeover === 'function') {
                     const lifecycle = await ensureAttendanceForTakeover({
@@ -547,6 +568,7 @@ const buildTransition = ({ dependencies = {}, eventType = null, custodyMode = nu
 export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
     const {
         repository,
+        assertUserOperatingScope = null,
         resolveFeature,
         resolveMutationFeature = resolveFeature,
         authorityService,
@@ -688,11 +710,17 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
         }
     };
 
-    const authorizeMutation = async ({ authorityToken = '', tenantId = null, scope = {}, operationKey = '', operationType = '' } = {}) => {
+    const authorizeMutation = async ({ authorityToken = '', tenantId = null, scope = {}, userId = null, requiredPermissions = [], requiredPermissionAlternatives = [], operationKey = '', operationType = '' } = {}) => {
         try {
             const resolvedScope = resolveScope({ scope });
             const feature = await resolveMutationFeature({ locationId: resolvedScope.locationId });
             if (!feature?.enabled) {
+                if (assertUserOperatingScope) {
+                    await executeTransaction(async (transaction) => {
+                        const operatorUser = await assertUserOperatingScope({ userId, ...resolvedScope, transaction });
+                        assertMutationPermissions(operatorUser, requiredPermissions, requiredPermissionAlternatives);
+                    });
+                }
                 return ok({
                     feature,
                     operator_session: null,
@@ -746,6 +774,7 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
                     });
                 }
                 const operatorUser = await repository.findUserById({ userId: session.user_id, transaction, lock: true });
+                assertMutationPermissions(operatorUser, requiredPermissions, requiredPermissionAlternatives);
                 await assertTargetScope({
                     repository,
                     targetUser: operatorUser,
@@ -753,6 +782,7 @@ export const createPosOperatorAuthorityUseCases = (dependencies = {}) => {
                     locationId: resolvedScope.locationId,
                     transaction
                 });
+                await assertUserOperatingScope?.({ userId: session.user_id, ...resolvedScope, transaction });
                 const attendance = await repository.findOpenAttendanceByUser({
                     userId: session.user_id,
                     locationId: resolvedScope.locationId,

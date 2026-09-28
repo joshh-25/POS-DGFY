@@ -72,6 +72,11 @@ const TenantLocation = sequelize.define('TenantLocation', {
         allowNull: false,
         defaultValue: true
     },
+    allow_dine_in_pay_at_store: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
     scheduling_enabled: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

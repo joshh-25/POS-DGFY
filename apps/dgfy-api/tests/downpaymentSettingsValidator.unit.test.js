@@ -79,4 +79,20 @@ describe('downpaymentSettingsValidator', () => {
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedData.allowed_capture_methods).toBeNull();
     });
+
+    it('preserves an ISO version precondition as transport metadata', () => {
+        const req = {
+            body: {
+                payment_mode: 'full_payment',
+                expected_updated_at: '2026-09-15T00:00:00.000Z'
+            }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        validateUpdateDownpaymentSettings(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedData.expected_updated_at).toBe('2026-09-15T00:00:00.000Z');
+    });
 });

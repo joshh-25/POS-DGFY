@@ -24,7 +24,7 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onD
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-slate-900 text-lg">{supplier.name}</h3>
+            <h3 className="min-w-0 truncate font-semibold text-slate-900 text-lg">{supplier.name}</h3>
             {supplier.status === 'draft' && (
               <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200">
                 <FileEdit className="w-3 h-3 mr-1" />
@@ -46,7 +46,14 @@ export default function SupplierCard({ supplier, onView, onEdit, onCreatePO, onD
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label={`Actions for ${supplier.name}`}
+              title="Supplier actions"
+            >
               <MoreVertical className="w-4 h-4" />
             </Button>
           </DropdownMenuTrigger>

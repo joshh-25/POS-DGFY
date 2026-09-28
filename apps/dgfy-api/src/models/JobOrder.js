@@ -16,6 +16,22 @@ const JobOrder = sequelize.define('JobOrder', {
     type: DataTypes.INTEGER,
     allowNull: false
   },
+  source_location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'tenant_locations',
+      key: 'location_id'
+    }
+  },
+  destination_location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'tenant_locations',
+      key: 'location_id'
+    }
+  },
   quantity_to_produce: {
     type: DataTypes.DECIMAL(24, 12),
     allowNull: false
@@ -80,8 +96,9 @@ const JobOrder = sequelize.define('JobOrder', {
   indexes: [
     { fields: ['status'] },
     { fields: ['product_id'] },
+    { fields: ['source_location_id'] },
+    { fields: ['destination_location_id'] },
   ],
 });
 
 export default JobOrder;
-

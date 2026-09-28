@@ -39,7 +39,7 @@ const buildProps = (overrides = {}) => ({
   selectedLocationId: null,
   selectedSavedLocationId: null,
   selectedServiceDetail: null,
-  selectedStore: { slug: 'laundry-store' },
+  selectedStore: { slug: 'laundry-store', workflow_mode: 'services' },
   serviceAppointmentAt: null,
   serviceBookingStep: 1,
   serviceIntakeResponses: {},
@@ -83,6 +83,7 @@ describe('useCustomerAuthNavigation - checkout login return path (#1100)', () =>
     expect(props.writeCheckoutAuthResumeDraft).toHaveBeenCalledTimes(1);
     const draft = props.writeCheckoutAuthResumeDraft.mock.calls[0][0];
     expect(new URL(draft.returnTo).searchParams.has('dgfy_account')).toBe(false);
+    expect(draft.workflowMode).toBe('services');
   });
 
   it('leaves the header/account-panel sign-in flow on the dashboard return path, unaffected by the checkout fix', () => {

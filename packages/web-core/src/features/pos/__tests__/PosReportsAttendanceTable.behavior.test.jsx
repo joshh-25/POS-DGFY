@@ -43,21 +43,21 @@ const rows = [
 describe('POS reports attendance table', () => {
   afterEach(() => cleanup());
 
-  it('renders the complete attendance table columns', () => {
+  it('renders the prioritized attendance columns plus the shared details action', () => {
     render(<PosReportsAttendanceTable rows={rows} />);
 
-    ['Date', 'Cashier', 'Duty/Role', 'Status', 'Time In', 'Time Out', 'Break (Hours)', 'Worked (Hours)'].forEach((label) => {
+    ['Date', 'Cashier', 'Status', 'Time In', 'Time Out', 'Worked (Hours)'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sort by Duty/Role' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sort by Break (Hours)' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sort by Late (Minutes)' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sort by Early Out (Minutes)' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sort by Notes' })).toBeNull();
-    expect(screen.getAllByText('Regular').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Relief').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Completed').length).toBeGreaterThan(0);
     expect(screen.getAllByText('On Break').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Active').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('1.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('11.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–3 of 3 attendance sessions')).toBeTruthy();
   });

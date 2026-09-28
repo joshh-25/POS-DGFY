@@ -172,6 +172,55 @@ describe('finalizePaidCommerceSession', () => {
     }));
   });
 
+  it('does not classify a new tenant-funded no-split session as a PayMongo split failure', async () => {
+    const tenant = {
+      id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a',
+      name: 'Masu Cafe',
+      plan: 'standard',
+      subscription_status: 'active'
+    };
+    const session = {
+      session_id: 16,
+      tenant_id: tenant.id,
+      public_reference: 'CPS-NOSPLIT1234',
+      status: 'paid',
+      checkout_payload: JSON.stringify({
+        payment_type: 'card',
+        customer_name: 'Buyer',
+        customer_email: 'buyer@example.com'
+      }),
+      idempotency_key: 'checkout:CPS-NOSPLIT1234',
+      fee_policy: JSON.stringify({
+        collection_model: 'tenant_direct_payment',
+        split_payment_used: false,
+        dgfy_fee_charged_to: 'tenant'
+      })
+    };
+    const commercePaymentRepository = {
+      findTenantById: jest.fn().mockResolvedValue(tenant),
+      updateSessionById: jest.fn().mockImplementation(async (_id, changes) => ({
+        ...session,
+        ...changes
+      }))
+    };
+
+    const result = await finalizePaidCommerceSession({
+      session,
+      resource: {
+        id: 'pay_nosplit',
+        attributes: {
+          status: 'paid',
+          split_payment: { status: 'failed' }
+        }
+      },
+      providerEventId: 'evt_nosplit',
+      commercePaymentRepository
+    });
+
+    expect(result).toEqual(expect.objectContaining({ status: 'finalized' }));
+    expect(result.status).not.toBe('split_failed_manual_settlement_required');
+  });
+
   it('records a recoverable state when paid order finalization fails', async () => {
     const tenant = {
       id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a',

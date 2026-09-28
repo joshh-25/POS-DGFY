@@ -18,20 +18,34 @@ export default function MoveToFolderModal({
     itemName = '',
     onMove
 }) {
-    const handleMove = (targetFolder) => {
-        onMove(targetFolder);
-        onClose();
+    const [moving, setMoving] = React.useState(false);
+
+    const handleMove = async (targetFolder) => {
+        if (moving || typeof onMove !== 'function') return;
+        setMoving(true);
+        try {
+            const result = await onMove(targetFolder);
+            if (result !== false) onClose();
+        } catch {
+            // The owning page is responsible for displaying the request error.
+        } finally {
+            setMoving(false);
+        }
+    };
+
+    const handleOpenChange = (nextOpen) => {
+        if (!nextOpen && !moving) onClose();
     };
 
     return (
-        <Dialog open={open} onOpenChange={onClose}>
-            <DialogContent className="max-w-md">
-                <DialogHeader>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+            <DialogContent className="catalog-editor-dialog-content max-w-md p-0">
+                <DialogHeader className="border-b border-slate-100 p-4 pb-3">
                     <DialogTitle>Move to Folder</DialogTitle>
                 </DialogHeader>
 
-                <div className="py-4">
-                    <p className="text-sm text-slate-500 mb-4">
+                <div className="p-4 pt-3">
+                    <p className="mb-3 text-sm text-slate-500">
                         {itemName ? (
                             <>Select a folder to move <span className="font-medium text-slate-900">&quot;{itemName}&quot;</span> to:</>
                         ) : (
@@ -39,23 +53,25 @@ export default function MoveToFolderModal({
                         )}
                     </p>
 
-                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    <div className="max-h-[300px] space-y-2 overflow-y-auto">
                         {/* No folder / Uncategorized option */}
                         <button
+                            type="button"
                             onClick={() => handleMove(null)}
+                            disabled={moving}
                             className={cn(
-                                "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left",
+                                "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors",
                                 currentFolder === null
                                     ? "bg-teal-50 border-teal-300 text-teal-900"
                                     : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                             )}
                         >
-                            <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                                <FolderOpen className="w-5 h-5 text-slate-500" />
+                            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100">
+                                <FolderOpen className="h-4 w-4 text-slate-500" />
                             </div>
                             <div>
                                 <p className="font-medium">No Folder</p>
-                                <p className="text-xs text-slate-500">Uncategorized items</p>
+                                <p className="text-xs text-slate-500">No category</p>
                             </div>
                             {currentFolder === null && (
                                 <span className="ml-auto text-xs text-teal-600 font-medium">Current</span>
@@ -66,16 +82,18 @@ export default function MoveToFolderModal({
                         {folders.map(folder => (
                             <button
                                 key={folder}
+                                type="button"
                                 onClick={() => handleMove(folder)}
+                                disabled={moving}
                                 className={cn(
-                                    "w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left",
+                                    "flex w-full items-center gap-3 rounded-lg border p-2.5 text-left transition-colors",
                                     currentFolder === folder
                                         ? "bg-teal-50 border-teal-300 text-teal-900"
                                         : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                                 )}
                             >
-                                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                                    <Folder className="w-5 h-5 text-amber-600" />
+                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
+                                    <Folder className="h-4 w-4 text-amber-600" />
                                 </div>
                                 <div>
                                     <p className="font-medium">{folder}</p>
@@ -88,8 +106,9 @@ export default function MoveToFolderModal({
                     </div>
                 </div>
 
-                <DialogFooter>
-                    <Button variant="outline" onClick={onClose}>Cancel</Button>
+                <DialogFooter className="p-4 pt-1">
+                    {moving && <span className="mr-auto self-center text-sm text-slate-500">Moving…</span>}
+                    <Button variant="outline" onClick={onClose} disabled={moving}>Cancel</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

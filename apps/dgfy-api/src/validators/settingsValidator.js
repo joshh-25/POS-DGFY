@@ -6,10 +6,13 @@ import {
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
 import { DELIVERY_FEE_MODES } from '../modules/deliveryPricing/index.js';
+import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
+import { POS_TAX_POLICY_TYPES, POS_TAX_TREATMENTS } from '../modules/shared/constants/posTaxPolicy.js';
 
 const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
+const TERMINAL_DEVICE_ENFORCEMENT_MODES = ['off', 'strict'];
 const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;
 const STOREFRONT_ASSET_TYPES = new Set(['cover', 'profile', 'gallery']);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
@@ -18,6 +21,11 @@ const PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS = new Set([
   'pos_software_serial_number'
 ]);
 const PLATFORM_CONTROLLED_POS_SOFTWARE_MESSAGE = 'Software name, software version, and software serial number are configured by platform admin for DGFY POS.';
+const expectedUpdatedAtSchema = Joi.date().iso().raw();
+const expectedUpdatedAtMapSchema = Joi.object().pattern(
+  Joi.string().trim().min(1).max(100),
+  expectedUpdatedAtSchema
+).optional();
 
 const posDiscountProfileSchema = Joi.object({
   name: Joi.string().trim().min(1).max(80).required().messages({
@@ -52,6 +60,58 @@ const posDiscountProfilesSchema = Joi.array()
     'array.max': 'A maximum of 20 POS discount profiles is allowed',
     'any.invalid': '{{#message}}'
   });
+
+const configurableDiscountNameSchema = Joi.string()
+  .trim()
+  .min(1)
+  .max(100)
+  .messages({
+    'string.empty': 'Discount name is required',
+    'any.required': 'Discount name is required'
+  });
+
+const configurableDiscountPercentageSchema = Joi.number()
+  .min(0)
+  .max(100)
+  .precision(4)
+  .messages({
+    'number.min': 'Discount percentage must be 0 or greater',
+    'number.max': 'Discount percentage must be 100 or less'
+  });
+
+const createConfigurableDiscountRuleSchema = Joi.object({
+  name: configurableDiscountNameSchema.required(),
+  percentage: configurableDiscountPercentageSchema.required().messages({
+    'any.required': 'Discount percentage is required'
+  }),
+  description: Joi.string().trim().max(500).allow('', null).default(null),
+  is_enabled: Joi.boolean().default(false),
+  is_approved: Joi.boolean().default(false)
+});
+
+const updateConfigurableDiscountRuleSchema = Joi.object({
+  name: configurableDiscountNameSchema.optional(),
+  percentage: configurableDiscountPercentageSchema.optional(),
+  description: Joi.string().trim().max(500).allow('', null).optional(),
+  is_enabled: Joi.boolean().optional(),
+  is_approved: Joi.boolean().optional(),
+  expected_configuration_version: Joi.number().integer().min(1).required().messages({
+    'any.required': 'expected_configuration_version is required',
+    'number.min': 'expected_configuration_version must be a positive integer'
+  })
+}).custom((value, helpers) => {
+  const editableFields = ['name', 'percentage', 'description', 'is_enabled', 'is_approved'];
+  if (!editableFields.some((field) => Object.prototype.hasOwnProperty.call(value, field))) {
+    return helpers.error('any.custom');
+  }
+  return value;
+}).messages({
+  'any.custom': 'At least one discount field must be provided'
+});
+
+const configurableDiscountRuleIdSchema = Joi.object({
+  discountRuleId: Joi.number().integer().positive().required()
+});
 
 const orderMethodFeeEntrySchema = Joi.object({
   enabled: Joi.boolean().required(),
@@ -116,7 +176,10 @@ const posTerminalRegistryEntrySchema = Joi.object({
   rotate_pairing: Joi.boolean().optional(),
   terminal_password: Joi.string().min(8).max(128).allow('').optional(),
   clear_terminal_password: Joi.boolean().optional(),
-  has_terminal_password: Joi.boolean().optional()
+  has_terminal_password: Joi.boolean().optional(),
+  device_enforcement: Joi.string().trim().lowercase().valid(...TERMINAL_DEVICE_ENFORCEMENT_MODES).optional().messages({
+    'any.only': 'Terminal device enforcement must be off or strict'
+  })
 });
 
 const posTerminalRegistrySchema = Joi.array()
@@ -451,6 +514,22 @@ const posBestSellerSettingsSchema = Joi.object({
   daily_top_enabled: Joi.boolean().default(false)
 }).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
+const posTaxPolicyCategorySchema = Joi.object({
+  vat_treatment: Joi.string().trim().lowercase().valid(...POS_TAX_TREATMENTS).required().messages({
+    'any.only': `VAT treatment must be one of: ${POS_TAX_TREATMENTS.join(', ')}`,
+    'any.required': 'VAT treatment is required'
+  })
+});
+
+const posTaxPoliciesSchema = Joi.object({
+  version: Joi.number().integer().min(1).optional(),
+  categories: Joi.object(
+    Object.fromEntries(POS_TAX_POLICY_TYPES.map((type) => [type, posTaxPolicyCategorySchema.required()]))
+  ).required().messages({
+    'any.required': 'POS tax policy categories are required'
+  })
+}).required();
+
 // Phase 233 (#1324, epic #1321): the calculated-mode delivery-fee formula, as ONE JSON blob per
 // Wave 0a decision #1 -- replaced wholesale on write, never merged field-by-field with whatever is
 // already stored. Reference values from the epic (₱50 minimum / first 3 km / ₱10 per km / ₱5 per
@@ -463,7 +542,9 @@ const storeDeliveryFeeCalcSchema = Joi.object({
   min_fee: Joi.number().min(0).precision(4).required(),
   included_km: Joi.number().min(0).precision(4).required(),
   per_km_rate: Joi.number().min(0).precision(4).required(),
-  increment_km: Joi.number().greater(0).precision(4).required(),
+  increment_km: Joi.number().min(MIN_DELIVERY_INCREMENT_KM).precision(4).required().messages({
+    'number.min': `Charge increment must be at least ${MIN_DELIVERY_INCREMENT_KM} km (1 meter)`
+  }),
   max_distance_km: Joi.number().greater(0).precision(4).min(Joi.ref('included_km')).required().messages({
     'number.min': 'Max distance must be greater than or equal to the included distance'
   })
@@ -497,6 +578,9 @@ const inventoryAuthoritySchema = Joi.string().trim().lowercase().valid(...INVENT
 
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
+  // Optimistic concurrency metadata is transport-only. The settings use case receives it
+  // separately so it can never become a persisted generic EAV key.
+  expected_updated_at: expectedUpdatedAtMapSchema,
   low_stock_threshold: Joi.number().min(0).optional(),
   critical_stock_threshold: Joi.number().min(0).optional(),
   enable_email_alerts: Joi.boolean().optional(),
@@ -541,6 +625,7 @@ export const updateSettingsSchema = Joi.object({
   pos_receipt_footer_message: Joi.string().trim().max(300).allow('').optional(),
   pos_discount_profiles: posDiscountProfilesSchema.optional(),
   pos_employee_discount_self_approval_enabled: Joi.boolean().optional(),
+  pos_tax_policies: posTaxPoliciesSchema.optional(),
   pos_order_method_fees: posOrderMethodFeesSchema.optional(),
   pos_terminal_registry: posTerminalRegistrySchema.optional(),
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
@@ -620,12 +705,24 @@ export const updateSingleSettingSchema = Joi.object({
     Joi.object()
   ).required().messages({
     'any.required': 'Setting value is required'
-  })
+  }),
+  expected_updated_at: expectedUpdatedAtSchema.optional()
 });
 
 // Middleware to validate settings update
 export const validateUpdateSettings = (req, res, next) => {
   const normalizedBody = normalizeStorefrontSettingsPlaceholders(req?.body);
+  const providedSettingKeys = normalizedBody && typeof normalizedBody === 'object' && !Array.isArray(normalizedBody)
+    ? Object.keys(normalizedBody).filter((key) => key !== 'expected_updated_at')
+    : [];
+  if (providedSettingKeys.length === 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{ field: 'settings', message: 'At least one setting must be provided' }],
+      timestamp: new Date().toISOString()
+    });
+  }
   const rawOrderMethodFees = normalizedBody?.pos_order_method_fees;
   if (rawOrderMethodFees && typeof rawOrderMethodFees === 'object' && !Array.isArray(rawOrderMethodFees)) {
     const unsupportedKeys = Object.keys(rawOrderMethodFees).filter((key) => !ORDER_METHODS.includes(key));
@@ -657,6 +754,16 @@ export const validateUpdateSettings = (req, res, next) => {
       success: false,
       message: 'Validation failed',
       errors,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  const settingKeys = Object.keys(value).filter((key) => key !== 'expected_updated_at');
+  if (settingKeys.length === 0) {
+    return res.status(422).json({
+      success: false,
+      message: 'Validation failed',
+      errors: [{ field: 'settings', message: 'At least one setting must be provided' }],
       timestamp: new Date().toISOString()
     });
   }
@@ -726,6 +833,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_receipt_footer_message: Joi.string().trim().max(300).allow(''),
     pos_discount_profiles: posDiscountProfilesSchema,
     pos_employee_discount_self_approval_enabled: Joi.boolean(),
+    pos_tax_policies: posTaxPoliciesSchema,
     pos_order_method_fees: posOrderMethodFeesSchema,
     pos_terminal_registry: posTerminalRegistrySchema,
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
@@ -871,3 +979,44 @@ export const validateVerifyPosSettingsAccessPin = (req, res, next) => {
   req.validatedData = value;
   next();
 };
+
+const validateSettingsSchema = (schema, source, target) => (req, res, next) => {
+  const { error, value } = schema.validate(req[source], {
+    abortEarly: false,
+    stripUnknown: true
+  });
+
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({
+        field: detail.path.join('.'),
+        message: detail.message
+      })),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  req[target] = value;
+  return next();
+};
+
+export const validateCreateConfigurableDiscountRule = validateSettingsSchema(
+  createConfigurableDiscountRuleSchema,
+  'body',
+  'validatedData'
+);
+
+export const validateUpdateConfigurableDiscountRule = validateSettingsSchema(
+  updateConfigurableDiscountRuleSchema,
+  'body',
+  'validatedData'
+);
+
+export const validateConfigurableDiscountRuleId = validateSettingsSchema(
+  configurableDiscountRuleIdSchema,
+  'params',
+  'validatedParams'
+);

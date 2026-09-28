@@ -22,7 +22,7 @@ const PosParkedSale = sequelize.define('PosParkedSale', {
         allowNull: false
     },
     status: {
-        type: DataTypes.ENUM('parked', 'claimed', 'completed', 'cancelled'),
+        type: DataTypes.ENUM('parked', 'claimed', 'completed', 'cancel_pending', 'cancelled'),
         allowNull: false,
         defaultValue: 'parked'
     },
@@ -78,6 +78,14 @@ const PosParkedSale = sequelize.define('PosParkedSale', {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false,
         defaultValue: 0
+    },
+    inventory_effects: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    inventory_deducted_at: {
+        type: DataTypes.DATE,
+        allowNull: true
     },
     claimed_by: {
         type: DataTypes.INTEGER,

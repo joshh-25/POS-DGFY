@@ -6,7 +6,49 @@ import { FnbCheckoutFulfillmentChoices } from './FnbCheckoutFulfillmentChoices.j
 // #1218: this file's added (a)-(d) cases reuse overlapping queries ("NOW", "Schedule") across
 // several `it` blocks in the same describe -- explicit cleanup keeps each render isolated
 // regardless of whether the runner's implicit auto-cleanup is active.
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
+
+const dineInStorefrontHours = {
+  mode: 'weekly',
+  timezone: 'Asia/Manila',
+  weekly: {
+    sun: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    mon: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    tue: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    wed: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    thu: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    fri: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] },
+    sat: { enabled: true, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] }
+  },
+  display: 'Sun-Sat 10:00 AM - 10:00 PM'
+};
+
+const closedWednesdayStorefrontHours = {
+  ...dineInStorefrontHours,
+  weekly: {
+    ...dineInStorefrontHours.weekly,
+    wed: { enabled: false, open: '10:00', close: '22:00', intervals: [{ open: '10:00', close: '22:00' }] }
+  }
+};
+
+const selectTimePickerOption = (label, option) => {
+  const minuteValue = Number(option);
+  if (label === 'Minute' && Number.isInteger(minuteValue) && minuteValue % 5 !== 0) {
+    const input = screen.getByRole('textbox', { name: 'Minute' });
+    fireEvent.change(input, { target: { value: String(minuteValue) } });
+    fireEvent.blur(input);
+    return;
+  }
+
+  const trigger = screen.getAllByRole('button')
+    .find((button) => button.getAttribute('aria-label')?.startsWith(label + ':'));
+  if (!trigger) throw new Error('Missing ' + label + ' time picker');
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole('option', { name: String(option), exact: true }));
+};
 
 // #1217: identical treatment to RetailOrderFulfillmentStep.test.jsx -- a single available
 // fulfillment method hides the chooser and its heading, replacing them with a static notice;
@@ -15,8 +57,8 @@ afterEach(() => cleanup());
 // available method and no longer renders a chooser at all.
 describe('FnbCheckoutFulfillmentChoices', () => {
   const baseProps = {
-    fnbOrderBrand: '#0f766e',
-    fnbOrderBrandBorder: '#0f766e',
+    fnbOrderBrand: '#1A4E8D',
+    fnbOrderBrandBorder: '#8CB4D9',
     fnbOrderBrandShadow: 'rgba(0,0,0,.1)',
     fnbOrderBrandShadowStrong: 'rgba(0,0,0,.1)',
     fnbScheduleMode: 'asap',
@@ -28,7 +70,8 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     mobileOptionTextSize: 14,
     onScheduleModeChange: vi.fn(),
     onScheduledForChange: vi.fn(),
-    orderMethod: 'delivery'
+    orderMethod: 'delivery',
+    storefrontHours: dineInStorefrontHours
   };
 
   it('hides the chooser and states the sole method when only one is available', () => {
@@ -100,6 +143,90 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     expect(screen.getByText('2. When would you like your order?')).toBeTruthy();
   });
 
+  it('opens the dine-in date/time picker only from its field and saves the scheduled value', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T09:00:00'));
+    const onOrderMethodChange = vi.fn();
+    const onScheduleModeChange = vi.fn();
+    const onScheduledForChange = vi.fn();
+    const props = {
+      ...baseProps,
+      onOrderMethodChange,
+      onScheduleModeChange,
+      onScheduledForChange,
+      fulfillmentOptions: [
+        { value: 'delivery', label: 'Delivery', available: true },
+        { value: 'pickup', label: 'Pickup', available: true },
+        { value: 'dine_in', label: 'Dine In', available: true }
+      ]
+    };
+    const { rerender } = render(<FnbCheckoutFulfillmentChoices {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dine In' }));
+    rerender(<FnbCheckoutFulfillmentChoices {...props} orderMethod="dine_in" fnbScheduleMode="schedule" />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Choose a date and time/ }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByText('Scheduling for')).toBeNull();
+    expect(screen.queryByText("Tell us when you'd like to dine in or schedule your order.")).toBeNull();
+    expect(screen.queryByText('You can adjust this later')).toBeNull();
+    expect(screen.queryByText(/Good\s*food ahead!/)).toBeNull();
+    expect(screen.getByRole('heading', { name: /September 2026/ })).toBeTruthy();
+    expect(screen.getByTestId('scheduled-date-shortcuts')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Today' }).style.minHeight).toBe('28px');
+    expect(screen.getByRole('button', { name: 'Previous month' }).style.height).toBe('38px');
+    fireEvent.click(screen.getByRole('button', { name: 'Next Week' }));
+    expect(screen.getByRole('button', { name: 'Select September 28, 2026' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Select September 24, 2026' }).style.color).toBe('rgb(26, 78, 141)');
+    fireEvent.click(screen.getByRole('button', { name: 'Select September 30, 2026' }));
+    selectTimePickerOption('AM/PM', 'PM');
+    selectTimePickerOption('Hour', '6');
+    selectTimePickerOption('Minute', '30');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(onOrderMethodChange).toHaveBeenCalledWith('dine_in');
+    expect(onScheduleModeChange).toHaveBeenCalledWith('schedule');
+    expect(onScheduledForChange).toHaveBeenCalledWith('2026-09-30T18:30');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('disables closed dates and limits dine-in choices to open-hour slots', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T09:00:00'));
+    const props = {
+      ...baseProps,
+      onOrderMethodChange: vi.fn(),
+      onScheduleModeChange: vi.fn(),
+      onScheduledForChange: vi.fn(),
+      fulfillmentOptions: [
+        { value: 'delivery', label: 'Delivery', available: true },
+        { value: 'dine_in', label: 'Dine In', available: true }
+      ],
+      storefrontHours: closedWednesdayStorefrontHours
+    };
+    const { rerender } = render(<FnbCheckoutFulfillmentChoices {...props} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dine In' }));
+    rerender(<FnbCheckoutFulfillmentChoices {...props} orderMethod="dine_in" fnbScheduleMode="schedule" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Choose a date and time/ }));
+    const closedDay = screen.getByRole('button', { name: 'Store closed on September 23, 2026' });
+    expect(closedDay.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(closedDay);
+    expect(screen.getByText(/The store is closed on September 23, 2026/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Select September 24, 2026' }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Select September 24, 2026' }));
+    selectTimePickerOption('Hour', '10');
+    expect(screen.getByRole('button', { name: /^Minute:/ }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /^Minute:/ }));
+    expect(screen.getByRole('option', { name: '30', exact: true })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '17', exact: true })).toBeNull();
+    const minuteInput = screen.getByRole('textbox', { name: 'Minute' });
+    fireEvent.change(minuteInput, { target: { value: '17' } });
+    fireEvent.blur(minuteInput);
+    expect(minuteInput.value).toBe('17');
+  });
+
   // #1218: the four delivery-timing-policy combinations. Default keeps today's exact behaviour
   // (non-regression pin); the other three are the new collapsing behaviours.
   const twoFulfillmentOptions = [
@@ -131,7 +258,7 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     expect(screen.getByTestId('order-timing-choice-grid').style.gridTemplateColumns).toBe('1fr');
   });
 
-  it('(b) immediate-only policy: no timing selector, input, or redundant NOW banner', () => {
+  it('(b) immediate-only policy: no timing selector, picker, or redundant NOW banner', () => {
     render(<FnbCheckoutFulfillmentChoices
       {...baseProps}
       onOrderMethodChange={vi.fn()}
@@ -140,7 +267,7 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     />);
 
     expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
-    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(screen.queryByTestId('scheduled-date-time-picker')).toBeNull();
     expect(screen.queryByText(/When would you like your order/)).toBeNull();
     expect(screen.queryByText(/deliver your order NOW/)).toBeNull();
   });
@@ -155,8 +282,8 @@ describe('FnbCheckoutFulfillmentChoices', () => {
 
     expect(screen.queryByRole('button', { name: 'NOW' })).toBeNull();
     expect(screen.queryByText(/deliver your order NOW/)).toBeNull();
-    expect(screen.getByText('Your order will be delivered within 3 days.')).toBeTruthy();
-    expect(document.querySelector('input[type="datetime-local"]')).toBeTruthy();
+    expect(screen.getByText('Your order will be delivered in 3 days.')).toBeTruthy();
+    expect(screen.getByTestId('scheduled-date-time-picker')).toBeTruthy();
   });
 
   it('(d) both disabled: no heading, no cards, exactly one order-timing-expectation notice', () => {
@@ -170,8 +297,41 @@ describe('FnbCheckoutFulfillmentChoices', () => {
     expect(screen.queryByText(/When would you like your order/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'NOW' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
-    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    expect(screen.queryByTestId('scheduled-date-time-picker')).toBeNull();
     expect(screen.getAllByTestId('order-timing-expectation')).toHaveLength(1);
     expect(screen.getByText('Your order will be delivered in 7-14 days.')).toBeTruthy();
+  });
+
+  it.each([
+    ['delivery', true],
+    ['pickup', false]
+  ])('uses minute-precision scheduling within branch hours for %s', (orderMethod, isDeliveryOrder) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T09:00:00'));
+    const onScheduleModeChange = vi.fn();
+    const onScheduledForChange = vi.fn();
+    render(<FnbCheckoutFulfillmentChoices
+      {...baseProps}
+      fnbScheduleMode="schedule"
+      isDeliveryOrder={isDeliveryOrder}
+      orderMethod={orderMethod}
+      onOrderMethodChange={vi.fn()}
+      onScheduleModeChange={onScheduleModeChange}
+      onScheduledForChange={onScheduledForChange}
+      fulfillmentOptions={twoFulfillmentOptions}
+      storefrontHours={closedWednesdayStorefrontHours}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Choose a date and time/ }));
+    const closedDate = screen.getByRole('button', { name: 'Store closed on September 23, 2026' });
+    fireEvent.click(closedDate);
+    expect(screen.getByText(/The store is closed on September 23, 2026/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Select September 24, 2026' }));
+    selectTimePickerOption('Hour', '10');
+    selectTimePickerOption('Minute', '17');
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+
+    expect(onScheduleModeChange).toHaveBeenCalledWith('schedule');
+    expect(onScheduledForChange).toHaveBeenCalledWith('2026-09-24T10:17');
   });
 });

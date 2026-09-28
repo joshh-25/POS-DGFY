@@ -1,12 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
 // via StoresMapLazy.jsx's dynamic import(), so the CSS loads only when a
 // stores map actually renders instead of on every storefront page.
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapPin } from 'lucide-react';
+
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep this map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
+
 import {
   DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
   DISCOVERY_PIN_LAYER_ID,
@@ -30,6 +36,13 @@ import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
 import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
 import { useStoreRoute } from '../../shared/hooks/useStoreRoute.js';
+
+// Vite's dependency optimizer can point MapLibre at an internal, non-served worker URL.
+// ?worker&url bundles the worker's shared module into a self-contained asset; pin that emitted
+// asset so the discovery map works in both dev and production builds.
+if (typeof maplibregl.setWorkerUrl === 'function' && maplibreWorkerUrl) {
+  maplibregl.setWorkerUrl(maplibreWorkerUrl);
+}
 
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 

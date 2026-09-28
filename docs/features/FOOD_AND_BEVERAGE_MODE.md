@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-26
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -13,12 +13,21 @@ Food & Beverage Mode (`fnb`) is the restaurant workflow mode. It is labeled `Foo
 
 ## Operator Workflow
 
-- IMS exposes a mode-native F&B console for menu modifiers, selectable menu-item modifier assignments, item-to-kitchen routing, dining areas and tables, kitchen stations, open checks, visual line split, check merge/transfer, multi-table reservation schedules, restaurant service-charge settings, and reports.
+- POS Back Office exposes F&B setup and read-only monitoring for menu modifiers, selectable menu-item modifier assignments, item-to-kitchen routing, dining areas and tables, kitchen station setup, open-check and kitchen-ticket visibility, multi-table reservation schedules, restaurant service-charge settings, and reports. Live check changes and kitchen-ticket actions remain POS-terminal-owned.
 - POS supports restaurant context through table, open-check, guest-count, server, course, modifier, kitchen-station, and restaurant-service-charge snapshots. POS modifier selections are validated against the item modifier assignments and active modifier options; caller-provided modifier price deltas are not trusted. POS can override a line kitchen station from active F&B stations before checkout. F&B checkout creates or links restaurant-native kitchen/check records when F&B context is present.
 - Storefront exposes restaurant menu browsing through the shared catalog endpoint with additive `fnb_modifier_groups`, `allergens`, and `nutrition` fields. Storefront quote/checkout accepts additive `line_modifiers`; the backend validates selected options against the published menu item and computes modifier deltas from database state. Accepted F&B Storefront checkout creates a restaurant-native kitchen/check record in the checkout transaction when recipe or F&B line context is present. Storefront reservation and map components are lazy-loaded so public catalog first load is not coupled to the restaurant reservation panel or MapLibre runtime.
 - Storefront exposes a public F&B reservation request endpoint at `/api/v1/store/fnb/reservations`, guarded to F&B tenants and stored with `source=storefront`. Admin/POS reservation handling validates assigned table IDs and can filter schedules by status, table, and date range.
 - Reservation scheduling uses an explicit seating duration and reset buffer. Defaults are `90` duration minutes plus `15` buffer minutes, matching common full-service turn-time practice; requested/waitlisted reservations do not block capacity, while confirmed/seated reservations cannot overlap another confirmed/seated booking on any assigned table. Combined-table reservations store every table assignment and reject party sizes that exceed the selected seats.
 - Customer Access Mode and Inventory Display remain separate storefront controls.
+
+## Storefront Order Scheduling And Tracking
+
+- Storefront delivery, pickup, and dine-in use the shared date/time picker. Choosing dine-in does not open the calendar by itself; the customer opens it from the scheduled date/time field.
+- The picker blocks past dates and past same-day time slots in the branch business-hours timezone, derives available slots from those hours, and presents closed or unavailable dates as unavailable with an explanation. The minute dropdown offers five-minute increments (00, 05, …, 55); manual minute entry accepts one-minute increments (00–59), and entering 60 rolls to the next available hour. Invalid entry shows an inline error. If branch hours are missing, scheduling has no available slots.
+- The calendar offers valid Today, Tomorrow, and Next Week shortcuts. Swiping left/right changes month; swiping up/down changes year. The picker exposes help text for these gestures.
+- The calendar opens in the branch's current month and cannot navigate to earlier months; past days remain disabled. Configured location fulfillment lead-time minimum and maximum days restrict selectable scheduled dates for every order method, including delivery, pickup, and dine-in. Dine-in also has a 90-day maximum. Delivery and pickup have no additional fixed maximum when lead time is unconfigured.
+- F&B, Retail, and Simple Storefront tracking use the shared order-summary presentation. It displays a scheduled timestamp when the public tracking result includes `scheduled_for`, otherwise it displays the order time. The public tracking response includes the persisted `vat_amount` for informational display; the storefront does not infer VAT from totals or recalculate tax.
+- The checkout API rejects past scheduled instants for every order method and rejects scheduled dates outside a configured location lead-time window, using the branch business-hours timezone. Store-hours validation remains server-side. The checkout request shape is unchanged; the public tracking response additively includes `vat_amount`.
 
 ## Shared And F&B-Specific Data
 
@@ -43,7 +52,7 @@ F&B-specific side tables own restaurant-only concepts:
 
 ## Charge Boundary
 
-Restaurant service charge is optional and separate from the DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`, which remains the DGFY convenience fee contract. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving DGFY convenience fee VAT behavior unchanged.
+Restaurant service charge is optional and separate from the retired customer-facing DGFY convenience fee. Use F&B service-charge fields and snapshots for restaurant service charge. Do not reuse `service_fee_amount`: it remains a compatibility field, resolves to `0` for new Storefront orders, and is not used for restaurant service charge. When the F&B service-charge setting is marked taxable, POS includes the restaurant service charge in the VATable gross calculation while leaving the zero Storefront convenience-fee behavior unchanged.
 
 ## Menu Inventory
 
@@ -78,7 +87,7 @@ New F&B rows persist `items.mode_item_preset` with the selected preset key. This
 
 POS item create and edit forms present active food categories through an editable combobox. Operators may select an existing active category from the explicit dropdown or type a new category name; only authorized category managers can create that typed category when the item is saved.
 
-During tenant onboarding, the starter item selector intentionally presents only `Menu Item` for F&B merchants. The submitted and persisted preset remains `menu_item`; the created starter row remains a product item internally and appears as a customer-facing menu item on Storefront/POS surfaces. Ingredients, packaging, and retail beverage/product setup remain available after onboarding in full item management.
+During tenant onboarding, F&B merchants do not need to create a starter item. POS onboarding proceeds from Profile and Storefront setup directly to POS Setup, so a new F&B tenant may complete onboarding with an empty menu. The normal item-management/catalog surfaces remain available for creating `Menu Item`, `Ingredient`, `Packaged Beverage / Retail Item`, and `Packaging / To-go Supply` rows after onboarding; when a merchant creates a menu item through onboarding-compatible APIs, the persisted preset remains `menu_item` and the row appears as a customer-facing menu item on Storefront/POS surfaces.
 
 F&B accepts valid presentation and packaging UOMs such as `serving`, `portion`, `bottle`, `can`, `pack`, and `case`, but automatic conversion remains limited to weight, volume, and count units. Legacy rows outside the F&B presets remain editable until the operator changes category, product type, mode preset, UOM, or finalizes a draft.
 
@@ -122,5 +131,7 @@ Assigned-scope operational presets require at least one active location when the
 ## Validation
 
 Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, modifier migration and validator contracts, frontend F&B route/API/receipt contracts, production builds, architecture checks, docs lint, and diff hygiene. `to-staging/*`/`release/*` promotion PRs specifically — not every pull request — also run the blocking `promotion-quality-gate.yml` workflow (formerly `pr-quality-checks.yml`, #1018), which adds the complete backend test matrix, open-handle diagnostics, fresh migration-runner smoke coverage, frontend lint/tests/builds, index auditing, and compatibility-seam validation. If the gate is not run, ratings are preliminary; if it fails, production readiness cannot be claimed above controlled-pilot confidence.
+
+For Storefront order scheduling or tracking UI changes, run the focused fulfillment-choice, date/time-picker, time-input, shared tracking-summary, and affected completed-view tests; run the Storefront build; and inspect the checkout route at desktop and mobile sizes. Include the calendar popup at a short mobile height, and verify that the rendered viewport has no horizontal overflow. Tracking-completion visuals need a seeded completed-order fixture or component test when no completed order is available in the local environment.
 
 For broader release work, also use `npm run check:architecture`, `npm run lint:docs`, backend F&B use-case tests, Storefront recipe quote/checkout tests, online order completion inventory tests, frontend F&B route/registry tests, and POS checkout metadata tests for changes in this mode.

@@ -18,12 +18,12 @@ describe('storefront order timing policy', () => {
     expect(resolveOrderTimingPolicy({ scheduling_enabled: false, immediate_fulfillment_enabled: false })).toMatchObject({ showSchedule: false, showImmediate: false, showTimingChooser: false, showTimingStep: false });
   });
   it('formats lead-time copy and chooses only permitted schedule modes', () => {
-    expect(formatLeadTimeRangePhrase(3, 3)).toBe('within 3 days');
-    expect(formatLeadTimeRangePhrase(1, 1)).toBe('within 1 day');
+    expect(formatLeadTimeRangePhrase(3, 3)).toBe('in 3 days');
+    expect(formatLeadTimeRangePhrase(1, 1)).toBe('in 1 day');
     expect(formatLeadTimeRangePhrase(7, 14)).toBe('in 7-14 days');
     expect(formatLeadTimeRangePhrase(null, 3)).toBe('');
     const policy = resolveOrderTimingPolicy({ immediate_fulfillment_enabled: false, fulfillment_lead_time_min_days: 3, fulfillment_lead_time_max_days: 3 });
-    expect(buildLeadTimeExpectationMessage({ policy, isDeliveryOrder: true })).toBe('Your order will be delivered within 3 days.');
+    expect(buildLeadTimeExpectationMessage({ policy, isDeliveryOrder: true })).toBe('Your order will be delivered in 3 days.');
     expect(resolveTimingStepScheduleMode(policy, 'asap')).toBe('schedule');
     expect(buildLeadTimeExpectationMessage({ policy: resolveOrderTimingPolicy({ immediate_fulfillment_enabled: false }), isDeliveryOrder: false })).toBe(LEAD_TIME_UNCONFIGURED_NOTICE);
   });

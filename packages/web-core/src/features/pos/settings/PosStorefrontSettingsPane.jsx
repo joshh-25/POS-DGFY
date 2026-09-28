@@ -1,10 +1,11 @@
 import { forwardRef, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
-  CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Eye, Info, List, Mail, MapPin,
+  CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Info, List, Mail, MapPin,
   Maximize2, Minimize2, Move, Phone, Search,
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -23,11 +24,13 @@ import StorefrontGallerySettings from './StorefrontGallerySettings.jsx';
 import StorefrontDeliveryPartnersSettings from './StorefrontDeliveryPartnersSettings.jsx';
 import StorefrontReviewsSettings from './StorefrontReviewsSettings.jsx';
 import { STOREFRONT_TYPOGRAPHY } from './StorefrontSectionPrimitives.jsx';
+import PosSubtabNavigation from '../components/PosSubtabNavigation.jsx';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   normalizeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
+import { createDefaultLocationForm } from './posSettingsModels.js';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const RequiredMark = () => <span className="ml-1 text-rose-600">*</span>;
@@ -166,88 +169,6 @@ function StorefrontDisplayOptions({ storefrontForm, canInteract, storefrontBoole
         />
       </div>
     </section>
-  );
-}
-
-function StorefrontSubtabNavigation({ activeSubtab, onChange, disabled }) {
-  const sectionsViewportRef = useRef(null);
-  const activeSubtabIndex = STOREFRONT_SUBTABS.findIndex((tab) => tab.id === activeSubtab);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    if (activeSubtabIndex <= 0 || activeSubtabIndex >= STOREFRONT_SUBTABS.length - 1) return undefined;
-
-    const viewport = sectionsViewportRef.current;
-    if (!viewport || viewport.scrollWidth <= viewport.clientWidth) return undefined;
-
-    const activeSectionElement = document.getElementById(`pos-storefront-tab-${activeSubtab}`);
-    if (!activeSectionElement || !viewport.contains(activeSectionElement)) return undefined;
-
-    const frameId = window.requestAnimationFrame(() => {
-      const viewportRect = viewport.getBoundingClientRect();
-      const sectionRect = activeSectionElement.getBoundingClientRect();
-      const sectionCenter = sectionRect.left - viewportRect.left + viewport.scrollLeft + (sectionRect.width / 2);
-      const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
-      viewport.scrollTo({
-        left: Math.min(maxScrollLeft, Math.max(0, sectionCenter - (viewport.clientWidth / 2))),
-        behavior: 'smooth'
-      });
-    });
-
-    return () => window.cancelAnimationFrame(frameId);
-  }, [activeSubtab, activeSubtabIndex]);
-
-  const handleKeyDown = (event) => {
-    const currentIndex = STOREFRONT_SUBTABS.findIndex((tab) => tab.id === activeSubtab);
-    if (currentIndex < 0) return;
-
-    let nextIndex = null;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (currentIndex + 1) % STOREFRONT_SUBTABS.length;
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (currentIndex - 1 + STOREFRONT_SUBTABS.length) % STOREFRONT_SUBTABS.length;
-    } else if (event.key === 'Home') {
-      nextIndex = 0;
-    } else if (event.key === 'End') {
-      nextIndex = STOREFRONT_SUBTABS.length - 1;
-    }
-
-    if (nextIndex === null) return;
-
-    event.preventDefault();
-    onChange(STOREFRONT_SUBTABS[nextIndex].id);
-    window.requestAnimationFrame(() => {
-      document.getElementById(`pos-storefront-tab-${STOREFRONT_SUBTABS[nextIndex].id}`)?.focus();
-    });
-  };
-
-  return (
-    <div ref={sectionsViewportRef} role="tablist" aria-label="Storefront settings sections" className="-mx-1 overflow-x-auto">
-      <div className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4 min-[1200px]:px-0">
-        {STOREFRONT_SUBTABS.map((tab) => {
-          const Icon = tab.icon;
-          const active = activeSubtab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              id={`pos-storefront-tab-${tab.id}`}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-controls="pos-storefront-panel"
-              tabIndex={active ? 0 : -1}
-              onKeyDown={handleKeyDown}
-              disabled={disabled}
-              onClick={() => onChange(tab.id)}
-              className={`inline-flex min-h-10 min-w-36 w-max shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2 py-2 text-center text-[13px] font-bold leading-4 shadow-sm transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30 focus-visible:ring-offset-1 sm:px-3 min-[1200px]:min-h-9 min-[1200px]:w-full min-[1200px]:shrink min-[1200px]:whitespace-normal min-[1200px]:px-4 min-[1200px]:py-0 ${active ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-[#1A4E8D]/20 hover:bg-[#164278]' : 'border-slate-200 bg-white text-slate-600 hover:border-[#9BBBE0] hover:bg-[#F5F9FF] hover:text-[#1A4E8D]'} disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="min-w-0">{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -406,27 +327,34 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
   const pinchRef = useRef(null);
   const source = previewUrl || coverSrc;
   const savedTransform = normalizeCoverPhotoTransform(initialTransform);
+  const activeZoom = hasAdjustmentChanges ? zoom : savedTransform.scale;
+  const activePositionX = hasAdjustmentChanges ? positionX : savedTransform.x;
+  const activePositionY = hasAdjustmentChanges ? positionY : savedTransform.y;
+  const previewUrlRef = useRef('');
 
-  useEffect(() => {
-    if (hasAdjustmentChanges) return;
-    setZoom(savedTransform.scale);
-    setPositionX(savedTransform.x);
-    setPositionY(savedTransform.y);
-  }, [hasAdjustmentChanges, savedTransform.scale, savedTransform.x, savedTransform.y]);
-
-  useEffect(() => {
-    if (!selectedFile) {
-      return undefined;
+  useEffect(() => () => {
+    if (previewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = '';
     }
-    const nextUrl = URL.createObjectURL(selectedFile);
+  }, []);
+
+  const replacePreviewUrl = (file) => {
+    if (previewUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+    const nextUrl = file && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
+      ? URL.createObjectURL(file)
+      : '';
+    previewUrlRef.current = nextUrl;
     setPreviewUrl(nextUrl);
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [selectedFile]);
+  };
 
   const handleFileSelection = (file) => {
     if (!file) return;
     setError('');
     setSelectedFile(file);
+    replacePreviewUrl(file);
     setZoom(1);
     setPositionX(0);
     setPositionY(0);
@@ -443,7 +371,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
 
   const updateZoom = (nextZoom, { feedback = false } = {}) => {
     const normalizedZoom = Math.min(2.5, Math.max(1, Number(nextZoom) || 1));
-    if (zoom === normalizedZoom) return;
+    if (activeZoom === normalizedZoom) return;
     if (feedback) triggerCoverHaptic();
     setHasAdjustmentChanges(true);
     setZoom(normalizedZoom);
@@ -451,14 +379,17 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
 
   const handlePreviewPointerDown = (event) => {
     if (disabled || !repositioning || !source || event.target.closest?.('button,label,input')) return;
-    if (zoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
+    if (activeZoom < MIN_REPOSITION_ZOOM) {
+      setHasAdjustmentChanges(true);
+      setZoom(MIN_REPOSITION_ZOOM);
+    }
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (pointersRef.current.size === 2) {
       const [first, second] = Array.from(pointersRef.current.values());
       pinchRef.current = {
         startDistance: Math.hypot(second.x - first.x, second.y - first.y),
-        startZoom: zoom
+        startZoom: activeZoom
       };
       dragRef.current = null;
       return;
@@ -467,8 +398,8 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
-      positionX,
-      positionY
+      positionX: activePositionX,
+      positionY: activePositionY
     };
   };
 
@@ -514,27 +445,27 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     };
     if (event.key === '+' || event.key === '=') {
       event.preventDefault();
-      updateZoom(zoom + 0.1, { feedback: true });
+      updateZoom(activeZoom + 0.1, { feedback: true });
       return;
     }
     if (event.key === '-' || event.key === '_') {
       event.preventDefault();
-      updateZoom(zoom - 0.1, { feedback: true });
+      updateZoom(activeZoom - 0.1, { feedback: true });
       return;
     }
     const [horizontalDelta, verticalDelta] = updates[event.key] || [];
     if (horizontalDelta == null) return;
     event.preventDefault();
-    if (zoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
+    if (activeZoom < MIN_REPOSITION_ZOOM) setZoom(MIN_REPOSITION_ZOOM);
     setHasAdjustmentChanges(true);
-    setPositionX((current) => Math.max(-100, Math.min(100, current + horizontalDelta)));
-    setPositionY((current) => Math.max(-100, Math.min(100, current + verticalDelta)));
+    setPositionX(Math.max(-100, Math.min(100, activePositionX + horizontalDelta)));
+    setPositionY(Math.max(-100, Math.min(100, activePositionY + verticalDelta)));
   };
 
   const handlePreviewWheel = (event) => {
     if (disabled || !repositioning || !source) return;
     event.preventDefault();
-    updateZoom(zoom - (event.deltaY > 0 ? 0.1 : -0.1));
+    updateZoom(activeZoom - (event.deltaY > 0 ? 0.1 : -0.1));
   };
 
   const handleChoosePhoto = () => {
@@ -546,7 +477,10 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
   const handleReposition = () => {
     if (disabled || !source) return;
     setActionMenuOpen(false);
-    setZoom((current) => Math.max(MIN_REPOSITION_ZOOM, current));
+    if (activeZoom < MIN_REPOSITION_ZOOM) {
+      setHasAdjustmentChanges(true);
+      setZoom(MIN_REPOSITION_ZOOM);
+    }
     setRepositioning(true);
     if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
       window.requestAnimationFrame(() => previewRef.current?.focus());
@@ -566,7 +500,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     setActionMenuOpen(false);
     setRepositioning(false);
     setSelectedFile(null);
-    setPreviewUrl('');
+    replacePreviewUrl(null);
     setZoom(1);
     setPositionX(0);
     setPositionY(0);
@@ -581,7 +515,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
     try {
       const saved = await onSave?.({
         file: selectedFile,
-        transform: normalizeCoverPhotoTransform({ x: positionX, y: positionY, scale: zoom })
+        transform: normalizeCoverPhotoTransform({ x: activePositionX, y: activePositionY, scale: activeZoom })
       });
       if (saved === false) return false;
       setHasAdjustmentChanges(false);
@@ -590,7 +524,7 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
       setError(saveError?.message || 'Unable to save the cover photo adjustment.');
       return false;
     }
-  }, [hasAdjustmentChanges, onSave, positionX, positionY, selectedFile, zoom]);
+  }, [activePositionX, activePositionY, activeZoom, hasAdjustmentChanges, onSave, selectedFile]);
 
   useImperativeHandle(ref, () => ({ save: handleSave }), [handleSave]);
 
@@ -614,9 +548,10 @@ const CoverPhotoAdjustment = forwardRef(function CoverPhotoAdjustment({ coverSrc
           <StorefrontCoverImage
             sources={{ src: source }}
             alt="Cover photo crop preview"
+            hideOnError
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover transition-transform"
             draggable="false"
-            transform={{ x: positionX, y: positionY, scale: zoom }}
+            transform={{ x: activePositionX, y: activePositionY, scale: activeZoom }}
           />
         ) : <div className="flex h-full items-center justify-center text-[11px] font-semibold text-[#64748B]">Choose a cover photo to begin</div>}
         <div className={`pointer-events-none absolute inset-0 transition-colors ${repositioning ? 'bg-slate-950/45' : 'bg-slate-950/20'}`} aria-hidden="true" />
@@ -857,7 +792,7 @@ function StorefrontImageEditor({ storefrontAssets, disabled, assetUploadingType 
         <div className="relative">
           <CoverPhotoAdjustment ref={coverRef} coverSrc={storefrontAssets?.cover ? resolveAssetUrl(storefrontAssets.cover) : ''} initialTransform={storefrontAssets?.coverTransform} disabled={disabled || assetUploadingType === 'cover' || assetDeletingType === 'cover'} onSave={async ({ file, transform }) => onUploadAsset?.('cover', file, transform)} onRemove={() => onDeleteAsset?.('cover')} />
           <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
-            <div className="h-full w-full overflow-hidden rounded-full">{profilePreviewSrc ? <ResponsiveImage sources={{ src: profilePreviewSrc }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>}</div>
+            <div className="h-full w-full overflow-hidden rounded-full">{profilePreviewSrc ? <ResponsiveImage sources={{ src: profilePreviewSrc }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500">No icon</div>}</div>
             <input ref={profileUploadInputRef} id="storefront-profile-upload-preview" type="file" accept="image/*" className="sr-only" disabled={disabled || profileBusy} onChange={handleProfileFileChange} />
             <button type="button" aria-haspopup="menu" aria-expanded={profileActionMenuOpen} aria-controls="profile-icon-action-menu" aria-label="Change profile icon" title="Change profile icon" disabled={disabled || profileBusy} onClick={() => setProfileActionMenuOpen((current) => !current)} className="absolute bottom-0 right-0 z-20 grid h-7 w-7 translate-x-1/4 translate-y-1/4 place-items-center rounded-full border-2 border-white bg-white text-[#1A4E8D] shadow-md transition-colors hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] disabled:cursor-not-allowed disabled:opacity-60"><Camera className="h-3.5 w-3.5" aria-hidden="true" /></button>
             {profileActionMenuOpen ? (
@@ -1099,12 +1034,12 @@ function StoreContentSummary({ storefrontForm, setStorefrontForm, storefrontAsse
             <div className="relative min-w-0">
               <div className="relative h-40 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 sm:h-48">
                 <h3 id="store-image-summary-heading" className="absolute left-2 top-2 z-10 rounded-md border border-white/80 bg-white/95 px-2.5 py-1 text-[11px] font-extrabold text-[#0F172A] shadow-sm">Store Image</h3>
-                {storefrontAssets?.cover ? <StorefrontCoverImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} transform={storefrontAssets?.coverTransform} alt="Storefront cover preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[11px] font-medium text-[#64748B]">No cover photo uploaded</div>}
+                {storefrontAssets?.cover ? <StorefrontCoverImage sources={{ src: resolveAssetUrl(storefrontAssets.cover) }} transform={storefrontAssets?.coverTransform} alt="Storefront cover preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[11px] font-medium text-[#64748B]">No cover photo uploaded</div>}
               </div>
               {canEditSettings ? <StorefrontEditIconButton ariaLabel="Edit Store Image" title="Edit Store Image" onClick={() => setImageEditorOpen(true)} className="absolute right-2 top-2" /> : null}
               <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow-md sm:h-20 sm:w-20">
                 <div className="h-full w-full overflow-hidden rounded-full">
-                  {storefrontAssets?.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-[#64748B]">No icon</div>}
+                  {storefrontAssets?.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-[#64748B]">No icon</div>}
                 </div>
               </div>
             </div>
@@ -1238,7 +1173,7 @@ function StorefrontGroupEditor({
               />
               <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
                 <div className="h-full w-full overflow-hidden rounded-full">
-                  {storefrontAssets.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>}
+              {storefrontAssets.profile ? <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>}
                 </div>
                 <input id="storefront-profile-upload-edit" type="file" accept="image/*" className="sr-only" disabled={locked || assetUploadingType === 'profile' || assetDeletingType === 'profile'} onChange={(event) => { const file = event.target.files?.[0] || null; event.target.value = ''; if (file) void handleUploadAsset('profile', file); }} />
                 <label htmlFor="storefront-profile-upload-edit" className="absolute bottom-0 right-0 z-20 grid h-7 w-7 translate-x-1/4 translate-y-1/4 cursor-pointer place-items-center rounded-full border-2 border-white bg-white text-[#1A4E8D] shadow-md transition-colors hover:bg-blue-50" aria-label="Change profile icon"><Camera className="h-3.5 w-3.5" aria-hidden="true" /></label>
@@ -1307,7 +1242,8 @@ function StoreLocationsSummary({ storefrontForm, storefrontLocations, canEditSet
   const selectedLocation = storefrontLocations.find((location) => location.location_id === selectedLocationId) || storefrontLocations[0] || null;
   const orderMethods = selectedLocation ? [
     selectedLocation.supports_delivery !== false && 'Delivery',
-    selectedLocation.supports_pickup !== false && 'Pickup',
+     selectedLocation.supports_pickup !== false && 'Pickup',
+     selectedLocation.supports_dine_in !== false && 'Dine In',
     selectedLocation.scheduling_enabled !== false && 'Scheduled',
     selectedLocation.immediate_fulfillment_enabled !== false && 'Immediate'
   ].filter(Boolean) : [];
@@ -1424,6 +1360,8 @@ export default function PosStorefrontSettingsPane({
   storefrontForm, setStorefrontForm, storefrontAssets, storefrontPublicUrl, storefrontLocationRequired,
   storefrontTenantId = '',
   editingLocationId = null,
+  readOnly = false,
+  editorSection = 'storefront',
   activeSubtab: controlledActiveSubtab, onActiveSubtabChange, selectedLocationId: controlledSelectedLocationId, onSelectedLocationChange,
   hasActivePrimaryStorefrontLocation, requestedCustomerAccessMode, effectiveCustomerAccessMode, platformMaxCustomerAccessMode,
   customerAccessRollbackActive, customerAccessLimitation, locked, loading, savingTab, canEditSettings,
@@ -1433,13 +1371,14 @@ export default function PosStorefrontSettingsPane({
   loadStorefrontLocations, resetLocationForm, handleEditLocation, handleSetPrimaryLocation, handleDeactivateLocation,
   handleReactivateLocation, handleDeleteLocation, handleLocationPinChange, leadTimeRequiredMissing, leadTimeRangeInverted,
   lastFulfillmentMethodLocked, handleSaveLocation, handleStorefrontBooleanChange, storefrontBooleanState = {},
-  storefrontContentDirty = false, onStorefrontContentNavigationRequest, expansionScrollParentRef = null
+  storefrontContentDirty = false, onStorefrontContentNavigationRequest, onDirtyChange = () => {}, expansionScrollParentRef = null
 }) {
   const [localActiveSubtab, setLocalActiveSubtab] = useState('setup');
   const [isEditing, setIsEditing] = useState(false);
   const [editingGroup, setEditingGroup] = useState(null);
   const handleFulfillmentMethodChange = useCallback((field, value) => {
-    if (value === false && lastFulfillmentMethodLocked) {
+    const isDeliveryOrPickup = field === 'supports_delivery' || field === 'supports_pickup';
+    if (isDeliveryOrPickup && value === false && lastFulfillmentMethodLocked) {
       toast.warning(LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE, {
         duration: FULFILLMENT_METHOD_LOCKED_TOAST_DURATION_MS
       });
@@ -1448,6 +1387,7 @@ export default function PosStorefrontSettingsPane({
     setLocationForm((current) => ({ ...current, [field]: value !== false }));
   }, [lastFulfillmentMethodLocked, setLocationForm]);
   const [editSnapshot, setEditSnapshot] = useState(null);
+  const [locationEditSnapshot, setLocationEditSnapshot] = useState(null);
   const [localSelectedLocationId, setLocalSelectedLocationId] = useState(null);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const coverAdjustmentRef = useRef(null);
@@ -1456,7 +1396,7 @@ export default function PosStorefrontSettingsPane({
   const setActiveSubtab = onActiveSubtabChange || setLocalActiveSubtab;
   const selectedLocationId = controlledSelectedLocationId ?? localSelectedLocationId;
   const setSelectedLocationId = onSelectedLocationChange || setLocalSelectedLocationId;
-  const canEdit = canEditSettings && !locked && !loading;
+  const canEdit = canEditSettings && !readOnly && !locked && !loading;
   const setupActive = activeSubtab === 'setup';
   const contentActive = activeSubtab === 'content';
   const locationsActive = activeSubtab === 'locations';
@@ -1470,10 +1410,25 @@ export default function PosStorefrontSettingsPane({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedLocationSearchTerm));
   });
+  const locationPluralLabel = editorSection === 'branches' ? 'Branches' : 'Storefront Locations';
+  const locationEditorTitle = editingLocationId
+    ? STOREFRONT_LOCATION_LABELS.editBranch
+    : STOREFRONT_LOCATION_LABELS.addBranch;
+  const locationDirty = Boolean(
+    locationsActive
+    && isEditing
+    && locationEditSnapshot
+    && JSON.stringify(locationForm) !== JSON.stringify(locationEditSnapshot)
+  );
+
+  useEffect(() => {
+    onDirtyChange?.(Boolean(storefrontContentDirty || locationDirty));
+  }, [locationDirty, onDirtyChange, storefrontContentDirty]);
 
   const cancelEditing = () => {
     if (editSnapshot) setStorefrontForm(editSnapshot);
     setEditSnapshot(null);
+    setLocationEditSnapshot(null);
     setEditingGroup(null);
     setIsEditing(false);
     if (locationsActive) resetLocationForm();
@@ -1494,6 +1449,7 @@ export default function PosStorefrontSettingsPane({
     setActiveSubtab('locations');
     setIsEditing(true);
     setEditSnapshot(cloneStorefrontForm(storefrontForm));
+    setLocationEditSnapshot(null);
     handleEditLocation(location);
   };
 
@@ -1502,6 +1458,7 @@ export default function PosStorefrontSettingsPane({
     setActiveSubtab('locations');
     setIsEditing(true);
     setEditSnapshot(cloneStorefrontForm(storefrontForm));
+    setLocationEditSnapshot(cloneStorefrontForm(createDefaultLocationForm()));
     resetLocationForm();
   };
 
@@ -1546,6 +1503,7 @@ export default function PosStorefrontSettingsPane({
     const saved = await handleSaveLocation();
     if (saved === true) {
       setEditSnapshot(null);
+      setLocationEditSnapshot(null);
       setEditingGroup(null);
       setIsEditing(false);
     }
@@ -1561,9 +1519,17 @@ export default function PosStorefrontSettingsPane({
     </div>
   );
 
-  return (
-    <div className={`grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
-      <StorefrontSubtabNavigation activeSubtab={activeSubtab} onChange={handleSubtabChange} disabled={isEditing} />
+    return (
+    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
+      <PosSubtabNavigation
+        tabs={STOREFRONT_SUBTABS}
+        activeTab={activeSubtab}
+        onTabChange={handleSubtabChange}
+        ariaLabel="Storefront settings sections"
+        idPrefix="pos-storefront-tab"
+        panelId="pos-storefront-panel"
+        disabled={isEditing}
+      />
       <p className="sr-only" aria-live="polite">
         {Object.values(storefrontBooleanState).some((status) => status === 'saving')
           ? 'Saving Storefront setting.'
@@ -1790,7 +1756,7 @@ export default function PosStorefrontSettingsPane({
             <div className="absolute -bottom-8 left-4 h-16 w-16 rounded-full border-4 border-white bg-slate-100 shadow md:h-20 md:w-20">
               <div className="h-full w-full overflow-hidden rounded-full">
                 {storefrontAssets.profile ? (
-                  <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" className="h-full w-full object-cover" />
+                  <ResponsiveImage sources={{ src: resolveAssetUrl(storefrontAssets.profile) }} alt="Storefront profile preview" hideOnError className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-500 md:text-xs">No icon</div>
                 )}
@@ -1944,14 +1910,14 @@ export default function PosStorefrontSettingsPane({
           }}
         />
       ) : null}
-      <div ref={storefrontLocationsBoundaryRef} className={`${locationsActive && isEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
+      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && isEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
           <div>
-            <h2 className="text-[14px] font-extrabold text-[#0F172A]">
-              Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}
+            <h2 className="business-admin-storefront-locations-header text-[14px] font-extrabold text-[#0F172A]">
+              {locationPluralLabel}{storefrontLocationRequired ? <RequiredMark /> : null}
             </h2>
           </div>
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] lg:gap-5">
-            <aside className="hidden min-w-0 rounded-xl border border-[#DDE8F5] bg-white p-3 lg:block lg:p-4" aria-label="Storefront branches list">
+          <div className="business-admin-storefront-locations-grid grid min-w-0 gap-4 lg:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] lg:gap-5">
+            <aside className="business-admin-storefront-location-list hidden min-w-0 rounded-xl border border-[#DDE8F5] bg-white p-3 lg:block lg:p-4" aria-label={`${locationPluralLabel} list`}>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <h3 className={`truncate ${STOREFRONT_TYPOGRAPHY.itemLabel}`}>Branches</h3>
@@ -1971,7 +1937,7 @@ export default function PosStorefrontSettingsPane({
                 />
               </label>
 
-              <div className="mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
+              <div className="business-admin-storefront-location-list-scroll mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
                 {filteredStorefrontLocations.length > 0 ? filteredStorefrontLocations.map((location) => {
                   const activeEditingId = locationForm?.location_id || locationForm?.id;
                   const isSelected = activeEditingId === location.location_id;
@@ -2010,14 +1976,14 @@ export default function PosStorefrontSettingsPane({
               </Button>
             </aside>
 
-            <section className="relative min-w-0 sm:rounded-xl sm:border sm:border-[#DDE8F5] sm:bg-white sm:p-4" aria-labelledby="location-editor-heading">
+            <section className="business-admin-storefront-location-editor relative min-w-0 sm:rounded-xl sm:border sm:border-[#DDE8F5] sm:bg-white sm:p-4" aria-labelledby="location-editor-heading">
               <div className="flex min-w-0 flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 items-start gap-2.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1A4E8D]">
                     <Store className="h-4 w-4" aria-hidden="true" />
                   </div>
                   <div className="min-w-0">
-                    <h3 id="location-editor-heading" className={STOREFRONT_TYPOGRAPHY.sectionTitle}>{editingLocationId ? STOREFRONT_LOCATION_LABELS.editBranch : STOREFRONT_LOCATION_LABELS.addBranch}</h3>
+                    <h3 id="location-editor-heading" className={STOREFRONT_TYPOGRAPHY.sectionTitle}>{locationEditorTitle}</h3>
                     <p className={`mt-1 ${STOREFRONT_TYPOGRAPHY.sectionDescription}`}>Update your branch details and settings.</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
                       {locationForm.is_primary_storefront === true ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700">{STOREFRONT_LOCATION_LABELS.primaryLocation}</span> : null}
@@ -2065,7 +2031,7 @@ export default function PosStorefrontSettingsPane({
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#1A4E8D]" aria-hidden="true" /><h4 className={STOREFRONT_TYPOGRAPHY.itemLabel}>Operational Settings</h4></div>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
+                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /><p className="text-xs text-slate-500">Saves as {normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)} km</p></div>
                       <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.estimatedWaitTime}<RequiredMark /></Label><Input value={locationForm.current_wait_time_minutes} onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))} placeholder="15" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
                     </div>
 
@@ -2075,6 +2041,7 @@ export default function PosStorefrontSettingsPane({
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowOutOfStockSales} description="Sell out-of-stock items" checked={locationForm.allow_out_of_stock_sales === true} disabled={!canEdit} onChange={(value) => setLocationForm((current) => ({ ...current, allow_out_of_stock_sales: value === true }))} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsDelivery} description="Accept delivery orders" checked={locationForm.supports_delivery !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_delivery', value)} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsPickup} description="Accept pickup orders" checked={locationForm.supports_pickup !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_pickup', value)} />
+                      <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.supportsDineIn} description="Accept dine-in orders" checked={locationForm.supports_dine_in !== false} disabled={!canEdit} onChange={(value) => handleFulfillmentMethodChange('supports_dine_in', value)} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowScheduledOrders} description="Offer scheduled orders" checked={locationForm.scheduling_enabled !== false} disabled={!canEditSettings} onChange={(value) => setLocationForm((current) => ({ ...current, scheduling_enabled: value !== false }))} />
                       <StorefrontToggle label={STOREFRONT_LOCATION_LABELS.allowImmediateFulfillment} description="Offer immediate fulfillment" checked={locationForm.immediate_fulfillment_enabled !== false} disabled={!canEditSettings} onChange={(value) => setLocationForm((current) => ({ ...current, immediate_fulfillment_enabled: value !== false }))} />
                     </div>

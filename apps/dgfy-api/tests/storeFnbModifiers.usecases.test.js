@@ -65,10 +65,11 @@ const buildCartQuoteUseCase = (repository) => buildStoreCartQuoteUseCase({
   revenueSharingEnabled: false
 });
 
-const buildCheckoutUseCase = (repository) => {
+const buildCheckoutUseCase = (repository, dependencies = {}) => {
   const useCase = buildStoreCheckoutUseCase({
     storeRepository: repository,
-    revenueSharingEnabled: false
+    revenueSharingEnabled: false,
+    ...dependencies
   });
 
   return async ({ tenantId: requestTenantId, payload, storeCustomer, ...options }) => {
@@ -148,8 +149,8 @@ describe('storefront F&B modifier checkout contract', () => {
 
     expect(result.success).toBe(true);
     expect(result.data.subtotal_amount).toBe(290);
-    expect(result.data.service_fee_amount).toBe(2.9);
-    expect(result.data.total_amount).toBe(292.9);
+    expect(result.data.service_fee_amount).toBe(0);
+    expect(result.data.total_amount).toBe(290);
     expect(result.data.lines[0]).toEqual(expect.objectContaining({
       sale_price: 145,
       line_subtotal: 290,
@@ -162,6 +163,41 @@ describe('storefront F&B modifier checkout contract', () => {
         extended_price_delta: 45
       })]
     }));
+  });
+
+  it('waives the convenience fee only for enabled dine-in pay-at-store quotes', async () => {
+    const repository = buildRepository([burgerItem], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_dine_in_pay_at_store: true,
+        allow_out_of_stock_sales: true
+      })
+    });
+    const useCase = buildCartQuoteUseCase(repository);
+    const basePayload = {
+      location_id: 4,
+      order_method: 'dine_in',
+      scheduled_for: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      customer_name: 'Ana',
+      customer_phone: '09170000000',
+      lines: [{ item_id: 20, quantity: 1 }]
+    };
+
+    const cashResult = await useCase({ payload: { ...basePayload, payment_type: 'cash' } });
+    expect(cashResult.success).toBe(true);
+    expect(cashResult.data.service_fee_amount).toBe(0);
+    expect(cashResult.data.total_amount).toBe(100);
+
+    const onlineResult = await useCase({ payload: { ...basePayload, payment_type: 'gcash' } });
+    expect(onlineResult.success).toBe(true);
+    expect(onlineResult.data.service_fee_amount).toBe(1);
+    expect(onlineResult.data.total_amount).toBe(101);
   });
 
   it('preflights linked modifier stock using the selected location and line quantity', async () => {
@@ -612,6 +648,47 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
+  it('allows checkout with a price-only modifier when strict inventory reservation is enabled', async () => {
+    const repository = buildRepository([burgerItem], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_out_of_stock_sales: false
+      })
+    });
+    const inventoryReservationService = {
+      reserveOnlineOrderInventory: jest.fn().mockResolvedValue({ reserved: true })
+    };
+    const useCase = buildCheckoutUseCase(repository, { inventoryReservationService });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-fnb-price-only-modifier',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 1,
+          line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(inventoryReservationService.reserveOnlineOrderInventory).toHaveBeenCalledWith(expect.objectContaining({
+      effects: [expect.objectContaining({ item_id: 20, effect_type: 'line_item' })]
+    }));
+  });
+
   it('persists stock_effect_type/stock_exempt_reason and skips the stock check for an untracked item (bug 1 + bug 2)', async () => {
     // Before this fix, storefront checkout never set these fields at all (every
     // online line silently persisted the model default 'inventory_issue',
@@ -850,6 +927,52 @@ describe('storefront F&B modifier checkout contract', () => {
     expect(result.error.details).toEqual(expect.objectContaining({
       reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
     }));
+  });
+
+  it('requires a future scheduled time for dine-in checkout', async () => {
+    const repository = buildRepository([burgerItem]);
+    const useCase = buildCheckoutUseCase(repository);
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'dine-in-schedule-required',
+        location_id: 4,
+        order_method: 'dine_in',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('DINE_IN_SCHEDULE_REQUIRED');
+  });
+
+  it('rejects direct dine-in cash checkout even when the location otherwise accepts cash', async () => {
+    const repository = buildRepository([burgerItem]);
+    const useCase = buildCheckoutUseCase(repository);
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'dine-in-cash-rejected',
+        location_id: 4,
+        order_method: 'dine_in',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        scheduled_for: '2026-10-01T18:30:00+08:00',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('DINE_IN_CASH_PAYMENT_NOT_ALLOWED');
+    expect(repository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
   });
 
   it('rejects immediate checkout outside structured storefront business hours', async () => {

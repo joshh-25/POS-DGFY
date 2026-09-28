@@ -4,7 +4,7 @@ import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
-import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { buildStorefrontOrderBreakdownRows } from '../../../../shared/model/storefrontOrderBreakdownPresentation.js';
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 import { StorefrontMobileCheckoutFooter } from '../../../../shared/components/StorefrontMobileCheckoutFooter.jsx';
 import { CHECKOUT_FONT_FAMILY } from '../../../../shared/components/checkout/checkoutUiTokens.js';
@@ -37,6 +37,7 @@ export function FnbCheckoutMobileSummaryPanel({
   onImageError,
   onIncreaseStep,
   onToggleSummary,
+  orderMethod,
   orderStep,
   promoDiscountSummaryRow,
   voucherDiscountSummaryRow,
@@ -53,9 +54,14 @@ export function FnbCheckoutMobileSummaryPanel({
   const downpaymentRows = buildDownpaymentTotalsRows({
     display: resolveDownpaymentDisplay({ quoteResult: totals }),
     money,
-    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+    orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup')
   });
-  const feeAndVatRows = buildFeeAndVatSummaryRows({ totals, money });
+  const totalsRows = buildStorefrontOrderBreakdownRows({
+    discountRows: [promoDiscountSummaryRow, voucherDiscountSummaryRow].filter(Boolean),
+    money,
+    orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup'),
+    totals,
+  });
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
@@ -101,7 +107,7 @@ export function FnbCheckoutMobileSummaryPanel({
             <div style={{ overflowY: 'auto', padding: '16px 16px 20px', display: 'grid', gap: 16 }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{money(totals.total_amount)}</div>
               <div style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-                {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
+                {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={orderMethod === 'dine_in' ? 'Dine In' : isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
                 {showFulfillmentSummary && <SummaryRow label="Schedule" value={scheduleLabel} />}
                 <SummaryRow label="Items" value={`${cartCount} item${cartCount === 1 ? '' : 's'}`} />
               </div>
@@ -137,17 +143,9 @@ export function FnbCheckoutMobileSummaryPanel({
               </div>
               {promoPanel}
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
-                <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
-                {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
-                {voucherDiscountSummaryRow ? <SummaryRow label={voucherDiscountSummaryRow.label} value={voucherDiscountSummaryRow.value} /> : null}
-                <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
-                {feeAndVatRows.map((row) => (
-                  <SummaryRow key={row.label} label={row.label} value={row.value} />
+                {totalsRows.map((row) => (
+                  <SummaryRow key={row.label} label={row.label} value={row.value} color={row.color || (row.emphasis ? '#0f172a' : '#334155')} emphasis={row.emphasis} borderTop={row.borderTop} />
                 ))}
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
-                  <span style={{ fontWeight: 700 }}>Total</span>
-                  <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
-                </div>
                 {downpaymentRows.map((row) => (
                   <SummaryRow key={row.label} label={row.label} value={row.value} />
                 ))}
@@ -183,8 +181,8 @@ export function FnbCheckoutMobileSummaryPanel({
   );
 }
 
-function SummaryRow({ label, value }) {
-  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>{label}</span><strong>{value}</strong></div>;
+function SummaryRow({ label, value, color = '#334155', emphasis = false, borderTop = false }) {
+  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: borderTop ? 10 : 0, borderTop: borderTop ? '1px solid #e2e8f0' : 'none', fontSize: emphasis ? 18 : 14, color }}><span style={{ fontWeight: emphasis ? 700 : 400 }}>{label}</span><strong style={{ fontWeight: emphasis ? 800 : 700 }}>{value}</strong></div>;
 }
 
 const secondaryButtonStyle = {

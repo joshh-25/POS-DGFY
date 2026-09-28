@@ -427,7 +427,10 @@ export default function Items() {
       pos_always_available: override?.pos_always_available === true,
       pos_image_url: resolveAssetUrl(override?.pos_image_url) || null,
       pos_image_variants: override?.pos_image_variants || null,
-      pos_readiness: override?.pos_readiness || null
+      pos_readiness: override?.pos_readiness || null,
+      pos_location_availability: Array.isArray(override?.pos_location_availability)
+        ? override.pos_location_availability
+        : []
     };
   }, [getDefaultPosVisibility, posCatalogOverrides]);
 
@@ -513,6 +516,52 @@ export default function Items() {
       toast.success(`Always Available ${nextValue ? 'enabled' : 'disabled'} for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to update Always Available');
+    }
+  };
+
+  const handleTogglePosLocationAvailability = async (item, locationId, nextAvailable) => {
+    const itemId = item?.item_id || item?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!itemId || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+
+    const currentConfig = resolvePosConfig(item);
+    const currentRows = Array.isArray(currentConfig.pos_location_availability)
+      ? currentConfig.pos_location_availability
+      : [];
+    const current = currentRows.find((row) => Number(row?.location_id) === normalizedLocationId);
+    if (nextAvailable === true && current?.source === 'inherited') return;
+    try {
+      const updated = await updatePosCatalogOverride(itemId, {
+        location_availability: [{
+          location_id: normalizedLocationId,
+          pos_available: Boolean(nextAvailable)
+        }]
+      });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS branch availability updated for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to update POS branch availability');
+    }
+  };
+
+  const handleResetPosLocationAvailability = async (item, locationId) => {
+    const itemId = item?.item_id || item?.id;
+    const normalizedLocationId = Number.parseInt(locationId, 10);
+    if (!itemId || !Number.isInteger(normalizedLocationId) || normalizedLocationId <= 0) return;
+    try {
+      const updated = await updatePosCatalogOverride(itemId, {
+        location_availability: [{ location_id: normalizedLocationId, pos_available: null }]
+      });
+      setPosCatalogOverrides((prev) => ({
+        ...prev,
+        [itemId]: { ...(prev[itemId] || {}), ...updated }
+      }));
+      toast.success(`POS branch policy reset to inherited for ${item.name}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to reset POS branch policy');
     }
   };
 
@@ -1670,6 +1719,8 @@ export default function Items() {
     try {
       const {
         pos_always_available: requestedPosAlwaysAvailable = false,
+        pos_visible: requestedPosVisible,
+        storefront_visible: requestedStorefrontVisible,
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
@@ -1681,12 +1732,24 @@ export default function Items() {
       const existingPosAlwaysAvailable = isEditingExistingItem
         ? resolvePosConfig(editingItem).pos_always_available === true
         : false;
+      const existingPosVisible = isEditingExistingItem
+        ? resolvePosConfig(editingItem).pos_visible !== false
+        : null;
+      const existingStorefrontVisible = isEditingExistingItem
+        ? resolveStorefrontConfig(editingItem).storefront_visible !== false
+        : null;
       const posAlwaysAvailableChanged = requestedPosAlwaysAvailable !== existingPosAlwaysAvailable;
+      const posVisibilityChanged = typeof requestedPosVisible === 'boolean'
+        && (!isEditingExistingItem || requestedPosVisible !== existingPosVisible);
+      const storefrontVisibilityChanged = typeof requestedStorefrontVisible === 'boolean'
+        && (!isEditingExistingItem || requestedStorefrontVisible !== existingStorefrontVisible);
       if (
         isEditingExistingItem
         && isMsmeMode
         && Object.keys(resolvedItemPayload).length === 0
         && !posAlwaysAvailableChanged
+        && !posVisibilityChanged
+        && !storefrontVisibilityChanged
         && !supplierLinksDirty
       ) {
         toast.message('No item changes detected.');
@@ -1717,6 +1780,9 @@ export default function Items() {
 
       if (requestedPosAlwaysAvailable !== existingPosAlwaysAvailable) {
         posOverridePatch.pos_always_available = requestedPosAlwaysAvailable === true;
+      }
+      if (posVisibilityChanged) {
+        posOverridePatch.pos_visible = requestedPosVisible === true;
       }
 
       await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
@@ -1761,6 +1827,25 @@ export default function Items() {
           } else {
             toast.warning('Item was saved, but POS availability settings did not update. Please retry from item edit.');
           }
+        }
+      }
+
+      if (
+        Number.isInteger(targetItemId)
+        && targetItemId > 0
+        && storefrontVisibilityChanged
+        && canConfigureStorefrontCatalog
+      ) {
+        try {
+          const updatedOverride = await updateStorefrontCatalogOverride(targetItemId, {
+            storefront_visible: requestedStorefrontVisible === true
+          });
+          setStorefrontCatalogOverrides((prev) => ({
+            ...prev,
+            [targetItemId]: { ...(prev[targetItemId] || {}), ...updatedOverride }
+          }));
+        } catch (overrideError) {
+          toast.warning('Item was saved, but Storefront visibility settings did not update. Please retry from item edit.');
         }
       }
 
@@ -3085,6 +3170,8 @@ export default function Items() {
           msmeMode={isMsmeMode}
           createPreset={isMsmeMode && !editingItem ? activeCreatePreset : MSME_ITEM_PRESET.INVENTORY_ONLY}
           posConfig={editingItem ? resolvePosConfig(editingItem) : null}
+          onTogglePosLocationAvailability={handleTogglePosLocationAvailability}
+          onResetPosLocationAvailability={handleResetPosLocationAvailability}
           storefrontConfig={editingItem ? resolveStorefrontConfig(editingItem) : null}
           showStorefrontCatalogControls={canConfigureStorefrontCatalog}
           onTogglePosVisibility={handleTogglePosVisibility}

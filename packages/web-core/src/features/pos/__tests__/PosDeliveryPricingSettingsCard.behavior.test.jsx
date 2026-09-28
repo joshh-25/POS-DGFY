@@ -53,6 +53,7 @@ describe('PosDeliveryPricingSettingsCard', () => {
 
     await waitFor(() => expect(getAllSettings).toHaveBeenCalledTimes(1));
     expect(await screen.findByDisplayValue('75')).toBeTruthy();
+    expect(screen.getByText(/Customers pay this flat delivery fee at checkout/i)).toBeTruthy();
     expect(screen.queryByLabelText(/Minimum Fee/i)).toBeNull();
   });
 
@@ -86,6 +87,8 @@ describe('PosDeliveryPricingSettingsCard', () => {
     await user.click(screen.getByText('fixed'));
     await user.click(screen.getByText(/Calculated \(distance-based\)/i));
 
+    expect(await screen.findByText(/Customers pay the minimum fee plus distance increments/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Fallback Delivery Fee/i)).toBeTruthy();
     await user.type(screen.getByLabelText(/Minimum Fee/i), '50');
     await user.type(screen.getByLabelText(/Included Distance/i), '3');
     await user.type(screen.getByLabelText(/Rate per km/i), '10');
@@ -126,8 +129,8 @@ describe('PosDeliveryPricingSettingsCard', () => {
     getAllSettings.mockResolvedValueOnce(fixedModeSettings());
     render(<PosDeliveryPricingSettingsCard terminalUser={adminUser()} locked sectionId="s" />);
 
-    // locked=true short-circuits the initial load effect entirely (matches
-    // DownpaymentSettingsPanel's own locked behavior) -- nothing is fetched.
-    expect(getAllSettings).not.toHaveBeenCalled();
+    expect(await screen.findByDisplayValue('75')).toBeTruthy();
+    expect(screen.getByDisplayValue('75').disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /^save$/i }).disabled).toBe(true);
   });
 });

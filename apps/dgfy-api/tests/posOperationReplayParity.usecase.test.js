@@ -20,6 +20,7 @@ jest.unstable_mockModule('../src/modules/compliance/index.js', () => ({
 }));
 
 let buildOpenTerminalShiftUseCase;
+let buildSwitchTerminalShiftLocationUseCase;
 let buildRecordCashDrawerEventUseCase;
 let buildCloseTerminalShiftUseCase;
 let buildUpdateOnlineOrderStatusUseCase;
@@ -27,6 +28,7 @@ let buildUpdateOnlineOrderStatusUseCase;
 beforeAll(async () => {
     const posUseCasesModule = await import('../src/modules/pos/usecases/posUseCases.js');
     buildOpenTerminalShiftUseCase = posUseCasesModule.buildOpenTerminalShiftUseCase;
+    buildSwitchTerminalShiftLocationUseCase = posUseCasesModule.buildSwitchTerminalShiftLocationUseCase;
     buildRecordCashDrawerEventUseCase = posUseCasesModule.buildRecordCashDrawerEventUseCase;
     buildCloseTerminalShiftUseCase = posUseCasesModule.buildCloseTerminalShiftUseCase;
     buildUpdateOnlineOrderStatusUseCase = posUseCasesModule.buildUpdateOnlineOrderStatusUseCase;
@@ -36,6 +38,11 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 const resolveActiveIdentityStatus = jest.fn(async () => ({ active_profile: true }));
 const resolveAuthorizedLocationScope = jest.fn(async () => ({
     location_id: 1,
+    source: 'test_location_grant'
+}));
+
+const resolveRequestedLocationScope = jest.fn(async ({ requestedLocationId }) => ({
+    location_id: Number(requestedLocationId),
     source: 'test_location_grant'
 }));
 
@@ -81,6 +88,7 @@ const buildReplayRepository = () => {
     const shifts = new Map();
     const cashEvents = [];
     const orders = new Map();
+    const transitions = [];
     const counters = {
         shiftCreates: 0,
         cashEventsCreated: 0,
@@ -91,6 +99,7 @@ const buildReplayRepository = () => {
     };
     let failAuditWrites = false;
     let activeParkedSaleCount = 0;
+    let parkedSaleStatuses = null;
     let unresolvedFundedPaymentSessions = [];
     let inFlightPaymentSessions = [];
     let inFlightOperatorMutation = null;
@@ -101,14 +110,17 @@ const buildReplayRepository = () => {
             { terminal_id: 'WEB-POS-01', label: 'Web POS 1', location_id: 1 },
             { terminal_id: 'WEB-POS-02', label: 'Web POS 2', location_id: 1 },
             { terminal_id: 'COUNTER-01', label: 'Counter 1', location_id: 1 },
-            { terminal_id: 'COUNTER-02', label: 'Counter 2', location_id: 1 }
+            { terminal_id: 'COUNTER-02', label: 'Counter 2', location_id: 1 },
+            { terminal_id: 'EAST-01', label: 'East Register 1', location_id: 2 }
         ]
     };
+    let failNextShiftCreate = false;
 
     const replayKey = ({ operationKey, idempotencyKey }) => `${operationKey}::${idempotencyKey}`;
 
     return {
         counters,
+        transitions,
         setTerminalPolicy(nextPolicy = {}) {
             terminalPolicy = {
                 mode: nextPolicy?.mode || 'warn',
@@ -119,7 +131,11 @@ const buildReplayRepository = () => {
             failAuditWrites = value === true;
         },
         setActiveParkedSaleCount(value) {
+            parkedSaleStatuses = null;
             activeParkedSaleCount = Math.max(0, Number.parseInt(value, 10) || 0);
+        },
+        setParkedSaleStatuses(value) {
+            parkedSaleStatuses = Array.isArray(value) ? [...value] : [];
         },
         setUnresolvedFundedPaymentSessions(value) {
             unresolvedFundedPaymentSessions = Array.isArray(value) ? clone(value) : [];
@@ -129,6 +145,9 @@ const buildReplayRepository = () => {
         },
         setInFlightOperatorMutation(value) {
             inFlightOperatorMutation = value ? clone(value) : null;
+        },
+        setFailNextShiftCreate(value) {
+            failNextShiftCreate = value === true;
         },
         async getTerminalIdentityPolicySettings() {
             return clone(terminalPolicy);
@@ -166,6 +185,10 @@ const buildReplayRepository = () => {
             };
         },
         async createTerminalShift(payload = {}) {
+            if (failNextShiftCreate) {
+                failNextShiftCreate = false;
+                throw new Error('Replacement shift create failed');
+            }
             counters.shiftCreates += 1;
             const created = {
                 pos_terminal_shift_id: shiftSequence++,
@@ -194,6 +217,14 @@ const buildReplayRepository = () => {
             cashEvents.push(created);
             return clone(created);
         },
+        async createShiftLocationTransition(payload = {}) {
+            const created = {
+                pos_shift_location_transition_id: transitions.length + 1,
+                ...clone(payload)
+            };
+            transitions.push(created);
+            return clone(created);
+        },
         async createAuditLog(payload = {}) {
             if (failAuditWrites) {
                 throw new Error('Audit write failed');
@@ -212,7 +243,16 @@ const buildReplayRepository = () => {
         async getShiftCashSalesTotal() {
             return 0;
         },
+        async getZReadingSummary() {
+            return {
+                transaction_count: 0,
+                payment_breakdown: []
+            };
+        },
         async countActiveParkedSalesForShift() {
+            if (Array.isArray(parkedSaleStatuses)) {
+                return parkedSaleStatuses.filter((status) => status === 'claimed').length;
+            }
             return activeParkedSaleCount;
         },
         async listUnresolvedFundedPaymentSessionsForShift() {
@@ -427,6 +467,237 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
     });
 
+    it('switches a shift only after cash reconciliation and explicit destination float entry', async () => {
+        const posRepository = buildReplayRepository();
+        const sourceShift = await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'WEB-POS-01',
+            location_id: 1,
+            cashier_id: 17,
+            opening_float_amount: 250,
+            opened_at: new Date('2026-04-09T08:00:00.000Z'),
+            status: 'open'
+        });
+        await posRepository.createCashDrawerEvent({
+            pos_terminal_shift_id: sourceShift.pos_terminal_shift_id,
+            event_type: 'cash_in',
+            amount: 50,
+            reason: 'Opening bank top-up',
+            recorded_by: 17
+        });
+        const switchShiftUseCase = buildSwitchTerminalShiftLocationUseCase({
+            posRepository,
+            resolveLocationScope: resolveRequestedLocationScope
+        });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+        const payload = {
+            terminal_id: 'east-01',
+            target_location_id: 2,
+            closing_cash_amount: 295,
+            opening_float_amount: 100,
+            closing_note: 'Counted before branch relocation',
+            opening_note: 'Destination float verified',
+            reason: 'Covering the neighboring branch',
+            idempotency_key: 'SHIFT-SWITCH-001'
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await switchShiftUseCase({
+                shiftId: sourceShift.pos_terminal_shift_id,
+                payload,
+                user: { user_id: 17, permissions: ['pos:switch_location'] }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.idempotent_replay).toBe(false);
+            expect(result.data.cash_reconciliation).toEqual(expect.objectContaining({
+                disposition: 'counted_close_then_explicit_destination_float',
+                source: expect.objectContaining({
+                    closing_cash_amount: 295,
+                    expected_cash_amount: 300,
+                    cash_variance_amount: -5
+                }),
+                destination: expect.objectContaining({
+                    terminal_id: 'EAST-01',
+                    location_id: 2,
+                    opening_float_amount: 100
+                })
+            }));
+
+            const closedSource = await posRepository.getTerminalShiftById(sourceShift.pos_terminal_shift_id);
+            const destinationShift = await posRepository.findOpenTerminalShift({ terminalId: 'EAST-01' });
+            expect(closedSource).toEqual(expect.objectContaining({
+                status: 'closed',
+                closing_cash_amount: 295,
+                expected_cash_amount: 300,
+                cash_variance_amount: -5
+            }));
+            expect(destinationShift).toEqual(expect.objectContaining({
+                terminal_id: 'EAST-01',
+                location_id: 2,
+                cashier_id: 17,
+                opening_float_amount: 100,
+                status: 'open'
+            }));
+            expect(posRepository.transitions).toHaveLength(1);
+            expect(posRepository.transitions[0]).toEqual(expect.objectContaining({
+                from_shift_id: sourceShift.pos_terminal_shift_id,
+                to_shift_id: destinationShift.pos_terminal_shift_id,
+                from_location_id: 1,
+                to_location_id: 2,
+                terminal_id: 'EAST-01',
+                reason: 'Covering the neighboring branch'
+            }));
+
+            const createsAfterFirstAttempt = posRepository.counters.shiftCreates;
+            const closesAfterFirstAttempt = posRepository.counters.shiftCloses;
+            const replay = await switchShiftUseCase({
+                shiftId: sourceShift.pos_terminal_shift_id,
+                payload,
+                user: { user_id: 17, permissions: ['pos:switch_location'] }
+            });
+            expect(replay.success).toBe(true);
+            expect(replay.data.idempotent_replay).toBe(true);
+            expect(replay.data.replay_outcome).toBe('idempotent_replay');
+            expect(posRepository.counters.shiftCreates).toBe(createsAfterFirstAttempt);
+            expect(posRepository.counters.shiftCloses).toBe(closesAfterFirstAttempt);
+        });
+    });
+
+    it('blocks a location switch before closing when the source shift has unresolved parked sales', async () => {
+        const posRepository = buildReplayRepository();
+        const sourceShift = await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'WEB-POS-01',
+            location_id: 1,
+            cashier_id: 17,
+            opening_float_amount: 250,
+            status: 'open'
+        });
+        posRepository.setActiveParkedSaleCount(1);
+        const switchShiftUseCase = buildSwitchTerminalShiftLocationUseCase({
+            posRepository,
+            resolveLocationScope: resolveRequestedLocationScope
+        });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await switchShiftUseCase({
+                shiftId: sourceShift.pos_terminal_shift_id,
+                payload: {
+                    terminal_id: 'EAST-01',
+                    target_location_id: 2,
+                    closing_cash_amount: 250,
+                    opening_float_amount: 100,
+                    reason: 'Covering the neighboring branch',
+                    idempotency_key: 'SHIFT-SWITCH-BLOCKED'
+                },
+                user: { user_id: 17, permissions: ['pos:switch_location'] }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+            expect(result.error.details).toEqual(expect.objectContaining({
+                reason_code: 'POS_PARKED_SALES_UNRESOLVED',
+                active_parked_sale_count: 1
+            }));
+            expect(posRepository.counters.shiftCloses).toBe(0);
+            expect(posRepository.counters.shiftCreates).toBe(1);
+            expect(posRepository.transitions).toHaveLength(0);
+        });
+    });
+
+    it('rejects an occupied destination terminal without mutating the source shift', async () => {
+        const posRepository = buildReplayRepository();
+        const sourceShift = await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'WEB-POS-01',
+            location_id: 1,
+            cashier_id: 17,
+            opening_float_amount: 250,
+            status: 'open'
+        });
+        await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'EAST-01',
+            location_id: 2,
+            cashier_id: 18,
+            opening_float_amount: 100,
+            status: 'open'
+        });
+        const switchShiftUseCase = buildSwitchTerminalShiftLocationUseCase({
+            posRepository,
+            resolveLocationScope: resolveRequestedLocationScope
+        });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await switchShiftUseCase({
+                shiftId: sourceShift.pos_terminal_shift_id,
+                payload: {
+                    terminal_id: 'EAST-01',
+                    target_location_id: 2,
+                    closing_cash_amount: 250,
+                    opening_float_amount: 100,
+                    reason: 'Covering the neighboring branch',
+                    idempotency_key: 'SHIFT-SWITCH-OCCUPIED'
+                },
+                user: { user_id: 17, permissions: ['pos:switch_location'] }
+            });
+
+            expect(result.success).toBe(false);
+            expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+            expect(result.error.details).toEqual(expect.objectContaining({
+                reason_code: 'POS_TARGET_TERMINAL_OCCUPIED'
+            }));
+            expect(posRepository.counters.shiftCloses).toBe(0);
+            expect(posRepository.counters.shiftCreates).toBe(2);
+            expect(posRepository.transitions).toHaveLength(0);
+        });
+    });
+
+    it('rolls back the transaction when the replacement shift cannot be created', async () => {
+        const posRepository = buildReplayRepository();
+        const sourceShift = await posRepository.createTerminalShift({
+            business_date: '2026-04-09',
+            terminal_id: 'WEB-POS-01',
+            location_id: 1,
+            cashier_id: 17,
+            opening_float_amount: 250,
+            status: 'open'
+        });
+        posRepository.setFailNextShiftCreate(true);
+        const switchShiftUseCase = buildSwitchTerminalShiftLocationUseCase({
+            posRepository,
+            resolveLocationScope: resolveRequestedLocationScope
+        });
+        const transaction = createTransaction();
+        const sequelize = { transaction: jest.fn(async () => transaction) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await switchShiftUseCase({
+                shiftId: sourceShift.pos_terminal_shift_id,
+                payload: {
+                    terminal_id: 'EAST-01',
+                    target_location_id: 2,
+                    closing_cash_amount: 250,
+                    opening_float_amount: 100,
+                    reason: 'Covering the neighboring branch',
+                    idempotency_key: 'SHIFT-SWITCH-ROLLBACK'
+                },
+                user: { user_id: 17, permissions: ['pos:switch_location'] }
+            });
+
+            expect(result.success).toBe(false);
+        });
+
+        expect(transaction.commit).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
+        expect(posRepository.transitions).toHaveLength(0);
+    });
+
     it('keeps deterministic idempotent replay behavior across shift open/cash event/shift close/order-status update', async () => {
         const posRepository = buildReplayRepository();
         posRepository.seedOrder({
@@ -569,7 +840,9 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(posRepository.counters.shiftCloses).toBe(1);
         expect(posRepository.counters.auditLogsCreated).toBe(3);
         expect(posRepository.counters.orderUpdates).toBe(1);
-        expect(sequelize.transaction).toHaveBeenCalledTimes(4);
+        // Operator-authority lifecycle work opens its own transaction in addition to
+        // the four idempotent POS operations exercised above.
+        expect(sequelize.transaction).toHaveBeenCalledTimes(5);
     });
 
     it('blocks shift close while claimed parked sales remain unresolved', async () => {
@@ -610,6 +883,41 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
                 shift_id: shiftId
             }));
             expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('allows shift close when parked-sale cancellation is pending', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'WEB-POS-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'NVP-PARKED-CANCEL-PENDING-OPEN'
+                },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data?.shift?.pos_terminal_shift_id);
+            posRepository.setParkedSaleStatuses(['cancel_pending']);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: {
+                    idempotency_key: 'NVP-PARKED-CANCEL-PENDING-CLOSE',
+                    closing_cash_amount: 500
+                },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.shift.status).toBe('closed');
+            expect(posRepository.counters.shiftCloses).toBe(1);
         });
     });
 
@@ -724,6 +1032,38 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             }));
             expect(posRepository.counters.emptyPaymentSessionsCancelled).toBe(0);
             expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('cleans up an empty payment session before closing the shift', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-EMPTY-PAYMENT-CLEANUP' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightPaymentSessions([{
+                pos_payment_session_id: 503,
+                session_reference: 'PAY-EMPTY',
+                status: 'open',
+                paid_amount: 0,
+                remaining_amount: 1250,
+                empty_session: true
+            }]);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-EMPTY-PAYMENT-CLEANUP', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(posRepository.counters.shiftCloses).toBe(1);
         });
     });
 

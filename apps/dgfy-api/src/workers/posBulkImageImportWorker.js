@@ -3,6 +3,7 @@ import {
     POS_BULK_IMAGE_IMPORT_MAX_ATTEMPTS,
     POS_BULK_IMAGE_IMPORT_WORKER_CONCURRENCY
 } from '../config/posBulkImageImportFeature.js';
+import { isRedisConnected } from '../config/redis.js';
 import logger from '../config/logger.js';
 import { uploadPosCatalogImageUseCase } from '../modules/pos/index.js';
 import { posBulkImageImportJobRepository as jobs } from '../modules/pos/repositories/posBulkImageImportJobRepository.js';
@@ -121,6 +122,13 @@ export const processPosBulkImageImportTask = createProcessPosBulkImageImportTask
 
 const tick = async () => {
     if (!running) return;
+    // Redis is an optional local dependency. Keep the worker idle while it is
+    // unavailable instead of invoking the queue repository and logging a
+    // failure every poll; queued imports remain recoverable once Redis returns.
+    if (!isRedisConnected()) {
+        timer = setTimeout(tick, IDLE_POLL_MS);
+        return;
+    }
     let foundWork = false;
     try {
         // Run recovery once per process after Redis becomes reachable. Repeating

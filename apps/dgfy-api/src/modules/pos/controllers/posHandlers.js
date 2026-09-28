@@ -10,6 +10,7 @@ import {
     checkoutPosUseCase,
     listPosDiscountEmployeesUseCase,
     listPosDiscountApproversUseCase,
+    listAvailablePosDiscountRulesUseCase,
     verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
@@ -55,8 +56,12 @@ import {
     listOnlineOrderHistoryUseCase,
     listActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase,
+    getPosBranchDirectoryUseCase,
+    recordPosBranchViewEventUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    collectCashDineInOrderUseCase,
+    collectDineInPaymentUseCase,
     recordOrderBalancePaymentUseCase,
     attachOrderBalancePaymentProofUseCase,
     getOrderBalancePaymentProofUseCase,
@@ -72,6 +77,7 @@ import {
     updateOnlineOrderStatusUseCase,
     updateOnlineOrderDeliveryAddressUseCase,
     getPosDeviceStatusUseCase,
+    testPosPrinterUseCase,
     claimOnlineOrderReceiptAutoPrintUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
@@ -84,6 +90,7 @@ import {
     claimPosParkedSaleUseCase,
     reparkPosParkedSaleUseCase,
     cancelPosParkedSaleUseCase,
+    decidePosExceptionApprovalUseCase,
     createPosPaymentSessionUseCase,
     getPosPaymentSessionUseCase,
     getActivePosPaymentSessionUseCase,
@@ -361,6 +368,9 @@ export const requireActiveOperatorForMutation = async (req, res, next) => {
         const operationKey = requestId(req, res) || crypto.randomUUID();
         const operationType = `${String(req.method || 'MUTATION').toUpperCase()} ${String(req.originalUrl || req.path || 'pos').split('?')[0]}`.slice(0, 120);
         const result = await authorizePosOperatorMutationUseCase({
+            userId: req.user?.user_id,
+            requiredPermissions: req.requiredPermissions || [],
+            requiredPermissionAlternatives: req.requiredPermissionAlternatives || [],
             authorityToken: getCookie(req, SESSION_COOKIE_NAMES.posOperatorAuthority),
             tenantId: tenantIdForOperator(req),
             scope: operatorScope(req),
@@ -546,6 +556,19 @@ export const listDiscountEmployees = async (req, res, next) => {
     }
 };
 
+export const listDiscountRules = async (req, res, next) => {
+    try {
+        const result = await listAvailablePosDiscountRulesUseCase();
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        return next(error);
+    }
+};
+
 export const verifyDiscountApproval = async (req, res, next) => {
     try {
         const result = await verifyPosDiscountApprovalUseCase({
@@ -662,7 +685,10 @@ export const listSetupCashiers = async (req, res, next) => {
 export const loginCashier = async (req, res, next) => {
     try {
         const result = await loginPosCashierUseCase({
-            payload: req.validatedData || req.body || {}
+            payload: req.validatedData || req.body || {},
+            deviceProof: req.posDeviceProof || null,
+            request: req,
+            tenantId: req.tenant?.id || null
         });
         if (result?.success) {
             setTenantSessionCookies(res, {
@@ -1042,6 +1068,29 @@ export const reparkParkedSale = async (req, res, next) => {
     }
 };
 
+export const decidePosExceptionApproval = async (req, res, next) => {
+    try {
+        const result = await decidePosExceptionApprovalUseCase({
+            approvalRequestId: req.validatedParams?.id || req.params.id,
+            decision: req.validatedParams?.decision || req.params.decision,
+            note: req.validatedData?.note || req.body?.note,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS approval decision recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createPaymentSession = async (req, res, next) => {
     try {
         const result = await createPosPaymentSessionUseCase({
@@ -1287,7 +1336,9 @@ export const voidTransaction = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
-                message: 'POS transaction voided',
+                message: result.data?.pending
+                    ? 'POS void request submitted for Back Office approval'
+                    : 'POS transaction voided',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -2043,6 +2094,53 @@ export const getAdminLocationMonitor = async (req, res, next) => {
     }
 };
 
+export const getPosBranchDirectory = async (req, res, next) => {
+    try {
+        const result = await getPosBranchDirectoryUseCase({
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const recordPosBranchViewEvent = async (req, res, next) => {
+    try {
+        const result = await recordPosBranchViewEventUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                requestId: requestId(req, res),
+                terminalId: req.get('x-pos-terminal-id') || null,
+                operatingLocationId: req.validatedData?.operating_location_id || null,
+                activeShiftId: req.validatedData?.active_shift_id || null
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const updateOnlineOrderStatus = async (req, res, next) => {
     try {
         const result = await updateOnlineOrderStatusUseCase({
@@ -2132,6 +2230,58 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectCashDineInOrder = async (req, res, next) => {
+    try {
+        const result = await collectCashDineInOrderUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash payment collected for dine-in order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const collectDineInPayment = async (req, res, next) => {
+    try {
+        const result = await collectDineInPaymentUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: posMutationUser(req),
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Dine-in payment collected.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -2487,6 +2637,32 @@ export const getDeviceStatus = async (req, res, next) => {
     }
 };
 
+export const testPrinter = async (req, res, next) => {
+    try {
+        const result = await testPosPrinterUseCase({
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS printer test page sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const printReceipt = async (req, res, next) => {
     try {
         const result = await printPosReceiptUseCase({
@@ -2672,7 +2848,9 @@ export const listTransactions = async (req, res, next) => {
 export const getTransactionById = async (req, res, next) => {
     try {
         const result = await getPosTransactionByIdUseCase({
-            posTransactionId: req.validatedParams?.id || req.params.id
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            query: req.validatedQuery || req.query || {},
+            user: req.user
         });
         await trackProductUsageFromResult({
             req,

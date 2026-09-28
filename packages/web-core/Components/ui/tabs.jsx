@@ -46,6 +46,7 @@ const TabsTrigger = React.forwardRef(({ className, value, ...props }, ref) => {
       ref={ref}
       type="button"
       onClick={() => onValueChange(value)}
+      data-state={isSelected ? 'active' : 'inactive'}
       className={cn(
         'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
         isSelected
@@ -59,14 +60,17 @@ const TabsTrigger = React.forwardRef(({ className, value, ...props }, ref) => {
 })
 TabsTrigger.displayName = 'TabsTrigger'
 
-const TabsContent = React.forwardRef(({ className, value, ...props }, ref) => {
+const TabsContent = React.forwardRef(({ className, value, forceMount = false, ...props }, ref) => {
   const { value: selectedValue } = useContext(TabsContext)
+  const isSelected = selectedValue === value
   
-  if (selectedValue !== value) return null
+  if (!forceMount && !isSelected) return null
   
   return (
     <div
       ref={ref}
+      data-state={isSelected ? 'active' : 'inactive'}
+      hidden={!isSelected}
       className={cn('mt-2 ring-offset-white focus-visible:outline-none', className)}
       {...props}
     />
@@ -75,4 +79,3 @@ const TabsContent = React.forwardRef(({ className, value, ...props }, ref) => {
 TabsContent.displayName = 'TabsContent'
 
 export { Tabs, TabsList, TabsTrigger, TabsContent }
-

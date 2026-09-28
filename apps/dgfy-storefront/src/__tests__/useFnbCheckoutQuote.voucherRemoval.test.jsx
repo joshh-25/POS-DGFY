@@ -48,6 +48,68 @@ const buildProps = (overrides = {}) => ({
 });
 
 describe('useFnbCheckoutQuote voucher removal', () => {
+  it('routes promo application with an explicit empty voucher field', async () => {
+    const props = buildProps({
+      checkoutPromoCode: '',
+      checkoutVoucherCode: 'VOUCHER10',
+    });
+    const { result } = renderHook(() => useFnbCheckoutQuote(props));
+
+    await act(async () => {
+      await result.current.handlePromoCardApply('PROMO10');
+    });
+
+    expect(props.setCheckoutPromoCode).toHaveBeenCalledWith('PROMO10');
+    expect(props.setCheckoutVoucherCode).toHaveBeenCalledWith('');
+    expect(props.requestJson).toHaveBeenCalledWith('/api/v1/store/cart/quote', expect.objectContaining({
+      body: expect.objectContaining({
+        promo_code: 'PROMO10',
+        voucher_code: '',
+      }),
+    }));
+  });
+
+  it('routes voucher application with an explicit empty promo field', async () => {
+    const props = buildProps({
+      checkoutPromoCode: 'PROMO10',
+      checkoutVoucherCode: '',
+    });
+    const { result } = renderHook(() => useFnbCheckoutQuote(props));
+
+    await act(async () => {
+      await result.current.handleVoucherCardApply('VOUCHER10');
+    });
+
+    expect(props.setCheckoutVoucherCode).toHaveBeenCalledWith('VOUCHER10');
+    expect(props.setCheckoutPromoCode).toHaveBeenCalledWith('');
+    expect(props.requestJson).toHaveBeenCalledWith('/api/v1/store/cart/quote', expect.objectContaining({
+      body: expect.objectContaining({
+        promo_code: '',
+        voucher_code: 'VOUCHER10',
+      }),
+    }));
+  });
+
+  it('removes a promo and preserves the voucher field when refreshing totals', async () => {
+    const props = buildProps({
+      checkoutPromoCode: 'PROMO10',
+      checkoutVoucherCode: 'VOUCHER10',
+    });
+    const { result } = renderHook(() => useFnbCheckoutQuote(props));
+
+    await act(async () => {
+      await result.current.handlePromoCardRemove();
+    });
+
+    expect(props.setCheckoutPromoCode).toHaveBeenCalledWith('');
+    expect(props.requestJson).toHaveBeenCalledWith('/api/v1/store/cart/quote', expect.objectContaining({
+      body: expect.objectContaining({
+        promo_code: '',
+        voucher_code: 'VOUCHER10',
+      }),
+    }));
+  });
+
   it('invalidates the discounted snapshot and requests a fresh quote without the voucher', async () => {
     const props = buildProps();
     const { result } = renderHook(() => useFnbCheckoutQuote(props));

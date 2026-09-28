@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-26
-last_reviewed: 2026-09-16
+last_reviewed: 2026-09-25
 review_by: 2026-12-26
 applies_to: architecture_decision
 topic: catalog_inventory_pos_storefront_ownership_boundaries
@@ -237,3 +237,32 @@ hold and issues Inventory's goods-issue effect. Every other workflow mode keeps 
 
 `status: amended` is set per `ARCHITECTURE_GOVERNANCE.md`; this is an amendment, not a
 revision of the original decision history.
+
+## Amendment (2026-09-25): All-Mode Online Confirmation-Time Goods-Issue
+
+The 2026-09-16 Retail-only restriction is superseded. Every online order mode now issues
+Inventory's goods-issue effect at the first successful `placed -> confirmed` transition.
+This makes confirmation the single operational point where an accepted online order claims
+stock, regardless of whether the order is pickup, delivery, scheduled, F&B, or Retail.
+
+1. Confirmation atomically records the Inventory-owned goods-issue/FIFO effects, converts the
+   active reservation, and persists `inventory_issued_at`. The row lock and evidence guard make
+   retried or concurrent confirmation requests issue stock at most once. A legacy order that
+   was confirmed before this behavior shipped still uses the completion-time fallback when its
+   `inventory_issued_at` is null.
+2. A permitted post-confirmation cancel or reject reverses the recorded goods-issue exactly once
+   for every online mode when `inventory_issued_at` exists and `inventory_reversed_at` is null.
+   Pre-confirmation cancellation/rejection only releases the reservation. Reversal remains in
+   the same transaction as the status change and fails closed if the Inventory command fails.
+3. Online fulfillment goods issues and their reversals may read the immutable historical item row
+   when the catalog item was soft-deleted after checkout. This exception is scoped to
+   `ONLINE:<orderId>:` POS goods-issue movements; ordinary manual, POS, transfer, and dispatch
+   stock operations continue to reject inactive or deleted catalog rows. Hard-deleted rows still
+   fail because the historical identity no longer exists.
+4. Boundary Rules 1-2 remain unchanged: POS and Storefront request stock effects, while
+   Inventory-owned commands record and reverse them. This is a `[default]` amendment to the
+   prior timing policy; no binding clause changes and no schema migration is required because
+   the evidence columns already exist.
+
+`status: amended` is preserved; this dated block supersedes the mode-specific timing sentences
+above without rewriting the earlier implementation history.

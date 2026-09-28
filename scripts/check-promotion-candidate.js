@@ -12,8 +12,8 @@ const DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 // Manifest schemas: v1 is the Phase 342 candidate-wide shape (frozen legacy -- still accepted
 // so in-flight/older manifests validate, but never written anymore); v2 is the #2055
 // per-app shape (per-app `release_revision` map, cosmetic `repair_seq` ordinals).
-const CANDIDATE_SCHEMAS = Object.freeze(['sku-release-candidate/v1', 'sku-release-candidate/v2']);
-const RELEASE_ORIGINS = Object.freeze(['dev', 'staging_repair']);
+const CANDIDATE_SCHEMAS = Object.freeze(['sku-release-candidate/v1', 'sku-release-candidate/v2', 'sku-release-candidate/v3']);
+const RELEASE_ORIGINS = Object.freeze(['dev', 'promotion', 'staging_repair']);
 const STATUS_VALUES = new Set([
   'created',
   'staging_soak',
@@ -136,21 +136,21 @@ function assertDevArtifacts(value) {
  * (`staging_repair`). Apps the candidate never rebuilds are absent -- they keep their
  * last-published artifact/revision unchanged and no new tag is cut for them.
  */
-function assertReleaseAppEntry(app, entry) {
+function assertReleaseAppEntry(app, entry, allowedOrigins = RELEASE_ORIGINS) {
   assert(entry && typeof entry === 'object' && !Array.isArray(entry), `release_revision.apps["${app}"] must be an object`, 'INVALID_RELEASE_APP_ENTRY');
   assert(Number.isInteger(entry.revision) && entry.revision > 0, `release_revision.apps["${app}"].revision must be a positive integer (the app's latest allocated artifact revision)`, 'INVALID_RELEASE_APP_REVISION');
   assertSha(entry.source_sha, `release_revision.apps["${app}"].source_sha`);
   assertDigest(entry.digest, `release_revision.apps["${app}"].digest`);
-  assert(RELEASE_ORIGINS.includes(entry.origin), `release_revision.apps["${app}"].origin must be one of ${RELEASE_ORIGINS.join(', ')}`, 'INVALID_RELEASE_APP_ORIGIN');
+  assert(allowedOrigins.includes(entry.origin), `release_revision.apps["${app}"].origin must be one of ${allowedOrigins.join(', ')}`, 'INVALID_RELEASE_APP_ORIGIN');
 }
 
-function assertReleaseApps(value) {
+function assertReleaseApps(value, allowedOrigins = RELEASE_ORIGINS) {
   assert(value && typeof value === 'object' && !Array.isArray(value), 'release_revision.apps must be a per-app map', 'INVALID_RELEASE_APPS');
   const apps = Object.keys(value);
   assert(apps.length > 0, 'release_revision.apps must name at least one app the candidate actually rebuilds', 'MISSING_RELEASE_APPS');
   for (const app of apps) {
     assert(APPS.includes(app), `release_revision.apps names an unrecognized app: ${app}`, 'INVALID_RELEASE_APP');
-    assertReleaseAppEntry(app, value[app]);
+    assertReleaseAppEntry(app, value[app], allowedOrigins);
   }
 }
 
@@ -159,6 +159,9 @@ function validatePromotionCandidate(manifest) {
   assert(typeof manifest.schema === 'string' && CANDIDATE_SCHEMAS.includes(manifest.schema), `Candidate manifest schema must be one of ${CANDIDATE_SCHEMAS.join(', ')}`, 'INVALID_SCHEMA');
   if (manifest.schema === 'sku-release-candidate/v2') {
     return validatePromotionCandidateV2(manifest);
+  }
+  if (manifest.schema === 'sku-release-candidate/v3') {
+    return validatePromotionCandidateV3(manifest);
   }
   return validatePromotionCandidateV1(manifest);
 }
@@ -255,7 +258,7 @@ function validatePromotionCandidateV1(manifest) {
  *     context); per-app candidate source identity still resolves via
  *     `resolveCandidateSourceShaByApp` below (unchanged -- repairs keep `apps_touched`).
  */
-function validatePromotionCandidateV2(manifest) {
+function validatePromotionCandidateV2(manifest, versionlessDev = false) {
   assert(typeof manifest.candidate_id === 'string' && CANDIDATE_ID_PATTERN.test(manifest.candidate_id), 'candidate_id must use YYYY-MM-DD-NN', 'INVALID_CANDIDATE_ID');
   assert(STATUS_VALUES.has(manifest.status), `Unsupported candidate status: ${manifest.status || '<missing>'}`, 'INVALID_STATUS');
   assertSha(manifest.source_develop_sha, 'source_develop_sha');
@@ -269,7 +272,11 @@ function validatePromotionCandidateV2(manifest) {
   assert(first.sha === manifest.source_develop_sha, 'Initial revision SHA must equal source_develop_sha', 'SOURCE_SHA_MISMATCH');
   assertCandidateBranch(first.branch, candidateId);
   assert(first.parent_sha === null, 'Initial revision parent_sha must be null', 'INVALID_INITIAL_PARENT');
-  assertDevArtifacts(first.dev_artifacts);
+  if (versionlessDev) {
+    assert(!Object.hasOwn(first, 'dev_artifacts'), 'A v3 candidate must not select DEV artifacts (dev_artifacts)', 'FORBIDDEN_DEV_ARTIFACTS');
+    assertAppsTouched(first.apps_touched, 'initial');
+  }
+  else assertDevArtifacts(first.dev_artifacts);
 
   let previousSha = first.sha;
   let repairSeq = 0;
@@ -314,7 +321,7 @@ function validatePromotionCandidateV2(manifest) {
   assert(release.source_staging_sha === manifest.staging_head_sha, 'Release branch must be cut from the recorded staging head', 'RELEASE_SOURCE_MISMATCH');
   assertReleaseCutBranch(release.branch, candidateId);
   assert(Number.isInteger(release.pr) && release.pr > 0, 'Release cut must identify its PR', 'MISSING_RELEASE_PR');
-  assertReleaseApps(release.apps);
+  assertReleaseApps(release.apps, versionlessDev ? ['promotion', 'staging_repair'] : ['dev', 'staging_repair']);
 
   return {
     candidate_id: candidateId,
@@ -328,6 +335,24 @@ function validatePromotionCandidateV2(manifest) {
 }
 
 /**
+ * #2071 versionless DEV candidate shape: the frozen develop SHA is built directly on STAGING.
+ * Initial apps_touched records which app floors were advanced at promotion start; no DEV image
+ * selection or deployment participates in the candidate. Repair and per-app release lineage
+ * retain the v2 structure, with `promotion` replacing the old DEV artifact origin.
+ */
+function validatePromotionCandidateV3(manifest) {
+  assert(manifest.schema === 'sku-release-candidate/v3', 'Candidate manifest schema must be sku-release-candidate/v3', 'INVALID_SCHEMA');
+  const result = validatePromotionCandidateV2(manifest, true);
+  const apps = manifest.release_revision && manifest.release_revision.apps;
+  if (apps) {
+    for (const [app, entry] of Object.entries(apps)) {
+      assert(entry.origin !== 'dev', `release_revision.apps["${app}"].origin must not be dev in a v3 candidate`, 'INVALID_RELEASE_APP_ORIGIN');
+    }
+  }
+  return result;
+}
+
+/**
  * #2055 (Phase 346): reads one app's release-cut lineage from a v2 manifest's per-app
  * `release_revision.apps` map. Returns `{ revision, source_sha, digest, origin }`, or
  * null when the app is absent (an app the candidate never rebuilds keeps its
@@ -335,7 +360,7 @@ function validatePromotionCandidateV2(manifest) {
  * (candidate-wide legacy -- callers use the integer `release_revision` instead).
  */
 function getAppRevision(manifest, app) {
-  if (!manifest || manifest.schema !== 'sku-release-candidate/v2') return null;
+  if (!manifest || !['sku-release-candidate/v2', 'sku-release-candidate/v3'].includes(manifest.schema)) return null;
   const apps = manifest.release_revision && manifest.release_revision.apps;
   if (!apps || typeof apps !== 'object') return null;
   return Object.hasOwn(apps, app) ? apps[app] : null;
@@ -427,6 +452,7 @@ module.exports = {
   validatePromotionCandidate,
   validatePromotionCandidateV1,
   validatePromotionCandidateV2,
+  validatePromotionCandidateV3,
   getAppRevision,
   resolveCandidateSourceShaByApp,
 };

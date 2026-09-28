@@ -184,7 +184,8 @@ describe('Food & Beverage storefront contract', () => {
     expect(businessSource).toContain('Your businesses');
     expect(businessSource).toContain('Pending invitations');
     expect(businessSource).toContain("startBusinessAction('accept'");
-    expect(customerAccountPanelHookSource()).toContain('if (!isDgfyCustomerSignedIn || accountPanel?.loading) return;');
+    expect(customerAccountPanelHookSource()).toContain('if (!isDgfyCustomerSignedIn) return;');
+    expect(customerAccountPanelHookSource()).toContain('const scopeChanged = loadedScopeRef.current !== historyScopeKey;');
   });
 
   it('shows signed-in saved addresses in F&B delivery checkout before map pinning', () => {
@@ -232,6 +233,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    const sessionCreation = submission.indexOf('const paymentSession = await createStorefrontOnlinePaymentSession');
+    const proofResetAfterSessionCreation = submission.indexOf('resetGuestCheckoutOtp?.();', sessionCreation);
+    const paymentSessionBranch = submission.indexOf('if (isStorefrontDirectPaymentSession(paymentSession))', sessionCreation);
+    expect(sessionCreation).toBeGreaterThan(-1);
+    expect(proofResetAfterSessionCreation).toBeGreaterThan(sessionCreation);
+    expect(proofResetAfterSessionCreation).toBeLessThan(paymentSessionBranch);
     expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
     expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
@@ -255,7 +262,8 @@ describe('Food & Beverage storefront contract', () => {
   it('hides cash for a customer_choice store regardless of the current election', () => {
     const checkoutRouteContainer = checkoutRouteContainerSource();
 
-    expect(checkoutRouteContainer).toContain('hideCash: downpaymentDisplay.active || isCustomerChoiceStore(selectedStore)');
+    expect(checkoutRouteContainer).toContain('hideCash: (downpaymentDisplay.active');
+    expect(checkoutRouteContainer).toContain('allowCash: isDineInOrder && allowDineInPayAtStore');
   });
 
   it('provides a development-only PayMongo sandbox confirmation control', () => {
@@ -338,9 +346,16 @@ describe('Food & Beverage storefront contract', () => {
     expect(fnbTrackingAdapterSource()).toContain('discountLabel');
     expect(fnbTrackingPayloadSource()).toContain('discount_amount: view.discountAmount');
     expect(fnbTrackingDrawerTotalsSource()).toContain('Promo / Discount');
-    expect(fnbTrackingActiveViewSource()).toContain('viewModel.discountLabel');
-    expect(fnbTrackingCompletedViewSource()).toContain('viewModel.discountLabel');
-    expect(pickupTrackingMobileViewSource()).toContain('discountLabel');
+    // The per-view `viewModel.discountLabel` marker moved into the shared tracking
+    // order-summary boundary (branch a0b0eded0): each view renders
+    // <StorefrontTrackingOrderSummary>, which maps trackingResult.discountLabel
+    // into the shared breakdown (StorefrontTrackingOrderSummary.jsx). The rendered
+    // contract is proven by StorefrontTrackingOrderSummary.test.jsx ('Weekend offer'
+    // + '- ₱10.00').
+    expect(fnbTrackingActiveViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(fnbTrackingCompletedViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(pickupTrackingMobileViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(readSource('shared/components/tracking/StorefrontTrackingOrderSummary.jsx')).toContain('discountLabel');
   });
 
   it('keeps public reservation request and registration links working', () => {

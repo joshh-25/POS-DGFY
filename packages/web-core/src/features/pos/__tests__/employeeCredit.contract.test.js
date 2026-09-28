@@ -10,9 +10,11 @@ const readPosFile = (relativePath) => fs.readFileSync(
 );
 
 const checkoutContent = readPosFile('components/POSCheckoutTerminal.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const checkoutHookContent = readPosFile('hooks/usePosTerminalViewModel.js');
 const checkoutViewContent = readPosFile('components/POSCheckoutTerminalView.jsx');
 const checkoutDialogContent = readPosFile('components/POSCheckoutConfirmDialog.jsx');
-const checkoutRenderContent = `${checkoutContent}\n${checkoutViewContent}\n${checkoutDialogContent}`;
+const checkoutRenderContent = `${checkoutContent}\n${checkoutHookContent}\n${checkoutViewContent}\n${checkoutDialogContent}`;
 const checkoutWorkflowContent = readPosFile('hooks/usePosCheckoutWorkflow.js');
 const receiptHardwareWorkflowContent = readPosFile('hooks/usePosReceiptHardwareWorkflow.js');
 const employeeCreditWorkflowContent = readPosFile('hooks/usePosEmployeeCreditWorkflow.js');
@@ -56,7 +58,9 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutRenderContent).toContain('employee_name: employeeCreditDiscountName');
     expect(checkoutRenderContent).toContain('employee_id: employeeCreditDiscountId');
     expect(checkoutContent).not.toContain('employeeCreditBalance >= cartTotal');
-    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+    // The confirm gate grew an existing-order non-cash confirmation clause;
+    // employee-credit tender behavior is unchanged.
+    expect(checkoutRenderContent).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');
@@ -70,6 +74,9 @@ describe('Employee Credit POS contract', () => {
     expect(employeeCreditPaymentContent).toContain('Outstanding after sale');
     expect(employeeCreditPaymentContent).toContain('>Branch</span>');
     expect(employeeCreditPaymentContent).toContain('>Current outstanding</span>');
+    expect(employeeCreditPaymentContent).toContain('>Charge amount</span>');
+    expect(employeeCreditPaymentContent).toContain('>Employee</span>');
+    expect(employeeCreditPaymentContent).toContain('>Employee ID</span>');
     expect(employeeCreditPaymentContent).not.toContain('Select an employee. Eligibility is validated automatically');
     expect(employeeCreditPaymentContent).not.toContain('Eligible. This sale will be added to the employee outstanding balance.');
     expect(employeeCreditPaymentContent).not.toContain('Full Employee Credit payment only.');

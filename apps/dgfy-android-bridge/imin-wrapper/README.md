@@ -14,7 +14,59 @@ This is a minimal Android WebView wrapper for running the hosted DGFY POS URL on
   - `window.iMinBridge.printReceiptWithLogoAsync(...)` for non-blocking branded receipts
   - `window.iMinBridge.printReceiptAsync(...)` for non-blocking text reports/order tickets
   - `window.iMinBridge.openCashDrawerAsync(...)` for non-blocking drawer commands
+- Exposes an origin-bound device-proof channel only to the flavor's live POS
+  origin: `window.iMinDeviceProof`
 - Provides a stub `DrawerController` where the iMin SDK call will go
+
+## Device proof channel
+
+Phase 347 adds a per-install ES256 key in Android Keystore. The private key is
+never exposed to JavaScript, stored in preferences, included in backup data, or
+sent to the API. The public enrollment payload reports `security_level`,
+`hardware_backed`, and `attestation_status: "not_requested"`; attestation is
+not claimed until it is validated on the target iMin model.
+
+The message channel is available only in the main frame at the active flavor's
+exact live POS origin. Local and custom origin overrides intentionally do not
+receive it. The next POS integration phase can use this contract:
+
+```js
+function requestDeviceProof(message) {
+  return new Promise((resolve, reject) => {
+    const channel = window.iMinDeviceProof;
+    if (!channel) return reject(new Error('iMin device proof is unavailable'));
+    const id = crypto.randomUUID();
+    const onMessage = (event) => {
+      let response;
+      try { response = JSON.parse(event.data); } catch { return; }
+      if (response.id !== id) return;
+      channel.removeEventListener('message', onMessage);
+      response.success ? resolve(response.data) : reject(new Error(response.message));
+    };
+    channel.addEventListener('message', onMessage);
+    channel.postMessage(JSON.stringify({ id, ...message }));
+  });
+}
+
+const identity = await requestDeviceProof({ type: 'get_identity' });
+// POST /pos/terminal/devices/activate with identity.device_id and
+// identity.public_key, then notify the wrapper after a successful response:
+await requestDeviceProof({ type: 'mark_enrollment_complete' });
+
+const signed = await requestDeviceProof({
+  type: 'sign',
+  request: {
+    tenant_id, terminal_id, location_id, device_id: identity.device_id,
+    purpose: 'request', session_id, challenge,
+    method: 'POST', path: '/api/v1/pos/checkouts', body: checkoutBody
+  }
+});
+```
+
+The POS service must issue a one-use challenge for the exact method/path,
+send `signed.signature` in the proof headers, and discard it after the request.
+The wrapper rejects unsupported fields and non-POS paths; the API remains the
+final authority for enrollment, binding, expiry, and replay consumption.
 
 ## Current live routing
 

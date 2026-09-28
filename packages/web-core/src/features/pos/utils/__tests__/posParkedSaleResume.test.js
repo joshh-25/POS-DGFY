@@ -4,6 +4,7 @@ import {
     formatParkedSaleDisplayName,
     getParkedSaleCatalogLookupQueries,
     mergeParkedSaleCatalogResults,
+    isParkedSaleOriginalLine,
     validateParkedSaleResume
 } from '../posParkedSaleResume.js';
 
@@ -37,10 +38,21 @@ const parkedSale = {
 };
 
 describe('POS parked-sale resume validation', () => {
-    it('shows the customer or order name with the short ID without changing the stored reference', () => {
-        expect(formatParkedSaleDisplayName(parkedSale)).toBe('Maria Santos · Parked Sale #17');
+    it('recognizes an original line after draft hydration rebuilds its line reference', () => {
+        expect(isParkedSaleOriginalLine({
+            line_key: 'rebuilt-line-7',
+            line_ref: 'rebuilt-ref-7',
+            item_id: parkedSale.snapshot.lines[0].item_id,
+            sale_price: parkedSale.snapshot.lines[0].sale_price,
+            course: parkedSale.snapshot.lines[0].course,
+            line_modifiers: parkedSale.snapshot.lines[0].line_modifiers
+        }, parkedSale)).toBe(true);
+    });
+
+    it('shows the customer or order name without exposing the parked-sale number', () => {
+        expect(formatParkedSaleDisplayName(parkedSale)).toBe('Maria Santos');
         expect(parkedSale.park_reference).toBe('PARK-ABC123');
-        expect(formatParkedSaleDisplayName({ pos_parked_sale_id: 18, snapshot: {} })).toBe('Parked Sale #18');
+        expect(formatParkedSaleDisplayName({ pos_parked_sale_id: 18, snapshot: {} })).toBe('Parked Sale');
         expect(formatParkedSaleDisplayName({})).toBe('Parked Sale');
     });
 
@@ -60,9 +72,40 @@ describe('POS parked-sale resume validation', () => {
                 item_name: 'Coffee',
                 quantity: 2,
                 sale_price: 125,
-                vat_type: 'vatable'
+                vat_type: 'vatable',
+                parked_snapshot_line: true,
+                parked_original_quantity: 2,
+                parked_line_can_increase: true,
+                parked_line_price_changed: false,
+                parked_line_item_missing: false
             })
         ]));
+    });
+
+    it('marks a resumed line as locked for quantity additions after price drift', () => {
+        const lines = buildResumedCartLines({
+            parkedSale,
+            catalog: [{ ...catalog[0], default_sale_price: 150 }]
+        });
+
+        expect(lines[0]).toEqual(expect.objectContaining({
+            parked_snapshot_line: true,
+            parked_original_quantity: 2,
+            parked_line_price_changed: true,
+            parked_line_can_increase: false,
+            parked_line_item_missing: false
+        }));
+    });
+
+    it('marks a resumed line as unavailable when the catalog item is missing', () => {
+        const lines = buildResumedCartLines({ parkedSale, catalog: [] });
+
+        expect(lines[0]).toEqual(expect.objectContaining({
+            parked_snapshot_line: true,
+            parked_original_quantity: 2,
+            parked_line_item_missing: true,
+            parked_line_can_increase: false
+        }));
     });
 
     it('allows an Always Available item to resume with zero stock', () => {
@@ -219,6 +262,51 @@ describe('POS parked-sale resume validation', () => {
         expect(validation.conflicts.join(' ')).toContain('Removed item is no longer available');
     });
 
+    it('downgrades price, stock, and missing-catalog drift to payable snapshot warnings', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    lines: [{
+                        ...parkedSale.snapshot.lines[0],
+                        quantity: 10,
+                        base_sale_price: 100,
+                        sale_price: 100
+                    }, {
+                        item_id: 999,
+                        item_name: 'Removed item',
+                        quantity: 1,
+                        sale_price: 10,
+                        base_sale_price: 10
+                    }]
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.conflicts).toEqual([]);
+        expect(validation.warnings.join(' ')).toContain('Coffee no longer has enough stock');
+        expect(validation.warnings.join(' ')).toContain('saved price will be honored');
+        expect(validation.warnings.join(' ')).toContain('Removed item is no longer available');
+    });
+
+    it('downgrades an invalid current catalog price to a payable snapshot warning', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: [{ ...catalog[0], default_sale_price: null }],
+            allowedOrderMethods: ['takeout'],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.conflicts).toEqual([]);
+        expect(validation.warnings.join(' ')).toContain('parked snapshot price will be honored');
+    });
+
     it('blocks a parked order method that the active workflow no longer allows', () => {
         const validation = validateParkedSaleResume({
             parkedSale,
@@ -228,5 +316,76 @@ describe('POS parked-sale resume validation', () => {
 
         expect(validation.ok).toBe(false);
         expect(validation.conflicts[0]).toContain('Order method "takeout" is no longer available');
+    });
+
+    it('recognizes a migrated legacy profile and requires the cashier to reselect the approved rule', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    discount_context: {
+                        selected_profile: {
+                            name: 'PWD',
+                            percentage: 15
+                        }
+                    }
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            discountRules: [{
+                discount_rule_id: 31,
+                discount_key: 'custom:31',
+                name: 'PWD',
+                type: 'custom',
+                method: 'percentage',
+                percentage: 15,
+                is_enabled: true,
+                is_approved: true
+            }]
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.warnings.join(' ')).toContain('was migrated');
+        expect(validation.warnings.join(' ')).toContain('reselect the current approved rule');
+    });
+
+    it('blocks an applied discount when its current configurable rule is missing or changed', () => {
+        const validation = validateParkedSaleResume({
+            parkedSale: {
+                ...parkedSale,
+                snapshot: {
+                    ...parkedSale.snapshot,
+                    discount_context: {
+                        applied: {
+                            type: 'custom',
+                            rule_id: 41,
+                            discount_key: 'custom:41',
+                            label: 'Employee Discount',
+                            method: 'percentage',
+                            rate: 12,
+                            amount: 15
+                        }
+                    }
+                }
+            },
+            catalog,
+            allowedOrderMethods: ['takeout'],
+            discountRules: [{
+                discount_rule_id: 41,
+                discount_key: 'custom:41',
+                name: 'Employee Discount',
+                type: 'custom',
+                method: 'percentage',
+                percentage: 10,
+                is_enabled: true,
+                is_approved: true
+            }],
+            historicalSnapshotPolicy: 'warn'
+        });
+
+        expect(validation.ok).toBe(false);
+        expect(validation.conflicts.join(' ')).toContain('changed after this sale was parked');
     });
 });

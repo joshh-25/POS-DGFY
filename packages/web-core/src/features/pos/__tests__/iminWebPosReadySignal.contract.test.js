@@ -6,7 +6,12 @@ import { describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
 const terminalPageLayoutSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalPageLayout.jsx'), 'utf8');
-const posCheckoutTerminalSource = fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx'), 'utf8');
+const posCheckoutTerminalSource = [
+  fs.readFileSync(path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx'), 'utf8'),
+  // Staging repair 2026-09-28-01 (#2110) extracted the shell body (including
+  // the mount effect) to usePosTerminalViewModel.
+  fs.readFileSync(path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js'), 'utf8'),
+].join('\n');
 
 // The iMin Android wrapper shows a full-screen "POS startup timeout" overlay
 // (WebPosActivity.kt, READY_SIGNAL_FALLBACK_MS = 10_000L) unless the web app

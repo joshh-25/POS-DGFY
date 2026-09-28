@@ -11,7 +11,7 @@ describe('runtimeConfig utilities', () => {
       __DGFY_POS_RUNTIME__: {
         isDesktopShell: true,
         backendOrigin: 'http://192.168.1.20:5001',
-        companyToken: 'token-original',
+        companyToken: 'test-company-token',
         terminalId: 'COUNTER-01',
         appSurface: 'pos'
       }
@@ -36,5 +36,42 @@ describe('runtimeConfig utilities', () => {
 
     expect(resolveApiBaseUrl({ VITE_API_URL: 'https://api.dgfy.ph/api/v1' }, location)).toBe('https://api.dgfy.ph/api/v1');
     expect(resolveAssetOrigin({ VITE_API_BASE_URL: 'https://api.dgfy.ph' }, location.origin)).toBe('https://api.dgfy.ph');
+  });
+
+  it('normalizes absolute API paths and rejects non-http configuration', () => {
+    const location = {
+      origin: 'https://pos.dgfy.ph',
+      hostname: 'pos.dgfy.ph'
+    };
+
+    expect(resolveApiBaseUrl({ VITE_API_URL: 'https://api.dgfy.ph/api/v1///' }, location)).toBe('https://api.dgfy.ph/api/v1');
+    expect(resolveApiBaseUrl({ VITE_API_URL: 'javascript:alert(1)' }, location)).toBe('/api/v1');
+    expect(resolveApiBaseUrl({ VITE_API_URL: '//unexpected.example/api/v1' }, location)).toBe('/api/v1');
+    expect(resolveAssetOrigin({ VITE_ASSET_BASE_URL: 'ftp://cdn.example.test' }, location.origin)).toBe('');
+  });
+
+  it('fails closed when a desktop runtime supplies an invalid origin', () => {
+    globalThis.window = {
+      location: {
+        origin: 'https://pos.dgfy.ph',
+        hostname: 'pos.dgfy.ph'
+      },
+      __DGFY_POS_RUNTIME__: {
+        isDesktopShell: true,
+        backendOrigin: 'javascript:alert(1)',
+        apiBaseUrl: '//unexpected.example/api/v1',
+        assetBaseUrl: 'ftp://cdn.example.test'
+      }
+    };
+
+    const runtime = getRuntimeConfig({}, globalThis.window.location);
+
+    expect(runtime.isDesktopShell).toBe(true);
+    expect(runtime.backendOrigin).toBe('');
+    expect(runtime.apiBaseUrl).toBe('');
+    expect(runtime.assetBaseUrl).toBe('');
+    expect(resolveApiBaseUrl({}, globalThis.window.location)).toBe('/api/v1');
+
+    delete globalThis.window;
   });
 });

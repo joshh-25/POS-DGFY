@@ -13,7 +13,6 @@ import VersionBadge from '../../../packages/web-core/src/components/common/Versi
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
-import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 import {
   getPosUpdateSafetyState,
   hasCheckoutOwnedSafetyReason,
@@ -33,6 +32,7 @@ import {
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
 import '../../../packages/web-core/src/index.css';
+import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 
 // Keep POS-only body portals (dialogs, menus, and notifications) on the same
 // typography stack as the shell, including routes that render before the
@@ -102,9 +102,12 @@ function SkupervisorSalesRedirect() {
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`;
 const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_AUTO_LOGIN === 'true';
-const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || 'token-original').trim();
-const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
-const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
+const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || '').trim();
+const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || '').trim();
+const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || '').trim();
+const hasDevAutoLoginCredentials = Boolean(
+  devAutoLoginCompanyToken && devAutoLoginEmail && devAutoLoginPassword
+);
 const POS_DEV_SERVICE_WORKER_RESET_MARKER = 'dgfy_pos_dev_service_worker_reset_v1';
 const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
 const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
@@ -348,10 +351,7 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
-                  <Route
-                    path="/sales"
-                    element={<SkupervisorSalesRedirect />}
-                  />
+                  <Route path="/sales" element={<SkupervisorSalesRedirect />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />
@@ -369,7 +369,7 @@ const mountApp = () => {
 const bootstrapPosApp = async () => {
   if (await resetStaleDevelopmentServiceWorkers()) return;
 
-  if (enableDevAutoLogin) {
+  if (enableDevAutoLogin && hasDevAutoLoginCredentials) {
     try {
       window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
 

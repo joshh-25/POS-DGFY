@@ -36,6 +36,12 @@ const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
+const devAutoLoginEmail = String(import.meta.env.VITE_DEV_AUTO_LOGIN_EMAIL || '').trim()
+const devAutoLoginPassword = String(import.meta.env.VITE_DEV_AUTO_LOGIN_PASSWORD || '').trim()
+const devAutoLoginCompanyToken = String(import.meta.env.VITE_DEV_AUTO_LOGIN_COMPANY_TOKEN || '').trim()
+const hasDevAutoLoginCredentials = Boolean(
+  devAutoLoginEmail && devAutoLoginPassword && devAutoLoginCompanyToken
+)
 
 // backendOrigin is resolved at runtime from the desktop preload bridge, so
 // it is invisible to the build-time-only trace-propagation resolver. Without
@@ -54,6 +60,7 @@ initBrowserAnalytics({ surface: runtimeConfig.appSurface || 'skupervisor' })
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false
   if (!devAutoLoginEnabled) return false
+  if (!hasDevAutoLoginCredentials) return false
   if (typeof window === 'undefined') return false
   const pathname = String(window.location?.pathname || '/')
   if (pathname === '/terminal' || pathname.startsWith('/terminal/')) return false
@@ -408,20 +415,17 @@ const mountApp = () => {
 if (shouldRunDevAutoLogin()) {
   (async () => {
     try {
-      const AUTO_EMAIL = 'admin@test.com';
-      const AUTO_PASSWORD = 'Admin123!';
-      const COMPANY_TOKEN = 'token-original';
       const TERMINAL_ID = 'COUNTER-01';
 
       const session = await loginTenantSession({
-        email: AUTO_EMAIL,
-        password: AUTO_PASSWORD,
-        companyToken: COMPANY_TOKEN
+        email: devAutoLoginEmail,
+        password: devAutoLoginPassword,
+        companyToken: devAutoLoginCompanyToken
       });
       if (session?.token) {
         localStorage.setItem('pos_terminal_identity_v1', TERMINAL_ID);
       }
-    } catch (e) {
+    } catch {
       // best-effort only; do not block app mount
       // console.warn('Auto-login failed', e);
     } finally {

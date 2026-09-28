@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-09
+last_reviewed: 2026-09-23
 applies_to: services, storefront, catalog
 topic: services_fulfillment_profiles
 ---
@@ -133,8 +133,8 @@ there:
 **Naming collision to watch:** `payment_timing` means two different things
 in this codebase. On `ServiceBooking` it is `prepaid`/`postpaid`/`deposit`
 (when the customer pays, relative to the appointment). On `PosTransaction`
-it is `upfront`/`on_pickup`/`on_delivery` (when the customer pays, relative
-to order fulfillment). Any future work spanning both must disambiguate
+it is `upfront`/`on_pickup`/`on_delivery`/`on_dine_in` (when the customer pays,
+relative to order fulfillment; `on_dine_in` is F&B-only). Any future work spanning both must disambiguate
 explicitly rather than assume one vocabulary.
 
 ## Roadmap (not authorized by this doc or ADR 0057 — future work, gated behind its own design)

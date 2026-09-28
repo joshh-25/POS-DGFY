@@ -5,6 +5,7 @@ import {
   assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
   buildTenantSchemaTableRepairSql,
+  buildTenantSchemaIndexRepairSql,
   createSyncFailureRecord,
   getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
@@ -30,6 +31,15 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders).toHaveProperty('sort_order');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.item_folders.sort_order.sql)
       .toContain('`sort_order` INTEGER NOT NULL DEFAULT 0');
+  });
+
+  it('registers the Dine-in payment policy and handover timing schema', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations).toHaveProperty('allow_dine_in_pay_at_store');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.tenant_locations.allow_dine_in_pay_at_store.sql)
+      .toContain('`allow_dine_in_pay_at_store` TINYINT(1) NOT NULL DEFAULT 0');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions).toHaveProperty('payment_timing');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_transactions.payment_timing.sql)
+      .toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
   });
 
   it('backfills existing category order deterministically', async () => {
@@ -75,6 +85,40 @@ describe('tenant schema sync script contracts', () => {
   it('publishes a stable checksum for the complete tenant capability registry', () => {
     expect(getTenantSchemaCapabilityChecksum()).toMatch(/^[a-f0-9]{64}$/);
     expect(getTenantSchemaCapabilityChecksum()).toBe(getTenantSchemaCapabilityChecksum());
+  });
+
+  it('tracks parked-sale cancellation ENUMs in the tenant drift registry', () => {
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_parked_sales.status.enumValues)
+      .toEqual(['parked', 'claimed', 'completed', 'cancel_pending', 'cancelled']);
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.business_admin_approval_requests.action_type.enumValues)
+      .toEqual(['pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel']);
+
+    const repairs = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_parked_sales', column: 'status' },
+      { table: 'business_admin_approval_requests', column: 'action_type' }
+    ]);
+    expect(repairs).toHaveLength(2);
+    expect(repairs[0].sql).toContain("ENUM('parked','claimed','completed','cancel_pending','cancelled')");
+    expect(repairs[1].sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
+  });
+
+  it('repairs the tenant-local Business Admin approval table and indexes', () => {
+    const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
+    expect(table.sql).toContain('business_admin_approval_requests');
+    expect(table.sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
+    expect(table.sql).toContain('FOREIGN KEY (`requested_by`) REFERENCES `users` (`user_id`)');
+
+    const tableRepairs = buildTenantSchemaTableRepairSql(['business_admin_approval_requests']);
+    expect(tableRepairs).toEqual([{ table: 'business_admin_approval_requests', sql: table.sql }]);
+
+    const indexRepairs = buildTenantSchemaIndexRepairSql([
+      { table: 'business_admin_approval_requests', indexName: 'uq_business_admin_approval_action_idempotency' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_status_created' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_entity_created' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_requested_created' }
+    ]);
+    expect(indexRepairs).toHaveLength(4);
+    expect(indexRepairs[0].sql).toContain('UNIQUE INDEX `uq_business_admin_approval_action_idempotency`');
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
@@ -232,6 +276,8 @@ describe('tenant schema sync script contracts', () => {
   it('registers shared parked-sale ownership columns and origin backfill', async () => {
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_cashier_id');
     expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('origin_shift_id');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_effects');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.pos_parked_sales).toHaveProperty('inventory_deducted_at');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
       .toHaveProperty('idx_pos_parked_sales_origin_cashier_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_parked_sales)
@@ -250,6 +296,7 @@ describe('tenant schema sync script contracts', () => {
 
   it('registers manual delivery assignment tables and repairs for older tenants', () => {
     expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('delivery_personnel');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_personnel).toHaveProperty('user_id');
 
     const [tableRepair] = buildTenantSchemaTableRepairSql(['delivery_personnel']);
     expect(tableRepair.sql).toContain('CREATE TABLE `delivery_personnel`');
@@ -263,8 +310,62 @@ describe('tenant schema sync script contracts', () => {
     expect(columnRepairs[0].sql).toContain('ADD COLUMN `delivery_personnel_id`');
     expect(columnRepairs[1].sql).toContain('ADD COLUMN `delivery_personnel_name`');
     expect(columnRepairs[2].sql).toContain('ADD COLUMN `assigned_shift_id`');
+    const [userLinkRepair] = buildTenantSchemaRepairSql([
+      { table: 'delivery_personnel', column: 'user_id' }
+    ]);
+    expect(userLinkRepair.sql).toContain('ADD COLUMN `user_id` INT NULL');
+    expect(userLinkRepair.sql).toContain('delivery_personnel_user_id_fk');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_personnel)
+      .toHaveProperty('delivery_personnel_user_id_idx');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_personnel_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
+  });
+
+  it('registers the Phase 260 delivery-run date-range contract for tenant repair', () => {
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs).toHaveProperty('scheduled_date_end');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs).toHaveProperty('transportation_label');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs).toHaveProperty('loading_confirmed_by');
+    expect(REQUIRED_TENANT_SCHEMA_COLUMNS.delivery_runs).toHaveProperty('loading_confirmed_at');
+
+    const [columnRepair] = buildTenantSchemaRepairSql([
+      { table: 'delivery_runs', column: 'scheduled_date_end' }
+    ]);
+    expect(columnRepair.sql).toContain('ADD COLUMN `scheduled_date_end` DATE NULL');
+
+    const [tableRepair] = buildTenantSchemaTableRepairSql(['delivery_runs']);
+    expect(tableRepair.sql).toContain('`scheduled_date_end` date DEFAULT NULL');
+    expect(tableRepair.sql).toContain('idx_delivery_runs_status_scheduled_range');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_runs)
+      .toHaveProperty('idx_delivery_runs_status_scheduled_range');
+
+    const deliveryRunRepairs = buildTenantSchemaRepairSql([
+      { table: 'delivery_runs', column: 'transportation_label' },
+      { table: 'delivery_runs', column: 'loading_confirmed_by' },
+      { table: 'delivery_runs', column: 'loading_confirmed_at' }
+    ]);
+    expect(deliveryRunRepairs[0].sql).toContain('ADD COLUMN `transportation_label` VARCHAR(120) NULL');
+    expect(deliveryRunRepairs[1].sql).toContain('fk_delivery_runs_loading_confirmed_by');
+    expect(deliveryRunRepairs[2].sql).toContain('ADD COLUMN `loading_confirmed_at` DATETIME NULL');
+  });
+
+  it('registers the complete workflow delivery-fee audit contract', () => {
+    const columns = [
+      'from_store_delivery_fee_mode',
+      'to_store_delivery_fee_mode',
+      'from_store_delivery_fee_calc',
+      'to_store_delivery_fee_calc'
+    ];
+
+    for (const column of columns) {
+      expect(REQUIRED_TENANT_SCHEMA_COLUMNS.workflow_mode_change_log).toHaveProperty(column);
+    }
+
+    const repairs = buildTenantSchemaRepairSql(
+      columns.map((column) => ({ table: 'workflow_mode_change_log', column }))
+    );
+    expect(repairs).toHaveLength(columns.length);
+    expect(repairs[0].sql).toContain('VARCHAR(64) NULL');
+    expect(repairs[2].sql).toContain('JSON NULL');
   });
 
   it('registers online inventory reservation tables in dependency order', () => {
@@ -548,6 +649,17 @@ describe('tenant schema sync script contracts', () => {
     expect(repair.sql).toContain("'partially_paid'");
   });
 
+  it('registers the on_dine_in payment_timing enum value for tenant repair', () => {
+    const contract = REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_transactions.payment_timing;
+    expect(contract.enumValues).toEqual(expect.arrayContaining(['on_dine_in']));
+
+    const [repair] = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_transactions', column: 'payment_timing', missing_values: ['on_dine_in'] }
+    ]);
+
+    expect(repair.sql).toContain("ENUM('upfront','on_pickup','on_delivery','on_dine_in')");
+  });
+
   it('registers pos_transactions.amount_paid and balance_due column repairs', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'pos_transactions', column: 'amount_paid' },
@@ -567,6 +679,34 @@ describe('tenant schema sync script contracts', () => {
     expect(repair.sql).toContain("`kind` enum('downpayment','balance','refund','forfeiture')");
     expect(repair.sql).toContain(
       'CONSTRAINT `pos_order_payments_ibfk_1` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`)'
+    );
+  });
+
+  it('registers the service-option tables in foreign-key dependency order', () => {
+    const serviceOptionTables = [
+      'service_option_groups',
+      'service_options',
+      'service_item_option_groups',
+      'service_booking_lines',
+      'service_booking_line_options'
+    ];
+    const declared = Object.keys(REQUIRED_TENANT_SCHEMA_TABLES);
+    const positions = serviceOptionTables.map((table) => declared.indexOf(table));
+
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+
+    const repairs = buildTenantSchemaTableRepairSql(serviceOptionTables);
+    expect(repairs).toHaveLength(serviceOptionTables.length);
+    expect(repairs[0].sql).toContain('CREATE TABLE `service_option_groups`');
+    expect(repairs[1].sql).toContain(
+      'REFERENCES `service_option_groups` (`group_id`) ON DELETE CASCADE ON UPDATE CASCADE'
+    );
+    expect(repairs[2].sql).toContain(
+      'REFERENCES `service_option_groups` (`group_id`) ON DELETE CASCADE ON UPDATE CASCADE'
+    );
+    expect(repairs[4].sql).toContain(
+      'REFERENCES `service_booking_lines` (`booking_line_id`) ON DELETE CASCADE ON UPDATE CASCADE'
     );
   });
 

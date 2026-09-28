@@ -9,7 +9,10 @@
 // the backend is still the source of truth and re-validates on every write; this only avoids a
 // round trip for an obviously-invalid form.
 
+import { MIN_DELIVERY_INCREMENT_KM } from '@sieitzz/shared-constants/deliveryFee';
+
 export const DELIVERY_FEE_MODE_OPTIONS = Object.freeze(['fixed', 'calculated', 'free']);
+export { MIN_DELIVERY_INCREMENT_KM };
 
 export const DEFAULT_DELIVERY_FEE_CALC = Object.freeze({
   min_fee: '',
@@ -63,7 +66,7 @@ export const serializeDeliveryFeeCalcForSave = (calc) => {
   const minFee = parseNullableNumber(calc.min_fee, { min: 0, precision: 4 });
   const includedKm = parseNullableNumber(calc.included_km, { min: 0, precision: 4 });
   const perKmRate = parseNullableNumber(calc.per_km_rate, { min: 0, precision: 4 });
-  const incrementKm = parseNullableNumber(calc.increment_km, { min: 0.0001, precision: 4 });
+  const incrementKm = parseNullableNumber(calc.increment_km, { min: MIN_DELIVERY_INCREMENT_KM, precision: 4 });
   const maxDistanceKm = parseNullableNumber(calc.max_distance_km, { min: 0.0001, precision: 4 });
 
   if ([minFee, includedKm, perKmRate, incrementKm, maxDistanceKm].some((value) => value == null)) {
@@ -82,6 +85,7 @@ export const serializeDeliveryFeeCalcForSave = (calc) => {
 
 export default {
   DELIVERY_FEE_MODE_OPTIONS,
+  MIN_DELIVERY_INCREMENT_KM,
   DEFAULT_DELIVERY_FEE_CALC,
   normalizeDeliveryFeeMode,
   normalizeDeliveryFeeCalcSettings,

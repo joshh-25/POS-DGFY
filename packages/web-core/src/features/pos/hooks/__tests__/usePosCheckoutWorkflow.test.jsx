@@ -15,7 +15,6 @@ import {
     markTerminalOperationReplayed,
     markTerminalOperationReplaying
 } from '../../services/terminalOperationQueueStore.js';
-import { clearPosSplitPaymentSessionPointer } from '../../services/posSplitPaymentSessionStore.js';
 import { posToast } from '@/src/utils/iminRuntimeFeedback.js';
 import { usePosCheckoutWorkflow } from '../usePosCheckoutWorkflow.js';
 import { POS_HARDWARE_CAPABILITIES } from '../../hardware/posHardwareContract.js';
@@ -43,10 +42,6 @@ vi.mock('../../services/terminalOperationQueueStore.js', () => ({
     markTerminalOperationReplayed: vi.fn(),
     markTerminalOperationReplaying: vi.fn(),
     markTerminalOperationRetryScheduled: vi.fn()
-}));
-
-vi.mock('../../services/posSplitPaymentSessionStore.js', () => ({
-    clearPosSplitPaymentSessionPointer: vi.fn()
 }));
 
 vi.mock('../../services/posCartDraftStore.js', () => ({
@@ -159,7 +154,6 @@ const createBaseProps = (overrides = {}) => ({
     setCurrentViewMode: vi.fn(),
     itemDiscountApprovalRef: { current: new Map() },
     discountApprovalRef: { current: null },
-    splitPaymentStorageScopeKey: 'tenant:1:9:COUNTER-01:4:2',
     loadCatalog: vi.fn(),
     loadHistory: vi.fn(),
     onCheckoutCompleted: vi.fn(),
@@ -221,6 +215,50 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it('marks a snapshot-matching parked line as original when its client marker is missing', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 27,
+            snapshot: {
+                lines: [{
+                    line_key: 'line-7',
+                    item_id: 7,
+                    item_name: 'Coffee',
+                    quantity: 1,
+                    sale_price: 100
+                }]
+            },
+            removed_line_reasons: [{
+                line_ref: 'line-8',
+                item_id: 8,
+                reason: 'Customer removed item'
+            }]
+        };
+        const { result } = renderCheckout({
+            activeParkedSale: parkedSale,
+            safeCart: [{
+                line_key: 'line-7',
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                sale_price: 100,
+                vat_type: 'vatable'
+            }]
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(createPosCheckout).toHaveBeenCalledWith(expect.objectContaining({
+            parked_sale_id: 27,
+            removed_line_reasons: parkedSale.removed_line_reasons,
+            lines: [expect.objectContaining({
+                line_ref: 'line-7',
+                parked_snapshot_line: true
+            })]
+        }));
+    });
+
     it('blocks checkout and explains when a changed price has no override reason', async () => {
         const validationMessage = 'Enter a price override reason of at least 3 characters for Coffee before checkout.';
         const { result, props } = renderCheckout({
@@ -280,6 +318,32 @@ describe('usePosCheckoutWorkflow', () => {
             'Enter a price override reason of at least 3 characters before checkout.'
         );
         expect(posToast.error).not.toHaveBeenCalledWith('Price override reason is required for item 7');
+    });
+
+    it('keeps the checkout draft open and requests reauthentication when authority expires', async () => {
+        const onCheckoutAuthorityInvalid = vi.fn();
+        createPosCheckout.mockRejectedValueOnce({
+            response: {
+                status: 403,
+                data: {
+                    details: { reason_code: 'POS_OPERATOR_AUTHORITY_INVALID' },
+                    message: 'The active cashier authority is no longer valid for this checkout.'
+                }
+            }
+        });
+        const { result, props } = renderCheckout({ onCheckoutAuthorityInvalid });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(onCheckoutAuthorityInvalid).toHaveBeenCalledTimes(1);
+        expect(posToast.error).toHaveBeenCalledWith(
+            'POS authorization expired. Your checkout is still open. Verify the POS account to continue.'
+        );
+        expect(props.setCart).not.toHaveBeenCalledWith([]);
+        expect(props.setCheckoutConfirmModalOpen).not.toHaveBeenCalledWith(false);
+        expect(props.setLastReceipt).not.toHaveBeenCalled();
     });
 
     it('clears only discount state when a discount is removed', () => {
@@ -536,7 +600,8 @@ describe('usePosCheckoutWorkflow', () => {
             ok: true,
             resumeContext: {
                 parkedSaleId: 27,
-                catalog: expect.any(Array)
+                catalog: expect.any(Array),
+                warnings: []
             }
         });
 
@@ -544,8 +609,15 @@ describe('usePosCheckoutWorkflow', () => {
             await result.current.handleParkedSaleClaimed(parkedSale, 'resume', validation.resumeContext);
         });
         expect(props.setCart).toHaveBeenCalledWith([
-            expect.objectContaining({ item_id: 7, item_name: 'Coffee', quantity: 1 })
+            expect.objectContaining({
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                parked_snapshot_line: true,
+                parked_original_quantity: 1
+            })
         ]);
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale. Add items as needed, then checkout.');
     });
 
     it('rejects local parked-sale blockers before fetching the catalog', async () => {
@@ -603,7 +675,7 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
-    it('does not fall back to stale catalog data when a refreshed parked item is no longer returned', async () => {
+    it('keeps a parked line payable when a refreshed catalog no longer returns it', async () => {
         fetchPosCatalog.mockResolvedValue([]);
         const { result } = renderCheckout({
             safeCart: [],
@@ -634,8 +706,52 @@ describe('usePosCheckoutWorkflow', () => {
             }, 'resume');
         });
 
-        expect(validation.ok).toBe(false);
-        expect(validation.message).toContain('Coffee is no longer available');
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Coffee is no longer available');
+    });
+
+    it('opens Pay with the saved parked total when a parked item was removed from the catalog', async () => {
+        fetchPosCatalog.mockResolvedValue([]);
+        const { result, props } = renderCheckout({ safeCart: [], cartTotal: 0 });
+        const parkedSale = {
+            pos_parked_sale_id: 30,
+            total_amount: 435,
+            snapshot: {
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 104,
+                    item_name: 'Performance Item 030',
+                    sku_code: 'PERF-030',
+                    quantity: 1,
+                    base_sale_price: 435,
+                    sale_price: 435
+                }]
+            }
+        };
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume(parkedSale, 'pay');
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Performance Item 030 is no longer available');
+
+        await act(async () => {
+            await result.current.handleParkedSaleClaimed(parkedSale, 'pay', validation.resumeContext);
+        });
+
+        expect(props.setCart).toHaveBeenCalledWith([
+            expect.objectContaining({
+                item_id: 104,
+                item_name: 'Performance Item 030',
+                sale_price: 435,
+                parked_snapshot_line: true,
+                parked_line_item_missing: true
+            })
+        ]);
+        expect(props.setCustomerPaymentAmountInput).toHaveBeenCalledWith('435.00');
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(true);
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {
@@ -662,7 +778,7 @@ describe('usePosCheckoutWorkflow', () => {
         expect(markTerminalOperationReplayed).toHaveBeenCalledWith('offline-checkout-17');
     });
 
-    it('cancels a split-payment session through the service and clears the local pointer', async () => {
+    it('cancels a split-payment session through the service and clears checkout state', async () => {
         const { result, props } = renderCheckout({
             splitPaymentSession: { pos_payment_session_id: 22 },
             splitPaymentSuccessfulAllocations: []
@@ -678,7 +794,6 @@ describe('usePosCheckoutWorkflow', () => {
             location_id: 2,
             reason: 'Cashier cancelled split-payment checkout before payment was recorded.'
         });
-        expect(clearPosSplitPaymentSessionPointer).toHaveBeenCalledWith('tenant:1:9:COUNTER-01:4:2');
         expect(props.setSplitPaymentSession).toHaveBeenCalledWith(null);
         expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(false);
     });

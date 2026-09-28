@@ -3,7 +3,7 @@ import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSu
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { buildDownpaymentTotalsRows, resolveDownpaymentDisplay } from '../../../../shared/model/storefrontDownpaymentPresentation.js';
-import { buildFeeAndVatSummaryRows } from '../../../../shared/model/storefrontFeesAndTaxesPresentation.js';
+import { buildStorefrontOrderBreakdownRows } from '../../../../shared/model/storefrontOrderBreakdownPresentation.js';
 import { VatDisclosureNote } from '../../../../shared/components/checkout/VatDisclosureNote.jsx';
 import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 
@@ -22,13 +22,13 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 /** Shared desktop F&B summary content. The view does not call APIs or mutate checkout state. */
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
-  checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
+  checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError, orderMethod,
   paymentStep = false, promoDiscountSummaryRow, specialInstructions = '', voucherDiscountSummaryRow, promoPanel, scheduleLabel, showFulfillmentSummary = true, totals,
   variant = 'detailed'
 }) {
   const statusRows = [
     ...(showFulfillmentSummary ? [
-      { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
+      { label: 'Fulfillment', value: orderMethod === 'dine_in' ? 'Dine In' : isDeliveryOrder ? 'Delivery' : 'Pickup' },
       { label: 'Schedule', value: scheduleLabel },
     ] : []),
     { label: paymentStep ? 'Status' : 'Items', value: paymentStep ? (checkoutAllowed ? 'Ready to submit' : 'Complete required fields') : `${cartCount} item${cartCount === 1 ? '' : 's'}` }
@@ -49,15 +49,15 @@ export function FnbCheckoutSummaryContent({
   const downpaymentRows = buildDownpaymentTotalsRows({
     display: resolveDownpaymentDisplay({ quoteResult: totals }),
     money,
-    orderMethod: isDeliveryOrder ? 'delivery' : 'pickup'
+    orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup')
   });
   const totalsRows = [
-    { label: 'Subtotal', value: money(totals.subtotal_amount) },
-    ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
-    ...(voucherDiscountSummaryRow ? [voucherDiscountSummaryRow] : []),
-    { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    ...buildFeeAndVatSummaryRows({ totals, money }),
-    { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true },
+    ...buildStorefrontOrderBreakdownRows({
+      discountRows: [promoDiscountSummaryRow, voucherDiscountSummaryRow].filter(Boolean),
+      money,
+      orderMethod: orderMethod || (isDeliveryOrder ? 'delivery' : 'pickup'),
+      totals,
+    }),
     ...downpaymentRows
   ];
 
@@ -83,7 +83,7 @@ export function FnbCheckoutSummaryContent({
       </div>
       {promoPanel}
       <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
-        {totalsRows.map((row) => <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: row.borderTop ? 8 : 0, borderTop: row.borderTop ? '1px solid #e2e8f0' : 'none', fontSize: row.emphasis ? 16 : 13, color: '#334155' }}><span style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 800 : 700) : 400 }}>{row.label}</span><strong style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 900 : 800) : 700 }}>{row.value}</strong></div>)}
+        {totalsRows.map((row) => <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, paddingTop: row.borderTop ? 8 : 0, borderTop: row.borderTop ? '1px solid #e2e8f0' : 'none', fontSize: row.emphasis ? 16 : 13, color: row.color || '#334155' }}><span style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 800 : 700) : 400 }}>{row.label}</span><strong style={{ fontWeight: row.emphasis ? (variant === 'customer' ? 900 : 800) : 700 }}>{row.value}</strong></div>)}
       </div>
       <VatDisclosureNote />
     </div>

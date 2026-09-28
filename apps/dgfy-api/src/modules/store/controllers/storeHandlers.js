@@ -15,6 +15,7 @@ import {
     verifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
+    reconcileStoreCheckoutPaymentSessionUseCase,
     confirmStoreCheckoutSandboxPaymentUseCase,
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
@@ -455,6 +456,28 @@ export const confirmCheckoutSandboxPayment = async (req, res, next) => {
     }
 };
 
+export const reconcileCheckoutPaymentSession = async (req, res, next) => {
+    try {
+        const result = await reconcileStoreCheckoutPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            remoteAddress: req.socket?.remoteAddress || req.connection?.remoteAddress || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 202,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'PayMongo sandbox payment reconciliation requested',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const trackOrder = async (req, res, next) => {
     try {
         const result = await trackStoreOrderUseCase({
@@ -630,6 +653,7 @@ export default {
     verifyGuestCheckoutOtp,
     createCheckoutPaymentSession,
     getCheckoutPaymentSession,
+    reconcileCheckoutPaymentSession,
     checkout,
     trackOrder,
     claimOrder,

@@ -34,7 +34,22 @@ describe('close-report payment breakdown rendering', () => {
             <ShiftCloseSummaryPrintView report={{ sales_summary: salesSummary }} businessSettings={businessSettings} />
         );
         const zReadingMarkup = renderToStaticMarkup(
-            <ZReadingPrintView report={{ summary: salesSummary }} businessSettings={businessSettings} />
+            <ZReadingPrintView
+                report={{
+                    summary: salesSummary,
+                    generated_at: '2026-08-19T12:00:00.000Z',
+                    z_reading_reconciliation: {
+                        status: 'matched',
+                        report_recognized_sales: 1050,
+                        z_total_amount: 1050,
+                        variance: 0,
+                        report_refunds_voids: 20,
+                        report_adjustment_amount: 0,
+                        evaluated_at: '2026-08-19T12:01:00.000Z'
+                    }
+                }}
+                businessSettings={businessSettings}
+            />
         );
 
         [shiftMarkup, zReadingMarkup].forEach((markup) => {
@@ -62,6 +77,12 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('VAT');
         expect(zReadingMarkup).toContain('Total sales');
         expect(zReadingMarkup).toContain('POS voids (2)');
+        expect(zReadingMarkup).toContain('Generated:');
+        expect(zReadingMarkup).toContain('2026');
+        expect(zReadingMarkup).toContain('Report reconciliation');
+        expect(zReadingMarkup).toContain('MATCHED');
+        expect(zReadingMarkup).toContain('Report recognized sales');
+        expect(zReadingMarkup).toContain('Checked');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -70,7 +91,21 @@ describe('close-report payment breakdown rendering', () => {
             businessSettings
         });
         const zReadingText = formatIminZReadingText({
-            zReading: { z_reading: { summary: salesSummary } },
+            zReading: {
+                z_reading: {
+                    summary: salesSummary,
+                    generated_at: '2026-08-19T12:00:00.000Z',
+                    reconciliation: {
+                        status: 'matched',
+                        report_recognized_sales: 1050,
+                        z_total_amount: 1050,
+                        variance: 0,
+                        report_refunds_voids: 20,
+                        report_adjustment_amount: 0,
+                        evaluated_at: '2026-08-19T12:01:00.000Z'
+                    }
+                }
+            },
             businessSettings
         });
         [shiftText, zReadingText].forEach((text) => {
@@ -94,7 +129,26 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('VAT');
         expect(zReadingText).toContain('Total sales');
         expect(zReadingText).toContain('POS voids (2)');
+        expect(zReadingText).toContain('Generated:');
+        expect(zReadingText).toContain('2026');
+        expect(zReadingText).toContain('REPORT RECONCILIATION');
+        expect(zReadingText).toContain('MATCHED');
+        expect(zReadingText).toContain('Report recognized');
+        expect(zReadingText).toContain('Difference');
+        expect(zReadingText).toContain('Checked');
         expect(zReadingText).toContain('Provider refunds reconciled separately.');
+    });
+
+    it('keeps missing or invalid generation times readable without breaking the report', () => {
+        const markup = renderToStaticMarkup(
+            <ZReadingPrintView report={{ generated_at: 'not-a-timestamp' }} />
+        );
+        const text = formatIminZReadingText({
+            zReading: { z_reading: { generated_at: 'not-a-timestamp' } }
+        });
+
+        expect(markup).toContain('Generated: -');
+        expect(text).toContain('Generated: -');
     });
 
     it('does not show zero closing cash or variance before an open shift is closed', () => {

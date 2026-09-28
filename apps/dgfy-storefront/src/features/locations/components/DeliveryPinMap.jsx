@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
 // via DeliveryPinMapLazy.jsx's dynamic import(), so the CSS loads only when
@@ -14,6 +14,10 @@ import {
 } from '../../../app/runtime/storefrontMapRuntime.js';
 import { makeUserLocationElement } from '../../discovery/utils/discoveryMapMarkers.js';
 
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep this map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
+
 export function DeliveryPinMap({
   pin = null,
   onPinChange,
@@ -23,6 +27,7 @@ export function DeliveryPinMap({
   highlightColor = '#f97316',
   highlightGlow = 'rgba(249,115,22,0.14)',
   showAttributionControl = true,
+  scrollZoom = true,
   pinInstruction = '',
   overlayControls = null
 }) {
@@ -88,7 +93,8 @@ export function DeliveryPinMap({
         transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
         zoom: 13,
-        attributionControl: showAttributionControl
+        attributionControl: showAttributionControl,
+        scrollZoom
       });
     } catch (error) {
       console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
@@ -130,7 +136,7 @@ export function DeliveryPinMap({
       mapRef.current = null;
       setCanvasContainerEl(null);
     };
-  }, [scheduleMapResize, showAttributionControl]);
+  }, [scheduleMapResize, showAttributionControl, scrollZoom]);
 
   useEffect(() => {
     const map = mapRef.current;

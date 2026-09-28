@@ -12,6 +12,7 @@ describe('standalone POS API session bootstrap', () => {
     vi.resetModules();
     vi.stubEnv('VITE_APP_SURFACE', 'pos');
     window.sessionStorage.clear();
+    window.history.replaceState({}, '', '/');
     document.cookie = 'sku_csrf_token=csrf-pos-session';
 
     const { default: api } = await import('../api.js');
@@ -22,6 +23,7 @@ describe('standalone POS API session bootstrap', () => {
   afterEach(() => {
     apiMock?.restore();
     axiosMock?.restore();
+    window.history.replaceState({}, '', '/');
     vi.unstubAllEnvs();
   });
 

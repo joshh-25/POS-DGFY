@@ -6,13 +6,44 @@ import {
 import { mapSettingsUseCaseError } from './settingsUseCaseError.js';
 import { sanitizeSettingsPayloadForRead } from './posTerminalRegistrySecrets.js';
 
+const STOREFRONT_ASSET_SETTING_PAIRS = Object.freeze([
+    { urlKey: 'storefront_cover_image_url', pathKey: 'storefront_cover_image_path' },
+    { urlKey: 'storefront_profile_image_url', pathKey: 'storefront_profile_image_path' }
+]);
+
+const omitUnavailableStorefrontAssets = async (settings, storefrontAssetStorage) => {
+    if (typeof storefrontAssetStorage?.isAvailable !== 'function') return settings;
+
+    const nextSettings = { ...settings };
+    await Promise.all(STOREFRONT_ASSET_SETTING_PAIRS.map(async ({ urlKey, pathKey }) => {
+        const urlSetting = nextSettings[urlKey];
+        const storedUrl = String(urlSetting?.value || '').trim();
+        if (!storedUrl) return;
+
+        const storedPath = String(nextSettings[pathKey]?.value || '').trim();
+        const available = await storefrontAssetStorage.isAvailable({ path: storedPath, url: storedUrl });
+        if (available) return;
+
+        nextSettings[urlKey] = { ...urlSetting, value: '' };
+        if (nextSettings[pathKey]) {
+            nextSettings[pathKey] = { ...nextSettings[pathKey], value: '' };
+        }
+    }));
+
+    return nextSettings;
+};
+
 export const buildGetAllSettingsUseCase = ({
     settingsRepository,
-    customerAccessModesEnabledProvider = isCustomerAccessModesEnabled
+    customerAccessModesEnabledProvider = isCustomerAccessModesEnabled,
+    storefrontAssetStorage = null
 }) => {
     return async ({ context } = {}) => {
         try {
-            const settings = sanitizeSettingsPayloadForRead(await settingsRepository.getAllSettings());
+            const settings = await omitUnavailableStorefrontAssets(
+                sanitizeSettingsPayloadForRead(await settingsRepository.getAllSettings()),
+                storefrontAssetStorage
+            );
             const customerAccessModesEnabled = customerAccessModesEnabledProvider(context);
             const accessPolicy = resolveAccessPolicyFromSettings(settings, {
                 featureEnabled: customerAccessModesEnabled

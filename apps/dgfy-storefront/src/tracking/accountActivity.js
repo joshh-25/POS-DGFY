@@ -22,7 +22,8 @@ export const EMPTY_ACCOUNT_PANEL = Object.freeze({
   affiliateEarnings: null,
   affiliateEarningsByStore: [],
   affiliatePayoutMethods: [],
-  affiliateCashouts: []
+  affiliateCashouts: [],
+  orderHistoryScope: { mode: 'all_stores', label: 'All stores', storeSlug: '', storeName: '', locationId: null, locationName: '' }
 });
 
 const normalizeTrackingSlug = (value = '') => String(value || '').trim().toLowerCase();
@@ -31,15 +32,27 @@ const firstNonEmptyLineCollection = (...candidates) => (
   candidates.find((candidate) => Array.isArray(candidate) && candidate.length > 0) || []
 );
 
+export const isAccountActivityInScope = (activity = {}, scope = {}) => {
+  if (scope?.mode === 'all_stores') return true;
+  const activitySlug = normalizeTrackingSlug(activity.store_slug || activity.store?.slug || '');
+  if (scope?.storeSlug && activitySlug !== normalizeTrackingSlug(scope.storeSlug)) return false;
+  if (scope?.locationId != null) {
+    const activityLocationId = Number(activity.location_id ?? activity.display?.location_id ?? activity.display_snapshot?.location_id);
+    return Number.isInteger(activityLocationId) && activityLocationId === Number(scope.locationId);
+  }
+  return true;
+};
+
 export const deriveAccountActivityCollections = ({ dashboardData = null, activitiesData = null } = {}) => {
-  const activities = Array.isArray(activitiesData?.activities) && activitiesData.activities.length
+  const hasActivitiesResponse = Array.isArray(activitiesData?.activities);
+  const activities = hasActivitiesResponse
     ? activitiesData.activities
     : (Array.isArray(dashboardData?.activities) ? dashboardData.activities : []);
   if (!activities.length) {
     return {
       activities: [],
-      orders: Array.isArray(dashboardData?.orders) ? dashboardData.orders : [],
-      bookings: Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : []
+      orders: hasActivitiesResponse ? [] : (Array.isArray(dashboardData?.orders) ? dashboardData.orders : []),
+      bookings: hasActivitiesResponse ? [] : (Array.isArray(dashboardData?.bookings) ? dashboardData.bookings : [])
     };
   }
   return {

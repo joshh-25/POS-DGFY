@@ -1,4 +1,6 @@
 import { posRepository } from './repositories/posRepository.js';
+import { posDiscountConfigurationRepository } from './repositories/posDiscountConfigurationRepository.js';
+import { PERMISSIONS } from '../../config/permissions.js';
 export { createPosCashierAttendanceRepository } from './repositories/posCashierAttendanceRepository.js';
 export {
     serializeEmployeeAttendanceSession,
@@ -29,7 +31,11 @@ import {
 } from '../inventory/index.js';
 import { resolvePosDeviceDriver } from './integrations/resolvePosDeviceDriver.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
-import { getEmployeeCreditReportUseCase, employeeCreditService } from '../employeeCredit/index.js';
+import * as posTerminalDeviceService from './services/posTerminalDeviceEnrollmentService.js';
+import {
+    employeeCreditService,
+    getEmployeeCreditReportUseCase
+} from '../employeeCredit/index.js';
 import { serviceRepository } from '../services/repositories/serviceRepository.js';
 import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
 import { buildCalculateServiceQuoteUseCase } from '../services/usecases/calculateServiceQuoteUseCase.js';
@@ -88,6 +94,8 @@ import {
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
+    buildCollectCashDineInOrderUseCase,
+    buildCollectDineInPaymentUseCase,
     buildRecordOrderBalancePaymentUseCase,
     buildAttachOrderBalancePaymentProofUseCase,
     buildGetOrderBalancePaymentProofUseCase,
@@ -105,6 +113,18 @@ import {
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
 } from './usecases/posUseCases.js';
+import { posBranchDirectoryRepository } from './repositories/posBranchDirectoryRepository.js';
+import {
+    buildGetPosBranchDirectoryUseCase,
+    buildRecordPosBranchViewEventUseCase
+} from './usecases/posBranchDirectoryUseCases.js';
+import {
+    buildCreatePosDiscountRuleUseCase,
+    buildDeletePosDiscountRuleUseCase,
+    buildListAvailablePosDiscountRulesUseCase,
+    buildListPosDiscountRulesUseCase,
+    buildUpdatePosDiscountRuleUseCase
+} from './usecases/posDiscountConfigurationUseCases.js';
 import { buildCashRefundPosTransactionUseCase } from './usecases/cashRefundUseCases.js';
 import { buildOverrideDeliveryFeeUseCase } from './usecases/deliveryFeeOverrideUseCases.js';
 import { buildExternalRefundPosTransactionUseCase } from './usecases/externalRefundUseCases.js';
@@ -112,6 +132,7 @@ import { buildProviderRefundPosTransactionUseCase } from './usecases/providerRef
 import { buildSplitAllocationReversalUseCase } from './usecases/splitAllocationReversalUseCases.js';
 import {
     buildGetPosDeviceStatusUseCase,
+    buildTestPosPrinterUseCase,
     buildClaimOnlineOrderReceiptAutoPrintUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
@@ -141,6 +162,8 @@ import {
     buildCompleteClaimedPosParkedSaleUseCase,
     buildCancelPosParkedSaleUseCase
 } from './usecases/parkedSaleUseCases.js';
+import { markRetainedParkedSaleLines } from './domain/parkedSaleLinePolicy.js';
+import { buildDecidePosExceptionApprovalUseCase } from './usecases/posExceptionApprovalUseCases.js';
 import {
     buildCreatePosPaymentSessionUseCase,
     buildGetPosPaymentSessionUseCase,
@@ -188,9 +211,24 @@ import {
     buildGetDeliveryRunRemittanceUseCase,
     buildResolveDeliveryRunRemittanceVarianceUseCase
 } from './usecases/deliveryRunUseCases.js';
+import {
+    buildIssuePosDeviceActivationUseCase,
+    buildActivatePosDeviceUseCase,
+    buildActivatePosDeviceBootstrapUseCase,
+    buildListPosDevicesUseCase,
+    buildRevokePosDeviceUseCase,
+    buildReplacePosDeviceUseCase,
+    buildIssuePosDeviceChallengeUseCase,
+    buildVerifyPosDeviceProofUseCase
+} from './usecases/posTerminalDeviceUseCases.js';
+
+import { createAssertPosUserOperatingScope } from './usecases/posUserOperatingScope.js';
+import { createMobilePosOperatingScopeWrapper } from './usecases/mobilePosOperatingScope.js';
 
 const posCashierAttendanceRepository = createPosCashierAttendanceRepository();
+const assertUserOperatingScope = createAssertPosUserOperatingScope({ repository: posCashierAttendanceRepository });
 const posCashierLifecycleUseCases = createPosCashierLifecycleUseCases({
+    assertUserOperatingScope,
     repository: posCashierAttendanceRepository,
     resolveFeature: resolvePosCashierAttendanceFeature,
     authorityService: posOperatorAuthorityService,
@@ -215,14 +253,92 @@ export const checkoutPosUseCase = buildCheckoutPosUseCase({
     completeClaimedPosParkedSaleUseCase,
     publishCatalogChange
 });
+const resolveParkedSaleInventoryEffects = async ({
+    snapshot,
+    previousSnapshot = null,
+    scope,
+    user,
+    payload = {},
+    transaction,
+    parkedSaleId,
+    revision
+}) => {
+    const isRepark = Boolean(previousSnapshot);
+    const inventorySnapshot = isRepark
+        ? markRetainedParkedSaleLines({ snapshot, previousSnapshot })
+        : snapshot;
+    const lines = (Array.isArray(inventorySnapshot?.lines) ? inventorySnapshot.lines : []).map((line) => {
+        const normalizedLine = {
+            ...line,
+            sale_price: isRepark ? Number(line.sale_price) : 1
+        };
+        if (!isRepark) delete normalizedLine.parked_snapshot_line;
+        delete normalizedLine.price_override_reason;
+        delete normalizedLine.item_discount;
+        delete normalizedLine.item_discount_approval;
+        return normalizedLine;
+    });
+    const result = await checkoutPosUseCase({
+        payload: {
+            ...inventorySnapshot,
+            idempotency_key: `PARKED-STOCK-${parkedSaleId}-${revision}`,
+            lines,
+            shift_id: scope.shiftId,
+            terminal_id: scope.terminalId,
+            location_id: scope.locationId,
+            terminal_location_id: scope.locationId,
+            ...(snapshot?.order_method ? { order_method: snapshot.order_method } : {}),
+            payment_type: 'cash',
+            ...(isRepark ? {
+                parked_sale_id: parkedSaleId,
+                parked_sale_inventory_reconciled: true,
+                removed_line_reasons: payload.removed_line_reasons || []
+            } : {})
+        },
+        userId: scope.userId,
+        user,
+        operatorSessionId: scope.operatorSessionId,
+        transaction,
+        quoteOnly: true,
+        validateInventoryAvailability: true,
+        inventoryEffectsOnly: true
+    });
+    if (result?.success !== true) throw result?.error || new Error('Unable to resolve parked-sale inventory effects.');
+    return result.data?.inventory_effects || [];
+};
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const listPosDiscountEmployeesUseCase = buildListPosDiscountEmployeesUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
+export const listPosDiscountRulesUseCase = buildListPosDiscountRulesUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const listAvailablePosDiscountRulesUseCase = buildListAvailablePosDiscountRulesUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const createPosDiscountRuleUseCase = buildCreatePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const updatePosDiscountRuleUseCase = buildUpdatePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
+export const deletePosDiscountRuleUseCase = buildDeletePosDiscountRuleUseCase({
+    repository: posDiscountConfigurationRepository
+});
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
-export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({ posRepository });
+export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    resolveInventoryEffects: resolveParkedSaleInventoryEffects,
+    publishCatalogChange
+});
 export const listPosParkedSalesUseCase = buildListPosParkedSalesUseCase({ posRepository });
 export const claimPosParkedSaleUseCase = buildClaimPosParkedSaleUseCase({ posRepository });
-export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({ posRepository });
+export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    resolveInventoryEffects: resolveParkedSaleInventoryEffects,
+    publishCatalogChange
+});
 export const cancelPosParkedSaleUseCase = buildCancelPosParkedSaleUseCase({ posRepository });
 export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCase({
     posRepository,
@@ -264,6 +380,12 @@ export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
     employeeCreditService,
     publishCatalogChange
 });
+export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApprovalUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    voidPosTransactionUseCase,
+    publishCatalogChange
+});
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
@@ -289,7 +411,10 @@ export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posReposit
 export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });
 export const incrementGovernedResetCounterUseCase = buildIncrementGovernedResetCounterUseCase({ posRepository });
 export const listPosCatalogOverridesUseCase = buildListPosCatalogOverridesUseCase({ posRepository });
-export const updatePosCatalogOverrideUseCase = buildUpdatePosCatalogOverrideUseCase({ posRepository });
+export const updatePosCatalogOverrideUseCase = buildUpdatePosCatalogOverrideUseCase({
+    posRepository,
+    assertLocationAccess
+});
 export const updateBulkPosCatalogOverridesUseCase = buildUpdateBulkPosCatalogOverridesUseCase({ posRepository });
 export const uploadPosCatalogImageUseCase = buildUploadPosCatalogImageUseCase({
     posRepository,
@@ -306,19 +431,36 @@ export const deletePosCatalogImageUseCase = buildDeletePosCatalogImageUseCase({
     imageStorage: posCatalogImageStorage
 });
 export const openTerminalShiftUseCase = buildOpenTerminalShiftUseCase({
+    assertUserOperatingScope,
     posRepository,
     onShiftOpened: posCashierLifecycleUseCases.onShiftOpened
 });
 export const createPosSetupCashierUseCase = buildCreatePosSetupCashierUseCase({ userService });
 export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ userService });
-export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
-export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
-export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
-export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
-export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
+export const loginPosCashierUseCase = buildLoginPosCashierUseCase({
+    authService,
+    assertPosDeviceProof: posTerminalDeviceService.assertPosDeviceProof
+});
+export const issuePosDeviceActivationUseCase = buildIssuePosDeviceActivationUseCase({ service: posTerminalDeviceService });
+export const activatePosDeviceUseCase = buildActivatePosDeviceUseCase({ service: posTerminalDeviceService });
+export const activatePosDeviceBootstrapUseCase = buildActivatePosDeviceBootstrapUseCase({ service: posTerminalDeviceService });
+export const listPosDevicesUseCase = buildListPosDevicesUseCase({ service: posTerminalDeviceService });
+export const revokePosDeviceUseCase = buildRevokePosDeviceUseCase({ service: posTerminalDeviceService });
+export const replacePosDeviceUseCase = buildReplacePosDeviceUseCase({ service: posTerminalDeviceService });
+export const issuePosDeviceChallengeUseCase = buildIssuePosDeviceChallengeUseCase({ service: posTerminalDeviceService });
+export const verifyPosDeviceProofUseCase = buildVerifyPosDeviceProofUseCase({ service: posTerminalDeviceService });
 const revokePosOperatorSessionsForTerminal = ({ terminalId, reason, transaction, at }) => (
     posCashierAttendanceRepository.revokeOperatorSessionsForTerminal({ terminalId, reason, transaction, at })
 );
+export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({
+    posRepository,
+    revokeOperatorSessionsForTerminal: revokePosOperatorSessionsForTerminal,
+    onShiftClosing: posCashierLifecycleUseCases.onShiftClosing,
+    onShiftOpened: posCashierLifecycleUseCases.onShiftOpened
+});
+export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
+export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
+export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({
     posRepository,
     revokeOperatorSessionsForTerminal: revokePosOperatorSessionsForTerminal,
@@ -334,8 +476,18 @@ export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseC
 export const listOnlineOrderHistoryUseCase = buildListOnlineOrderHistoryUseCase({ posRepository });
 export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonnelUseCase({ posRepository });
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
+export const getPosBranchDirectoryUseCase = buildGetPosBranchDirectoryUseCase({
+    branchDirectoryRepository: posBranchDirectoryRepository,
+    posRepository
+});
+export const recordPosBranchViewEventUseCase = buildRecordPosBranchViewEventUseCase({
+    branchDirectoryRepository: posBranchDirectoryRepository,
+    posRepository
+});
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const collectCashDineInOrderUseCase = buildCollectCashDineInOrderUseCase({ posRepository });
+export const collectDineInPaymentUseCase = buildCollectDineInPaymentUseCase({ posRepository, employeeCreditService });
 export const recordOrderBalancePaymentUseCase = buildRecordOrderBalancePaymentUseCase({ posRepository });
 export const attachOrderBalancePaymentProofUseCase = buildAttachOrderBalancePaymentProofUseCase({
     posRepository,
@@ -405,6 +557,10 @@ export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });
+export const testPosPrinterUseCase = buildTestPosPrinterUseCase({
+    posRepository,
+    deviceDriver: posDeviceDriver
+});
 export const claimOnlineOrderReceiptAutoPrintUseCase = buildClaimOnlineOrderReceiptAutoPrintUseCase({
     posRepository
 });
@@ -465,6 +621,7 @@ const posOperatorPinRateLimiter = (() => {
     };
 })();
 const posOperatorAuthorityUseCases = createPosOperatorAuthorityUseCases({
+    assertUserOperatingScope,
     repository: posCashierAttendanceRepository,
     resolveFeature: requirePosCashierAttendanceFeature,
     resolveMutationFeature: resolvePosCashierAttendanceFeature,
@@ -498,17 +655,18 @@ export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBoots
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
 export const getMobilePosTransactionCheckpointUseCase = buildGetMobilePosTransactionCheckpointUseCase({ listPosTransactionsUseCase });
-export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase, posRepository });
-export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase });
+const withMobileOperatingScope = createMobilePosOperatingScopeWrapper({ repository: posRepository, authorizeMutation: authorizePosOperatorMutationUseCase });
+export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase: withMobileOperatingScope(checkoutPosUseCase, ['pos:transact']), posRepository });
+export const syncMobilePosVoidsUseCase = buildSyncMobilePosVoidsUseCase({ voidPosTransactionUseCase: withMobileOperatingScope(voidPosTransactionUseCase, ['pos:void']) });
 export const syncMobilePosRefundsUseCase = buildSyncMobilePosRefundsUseCase({
-    cashRefundPosTransactionUseCase,
-    externalRefundPosTransactionUseCase,
-    providerRefundPosTransactionUseCase,
-    splitAllocationReversalUseCase
+    cashRefundPosTransactionUseCase: withMobileOperatingScope(cashRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER]),
+    externalRefundPosTransactionUseCase: withMobileOperatingScope(externalRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
+    providerRefundPosTransactionUseCase: withMobileOperatingScope(providerRefundPosTransactionUseCase, [PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]),
+    splitAllocationReversalUseCase: withMobileOperatingScope(splitAllocationReversalUseCase, [], [[PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER, PERMISSIONS.POS.actions.VOID_POS_TRANSACTION]])
 });
 export const syncMobilePosOrderActionsUseCase = buildSyncMobilePosOrderActionsUseCase({
     updateOnlineOrderStatusUseCase,
-    collectCashPickupOrderUseCase
+    collectCashPickupOrderUseCase: withMobileOperatingScope(collectCashPickupOrderUseCase, ['pos:transact'])
 });
 export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
     createItemUseCase,
@@ -519,7 +677,7 @@ export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
 export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
     openTerminalShiftUseCase,
     switchTerminalShiftLocationUseCase,
-    recordCashDrawerEventUseCase,
+    recordCashDrawerEventUseCase: withMobileOperatingScope(recordCashDrawerEventUseCase, [PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER]),
     closeTerminalShiftUseCase
 });
 export const syncMobilePosHardwareEventsUseCase = buildSyncMobilePosHardwareEventsUseCase();

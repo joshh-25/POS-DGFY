@@ -3,6 +3,7 @@ import { getPendingPosItemImagePreviews, subscribeToPendingPosItemImagePreviews 
 import { acquirePosImagePreview } from '../services/posImagePreview.js';
 import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
 import { getBrowserSessionSnapshot } from '../../../services/browserSession.js';
+import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';
 
 // A bounded, in-memory per-version budget survives card navigation, not logout.
 const failures = new Map();
@@ -17,6 +18,17 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
   const pending = previews[String(item.item_id)];
   const sources = resolvePosCatalogImageSources(item);
   const target = pending?.readyUrl || pending?.url || sources.src;
+  const {
+    fetchpriority: legacyFetchPriority,
+    fetchPriority,
+    ...imageProps
+  } = props;
+  const resolvedFetchPriority = fetchPriority ?? legacyFetchPriority;
+  const imageAttributes = resolvedFetchPriority === undefined
+    ? imageProps
+    : { ...imageProps, fetchpriority: resolvedFetchPriority };
+  const hasPendingPreview = Boolean(pending?.readyUrl || pending?.url);
+  const targetSources = hasPendingPreview ? { src: target } : sources;
   const [loaded, setLoaded] = useState('');
   const loadedScope = useRef('');
   const session = getBrowserSessionSnapshot();
@@ -46,17 +58,46 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
     return () => clearTimeout(timer);
   }, [failed, target]);
 
-  const unavailable = failed === target || (failures.get(target) || 0) > 3;
+  const imageFailed = failed === target;
+  const unavailable = (failures.get(target) || 0) > 3;
   const displayed = (loadedScope.current === scope ? loaded : '') || (pending?.readyUrl ? pending?.url : '') || '';
-  return <>
-    {displayed && displayed !== target ? <img {...props} src={displayed} className={className} style={style} width={144} height={144} decoding="async" /> : null}
-    {target && !unavailable ? <img
-      {...props}
+  const showFallback = Boolean(target && (imageFailed || unavailable) && !displayed);
+  const fallbackLabel = String(item?.name || 'Item').trim() || 'Item';
+  return (
+    <>
+    {displayed && displayed !== target ? <img {...imageAttributes} src={displayed} className={className} style={style} width={144} height={144} decoding="async" /> : null}
+    {showFallback ? (
+      <div
+        data-pos-item-image-fallback="true"
+        aria-label={`${fallbackLabel} image unavailable`}
+        className={className}
+        style={{
+          ...style,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 12,
+          boxSizing: 'border-box',
+          color: '#1A4E8D',
+          backgroundColor: '#EAF2FB',
+          backgroundImage: sources.placeholderSrc ? `url(${sources.placeholderSrc})` : undefined,
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: 'cover',
+          textAlign: 'center'
+        }}
+      >
+        <span className="line-clamp-3 text-xs font-black leading-tight">{fallbackLabel}</span>
+      </div>
+    ) : null}
+    {target && !imageFailed && !unavailable ? <ResponsiveImage
+      {...imageProps}
       key={`${target}:${retry}`}
-      src={target}
+      sources={targetSources}
       width={144}
       height={144}
       decoding="async"
+      fetchPriority={resolvedFetchPriority}
       className={className}
       style={{ ...style, ...(displayed && displayed !== target ? { position: 'absolute', inset: 0, opacity: 0 } : {}) }}
       onLoad={() => {
@@ -85,5 +126,6 @@ export default React.memo(function PosItemImage({ item, className, style, ...pro
     {pending?.status === 'failed' ? <span className="absolute bottom-0 right-0 z-10 rounded bg-white/95 px-1 text-[10px] text-slate-700" role="status">
       Upload failed; edit to retry
     </span> : null}
-  </>;
+    </>
+  );
 });

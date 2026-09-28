@@ -1511,6 +1511,7 @@ export const storeRepository = {
                 'supports_delivery',
                 'supports_pickup',
                 'supports_dine_in',
+                'allow_dine_in_pay_at_store',
                 'scheduling_enabled',
                 'immediate_fulfillment_enabled',
                 'fulfillment_lead_time_min_days',
@@ -1768,6 +1769,10 @@ export const storeRepository = {
             order_source: 'online_store',
             store_customer_id: customerId
         };
+
+        if (filters.location_id !== undefined && filters.location_id !== null) {
+            where.location_id = Number.parseInt(filters.location_id, 10);
+        }
 
         if (filters.fulfillment_status) {
             where.fulfillment_status = String(filters.fulfillment_status).trim();

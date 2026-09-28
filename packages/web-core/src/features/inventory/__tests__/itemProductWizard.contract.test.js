@@ -182,6 +182,27 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain("toast.success('Item finalized successfully');");
   });
 
+  it('routes item modal POS and Storefront visibility changes through their catalog override APIs', () => {
+    const itemFormSource = readFrontendFile('Components/items/ItemFormModal.jsx');
+    const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
+    const saveStart = itemsPageSource.indexOf('const handleSave = async (itemData) => {');
+    const saveEnd = itemsPageSource.indexOf('const handleSaveDraft = async (itemData) => {', saveStart);
+    const saveSource = itemsPageSource.slice(saveStart, saveEnd);
+
+    expect(itemFormSource).toContain('pos_visible: cleanedData.pos_visible === true');
+    expect(itemFormSource).toContain('storefront_visible: cleanedData.storefront_visible === true');
+    expect(itemFormSource).toContain('await onSave(finalPayload);');
+    expect(saveSource).toContain('pos_visible: requestedPosVisible');
+    expect(saveSource).toContain('storefront_visible: requestedStorefrontVisible');
+    expect(saveSource).toContain('posOverridePatch.pos_visible = requestedPosVisible === true;');
+    expect(saveSource).toContain('storefrontVisibilityChanged');
+    expect(saveSource).toContain('await updatePosCatalogOverride(targetItemId, posOverridePatch)');
+    expect(saveSource).toContain('await updateStorefrontCatalogOverride(targetItemId, {');
+    expect(saveSource).toContain('storefront_visible: requestedStorefrontVisible === true');
+    expect(saveSource.indexOf('pos_visible: requestedPosVisible')).toBeLessThan(saveSource.indexOf('...itemPayload'));
+    expect(saveSource.indexOf('storefront_visible: requestedStorefrontVisible')).toBeLessThan(saveSource.indexOf('...itemPayload'));
+  });
+
   it('passes edited product draft payloads through the finalize hook to the service', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
     const useItemsSource = readFrontendFile('src/hooks/useItems.js');
@@ -357,7 +378,7 @@ describe('Item/Product wizard contracts', () => {
     expect(selectedImageCarouselSource).toContain('aria-label={`Next ${imageLabel} image`}');
     expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
     expect(selectedImageCarouselSource).toContain("combinedGallery ? 'Item' : 'Selected item'");
-    expect(selectedImageCarouselSource).toContain('Remove current image');
+    expect(selectedImageCarouselSource).toContain('Remove image');
     expect(selectedImageCarouselSource).toContain('aria-label={`Focus ${imageLabel} image ${index + 1}`}');
   });
 

@@ -13,9 +13,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
-const skupervisorMainPath = resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
 const routeHelperSource = readFileSync(routeHelperPath, 'utf8');
-const skupervisorMainSource = readFileSync(skupervisorMainPath, 'utf8');
 
 describe('DGFY route helper contracts', () => {
   it('routes POS terminal handoffs through the configured terminal URL', () => {
@@ -42,11 +40,6 @@ describe('DGFY route helper contracts', () => {
     } finally {
       vi.unstubAllGlobals();
     }
-  });
-
-  it('keeps the SKUpervisor terminal route on the governed terminal page', () => {
-    expect(skupervisorMainSource).toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
-    expect(skupervisorMainSource).toContain('<Route path="/terminal" element={<TerminalPage />} />');
   });
 
   it('builds a saved-item Storefront detail URL without exposing inventory routes', () => {

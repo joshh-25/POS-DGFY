@@ -44,6 +44,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(modelSource).toContain('RESEND_COOLDOWN_SECONDS = 60');
     expect(hookSource).toContain('RESEND_COOLDOWN_SECONDS');
     expect(hookSource).toContain('guestCheckoutProof');
+    expect(hookSource).toContain('resetGuestCheckoutOtp');
     expect(hookSource).toContain('emailOverride');
     expect(hookSource).toContain('Email verification could not be completed. Please try again.');
     expect(hookSource).toContain('delivery_status');
@@ -63,11 +64,16 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
+    expect(submissionSource).toContain('resetGuestCheckoutOtp');
+    expect(sharedSubmissionSource).toContain('resetGuestCheckoutOtp');
     expect(appSource).toContain("import { useGuestCheckoutOtp } from './shared/checkout/hooks/useGuestCheckoutOtp.js';");
     expect(appSource).toContain('} = useGuestCheckoutOtp({');
     expect(submissionCallSource).toContain('guestCheckoutIntentId');
     expect(submissionCallSource).toContain('guestCheckoutOtpVerified');
     expect(submissionCallSource).toContain('guestCheckoutProof');
+    expect(submissionCallSource).toContain('resetGuestCheckoutOtp');
+    expect(appSource).toContain('handleRequestGuestCheckoutOtp(appliedEmail)');
+    expect(appSource).toContain('savedCustomerDetails?.email');
     expect(appSource).not.toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');

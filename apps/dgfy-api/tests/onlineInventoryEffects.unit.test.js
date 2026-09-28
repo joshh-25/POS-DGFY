@@ -21,6 +21,28 @@ describe('online inventory effect construction', () => {
     }));
   });
 
+  it('ignores price-only modifier options without an inventory SKU', () => {
+    expect(buildOnlineInventoryEffects({
+      lines: [{
+        item_id: 19,
+        quantity: 1,
+        fnb_modifiers_snapshot: [{
+          modifier_option_id: 4,
+          option_name: 'Bacon',
+          sku_item_id: null,
+          quantity: 1
+        }]
+      }],
+      recipePlan: { movementsByLineIndex: [[]] },
+      locationId: 4,
+      strict: true
+    })).toEqual([expect.objectContaining({
+      item_id: 19,
+      quantity: 1,
+      effect_type: 'line_item'
+    })]);
+  });
+
   it('builds a valid finished-item effect with stable references', () => {
     expect(buildOnlineInventoryEffects({
       lines: [{ item_id: 10, item_name_snapshot: 'Burger', quantity: 2 }],

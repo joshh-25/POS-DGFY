@@ -1,11 +1,15 @@
-const getStockStatus = (item) => {
-  const current = parseFloat(item.current_stock) || 0;
-  const min = parseFloat(item.min_threshold) || 0;
-  const max = parseFloat(item.max_capacity) || 0;
+import { getStockHealthStatus, STOCK_HEALTH_STATUS } from '../../../inventory/domain/inventoryHealth.js';
 
-  if (current <= min) return 'low';
-  if (current > max) return 'overstock';
-  return 'healthy';
+const getStockStatus = (item) => {
+  const status = getStockHealthStatus({
+    currentStock: item.current_stock,
+    minThreshold: item.min_threshold,
+    maxCapacity: item.max_capacity
+  });
+
+  // Preserve the AI tool's established `low` label while sourcing the
+  // classification from the inventory-health owner.
+  return status === STOCK_HEALTH_STATUS.LOW_STOCK ? 'low' : status;
 };
 
 const formatItem = (item) => {

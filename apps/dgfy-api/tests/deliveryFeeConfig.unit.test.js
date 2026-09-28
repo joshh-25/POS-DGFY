@@ -111,6 +111,7 @@ describe('resolveDeliveryFeeConfig', () => {
         ['per_km_rate', -1],
         ['increment_km', 0],
         ['increment_km', -0.5],
+        ['increment_km', 0.0009],
         ['max_distance_km', 0]
     ])('resolves calc: null when %s is invalid (%p)', (field, badValue) => {
         const result = resolveDeliveryFeeConfig({
@@ -140,6 +141,16 @@ describe('resolveDeliveryFeeConfig', () => {
             }
         });
         expect(result.calc).not.toBeNull();
+    });
+
+    it('accepts exactly the one-meter increment boundary', () => {
+        const result = resolveDeliveryFeeConfig({
+            tenantSettings: {
+                store_delivery_fee_mode: 'calculated',
+                store_delivery_fee_calc: validCalc({ increment_km: 0.001 })
+            }
+        });
+        expect(result.calc.increment_km).toBe(0.001);
     });
 
     describe('locationOverride (Wave 0a decision #1: wholesale replacement, not merged)', () => {

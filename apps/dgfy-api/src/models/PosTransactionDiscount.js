@@ -11,6 +11,10 @@ export default sequelize.define('PosTransactionDiscount', {
   discount_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: false, defaultValue: 0 },
   vat_removed: { type: DataTypes.DECIMAL(14, 4), allowNull: false, defaultValue: 0 },
   vat_exempt_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: false, defaultValue: 0 },
+  // Nullable for legacy rows created before POS tax-policy snapshots existed;
+  // new governed POS writes always provide both immutable snapshot values.
+  tax_treatment: { type: DataTypes.STRING(20), allowNull: true },
+  tax_policy_version: { type: DataTypes.INTEGER, allowNull: true },
   customer_name: DataTypes.STRING(255),
   senior_pwd_id_number: DataTypes.STRING(100),
   employee_name: DataTypes.STRING(255),

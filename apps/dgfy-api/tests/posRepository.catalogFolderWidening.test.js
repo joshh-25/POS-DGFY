@@ -98,6 +98,30 @@ describe('posRepository.listCatalog — ADR 0080 Amendment secondary-category wi
     expect(args.where.folder_id).toBe(20);
   });
 
+  it('uses persisted primary category order for category-ordered catalog reads', async () => {
+    const Item = { findAll: jest.fn().mockResolvedValue([buildItem(5, 10)]) };
+    const ItemFolder = { findAll: jest.fn().mockResolvedValue([]) };
+
+    jest.spyOn(dbStore, 'get').mockImplementation((name) => {
+      if (name === 'Item') return Item;
+      if (name === 'ItemFolder') return ItemFolder;
+      if (FNB_AND_SERVICE_MODELS.includes(name)) return null;
+      return buildBaseModelStubs()[name] ?? {};
+    });
+
+    await posRepository.listCatalog({ limit: 10, order_by_category: true });
+
+    const args = Item.findAll.mock.calls[0][0];
+    const folderInclude = args.include.find((include) => include.as === 'folder');
+    expect(folderInclude.attributes).toEqual(expect.arrayContaining(['sort_order']));
+    expect(args.order).toHaveLength(4);
+    expect(args.order[0][0].val).toContain('folder');
+    expect(args.order[0][0].val).toContain('sort_order');
+    expect(args.order[0][0].val).toContain('SELECT');
+    expect(args.order[0][0].val).not.toContain('`folder`.`sort_order`');
+    expect(args.order.slice(2)).toEqual([['name', 'ASC'], ['item_id', 'ASC']]);
+  });
+
   it('attaches secondary_folder_ids to every returned item, even without a folder_id filter', async () => {
     const Item = { findAll: jest.fn().mockResolvedValue([buildItem(5, 10), buildItem(6, 20)]) };
     const membershipFindAll = jest.fn().mockResolvedValue([

@@ -47,6 +47,22 @@ const loadAuthenticate = async ({ paymentsEnabledFlag }) => {
 };
 
 describe('authenticate middleware subscription gate behavior', () => {
+  it('re-reads a cached user before a mutation so remote permission revocation is immediate', async () => {
+    const { authenticate, mockVerifyToken, mockIsTokenBlacklisted, mockFindByPk } = await loadAuthenticate({ paymentsEnabledFlag: false });
+    mockIsTokenBlacklisted.mockResolvedValue(false);
+    mockVerifyToken.mockReturnValue({ user_id: 11, tenant_id: 'tenant-ctx-1' });
+    const actor = { user_id: 11, username: 'cashier', email: 'cashier@example.test', phone_number: '09170000000', role: 'cashier', is_active: true, permissions: ['items:edit'] };
+    mockFindByPk.mockResolvedValue(actor);
+    const request = (method) => ({ method, headers: { authorization: 'Bearer test-token', 'x-company-token': 'token-acme' }, baseUrl: '/api/v1/items', path: '/1', tenant: { id: 'tenant-ctx-1', status: 'active', plan: 'standard' } });
+    await authenticate(request('GET'), createRes(), jest.fn());
+    mockFindByPk.mockResolvedValue({ ...actor, permissions: ['items:view'] });
+    const mutation = request('PUT');
+    const next = jest.fn();
+    await authenticate(mutation, createRes(), next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(mockFindByPk).toHaveBeenCalledTimes(2);
+    expect(mutation.user.permissions).not.toContain('items:edit');
+  });
   it('allows standard tenant with inactive subscription when payments are disabled', async () => {
     const {
       authenticate,

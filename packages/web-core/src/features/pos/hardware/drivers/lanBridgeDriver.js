@@ -1,4 +1,4 @@
-import { fetchPosDeviceStatus, printPosReceipt, printPosShiftSummary, printPosZReading, openPosDeviceDrawer } from '../../services/posService.js';
+import { fetchPosDeviceStatus, testPosPrinter, printPosReceipt, printPosShiftSummary, printPosZReading, openPosDeviceDrawer } from '../../services/posService.js';
 import { POS_HARDWARE_CAPABILITIES, normalizeHardwareResult } from '../posHardwareContract.js';
 
 const extractErrorMessage = (error, fallback) => (
@@ -15,6 +15,7 @@ export const lanBridgeDriver = {
     label: 'LAN receipt printer bridge',
     capabilities: Object.freeze([
         POS_HARDWARE_CAPABILITIES.PRINT_RECEIPT,
+        POS_HARDWARE_CAPABILITIES.TEST_PRINT,
         POS_HARDWARE_CAPABILITIES.PRINT_SHIFT_SUMMARY,
         POS_HARDWARE_CAPABILITIES.PRINT_Z_READING,
         POS_HARDWARE_CAPABILITIES.OPEN_DRAWER
@@ -22,13 +23,36 @@ export const lanBridgeDriver = {
     async getStatus() {
         try {
             const status = await fetchPosDeviceStatus();
+            const printersDetected = Number(status?.bridge?.printersDetected || 0);
             return {
-                available: status?.driver?.id === 'lan_escpos_bridge',
-                printersDetected: Number(status?.bridge?.printersDetected || 0),
+                available: status?.driver?.id === 'lan_escpos_bridge' && printersDetected > 0,
+                printersDetected,
                 raw: status
             };
         } catch {
             return { available: false, printersDetected: 0, raw: null };
+        }
+    },
+    async testPrint({ message, copies, terminalId } = {}) {
+        try {
+            const result = await testPosPrinter({
+                message,
+                copies,
+                terminal_id: terminalId || undefined
+            });
+            return normalizeHardwareResult({
+                success: true,
+                driverId: this.id,
+                message: 'Printer test page sent.',
+                raw: result
+            });
+        } catch (error) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: extractErrorMessage(error, 'Failed to send the printer test page.'),
+                reasonCode: 'LAN_BRIDGE_TEST_PRINT_FAILED'
+            });
         }
     },
     async printReceipt({ transactionId, terminalId, reason, idempotencyKey, copies, paperWidth } = {}) {

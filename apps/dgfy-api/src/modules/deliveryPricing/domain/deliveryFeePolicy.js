@@ -2,14 +2,14 @@
 // zero I/O, zero production behavior change in this phase. Mirrors the sibling pure policy modules
 // elsewhere in this codebase (modules/vouchers/domain/voucherBenefitPolicy.js,
 // modules/shared/utils/affiliatePricingPolicy.js): one exported function, fully unit-testable
-// standalone, zero imports -- nothing here reaches a database, a clock, a request, or even the
-// sibling `deliveryFeeConfig.js` in this same module (matching how voucherBenefitPolicy.js does not
-// import affiliatePricingPolicy.js). Every case is reproducible from a fixture file.
+// standalone, zero I/O -- nothing here reaches a database, a clock, a request, or the sibling
+// `deliveryFeeConfig.js` in this same module (matching how voucherBenefitPolicy.js does not import
+// affiliatePricingPolicy.js). The shared unit invariant comes from the constants package; every
+// case remains reproducible from a fixture file.
 //
-// Deliberately unreferenced as of this phase: no call site anywhere in the repo imports this file
-// (verified in CI evidence, not just asserted here), and `modules/deliveryPricing/index.js` does
-// not re-export it. Wiring a call site into `resolveStoreDeliveryFee`/`storeUseCases.js` is #237,
-// a separate ticket -- this module ships in isolation on purpose.
+// The policy is wired into `resolveStoreDeliveryFee`/`storeUseCases.js` as of Phase 237; this file
+// remains pure and owns no fallback or I/O decisions. Invalid-config fallback stays at the
+// use-case boundary, so callers can keep the existing fixed-fee behavior.
 //
 // Governed by ADR 0066 Decision 2 `[binding]` (money is integer centavos, no floats leave a pricing
 // module) and ADR 0078 Decision 2 (an out-of-range distance is a hard block one layer up, not a fee
@@ -28,6 +28,8 @@
 // not guaranteed to be an exact integer after that multiply -- `0.3 * 1000 === 299.99999999999994`
 // in JS -- so rounding once immediately keeps every value downstream a clean integer. No other
 // rounding happens on these converted values anywhere else in the module.
+
+import { MIN_DELIVERY_INCREMENT_KM, MIN_DELIVERY_INCREMENT_METERS } from '@sieitzz/shared-constants/deliveryFee';
 
 // Phase 237 (#1329, epic #1321). Versions the WHOLE delivery-fee resolution algorithm in
 // storeUseCases.js's resolveStoreDeliveryFee -- not just this module's calculated-mode branch, so a
@@ -65,10 +67,14 @@ const validateConfig = (config) => {
     if (!isFiniteNumber(config.per_km_rate) || config.per_km_rate < 0) {
         throw new DeliveryFeePolicyError('INVALID_CONFIG', 'config.per_km_rate must be a finite number >= 0', { field: 'per_km_rate', value: config.per_km_rate ?? null });
     }
-    // Zero or negative would divide-by-zero (or infinite-loop) the increment math below -- refused
-    // outright rather than clamped to some default increment.
-    if (!isFiniteNumber(config.increment_km) || config.increment_km <= 0) {
-        throw new DeliveryFeePolicyError('INVALID_CONFIG', 'config.increment_km must be a finite number > 0', { field: 'increment_km', value: config.increment_km ?? null });
+    // The policy converts kilometers to whole meters before integer ceiling division. Require the
+    // smallest representable increment up front so a valid config can never become zero meters.
+    if (!isFiniteNumber(config.increment_km) || config.increment_km < MIN_DELIVERY_INCREMENT_KM) {
+        throw new DeliveryFeePolicyError(
+            'INVALID_CONFIG',
+            `config.increment_km must be a finite number >= ${MIN_DELIVERY_INCREMENT_KM} km (1 meter)`,
+            { field: 'increment_km', value: config.increment_km ?? null, minimum_km: MIN_DELIVERY_INCREMENT_KM }
+        );
     }
     if (!isFiniteNumber(config.max_distance_km) || config.max_distance_km <= 0) {
         throw new DeliveryFeePolicyError('INVALID_CONFIG', 'config.max_distance_km must be a finite number > 0', { field: 'max_distance_km', value: config.max_distance_km ?? null });
@@ -125,6 +131,31 @@ export const computeCalculatedDeliveryFeeCentavos = ({ distanceMeters, config } 
     const minFeeCentavos = Math.round(config.min_fee * 100);
     const perKmRateCentavos = Math.round(config.per_km_rate * 100);
 
+    if (![distanceMetersInt, includedMeters, incrementMeters, maxDistanceMeters, minFeeCentavos, perKmRateCentavos]
+        .every(Number.isFinite)) {
+        throw new DeliveryFeePolicyError(
+            'INVALID_CONFIG',
+            'Delivery-fee configuration must remain finite after unit conversion',
+            {
+                included_meters: includedMeters,
+                increment_meters: incrementMeters,
+                max_distance_meters: maxDistanceMeters,
+                min_fee_centavos: minFeeCentavos,
+                per_km_rate_centavos: perKmRateCentavos
+            }
+        );
+    }
+
+    // Keep the post-conversion invariant defensive even if this function is called outside the
+    // validated settings path with a non-standard numeric value.
+    if (!Number.isInteger(incrementMeters) || incrementMeters < MIN_DELIVERY_INCREMENT_METERS) {
+        throw new DeliveryFeePolicyError(
+            'INVALID_CONFIG',
+            'config.increment_km must convert to at least one whole meter',
+            { field: 'increment_km', value: config.increment_km, increment_meters: incrementMeters }
+        );
+    }
+
     // Strict `>`, not `>=` -- a distance exactly at max_distance_km is the in-range "at max
     // distance, capped" case, not out-of-range.
     const outOfRange = distanceMetersInt > maxDistanceMeters;
@@ -155,6 +186,18 @@ export const computeCalculatedDeliveryFeeCentavos = ({ distanceMeters, config } 
         ? distanceMetersInt
         : includedMeters + incrementsCharged * incrementMeters;
     const billedKm = Math.round(billedKmMeters / 10) / 100;
+
+    if (![feeCentavos, billedKm, incrementsCharged].every(Number.isFinite)
+        || !Number.isInteger(feeCentavos)
+        || !Number.isInteger(incrementsCharged)
+        || feeCentavos < 0
+        || incrementsCharged < 0) {
+        throw new DeliveryFeePolicyError(
+            'NON_FINITE_RESULT',
+            'Calculated delivery-fee result must be finite, integer-valued, and non-negative',
+            { feeCentavos, billedKm, incrementsCharged }
+        );
+    }
 
     return { feeCentavos, billedKm, incrementsCharged, outOfRange: false };
 };

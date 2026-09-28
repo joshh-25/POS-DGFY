@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import maplibregl from 'maplibre-gl';
+import * as maplibreModule from 'maplibre-gl';
 // Issue #282, Phase E: colocated with the library import instead of a
 // blanket StorefrontApp.jsx-level import -- this file is now only reached
 // via TrackingRouteMapLazy.jsx's dynamic import(), so the CSS loads only
@@ -16,6 +16,10 @@ import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../packages/w
 import { useStoreRoute } from '../shared/hooks/useStoreRoute.js';
 import { TRACKING_MAP_HEIGHT } from './trackingMapSizing.js';
 import './TrackingRouteMap.css';
+
+// MapLibre 5 exposed a default namespace while 6.x exposes named ESM exports.
+// Keep this map surface compatible with both installed module shapes.
+const maplibregl = Reflect.get(maplibreModule, 'default') ?? maplibreModule;
 // Re-exported for back-compat with anything importing both the component
 // and the helper from this path (see extractTrackingMapCoordinates.js for
 // why production code should prefer importing the helper from there

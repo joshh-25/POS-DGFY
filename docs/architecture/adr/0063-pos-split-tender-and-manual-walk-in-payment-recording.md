@@ -155,6 +155,9 @@ amended.
 - ADR 0077 (POS Cheque Tender Method) — scoped-supersedes clause 4 only, replacing the V1
   five-tender enumeration with a six-tender set adding `cheque`. Clauses 1, 2, 3, and 5 through 14
   are unaffected.
+- ADR 0085 (POS Employee Credit Mixed Split Tender) — scoped-supersedes clauses 1 and 4 only to
+  allow `employee_credit` as a server-verified mixed split allocation. All other clauses remain in
+  force.
 - `docs/compliance/impact-declarations/2026-08-31-pos-balance-payment-proof-image.md` — Phase 204
   (#965), the proof-of-payment image amendment above.
 - `docs/START_HERE.md`

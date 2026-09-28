@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-19
-last_reviewed: 2026-08-29
+last_reviewed: 2026-09-17
 review_by: 2026-12-19
 applies_to: hardware_pos_android_imin_runtime
 topic: standalone_native_hardware_pos_runtime
@@ -136,6 +136,66 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 5. Keep the current Android wrapper as temporary fallback only during migration.
 
 ## Amendments
+
+### 2026-09-17 — iMin WebView defers optional operations work
+
+- Clause amended: Guardrail 7 / “Browser-only POS remains a rollback-safe
+  fallback” (`default`).
+- Change: The temporary Android WebView fallback keeps the checkout workspace
+  as its idle warm-up path, but no longer downloads the large operations
+  workspace during an unlocked iMin session. Operations, Audit, and optional
+  settings/import/modal panels load through the existing retryable lazy-loader
+  on the selected view or explicit pointer/focus/press intent. Browser
+  sessions retain the existing idle operations warm-up behavior.
+- Reason: Avoid competing with initial button, modal, and search interaction
+  work on the constrained iMin WebView while preserving the same POS view,
+  permission, state, and mutation contracts.
+- Boundary: This is a source/build optimization for the browser fallback; it
+  does not change the native React Native/Kotlin hardware ownership or create
+  a new hardware bridge path. Physical iMin frame and bridge validation remain
+  governed by the performance baseline phase.
+- See: `packages/web-core/src/features/pos/components/TerminalPageLayout.jsx`,
+  `packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx`,
+  `packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+  and `docs/features/POS_IMIN_PERFORMANCE_BASELINE_PHASE_352.md`.
+
+### 2026-09-17 — iMin disabled-card filter is paint-safe
+
+- Clause amended: Guardrail 7 / “Browser-only POS remains a rollback-safe
+  fallback” (`default`).
+- Change: The existing `dgfy-imin-performance` marker now neutralizes the
+  legacy POS catalog card's `blur-[0.5px]` filter for disabled/out-of-stock
+  states. Browser rendering and the card's disabled/read-only behavior remain
+  unchanged.
+- Reason: A CSS filter on every disabled catalog card can add avoidable
+  compositing work and preserve the reported blurry-card effect on the fixed
+  iMin WebView.
+- Boundary: This is an iMin-only CSS paint optimization in the browser
+  fallback; it changes no catalog data, availability rule, permission, API,
+  or native bridge command and does not claim physical device measurements.
+- See: `packages/web-core/src/index.css`,
+  `packages/web-core/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx`,
+  and `docs/features/POS_IMIN_PERFORMANCE_BASELINE_PHASE_352.md`.
+
+### 2026-09-17 — Browser and desktop runtime configuration is explicit
+
+- Clause amended: Runtime Strategy and Guardrail 7 (`default`).
+- Change: Shared web-core browser-session CSRF/refresh requests and generated
+  export downloads resolve through the canonical runtime API resolver. The
+  resolver accepts root-relative API paths and absolute HTTP(S) URLs only,
+  prefers the desktop preload runtime when present, and rejects unsupported or
+  protocol-relative values. The Electron shell reads optional development
+  backend, tenant, and terminal values only from local environment settings;
+  it supplies no repository defaults. Packaged launch and saved configuration
+  require a valid HTTP(S) backend origin and invalid stored configuration
+  returns to setup.
+- Reason: Prevent a browser or iMin/Electron shell from sending session or
+  generated-download requests to a stale build-time origin or silently
+  selecting a repository placeholder tenant/terminal.
+- See: `packages/web-core/src/utils/runtimeConfig.js`,
+  `packages/web-core/src/services/browserSession.js`,
+  `packages/web-core/Components/ai/ExportOptionsDialog.jsx`, and
+  `apps/dgfy-pos/desktop/pos-electron/main.cjs`.
 
 ### 2026-08-29 — One dependency drain is one successful sync round
 

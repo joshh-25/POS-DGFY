@@ -7,7 +7,11 @@ const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const componentPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const componentViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
 const componentDialogPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx');
-const componentSource = [componentPath, componentViewPath, componentDialogPath]
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body to
+// usePosTerminalViewModel; include it so behavior markers validate at the
+// extracted boundary.
+const componentHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
+const componentSource = [componentPath, componentHookPath, componentViewPath, componentDialogPath]
     .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
     .join('\n');
 const workflowSource = fs.readFileSync(
@@ -43,7 +47,7 @@ describe('POS Park & New Sale cashier flow', () => {
     it('opens payment immediately for Pay while Resume stays edit-only', () => {
         const payBranch = workflowSource.indexOf("if (normalizedAction === 'pay') {");
         const paymentModalOpen = workflowSource.indexOf('setCheckoutConfirmModalOpen(true);', payBranch);
-        const paymentAmountReset = workflowSource.indexOf('setCustomerPaymentAmountInput(round4(cartTotal).toFixed(2));', payBranch);
+        const paymentAmountReset = workflowSource.indexOf('setCustomerPaymentAmountInput(round4(paymentTotal).toFixed(2));', payBranch);
         const resumeToast = workflowSource.indexOf('Resumed ${formatParkedSaleDisplayName(claimedSale)}', payBranch);
 
         expect(payBranch).toBeGreaterThan(-1);

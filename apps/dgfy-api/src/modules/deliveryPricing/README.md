@@ -32,6 +32,112 @@ real, priced breakdown rather than always returning the flat `store_delivery_fee
   hardcoded `0` (it is I/O-free by design, see its own header) -- the resolved waiver is folded in
   one layer up, by `resolveCheckoutContext` itself, after this function returns.
 
+- Phase 327 minimum-increment and finite-result hardening: the shared one-meter increment floor is
+  enforced by the API validator, calculated-config normalizer, POS/IMS serializers, and form
+  controls. The pure policy rejects any post-conversion zero-meter increment and refuses to return
+  a non-finite or invalid integer result. Existing valid configurations keep the same formula and
+  `DELIVERY_FEE_CALC_VERSION` remains 1; no tenant data or schema change is required.
+
+- Phase 328 road-distance cache hardening: cache identity now includes the tenant, location, full
+  origin, and full destination coordinate tuple. Coarse three-decimal destination bucketing is
+  removed, missing route identity bypasses caching, and only finite non-negative successful
+  distances can be stored or reused. The existing timeout, TTL, FIFO cap, and unavailable fallback
+  remain unchanged; no migration or data repair is required.
+- Phase 329 radius and boundary hardening: a shared radius normalizer preserves an explicit `0` km
+  value across POS setup, onboarding, POS settings, and IMS settings while defaulting only missing
+  or unusable input. The POS coverage copy now reflects zero accurately; MapPinPicker keeps the
+  zero-radius overlay empty; and checkout continues to use road distance plus `max_distance_km`,
+  never the map preview radius. No migration or data repair is required.
+
+## Phase 326 — contract freeze and confirmed gaps (2026-09-12)
+
+Phase 326 was a diagnostic and contract-freeze phase. It added regression witnesses and recorded
+the local saved-settings inventory; it did not change runtime behavior, write production data, or
+add a migration. Its witnesses captured the gaps at the time so the follow-on phases could replace
+them with corrected expectations.
+
+The contracts frozen for the delivery-fee flow are:
+
+1. A zero-kilometer location radius is meaningful configuration. It must survive create/update,
+   render without a coverage circle, and never be replaced by the five-kilometer default.
+2. The map circle is a straight-line/geodesic coverage preview. It is a visualization only; fee
+   calculation uses the routing provider's road distance.
+3. Fixed, calculated, and free modes remain closed choices. Routing, address, or calculated-config
+   failures fail open to the configured fixed fee and never become an unlabelled estimate.
+4. A known road distance beyond `max_distance_km` blocks self-service checkout with the existing
+   out-of-range result. A missing or unavailable route follows the fixed-fee fallback contract.
+5. A road-distance cache entry is valid only for the same tenant, location, origin, and destination
+   coordinate. Only finite successful distances may be reused.
+
+The following gaps were reproduced by the Phase 326 tests. Phase 327 closes the increment gap,
+Phase 328 closes the cache identity/collision gaps, and Phase 329 closes the radius/default gap:
+
+- `PosTenantSetupModal` and `OnboardingSetupModal` use a truthiness fallback that changes an input
+  radius of `0` to `5` before saving.
+- `roadDistanceProvider` omits the store origin from its cache key, so changing the store pin can
+  reuse a distance calculated from the old origin.
+- The provider rounds destinations to three decimal degrees (roughly 111 meters of latitude), so
+  nearby destinations in the same bucket share one cached result.
+
+### Read-only local saved-settings inventory
+
+On 2026-09-12, the local development MariaDB instance was queried read-only through the landlord
+tenant registry and each tenant database. No row was inserted, updated, deleted, migrated, or
+backfilled. The snapshot contained 15 active tenant records, 15 `tenant_locations` rows across 11
+tenants, and four active tenants without a location row. Fourteen locations used the default
+`5.00` km radius and one used `8.00` km; no persisted zero-radius row was present. All returned
+location rows had delivery enabled. One tenant had a persisted fixed `store_delivery_fee` of 25;
+no tenant had persisted `store_delivery_fee_mode` or `store_delivery_fee_calc` rows, so the
+current effective mode is the fixed fallback for this snapshot.
+
+The source-of-truth constraints remain: `tenant_locations.delivery_radius_km` is a `DECIMAL(5,2)`
+with a database default of 5, the API accepts `0..100` km at two-decimal precision, and the shared
+calculated-fee serializer accepts `increment_km >= 0.001` (the one-meter policy floor) while the
+policy converts increments to whole meters. These constraints explain why the local data snapshot
+can contain no zero radius while the zero-radius witness remains reachable through the UI/API
+contract.
+
+Phase 329 owns zero-radius persistence/defaults and the map/checkout distance-boundary behavior.
+
+## Phase 327 — minimum increment and finite-result validation (2026-09-12)
+
+Phase 327 closes the sub-meter increment gap identified by Phase 326. The canonical minimum is
+`0.001` km (one meter), shared through `@sieitzz/shared-constants/deliveryFee` and enforced at every
+write and form entry point. The pure policy validates the converted meter value before ceiling
+division and throws `NON_FINITE_RESULT` instead of returning `NaN` or `Infinity` if an overflowed or
+otherwise invalid result is ever reached. Valid formula inputs retain the existing integer-centavo
+calculation, fallback behavior, and algorithm version; no migration or data repair is required.
+
+Phase 329 closes the remaining Phase 326 radius gap and records the map/checkout distance boundary.
+
+## Phase 328 — origin-aware road-distance cache identity (2026-09-12)
+
+Phase 328 replaces the provider's coarse destination-cell cache key with a collision-safe JSON tuple
+of `tenantId`, `locationId`, `originLat`, `originLng`, `destLat`, and `destLng`. Coordinates are kept
+at their full finite numeric precision; equivalent numeric strings share an entry, while a moved
+origin or nearby destination is routed independently. Missing tenant/location identity or invalid
+coordinates bypasses the cache rather than using an ambiguous key.
+
+The provider now caches and reuses only finite, non-negative numeric road distances. Invalid success
+payloads are returned as the existing `source: 'unavailable'` fallback and are never retained. The
+600 ms timeout, six-hour TTL, 500-entry FIFO cap, and checkout fail-open behavior remain unchanged.
+No schema, migration, tenant data, or payment formula change is required.
+
+## Phase 329 — zero-radius persistence and map/checkout boundary (2026-09-12)
+
+Phase 329 closes the remaining radius/default gap from the Phase 326 contract freeze. The shared
+`normalizeDeliveryRadiusKm` helper defaults only missing, blank, or unusable values to `5` km and
+preserves an explicit numeric or string `0`. POS setup, onboarding, POS settings, and IMS settings
+all use that helper before saving or rendering a location, so a merchant can intentionally disable
+the coverage preview without the form silently restoring five kilometers.
+
+`MapPinPicker` remains a straight-line/geodesic visualization: a zero or non-positive radius
+produces no polygon and no coverage copy. Checkout remains independent of that visualization. A
+known road distance is priced against the calculated fee's `max_distance_km` (exactly at the max
+is accepted; beyond it hard-blocks checkout), while an unavailable road distance keeps the existing
+fixed-fee fallback. No database migration, tenant-data repair, fee formula change, or new endpoint
+is required.
+
 ## What's not here yet
 
 Per #1321's Definition of Done, later phases add:

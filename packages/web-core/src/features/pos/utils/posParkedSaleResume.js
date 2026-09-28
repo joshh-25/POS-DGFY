@@ -1,4 +1,5 @@
 import { isServiceCatalogItem } from './posCatalogAvailability.js';
+import { normalizeAvailablePosDiscountRules } from './posDiscountOptions.js';
 
 const PRICE_EPSILON = 0.0001;
 
@@ -9,6 +10,11 @@ const toPositiveNumber = (value) => {
 };
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase();
 const normalizeItemIdentity = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizeDiscountName = (value) => String(value || '').trim().toLowerCase();
+const positiveInteger = (value) => {
+    const normalized = Number.parseInt(value, 10);
+    return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
+};
 
 export { formatParkedSaleDisplayName } from './posParkedSaleDisplay.js';
 
@@ -17,6 +23,97 @@ const samePrice = (left, right) => (
     && Number.isFinite(Number(right))
     && Math.abs(Number(left) - Number(right)) <= PRICE_EPSILON
 );
+
+const getLineReferences = (line = {}) => [line?.line_key, line?.line_ref]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+
+const normalizeParkedLineModifiers = (line = {}) => toArray(line?.line_modifiers || line?.modifiers)
+    .map((modifier) => ({
+        modifier_group_id: positiveInteger(modifier?.modifier_group_id),
+        modifier_option_id: positiveInteger(modifier?.modifier_option_id),
+        quantity: Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1))
+    }))
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+
+const parkedLineConfigurationFingerprint = (line = {}) => JSON.stringify({
+    course: String(line?.course || '').trim() || 'main',
+    modifiers: normalizeParkedLineModifiers(line),
+    selected_option_ids: [...new Set(toArray(line?.selected_option_ids || line?.service_option_ids)
+        .map((optionId) => positiveInteger(optionId))
+        .filter(Boolean))].sort((left, right) => left - right),
+    special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
+});
+
+const matchesParkedSaleSnapshotIdentity = (line, snapshotLine) => (
+    Number(line?.item_id) === Number(snapshotLine?.item_id)
+    && samePrice(line?.sale_price, snapshotLine?.sale_price)
+    && parkedLineConfigurationFingerprint(line) === parkedLineConfigurationFingerprint(snapshotLine)
+);
+
+export const isParkedSaleOriginalLine = (line = {}, parkedSale = null) => {
+    if (line?.parked_snapshot_line === true) return true;
+
+    const snapshotLines = toArray(parkedSale?.snapshot?.lines);
+    if (!parkedSale?.pos_parked_sale_id || snapshotLines.length === 0) return false;
+
+    const lineReferences = new Set(getLineReferences(line));
+    if (lineReferences.size > 0) {
+        const hasReferencedSnapshotLine = snapshotLines.some((snapshotLine) => (
+            getLineReferences(snapshotLine).some((reference) => lineReferences.has(reference))
+        ));
+        if (hasReferencedSnapshotLine) return true;
+    }
+
+    const itemId = Number(line?.item_id);
+    if (!Number.isInteger(itemId) || itemId <= 0) return false;
+    const identityMatches = snapshotLines.filter((snapshotLine) => (
+        matchesParkedSaleSnapshotIdentity(line, snapshotLine)
+    ));
+    return identityMatches.length === 1;
+};
+
+export const getParkedLineEditState = (line = {}, item = null, parkedSale = null) => {
+    const isOriginal = isParkedSaleOriginalLine(line, parkedSale);
+    const originalQuantity = toPositiveNumber(line?.parked_original_quantity ?? line?.quantity) || 0;
+    if (!isOriginal) {
+        return {
+            isOriginal: false,
+            originalQuantity: 0,
+            itemMissing: false,
+            priceChanged: false,
+            canIncrease: true,
+            currentPrice: Number(item?.default_sale_price)
+        };
+    }
+
+    const itemId = Number(item?.item_id);
+    const lineItemId = Number(line?.item_id);
+    const itemMissing = !item
+        || !Number.isInteger(itemId)
+        || itemId <= 0
+        || !Number.isInteger(lineItemId)
+        || lineItemId !== itemId;
+    const currentPrice = Number(item?.default_sale_price);
+    const savedBasePrice = Number(line?.base_sale_price);
+    const savedSalePrice = Number(line?.sale_price);
+    const hasPriceOverrideReason = String(line?.price_override_reason || '').trim().length >= 3;
+    const priceChanged = !itemMissing && (
+        !Number.isFinite(currentPrice)
+        || currentPrice <= 0
+        || (Number.isFinite(savedBasePrice) && !samePrice(currentPrice, savedBasePrice))
+        || (!hasPriceOverrideReason && Number.isFinite(savedSalePrice) && !samePrice(currentPrice, savedSalePrice))
+    );
+
+    return {
+        isOriginal: true,
+        originalQuantity,
+        itemMissing,
+        priceChanged,
+        canIncrease: !itemMissing && !priceChanged,
+        currentPrice
+    };
+};
 
 const lineLabel = (line, item) => String(
     item?.name
@@ -134,8 +231,10 @@ export const validateParkedSaleResume = ({
     locationId = null,
     allowedOrderMethods = [],
     discountProfiles = [],
+    discountRules = [],
     commercialPromoConfig = [],
-    modifierValidator = null
+    modifierValidator = null,
+    historicalSnapshotPolicy = 'strict'
 } = {}) => {
     const snapshot = parkedSale?.snapshot && typeof parkedSale.snapshot === 'object'
         ? parkedSale.snapshot
@@ -143,6 +242,13 @@ export const validateParkedSaleResume = ({
     const lines = getParkedSaleSnapshotLines(parkedSale);
     const catalogIndexes = buildCatalogIndexes(catalog);
     const conflicts = [];
+    const warnings = [];
+    const allowHistoricalSnapshot = historicalSnapshotPolicy === 'warn';
+    const addCatalogDrift = (message) => {
+        if (allowHistoricalSnapshot) warnings.push(message);
+        else conflicts.push(message);
+    };
+    const availableDiscountRules = normalizeAvailablePosDiscountRules(discountRules);
 
     if (lines.length === 0) {
         conflicts.push('This parked sale has no cart lines to resume.');
@@ -155,10 +261,21 @@ export const validateParkedSaleResume = ({
 
     const selectedProfile = snapshot.discount_context?.selected_profile;
     if (selectedProfile?.name) {
-        const currentProfile = toArray(discountProfiles).find(
-            (profile) => String(profile?.name || '').trim() === String(selectedProfile.name).trim()
+        const selectedProfileName = normalizeDiscountName(selectedProfile.name);
+        const migratedRule = availableDiscountRules.find(
+            (rule) => normalizeDiscountName(rule?.name) === selectedProfileName
         );
-        if (!currentProfile) {
+        const currentProfile = toArray(discountProfiles).find(
+            (profile) => normalizeDiscountName(profile?.name) === selectedProfileName
+        );
+        if (migratedRule) {
+            if (selectedProfile.percentage != null
+                && !samePrice(migratedRule.percentage, selectedProfile.percentage)) {
+                conflicts.push(`Discount profile "${selectedProfile.name}" has changed and must be reviewed.`);
+            } else {
+                warnings.push(`Discount profile "${selectedProfile.name}" was migrated; reselect the current approved rule before checkout.`);
+            }
+        } else if (!currentProfile) {
             conflicts.push(`Discount profile "${selectedProfile.name}" is no longer available.`);
         } else if (
             selectedProfile.percentage != null
@@ -169,7 +286,34 @@ export const validateParkedSaleResume = ({
     }
 
     const appliedDiscount = snapshot.discount_context?.applied;
-    if (String(appliedDiscount?.type || '').toLowerCase() === 'promo' && appliedDiscount?.promo_code) {
+    const appliedDiscountType = String(appliedDiscount?.type || '').trim().toLowerCase();
+    const isServerAuthoritativeLegacyDiscount = ['promo', 'voucher'].includes(appliedDiscountType);
+    const appliedRuleId = positiveInteger(appliedDiscount?.rule_id);
+    const appliedDiscountKey = String(appliedDiscount?.discount_key || '').trim().toLowerCase();
+    if (appliedDiscount && (appliedRuleId || appliedDiscountKey)) {
+        const currentRule = availableDiscountRules.find((rule) => (
+            (appliedRuleId && Number(rule?.discount_rule_id) === appliedRuleId)
+            || (appliedDiscountKey && String(rule?.discount_key || '').trim().toLowerCase() === appliedDiscountKey)
+        ));
+        if (!currentRule) {
+            conflicts.push('The parked discount configuration is no longer enabled and approved. Reapply a current discount rule.');
+        } else if (
+            appliedDiscount.rate != null
+            && currentRule.method === 'percentage'
+            && !samePrice(currentRule.percentage, appliedDiscount.rate)
+        ) {
+            conflicts.push(`Discount rule "${currentRule.name}" changed after this sale was parked and must be reviewed.`);
+        } else if (
+            appliedDiscount.amount != null
+            && currentRule.method === 'fixed'
+            && !samePrice(currentRule.fixed_amount, appliedDiscount.amount)
+        ) {
+            conflicts.push(`Discount rule "${currentRule.name}" changed after this sale was parked and must be reviewed.`);
+        }
+    } else if (appliedDiscount && !isServerAuthoritativeLegacyDiscount) {
+        conflicts.push('The parked discount has no configurable rule identity. Reapply a current discount rule.');
+    }
+    if (appliedDiscountType === 'promo' && appliedDiscount?.promo_code) {
         const promoCode = normalizePromoCode(appliedDiscount.promo_code);
         const currentPromo = toArray(commercialPromoConfig).find(
             (promo) => normalizePromoCode(promo?.promo_code) === promoCode
@@ -187,9 +331,11 @@ export const validateParkedSaleResume = ({
         const item = resolved.item;
         const label = lineLabel(line, item);
         if (!item) {
-            conflicts.push(resolved.reason === 'ambiguous_name' || resolved.reason === 'ambiguous_sku'
-                ? `${label} matches multiple current POS catalog items and must be reviewed.`
-                : `${label} is no longer available in the current POS catalog.`);
+            if (resolved.reason === 'ambiguous_name' || resolved.reason === 'ambiguous_sku') {
+                conflicts.push(`${label} matches multiple current POS catalog items and must be reviewed.`);
+            } else {
+                addCatalogDrift(`${label} is no longer available in the current POS catalog; the parked snapshot will be used.`);
+            }
             return;
         }
 
@@ -201,33 +347,34 @@ export const validateParkedSaleResume = ({
         const serviceItem = isServiceCatalogItem(item) || item?.pos_always_available === true;
         const currentStock = Number(item?.current_stock);
         if (!serviceItem && (!Number.isFinite(currentStock) || currentStock < Number(quantity || 0))) {
-            conflicts.push(`${label} no longer has enough stock to resume this quantity.`);
+            addCatalogDrift(`${label} no longer has enough stock to resume this quantity; the parked snapshot will be used.`);
         }
 
         const currentDefaultPrice = Number(item?.default_sale_price);
         if (!Number.isFinite(currentDefaultPrice) || currentDefaultPrice <= 0) {
-            conflicts.push(`${label} no longer has a valid POS selling price.`);
+            addCatalogDrift(`${label} no longer has a valid POS selling price; the parked snapshot price will be honored.`);
         } else {
             const savedBasePrice = Number(line?.base_sale_price);
             const savedSalePrice = Number(line?.sale_price);
             const hasPriceOverrideReason = String(line?.price_override_reason || '').trim().length >= 3;
             if (Number.isFinite(savedBasePrice) && !samePrice(currentDefaultPrice, savedBasePrice)) {
-                conflicts.push(`${label} selling price changed while it was parked.`);
+                addCatalogDrift(`${label} selling price changed while it was parked; the saved price will be honored.`);
             }
             if (!hasPriceOverrideReason && Number.isFinite(savedSalePrice) && !samePrice(currentDefaultPrice, savedSalePrice)) {
-                conflicts.push(`${label} has a stale selling price and must be reviewed.`);
+                addCatalogDrift(`${label} has a stale selling price; the saved price will be honored.`);
             }
         }
 
         if (typeof modifierValidator === 'function') {
             const modifierConflict = modifierValidator({ item, line, locationId });
-            if (modifierConflict) conflicts.push(`${label}: ${modifierConflict}`);
+            if (modifierConflict) addCatalogDrift(`${label}: ${modifierConflict} The parked snapshot will be used.`);
         }
     });
 
     return {
         ok: conflicts.length === 0,
         conflicts,
+        warnings,
         snapshot,
         lines
     };
@@ -236,7 +383,12 @@ export const validateParkedSaleResume = ({
 export const buildResumedCartLines = ({ parkedSale, catalog = [] } = {}) => {
     const catalogIndexes = buildCatalogIndexes(catalog);
     return getParkedSaleSnapshotLines(parkedSale).map((line, index) => {
-        const item = resolveCatalogItemForLine(line, catalogIndexes).item || {};
+        const resolved = resolveCatalogItemForLine(line, catalogIndexes);
+        const item = resolved.item || {};
+        const parkedLineEditState = getParkedLineEditState({
+            ...line,
+            parked_snapshot_line: true
+        }, resolved.item);
         const currentGroups = Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : [];
         return {
             ...line,
@@ -258,7 +410,15 @@ export const buildResumedCartLines = ({ parkedSale, catalog = [] } = {}) => {
             service_option_ids: toArray(line?.service_option_ids),
             service_option_details: toArray(line?.service_option_details),
             special_instructions: line?.special_instructions || '',
-            scan_metadata: line?.scan_metadata || null
+            scan_metadata: line?.scan_metadata || null,
+            parked_snapshot_line: true,
+            parked_original_quantity: parkedLineEditState.originalQuantity,
+            parked_line_item_missing: parkedLineEditState.itemMissing,
+            parked_line_price_changed: parkedLineEditState.priceChanged,
+            parked_line_can_increase: parkedLineEditState.canIncrease,
+            parked_line_current_price: Number.isFinite(parkedLineEditState.currentPrice)
+                ? parkedLineEditState.currentPrice
+                : null
         };
     });
 };

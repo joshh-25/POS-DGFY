@@ -21,6 +21,36 @@ const findVisibleItemById = async (Item, itemId, options = {}) => {
   });
 };
 
+const findHistoricalItemById = async (Item, itemId, options = {}) => {
+  return Item.findOne({
+    ...options,
+    where: buildVisibleWhere(
+      { item_id: itemId },
+      { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true }
+    )
+  });
+};
+
+const findArchivedItemById = async (Item, itemId, options = {}) => {
+  return Item.findOne({
+    ...options,
+    where: { item_id: itemId }
+  });
+};
+
+const isHistoricalOnlineGoodsIssue = (movementData = {}, { allowInactiveHistoricalItem = false } = {}) => (
+  allowInactiveHistoricalItem === true
+  && movementData.movement_type === 'goods_issue'
+  && movementData.reference_type === 'POS'
+  && /^ONLINE:\d+:/.test(String(movementData.reference_id || ''))
+);
+
+const findItemForMovement = async (Item, movementData, options = {}, policy = {}) => (
+  isHistoricalOnlineGoodsIssue(movementData, policy)
+    ? findHistoricalItemById(Item, movementData.item_id, options)
+    : findVisibleItemById(Item, movementData.item_id, options)
+);
+
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
   if (!Number.isInteger(normalized) || normalized <= 0) return null;
@@ -226,11 +256,16 @@ const executeWithRetry = async (operation, maxRetries = 3) => {
   throw lastError;
 };
 
-export const createStockMovement = async (movementData, userId, transaction = null) => {
+export const createStockMovement = async (
+  movementData,
+  userId,
+  transaction = null,
+  policy = {}
+) => {
   // If an external transaction is provided, we CANNOT retry because we don't control the transaction scope.
   // The caller must handle retries in that case.
   if (transaction) {
-    return createStockMovementInternal(movementData, userId, transaction);
+    return createStockMovementInternal(movementData, userId, transaction, policy);
   }
 
   // If no external transaction, we manage the transaction and can retry on deadlock
@@ -238,7 +273,7 @@ export const createStockMovement = async (movementData, userId, transaction = nu
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
     const t = await sequelize.transaction();
     try {
-      const result = await createStockMovementInternal(movementData, userId, t);
+      const result = await createStockMovementInternal(movementData, userId, t, policy);
       await t.commit();
       return result;
     } catch (err) {
@@ -411,7 +446,9 @@ export const validateStockIssueAvailability = async (movementData = {}, userId, 
   });
   const resolvedLocationId = resolvedLocation?.location_id || null;
   const options = transaction ? { transaction, lock: transaction.LOCK.UPDATE } : {};
-  const item = await findVisibleItemById(Item, movementData.item_id, options);
+  const item = movementData.allow_archived_item === true
+    ? await findArchivedItemById(Item, movementData.item_id, options)
+    : await findVisibleItemById(Item, movementData.item_id, options);
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -470,7 +507,12 @@ export const validateStockIssueAvailability = async (movementData = {}, userId, 
  * Internal implementation detailing the lock and movement logic
  * (Moved from original createStockMovement)
  */
-const createStockMovementInternal = async (movementData, userId, transaction) => {
+const createStockMovementInternal = async (
+  movementData,
+  userId,
+  transaction,
+  { allowInactiveHistoricalItem = false } = {}
+) => {
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
   const StockMovement = dbStore.get('StockMovement');
@@ -479,7 +521,6 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const {
-    item_id,
     quantity,
     movement_type,
     batch_id,
@@ -497,7 +538,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
     lock: transaction.LOCK.UPDATE
   };
 
-  const item = await findVisibleItemById(Item, item_id, options);
+  const item = await findItemForMovement(Item, movementData, options, { allowInactiveHistoricalItem });
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -1028,7 +1069,13 @@ export const getMovementStats = async (params = {}) => {
  * cancel/reject reverse the accept-time goods-issue atomically with the status update.
  * When omitted, behavior is unchanged (opens, commits, and rolls back its own transaction).
  */
-export const voidMovement = async (movementId, userId, reason, transaction = null) => {
+export const voidMovement = async (
+  movementId,
+  userId,
+  reason,
+  transaction = null,
+  { allowInactiveHistoricalItem = false } = {}
+) => {
   const StockMovement = dbStore.get('StockMovement');
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
@@ -1098,14 +1145,23 @@ export const voidMovement = async (movementId, userId, reason, transaction = nul
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Update item stock / location stock
-    const item = await findVisibleItemById(Item, item_id, { transaction });
+    // Update item stock / location stock. Online fulfillment reversals are allowed to use the
+    // immutable historical item row when the catalog row was soft-deleted after checkout. All
+    // other void operations retain the active-item guard.
+    const itemLookup = {
+      item_id,
+      movement_type,
+      reference_type: originalMovement.reference_type,
+      reference_id: originalMovement.reference_id
+    };
+    const item = await findItemForMovement(Item, itemLookup, { transaction }, { allowInactiveHistoricalItem });
     if (!item) {
       const error = new Error('Item not found');
       error.statusCode = 404;
       throw error;
     }
 
+    const stockItemId = item?.item_id || item_id;
     const options = { transaction, lock: transaction.LOCK.UPDATE };
     if (movement_type === 'transfer') {
       const sourceLocationId = parsePositiveInt(originalMovement.source_location_id);
@@ -1118,14 +1174,14 @@ export const voidMovement = async (movementId, userId, reason, transaction = nul
 
       const sourceStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: sourceLocationId,
         userId,
         options
       });
       const destinationStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: destinationLocationId,
         userId,
         options
@@ -1148,11 +1204,11 @@ export const voidMovement = async (movementId, userId, reason, transaction = nul
         updated_by: userId || null
       }, { transaction });
 
-      await updateItemAggregateStock({ item, ItemLocationStock, options });
+      if (item) await updateItemAggregateStock({ item, ItemLocationStock, options });
     } else if (originalMovement.location_id) {
       const locationStock = await getOrCreateItemLocationStock({
         ItemLocationStock,
-        itemId: item.item_id,
+        itemId: stockItemId,
         locationId: originalMovement.location_id,
         userId,
         options
@@ -1170,15 +1226,22 @@ export const voidMovement = async (movementId, userId, reason, transaction = nul
         quantity_on_hand: nextLocationStock,
         updated_by: userId || null
       }, { transaction });
-      await updateItemAggregateStock({ item, ItemLocationStock, options });
+      if (item) await updateItemAggregateStock({ item, ItemLocationStock, options });
     } else {
-      const newStock = parseFloat(item.current_stock) + reverseQuantity;
-      if (newStock < 0) {
-        const error = new Error('Cannot void: would result in negative stock');
-        error.statusCode = 400;
-        throw error;
+      if (!item) {
+        // A hard-deleted historical item has no aggregate row left to update.
+        // The movement is still voided so the parked-sale ledger remains auditable.
+        // Re-park continuity keeps the original movement when the line remains
+        // in the saved snapshot and no replacement item can be issued.
+      } else {
+        const newStock = parseFloat(item.current_stock) + reverseQuantity;
+        if (newStock < 0) {
+          const error = new Error('Cannot void: would result in negative stock');
+          error.statusCode = 400;
+          throw error;
+        }
+        await item.update({ current_stock: newStock }, { transaction });
       }
-      await item.update({ current_stock: newStock }, { transaction });
     }
 
     // Handle FIFO batch reversal for consumption movements
@@ -1332,7 +1395,91 @@ export const voidOnlineOrderGoodsIssue = async ({ orderId, userId, reason, trans
   const reversed = [];
   for (const movement of movements) {
     if (movement.reference_type === 'VOID' || String(movement.notes || '').includes('Voided by')) continue;
-    reversed.push(await voidMovement(movement.movement_id, userId, reason, transaction));
+    reversed.push(await voidMovement(
+      movement.movement_id,
+      userId,
+      reason,
+      transaction,
+      { allowInactiveHistoricalItem: true }
+    ));
+  }
+  return reversed;
+};
+
+/**
+ * Reverse every active goods-issue movement owned by one parked POS sale.
+ * Parked-sale issue references are namespaced as `PARKED:<id>:...`, so a
+ * re-park may safely issue a new revision after reversing the previous one.
+ * The caller owns the transaction; a failure rolls back the complete restore.
+ */
+export const voidParkedSaleGoodsIssue = async ({
+  parkedSaleId,
+  userId,
+  reason,
+  transaction = null,
+  preserveItemIds = []
+} = {}) => {
+  const normalizedParkedSaleId = parsePositiveInt(parkedSaleId);
+  if (!normalizedParkedSaleId) {
+    const error = new Error('parkedSaleId must be a positive integer');
+    error.statusCode = 422;
+    throw error;
+  }
+  const StockMovement = dbStore.get('StockMovement');
+  const Item = dbStore.get('Item');
+  const normalizedPreserveItemIds = new Set(
+    (Array.isArray(preserveItemIds) ? preserveItemIds : [])
+      .map(parsePositiveInt)
+      .filter(Boolean)
+  );
+  const referencePrefix = `PARKED:${normalizedParkedSaleId}:`;
+  const movements = await StockMovement.findAll({
+    where: {
+      reference_type: 'POS_PARKED_SALE',
+      movement_type: 'goods_issue',
+      reference_id: { [Op.like]: `${referencePrefix}%` }
+    },
+    order: [['movement_id', 'ASC']],
+    transaction: transaction || undefined,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
+  });
+  const reversed = [];
+  for (const movement of movements) {
+    if (String(movement.notes || '').includes('Voided by')) continue;
+    const movementItemId = parsePositiveInt(movement.item_id);
+    const archivedItem = movementItemId
+      ? await Item.findOne({
+        where: { item_id: movementItemId },
+        transaction: transaction || undefined,
+        ...(transaction ? { lock: transaction.LOCK.UPDATE } : {})
+      })
+      : null;
+    if (!archivedItem && normalizedPreserveItemIds.has(movementItemId)) {
+      reversed.push({
+        preserved: true,
+        original_movement_id: movement.movement_id,
+        reversal_movement_id: null,
+        item_id: movement.item_id,
+        quantity: Math.abs(Number(movement.quantity || 0)),
+        location_id: movement.location_id || null
+      });
+      continue;
+    }
+    const reversal = await voidMovement(
+      movement.movement_id,
+      userId,
+      reason || `Back Office reversal of parked POS sale ${normalizedParkedSaleId}`,
+      transaction,
+      { allowArchivedItem: true, allowMissingItem: true }
+    );
+    reversed.push({
+      preserved: false,
+      original_movement_id: movement.movement_id,
+      reversal_movement_id: reversal?.movement_id || null,
+      item_id: movement.item_id,
+      quantity: Math.abs(Number(movement.quantity || 0)),
+      location_id: movement.location_id || null
+    });
   }
   return reversed;
 };

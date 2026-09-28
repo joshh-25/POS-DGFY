@@ -131,4 +131,21 @@ describe('POS voucher governed calculation (#712)', () => {
         expect(result.discount_amount).toBe(10);
         expect(result.lines.map((line) => line.discount_amount)).toEqual([10, 0]);
     });
+
+    test('applies configured voucher VAT treatment without changing the voucher discount allocation', () => {
+        const result = buildVoucherGovernedCalculation({
+            lines: [{ item_id: 1, quantity: 1, sale_price: 112, global_discount_base_amount: 112, vat_type: 'vatable' }],
+            voucher: {
+                benefitClass: 'amount_off',
+                discountCentavos: 1000,
+                lineAllocations: [{ item_id: 1, quantity: 1, discountCentavos: 1000, eligible: true }]
+            },
+            taxPolicy: { categories: { voucher: { vat_treatment: 'vat_exempt' } } }
+        });
+
+        expect(result.vat_treatment).toBe('vat_exempt');
+        expect(result.vat_removed).toBe(12);
+        expect(result.discount_amount).toBe(10);
+        expect(result.total_amount).toBe(90);
+    });
 });

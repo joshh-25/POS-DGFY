@@ -178,7 +178,8 @@ export const getTenantModels = (sequelize) => {
         // survives untouched. `uniqueKeys` is always Sequelize-synthesized (no model hand-authors
         // it - confirmed by grep), never hand-authored, so it is still safely stripped wholesale:
         // define() below regenerates it correctly from rawAttributes plus the filtered indexes.
-        const { hooks: originalHooks = {}, indexes: originalIndexes, uniqueKeys: _originalUniqueKeys, ...safeOptions } = originalModel.options;
+        const { hooks: originalHooks = {}, indexes: originalIndexes, ...safeOptions } = originalModel.options;
+        delete safeOptions.uniqueKeys;
         const safeIndexes = Array.isArray(originalIndexes)
             ? originalIndexes.filter((index) => {
                 const isSingleColumnUnique = index?.unique === true && Array.isArray(index.fields) && index.fields.length === 1;

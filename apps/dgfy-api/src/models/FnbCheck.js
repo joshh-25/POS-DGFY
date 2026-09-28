@@ -19,6 +19,10 @@ const FnbCheck = sequelize.define('FnbCheck', {
     type: DataTypes.INTEGER,
     allowNull: true
   },
+  location_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
   guest_count: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -60,8 +64,9 @@ const FnbCheck = sequelize.define('FnbCheck', {
     { fields: ['table_id'] },
     { fields: ['dining_area_id'] },
     { fields: ['server_id'] },
+    { fields: ['location_id'] },
     { fields: ['status'] },
-    { fields: ['pos_transaction_id'] }
+    { fields: ['pos_transaction_id'], unique: true }
   ]
 });
 

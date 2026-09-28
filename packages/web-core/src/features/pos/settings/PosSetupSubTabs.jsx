@@ -8,7 +8,10 @@ const POS_SETUP_SECTIONS = [
   { id: 'controls', label: 'Discounts & Automation', icon: ShieldCheck }
 ];
 
-export default function PosSetupSubTabs({ activeSection, onChange }) {
+export default function PosSetupSubTabs({ activeSection, onChange, visibleSectionIds = null }) {
+  const visibleSections = Array.isArray(visibleSectionIds) && visibleSectionIds.length > 0
+    ? POS_SETUP_SECTIONS.filter((section) => visibleSectionIds.includes(section.id))
+    : POS_SETUP_SECTIONS;
   const sectionsViewportRef = useRef(null);
   const activeSectionIndex = POS_SETUP_SECTIONS.findIndex((section) => section.id === activeSection);
 
@@ -34,36 +37,36 @@ export default function PosSetupSubTabs({ activeSection, onChange }) {
     });
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [activeSection, activeSectionIndex]);
+  }, [activeSection, activeSectionIndex, visibleSections.length]);
 
   const handleKeyDown = (event) => {
-    const currentIndex = POS_SETUP_SECTIONS.findIndex((section) => section.id === activeSection);
+    const currentIndex = visibleSections.findIndex((section) => section.id === activeSection);
     if (currentIndex < 0) return;
 
     let nextIndex = null;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-      nextIndex = (currentIndex + 1) % POS_SETUP_SECTIONS.length;
+      nextIndex = (currentIndex + 1) % visibleSections.length;
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-      nextIndex = (currentIndex - 1 + POS_SETUP_SECTIONS.length) % POS_SETUP_SECTIONS.length;
+      nextIndex = (currentIndex - 1 + visibleSections.length) % visibleSections.length;
     } else if (event.key === 'Home') {
       nextIndex = 0;
     } else if (event.key === 'End') {
-      nextIndex = POS_SETUP_SECTIONS.length - 1;
+      nextIndex = visibleSections.length - 1;
     }
 
     if (nextIndex === null) return;
 
     event.preventDefault();
-    onChange(POS_SETUP_SECTIONS[nextIndex].id);
+    onChange(visibleSections[nextIndex].id);
     requestAnimationFrame(() => {
-      document.getElementById(`pos-setup-tab-${POS_SETUP_SECTIONS[nextIndex].id}`)?.focus();
+      document.getElementById(`pos-setup-tab-${visibleSections[nextIndex].id}`)?.focus();
     });
   };
 
   return (
     <div ref={sectionsViewportRef} role="tablist" aria-label="POS Setup sections" className="-mx-1 overflow-x-auto">
       <div className="flex min-w-max gap-2 px-1 min-[1200px]:grid min-[1200px]:min-w-0 min-[1200px]:grid-cols-4 min-[1200px]:px-0">
-        {POS_SETUP_SECTIONS.map(({ id, label, icon: Icon }) => {
+        {visibleSections.map(({ id, label, icon: Icon }) => {
           const isActive = activeSection === id;
           return (
             <button

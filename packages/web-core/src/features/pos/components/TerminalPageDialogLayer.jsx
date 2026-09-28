@@ -11,7 +11,9 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { isStarterSetupRequired } from '../utils/setupFlow.js';
 import BalanceSettlementDialog from './BalanceSettlementDialog.jsx';
+import ScheduledDineInAlertDialog from './ScheduledDineInAlertDialog.jsx';
 import ShiftCloseSummaryPrintView from './ShiftCloseSummaryPrintView.jsx';
 import ZReadingPrintView from './ZReadingPrintView.jsx';
 
@@ -74,6 +76,7 @@ export default function TerminalPageDialogLayer({ model }) {
     handleCompleteLegacyLink,
     handleCompleteTenantSetup,
     handleConfirmCloseShift,
+    handleResolveCloseShiftPaymentBlocker,
     handleHardwareMessageOpenChange,
     handleIncomingOrderModalOpenChange,
     handleIncomingOrderReceiptOpenChange,
@@ -95,6 +98,9 @@ export default function TerminalPageDialogLayer({ model }) {
     incomingOrderPrintLoading,
     incomingOrderReceiptOpen,
     incomingReceiptOpeningId,
+    scheduledDineInAlert,
+    scheduledDineInAlertNow,
+    handleScheduledDineInAlertOpenChange,
     isOnline,
     legacyLinkState,
     locationNameLookup,
@@ -165,6 +171,7 @@ export default function TerminalPageDialogLayer({ model }) {
     terminalUnlockRequired,
     terminalUser,
     toast,
+    workflowMode,
     zReadingCloseConfirmOpen,
     zReadingClosePin,
     zReadingPrintAutoPrint,
@@ -172,6 +179,8 @@ export default function TerminalPageDialogLayer({ model }) {
     zReadingPrintState,
     zReadingReport
   } = model;
+
+  const starterSetupRequired = isStarterSetupRequired(workflowMode);
 
   const currentCashierLabel = String(
     cashierUnlockSession?.username
@@ -186,8 +195,14 @@ export default function TerminalPageDialogLayer({ model }) {
 <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
             <DialogHeader>
-              <DialogTitle className="text-lg font-black text-slate-950">Collect Cash</DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-slate-600">Record payment before completing this order. Change is calculated by the POS.</DialogDescription>
+              <DialogTitle className="text-lg font-black text-slate-950">
+                {cashCollectionOrder?.order_method === 'dine_in' ? 'Collect Dine-in Cash' : 'Collect Cash'}
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                {cashCollectionOrder?.order_method === 'dine_in'
+                  ? 'Record payment before marking this dine-in order as served. Change is calculated by the POS.'
+                  : 'Record payment before completing this order. Change is calculated by the POS.'}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
@@ -201,7 +216,13 @@ export default function TerminalPageDialogLayer({ model }) {
             </div>
             <DialogFooter className="gap-2 sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setCashCollectionOrder(null)} disabled={cashCollectionSaving}>Cancel</Button>
-              <Button type="button" onClick={handleCollectCash} disabled={cashCollectionSaving}>{cashCollectionSaving ? 'Collecting...' : 'Collect Cash'}</Button>
+              <Button type="button" onClick={handleCollectCash} disabled={cashCollectionSaving}>
+                {cashCollectionSaving
+                  ? 'Collecting...'
+                  : cashCollectionOrder?.order_method === 'dine_in'
+                    ? 'Collect Dine-in Cash'
+                    : 'Collect Cash'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -269,7 +290,9 @@ export default function TerminalPageDialogLayer({ model }) {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierTakeoverUnlock
-                      ? 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
+                      ? cashierResumeContext?.returnToCheckout
+                        ? 'Verify the POS account to continue this checkout. Your cart and payment details will stay open.'
+                        : 'Sign in to resume or take over this register. The existing shift and opening cash remain unchanged.'
                       : cashierResumeUnlock
                       ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
                       : signedInShiftResume
@@ -327,18 +350,20 @@ export default function TerminalPageDialogLayer({ model }) {
                       Open shift owned by {cashierResumeContext?.cashierEmail || cashierResumeContext?.cashierUsername || 'the current cashier'}
                     </div>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-[#1A4E8D]">
-                      The shift owner resumes automatically. A different cashier enters their PIN and attendance starts automatically.
+                      {cashierResumeContext?.returnToCheckout
+                        ? 'After verification, return to checkout and press Confirm again. The payment is never submitted automatically.'
+                        : 'The shift owner resumes automatically. A different cashier enters their PIN and attendance starts automatically.'}
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-identifier" className="text-xs font-extrabold text-[#0F172A]">
-                        Cashier DGFY Email
+                        {cashierResumeContext?.returnToCheckout ? 'DGFY Account Email' : 'Cashier DGFY Email'}
                       </Label>
                       <Input
                         id="cashier-takeover-identifier"
                         type="email"
                         value={cashierTakeoverForm.identifier}
                         onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, identifier: event.target.value }))}
-                        placeholder="cashier@company.com"
+                        placeholder={cashierResumeContext?.returnToCheckout ? 'admin@company.com' : 'cashier@company.com'}
                         autoComplete="username"
                         disabled={submitting}
                         required
@@ -346,14 +371,14 @@ export default function TerminalPageDialogLayer({ model }) {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-takeover-password" className="text-xs font-extrabold text-[#0F172A]">
-                        DGFY Password
+                        DGFY Account Password
                       </Label>
                       <Input
                         id="cashier-takeover-password"
                         type="password"
                         value={cashierTakeoverForm.password}
                         onChange={(event) => setCashierTakeoverForm((prev) => ({ ...prev, password: event.target.value }))}
-                        placeholder="Enter cashier password"
+                        placeholder={cashierResumeContext?.returnToCheckout ? 'Enter account password' : 'Enter cashier password'}
                         autoComplete="current-password"
                         disabled={submitting}
                         required
@@ -475,7 +500,7 @@ export default function TerminalPageDialogLayer({ model }) {
                         </>
                       )}
                       <p className="text-[11px] text-[#64748B]">
-                        Enter the registered terminal ID from POS Setup. Example: `COUNTER-01`.
+                        Enter the registered terminal ID from POS Setup &gt; Registers &amp; terminal policy. Example: `COUNTER-01`.
                       </p>
                     </div>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
@@ -596,14 +621,14 @@ export default function TerminalPageDialogLayer({ model }) {
                     ? (adminReauthUnlock
                       ? 'Checking admin...'
                       : cashierTakeoverUnlock
-                        ? 'Signing in cashier...'
+                        ? (cashierResumeContext?.returnToCheckout ? 'Verifying account...' : 'Signing in cashier...')
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resuming shift...'
                         : 'Opening shift...')
                     : (adminReauthUnlock
                       ? 'Unlock as Admin'
                       : cashierTakeoverUnlock
-                        ? 'Continue to POS'
+                        ? (cashierResumeContext?.returnToCheckout ? 'Verify & Return to Checkout' : 'Continue to POS')
                       : cashierResumeUnlock || signedInShiftResume
                         ? 'Resume Shift'
                         : terminalUnlockMode === 'relock'
@@ -685,11 +710,13 @@ export default function TerminalPageDialogLayer({ model }) {
               ? 'Finish tenant onboarding in POS Settings first. The rest of POS remains limited until setup is complete.'
               : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
                 ? 'Finish Storefront Setup next. Add the company icon and cover image to continue.'
-                : `Finish POS Setup next. Missing: ${[
-                  setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
-                  setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
-                ].filter(Boolean).join(', ')
-                }.`)}
+                : (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && starterSetupRequired
+                  ? 'Create the first room type and room before configuring the terminal.'
+                  : `Finish POS Setup next. Missing: ${[
+                    setupFlowState.posRequirements.terminalRegistryReady ? null : 'registered terminal with password and store',
+                    setupFlowState.posRequirements.cashierReady ? null : 'provisioned cashier access'
+                  ].filter(Boolean).join(', ')
+                  }.`))}
           </div>
         )}
         {setupFlowActive && (
@@ -770,17 +797,22 @@ export default function TerminalPageDialogLayer({ model }) {
           }}
           posRequirements={setupFlowState.posRequirements}
           storefrontRequirements={setupFlowState.storefrontRequirements}
+          starterItemRequirements={setupFlowState.starterItemRequirements}
+          workflowMode={workflowMode}
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           onStepSelect={openTenantSetupStep}
           onBack={() => {
-            const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
+            const previousStep = getPreviousTenantSetupStep(tenantSetupStep, workflowMode);
             if (previousStep) {
               openTenantSetupStep(previousStep);
             }
           }}
-          onContinue={async ({ storefrontSetupReady = setupFlowState.storefrontSetupReady } = {}) => {
-            const nextStep = getNextTenantSetupStep(tenantSetupStep);
+          onContinue={async ({
+            storefrontSetupReady = setupFlowState.storefrontSetupReady,
+            starterItemReady = setupFlowState.starterItemReady
+          } = {}) => {
+            const nextStep = getNextTenantSetupStep(tenantSetupStep, workflowMode);
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
               openTenantSetupStep(nextStep);
               return;
@@ -789,6 +821,15 @@ export default function TerminalPageDialogLayer({ model }) {
               if (!storefrontSetupReady) {
                 toast.error('Finish Storefront Setup before continuing to POS Setup.');
                 openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+                return;
+              }
+              openTenantSetupStep(nextStep);
+              return;
+            }
+            if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM && starterSetupRequired) {
+              if (!starterItemReady) {
+                toast.error('Save one room type and at least one room before continuing to POS Setup.');
+                openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
                 return;
               }
               openTenantSetupStep(nextStep);
@@ -895,15 +936,45 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogHeader>
             {closeShiftBlocker ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
-                <p>Resolve the following before closing this shift:</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5">
-                  {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
-                    <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
-                  )}
-                  {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
-                    <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
-                  )}
-                </ul>
+                {closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_IN_FLIGHT' || closeShiftBlocker.reasonCode === 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED' ? (
+                  <>
+                    <p>{closeShiftBlocker.message || 'An unresolved payment is still open for this shift.'}</p>
+                    <p className="mt-1 font-medium">
+                      Return to Checkout, then open <strong>Split Payment</strong> to finish it or cancel it. Shift close will remain blocked until the payment is resolved.
+                    </p>
+                    {Array.isArray(closeShiftBlocker.sessions) && closeShiftBlocker.sessions.length > 0 && (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                        {closeShiftBlocker.sessions.map((session) => (
+                          <li key={session.pos_payment_session_id || session.session_reference}>
+                            {session.session_reference || `Payment session #${session.pos_payment_session_id || 'unknown'}`}
+                            {session.status ? ` · ${String(session.status).replace(/_/g, ' ')}` : ''}
+                            {Number(session.paid_amount || 0) > 0 ? ` · ₱${Number(session.paid_amount).toFixed(2)} already recorded` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <Button
+                      type="button"
+                      onClick={handleResolveCloseShiftPaymentBlocker}
+                      className="mt-3 h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
+                      data-testid="pos-close-shift-resolve-payment"
+                    >
+                      Return to Checkout
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <p>Resolve the following before closing this shift:</p>
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {Number(closeShiftBlocker.claimedParkedSaleCount || 0) > 0 && (
+                        <li>{Number(closeShiftBlocker.claimedParkedSaleCount)} claimed parked sale{Number(closeShiftBlocker.claimedParkedSaleCount) === 1 ? '' : 's'} are still in progress on the server. Finish or release each one before closing.</li>
+                      )}
+                      {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
+                        <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
+                      )}
+                    </ul>
+                  </>
+                )}
               </div>
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">
@@ -981,6 +1052,11 @@ export default function TerminalPageDialogLayer({ model }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <ScheduledDineInAlertDialog
+          alert={scheduledDineInAlert}
+          now={scheduledDineInAlertNow}
+          onOpenChange={handleScheduledDineInAlertOpenChange}
+        />
         {incomingOrderModalOpen && (
           <Suspense fallback={null}>
             <OnlineOrderDetailsModal
@@ -1004,6 +1080,11 @@ export default function TerminalPageDialogLayer({ model }) {
             />
             </Suspense>
         )}
+        <ScheduledDineInAlertDialog
+          alert={scheduledDineInAlert}
+          now={scheduledDineInAlertNow}
+          onOpenChange={handleScheduledDineInAlertOpenChange}
+        />
         {closedShiftReportOpen && closedShiftReport && (
           <ShiftCloseSummaryPrintView
             report={closedShiftReport}

@@ -41,6 +41,7 @@ import {
     normalizeStoreProfileReadFlag
 } from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
+import { applyPosTaxPolicyAuditLog, resolvePosTaxPolicyAuditBeforeValue } from './posTaxPolicyAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
@@ -169,7 +170,7 @@ export const buildUpdateSettingByKeyUseCase = ({
     tenantLocationRepository = null,
     tenantRepository = null
 }) => {
-    return async ({ key, value, actorUser = null }) => {
+    return async ({ key, value, expectedUpdatedAt = null, actorUser = null }) => {
         if (!key || typeof key !== 'string') {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -428,10 +429,17 @@ export const buildUpdateSettingByKeyUseCase = ({
                     currentEntries: currentRegistry?.[POS_TERMINAL_REGISTRY_KEY]?.value || []
                 });
                 if (typeof settingsRepository?.updateSettings === 'function') {
-                    await settingsRepository.updateSettings({
+                    const strictBindingSettings = {
                         [POS_TERMINAL_REGISTRY_KEY]: strictBindingRegistryPatch,
                         [key]: normalizedValue
-                    });
+                    };
+                    if (expectedUpdatedAt) {
+                        await settingsRepository.updateSettings(strictBindingSettings, {
+                            expectedUpdatedAt: { [key]: expectedUpdatedAt }
+                        });
+                    } else {
+                        await settingsRepository.updateSettings(strictBindingSettings);
+                    }
                     if (typeof settingsRepository?.getSettingByKey === 'function') {
                         const setting = await settingsRepository.getSettingByKey(key);
                         return ok(sanitizeSingleSettingForRead({ key, setting }));
@@ -456,6 +464,10 @@ export const buildUpdateSettingByKeyUseCase = ({
                 settingsRepository,
                 settingsData: { [key]: normalizedValue }
             });
+            const posTaxPolicyAuditBeforeValue = await resolvePosTaxPolicyAuditBeforeValue({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
             if (
                 key === WORKFLOW_MODE_SETTING_KEY
                 || key === ENABLED_CAPABILITIES_SETTING_KEY
@@ -471,7 +483,9 @@ export const buildUpdateSettingByKeyUseCase = ({
                 }
             }
 
-            const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            const updatedSetting = expectedUpdatedAt
+                ? await settingsRepository.updateSettingByKey(key, normalizedValue, { expectedUpdatedAt })
+                : await settingsRepository.updateSettingByKey(key, normalizedValue);
             await clearCapabilityCachesIfKeyTouched(key);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,
@@ -485,6 +499,17 @@ export const buildUpdateSettingByKeyUseCase = ({
                 });
             } catch (error) {
                 logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+                    error: error?.message
+                });
+            }
+            try {
+                await applyPosTaxPolicyAuditLog({
+                    settingsData: { [key]: normalizedValue },
+                    beforeValue: posTaxPolicyAuditBeforeValue,
+                    actorUser
+                });
+            } catch (error) {
+                logger.warn('[PosTaxPolicyAudit] failed to record tax policy change log', {
                     error: error?.message
                 });
             }

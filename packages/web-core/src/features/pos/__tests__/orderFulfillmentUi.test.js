@@ -8,6 +8,7 @@ import {
   hasCompleteDeliveryAssignment,
   getNextDeliveryJobStatus,
   isManualDeliveryJob,
+  getFulfillmentStatusLabel,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS
 } from '../components/orderFulfillmentUi.js';
@@ -74,6 +75,12 @@ describe('orderFulfillmentUi queue action mapping', () => {
     expect(getFulfillmentActionLabel('completed', { order_method: 'dine_in' })).toBe('Served');
   });
 
+  it('uses dine-in handover wording in queue status badges', () => {
+    expect(getFulfillmentStatusLabel('ready_for_pickup', { order_method: 'dine_in' })).toBe('Ready to Serve');
+    expect(getFulfillmentStatusLabel('completed', { order_method: 'dine_in' })).toBe('Served');
+    expect(getFulfillmentStatusLabel('ready_for_pickup', { order_method: 'pickup' })).toBe('Ready for pickup');
+  });
+
   it('gates pickup completion until cash collection is recorded', () => {
     expect(getNextStatusActions({
       fulfillment_status: 'placed',
@@ -92,6 +99,19 @@ describe('orderFulfillmentUi queue action mapping', () => {
     expect(isCompletionPaymentPending({
       fulfillment_status: 'ready_for_pickup',
       order_method: 'pickup',
+      payment_status: 'paid'
+    })).toBe(false);
+  });
+
+  it('gates dine-in completion until the handover balance is settled', () => {
+    expect(isCompletionPaymentPending({
+      fulfillment_status: 'ready_for_pickup',
+      order_method: 'dine_in',
+      payment_status: 'partially_paid'
+    })).toBe(true);
+    expect(isCompletionPaymentPending({
+      fulfillment_status: 'ready_for_pickup',
+      order_method: 'dine_in',
       payment_status: 'paid'
     })).toBe(false);
   });

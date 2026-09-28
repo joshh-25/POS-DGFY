@@ -18,7 +18,8 @@ import {
     getTotalCatalogPages,
     getVisibleCatalogItems,
     getVisibleCatalogRange,
-    normalizePosFolders
+    normalizePosFolders,
+    sortCatalogByFolderOrder
 } from '../posCatalogWorkflow.js';
 
 describe('POS catalog workflow utilities', () => {
@@ -45,6 +46,31 @@ describe('POS catalog workflow utilities', () => {
             { folder_id: 20, name: 'Services' },
             { folder_id: 30, name: 'Empty' }
         ], available).map((folder) => folder.folder_id)).toEqual([10, 20]);
+    });
+
+    it('keeps the saved category order for the POS folder strip', () => {
+        expect(normalizePosFolders([
+            { folder_id: '20', name: 'Z Drinks', sort_order: '2' },
+            { folder_id: '10', name: 'A Food', sort_order: '1' },
+            { folder_id: '30', name: 'Mains', sort_order: 0 },
+            { folder_id: '40', name: 'Legacy Category' }
+        ]).map((folder) => folder.folder_id)).toEqual([30, 10, 20, 40]);
+    });
+
+    it('orders the unfiltered catalog by each item primary category order', () => {
+        const catalog = [
+            { item_id: 3, name: 'Meal item', folder_id: 30 },
+            { item_id: 1, name: 'Main item', folder_id: 10 },
+            { item_id: 4, name: 'Unassigned item', folder_id: null },
+            { item_id: 2, name: 'Shake item', folder_id: 20 }
+        ];
+        const folders = [
+            { folder_id: 20, name: 'Shake', sort_order: 1 },
+            { folder_id: 30, name: 'Meals', sort_order: 2 },
+            { folder_id: 10, name: 'Main', sort_order: 0 }
+        ];
+
+        expect(sortCatalogByFolderOrder(catalog, folders).map((item) => item.item_id)).toEqual([1, 2, 3, 4]);
     });
 
     it('filters folders, paginates predictably, and reports the visible range', () => {

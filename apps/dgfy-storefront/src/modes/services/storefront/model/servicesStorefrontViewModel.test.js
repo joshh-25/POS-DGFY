@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getServicesStorefrontViewModel } from './servicesStorefrontViewModel.js';
+import { getServicesStorefrontViewModel, sortServicesForCatalog } from './servicesStorefrontViewModel.js';
 
 // ADR 0080 Decision 4/5 opt-in (Phase 289, #1318): the services storefront's category grouping
 // now renders a service once per category it belongs to (primary + each secondary category),
@@ -33,6 +33,17 @@ describe('getServicesStorefrontViewModel — secondary-category grouping fan-out
       baseService({ item_id: 3, folder_id: 300, folder_name: 'Alterations', folder_sort_order: 5 })
     ]);
     expect(result.serviceGroups.map((group) => group.categoryIdentity)).toEqual(['folder:200', 'folder:300', 'folder:100']);
+  });
+
+  it('orders All services by primary category order before service name', () => {
+    const result = sortServicesForCatalog([
+      { item_id: 3, name: 'Meal service', categorySortOrder: 2 },
+      { item_id: 1, name: 'Main service', categorySortOrder: 0 },
+      { item_id: 4, name: 'Unassigned service', categorySortOrder: null },
+      { item_id: 2, name: 'Shake service', categorySortOrder: 1 }
+    ], 'recommended');
+
+    expect(result.map((item) => item.item_id)).toEqual([1, 2, 3, 4]);
   });
 
   it('keeps a secondary-only service available in All while using only its valid secondary category', () => {

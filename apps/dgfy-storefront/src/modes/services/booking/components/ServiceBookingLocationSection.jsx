@@ -606,6 +606,7 @@ export function ServiceBookingLocationSection({
                 setCustomerPin(nextPin);
               }}
               disabled={false}
+              scrollZoom={false}
               height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
               highlighted
               highlightColor={servicesPrimary}

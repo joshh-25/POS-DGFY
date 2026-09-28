@@ -6,7 +6,6 @@ Reporting transport handlers and service-backed use-cases.
 - `controllers/reportHandlers.js`: route handlers for reports, snapshots, and CSV export.
 - `usecases/reportUseCases.js`: use-case builders wrapping `reportService`.
 - `index.js`: wiring for report use-cases.
-
 ## Current CSV Export Types
 1. `expiry`
 2. `stock_aging`

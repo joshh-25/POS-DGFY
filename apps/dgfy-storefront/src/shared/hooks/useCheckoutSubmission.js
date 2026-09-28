@@ -82,6 +82,7 @@ export function useCheckoutSubmission({
   rememberCustomerDetails,
   requestJson,
   requestQuote,
+  resetGuestCheckoutOtp,
   requireQuoteForCheckout,
   resolveServicesBookingSubmitContract,
   resolvedCustomerFirstName,
@@ -308,6 +309,7 @@ export function useCheckoutSubmission({
         serviceOrderMethod: effectiveServiceOrderMethod
       });
       setCart([]);
+      resetGuestCheckoutOtp?.();
       setSelectedServiceCartLineId('');
       setCheckoutResult(null);
       setTrackingPinInput(localSimulation.tracking_pin);
@@ -405,6 +407,9 @@ export function useCheckoutSubmission({
           requestJson,
           storeSlug: selectedStore.slug
         });
+        // The server has captured the guest proof in this payment session. Consume the
+        // browser-side proof now so a later order cannot reuse the first order's OTP state.
+        resetGuestCheckoutOtp?.();
         if (isStorefrontDirectPaymentSession(paymentSession)) {
           if (isStorefrontDirectCardPaymentSession(paymentSession)) {
             setQrphPaymentSession(paymentSession);
@@ -478,6 +483,7 @@ export function useCheckoutSubmission({
         try {
           servicesData = await submitServicesBooking();
         } catch (servicesError) {
+          resetGuestCheckoutOtp?.();
           setCart((prev) => prev.filter((line) => line.category === 'service'));
           setCheckoutResult({
             ...productData,
@@ -521,6 +527,7 @@ export function useCheckoutSubmission({
         }
       }
       const data = { ...productData, ...servicesData };
+      resetGuestCheckoutOtp?.();
       setCheckoutResult({
         ...data,
         cart_lines: hasServiceCart && !hasMixedCart

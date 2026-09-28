@@ -1,6 +1,12 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import {
+  buildStockHealthWhere,
+  classifyExpiry,
+  getStockHealthStatus,
+  STOCK_HEALTH_STATUS
+} from '../modules/inventory/services/inventoryHealthService.js';
 import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 /**
@@ -37,14 +43,10 @@ export const getLowStockAlerts = async () => {
   const lowStockItems = await Item.findAll({
     where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
-      min_threshold: { [Op.ne]: null },
-      [Op.and]: [
-        sequelize.where(
-          sequelize.col('current_stock'),
-          Op.lte,
-          sequelize.col('min_threshold')
-        )
-      ]
+      [Op.and]: [buildStockHealthWhere({
+        status: STOCK_HEALTH_STATUS.LOW_STOCK,
+        sequelize
+      })]
     }))
   });
 
@@ -54,7 +56,45 @@ export const getLowStockAlerts = async () => {
     message: `${item.name} (${item.sku_code}) is below minimum threshold`,
     item_id: item.item_id,
     current_stock: item.current_stock,
-    min_threshold: item.min_threshold
+    min_threshold: item.min_threshold,
+    stock_status: getStockHealthStatus({
+      currentStock: item.current_stock,
+      minThreshold: item.min_threshold,
+      maxCapacity: item.max_capacity
+    })
+  }));
+};
+
+/**
+ * Get out-of-stock alerts from the same stock-health classification used by
+ * dashboard, catalog adapters, and Business Admin inventory reports.
+ */
+export const getOutOfStockAlerts = async () => {
+  const Item = dbStore.get('Item');
+  const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+
+  const outOfStockItems = await Item.findAll({
+    where: buildStockBearingItemWhere(buildVisibleWhere({
+      status: 'active',
+      [Op.and]: [buildStockHealthWhere({
+        status: STOCK_HEALTH_STATUS.OUT_OF_STOCK,
+        sequelize
+      })]
+    }))
+  });
+
+  return outOfStockItems.map(item => ({
+    type: 'out_of_stock',
+    severity: 'high',
+    message: `${item.name} (${item.sku_code}) is out of stock`,
+    item_id: item.item_id,
+    current_stock: item.current_stock,
+    min_threshold: item.min_threshold,
+    stock_status: getStockHealthStatus({
+      currentStock: item.current_stock,
+      minThreshold: item.min_threshold,
+      maxCapacity: item.max_capacity
+    })
   }));
 };
 
@@ -98,7 +138,14 @@ export const getExpiryAlerts = async (options = {}) => {
     if (isNaN(expiryDate.getTime()) || expiryDate.getFullYear() < 2000) return;
 
     const daysUntilExpiry = Math.ceil((expiryDate - today) / (1000 * 60 * 60 * 24));
-    const severity = daysUntilExpiry < 0 ? 'expired' : daysUntilExpiry <= criticalDays ? 'critical' : 'warning';
+    const expiryStatus = classifyExpiry({
+      daysUntilExpiry,
+      criticalDays,
+      warningDays,
+      upcomingDays: warningDays
+    });
+    if (!expiryStatus) return;
+    const severity = expiryStatus === 'expired' ? 'expired' : expiryStatus;
 
     alerts.push({
       type: 'expiring_batch',
@@ -143,12 +190,12 @@ export const getSupplierPerformanceAlerts = async () => {
  * Generate all system alerts (Legacy compatibility)
  */
 export const generateAlerts = async () => {
-  const [lowStock, expiry, performance] = await Promise.all([
+  const [lowStock, outOfStock, expiry, performance] = await Promise.all([
     getLowStockAlerts(),
+    getOutOfStockAlerts(),
     getExpiryAlerts(),
     getSupplierPerformanceAlerts()
   ]);
 
-  return [...lowStock, ...expiry, ...performance];
+  return [...lowStock, ...outOfStock, ...expiry, ...performance];
 };
-
