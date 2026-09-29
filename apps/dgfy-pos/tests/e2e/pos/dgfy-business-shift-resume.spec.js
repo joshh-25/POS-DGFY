@@ -114,6 +114,7 @@ test.describe('DGFY Business active-shift handoff', () => {
             cashier_id: Number(company?.tenant_user_id || 1),
             terminal_id: activeTerminal.terminal_id,
             location_id: Number(activeTerminal.location_id),
+            opening_float_amount: 2000,
             status: 'open'
           },
           cash_summary: null
@@ -147,6 +148,39 @@ test.describe('DGFY Business active-shift handoff', () => {
         contentType: 'application/json',
         body: JSON.stringify(activeShiftPayload)
       }));
+      await context.route('**/api/v1/dgfy/account/companies/*/pos-session', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            token: 'e2e-tenant-session-token',
+            user_id: Number(company?.tenant_user_id || 1),
+            username: testCredentials.email.split('@')[0],
+            email: testCredentials.email,
+            role: 'cashier',
+            permissions: ['pos:view', 'pos:transact', 'pos:shift_open', 'pos:shift_close'],
+            company: {
+              id: company.tenant_id,
+              token: company.company_token,
+              name: companyName
+            }
+          }
+        })
+      }));
+      await context.route('**/api/v1/pos/terminal/dashboard/today*', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            active_shift: activeShiftPayload.data.shift,
+            active_shift_cash_summary: null,
+            business_date: '2026-09-29',
+            sales_summary: null
+          }
+        })
+      }));
 
       context.on('page', (openedPage) => registerRuntimeDiagnostics(openedPage, diagnostics));
       const newPosPagePromise = context.waitForEvent('page');
@@ -161,6 +195,13 @@ test.describe('DGFY Business active-shift handoff', () => {
         'Your active shift was found. Resume the same terminal, cart, totals, and cashier session.',
         { exact: true }
       )).toBeVisible();
+
+      const resumeShiftDialog = newPosPage.getByRole('dialog').filter({
+        has: newPosPage.getByRole('heading', { name: 'Resume Shift', exact: true })
+      });
+      await resumeShiftDialog.getByRole('button', { name: 'Resume Shift', exact: true }).click();
+      await expect(resumeShiftDialog).toHaveCount(0);
+      await expect(newPosPage.getByRole('heading', { name: 'Open Shift', exact: true })).toHaveCount(0);
     } finally {
       await testInfo.attach('dgfy-business-shift-resume-diagnostics.json', {
         body: JSON.stringify(diagnostics, null, 2),
