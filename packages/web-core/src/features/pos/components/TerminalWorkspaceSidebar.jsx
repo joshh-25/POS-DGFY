@@ -426,13 +426,13 @@ export default function TerminalWorkspaceSidebar({
           )}
           {canLaunchBackOffice && !isCashierRole && (
             <NavButton
-              label="Back Office"
+              label="Business Admin"
               icon={Briefcase}
               active={false}
-              onClick={() => onOpenBackOffice('/')}
+              onClick={() => onOpenBackOffice('/business-admin/overview')}
               disabled={!isOnline || isBranchReadOnlyView}
-              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view before opening Back Office' : 'Open the dedicated DGFY Back Office'))}
-              testId="pos-nav-backoffice"
+              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view before opening Business Admin' : 'Open POS administration tools'))}
+              testId="pos-nav-business-admin"
               collapsed={isCollapsed}
             />
           )}

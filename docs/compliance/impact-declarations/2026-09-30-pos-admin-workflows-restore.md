@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.25
-verification_evidence: POS and OPIS app unit tests (36 passed), shared Business Admin tests (110 passed), focused POS navigation/handoff tests (23 passed), desktop/mobile POS-OPIS coexistence E2E (2 passed), npm run build:pos, npm run build:opis, npm run build:store, npm run build:skupervisor, npm run check:architecture, npm run check:compat-seams, npm run lint:docs, npm run test:web-core-reachability, npm run test:frontend-build-triggers, POS and OPIS lint, git diff --check
+verification_evidence: POS and OPIS app unit tests (36 passed), shared Business Admin and navigation tests (134 passed), desktop/mobile POS-OPIS coexistence E2E (2 passed), npm run build:pos, npm run build:opis, npm run build:store, npm run build:skupervisor, npm run check:architecture, npm run check:compat-seams, npm run lint:docs, npm run test:web-core-reachability, npm run test:frontend-build-triggers, POS and OPIS lint, git diff --check
 rollback_note: Revert the shared Business Admin shell extraction, POS route and terminal handoff restoration, route tests, documentation, and this declaration together; no API, schema, or production tenant data is changed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -21,14 +21,14 @@ preflight_request_ref: NOT-EXECUTED-2140-POS-ADMIN-WORKFLOWS
 
 Major. The changed POS terminal frontend paths have a computed `major` floor for the `pos` and
 `terminal` surfaces under `scripts/check-compliance-impact.js`. This change restores access to the
-existing tenant-scoped Business Admin workflows on POS while OPIS remains independently available.
+existing tenant-scoped Business Admin workflows on POS while OPIS remains the permanent Back Office.
 It changes route placement and navigation only; it does not change permissions, financial or fiscal
 calculations, API behavior, stored transaction history, or tenant data.
 
 ## Affected Surfaces
 
-- POS Back Office navigation and its existing tenant-scoped administration workflows.
-- POS terminal manager handoff into a separate same-origin Back Office tab.
+- POS Business Admin navigation and its existing tenant-scoped administration workflows.
+- POS terminal manager handoff into a separate same-origin Business Admin tab.
 - OPIS root routes and its OPIS-specific account actions remain available.
 
 ## Compliance Preconditions
@@ -48,7 +48,7 @@ calculations, API behavior, stored transaction history, or tenant data.
 ## Verification Evidence
 
 - POS unit tests: 11 passed; OPIS unit tests: 25 passed.
-- Shared Business Admin tests: 110 passed; focused POS navigation and OPIS handoff tests: 23 passed.
+- Shared Business Admin and navigation tests: 134 passed.
 - Desktop and mobile POS/OPIS route coexistence E2E: 2 passed.
 - Production builds passed for POS, OPIS, Storefront, and SKUpervisor/IMS.
 - POS and OPIS lint, architecture checks, compatibility-seam checks, docs/ADR lint, reachability

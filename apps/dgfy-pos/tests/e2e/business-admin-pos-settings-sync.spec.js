@@ -25,7 +25,7 @@ test.describe('Business Admin settings ownership', () => {
     const businessAdminPage = await page.context().newPage();
     let originalMode = null;
     try {
-      await businessAdminPage.goto('/?view=reports#/backoffice/settings/registers', { waitUntil: 'domcontentloaded' });
+      await businessAdminPage.goto('/?view=reports#/business-admin/settings/registers', { waitUntil: 'domcontentloaded' });
       await expect(businessAdminPage.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
 
       const branchContext = businessAdminPage.getByLabel('Branch context');

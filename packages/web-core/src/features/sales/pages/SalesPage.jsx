@@ -149,7 +149,7 @@ const TransactionCard = ({ row, selected, onSelect }) => {
   );
 };
 
-export default function SalesPage({ embedded = false }) {
+export default function SalesPage({ embedded = false, adminRootPath = '/' }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { loading: permissionLoading, can } = usePermission();
@@ -674,7 +674,8 @@ export default function SalesPage({ embedded = false }) {
                       className="shrink-0 border-indigo-200 bg-white text-indigo-800 hover:bg-indigo-100"
                       onClick={() => {
                         setDetailOpen(false);
-                        navigate(`/backoffice/orders?transaction_id=${encodeURIComponent(selected.source_id)}`);
+                        const ordersPath = `${String(adminRootPath || '/').replace(/\/$/, '')}/orders`;
+                        navigate(`${ordersPath}?transaction_id=${encodeURIComponent(selected.source_id)}`);
                       }}
                     >
                       Open order detail

@@ -10,7 +10,7 @@ const ModuleLoading = () => (
   </div>
 );
 
-export default function MigratedBackOfficeModule({ section }) {
+export default function MigratedBackOfficeModule({ section, rootPath = '/', surface = 'opis' }) {
   const definition = MERCHANT_BACKOFFICE_MODULE_META[section];
   if (!definition) return null;
   const Module = definition.component;
@@ -24,13 +24,13 @@ export default function MigratedBackOfficeModule({ section }) {
       {!isCatalog && !isFnb && !isSales && !isReports ? (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-teal-700">POS Back Office</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-teal-700">{surface === 'pos' ? 'POS Business Admin' : 'Business Back Office'}</p>
             <p className="mt-1 text-xs text-slate-500">Canonical merchant workspace</p>
           </div>
         </div>
       ) : null}
       <Suspense fallback={<ModuleLoading />}>
-        {isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}
+        {isSales ? <Module embedded adminRootPath={rootPath} /> : (isCatalog || isFnb ? <Module embedded /> : <Module />)}
       </Suspense>
     </section>
   );

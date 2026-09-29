@@ -89,7 +89,7 @@ test.describe('Phase 375 Business Admin historical data visibility', () => {
 
         for (const route of routes) {
             const responsePromise = waitForBusinessAdminResponse(page, route.endpoint, last30Start, today);
-            await page.goto(`/?view=reports#/backoffice/${route.section}`, { waitUntil: 'domcontentloaded' });
+            await page.goto(`/?view=reports#/business-admin/${route.section}`, { waitUntil: 'domcontentloaded' });
             const response = await responsePromise;
             expect(response.status()).toBe(200);
             const payload = await response.json();
@@ -120,7 +120,7 @@ test.describe('Phase 375 Business Admin historical data visibility', () => {
             }
         }
 
-        await page.goto('/?view=reports#/backoffice/audit', { waitUntil: 'domcontentloaded' });
+        await page.goto('/?view=reports#/business-admin/audit', { waitUntil: 'domcontentloaded' });
         const todayResponsePromise = waitForBusinessAdminResponse(page, '/api/v1/business-admin/audit', today, today);
         await page.getByLabel('Date range').selectOption('today');
         expect((await todayResponsePromise).status()).toBe(200);

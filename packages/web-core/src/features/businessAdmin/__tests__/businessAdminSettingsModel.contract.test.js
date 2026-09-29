@@ -48,20 +48,20 @@ describe('Business Admin settings navigation model', () => {
         expect(BUSINESS_ADMIN_SETTINGS_SECTION_DEFINITIONS.find((definition) => definition.key === 'registers').description).toContain('Device enrollment remains POS-owned');
     });
 
-    it('parses both Business Admin route aliases and builds canonical nested settings paths', () => {
-        expect(parseBusinessAdminPath('/backoffice/settings/team', '/backoffice')).toMatchObject({
+    it('parses the POS-native route and builds canonical nested settings paths', () => {
+        expect(parseBusinessAdminPath('/business-admin/settings/team', '/business-admin')).toMatchObject({
             activeSection: 'settings',
             settingsSection: 'team'
         });
-        expect(parseBusinessAdminPath('/backoffice/locations/registers', '/backoffice')).toMatchObject({
+        expect(parseBusinessAdminPath('/business-admin/locations/registers', '/business-admin')).toMatchObject({
             activeSection: 'locations',
             locationView: 'registers'
         });
-        expect(parseBusinessAdminPath('/backoffice/branches', '/backoffice')).toMatchObject({
+        expect(parseBusinessAdminPath('/business-admin/branches', '/business-admin')).toMatchObject({
             activeSection: 'locations',
             locationView: 'branches'
         });
-        expect(parseBusinessAdminPath('/backoffice/registers', '/backoffice')).toMatchObject({
+        expect(parseBusinessAdminPath('/business-admin/registers', '/business-admin')).toMatchObject({
             activeSection: 'locations',
             locationView: 'registers'
         });

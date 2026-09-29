@@ -67,7 +67,7 @@ function PosRouteNotFound() {
         <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
         <h1 className="mt-2 text-2xl font-black text-slate-950">Route not available</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This standalone POS app serves the DGFY terminal. The merchant Back Office now lives in DGFY OPIS.
+          This standalone POS app serves POS workflows. This route is not available.
         </p>
         <Link
           to="/terminal"
@@ -80,9 +80,9 @@ function PosRouteNotFound() {
   );
 }
 
-function LegacyBackOfficeRoute({ section = 'overview' }) {
+function LegacyBusinessAdminRoute({ section = 'overview' }) {
   const location = useLocation();
-  return <Navigate to={`/backoffice/${section}${location.search || ''}`} replace />;
+  return <Navigate to={`/business-admin/${section}${location.search || ''}`} replace />;
 }
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/';
@@ -340,10 +340,9 @@ const mountApp = () => {
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
                   <Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />
-                  <Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />
                   <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
-                  <Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />
-                  <Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />
+                  <Route path="/sales" element={<LegacyBusinessAdminRoute section="sales" />} />
+                  <Route path="/reports" element={<LegacyBusinessAdminRoute section="reports" />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />

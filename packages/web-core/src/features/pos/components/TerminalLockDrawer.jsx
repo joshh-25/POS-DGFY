@@ -132,17 +132,17 @@ export default function TerminalLockDrawer({
             <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-3 py-3">
               <p className="text-xs font-extrabold text-[#1A4E8D]">Manager access</p>
               <p className="mt-1 text-[11px] leading-5 text-[#475569]">
-                Open Back Office without unlocking checkout or starting a cashier shift.
+                Open Business Admin without unlocking checkout or starting a cashier shift.
               </p>
               <Button
                 type="button"
                 variant="outline"
-                data-testid="pos-lock-drawer-open-backoffice"
+                data-testid="pos-lock-drawer-open-business-admin"
                 className="mt-2 h-10 w-full rounded-xl border-[#1A4E8D] text-xs font-extrabold text-[#1A4E8D] shadow-none hover:bg-white"
                 onClick={onOpenBackOffice}
                 disabled={submitting}
               >
-                Open Back Office
+                Open Business Admin
               </Button>
             </div>
           ) : null}

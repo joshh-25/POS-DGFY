@@ -6719,13 +6719,13 @@ export default function TerminalPage() {
     setMobileNavOpen(false);
     const requestedPath = typeof target === 'string' ? target : target?.path;
     const normalizedPath = String(requestedPath || '/').trim();
-    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
+    let safePath = /^\/(?:business-admin)(?:\/|$)/.test(normalizedPath)
       ? normalizedPath
-      : (normalizedPath.startsWith('/') && !normalizedPath.startsWith('//') ? normalizedPath : '/');
+      : '/business-admin/overview';
     const activeBranchId = Number(
       shiftState?.shift?.location_id || viewingLocationId || operatingLocationId || queueLocationScopeId || 0
     );
-    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
+    if (/^\/business-admin\/settings(?:\/|$)/.test(safePath)
       && Number.isInteger(activeBranchId) && activeBranchId > 0) {
       const [pathOnly, queryString = ''] = safePath.split('?');
       const params = new URLSearchParams(queryString);
@@ -6738,16 +6738,18 @@ export default function TerminalPage() {
 
   const handleConfirmOpenBackOffice = useCallback(() => {
     if (typeof window === 'undefined') return;
-    const canonicalPath = String(backOfficeTargetPath || '/').replace(/^\/business-admin(?=\/|$)/, '/backoffice');
+    const canonicalPath = /^\/business-admin(?:\/|$)/.test(String(backOfficeTargetPath || ''))
+      ? String(backOfficeTargetPath)
+      : '/business-admin/overview';
     const backOfficeWindow = window.open('', '_blank');
     setBackOfficeConfirmOpen(false);
     if (!backOfficeWindow) {
-      toast.error('Your browser blocked the Back Office tab. Allow popups for POS, then try again. The terminal remains open.');
+      toast.error('Your browser blocked the Business Admin tab. Allow popups for POS, then try again. The terminal remains open.');
       return;
     }
     backOfficeWindow.opener = null;
     backOfficeWindow.location.replace(`${window.location.origin}/#${canonicalPath}`);
-    toast.success('Back Office opened in POS.');
+    toast.success('Business Admin opened in POS.');
   }, [backOfficeTargetPath]);
 
   const handleSelectViewMode = useCallback(async (nextMode) => {

@@ -24,6 +24,5 @@ export const getBusinessAdminSettingsSectionsForSurface = (surface, sections = [
 
 export const resolveBusinessAdminRootPath = (pathname, surface = 'opis') => {
   if (String(pathname || '').startsWith('/business-admin')) return '/business-admin';
-  if (String(pathname || '').startsWith('/backoffice')) return '/backoffice';
-  return surface === 'pos' ? '/backoffice' : '/';
+  return surface === 'pos' ? '/business-admin' : '/';
 };

@@ -246,13 +246,13 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
-  it('opens local POS Back Office through an authorized terminal confirmation', () => {
+  it('opens POS Business Admin through an authorized terminal confirmation', () => {
     expect(terminalPageContent).toContain("window.open('', '_blank')");
     expect(terminalPageContent).toContain('if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;');
     expect(terminalPageContent).toContain('setBackOfficeConfirmOpen(true);');
     expect(terminalPageLayoutContent).toContain('onOpenBackOffice={onOpenBackOffice}');
-    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-backoffice"');
-    expect(terminalPageContent).toContain('Open Back Office?');
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-business-admin"');
+    expect(terminalPageContent).toContain('Open Business Admin?');
     expect(terminalPageContent).toContain('backOfficeWindow.opener = null;');
   });
 

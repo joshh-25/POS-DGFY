@@ -41,12 +41,12 @@ afterEach(() => {
   cleanup();
 });
 
-describe('POS Back Office navigation', () => {
-  it('renders the Back Office button and invokes its navigation callback', () => {
+describe('POS Business Admin navigation', () => {
+  it('renders the Business Admin button and invokes its navigation callback', () => {
     const onOpenBackOffice = vi.fn();
     renderSidebar({ onOpenBackOffice });
 
-    const button = screen.getByTestId('pos-nav-backoffice');
+    const button = screen.getByTestId('pos-nav-business-admin');
     expect(button).toBeDefined();
     expect(button.disabled).toBe(false);
 
@@ -57,16 +57,16 @@ describe('POS Back Office navigation', () => {
   it('renders the same navigation affordance in the collapsed/mobile sidebar state', () => {
     renderSidebar({ isCollapsed: true });
 
-    const button = screen.getByTestId('pos-nav-backoffice');
+    const button = screen.getByTestId('pos-nav-business-admin');
     expect(button).toBeDefined();
-    expect(button.getAttribute('aria-label')).toBe('Back Office');
+    expect(button.getAttribute('aria-label')).toBe('Business Admin');
   });
 
-  it('keeps Back Office available for an authorized manager while checkout is locked', () => {
+  it('keeps Business Admin available for an authorized manager while checkout is locked', () => {
     const onOpenBackOffice = vi.fn();
     renderSidebar({ locked: true, onOpenBackOffice });
 
-    const button = screen.getByTestId('pos-nav-backoffice');
+    const button = screen.getByTestId('pos-nav-business-admin');
     expect(button.disabled).toBe(false);
     expect(button.textContent).toContain('Manager access remains available while checkout is locked');
 
@@ -92,14 +92,14 @@ describe('POS Back Office navigation', () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId('pos-lock-drawer-open-backoffice'));
+    fireEvent.click(screen.getByTestId('pos-lock-drawer-open-business-admin'));
     expect(onOpenBackOffice).toHaveBeenCalledTimes(1);
   });
 
-  it('does not render Back Office for a cashier even if the caller passes access', () => {
+  it('does not render Business Admin for a cashier even if the caller passes access', () => {
     renderSidebar({ terminalUser: { role: 'cashier' }, canLaunchBackOffice: true });
 
-    expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
+    expect(screen.queryByTestId('pos-nav-business-admin')).toBeNull();
   });
 
   it('keeps POS-only terminal setup available to a cashier without Business Admin', () => {
@@ -112,7 +112,7 @@ describe('POS Back Office navigation', () => {
     });
 
     expect(screen.getByTestId('pos-nav-terminal-setup')).toBeDefined();
-    expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
+    expect(screen.queryByTestId('pos-nav-business-admin')).toBeNull();
     fireEvent.click(screen.getByTestId('pos-nav-terminal-setup'));
     expect(onSelectViewMode).toHaveBeenCalledWith('terminal_setup');
   });
@@ -129,7 +129,7 @@ describe('POS Back Office navigation', () => {
     expect(screen.getByTestId('pos-nav-terminal-setup').className).toContain('bg-[#1A4E8D]');
   });
 
-  it('keeps a single Back Office entry beside POS settings navigation', () => {
+  it('keeps a single Business Admin entry beside POS settings navigation', () => {
     const onOpenBackOffice = vi.fn();
     const onSelectViewMode = vi.fn();
     render(
@@ -146,32 +146,32 @@ describe('POS Back Office navigation', () => {
       />
     );
 
-    fireEvent.click(screen.getByTestId('pos-nav-backoffice'));
+    fireEvent.click(screen.getByTestId('pos-nav-business-admin'));
     expect(onOpenBackOffice).toHaveBeenCalledTimes(1);
 
-    expect(screen.queryByTestId('pos-nav-backoffice-settings')).toBeNull();
+    expect(screen.queryByTestId('pos-nav-business-admin-settings')).toBeNull();
 
-    expect(screen.getAllByTestId('pos-nav-backoffice')).toHaveLength(1);
+    expect(screen.getAllByTestId('pos-nav-business-admin')).toHaveLength(1);
     expect(screen.getByTestId('pos-nav-settings')).toBeDefined();
     expect(screen.queryByTestId('pos-nav-terminal-setup')).toBeNull();
   });
 
-  it('renders one POS setup entry when terminal configuration is allowed without Back Office', () => {
+  it('renders one POS setup entry when terminal configuration is allowed without Business Admin', () => {
     const onSelectViewMode = vi.fn();
     renderSidebar({ canLaunchBackOffice: false, canAccessPosOnlySetup: true, onSelectViewMode });
 
     expect(screen.getByTestId('pos-nav-terminal-setup')).toBeDefined();
     expect(screen.queryByTestId('pos-nav-settings')).toBeNull();
-    expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
+    expect(screen.queryByTestId('pos-nav-business-admin')).toBeNull();
 
     fireEvent.click(screen.getByTestId('pos-nav-terminal-setup'));
     expect(onSelectViewMode).toHaveBeenCalledWith('terminal_setup');
   });
 
-  it('hides both Back Office and POS setup when the operator has no configuration capability', () => {
+  it('hides both Business Admin and POS setup when the operator has no configuration capability', () => {
     renderSidebar({ canLaunchBackOffice: false, canAccessPosOnlySetup: false });
 
-    expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
+    expect(screen.queryByTestId('pos-nav-business-admin')).toBeNull();
     expect(screen.queryByTestId('pos-nav-pos-setup')).toBeNull();
     expect(screen.queryByTestId('pos-nav-settings')).toBeNull();
   });
@@ -186,15 +186,14 @@ describe('POS Back Office navigation', () => {
     expect(terminalPageSource).toContain("window.open('', '_blank')");
     expect(terminalPageSource).toContain('backOfficeWindow.opener = null;');
     expect(terminalPageSource).toContain('window.location.origin}/#${canonicalPath}');
-    expect(terminalPageDialogLayerSource).toContain('Open Back Office?');
-    expect(terminalPageDialogLayerSource).toContain('DGFY Back Office opens in a new tab.');
-    expect(terminalLockDrawerSource).toContain('pos-lock-drawer-open-backoffice');
-    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />');
+    expect(terminalPageDialogLayerSource).toContain('Open Business Admin?');
+    expect(terminalPageDialogLayerSource).toContain('POS administration opens in a new tab.');
+    expect(terminalLockDrawerSource).toContain('pos-lock-drawer-open-business-admin');
     expect(posRouteSource).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
     expect(terminalPageSource).toContain('canLaunchBackOffice={canAccessBusinessAdmin}');
     expect(terminalPageLayoutSource).toContain('canLaunchBackOffice={canLaunchBackOffice}');
     expect(terminalPageLayoutSource).toContain('onOpenBackOffice={onOpenBackOffice}');
-    expect(terminalWorkspaceSidebarSource).toContain('testId="pos-nav-backoffice"');
+    expect(terminalWorkspaceSidebarSource).toContain('testId="pos-nav-business-admin"');
     expect(businessAdminPageSource).toContain('MigratedBackOfficeModule');
     expect(businessAdminPageSource).toContain('getBusinessAdminWorkflowPageName');
   });

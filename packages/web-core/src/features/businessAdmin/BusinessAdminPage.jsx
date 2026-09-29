@@ -2475,6 +2475,7 @@ function SimpleWorkspace({ section, bootstrap, surface = 'opis' }) {
 }
 
 export default function BusinessAdminPage({ surface = 'opis', accountActions = null }) {
+    const adminSurfaceLabel = surface === 'pos' ? 'Business Admin' : 'Back Office';
     const location = useLocation();
     const navigate = useNavigate();
     const {
@@ -3066,7 +3067,7 @@ export default function BusinessAdminPage({ surface = 'opis', accountActions = n
             : (bootstrapAccessDenied
                 ? <Link to={surface === 'pos' ? '/terminal' : DGFY_COMPANY_SELECT_ROUTE} className="business-admin-button primary mt-5"><ExternalLink size={14} /> {surface === 'pos' ? 'Return to POS' : 'Switch business'}</Link>
                 : <button type="button" onClick={handleBusinessAdminRefresh} className="business-admin-button primary mt-5"><RefreshCw size={14} /> Try again</button>);
-        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? 'Back Office sign-in required' : (bootstrapAccessDenied ? 'Back Office access denied' : 'Back Office unavailable')}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE : (bootstrapError || 'Your account does not have Back Office access.'))}</p>{recoveryAction}</section></main>;
+        return <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6"><section className="business-admin-card w-full max-w-lg p-7 text-center" data-testid={bootstrapAuthRequired ? 'business-admin-session-required' : (bootstrapAccessDenied ? 'business-admin-access-denied' : 'business-admin-unavailable')}><ShieldCheck className="mx-auto text-[#159891]" size={32} /><h1 className="mt-3 text-2xl font-black text-[#173e58]">{bootstrapAuthRequired ? `${adminSurfaceLabel} sign-in required` : (bootstrapAccessDenied ? `${adminSurfaceLabel} access denied` : `${adminSurfaceLabel} unavailable`)}</h1><p className="mt-2 text-sm text-slate-600">{bootstrapAuthRequired ? (bootstrapError || BUSINESS_ADMIN_SESSION_REQUIRED_MESSAGE) : (bootstrapAccessDenied ? BUSINESS_ADMIN_ACCESS_DENIED_MESSAGE.replace('Back Office', adminSurfaceLabel) : (bootstrapError || `Your account does not have ${adminSurfaceLabel} access.`))}</p>{recoveryAction}</section></main>;
     }
 
     const meta = activeSection === 'settings' && settingsDefinition
@@ -3168,7 +3169,7 @@ export default function BusinessAdminPage({ surface = 'opis', accountActions = n
             );
         }
         if (MIGRATED_BACKOFFICE_MODULE_KEYS.has(activeSection)) {
-            return <MigratedBackOfficeModule section={activeSection} />;
+            return <MigratedBackOfficeModule section={activeSection} rootPath={rootPath} surface={surface} />;
         }
         if (activeSection === 'overview') return <OverviewWorkspace data={overviewData} onOrderClick={handleOverviewOrderClick} locationsPath={buildBackOfficeLocationsPath(rootPath, 'branches')} ordersPath={buildBackOfficeModulePath(rootPath, 'orders')} />;
         if (activeSection === 'locations') {
@@ -3214,7 +3215,7 @@ export default function BusinessAdminPage({ surface = 'opis', accountActions = n
                         <img className="business-admin-brand-logo" src={DGFY_BUSINESS_ADMIN_LOGO} alt="DGFY" />
                         <div>
                             <div className="business-admin-brand-title">{bootstrap.business?.name || 'Your business'}</div>
-                            <div className="business-admin-brand-subtitle">Business back office</div>
+                            <div className="business-admin-brand-subtitle">{surface === 'pos' ? 'Business administration' : 'Business back office'}</div>
                         </div>
                     </div>
                     <button
@@ -3265,7 +3266,7 @@ export default function BusinessAdminPage({ surface = 'opis', accountActions = n
                         <span>{mobileNavOpen ? 'Close menu' : 'Menu'}</span>
                     </button>
                     <div className="business-admin-mobile-context">
-                        <span className="business-admin-mobile-brand-subtitle">Business back office</span>
+                        <span className="business-admin-mobile-brand-subtitle">{surface === 'pos' ? 'Business administration' : 'Business back office'}</span>
                         <span className="business-admin-mobile-page-title">{meta.title}</span>
                     </div>
                 </div>

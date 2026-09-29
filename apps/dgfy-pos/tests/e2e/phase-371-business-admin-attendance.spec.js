@@ -58,7 +58,7 @@ test.describe('Phase 371 Business Admin attendance workspace', () => {
             response.request().method() === 'GET'
             && new URL(response.url()).pathname.endsWith('/api/v1/business-admin/attendance')
         ));
-        await page.goto('/?view=reports#/backoffice/attendance', { waitUntil: 'domcontentloaded' });
+        await page.goto('/?view=reports#/business-admin/attendance', { waitUntil: 'domcontentloaded' });
         const attendanceResponse = await attendanceResponsePromise;
         expect(attendanceResponse.status()).toBe(200);
         const attendancePayload = await attendanceResponse.json();

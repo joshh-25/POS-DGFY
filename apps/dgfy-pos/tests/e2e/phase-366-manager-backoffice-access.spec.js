@@ -66,8 +66,8 @@ const runManagerBackOfficeFlow = async (page) => {
 
   const managerEntryCandidates = [
     page.getByTestId('pos-shift-opening-open-backoffice'),
-    page.getByTestId('pos-lock-drawer-open-backoffice'),
-    page.getByTestId('pos-nav-backoffice')
+    page.getByTestId('pos-lock-drawer-open-business-admin'),
+    page.getByTestId('pos-nav-business-admin')
   ];
   const findVisibleManagerEntry = async () => {
     for (const candidate of managerEntryCandidates) {
@@ -82,21 +82,21 @@ const runManagerBackOfficeFlow = async (page) => {
 
   const originalUrl = page.url();
   await unlockSurfaceButton.click();
-  await expect(page.getByRole('heading', { name: 'Open Back Office?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Open Business Admin?' })).toBeVisible();
 
   const popupPromise = page.waitForEvent('popup');
-  await page.getByRole('button', { name: 'Open Back Office', exact: true }).last().click();
+  await page.getByRole('button', { name: 'Open Business Admin', exact: true }).last().click();
   const backOffice = await popupPromise;
   const popupDiagnostics = installRuntimeDiagnostics(backOffice);
   try {
-    await backOffice.waitForURL(/#\/backoffice\/overview\?view=reports$/, { timeout: 30_000 });
+    await backOffice.waitForURL(/#/business-admin\/overview\?view=reports$/, { timeout: 30_000 });
     await backOffice.waitForLoadState('domcontentloaded');
     const backOfficeUrl = new URL(backOffice.url());
     expect(backOfficeUrl.pathname).toBe('/');
     expect(backOfficeUrl.origin).toBe(new URL(originalUrl).origin);
     expect(backOfficeUrl.search).toBe('');
-    expect(backOfficeUrl.hash).toBe('#/backoffice/overview?view=reports');
-    const backOfficeBrandLabels = backOffice.getByText('Business back office', { exact: true });
+    expect(backOfficeUrl.hash).toBe('#/business-admin/overview?view=reports');
+    const backOfficeBrandLabels = backOffice.getByText('Business administration', { exact: true });
     await expect.poll(async () => {
       const labelCount = await backOfficeBrandLabels.count();
       for (let index = 0; index < labelCount; index += 1) {
@@ -104,7 +104,7 @@ const runManagerBackOfficeFlow = async (page) => {
       }
       return false;
     }).toBe(true);
-    await assertHealthy(backOffice, popupDiagnostics, 'Back Office popup');
+    await assertHealthy(backOffice, popupDiagnostics, 'Business Admin popup');
   } finally {
     await backOffice.close();
   }
@@ -115,16 +115,16 @@ const runManagerBackOfficeFlow = async (page) => {
   await assertHealthy(page, diagnostics, 'locked POS after popup');
 };
 
-test.describe('Phase 366 manager Back Office access', () => {
+test.describe('Phase 366 manager Business Admin access', () => {
   test.describe.configure({ timeout: 120_000 });
 
-  test('opens an independent Back Office page from the locked manager unlock surface', async ({ page }) => {
+  test('opens an independent Business Admin page from the locked manager unlock surface', async ({ page }) => {
     test.skip(!hasTestCredentials, 'Set E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD for the authenticated local flow.');
     await runManagerBackOfficeFlow(page);
   });
 });
 
-test.describe('Phase 366 mobile manager Back Office access', () => {
+test.describe('Phase 366 mobile manager Business Admin access', () => {
   test.use({
     viewport: { width: 390, height: 844 },
     isMobile: true,
@@ -133,7 +133,7 @@ test.describe('Phase 366 mobile manager Back Office access', () => {
 
   test.describe.configure({ timeout: 120_000 });
 
-  test('opens Back Office from the mobile locked manager surface', async ({ page }) => {
+  test('opens Business Admin from the mobile locked manager surface', async ({ page }) => {
     test.skip(!hasTestCredentials, 'Set E2E_TEST_USER_EMAIL and E2E_TEST_USER_PASSWORD for the authenticated local flow.');
     await runManagerBackOfficeFlow(page);
   });

@@ -14,7 +14,7 @@ describe('Hospitality frontend contract', () => {
     const businessAdminManifest = read('packages/web-core/src/features/businessAdmin/businessAdminManifest.js');
 
     expect(main).toContain('<Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />');
-    expect(posMain).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />');
+    expect(posMain).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
     expect(businessAdminManifest).toContain("hospitality: module('Operations', 'hospitality', 'Hospitality'");
     expect(businessAdminManifest).toContain("Hotel, HospitalityPage");
   });

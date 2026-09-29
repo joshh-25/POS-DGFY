@@ -28,28 +28,25 @@ describe('Business Admin app surface policy', () => {
     expect(getBusinessAdminSettingsSectionsForSurface('opis', sections)).toEqual(sections);
   });
 
-  it('selects the correct route root for each app and each POS prefix', () => {
-    expect(resolveBusinessAdminRootPath('/backoffice/sales', 'pos')).toBe('/backoffice');
+  it('keeps POS administration under its native route and OPIS at the app root', () => {
+    expect(resolveBusinessAdminRootPath('/business-admin/sales', 'pos')).toBe('/business-admin');
     expect(resolveBusinessAdminRootPath('/business-admin/settings/team', 'pos')).toBe('/business-admin');
-    expect(resolveBusinessAdminRootPath('/sales', 'pos')).toBe('/backoffice');
+    expect(resolveBusinessAdminRootPath('/sales', 'pos')).toBe('/business-admin');
     expect(resolveBusinessAdminRootPath('/sales', 'opis')).toBe('/');
   });
 
-  it('builds the full manifest under both POS prefixes and the OPIS root', () => {
+  it('builds the full manifest under the POS administration route and the OPIS root', () => {
     for (const moduleKey of Object.keys(BACKOFFICE_MANIFEST)) {
       const expectedPath = BACKOFFICE_MANIFEST[moduleKey].route;
-      expect(buildBackOfficeModulePath('/backoffice', moduleKey)).toBe(
-        moduleKey === 'overview' ? '/backoffice' : `/backoffice${expectedPath}`
-      );
       expect(buildBackOfficeModulePath('/business-admin', moduleKey)).toBe(
         moduleKey === 'overview' ? '/business-admin' : `/business-admin${expectedPath}`
       );
       expect(buildBackOfficeModulePath('/', moduleKey)).toBe(expectedPath);
     }
-    expect(buildBackOfficeLocationsPath('/backoffice', 'registers')).toBe('/backoffice/locations/registers');
-    expect(buildBusinessAdminSettingsPath('/backoffice', 'team')).toBe('/backoffice/settings/team');
+    expect(buildBackOfficeLocationsPath('/business-admin', 'registers')).toBe('/business-admin/locations/registers');
+    expect(buildBusinessAdminSettingsPath('/business-admin', 'team')).toBe('/business-admin/settings/team');
     expect(buildBusinessAdminSettingsPath('/business-admin', 'registers')).toBe('/business-admin/settings/registers');
-    expect(parseBusinessAdminPath('/backoffice/locations/registers', '/backoffice')).toMatchObject({
+    expect(parseBusinessAdminPath('/business-admin/locations/registers', '/business-admin')).toMatchObject({
       activeSection: 'locations',
       locationView: 'registers'
     });

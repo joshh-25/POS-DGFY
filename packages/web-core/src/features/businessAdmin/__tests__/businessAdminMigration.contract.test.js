@@ -11,10 +11,10 @@ const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relat
 describe('shared Back Office coexistence contract', () => {
   it('keeps legacy POS sales/report entry points inside POS Back Office', () => {
     const source = readRepoFile('apps/dgfy-pos/src/main.jsx');
-    expect(source).toContain('<Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />');
-    expect(source).toContain('<Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />');
-    expect(source).toContain('return <Navigate to={`/backoffice/${section}${location.search || \'\'}`} replace />;');
-    expect(source).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />');
+    expect(source).toContain('<Route path="/sales" element={<LegacyBusinessAdminRoute section="sales" />} />');
+    expect(source).toContain('<Route path="/reports" element={<LegacyBusinessAdminRoute section="reports" />} />');
+    expect(source).toContain('return <Navigate to={`/business-admin/${section}${location.search || \'\'}`} replace />;');
+    expect(source).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
     expect(source).not.toContain('SkupervisorSalesRedirect');
     expect(source).not.toContain('buildSkupervisorPath');
   });
@@ -41,14 +41,15 @@ describe('shared Back Office coexistence contract', () => {
     expect(source).toContain("const isSales = section === 'sales';");
     expect(source).toContain("const isReports = section === 'reports';");
     expect(source).toContain('{!isCatalog && !isFnb && !isSales && !isReports ? (');
-    expect(source).toContain('{isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}');
+    expect(source).toContain('{isSales ? <Module embedded adminRootPath={rootPath} /> : (isCatalog || isFnb ? <Module embedded /> : <Module />)}');
+    expect(source).toContain("surface === 'pos' ? 'POS Business Admin' : 'Business Back Office'");
   });
 
   it('routes shared legacy page links back into POS Back Office', () => {
     const source = readRepoFile('apps/dgfy-pos/src/utils.js');
-    expect(source).toContain("Items: '/backoffice/catalog'");
-    expect(source).toContain("PurchaseOrders: '/backoffice/purchase-orders'");
-    expect(source).toContain("Sales: '/backoffice/sales'");
+    expect(source).toContain("Items: '/business-admin/catalog'");
+    expect(source).toContain("PurchaseOrders: '/business-admin/purchase-orders'");
+    expect(source).toContain("Sales: '/business-admin/sales'");
   });
 
   it('retires the IMS merchant shell without removing platform administration', () => {

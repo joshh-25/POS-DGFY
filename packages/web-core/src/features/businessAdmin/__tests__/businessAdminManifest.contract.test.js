@@ -94,12 +94,10 @@ describe('Back Office canonical manifest contract', () => {
         }
     });
 
-    it('preserves both Back Office route aliases from one route definition', () => {
+    it('builds app-native Business Admin paths from one route definition', () => {
         expect(buildBackOfficeModulePath('/business-admin', 'reports')).toBe('/business-admin/reports');
-        expect(buildBackOfficeModulePath('/backoffice', 'reports')).toBe('/backoffice/reports');
-        expect(buildBackOfficeModulePath('/backoffice', 'settings')).toBe('/backoffice/settings');
         expect(buildBackOfficeLocationsPath('/business-admin', 'branches')).toBe('/business-admin/locations/branches');
-        expect(buildBackOfficeLocationsPath('/backoffice', 'registers')).toBe('/backoffice/locations/registers');
+        expect(buildBackOfficeLocationsPath('/', 'registers')).toBe('/locations/registers');
     });
 
     it('uses one Locations module for branch and register monitoring', () => {

@@ -63,7 +63,7 @@ test.describe('Phase 368 settings access acceptance', () => {
     const diagnostics = installRuntimeDiagnostics(page);
     await signIn(page, testCredentials, { companyName: testCompanyName });
 
-    await page.goto('/?view=reports#/backoffice/settings/registers', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=reports#/business-admin/settings/registers', { waitUntil: 'domcontentloaded' });
     await expect(page.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
     const branchContext = page.getByLabel('Branch context');
     await expect(branchContext).toHaveValue(/.+/);
@@ -73,7 +73,7 @@ test.describe('Phase 368 settings access acceptance', () => {
     if (nextBranchId !== currentBranchId) {
       await branchContext.selectOption(nextBranchId);
     } else {
-      await page.goto(`/?view=reports#/backoffice/settings/registers?branch_id=${encodeURIComponent(currentBranchId)}`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`/?view=reports#/business-admin/settings/registers?branch_id=${encodeURIComponent(currentBranchId)}`, { waitUntil: 'domcontentloaded' });
       await expect(page.getByText('Terminal Registry Mode', { exact: true })).toBeVisible();
     }
     const selectedBranchId = await branchContext.inputValue();
@@ -119,7 +119,7 @@ test.describe('Phase 368 settings access acceptance', () => {
   test('renders explicit session-invalidated and company-switched states without a blank page', async ({ page }) => {
     const diagnostics = installRuntimeDiagnostics(page);
     await signIn(page, testCredentials, { companyName: testCompanyName });
-    await page.goto('/?view=reports#/backoffice/overview', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=reports#/business-admin/overview', { waitUntil: 'domcontentloaded' });
     await expectVisibleExactText(page, 'Business back office');
 
     await page.evaluate(() => window.dispatchEvent(new Event('auth:session-expired')));
@@ -148,7 +148,7 @@ test.describe('Phase 368 settings access acceptance', () => {
       body: JSON.stringify({ success: false, message: 'Insufficient Back Office permissions.' })
     }));
 
-    await page.goto('/?view=reports#/backoffice/overview', { waitUntil: 'domcontentloaded' });
+    await page.goto('/?view=reports#/business-admin/overview', { waitUntil: 'domcontentloaded' });
     await expect(page.getByTestId('business-admin-access-denied')).toBeVisible();
     await expect(page.getByText('Your account is authenticated but is not authorized to open Back Office.')).toBeVisible();
     await assertHealthy(page, diagnostics, 'server denied Back Office bootstrap', { allowExpectedConsoleErrors: true });

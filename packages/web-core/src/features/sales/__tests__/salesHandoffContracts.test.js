@@ -98,7 +98,7 @@ describe('sales handoff and export UX contracts', () => {
   });
 
   it('supports an embedded Back Office presentation without changing the direct sales route', () => {
-    expect(salesPageContent).toContain('export default function SalesPage({ embedded = false })');
+    expect(salesPageContent).toContain("export default function SalesPage({ embedded = false, adminRootPath = '/' })");
     expect(salesPageContent).toContain('{!embedded && (');
     expect(salesPageContent).toContain('Sales overview');
     expect(salesPageContent).toContain('aria-label="Sales transaction cards"');
