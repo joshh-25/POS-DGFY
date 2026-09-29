@@ -9,13 +9,11 @@ const repoRoot = path.resolve(__dirname, '../../../..');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('OPIS Back Office migration contract', () => {
-  it('redirects legacy POS sales/report entry points to OPIS preserving path and query', () => {
+  it('keeps POS outside OPIS routing and preserves the production sales handoff', () => {
     const source = readRepoFile('apps/dgfy-pos/src/main.jsx');
-    expect(source).toContain('<Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />');
-    expect(source).toContain('<Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />');
-    expect(source).toContain('buildOpisBackOfficeUrl');
-    expect(source).not.toContain('SkupervisorSalesRedirect');
-    expect(source).not.toContain('buildSkupervisorPath');
+    expect(source).toContain('<Route path="/sales" element={<SkupervisorSalesRedirect />} />');
+    expect(source).toContain('buildSkupervisorPath');
+    expect(source).not.toMatch(/backoffice|business-admin|opis/i);
   });
 
   it('exposes migrated merchant workspaces from the single Business Admin shell', () => {
@@ -43,11 +41,10 @@ describe('OPIS Back Office migration contract', () => {
     expect(source).toContain('{isCatalog || isFnb || isSales ? <Module embedded /> : <Module />}');
   });
 
-  it('routes shared legacy page links back into POS Back Office', () => {
-    const source = readRepoFile('apps/dgfy-pos/src/utils.js');
-    expect(source).toContain("Items: '/backoffice/catalog'");
-    expect(source).toContain("PurchaseOrders: '/backoffice/purchase-orders'");
-    expect(source).toContain("Sales: '/backoffice/sales'");
+  it('does not retain a POS page-url map for historical Back Office routes', () => {
+    expect(fs.existsSync(path.join(repoRoot, 'apps/dgfy-pos/src/utils.js'))).toBe(false);
+    const source = readRepoFile('apps/dgfy-pos/src/main.jsx');
+    expect(source).not.toMatch(/backoffice|business-admin|opis/i);
   });
 
   it('retires the IMS merchant shell without removing platform administration', () => {
