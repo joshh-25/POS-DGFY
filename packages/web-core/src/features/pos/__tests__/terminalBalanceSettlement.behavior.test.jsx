@@ -53,6 +53,7 @@ const renderQueue = (orders, overrides = {}) => render(
     shiftState={{ shift: { pos_terminal_shift_id: 12, location_id: 3 } }}
     incomingOrdersState={{ orders, loading: false, accessState: 'ready' }}
     orderHistoryState={{ orders: [], pagination: {}, accessState: 'ready' }}
+    workflowMode="fnb"
     incomingOrderActionState={{}}
     handleIncomingOrderStatusChange={vi.fn()}
     handleDeliveryJobStatusChange={vi.fn()}
@@ -86,20 +87,26 @@ const renderDialog = (overrides = {}) => render(
   />
 );
 
+const openDineInSchedule = () => {
+  fireEvent.click(screen.getByRole('tab', { name: /dine-in schedule/i }));
+};
+
 describe('POS balance settlement action (Phase 148, #825)', () => {
-  it('offers dine-in cash collection and keeps Served blocked until payment is recorded', () => {
+  it('offers dine-in checkout and keeps Served blocked until payment is recorded', () => {
     const handleOpenCashCollection = vi.fn();
     renderQueue([UNPAID_DINE_IN_ORDER], { handleOpenCashCollection });
+    openDineInSchedule();
 
-    expect(screen.getByRole('button', { name: /collect dine-in cash/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^checkout$/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(true);
 
-    fireEvent.click(screen.getByRole('button', { name: /collect dine-in cash/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^checkout$/i }));
     expect(handleOpenCashCollection).toHaveBeenCalledWith(UNPAID_DINE_IN_ORDER);
   });
 
   it('enables Served after a dine-in cash payment is paid', () => {
     renderQueue([{ ...UNPAID_DINE_IN_ORDER, payment_status: 'paid' }]);
+    openDineInSchedule();
 
     expect(screen.getByRole('button', { name: /^served$/i }).disabled).toBe(false);
     expect(screen.queryByRole('button', { name: /collect dine-in cash/i })).toBeNull();
@@ -112,6 +119,38 @@ describe('POS balance settlement action (Phase 148, #825)', () => {
     // The two buttons are mutually exclusive by construction -- collect-cash owns `unpaid`,
     // settlement owns `partially_paid` -- so a downpayment order must never offer both.
     expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
+  });
+
+  it('offers Settle Balance for a dine-in order when it is ready to serve', () => {
+    renderQueue([{
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      fulfillment_status: 'ready_for_pickup'
+    }]);
+    openDineInSchedule();
+
+    expect(screen.getByRole('button', { name: /settle balance/i })).toBeTruthy();
+  });
+
+  it('routes an unpaid cash dine-in order to Checkout when it is ready to serve', () => {
+    const handleOpenCashCollection = vi.fn();
+    const dineInOrder = {
+      ...DOWNPAYMENT_ORDER,
+      order_method: 'dine_in',
+      payment_type: 'cash',
+      payment_status: 'unpaid',
+      fulfillment_status: 'ready_for_pickup',
+      amount_paid: 0,
+      balance_due: 0
+    };
+    renderQueue([dineInOrder], { handleOpenCashCollection });
+    openDineInSchedule();
+
+    fireEvent.click(screen.getByRole('button', { name: /^checkout$/i }));
+
+    expect(handleOpenCashCollection).toHaveBeenCalledWith(dineInOrder);
+    expect(screen.queryByRole('button', { name: /collect.*cash/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /settle balance/i })).toBeNull();
   });
 
   it('never offers Settle Balance on the plain COD path collect-cash owns', () => {

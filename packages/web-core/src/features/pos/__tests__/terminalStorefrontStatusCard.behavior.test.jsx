@@ -1,17 +1,14 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import TerminalStorefrontStatusCard, { getStorefrontHoursStatus } from '../components/TerminalStorefrontStatusCard.jsx';
 import { createDefaultStorefrontBusinessHours } from '../../settings/storefrontBusinessHours.js';
 
 describe('TerminalStorefrontStatusCard', () => {
   afterEach(() => cleanup());
 
-  it('shows the selected branch, current service status, channels, and Back Office action', async () => {
-    const user = userEvent.setup();
-    const onOpenBackOffice = vi.fn();
+  it('shows the selected branch, current service status, and channels', () => {
     const now = new Date('2026-09-14T02:00:00.000Z');
 
     render(
@@ -30,8 +27,6 @@ describe('TerminalStorefrontStatusCard', () => {
         storeIsVisible
         customerAccessMode="transaction"
         isOnline
-        canOpenBackOffice
-        onOpenBackOffice={onOpenBackOffice}
         now={now}
       />
     );
@@ -42,8 +37,6 @@ describe('TerminalStorefrontStatusCard', () => {
     expect(screen.getByText('Pickup')).toBeTruthy();
     expect(screen.getByText('Delivery')).toBeTruthy();
 
-    await user.click(screen.getByTestId('pos-terminal-storefront-manage'));
-    expect(onOpenBackOffice).toHaveBeenCalledWith({ path: '/backoffice/settings/storefront' });
   });
 
   it('reports closed hours and hidden Storefront state without an assigned branch', () => {
@@ -59,7 +52,6 @@ describe('TerminalStorefrontStatusCard', () => {
         storefrontLocations={[]}
         storeIsVisible={false}
         customerAccessMode="catalog"
-        canOpenBackOffice={false}
         now={now}
       />
     );
@@ -76,7 +68,6 @@ describe('TerminalStorefrontStatusCard', () => {
         locationId={7}
         storeIsVisible
         customerAccessMode="transaction"
-        canOpenBackOffice={false}
         description="Live summary of Storefront settings."
         managementMessage="You are editing the canonical Storefront settings."
       />

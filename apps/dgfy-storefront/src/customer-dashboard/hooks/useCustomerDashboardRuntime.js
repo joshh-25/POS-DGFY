@@ -24,7 +24,7 @@ export function useCustomerDashboardRuntime({
   withAssetOrigin, withApiOrigin, requestJson, normalizeStorefrontErrorMessage,
   deriveAccountActivityCollections, readDgfyAuthToken, readStoreAuthToken,
   clearDgfyAuthToken, clearStoreAuthToken, rememberDgfySignedOutEmail,
-  markDgfyExplicitSignOut, clearCheckoutAuthResumeDraft, buildBusinessBackOfficeHandoffUrl,
+  markDgfyExplicitSignOut, clearCheckoutAuthResumeDraft, buildBusinessBackOfficeHandoffUrl, buildPosDgfyHandoffUrl,
   createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, startDgfyTenantSession, getGoStoreTrackPage,
   onTrackedActivityUpdated
 }) {
@@ -90,7 +90,7 @@ export function useCustomerDashboardRuntime({
     normalizeStorefrontErrorMessage
   });
   const business = useCustomerDashboardBusinessAccess({
-    handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildBusinessBackOfficeHandoffUrl,
+    handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildBusinessBackOfficeHandoffUrl, buildPosDgfyHandoffUrl,
     createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, startDgfyTenantSession, dgfySessionAccount,
     normalizeStorefrontErrorMessage
   });

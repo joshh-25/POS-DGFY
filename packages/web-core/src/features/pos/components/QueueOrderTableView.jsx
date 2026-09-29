@@ -18,6 +18,7 @@ import {
 } from '../utils/incomingQueueOrderFormatting.js';
 import {
   getDineInScheduleCountdownLabel,
+  isDineInOrder,
   isScheduledDineInOrder
 } from '../utils/dineInSchedule.js';
 import { buildIncomingQueueOrderActions } from '../utils/incomingQueueOrderActions.js';
@@ -93,6 +94,8 @@ export default function QueueOrderTableView({
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
               : '';
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
+            const isDineIn = isDineInOrder(order);
+            const scheduledDineIn = isScheduledDineInOrder(order);
 
             const buttons = buildIncomingQueueOrderActions(order, {
               actionLoading,
@@ -145,8 +148,12 @@ export default function QueueOrderTableView({
                 </td>
                 <td className="whitespace-nowrap px-3 py-3 text-slate-700">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</td>
                 <td className="whitespace-nowrap px-3 py-3 text-slate-700">
-                  <p>{formatOrderDateTime(isScheduledDineInOrder(order) ? order.scheduled_for : order.created_at)}</p>
-                  {isScheduledDineInOrder(order) ? <p className="mt-0.5 text-[11px] font-semibold text-amber-700">{getDineInScheduleCountdownLabel(order, effectiveScheduleNow)}</p> : null}
+                  <p>{formatOrderDateTime(scheduledDineIn ? order.scheduled_for : order.created_at)}</p>
+                  {isDineIn ? (
+                    <p className={`mt-0.5 text-[11px] font-semibold ${scheduledDineIn ? 'text-amber-700' : 'text-slate-600'}`}>
+                      {scheduledDineIn ? getDineInScheduleCountdownLabel(order, effectiveScheduleNow) : 'Immediate service'}
+                    </p>
+                  ) : null}
                 </td>
                 <td className="px-3 py-3 text-slate-700">
                   {order.order_method === 'delivery'

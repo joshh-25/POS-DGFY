@@ -203,7 +203,7 @@ export const validateDgfyPosTerminalPolicy = async ({
           'This cashier is not authorized for the selected terminal location.',
           { statusCode: 403, details: { terminal_identity_policy: { ...context, reason_code: 'CASHIER_LOCATION_NOT_GRANTED' } } }
         );
-      }
+        }
       const assignedCashierIds = registryEntry?.cashier_user_ids;
       if (
         Array.isArray(assignedCashierIds)
@@ -225,6 +225,25 @@ export const validateDgfyPosTerminalPolicy = async ({
         );
       }
 
+    }
+
+    if (registryEntry?.device_enforcement === 'strict' && deviceProof?.verified !== true) {
+      await assertPosDeviceProof({
+        tenantId: resolvedTenantId,
+        terminalId: normalizedTerminalId,
+        deviceId: deviceProof?.deviceId || request?.headers?.['x-pos-device-id'],
+        challenge: deviceProof?.challenge || request?.headers?.['x-pos-device-challenge'],
+        signature: deviceProof?.signature || request?.headers?.['x-pos-device-signature'],
+        sessionId: deviceProof?.sessionId || request?.headers?.['x-pos-device-session-id'],
+        purpose: 'session',
+        method: deviceProof?.method || request?.method || 'POST',
+        path: deviceProof?.path
+          || request?.originalUrl
+          || `/api/v1/dgfy/account/companies/${encodeURIComponent(resolvedTenantId)}/pos-session`,
+        body: deviceProof?.body || request?.body || {},
+        locationId: registryEntry.location_id,
+        requestId: deviceProof?.requestId || request?.requestId || request?.headers?.['x-request-id'] || null
+      });
     }
 
     if (registryEntry?.device_enforcement === 'strict' && deviceProof?.verified !== true) {

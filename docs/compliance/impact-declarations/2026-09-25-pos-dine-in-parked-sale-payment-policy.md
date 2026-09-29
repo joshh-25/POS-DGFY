@@ -11,9 +11,9 @@ policy_version: 2026.09.25
 verification_evidence: focused API/POS/storefront tests,affected app builds,architecture checks,local browser verification,git diff --check
 rollback_note: Revert the related application commits and declaration; review tenant data before rolling back the additive dine-in and parked-sale migrations.
 preflight_result: no_breach
-preflight_reason_code: PENDING
-preflight_run_at: 2026-09-25T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-2026-09-25-POS-DINE-IN-PARKED-SALE
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T04:48:35.618Z
+preflight_request_ref: PREFLIGHT-36218725662-2026-09-25-POS-DINE-IN-PARKED-SALE-PAYMENT-POLICY
 ---
 
 # POS dine-in, payment policy, and parked-sale lifecycle
@@ -62,3 +62,5 @@ permission, inventory-authority, and payment settlement boundaries.
   contract required by the payment-timing guard.
 - API route coverage verifies branch-scoped dine-in payment-policy updates
   honor UserLocationGrant access without relying on an undefined permission group.
+- The aggregate staging merge restores the canonical POS downpayment-settings contract mocks and removes a stale unused import from the older staging tree; no product behavior changes in these integration cleanups.
+- The aggregate staging merge binds the dine-in cash idempotency-key branch to the existing `isDineInOrder` helper; this preserves the staged dine-in cash-collection behavior and resolves the integrated file's missing helper reference.

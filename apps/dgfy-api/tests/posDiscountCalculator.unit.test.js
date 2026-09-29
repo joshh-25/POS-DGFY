@@ -11,7 +11,7 @@ describe('POS governed discount calculator', () => {
     test('applies Senior/PWD discount only to explicitly selected eligible items', () => {
         const result = calculatePosDiscount({
             lines,
-            application: { type: 'senior', method: 'percentage', rate: 99, lines: [{ item_id: 1 }] }
+            application: { type: 'senior', method: 'percentage', rate: 20, lines: [{ item_id: 1 }] }
         });
 
         expect(result.rate).toBe(20);
@@ -25,7 +25,7 @@ describe('POS governed discount calculator', () => {
     test('does not discount a selected item that is not statutory eligible', () => {
         const result = calculatePosDiscount({
             lines,
-            application: { type: 'pwd', method: 'percentage', lines: [{ item_id: 3 }] }
+            application: { type: 'pwd', method: 'percentage', rate: 20, lines: [{ item_id: 3 }] }
         });
 
         expect(result.discount_amount).toBe(0);
@@ -37,6 +37,7 @@ describe('POS governed discount calculator', () => {
             lines: [{ item_id: 1, quantity: 2, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: true }],
             application: {
                 type: 'senior',
+                rate: 20,
                 beneficiaries: [
                     { category: 'senior', lines: [{ item_id: 1, eligible_quantity: 1 }] },
                     { category: 'senior', lines: [{ item_id: 1, eligible_quantity: 1 }] }
@@ -54,7 +55,7 @@ describe('POS governed discount calculator', () => {
     test('treats the MySQL boolean value 1 as Senior/PWD eligible', () => {
         const result = calculatePosDiscount({
             lines: [{ item_id: 1, quantity: 1, sale_price: 112, vat_type_snapshot: 'vatable', senior_pwd_discount_eligible: 1 }],
-            application: { type: 'senior', method: 'percentage', lines: [{ item_id: 1 }] }
+            application: { type: 'senior', method: 'percentage', rate: 20, lines: [{ item_id: 1 }] }
         });
 
         expect(result.discount_amount).toBe(20);
@@ -208,7 +209,7 @@ describe('POS governed discount calculator', () => {
                 { item_id: 1, quantity: 1, sale_price: 112, vat_type: 'vatable', senior_pwd_discount_eligible: true },
                 { item_id: 2, quantity: 1, sale_price: 112, vat_type: 'vatable', senior_pwd_discount_eligible: false }
             ],
-            application: { type: 'senior', lines: [] }
+            application: { type: 'senior', rate: 20, lines: [] }
         });
         expect(result.subtotal_amount).toBe(224);
         expect(result.vat_removed).toBe(12);
@@ -222,10 +223,44 @@ describe('POS governed discount calculator', () => {
     test('lines: [] selects every statutory-eligible line', () => {
         const result = calculatePosDiscount({
             lines: [{ item_id: 1, quantity: 2, sale_price: 112, vat_type: 'vatable', senior_pwd_discount_eligible: true }],
-            application: { type: 'pwd', lines: [{ item_id: 1, eligible_quantity: 1 }] }
+            application: { type: 'pwd', rate: 20, lines: [{ item_id: 1, eligible_quantity: 1 }] }
         });
         expect(result.vat_removed).toBe(12);
         expect(result.discount_amount).toBe(20);
         expect(result.total_amount).toBe(192);
+    });
+
+    test('applies the configured VAT-exempt treatment to a non-statutory percentage discount', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 1, sale_price: 112, vat_type: 'vatable' }],
+            application: {
+                type: 'employee',
+                method: 'percentage',
+                rate: 20,
+                tax_policy: { categories: { employee: { vat_treatment: 'vat_exempt' } } }
+            }
+        });
+
+        expect(result.vat_treatment).toBe('vat_exempt');
+        expect(result.vat_removed).toBe(12);
+        expect(result.vat_exempt_amount).toBe(100);
+        expect(result.discount_amount).toBe(20);
+        expect(result.total_amount).toBe(80);
+    });
+
+    test('keeps a fixed discount fixed when VAT treatment removes embedded VAT', () => {
+        const result = calculatePosDiscount({
+            lines: [{ item_id: 1, quantity: 1, sale_price: 112, vat_type: 'vatable' }],
+            application: {
+                type: 'manual',
+                method: 'fixed',
+                amount: 20,
+                tax_policy: { categories: { manual: { vat_treatment: 'vat_exempt' } } }
+            }
+        });
+
+        expect(result.vat_removed).toBe(12);
+        expect(result.discount_amount).toBe(20);
+        expect(result.total_amount).toBe(80);
     });
 });

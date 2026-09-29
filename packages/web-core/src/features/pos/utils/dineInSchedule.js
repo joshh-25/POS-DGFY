@@ -12,10 +12,15 @@ const parseScheduledTimestamp = (value) => {
   return Number.isFinite(timestamp) ? timestamp : null;
 };
 
-export const isScheduledDineInOrder = (order = {}) => (
+export const isDineInOrder = (order = {}) => (
   String(order?.order_method || '').trim().toLowerCase() === 'dine_in'
+);
+
+export const isScheduledDineInOrder = (order = {}) => (
+  isDineInOrder(order)
   && parseScheduledTimestamp(order?.scheduled_for) !== null
 );
+
 export const getDineInScheduleState = (order = {}, now = Date.now()) => {
   if (!isScheduledDineInOrder(order)) return null;
   if (String(order?.fulfillment_status || '').trim().toLowerCase() === 'ready_for_pickup') {
@@ -104,12 +109,17 @@ export const getDineInScheduleAlertMilestone = (order = {}, now = Date.now()) =>
 
 export const sortDineInScheduleOrders = (orders = []) => (
   (Array.isArray(orders) ? orders : [])
-    .filter(isScheduledDineInOrder)
+    .filter(isDineInOrder)
     .slice()
     .sort((left, right) => {
-      const scheduledDifference = parseScheduledTimestamp(left?.scheduled_for)
-        - parseScheduledTimestamp(right?.scheduled_for);
-      if (scheduledDifference !== 0) return scheduledDifference;
+      const leftScheduledTimestamp = parseScheduledTimestamp(left?.scheduled_for);
+      const rightScheduledTimestamp = parseScheduledTimestamp(right?.scheduled_for);
+      if (leftScheduledTimestamp !== null && rightScheduledTimestamp === null) return -1;
+      if (leftScheduledTimestamp === null && rightScheduledTimestamp !== null) return 1;
+      if (leftScheduledTimestamp !== null && rightScheduledTimestamp !== null) {
+        const scheduledDifference = leftScheduledTimestamp - rightScheduledTimestamp;
+        if (scheduledDifference !== 0) return scheduledDifference;
+      }
 
       const createdDifference = (
         new Date(left?.created_at || 0).getTime() || 0

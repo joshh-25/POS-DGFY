@@ -24,7 +24,7 @@ export const STOREFRONT_LOCATION_LABELS = Object.freeze({
   allowOutOfStockSales: 'Allow Out-of-Stock Sales',
   supportsDelivery: 'Supports Delivery',
   supportsPickup: 'Supports Pickup',
-  supportsDineIn: 'Supports Dine-in',
+  supportsDineIn: 'Supports Dine In',
   allowScheduledOrders: 'Allow Scheduled Orders',
   allowImmediateFulfillment: 'Allow Immediate Fulfillment'
 });

@@ -140,6 +140,8 @@ export const buildBackOfficeLocationsPath = (rootPath, view = 'branches') => {
 export const BACKOFFICE_SETTINGS_SECTION_MANIFEST = Object.freeze([
   { key: 'profile', label: 'Business & receipts', description: 'Business identity, receipt details, and business-wide profile values.', scope: 'tenant', ownerViewMode: 'settings_profile', ownerLabel: 'Open business settings' },
   { key: 'pos', label: 'POS configuration', description: 'POS preferences, discount rules, and operational defaults.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open POS settings' },
+  { key: 'taxes', label: 'Taxes', description: 'Configure tenant tax treatment policies used by POS.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open tax settings' },
+  { key: 'discounts', label: 'Discounts', description: 'Manage the server-authorized POS discount rules.', scope: 'tenant', ownerViewMode: 'settings_pos', ownerLabel: 'Open discount settings' },
   { key: 'storefront', label: 'Storefront settings', description: 'Storefront identity, visibility, presentation, and public access policy.', scope: 'tenant', ownerViewMode: 'settings_storefront', ownerLabel: 'Open Storefront settings' },
   { key: 'delivery', label: 'Delivery pricing', description: 'Business-wide delivery fee policy used by Storefront checkout.', scope: 'tenant', ownerViewMode: 'settings_storefront', ownerLabel: 'Open delivery settings' },
   { key: 'branches', label: 'Branches & locations', description: 'Branch address, hours, fulfillment, and location-specific operating values.', scope: 'branch', ownerViewMode: 'settings_storefront', ownerLabel: 'Open branch settings' },

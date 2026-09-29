@@ -12,10 +12,9 @@ import {
 } from 'lucide-react';
 import TrackingRouteMap from '../../../../tracking/TrackingRouteMapLazy.jsx';
 import { extractTrackingMapCoordinates } from '../../../../tracking/extractTrackingMapCoordinates.js';
-import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
 import { SimpleTrackingCompletedView } from './SimpleTrackingCompletedView.jsx';
-import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
 import { getTrackingFlowOrder, StorefrontTrackingLayout } from '../../../../shared/components/tracking/StorefrontTrackingLayout.jsx';
+import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 import { StorefrontTrackingStatusCard } from '../../../../shared/components/tracking/StorefrontTrackingStatusCard.jsx';
 import { StorefrontTrackingTimeline } from '../../../../shared/components/tracking/StorefrontTrackingTimeline.jsx';
 import { TRACKING_MAP_HEIGHT } from '../../../../tracking/trackingMapSizing.js';
@@ -121,7 +120,6 @@ export function SimpleTrackingRoutePage({
       dgfySoftText: '#64748b',
       guidance,
       hasDiscount: Number.isFinite(trackingResult.discountAmount) && trackingResult.discountAmount > 0,
-      hasServiceFee: Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0,
       isMatchingTrackingPin,
       isPickup,
       mapCoordinates: trackingMapCoordinates,
@@ -152,11 +150,6 @@ export function SimpleTrackingRoutePage({
     );
   }
 
-  const pin = viewModel.trackingResult.tracking_pin || trackingPinInput;
-  const items = Array.isArray(viewModel.trackingResult.items) ? viewModel.trackingResult.items : [];
-  const hasSubtotal = Number.isFinite(viewModel.trackingResult.subtotalAmount);
-  const hasDeliveryFee = Number.isFinite(viewModel.trackingResult.deliveryFee);
-  const hasTotal = Number.isFinite(viewModel.trackingResult.totalAmount);
   const handleBackToItems = () => {
     goStoreCatalogPage();
     window.setTimeout(() => {
@@ -218,36 +211,17 @@ export function SimpleTrackingRoutePage({
         </div>
 
         <aside style={{ display: 'grid', gap: 16 }}>
-          <section style={{ border: '1px solid #dbe5ee', borderRadius: 18, padding: 18, background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,.03)' }}>
-            <h2 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>Order Details</h2>
-            <div style={{ display: 'grid', gap: 14, fontFamily: servicesBodyFont }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                <div><div style={{ fontSize: 12, color: dgfySoftText }}>Order PIN</div><div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{pin}</div></div>
-                <button type="button" onClick={() => copyTextToClipboard(pin, 'Order PIN copied.')} style={{ color: dgfyPrimary, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 13 }}>Copy</button>
-              </div>
-              <div style={{ paddingBottom: 4 }}>
-                <div style={{ fontSize: 12, color: dgfySoftText }}>Order time</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{viewModel.trackingResult.createdAt ? formatTicketDate(viewModel.trackingResult.createdAt) : (viewModel.trackingResult.updatedAt ? formatTicketDate(viewModel.trackingResult.updatedAt) : 'Today')}</div>
-              </div>
-              <StorefrontOrderInstructions value={viewModel.trackingResult.specialInstructions} accentColor={dgfyPrimary} bodyFont={servicesBodyFont} compact />
-              <div style={{ display: 'grid', gap: 10 }}>
-                {items.map((item, index) => (
-                  <div key={item.id || index} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 14 }}>
-                    <span style={{ color: '#334155', minWidth: 0 }}>{item.name} <span style={{ color: dgfySoftText }}>× {item.qty}</span></span>
-                    <span style={{ fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap' }}>{money(item.amount)}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'grid', gap: 8, fontSize: 14 }}>
-                {hasSubtotal ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Subtotal</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.subtotalAmount)}</span></div> : null}
-                {viewModel.hasDiscount ? <div style={{ display: 'flex', justifyContent: 'space-between', color: '#15803d', fontWeight: 700 }}><span>{viewModel.trackingResult.discountLabel || 'Promo / Discount'}</span><span>- {money(viewModel.trackingResult.discountAmount)}</span></div> : null}
-                {hasDeliveryFee ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Delivery fee</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.deliveryFee)}</span></div> : null}
-                {viewModel.hasServiceFee ? <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: dgfySoftText }}>Service fee</span><span style={{ fontWeight: 600 }}>{money(viewModel.trackingResult.serviceFeeAmount)}</span></div> : null}
-              </div>
-              {hasTotal ? <div style={{ borderTop: '1px dashed #cbd5e1', paddingTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>Total</span><span style={{ fontSize: 18, fontWeight: 800, color: dgfyPrimary, fontFamily: servicesDisplayFont }}>{money(viewModel.trackingResult.totalAmount)}</span></div> : null}
-              <DownpaymentTrackingSummary trackingResult={viewModel.trackingResult} money={money} orderMethod={viewModel.isPickup ? 'pickup' : 'delivery'} />
-            </div>
-          </section>
+          <StorefrontTrackingOrderSummary
+            accentColor={dgfyPrimary}
+            bodyFont={servicesBodyFont}
+            displayFont={servicesDisplayFont}
+            formatTicketDate={formatTicketDate}
+            money={money}
+            onCopyPin={(pin) => copyTextToClipboard(pin, 'Order PIN copied.')}
+            softText={dgfySoftText}
+            statusLabel={viewModel.statusLabel}
+            trackingResult={{ ...viewModel.trackingResult, tracking_pin: viewModel.trackingResult.tracking_pin || trackingPinInput }}
+          />
 
           <section style={{ border: '1px solid #dbe5ee', borderRadius: 18, padding: 18, background: '#fff' }}>
             <h2 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: servicesDisplayFont }}>{viewModel.isPickup ? 'Pickup At' : 'Delivery To'}</h2>

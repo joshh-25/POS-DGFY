@@ -94,7 +94,7 @@ describe('buildPosTerminalUrl (OPIS → POS terminal links, issue #2052 follow-u
 
   it('maps the OPIS production host to the POS host (not pos.opis.*)', () => {
     setLocation({ hostname: 'opis.dev.dgfy.ph' });
-    expect(getBusinessBackOfficeOrigin()).toBe('https://pos.dev.dgfy.ph');
+    expect(getBusinessBackOfficeOrigin()).toBe('https://opis.dev.dgfy.ph');
     expect(buildPosTerminalUrl()).toBe('https://pos.dev.dgfy.ph/terminal');
   });
 

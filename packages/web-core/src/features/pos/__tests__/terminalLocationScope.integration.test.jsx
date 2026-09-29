@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe('POS terminal location UX integration', () => {
-  it('renders the incoming queue scope without exposing the operating-location selector', async () => {
+  it('renders the incoming queue scope without exposing the operating-location selector', () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -101,16 +101,14 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    // This panel is loaded through React.lazy; give its dynamically imported chunk enough time
-    // to resolve on slower CI workers before asserting the rendered location scope.
-    expect(await screen.findByText('Location scope:', {}, { timeout: 5000 })).toBeTruthy();
-    expect(await screen.findByText('East Branch')).toBeTruthy();
+    expect(screen.getByText('Location scope:')).toBeTruthy();
+    expect(screen.getByText('East Branch')).toBeTruthy();
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
   });
 
-  it('hides incoming orders until the terminal has an active shift', async () => {
+  it('hides incoming orders until the terminal has an active shift', () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -127,11 +125,11 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(await screen.findByText('Open a shift to view orders for this branch.')).toBeTruthy();
+    expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
     expect(screen.queryByText('Main Branch Buyer')).toBeNull();
   });
 
-  it('renders no-shift admin Orders as read-only branch monitoring', async () => {
+  it('renders no-shift admin Orders as read-only branch monitoring', () => {
     const refreshAdminLocationMonitor = vi.fn();
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
@@ -157,9 +155,9 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(await screen.findByTestId('admin-branch-orders')).toBeTruthy();
-    expect(await screen.findByText('East Branch Buyer')).toBeTruthy();
-    expect(await screen.findByText(/Read-only admin view/i)).toBeTruthy();
+    expect(screen.getByTestId('admin-branch-orders')).toBeTruthy();
+    expect(screen.getByText('East Branch Buyer')).toBeTruthy();
+    expect(screen.getByText(/Read-only admin view/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Accept|Reject|Process/i })).toBeNull();
   });
 
@@ -183,6 +181,23 @@ describe('POS terminal location UX integration', () => {
           cash_sales_amount: 80
         }
       },
+      canViewBranchLocations: true,
+      branchDirectoryState: {
+        loading: false,
+        locations: [{
+          location_id: 1,
+          name: 'Masu Cafe',
+          open_shift_count: 1,
+          is_open: true,
+          can_view: true,
+          terminals: [{
+            terminal_id: 'MASU-01',
+            label: 'Masu Register',
+            status: 'occupied',
+            shift: { cashier: { display_name: 'Admin' } }
+          }]
+        }]
+      },
       setQueueLocationScopeId,
       setOperatingLocationId
     });
@@ -190,6 +205,9 @@ describe('POS terminal location UX integration', () => {
     render(<TerminalOperationsWorkspace {...props} />);
 
     expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.getByText('Masu Cafe')).toBeTruthy();
+    expect(screen.getByTestId('pos-view-branch-1')).toBeTruthy();
+    expect(screen.queryByText('View authorized branches and their current cashier/terminal occupancy. Branch viewing is read-only.')).toBeNull();
     expect(screen.getByText('Current Shift Location')).toBeTruthy();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();

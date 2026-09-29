@@ -30,6 +30,24 @@ const makeSetting = (updatedAt = CURRENT_VERSION) => ({
   updated_at: updatedAt
 });
 
+const makeTaxSetting = (categories, version = 7) => ({
+  setting_id: 8,
+  setting_key: 'pos_tax_policies',
+  setting_value: JSON.stringify({ version, categories }),
+  data_type: 'json',
+  description: 'POS tax treatment policy',
+  updated_at: CURRENT_VERSION,
+  update: jest.fn().mockResolvedValue(undefined)
+});
+
+const standardTaxCategories = {
+  senior: { vat_treatment: 'vat_exempt' },
+  pwd: { vat_treatment: 'vat_exempt' },
+  manual: { vat_treatment: 'standard' },
+  employee: { vat_treatment: 'standard' },
+  promo: { vat_treatment: 'standard' },
+  voucher: { vat_treatment: 'standard' }
+};
 describe('settingsRepository optimistic concurrency', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -83,6 +101,37 @@ describe('settingsRepository optimistic concurrency', () => {
       setting_key: 'storefront_tagline',
       value: 'New value',
       updated_at: '2026-09-15T01:01:00.000Z'
+    }));
+  });
+
+  it('owns POS tax-policy versions on write and preserves the version for a no-op update', async () => {
+    const current = makeTaxSetting(standardTaxCategories, 7);
+    systemSetting.findOne.mockResolvedValue(current);
+
+    const noOp = await settingsRepository.updateSettingByKey('pos_tax_policies', {
+      version: 999,
+      categories: standardTaxCategories
+    });
+
+    expect(noOp.value.version).toBe(7);
+    expect(current.update).toHaveBeenCalledWith(expect.objectContaining({
+      data_type: 'json',
+      setting_value: JSON.stringify({ version: 7, categories: standardTaxCategories })
+    }));
+
+    current.update.mockClear();
+    const changedCategories = {
+      ...standardTaxCategories,
+      employee: { vat_treatment: 'vat_exempt' }
+    };
+    const changed = await settingsRepository.updateSettingByKey('pos_tax_policies', {
+      version: 123,
+      categories: changedCategories
+    });
+
+    expect(changed.value.version).toBe(8);
+    expect(current.update).toHaveBeenCalledWith(expect.objectContaining({
+      setting_value: JSON.stringify({ version: 8, categories: changedCategories })
     }));
   });
 });

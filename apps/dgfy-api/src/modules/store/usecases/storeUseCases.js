@@ -94,7 +94,8 @@ import { buildOnlineInventoryEffects } from '../../shared/utils/onlineInventoryE
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { issueReviewInvitesForOrder } from '../../dgfy/utils/reviewInviteIssuer.js';
 import {
-    isDateWithinStorefrontBusinessHours
+    isDateWithinStorefrontBusinessHours,
+    normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import {
     buildCommercialPromoUsageUpdate,
@@ -468,6 +469,9 @@ const serializeOrderForCustomer = (order) => ({
 const serializeOrderForPublicTracking = (order) => {
     return {
         ...serializeOrderBase(order),
+        // The public tracking summary shows VAT only as an informational amount already included
+        // in item prices. Reuse the persisted value; this projection does not recalculate tax.
+        vat_amount: order?.vat_amount ?? null,
         estimated_wait_minutes: order?.location?.current_wait_time_minutes ?? null
     };
 };
@@ -749,11 +753,11 @@ const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod, sch
             { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_REQUIRED' } }
         );
     }
-    if (normalizedOrderMethod === 'dine_in' && scheduledFor.getTime() <= Date.now()) {
+    if (scheduledFor && scheduledFor.getTime() <= Date.now()) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
-            'scheduled_for must be in the future for dine-in orders',
-            { statusCode: 422, details: { reason_code: 'DINE_IN_SCHEDULE_MUST_BE_FUTURE' } }
+            'scheduled_for must be in the future',
+            { statusCode: 422, details: { reason_code: normalizedOrderMethod === 'dine_in' ? 'DINE_IN_SCHEDULE_MUST_BE_FUTURE' : 'SCHEDULE_MUST_BE_FUTURE' } }
         );
     }
 
@@ -842,6 +846,32 @@ const assertCheckoutTimeWithinStorefrontHours = ({ scheduledFor, settings }) => 
                     reason_code: 'OUTSIDE_STOREFRONT_BUSINESS_HOURS'
                 }
             }
+        );
+    }
+};
+
+const branchDayNumber = (date, timezone) => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    }).formatToParts(date).map((part) => [part.type, Number(part.value)]));
+    return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+};
+
+const assertCheckoutLeadTimeWindow = ({ scheduledFor, location, settings }) => {
+    if (!scheduledFor) return;
+    const minimum = Number(location?.fulfillment_lead_time_min_days);
+    const maximum = Number(location?.fulfillment_lead_time_max_days);
+    if (location?.fulfillment_lead_time_min_days == null || location?.fulfillment_lead_time_max_days == null
+        || !Number.isInteger(minimum) || !Number.isInteger(maximum) || minimum < 0 || maximum < minimum) return;
+    const schedule = normalizeStorefrontBusinessHours(settings?.storefront_hours?.value);
+    const timezone = typeof schedule === 'object' && schedule?.timezone ? schedule.timezone : 'Asia/Manila';
+    const daysAhead = branchDayNumber(scheduledFor, timezone) - branchDayNumber(new Date(), timezone);
+    if (daysAhead < minimum || daysAhead > maximum) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `scheduled_for must be ${minimum} to ${maximum} days ahead in the branch timezone`,
+            { statusCode: 422, details: { reason_code: 'SCHEDULE_OUTSIDE_LEAD_TIME_WINDOW' } }
         );
     }
 };
@@ -1824,7 +1854,6 @@ const resolveCheckoutContext = async ({
     storeCustomer = null,
     options = {},
     validateRecipeAvailability = true,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // #746: a cart-quote preview isn't placing an order -- it's answering "what would my total (and
     // voucher/promo discount) be right now." Neither the discount math (resolveStorefrontPromoApplication
     // / voucher resolution below, cart-content-only) nor deliveryFee (resolveStoreDeliveryFee, a flat
@@ -1935,6 +1964,7 @@ const resolveCheckoutContext = async ({
         scheduledFor,
         settings
     });
+    assertCheckoutLeadTimeWindow({ scheduledFor, location, settings });
 
     normalized.location_id = location.location_id;
 
@@ -2697,12 +2727,10 @@ const resolveCheckoutContext = async ({
     // persistence) keeps reading `resolved.deliveryFee` unchanged, which is what keeps this diff's
     // four money-adjacent call sites untouched (Phase 237 plan §4.1).
     const deliveryFee = delivery.finalFee;
-    const isDineInPayAtStore = orderMethod === 'dine_in'
-        && normalized.payment_type === 'cash'
-        && location?.allow_dine_in_pay_at_store === true;
-    const serviceFeeAmount = revenueSharingEnabled || isDineInPayAtStore
-        ? 0
-        : computeDgfyConvenienceFee(prepared.subtotalAmount);
+    // Phase 333: Storefront checkout no longer adds the DGFY convenience fee to the
+    // customer's payable total. Keep the service-fee fields in the response and
+    // transaction header for schema compatibility and historical read contracts.
+    const serviceFeeAmount = 0;
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
     const totalAmount = round4(
         prepared.subtotalAmount - promoApplication.discountAmount - voucherApplication.discountAmount + deliveryFee + serviceFeeAmount
@@ -3699,7 +3727,6 @@ export const buildDeleteStoreCustomerAddressUseCase = ({ storeRepository }) => {
 
 export const buildStoreCartQuoteUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -3905,7 +3932,6 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
 
 export const buildStoreCheckoutUseCase = ({
     storeRepository,
-    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Phase 140 (#821): see the resolveCheckoutContext-level comment. No default -- store/index.js
     // wires the real repository; every existing test that omits this gets `undefined`.
     downpaymentSettingsRepository,
@@ -5037,11 +5063,10 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const totalAmountCentavos = isDownpaymentCapture
                 ? toCentavos(resolved.downpayment.downpayment_amount)
                 : orderTotalCentavos;
-            // For the legacy QR Ph split path (non-revenue-sharing tenants), DGFY's platform
-            // settlement cut is the same DGFY convenience fee already folded into the customer's
-            // collected total (serviceFeeAmount) -- re-derived here from subtotalAmount rather than
-            // read back off `resolved`, so the settlement math stays correct even if the checkout
-            // row itself is ever removed from the response.
+            // The customer-facing service fee was removed in Phase 333. For the
+            // legacy QR Ph split path, keep DGFY's settlement amount separate from
+            // the captured customer total so removing the checkout row does not
+            // silently remove the configured platform settlement.
             const platformFeeCentavos = tenantRevenueSharingEnabled
                 ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
                 : toCentavos(computeDgfyConvenienceFee(resolved.prepared.subtotalAmount));
@@ -5320,6 +5345,79 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+// Local PayMongo direct-wallet testing cannot receive the provider webhook when the API only
+// listens on loopback. Keep this recovery path separate from the normal read endpoint and gate it
+// by both test mode and loopback access. The provider reconciliation use case remains the source
+// of truth for amount, currency, livemode, payment-record, and idempotent finalization checks.
+export const buildReconcileStoreCheckoutPaymentSessionUseCase = ({
+    commercePaymentRepository,
+    reconcileCommercePaymentSessionUseCase,
+    paymongoMode = process.env.PAYMONGO_MODE
+}) => {
+    return async ({ paymentSessionId, remoteAddress }) => {
+        try {
+            if (String(paymongoMode || process.env.PAYMONGO_MODE || '').trim().toLowerCase() !== 'test'
+                || !isLoopbackAddress(remoteAddress)) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Sandbox payment reconciliation is not available.',
+                    { statusCode: 404 }
+                );
+            }
+
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+            if (
+                !session
+                || normalizeTenantIdentifier(session.tenant_id) !== tenantId
+                || session.target_type !== 'store_checkout'
+            ) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+
+            const alreadyFinalized = session.status === 'finalized'
+                || Boolean(session.pos_transaction_id || session.tracking_pin);
+            const paymentFlow = getDirectWalletSessionDetails(session).payment_flow;
+            if ((!alreadyFinalized && !['direct_gcash', 'direct_maya', 'direct_card'].includes(paymentFlow))
+                || (!alreadyFinalized && !session.provider_payment_intent_id)
+                || typeof reconcileCommercePaymentSessionUseCase !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Payment session is not eligible for direct sandbox reconciliation.',
+                    { statusCode: 409 }
+                );
+            }
+
+            const reconciliation = await reconcileCommercePaymentSessionUseCase({
+                paymentSessionId: reference,
+                actor: 'storefront_test_reconciliation'
+            });
+            if (!reconciliation?.success) return reconciliation;
+
+            const reconciledSession = await commercePaymentRepository.findSessionByPublicReference(reference);
+            if (
+                !reconciledSession
+                || normalizeTenantIdentifier(reconciledSession.tenant_id) !== tenantId
+            ) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+
+            return ok({
+                payment_session: serializePaymentSession(reconciledSession),
+                reconciliation: reconciliation.data?.reconciliation || null
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to reconcile sandbox payment'));
         }
     };
 };
@@ -5640,16 +5738,12 @@ export const buildCancelStoreOrderUseCase = ({
     // repository against a live tenant connection. store/index.js wires the real ones.
     voucherRepository = null,
     reverseVoucherRedemptionUseCase = null,
-    // #1931: Inventory-owned reversal of a Retail order's accept-time goods-issue on
+    // Inventory-owned reversal of an online order's confirmation-time goods-issue on
     // post-acceptance customer cancel. Injected, optional, defaulting to null so every
     // existing test that builds this use case without it keeps its behavior verbatim
     // (same reasoning as commerceOrderLifecycleUseCase/voucherRepository above);
     // store/index.js wires the real command service.
-    inventoryCommandService = null,
-    // #1931: tenant workflow-mode gate (Retail-only reversal). Same injection reasoning;
-    // defaults to the real resolver so production needs no extra wiring beyond the
-    // command service above.
-    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+    inventoryCommandService = null
 }) => {
     return async ({ trackingPin, tenantId, storeCustomer = null, payload = {} }) => {
         let normalizedTrackingPin = null;
@@ -5738,37 +5832,33 @@ export const buildCancelStoreOrderUseCase = ({
                 });
             }
 
-            // #1931: a post-acceptance customer cancel reverses the accept-time goods-issue,
-            // once, for Retail orders that actually recorded one. A pre-acceptance `placed`
-            // cancel never issued anything, so the plain reservation release above remains
-            // correct there -- and the evidence check short-circuits before the mode lookup,
-            // so non-Retail and never-issued orders never pay for it. Rides the existing
-            // ['placed','confirmed'] eligibility window (no widening) and fails closed: any
-            // reversal failure throws and rolls back the release and the status flip with it.
+            // A post-acceptance customer cancel reverses the confirmation-time goods-issue once
+            // for any online order that actually recorded one. A pre-acceptance `placed` cancel
+            // never issued anything, so the plain reservation release above remains correct.
+            // Rides the existing ['placed','confirmed'] eligibility window (no widening) and
+            // fails closed: any reversal failure throws and rolls back the release and the status
+            // flip with it.
             let inventoryReversedAt = null;
             if (existing.inventory_issued_at && !existing.inventory_reversed_at) {
-                const tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
-                if (tenantWorkflowMode === 'retail') {
-                    const reverseFn = inventoryCommandService?.reverseOnlineOrderGoodsIssue;
-                    if (typeof reverseFn !== 'function') {
-                        throw new DomainError(
-                            DomainErrorCode.CONFLICT,
-                            'Inventory reversal command is unavailable for this order',
-                            {
-                                statusCode: 409,
-                                details: {
-                                    reason_code: 'INVENTORY_REVERSAL_UNAVAILABLE',
-                                    order_id: existing.pos_transaction_id
-                                }
+                const reverseFn = inventoryCommandService?.reverseOnlineOrderGoodsIssue;
+                if (typeof reverseFn !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Inventory reversal command is unavailable for this order',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'INVENTORY_REVERSAL_UNAVAILABLE',
+                                order_id: existing.pos_transaction_id
                             }
-                        );
-                    }
-                    await reverseFn({
-                        order_id: existing.pos_transaction_id,
-                        reason: `Reversal of accept-time goods-issue for online order ${existing.pos_transaction_id} (customer cancel after acceptance)`
-                    }, null, transaction);
-                    inventoryReversedAt = new Date();
+                        }
+                    );
                 }
+                await reverseFn({
+                    order_id: existing.pos_transaction_id,
+                    reason: `Reversal of confirmation-time goods-issue for online order ${existing.pos_transaction_id} (customer cancel after acceptance)`
+                }, null, transaction);
+                inventoryReversedAt = new Date();
             }
 
             // #1390: IN-TRANSACTION and BEFORE commit (ADR 0066 Validation #3) -- a failure here

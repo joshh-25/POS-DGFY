@@ -33,6 +33,7 @@ import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
+import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
@@ -224,8 +225,8 @@ const normalizeTerminalRegistry = (rawValue) => {
             terminal_id: terminalId,
             label: String(entry?.label || '').trim(),
             location_id: locationId,
-            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {}),
-            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
+            device_enforcement: String(entry?.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off',
+            ...(cashierUserIds ? { cashier_user_ids: cashierUserIds } : {})
         });
     });
     return normalized;
@@ -2166,13 +2167,15 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
             net_sales: 0,
             discount_amount: 0,
             refund_amount: 0,
-            pos_profit_loss: 0
+            vatable_sales: 0,
+            vat_amount: 0
         };
         current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
         current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
         current.discount_amount = round4(current.discount_amount + Number(row.discount_amount || 0));
         current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
-        current.pos_profit_loss = round4(current.pos_profit_loss + Number(row.pos_profit_loss || 0));
+        current.vatable_sales = round4(current.vatable_sales + Number(row.vatable_sales || 0));
+        current.vat_amount = round4(current.vat_amount + Number(row.vat_amount || 0));
         lineSummaryByTransaction.set(key, current);
     });
 
@@ -2198,8 +2201,9 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 gross_sales: round4(summary.gross_sales),
                 net_sales: round4(summary.net_sales),
                 discount_amount: round4(summary.discount_amount),
-                refund_amount: round4(summary.refund_amount),
-                pos_profit_loss: round4(summary.pos_profit_loss)
+                vatable_sales: round4(summary.vatable_sales),
+                vat_amount: round4(summary.vat_amount),
+                refund_amount: round4(summary.refund_amount)
             };
         });
 };
@@ -3159,8 +3163,26 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
 export const posRepository = {
     async findActiveDiscountRuleByType(type, options = {}) {
         const PosDiscountRule = dbStore.get('PosDiscountRule');
+        const normalizedType = String(type || '').trim().toLowerCase();
+        const normalizedRuleId = Number.parseInt(options.ruleId, 10);
+        const normalizedDiscountKey = String(options.discountKey || '').trim().toLowerCase();
+        const where = {
+            is_active: true,
+            is_approved: true
+        };
+        if (Number.isInteger(normalizedRuleId) && normalizedRuleId > 0) {
+            where.id = normalizedRuleId;
+        } else if (normalizedDiscountKey) {
+            where.discount_key = normalizedDiscountKey;
+        } else {
+            where.type = normalizedType;
+        }
+        // A custom rule must always be selected by its stable identity. The
+        // server must never choose an arbitrary custom rule for a checkout.
+        if (normalizedType === 'custom' && !where.id && !where.discount_key) return null;
+        if (where.id || where.discount_key) where.type = normalizedType;
         const row = await PosDiscountRule.findOne({
-            where: { type, is_active: true },
+            where,
             order: [['id', 'ASC']],
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
@@ -3389,10 +3411,12 @@ export const posRepository = {
         }
     },
 
-    // Parked-sale settlement may need the sale-time item snapshot even when
-    // the current catalog row is inactive, hidden, or soft-deleted. Ordinary
-    // checkout visibility rules remain unchanged; this method is only used
-    // after the parked-sale claim and snapshot have been authorized.
+    // Parked-sale settlement is the one checkout path that may need the
+    // sale-time item row even after the item is inactive, hidden from POS, or
+    // soft-deleted. The checkout use case still authorizes the parked-sale
+    // claim and validates the snapshot before using this method; this method
+    // only widens the repository lookup so immutable transaction snapshots can
+    // be written without weakening ordinary checkout visibility rules.
     async findParkedSaleItemsByIds(itemIds, options = {}) {
         const Item = dbStore.get('Item');
         const normalizedLocationId = Number.parseInt(options.locationId, 10);
@@ -3400,7 +3424,6 @@ export const posRepository = {
             .map((itemId) => Number.parseInt(itemId, 10))
             .filter((itemId) => Number.isInteger(itemId) && itemId > 0))];
         if (normalizedItemIds.length === 0) return [];
-
         const queryOptions = {
             where: buildVisibleWhere(
                 { item_id: { [Op.in]: normalizedItemIds } },
@@ -3413,6 +3436,7 @@ export const posRepository = {
                 ...buildFnbCatalogIncludes()
             ]
         };
+
         if (options.transaction) {
             queryOptions.transaction = options.transaction;
             if (options.lock) queryOptions.lock = options.transaction.LOCK.UPDATE;
@@ -3422,7 +3446,10 @@ export const posRepository = {
             const rawItems = await Item.findAll({ ...queryOptions, attributes });
             const catalogItems = await applyCatalogOverrides(
                 attributes.includes('vat_type') ? rawItems : withLegacyVatFallback(rawItems),
-                { ...options, includeUnavailable: true }
+                {
+                    ...options,
+                    includeUnavailable: true
+                }
             );
             const stockMap = await loadItemLocationStockMap(
                 catalogItems.map((item) => Number(item.item_id)),
@@ -3769,6 +3796,7 @@ export const posRepository = {
         const PosTransactionDiscountBeneficiary = dbStore.get('PosTransactionDiscountBeneficiary');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
         const transaction = options.transaction;
+        const taxPolicy = resolvePosTaxPolicy(application?.tax_policy, application?.type);
         const created = await PosTransactionDiscount.create({
             transaction_id: transactionId,
             discount_rule_id: application.rule_id || null,
@@ -3778,6 +3806,8 @@ export const posRepository = {
             discount_amount: calculation.discount_amount,
             vat_removed: calculation.vat_removed,
             vat_exempt_amount: calculation.vat_exempt_amount,
+            tax_treatment: calculation.vat_treatment || taxPolicy.vat_treatment,
+            tax_policy_version: Number(calculation.tax_policy_version || taxPolicy.version || 1),
             customer_name: application.customer_name || null,
             senior_pwd_id_number: application.id_number || null,
             employee_name: application.employee_name || null,
@@ -4453,18 +4483,27 @@ export const posRepository = {
     },
 
     async getReportsOverview(filters = {}, options = {}) {
-        const previousComparisonRange = buildComparisonRange(resolveReportDateRange(filters)).previous;
+        const reportDateRange = resolveReportDateRange(filters);
+        const previousComparisonRange = buildComparisonRange(reportDateRange).previous;
         const previousComparisonFilters = {
             ...filters,
             date_from: previousComparisonRange.dateFrom,
             date_to: previousComparisonRange.dateTo
         };
-        const [transactions, previousTransactions, categoryOptions, adjustments, firstTransactionDate] = await Promise.all([
+        const canLoadZReadingSnapshot = reportDateRange.dateFrom === reportDateRange.dateTo
+            && Boolean(safeGetModel('PosZReadingSnapshot'));
+        const [transactions, previousTransactions, categoryOptions, adjustments, firstTransactionDate, zReadingSnapshot] = await Promise.all([
             this.listReportTransactions(filters, options),
             this.listReportTransactions(previousComparisonFilters, options),
             this.listActiveReportCategories(options),
             this.listReportTransactionAdjustments(filters, options),
-            this.getFirstReportTransactionDate(filters, options)
+            this.getFirstReportTransactionDate(filters, options),
+            canLoadZReadingSnapshot
+                ? this.getLatestZReadingSnapshotByBusinessDate(reportDateRange.dateFrom, {
+                    locationId: toPositiveInt(filters.location_id),
+                    transaction: options.transaction
+                })
+                : null
         ]);
         const cashierReconciliation = await loadReportCashierReconciliation({
             transactions,
@@ -4489,6 +4528,13 @@ export const posRepository = {
             first_transaction_date: firstTransactionDate || null,
             today: getManilaDateParts(new Date()).date
         };
+        payload.z_reading_reconciliation = buildReportZReadingReconciliation({
+            transactions,
+            filters,
+            snapshot: zReadingSnapshot,
+            reportSummary: payload.daily_report?.summary,
+            adjustmentSummary: payload.daily_report?.adjustment_summary
+        });
         const cashierNetSales = round4((payload.daily_report?.cashier_summary || []).reduce(
             (total, row) => total + Number(row.summary?.net_sales || 0),
             0
@@ -6057,10 +6103,11 @@ export const posRepository = {
         return PosParkedSale.count({
             where: {
                 shift_id: toPositiveInt(shiftId),
-                // An unclaimed cart is branch-shared handoff work and may outlive
-                // the shift that originally parked it. Only an actively claimed
-                // cart remains an unresolved obligation of this shift.
-                status: { [Op.in]: ['claimed', 'cancel_pending'] }
+                // Unclaimed carts are branch-shared handoff work and may outlive
+                // the shift that originally parked them. A cancellation request
+                // is also no longer payable or editable, so only an actively
+                // claimed cart remains an unresolved obligation of this shift.
+                status: 'claimed'
             },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined

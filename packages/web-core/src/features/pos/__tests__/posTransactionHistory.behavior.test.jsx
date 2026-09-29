@@ -150,9 +150,16 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         const loadHistory = vi.fn();
         render(<HistoryHarness onLoadHistory={loadHistory} />);
 
+        const sourceTabs = screen.getByTestId('pos-history-source-tabs');
+        const historyToolbar = screen.getByTestId('pos-history-toolbar');
+        expect(sourceTabs.compareDocumentPosition(historyToolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Filter by Date' })).toBeTruthy();
         expect(screen.getByRole('tab', { name: 'All Sources' }).getAttribute('aria-selected')).toBe('true');
         expect(screen.getByRole('tab', { name: 'In-Store' })).toBeTruthy();
         expect(screen.getByRole('tab', { name: 'Online Store' })).toBeTruthy();
+        expect(screen.getByRole('tab', { name: 'All Sources' }).querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+        expect(screen.getByRole('tab', { name: 'In-Store' }).querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+        expect(screen.getByRole('tab', { name: 'Online Store' }).querySelector('svg[aria-hidden="true"]')).toBeTruthy();
 
         fireEvent.click(screen.getByTestId('pos-history-source-tab-online_store'));
 
@@ -255,10 +262,15 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         calendarButton.getBoundingClientRect = vi.fn(() => ({ bottom: 120, right: 920 }));
 
         fireEvent.click(filterButton);
+        expect(filterButton.getAttribute('aria-haspopup')).toBe('dialog');
+        expect(filterButton.getAttribute('aria-expanded')).toBe('true');
         const filterWidth = screen.getByRole('dialog').style.width;
         fireEvent.click(screen.getByRole('button', { name: 'Close history filters' }));
 
         fireEvent.click(calendarButton);
+        expect(calendarButton.getAttribute('aria-haspopup')).toBe('dialog');
+        expect(calendarButton.getAttribute('aria-expanded')).toBe('true');
+        expect(filterButton.getAttribute('aria-expanded')).toBe('false');
         expect(screen.getByRole('dialog').style.width).toBe(filterWidth);
         expect(filterWidth).toBe('464px');
     });
@@ -388,9 +400,49 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         await waitFor(() => {
             expect(loadHistory).toHaveBeenCalledWith(1);
             expect(screen.queryByRole('dialog')).toBeNull();
-            expect(screen.getByText('From: 2026-09-01')).toBeTruthy();
-            expect(screen.getByText('To: 2026-09-10')).toBeTruthy();
+            expect(screen.getByText('Date: Sep 1, 2026 – Sep 10, 2026')).toBeTruthy();
         });
+    });
+
+    it('uses the shared removable applied-filter chips and clears all History filters', () => {
+        const setters = {
+            setHistorySearch: vi.fn(),
+            setHistoryStatus: vi.fn(),
+            setHistoryPaymentType: vi.fn(),
+            setHistoryOrderMethod: vi.fn(),
+            setHistoryOrderSource: vi.fn(),
+            setHistoryCashierName: vi.fn(),
+            setHistoryDateFrom: vi.fn(),
+            setHistoryDateTo: vi.fn()
+        };
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            historySearch: 'NFS-000003',
+            historyStatus: 'completed',
+            historyPaymentType: 'cash',
+            historyOrderMethod: 'takeout',
+            historyCashierName: 'Henndry',
+            historyDateFrom: '2026-08-15',
+            historyDateTo: '2026-09-23',
+            ...setters
+        })} />);
+
+        const appliedFilters = within(screen.getByRole('group', { name: 'Applied history filters' }));
+        expect(appliedFilters.getByRole('button', { name: 'Remove filter: Date: Aug 15, 2026 – Sep 23, 2026' })).toBeTruthy();
+        expect(appliedFilters.getByRole('button', { name: 'Clear all history filters' })).toBeTruthy();
+
+        fireEvent.click(appliedFilters.getByRole('button', { name: 'Remove filter: Date: Aug 15, 2026 – Sep 23, 2026' }));
+        expect(setters.setHistoryDateFrom).toHaveBeenCalledWith('');
+        expect(setters.setHistoryDateTo).toHaveBeenCalledWith('');
+
+        fireEvent.click(appliedFilters.getByRole('button', { name: 'Clear all history filters' }));
+        expect(setters.setHistorySearch).toHaveBeenCalledWith('');
+        expect(setters.setHistoryStatus).toHaveBeenCalledWith('all');
+        expect(setters.setHistoryPaymentType).toHaveBeenCalledWith('all');
+        expect(setters.setHistoryOrderMethod).toHaveBeenCalledWith('all');
+        expect(setters.setHistoryOrderSource).toHaveBeenCalledWith('all');
+        expect(setters.setHistoryCashierName).toHaveBeenCalledWith('');
+        expect(setters.setHistoryDateFrom).toHaveBeenCalledWith('');
+        expect(setters.setHistoryDateTo).toHaveBeenCalledWith('');
     });
 
     it('clears the active preset when switching to a custom date range', () => {
@@ -440,7 +492,7 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
 
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(loadHistory).not.toHaveBeenCalled();
-        expect(screen.queryByText(/From:/)).toBeNull();
+        expect(screen.queryByText(/Date:/)).toBeNull();
     });
 
     it('stages filter changes until Apply Filters and reloads with the applied values', async () => {
@@ -476,15 +528,20 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(screen.getByTestId('pos-history-filter-order-method-all').getAttribute('aria-pressed')).toBe('true');
     });
 
-    it('uses the PC-style twelve-column tablet table with compact icon actions', () => {
+    it('uses five data columns plus receipt, void, and eye actions on tablet landscape', () => {
         render(<POSTransactionHistoryPanel {...buildPanelProps()} />);
 
-        const viewReceiptButton = screen.getByRole('button', { name: 'View receipt for INV-001' });
-        const voidButton = screen.getByRole('button', { name: 'Void transaction INV-001' });
+        const detailsButton = screen.getByRole('button', { name: 'View details for INV-001' });
         const actionHeader = screen.getByRole('columnheader', { name: 'Action' });
+        const actionCell = detailsButton.closest('td');
 
-        expect(viewReceiptButton.textContent).toBe('');
-        expect(voidButton.textContent).toBe('');
+        expect(detailsButton.textContent).toBe('');
+        expect(screen.getByRole('button', { name: 'View receipt for INV-001' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Void transaction INV-001' })).toBeTruthy();
+        expect(actionCell).toBeTruthy();
+        const actionButtons = within(actionCell).getAllByRole('button');
+        expect(actionButtons).toHaveLength(3);
+        expect(actionButtons.every((button) => button.className.includes('h-9 w-9'))).toBe(true);
         expect(actionHeader.className).toContain('pos-history-action-column');
         expect(screen.queryByRole('button', { name: 'Show transaction details for INV-001' })).toBeNull();
 
@@ -492,21 +549,17 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(historyTable.className).toContain('whitespace-nowrap');
         expect(historyTable.className).toContain('dgfy-pos-history-table--tablet');
         expect(historyTable.className).toContain('dgfy-pos-history-table--tablet-landscape');
-        expect(historyTable.className).toContain('min-w-[1180px]');
+        expect(historyTable.className).toContain('min-w-0');
         expect(within(historyTable).getAllByRole('columnheader').map((header) => header.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
             'Invoice',
             'Date & Time',
             'Source',
             'Payment',
-            'Cashier',
-            'Discount',
-            'Fee',
-            'Rest. charge',
-            'VAT',
-            'Vatable',
             'Total',
             'Action'
         ]);
+        expect(within(historyTable).queryByRole('columnheader', { name: 'Cashier' })).toBeNull();
+        expect(within(historyTable).queryByRole('columnheader', { name: 'Vatable' })).toBeNull();
         expect(screen.getAllByRole('row')[0].className).toContain('whitespace-nowrap');
         expect(screen.getAllByRole('row')[1].className).toContain('whitespace-nowrap');
 
@@ -517,39 +570,47 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         const totalValue = within(historyTable).getByText('₱75.00');
         const scrollRegion = screen.getByTestId('pos-history-scroll-region');
         const paginationFooter = screen.getByTestId('pos-history-pagination-footer');
-        expect(viewReceiptButton.className).toContain('h-9 w-9');
-        expect(voidButton.className).toContain('h-9 w-9');
-        expect(viewReceiptButton.parentElement?.className).toContain('pos-history-row-content');
-        expect(viewReceiptButton.parentElement?.className).toContain('justify-start');
+        expect(detailsButton.className).toContain('h-9 w-9');
+        expect(detailsButton.parentElement?.className).toContain('pos-history-action-group');
+        expect(detailsButton.parentElement?.className).toContain('items-center justify-center');
         expect(dateTimeCell.className).toContain('pos-history-row-content--column');
         expect(dateTimeCell.querySelectorAll('span')).toHaveLength(2);
         expect(paymentCell.className).toContain('pos-history-row-content--column');
         expect(paymentCell.querySelectorAll('span')).toHaveLength(2);
-        expect(totalValue.closest('td')?.className).toContain('text-right');
+        expect(totalValue.closest('td')?.className).toContain('text-left');
         expect(scrollRegion.className).toContain('flex-1');
         expect(paginationFooter.className).toContain('shrink-0');
         expect(paginationFooter.className).toContain('py-2.5');
-        expect(paginationFooter.className).toContain('dgfy-pos-history-pagination-footer');
+        expect(paginationFooter.className).toContain('dgfy-pos-pagination-footer');
         expect(paginationFooter.parentElement).toBe(scrollRegion.parentElement);
         expect(sourceLabel.className).not.toContain('rounded-full');
         expect(paymentStatusLabel.className).not.toContain('rounded-full');
-        expect(viewReceiptButton.className).toContain('border-slate-200');
-        expect(voidButton.className).toContain('border-slate-200');
+        expect(detailsButton.className).toContain('pos-table-action-button');
+
+        fireEvent.click(detailsButton);
+        expect(screen.getByTestId('pos-history-details-dialog')).toBeTruthy();
+        expect(screen.getByText('Transaction Information')).toBeTruthy();
+        expect(screen.getByText('Sales Summary')).toBeTruthy();
     });
 
-    it('inherits the complete mobile card history UI in tablet portrait', () => {
+    it('uses the compact portrait tablet table and keeps full details in the eye action', () => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 820 });
         Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1180 });
 
         render(<POSTransactionHistoryPanel {...buildPanelProps()} />);
 
-        const historyList = screen.getByTestId('pos-history-mobile-list');
-        const historyCard = screen.getByTestId('pos-history-mobile-card-1');
-        const detailsButton = screen.getByRole('button', { name: 'Show transaction details for INV-001' });
+        const historyTable = screen.getByRole('table', { name: 'POS transaction history table' });
+        const detailsButton = screen.getByRole('button', { name: 'View details for INV-001' });
 
-        expect(historyList.className).toContain('divide-y');
-        expect(screen.queryByRole('table', { name: 'POS transaction history table' })).toBeNull();
-        expect(historyCard).toBeTruthy();
+        expect(historyTable.className).toContain('dgfy-pos-history-table--tablet-portrait');
+        expect(within(historyTable).getAllByRole('columnheader').map((header) => header.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+            'Invoice',
+            'Date & Time',
+            'Source',
+            'Total',
+            'Action'
+        ]);
+        expect(screen.queryByTestId('pos-history-mobile-list')).toBeNull();
         expect(detailsButton.querySelector('svg')?.getAttribute('class')).toContain('lucide-eye');
 
         fireEvent.click(screen.getByTestId('pos-history-filter-button'));
@@ -572,14 +633,14 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
 
         fireEvent.click(detailsButton);
 
-        const historyDetails = screen.getByTestId('pos-history-mobile-details-1');
-        expect(within(historyDetails).getByText('Payment')).toBeTruthy();
-        expect(within(historyDetails).getByText('Source')).toBeTruthy();
+        const historyDetails = screen.getByTestId('pos-history-details-dialog');
+        expect(within(historyDetails).getByText('Transaction Information')).toBeTruthy();
+        expect(within(historyDetails).getByText('Sales Summary')).toBeTruthy();
         expect(within(historyDetails).getByText('Cashier')).toBeTruthy();
         expect(within(historyDetails).getByText('₱75.00')).toBeTruthy();
     });
 
-    it('keeps the desktop history table in one view with compact action controls', () => {
+    it('keeps the desktop history table in one view with receipt, void, and eye actions', () => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1440 });
         render(<POSTransactionHistoryPanel {...buildPanelProps()} />);
 
@@ -591,35 +652,84 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(historyTable.className).toContain('min-w-0');
         expect(historyTableViewport?.className).toContain('overflow-x-hidden');
         expect(historyTableViewport?.className).not.toContain('overflow-x-auto');
+        expect(historyTableViewport?.className).toContain('rounded-xl');
+        expect(historyTableViewport?.className).toContain('border-slate-200');
         expect(within(historyTable).getAllByRole('columnheader').map((header) => header.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
             'Invoice',
             'Date & Time',
             'Source',
             'Payment',
             'Cashier',
-            'Discount',
-            'Fee',
-            'Rest. charge',
-            'VAT',
             'Vatable',
             'Total',
             'Action'
         ]);
-        expect(within(historyTable).getAllByText('₱0.00')).toHaveLength(2);
-        const viewReceiptButton = screen.getByRole('button', { name: 'View receipt for INV-001' });
-        const voidButton = screen.getByRole('button', { name: 'Void transaction INV-001' });
-        expect(viewReceiptButton.className).toContain('h-9 w-9');
-        expect(voidButton.className).toContain('h-9 w-9');
-        expect(viewReceiptButton.className).toContain('aspect-square');
-        expect(voidButton.className).toContain('aspect-square');
-        expect(viewReceiptButton.className).toContain('hover:bg-slate-100');
-        expect(voidButton.className).toContain('hover:bg-slate-100');
+        expect(within(historyTable).getByText('₱66.96')).toBeTruthy();
+        expect(within(historyTable).getByText('₱75.00')).toBeTruthy();
+        const detailsButton = screen.getByRole('button', { name: 'View details for INV-001' });
+        const actionCell = detailsButton.closest('td');
+        const actionGroup = actionCell?.querySelector('.pos-history-action-group');
+        expect(detailsButton.className).toContain('h-9 w-9');
+        expect(detailsButton.className).toContain('pos-table-action-button');
+        expect(screen.getByRole('button', { name: 'View receipt for INV-001' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Void transaction INV-001' })).toBeTruthy();
+        expect(actionCell).toBeTruthy();
+        expect(actionGroup).toBeTruthy();
+        expect(actionGroup?.className).toContain('items-center');
+        expect(actionGroup?.className).not.toContain('pos-history-row-content');
+        const actionButtons = within(actionCell).getAllByRole('button');
+        expect(actionButtons).toHaveLength(3);
+        expect(actionButtons.every((button) => button.className.includes('h-9 w-9'))).toBe(true);
+    });
+
+    it('uses a four-data-column portrait tablet table and retains its action column', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 1024 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps()} />);
+
+        const historyTable = screen.getByRole('table', { name: 'POS transaction history table' });
+        expect(historyTable.className).toContain('dgfy-pos-history-table--tablet-portrait');
+        expect(within(historyTable).getAllByRole('columnheader').map((header) => header.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+            'Invoice',
+            'Date & Time',
+            'Source',
+            'Total',
+            'Action'
+        ]);
+        expect(screen.getByRole('button', { name: 'View receipt for INV-001' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Void transaction INV-001' })).toBeTruthy();
+    });
+
+    it('adds Payment at landscape tablet width without dropping the row action', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+        render(<POSTransactionHistoryPanel {...buildPanelProps()} />);
+
+        const historyTable = screen.getByRole('table', { name: 'POS transaction history table' });
+        expect(historyTable.className).toContain('dgfy-pos-history-table--tablet-landscape');
+        expect(within(historyTable).getAllByRole('columnheader').map((header) => header.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+            'Invoice',
+            'Date & Time',
+            'Source',
+            'Payment',
+            'Total',
+            'Action'
+        ]);
+        expect(within(historyTable).queryByRole('columnheader', { name: 'Cashier' })).toBeNull();
+        expect(within(historyTable).queryByRole('columnheader', { name: 'Vatable' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'View receipt for INV-001' })).toBeTruthy();
     });
 
     it('matches the mobile transaction-card layout with original values and top-row actions', async () => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
         const openHistoryDetail = vi.fn();
+        const mobileHistoryRow = {
+            ...historyRow,
+            payment_type: 'employee_credit',
+            discount: { discount_type: 'Employee', discount_rate: 15 }
+        };
         render(<POSTransactionHistoryPanel {...buildPanelProps({
+            historyRows: [mobileHistoryRow],
             historyPaymentType: 'cash',
             historyDateFrom: '2026-09-01',
             historyDateTo: '2026-09-10',
@@ -633,29 +743,64 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
 
         const historyList = screen.getByTestId('pos-history-mobile-list');
         const historyCard = screen.getByTestId('pos-history-mobile-card-1');
+        const historySurface = document.getElementById('pos-history-table-panel');
+        const sourceTabs = screen.getByTestId('pos-history-source-tabs');
+        const scrollRegion = screen.getByTestId('pos-history-scroll-region');
 
-        expect(historyList.className).toContain('divide-y');
+        expect(historyList.className).toContain('gap-1.5');
+        expect(historyList.className).toContain('py-2');
+        expect(historyList.className).not.toMatch(/(?:^|\s)px-/);
+        expect(sourceTabs.className).toContain('shrink-0');
+        expect(scrollRegion.contains(sourceTabs)).toBe(false);
+        expect(sourceTabs.compareDocumentPosition(scrollRegion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(historyCard.className).toContain('rounded-xl');
+        expect(historyCard.className).toContain('border-slate-200');
+        expect(historySurface.className).toContain('rounded-none');
+        expect(historySurface.className).toContain('border-0');
+        expect(historySurface.className).toContain('bg-transparent');
+        expect(historySurface.className).toContain('shadow-none');
+        expect(historySurface.className).toContain('overflow-visible');
+        expect(historySurface.className).not.toContain('rounded-xl');
+        expect(historySurface.className).not.toContain('overflow-hidden');
         expect(screen.queryByRole('table', { name: 'POS transaction history table' })).toBeNull();
         expect(screen.getByTestId('pos-history-mobile-date-time-1').textContent).toContain('•');
         expect(screen.getByRole('button', { name: 'View receipt for INV-001' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Void transaction INV-001' })).toBeTruthy();
-        expect(within(historyCard).queryByText('₱75.00')).toBeNull();
+        expect(within(historyCard).getByText('In-Store')).toBeTruthy();
+        expect(within(historyCard).getByText('Paid').className).toContain('bg-emerald-50');
+        expect(screen.getByTestId('pos-history-mobile-details-1').hasAttribute('hidden')).toBe(true);
+        fireEvent.click(within(historyCard).getByText('INV-001'));
+        expect(screen.getByTestId('pos-history-mobile-details-1').hasAttribute('hidden')).toBe(true);
 
         fireEvent.click(screen.getByRole('button', { name: 'View receipt for INV-001' }));
-        expect(openHistoryDetail).toHaveBeenCalledWith(historyRow);
-        expect(screen.queryByTestId('pos-history-mobile-details-1')).toBeNull();
+        expect(openHistoryDetail).toHaveBeenCalledWith(mobileHistoryRow);
+        expect(screen.getByTestId('pos-history-mobile-details-1').hasAttribute('hidden')).toBe(true);
 
         fireEvent.click(screen.getByRole('button', { name: 'Show transaction details for INV-001' }));
 
         const historyDetails = screen.getByTestId('pos-history-mobile-details-1');
-        expect(historyDetails.className).toContain('grid-cols-3');
+        expect(historyDetails.className).toContain('border-t');
+        expect(historyDetails.getAttribute('role')).toBe('region');
+        expect(historyDetails.hasAttribute('hidden')).toBe(false);
+        expect(screen.getByRole('button', { name: 'Hide transaction details for INV-001' }).getAttribute('aria-controls')).toBe(historyDetails.id);
         expect(within(historyDetails).getByText('Payment')).toBeTruthy();
-        expect(within(historyDetails).getByText('Source')).toBeTruthy();
-        expect(within(historyDetails).getByText('In-Store')).toBeTruthy();
+        expect(within(historyDetails).getByText('Employee Credit')).toBeTruthy();
+        expect(within(historyDetails).getByText('Cashier')).toBeTruthy();
+        expect(within(historyDetails).getByText('Jane Doe')).toBeTruthy();
+        expect(within(historyDetails).getByText('Discount')).toBeTruthy();
+        expect(within(historyDetails).getByText('Employee (15.00%)')).toBeTruthy();
+        expect(within(historyDetails).getByText('Rest. charge')).toBeTruthy();
+        expect(within(historyDetails).getByText('VAT')).toBeTruthy();
+        expect(within(historyDetails).getByText('Vatable')).toBeTruthy();
+        expect(within(historyDetails).getByText('Fee')).toBeTruthy();
         expect(within(historyDetails).getByText('₱75.00')).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'View receipt for INV-001' }).className).toContain('h-9 w-9');
-        expect(screen.getByRole('button', { name: 'Void transaction INV-001' }).className).toContain('h-9 w-9');
+        expect(screen.getByRole('button', { name: 'Hide transaction details for INV-001' }).getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole('button', { name: 'View receipt for INV-001' }).className).toContain('pos-table-action-button');
+        expect(screen.getByRole('button', { name: 'Void transaction INV-001' }).className).toContain('pos-table-action-button');
         expect(screen.queryByRole('dialog')).toBeNull();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Hide transaction details for INV-001' }));
+        expect(screen.getByTestId('pos-history-mobile-details-1').hasAttribute('hidden')).toBe(true);
     });
 
     it('keeps the pending-sync action icon-only while exposing its state accessibly', () => {
@@ -673,6 +818,6 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.textContent).toBe('');
         expect(syncButton.getAttribute('aria-label')).toBe('Sync 1 pending POS record');
         expect(syncButton.getAttribute('title')).toBe('Sync 1 pending POS record');
-        expect(syncButton.className).toContain('w-11');
+        expect(syncButton.className).toContain('w-10');
     });
 });

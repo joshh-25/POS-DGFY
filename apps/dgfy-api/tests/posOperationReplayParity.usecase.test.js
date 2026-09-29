@@ -99,6 +99,7 @@ const buildReplayRepository = () => {
     };
     let failAuditWrites = false;
     let activeParkedSaleCount = 0;
+    let parkedSaleStatuses = null;
     let unresolvedFundedPaymentSessions = [];
     let inFlightPaymentSessions = [];
     let inFlightOperatorMutation = null;
@@ -130,7 +131,11 @@ const buildReplayRepository = () => {
             failAuditWrites = value === true;
         },
         setActiveParkedSaleCount(value) {
+            parkedSaleStatuses = null;
             activeParkedSaleCount = Math.max(0, Number.parseInt(value, 10) || 0);
+        },
+        setParkedSaleStatuses(value) {
+            parkedSaleStatuses = Array.isArray(value) ? [...value] : [];
         },
         setUnresolvedFundedPaymentSessions(value) {
             unresolvedFundedPaymentSessions = Array.isArray(value) ? clone(value) : [];
@@ -245,6 +250,9 @@ const buildReplayRepository = () => {
             };
         },
         async countActiveParkedSalesForShift() {
+            if (Array.isArray(parkedSaleStatuses)) {
+                return parkedSaleStatuses.filter((status) => status === 'claimed').length;
+            }
             return activeParkedSaleCount;
         },
         async listUnresolvedFundedPaymentSessionsForShift() {
@@ -878,6 +886,41 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
     });
 
+    it('allows shift close when parked-sale cancellation is pending', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'WEB-POS-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'NVP-PARKED-CANCEL-PENDING-OPEN'
+                },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data?.shift?.pos_terminal_shift_id);
+            posRepository.setParkedSaleStatuses(['cancel_pending']);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: {
+                    idempotency_key: 'NVP-PARKED-CANCEL-PENDING-CLOSE',
+                    closing_cash_amount: 500
+                },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(result.data.shift.status).toBe('closed');
+            expect(posRepository.counters.shiftCloses).toBe(1);
+        });
+    });
+
     it('blocks shift close while a split-payment session contains successful tender', async () => {
         const posRepository = buildReplayRepository();
         const openShiftUseCase = buildOpenShiftUseCase(posRepository);
@@ -989,6 +1032,38 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
             }));
             expect(posRepository.counters.emptyPaymentSessionsCancelled).toBe(0);
             expect(posRepository.counters.shiftCloses).toBe(0);
+        });
+    });
+
+    it('cleans up an empty payment session before closing the shift', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+        const sequelize = { transaction: jest.fn(async () => createTransaction()) };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const opened = await openShiftUseCase({
+                payload: { terminal_id: 'WEB-POS-01', opening_float_amount: 500, idempotency_key: 'NVP-OPEN-EMPTY-PAYMENT-CLEANUP' },
+                user: { user_id: 17 }
+            });
+            const shiftId = Number(opened.data.shift.pos_terminal_shift_id);
+            posRepository.setInFlightPaymentSessions([{
+                pos_payment_session_id: 503,
+                session_reference: 'PAY-EMPTY',
+                status: 'open',
+                paid_amount: 0,
+                remaining_amount: 1250,
+                empty_session: true
+            }]);
+
+            const result = await closeShiftUseCase({
+                shiftId,
+                payload: { idempotency_key: 'NVP-CLOSE-EMPTY-PAYMENT-CLEANUP', closing_cash_amount: 500 },
+                user: { user_id: 17 }
+            });
+
+            expect(result.success).toBe(true);
+            expect(posRepository.counters.shiftCloses).toBe(1);
         });
     });
 

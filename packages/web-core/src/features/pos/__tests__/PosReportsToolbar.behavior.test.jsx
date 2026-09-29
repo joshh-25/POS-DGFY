@@ -59,6 +59,8 @@ describe('POS reports active filter toolbar', () => {
     render(<PosReportsToolbar {...baseProps} activeFilterChips={activeFilterChips} onRemoveFilter={onRemoveFilter} onClearAllFilters={onClearAllFilters} />);
 
     const filterButton = screen.getByRole('button', { name: 'Filter, 3 filters applied' });
+    expect(filterButton.className).toContain('relative');
+    expect(filterButton.querySelector('.dgfy-pos-filter-count-badge')?.className).toContain('ml-2');
     expect(filterButton.textContent).toContain('3');
 
     const appliedFilters = within(screen.getByRole('group', { name: 'Applied report filters' }));
@@ -83,8 +85,14 @@ describe('POS reports active filter toolbar', () => {
     const search = screen.getByRole('searchbox', { name: 'Search reports' });
     const searchRow = search.parentElement.parentElement;
     const filterButton = screen.getByRole('button', { name: 'Filter' });
-    const dateFilterButton = screen.getByRole('button', { name: 'Filter by date' });
+    const dateFilterButton = screen.getByRole('button', { name: 'Filter by Date' });
 
+    expect(search.className).toContain('h-10');
+    expect(search.className).toContain('pl-9');
+    expect(search.className).toContain('text-sm');
+    expect(search.className).toContain('placeholder:text-slate-500');
+    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4');
+    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('text-slate-400');
     expect(filterButton.parentElement.parentElement).toBe(searchRow);
     expect(dateFilterButton.parentElement.parentElement).toBe(searchRow);
     expect(filterButton.className).toContain('h-11');
@@ -92,6 +100,6 @@ describe('POS reports active filter toolbar', () => {
     expect(dateFilterButton.className).toContain('h-11');
     expect(dateFilterButton.className).toContain('w-11');
     expect(screen.getByText('Filter').className).toContain('lg:not-sr-only');
-    expect(screen.getByText('Filter by date').className).toContain('lg:not-sr-only');
+    expect(screen.getByText('Filter by Date').className).toContain('lg:not-sr-only');
   });
 });

@@ -1,6 +1,6 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
-import { Banknote, KeyRound, Save, Settings2, Store, Truck, Undo2, UserRound, Users } from 'lucide-react';
+import { Banknote, BadgePercent, KeyRound, Receipt, Save, Settings2, Store, Truck, Undo2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -45,10 +45,14 @@ import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSett
 import PosEmployeesSettingsPane from './PosEmployeesSettingsPane.jsx';
 import PosProfileSettingsPane from './PosProfileSettingsPane.jsx';
 import PosSettingsTabNavigation from './PosSettingsTabNavigation.jsx';
+import PosPageFrame from '../components/PosPageFrame.jsx';
 import usePosSetupSettingsController from './usePosSetupSettingsController.js';
 import useStorefrontSettingsController from './useStorefrontSettingsController.js';
 import PosSetupSettingsPane from './PosSetupSettingsPane.jsx';
 import PosStorefrontSettingsPane, { StorefrontContentSaveBar } from './PosStorefrontSettingsPane.jsx';
+import PosTaxSettingsPane from './PosTaxSettingsPane.jsx';
+import PosDiscountManagementPane from './PosDiscountManagementPane.jsx';
+import { getPosTaxPoliciesSnapshot, normalizePosTaxPolicies } from './posTaxPolicies.js';
 import { mapCustomerAccessRuntimeSettings, normalizeCustomerAccessMode, CUSTOMER_ACCESS_MODE_RANK, STOREFRONT_LOCATION_LABELS } from './storefrontSettingsConstants.js';
 import { sanitizeDiscountProfile, toPositiveInt } from './posSettingsModels.js';
 import {
@@ -342,6 +346,12 @@ export default function PosSettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('users:delete');
   const canEditSettings = !readOnly && (terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('settings:edit'));
+  const canViewTaxSettings = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('settings:view')
+    || resolveUserPermissionList(terminalUser).includes('settings:edit');
+  const canViewDiscountManagement = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('settings:view')
+    || resolveUserPermissionList(terminalUser).includes('settings:edit');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageDayClosePins = terminalUser?.is_master_admin === true;
   const canManageEmployeeCredit = terminalUser?.is_master_admin === true
@@ -372,11 +382,15 @@ export default function PosSettingsWorkspace({
   const [savingTab, setSavingTab] = useState('');
   const [storefrontBooleanState, setStorefrontBooleanState] = useState({});
   const [posFormBaseline, setPosFormBaseline] = useState(null);
+  const [taxPolicies, setTaxPolicies] = useState(() => normalizePosTaxPolicies(null));
+  const [taxPoliciesBaseline, setTaxPoliciesBaseline] = useState(null);
+  const taxPoliciesDirtyRef = useRef(false);
   const [storefrontContentBaseline, setStorefrontContentBaseline] = useState(null);
   const [profileFormBaseline, setProfileFormBaseline] = useState(null);
   const [externalSettingsRefreshPending, setExternalSettingsRefreshPending] = useState(false);
   const [posSetupDiscarding, setPosSetupDiscarding] = useState(false);
   const [pendingTopLevelTab, setPendingTopLevelTab] = useState(null);
+  const [pendingTaxNavigation, setPendingTaxNavigation] = useState(null);
   const [pendingStorefrontNavigation, setPendingStorefrontNavigation] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
   const [cashierUsers, setCashierUsers] = useState([]);
@@ -458,6 +472,15 @@ export default function PosSettingsWorkspace({
     posFormBaseline != null
       && JSON.stringify(posFormSnapshot) !== JSON.stringify(posFormBaseline)
   ), [posFormBaseline, posFormSnapshot]);
+  const taxPoliciesSnapshot = useMemo(() => getPosTaxPoliciesSnapshot(taxPolicies), [taxPolicies]);
+  const taxPoliciesDirty = useMemo(() => (
+    taxPoliciesBaseline != null
+      && JSON.stringify(taxPoliciesSnapshot) !== JSON.stringify(taxPoliciesBaseline)
+  ), [taxPoliciesBaseline, taxPoliciesSnapshot]);
+
+  useEffect(() => {
+    taxPoliciesDirtyRef.current = taxPoliciesDirty;
+  }, [taxPoliciesDirty]);
   const commitStorefrontContentBaseline = useCallback(({
     form = storefrontFormRef.current,
     assets = storefrontAssetsRef.current,
@@ -489,7 +512,7 @@ export default function PosSettingsWorkspace({
   );
   const profileFormDirty = profileFormBaseline != null
     && JSON.stringify(profileFormSnapshot) !== profileFormBaselineSnapshot;
-  const hasUnsavedSettingsChanges = posSetupDirty || storefrontContentDirty || profileFormDirty;
+  const hasUnsavedSettingsChanges = posSetupDirty || taxPoliciesDirty || storefrontContentDirty || profileFormDirty;
   const discardStorefrontContentChanges = useCallback(() => {
     const baseline = storefrontContentBaselineRef.current;
     if (!baseline) return false;
@@ -541,6 +564,12 @@ export default function PosSettingsWorkspace({
   const SETTINGS_TABS = [
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
+    ...(canViewTaxSettings
+      ? [{ id: 'taxes', label: 'Taxes', icon: Receipt }]
+      : []),
+    ...(canViewDiscountManagement
+      ? [{ id: 'discounts', label: 'Discounts', icon: BadgePercent }]
+      : []),
     { id: 'storefront', label: 'Storefront', icon: Store },
     // Phase 143 (#848): downpayment policy config -- gated on downpayment:view/downpayment:settings,
     // not on any of the other tabs' permissions.
@@ -937,7 +966,12 @@ export default function PosSettingsWorkspace({
         : [];
       const normalizedReviewSummary = normalizeStorefrontReviewSummarySettings(storefrontReviewSummary);
       const discountProfiles = settingsPayload?.pos_discount_profiles?.value || [];
+      const hydratedTaxPolicies = normalizePosTaxPolicies(settingsPayload?.pos_tax_policies?.value);
       setCompanyInfo(companyPayload);
+      if (!taxPoliciesDirtyRef.current) {
+        setTaxPolicies(hydratedTaxPolicies);
+        setTaxPoliciesBaseline(getPosTaxPoliciesSnapshot(hydratedTaxPolicies));
+      }
       const hydratedPosForm = hydratePosSetupFromSettings(settingsPayload, terminalMeta);
       setPosFormBaseline(getPosFormSnapshot(hydratedPosForm));
       const hydratedStorefrontForm = {
@@ -1123,6 +1157,10 @@ export default function PosSettingsWorkspace({
 
   const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
+    if (activeTab === 'taxes' && taxPoliciesDirty) {
+      setPendingTaxNavigation(nextTab);
+      return;
+    }
     if (activeTab === 'storefront' && storefrontContentDirty) {
       setPendingStorefrontNavigation({ type: 'top-level', nextTab });
       return;
@@ -1132,17 +1170,21 @@ export default function PosSettingsWorkspace({
       return;
     }
     transitionToTab(nextTab);
-  }, [activeTab, posSetupDirty, storefrontContentDirty, transitionToTab]);
+  }, [activeTab, posSetupDirty, storefrontContentDirty, taxPoliciesDirty, transitionToTab]);
 
   useEffect(() => {
-    if (!posSetupDirty && !storefrontContentDirty) return undefined;
+    if (!posSetupDirty && !taxPoliciesDirty && !storefrontContentDirty) return undefined;
     const handleBeforeUnload = (event) => {
       event.preventDefault();
       event.returnValue = '';
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [posSetupDirty, storefrontContentDirty]);
+  }, [posSetupDirty, storefrontContentDirty, taxPoliciesDirty]);
+
+  useEffect(() => {
+    if (!taxPoliciesDirty) setPendingTaxNavigation(null);
+  }, [taxPoliciesDirty]);
 
   useEffect(() => {
     if (!storefrontContentDirty) setPendingStorefrontNavigation(null);
@@ -1177,6 +1219,40 @@ export default function PosSettingsWorkspace({
       setSavingTab('');
     }
   }, [onRefreshTerminalUser, profileForm]);
+
+  const handleTaxPoliciesSave = useCallback(async (nextPolicies = taxPolicies) => {
+    if (!canEditSettings || locked) return false;
+    setSavingTab('taxes');
+    try {
+      const normalizedPolicies = normalizePosTaxPolicies(nextPolicies);
+      const updatedSettings = await updateSettings({ pos_tax_policies: normalizedPolicies });
+      const savedPolicies = normalizePosTaxPolicies(
+        updatedSettings?.pos_tax_policies?.value
+          || updatedSettings?.pos_tax_policies
+          || normalizedPolicies
+      );
+      setTaxPolicies(savedPolicies);
+      setTaxPoliciesBaseline(getPosTaxPoliciesSnapshot(savedPolicies));
+      await onSettingsSaved?.({ section: editorSection, action: 'updated', setting: 'pos_tax_policies' });
+      toast.success('Tax settings synced to shared settings.');
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update tax settings.');
+      return false;
+    } finally {
+      setSavingTab('');
+    }
+  }, [canEditSettings, editorSection, locked, onSettingsSaved, taxPolicies]);
+
+  const handleTaxPoliciesDiscard = useCallback(() => {
+    if (!taxPoliciesBaseline) return false;
+    const categories = Object.entries(taxPoliciesBaseline.categories || {}).reduce((result, [type, treatment]) => ({
+      ...result,
+      [type]: { vat_treatment: treatment }
+    }), {});
+    setTaxPolicies((current) => normalizePosTaxPolicies({ version: current?.version, categories }));
+    return true;
+  }, [taxPoliciesBaseline]);
 
   const handleTerminalRegistrySave = useCallback(async (terminalRegistryOverride, options = {}) => {
     const successMessage = String(options?.successMessage || 'Terminal settings updated.').trim();
@@ -1998,6 +2074,27 @@ export default function PosSettingsWorkspace({
     expansionScrollParentRef: workspacePaneRef
   };
 
+  const taxSettingsPaneProps = {
+    policies: taxPolicies,
+    setPolicies: setTaxPolicies,
+    locked,
+    loading,
+    saving: savingTab === 'taxes',
+    canEdit: canEditSettings,
+    dirty: taxPoliciesDirty,
+    onSave: handleTaxPoliciesSave,
+    onCancel: handleTaxPoliciesDiscard
+  };
+
+  const discountManagementPaneProps = {
+    locked,
+    loading,
+    canEdit: canEditSettings,
+    settingsRefreshKey,
+    editorSection,
+    onSettingsSaved
+  };
+
   const renderPane = () => {
     if (loading) {
       return (
@@ -2031,6 +2128,10 @@ export default function PosSettingsWorkspace({
       );
     }
     if (renderedTab === 'storefront') return <PosStorefrontSettingsPane {...storefrontPaneProps} />;
+    if (renderedTab === 'taxes' && canViewTaxSettings) return <PosTaxSettingsPane {...taxSettingsPaneProps} />;
+    if (renderedTab === 'discounts' && canViewDiscountManagement) {
+      return <PosDiscountManagementPane {...discountManagementPaneProps} />;
+    }
     if (renderedTab === 'payments' && canViewDownpayment) {
       return (
         <Suspense fallback={null}>
@@ -2071,7 +2172,12 @@ export default function PosSettingsWorkspace({
   };
 
   return (
-    <div id={sectionId} data-pos-settings-workspace="true" className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3">
+    <PosPageFrame
+      id={sectionId}
+      page="settings"
+      data-pos-settings-workspace="true"
+      className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3 max-[767px]:overflow-x-clip"
+    >
       {showSettingsTabNavigation ? (
         <PosSettingsTabNavigation
           tabs={visibleSettingsTabs}
@@ -2084,7 +2190,7 @@ export default function PosSettingsWorkspace({
         role="tabpanel"
         aria-labelledby={`pos-settings-tab-${renderedTab}`}
         tabIndex={-1}
-        className="min-w-0 pt-2 sm:pt-0"
+        className="min-w-0"
         style={paneInlineStyle}
       >
         {renderPane()}
@@ -2096,7 +2202,7 @@ export default function PosSettingsWorkspace({
           data-testid="pos-settings-external-refresh-pending"
           className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
         >
-          <p className="font-extrabold">Back Office settings changed</p>
+          <p className="font-extrabold">POS settings changed</p>
           <p className="mt-1 text-xs leading-5 text-amber-800">
             Your unsaved changes are protected. Save or cancel them to load the latest settings.
           </p>
@@ -2213,6 +2319,24 @@ export default function PosSettingsWorkspace({
           const nextTab = pendingTopLevelTab;
           setPendingTopLevelTab(null);
           transitionToTab(nextTab);
+        }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(pendingTaxNavigation)}
+        onOpenChange={(open) => { if (!open) setPendingTaxNavigation(null); }}
+        title="Unsaved Tax changes"
+        description="Save your Tax settings before leaving, or continue without saving."
+        confirmLabel="Leave without saving"
+        cancelLabel="Stay"
+        variant="destructive"
+        overlayClassName="bg-black/30 backdrop-blur-none"
+        onConfirm={() => {
+          const nextTab = pendingTaxNavigation;
+          const discarded = handleTaxPoliciesDiscard();
+          if (discarded === false) return false;
+          setPendingTaxNavigation(null);
+          transitionToTab(nextTab);
+          return true;
         }}
       />
       <ConfirmActionDialog
@@ -2344,6 +2468,6 @@ export default function PosSettingsWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PosPageFrame>
   );
 }

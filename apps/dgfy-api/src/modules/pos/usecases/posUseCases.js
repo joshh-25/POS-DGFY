@@ -54,11 +54,14 @@ import {
     buildLineStockPolicySubject
 } from '../../shared/utils/onlineInventoryEffects.js';
 import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
-import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
+import {
+    findParkedSaleLineRemovalReason,
+    normalizeParkedSaleLineRemovalReasons
+} from '../domain/parkedSaleLinePolicy.js';
 import { buildVoucherGovernedCalculation } from '../domain/posVoucherDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
 import { assertStaffAssignment, assertStaffLocationAccess } from '../../staff/index.js';
@@ -158,6 +161,11 @@ const POS_SHIFT_SALES_WINDOW_PRECISION_BUFFER_MS = 1000;
 const PERMISSION_PRICE_OVERRIDE = 'pos:price_override';
 const PERMISSION_EDIT_POS_CATALOG = 'items:edit';
 const PERMISSION_SWITCH_LOCATION = 'pos:switch_location';
+const PERMISSION_VIEW_BRANCH = 'pos:branch_view';
+const hasTenantWideBranchAccessForOpenShift = (user) => (
+    user?.is_master_admin === true
+    || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+);
 const POS_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const POS_CATALOG_BULK_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 // Phase 204 (#965): mirrors uploadConfig.js's PAYMENT_PROOF_SOURCE_MAX_BYTES -- kept as a local
@@ -188,6 +196,7 @@ export const POS_OPERATION_KEYS = Object.freeze({
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
     DINE_IN_CASH_COLLECTION: 'terminal.dine_in_cash_collection',
+    DINE_IN_PAYMENT_COLLECTION: 'terminal.dine_in_payment_collection',
     DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update',
     ORDER_BALANCE_SETTLEMENT: 'terminal.order_balance_settlement',
@@ -224,6 +233,7 @@ export const POS_OPERATION_KEYS = Object.freeze({
 // is unaffected. Cheque is merchant-owned by construction (no branch added below), and its number
 // is `payment_reference` under this method -- no new column.
 const BALANCE_SETTLEMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque']);
+const DINE_IN_PAYMENT_METHODS = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit']);
 const BALANCE_SETTLEMENT_HANDOVER_STATUS_BY_METHOD = Object.freeze({
     pickup: 'ready_for_pickup',
     delivery: 'out_for_delivery',
@@ -325,7 +335,7 @@ const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && 
 const normalizeTrustedDiscountApproval = (approval = null) => {
     if (!isPlainObject(approval)) return null;
     const discountType = String(approval.discount_type || '').trim().toLowerCase();
-    if (!['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(discountType)) return null;
+    if (!['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher', 'custom'].includes(discountType)) return null;
     const approverUserId = parsePositiveInt(approval.approver_user_id);
     if (!approverUserId) return null;
     return {
@@ -358,7 +368,7 @@ const normalizeTrustedItemDiscountApprovals = (approvals = null) => {
         const itemId = parsePositiveInt(approval.item_id);
         const discountType = String(approval.discount_type || '').trim().toLowerCase();
         const approverUserId = parsePositiveInt(approval.approver_user_id);
-        if (!itemId || !['senior', 'pwd', 'employee', 'promo', 'manual'].includes(discountType) || !approverUserId) {
+        if (!itemId || !['senior', 'pwd', 'employee', 'promo', 'manual', 'custom'].includes(discountType) || !approverUserId) {
             return [null, null];
         }
         return [itemId, {
@@ -796,99 +806,38 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
 
 const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
-export const buildExportPosReportsUseCase = ({ posRepository, employeeCreditReportUseCase = null }) => async ({ query = {}, user } = {}) => {
+const REPORT_PAYMENT_LABELS = Object.freeze({
+    cash: 'Cash',
+    gcash: 'GCash',
+    maya: 'Maya',
+    card: 'Card',
+    bank_transfer: 'Bank Transfer',
+    employee_credit: 'Employee Credit'
+});
+
+const formatReportPaymentMethods = (row = {}) => {
+    const paymentMethods = Array.isArray(row.payment_methods)
+        ? row.payment_methods.filter(Boolean)
+        : [];
+    if (paymentMethods.length > 1) {
+        return paymentMethods
+            .map((method) => REPORT_PAYMENT_LABELS[String(method).trim().toLowerCase()] || method)
+            .join(' + ');
+    }
+    return row.payment_type || paymentMethods[0] || '';
+};
+
+export const buildExportPosReportsUseCase = ({ posRepository, getReportsOverviewUseCase = null }) => async ({ query = {}, user } = {}) => {
     try {
-        if (!isPlainObject(query)) {
-            throw new DomainError(
-                DomainErrorCode.VALIDATION_FAILED,
-                'Report query must be an object',
-                { statusCode: 400 }
-            );
-        }
-
-        if (!parsePositiveInt(user?.user_id)) {
-            throw new DomainError(
-                DomainErrorCode.AUTHENTICATION_FAILED,
-                'Authenticated user is required to view POS reports',
-                { statusCode: 401 }
-            );
-        }
-
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
-
-        if (section === 'employee_credit') {
-            if (!hasEffectivePermission(user, PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT)) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHORIZATION_FAILED,
-                    'Employee Credit report access is required for this export',
-                    { statusCode: 403 }
-                );
-            }
-            if (typeof employeeCreditReportUseCase !== 'function') {
-                throw new DomainError(
-                    DomainErrorCode.INTERNAL_ERROR,
-                    'Employee Credit report export is not configured',
-                    { statusCode: 500 }
-                );
-            }
-
-            const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
-            const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo) || dateFrom > dateTo) {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Report dates must use a valid YYYY-MM-DD range',
-                    { statusCode: 400 }
-                );
-            }
-
-            const employeeCreditResult = await employeeCreditReportUseCase({
-                query: {
-                    date_from: dateFrom,
-                    date_to: dateTo,
-                    limit: 1000
-                }
-            });
-            if (!employeeCreditResult.success) return employeeCreditResult;
-
-            const employeeCreditReport = employeeCreditResult.data || {};
-            const employeeCreditEntries = Array.isArray(employeeCreditReport.entries) ? employeeCreditReport.entries : [];
-            const employeeCreditRows = [
-                ['Time', 'Employee', 'Type', 'Amount', 'Outstanding After', 'Cashier', 'Reference'],
-                ...employeeCreditEntries.map((entry) => [
-                    entry.created_at || '',
-                    entry.account?.employeeProfile?.full_name
-                      || entry.account?.employee?.username
-                      || entry.account?.employee?.email
-                      || '',
-                    String(entry.entry_type || '').replace(/_/g, ' '),
-                    entry.amount,
-                    entry.balance_after,
-                    entry.actor?.username || '',
-                    entry.authorization_reference || ''
-                ]),
-                [],
-                ['Metric', 'Value'],
-                ['Credit Sales', employeeCreditReport.totals?.credit_sales || 0],
-                ['Repayments', employeeCreditReport.totals?.repayments || 0],
-                ['Admin Adjustments', employeeCreditReport.totals?.grants || 0],
-                ['Reversals', employeeCreditReport.totals?.reversals || 0]
-            ];
-
-            return ok({
-                filename: 'pos-employee-credit-activity-report.csv',
-                content_type: 'text/csv; charset=utf-8',
-                content: employeeCreditRows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
-            });
-        }
-
-        const overviewResult = await buildGetPosReportsOverviewUseCase({ posRepository })({ query, user });
+        const overviewUseCase = getReportsOverviewUseCase || buildGetPosReportsOverviewUseCase({ posRepository });
+        const overviewResult = await overviewUseCase({ query, user });
         if (!overviewResult.success) return overviewResult;
         const summary = overviewResult.data?.daily_report?.summary || {};
         const discountRows = overviewResult.data?.daily_report?.discount_breakdown || [];
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
         const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
         const lifecycle = overviewResult.data?.cashier_lifecycle || {};
+        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         const lifecycleRows = section === 'attendance'
             ? [
                 ['Cashier', 'Duty Type', 'Status', 'Started At (Asia/Manila)', 'Ended At (Asia/Manila)', 'Break Minutes', 'Worked Minutes', 'Location'],
@@ -1506,9 +1455,11 @@ const mapLocationScopeResolutionError = (error, { requestedLocationId = null, op
 const resolvePosReadLocationScope = async ({
     requestedLocationId = null,
     userId = null,
+    user = null,
     transaction = null,
     operationLabel = 'POS read operation',
-    allowNullWhenUnresolved = false
+    allowNullWhenUnresolved = false,
+    allowTenantWideBranchAccess = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null
@@ -1520,6 +1471,28 @@ const resolvePosReadLocationScope = async ({
             reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED,
             statusCode: 422
         });
+    }
+
+    if (allowTenantWideBranchAccess && (
+        user?.is_master_admin === true
+        || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+    )) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        const tenantWideLocation = await TenantLocation?.findByPk(normalizedRequestedLocationId, {
+            transaction
+        });
+        if (!tenantWideLocation || tenantWideLocation.is_active === false) {
+            throw buildLocationScopeDeniedError({
+                message: `Access denied for ${operationLabel} location scope.`,
+                reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED,
+                statusCode: 403,
+                details: { location_id: normalizedRequestedLocationId }
+            });
+        }
+        return {
+            location_id: Number(tenantWideLocation.location_id),
+            location: toSerializable(tenantWideLocation)
+        };
     }
 
     let resolvedLocation = null;
@@ -1566,9 +1539,11 @@ const resolvePosReadLocationScope = async ({
 export const resolvePosOperationalLocationScope = async ({
     requestedLocationId = null,
     userId = null,
+    user = null,
     transaction = null,
     operationLabel = 'POS operation',
-    allowNullWhenUnresolved = false
+    allowNullWhenUnresolved = false,
+    allowTenantWideBranchAccess = false
 } = {}) => {
     const normalizedRequestedLocationId = requestedLocationId == null
         ? null
@@ -1580,6 +1555,30 @@ export const resolvePosOperationalLocationScope = async ({
             reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED,
             statusCode: 422
         });
+    }
+
+    if (allowTenantWideBranchAccess && (
+        user?.is_master_admin === true
+        || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+    )) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        if (TenantLocation?.findByPk) {
+            const tenantWideLocation = await TenantLocation.findByPk(normalizedRequestedLocationId, {
+                transaction
+            });
+            if (!tenantWideLocation || tenantWideLocation.is_active === false) {
+                throw buildLocationScopeDeniedError({
+                    message: `Access denied for ${operationLabel} location scope.`,
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED,
+                    statusCode: 403,
+                    details: { location_id: normalizedRequestedLocationId }
+                });
+            }
+            return {
+                location_id: Number(tenantWideLocation.location_id),
+                location: toSerializable(tenantWideLocation)
+            };
+        }
     }
 
     let resolvedLocation = null;
@@ -2323,9 +2322,9 @@ const publishPosStockChange = async ({ publishCatalogChange, tenantId, reason, i
     }
 };
 
-// #1931: the stock-issue sequence formerly inline in buildUpdateOnlineOrderStatusUseCase's
-// completion branch, extracted verbatim so Retail's accept-time branch reuses it instead of
-// duplicating the loop body. Real-time stock sufficiency is enforced by createStockMovement's
+// The stock-issue sequence formerly inline in buildUpdateOnlineOrderStatusUseCase's completion
+// branch is shared by confirmation-time and legacy completion-time fulfillment. Real-time stock
+// sufficiency is enforced by createStockMovement's
 // own on-hand check -- a shortfall throws and rolls back the whole transaction (order status
 // included) via the caller's catch block. convertOnlineOrderInventory's expired/missing
 // outcomes stay informational (log, don't block): the reservation row is bookkeeping, never
@@ -2365,7 +2364,7 @@ const issueOnlineOrderStockForFulfillment = async ({
     }
 };
 
-// #1931: one-time reversal of a Retail order's accept-time goods-issue for the
+// One-time reversal of an online order's confirmation-time goods-issue for the
 // post-acceptance staff-reject path. Deliberately NOT routed through
 // executeInventoryStockCommand: its createStockMovement fallback would be wrong here (a
 // missing reversal command must fail closed, never degrade into an unrelated movement).
@@ -2391,6 +2390,12 @@ const reverseOnlineOrderGoodsIssueForOrder = async ({
         );
     }
     return reverseFn({ order_id: orderId, reason }, actingUserId, transaction);
+};
+
+const getPosInventoryIssueQuantity = (line = {}) => {
+    const quantity = Number(line?.quantity) || 0;
+    const preissuedQuantity = Number(line?.inventory_preissued_quantity) || 0;
+    return round4(Math.max(0, quantity - preissuedQuantity));
 };
 
 const validatePosInventoryIssues = async ({
@@ -2429,19 +2434,20 @@ const validatePosInventoryIssues = async ({
     };
 
     preparedLines.forEach((line, lineIndex) => {
-        if (line?.inventory_preissued === true) return;
+        const issueQuantity = getPosInventoryIssueQuantity(line);
+        if (line?.inventory_preissued === true && issueQuantity <= 0) return;
         const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
         if (recipeMovements.length > 0) {
             recipeMovements.forEach((movement) => add(movement.ingredient_item_id, movement.quantity));
         } else if (line.stock_effect_type !== 'stock_exempt') {
-            add(line.item_id, line.quantity);
+            add(line.item_id, issueQuantity);
         }
         (line.fnb_modifiers_snapshot || []).forEach((modifier) => {
             const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
             if (!linkedItemId) return;
             add(
                 linkedItemId,
-                Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                issueQuantity * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
                 modifier?.location_id
             );
         });
@@ -2455,17 +2461,13 @@ const validatePosInventoryIssues = async ({
     }
 };
 
-// Build one deterministic inventory command list for checkout and parked-sale
-// planning. Pre-issued parked lines are deliberately omitted so resuming a
-// parked sale never deducts the same stock twice.
 const buildPosInventoryIssuePlan = ({
     preparedLines = [],
     recipeMovementPlanByPreparedLine = [],
     locationId = null,
     referenceType = 'POS',
     referenceId = null,
-    sourceLabel = 'POS checkout',
-    allowArchivedItems = false
+    sourceLabel = 'POS checkout'
 } = {}) => {
     const movements = [];
     const add = ({ itemId, quantity, movementLocationId = locationId, notes }) => {
@@ -2479,13 +2481,13 @@ const buildPosInventoryIssuePlan = ({
             location_id: parsePositiveInt(movementLocationId) || parsePositiveInt(locationId),
             reference_type: referenceType,
             reference_id: referenceId == null ? null : String(referenceId),
-            notes,
-            ...(allowArchivedItems ? { allow_archived_item: true } : {})
+            notes
         });
     };
 
     preparedLines.forEach((line, lineIndex) => {
-        if (line?.inventory_preissued === true) return;
+        const issueQuantity = getPosInventoryIssueQuantity(line);
+        if (line?.inventory_preissued === true && issueQuantity <= 0) return;
         const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
         if (recipeMovements.length > 0) {
             recipeMovements.forEach((movement) => add({
@@ -2494,106 +2496,26 @@ const buildPosInventoryIssuePlan = ({
                 notes: `F&B recipe consumption for ${movement.product_name || line.item_name || `item ${line.item_id}`} on ${sourceLabel}`
             }));
         } else if (line.stock_effect_type !== 'stock_exempt') {
-            add({ itemId: line.item_id, quantity: line.quantity, notes: sourceLabel });
+            add({
+                itemId: line.item_id,
+                quantity: issueQuantity,
+                notes: sourceLabel
+            });
         }
+
         (line.fnb_modifiers_snapshot || []).forEach((modifier) => {
             const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
             if (!linkedItemId) return;
             add({
                 itemId: linkedItemId,
-                quantity: Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                quantity: issueQuantity * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
                 movementLocationId: modifier?.location_id,
                 notes: `F&B modifier consumption for ${modifier.option_name || `item ${linkedItemId}`} on ${sourceLabel}`
             });
         });
     });
+
     return movements;
-};
-
-const PARKED_SALE_PRICE_EPSILON = 0.0001;
-const sameParkedSaleNumber = (left, right) => (
-    Number.isFinite(Number(left))
-    && Number.isFinite(Number(right))
-    && Math.abs(Number(left) - Number(right)) <= PARKED_SALE_PRICE_EPSILON
-);
-
-const parkedSaleLineConfigurationFingerprint = (line = {}) => stableStringify({
-    course: normalizeFnbCourse(line?.course) || 'main',
-    modifiers: (normalizeFnbModifiersSnapshot(line?.line_modifiers || line?.modifiers) || [])
-        .map((modifier) => ({
-            modifier_group_id: parsePositiveInt(modifier.modifier_group_id),
-            modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
-            quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
-        }))
-        .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
-    selected_option_ids: normalizeServiceOptionIds(line?.selected_option_ids),
-    special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
-});
-
-const parkedSaleSnapshotLineMatches = (snapshotLine, checkoutLine) => {
-    const snapshotLineRef = String(snapshotLine?.line_key || snapshotLine?.line_ref || '').trim();
-    const checkoutLineRef = String(checkoutLine?.line_ref || '').trim();
-    if (snapshotLineRef && checkoutLineRef && snapshotLineRef !== checkoutLineRef) return false;
-    const snapshotItemId = parsePositiveInt(snapshotLine?.item_id);
-    const checkoutItemId = parsePositiveInt(checkoutLine?.item_id);
-    if (!snapshotLineRef && snapshotItemId && checkoutItemId && snapshotItemId !== checkoutItemId) return false;
-    if (!sameParkedSaleNumber(snapshotLine?.quantity, checkoutLine?.quantity)) return false;
-    if (checkoutLine?.sale_price != null && snapshotLine?.sale_price != null
-        && !sameParkedSaleNumber(snapshotLine.sale_price, checkoutLine.sale_price)) return false;
-    return parkedSaleLineConfigurationFingerprint(snapshotLine) === parkedSaleLineConfigurationFingerprint(checkoutLine);
-};
-
-const resolveParkedSaleSnapshotLines = ({ parkedSale, lines = [] } = {}) => {
-    const snapshot = normalizeJsonObject(parkedSale?.snapshot, {});
-    const snapshotLines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
-    const consumedSnapshotIndexes = new Set();
-    const historicalLinesByCheckoutIndex = new Map();
-    lines.forEach((line, index) => {
-        if (line?.parked_snapshot_line !== true) return;
-        const snapshotIndex = snapshotLines.findIndex((snapshotLine, candidateIndex) => (
-            !consumedSnapshotIndexes.has(candidateIndex) && parkedSaleSnapshotLineMatches(snapshotLine, line)
-        ));
-        if (snapshotIndex < 0) {
-            throw new DomainError(
-                DomainErrorCode.CONFLICT,
-                'A parked-sale line changed after it was claimed. Review the original parked line before checkout.',
-                { statusCode: 409, details: { reason_code: 'PARKED_SALE_SNAPSHOT_LINE_MISMATCH', item_id: parsePositiveInt(line?.item_id) } }
-            );
-        }
-        consumedSnapshotIndexes.add(snapshotIndex);
-        historicalLinesByCheckoutIndex.set(index, snapshotLines[snapshotIndex]);
-    });
-    return { snapshot, historicalLinesByCheckoutIndex };
-};
-
-const buildHistoricalParkedSaleItem = (snapshotLine = {}) => {
-    const itemId = parsePositiveInt(snapshotLine.item_id);
-    if (!itemId) return null;
-    const savedBasePrice = Number(snapshotLine.base_sale_price);
-    const savedSalePrice = Number(snapshotLine.sale_price);
-    const fallbackPrice = Number.isFinite(savedBasePrice) && savedBasePrice > 0
-        ? savedBasePrice
-        : (Number.isFinite(savedSalePrice) && savedSalePrice > 0 ? savedSalePrice : 0);
-    const snapshotVatType = String(snapshotLine.vat_type || '').trim();
-    return {
-        item_id: itemId,
-        name: String(snapshotLine.item_name || '').trim() || `Item #${itemId}`,
-        sku_code: String(snapshotLine.sku_code || snapshotLine.item_sku || snapshotLine.sku || '').trim() || null,
-        category: String(snapshotLine.category || '').trim() || 'product',
-        status: 'inactive',
-        pos_visible: false,
-        pos_location_available: false,
-        pos_always_available: false,
-        current_stock: 0,
-        default_sale_price: fallbackPrice,
-        cost_per_unit: null,
-        fifo_enabled: false,
-        parked_snapshot_fallback: true,
-        vat_type: ['vatable', 'vat_exempt', 'zero_rated'].includes(snapshotVatType) ? snapshotVatType : 'vatable',
-        senior_pwd_discount_eligible: snapshotLine.senior_pwd_discount_eligible === true,
-        unit_of_measure: String(snapshotLine.unit_of_measure || '').trim() || null,
-        fnbModifierGroups: []
-    };
 };
 
 const getPosSettings = async () => unwrapApplicationResultOrThrow(
@@ -2793,6 +2715,142 @@ const normalizeServiceOptionIds = (value) => (
         .map((optionId) => parsePositiveInt(optionId))
         .filter(Boolean))]
 );
+
+const PARKED_SALE_PRICE_EPSILON = 0.0001;
+
+const sameParkedSaleNumber = (left, right) => (
+    Number.isFinite(Number(left))
+    && Number.isFinite(Number(right))
+    && Math.abs(Number(left) - Number(right)) <= PARKED_SALE_PRICE_EPSILON
+);
+
+const parkedSaleLineConfigurationFingerprint = (line = {}) => stableStringify({
+    course: normalizeFnbCourse(line?.course) || 'main',
+    modifiers: (normalizeFnbModifiersSnapshot(line?.line_modifiers || line?.modifiers) || [])
+        .map((modifier) => ({
+            modifier_group_id: parsePositiveInt(modifier.modifier_group_id),
+            modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
+            quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
+        }))
+        .sort((left, right) => stableStringify(left).localeCompare(stableStringify(right))),
+    selected_option_ids: normalizeServiceOptionIds(line?.selected_option_ids),
+    special_instructions: String(line?.special_instructions || '').trim().slice(0, 1000) || null
+});
+
+const parkedSaleSnapshotLineMatches = (snapshotLine, checkoutLine) => {
+    // The browser may rebuild a line_ref after resume or draft hydration. The
+    // parked item identity, saved price, quantity floor, and configuration are
+    // the authoritative match; line_ref is only a client-side hint.
+    const snapshotItemId = parsePositiveInt(snapshotLine?.item_id);
+    const checkoutItemId = parsePositiveInt(checkoutLine?.item_id);
+    if (snapshotItemId && checkoutItemId && snapshotItemId !== checkoutItemId) return false;
+    const snapshotQuantity = Number(snapshotLine?.quantity);
+    const checkoutQuantity = Number(checkoutLine?.quantity);
+    if (!Number.isFinite(snapshotQuantity)
+        || !Number.isFinite(checkoutQuantity)
+        || checkoutQuantity + PARKED_SALE_PRICE_EPSILON < snapshotQuantity) return false;
+    if (checkoutLine?.sale_price != null
+        && snapshotLine?.sale_price != null
+        && !sameParkedSaleNumber(snapshotLine.sale_price, checkoutLine.sale_price)) return false;
+    return parkedSaleLineConfigurationFingerprint(snapshotLine)
+        === parkedSaleLineConfigurationFingerprint(checkoutLine);
+};
+
+const resolveParkedSaleSnapshotLines = ({ parkedSale, lines = [], removedLineReasons = [] } = {}) => {
+    const snapshot = normalizeJsonObject(parkedSale?.snapshot, {});
+    const snapshotLines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+    const normalizedRemovalReasons = normalizeParkedSaleLineRemovalReasons(removedLineReasons);
+    const consumedSnapshotIndexes = new Set();
+    const historicalLinesByCheckoutIndex = new Map();
+
+    lines.forEach((line, index) => {
+        const explicitlyMarkedHistoricalLine = line?.parked_snapshot_line === true;
+        const snapshotIndex = snapshotLines.findIndex((snapshotLine, candidateIndex) => (
+            !consumedSnapshotIndexes.has(candidateIndex)
+            && parkedSaleSnapshotLineMatches(snapshotLine, line)
+        ));
+        if (snapshotIndex < 0 && !explicitlyMarkedHistoricalLine) return;
+        if (snapshotIndex < 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'A parked-sale line changed after it was claimed. Review the original parked line before checkout.',
+                {
+                    statusCode: 409,
+                    details: {
+                        reason_code: 'PARKED_SALE_SNAPSHOT_LINE_MISMATCH',
+                        line_ref: String(line?.line_ref || '').trim() || null,
+                        item_id: parsePositiveInt(line?.item_id)
+                    }
+                }
+            );
+        }
+        consumedSnapshotIndexes.add(snapshotIndex);
+        historicalLinesByCheckoutIndex.set(index, snapshotLines[snapshotIndex]);
+    });
+
+    const removedSnapshotLines = snapshotLines.filter((snapshotLine, index) => !consumedSnapshotIndexes.has(index));
+    const removedLinesWithoutReasons = removedSnapshotLines.filter((snapshotLine) => (
+        !findParkedSaleLineRemovalReason({
+            snapshotLine,
+            previousLines: snapshotLines,
+            removalReasons: normalizedRemovalReasons
+        })
+    ));
+    if (removedLinesWithoutReasons.length > 0) {
+        const firstRemovedLine = removedLinesWithoutReasons[0];
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Deleting an original parked-sale item requires a reason before checkout.',
+            {
+                statusCode: 409,
+                details: {
+                    reason_code: 'PARKED_SALE_ORIGINAL_LINE_REMOVED',
+                    item_id: parsePositiveInt(firstRemovedLine?.item_id),
+                    line_ref: String(firstRemovedLine?.line_ref || firstRemovedLine?.line_key || '').trim() || null
+                }
+            }
+        );
+    }
+
+    return {
+        snapshot,
+        snapshotLines,
+        historicalLinesByCheckoutIndex,
+        removedSnapshotLines,
+        removedLineReasons: normalizedRemovalReasons
+    };
+};
+
+const buildHistoricalParkedSaleItem = (snapshotLine = {}) => {
+    const itemId = parsePositiveInt(snapshotLine.item_id);
+    if (!itemId) return null;
+    const savedBasePrice = Number(snapshotLine.base_sale_price);
+    const savedSalePrice = Number(snapshotLine.sale_price);
+    const fallbackPrice = Number.isFinite(savedBasePrice) && savedBasePrice > 0
+        ? savedBasePrice
+        : (Number.isFinite(savedSalePrice) && savedSalePrice > 0 ? savedSalePrice : 0);
+    const snapshotVatType = String(snapshotLine.vat_type || '').trim();
+    return {
+        item_id: itemId,
+        name: String(snapshotLine.item_name || '').trim() || `Item #${itemId}`,
+        sku_code: String(snapshotLine.sku_code || snapshotLine.item_sku || snapshotLine.sku || '').trim() || null,
+        category: String(snapshotLine.category || '').trim() || 'product',
+        status: 'inactive',
+        pos_visible: false,
+        pos_location_available: false,
+        pos_always_available: false,
+        current_stock: 0,
+        default_sale_price: fallbackPrice,
+        cost_per_unit: null,
+        fifo_enabled: false,
+        vat_type: ['vatable', 'vat_exempt', 'zero_rated'].includes(snapshotVatType)
+            ? snapshotVatType
+            : 'vatable',
+        senior_pwd_discount_eligible: snapshotLine.senior_pwd_discount_eligible === true,
+        unit_of_measure: String(snapshotLine.unit_of_measure || '').trim() || null,
+        fnbModifierGroups: []
+    };
+};
 
 const buildServiceOptionsSnapshot = (selectedOptions = []) => (
     (Array.isArray(selectedOptions) ? selectedOptions : [])
@@ -3530,6 +3588,8 @@ export const buildCheckoutPosUseCase = ({
             governed_discount: isPlainObject(payload.governed_discount)
                 ? {
                     type: String(payload.governed_discount.type || '').trim().toLowerCase(),
+                    rule_id: parsePositiveInt(payload.governed_discount.rule_id),
+                    discount_key: String(payload.governed_discount.discount_key || '').trim().toLowerCase() || null,
                     method: String(payload.governed_discount.method || '').trim().toLowerCase(),
                     rate: payload.governed_discount.rate == null ? null : round4(payload.governed_discount.rate),
                     amount: payload.governed_discount.amount == null ? null : round4(payload.governed_discount.amount),
@@ -3574,6 +3634,7 @@ export const buildCheckoutPosUseCase = ({
                     item_id: Number.parseInt(line.item_id, 10),
                     quantity: round4(line.quantity),
                     sale_price: line.sale_price == null ? null : round4(line.sale_price),
+                    ...(line.parked_snapshot_line === true ? { parked_snapshot_line: true } : {}),
                     price_override_reason: String(line.price_override_reason || '').trim() || null,
                     course: normalizeFnbCourse(line.course),
                     line_modifiers: normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || [],
@@ -3588,6 +3649,8 @@ export const buildCheckoutPosUseCase = ({
                         ? {
                             item_discount: {
                                 discount_type: String(line.item_discount.discount_type || line.item_discount.type || 'manual').trim().toLowerCase(),
+                                discount_rule_id: parsePositiveInt(line.item_discount.discount_rule_id),
+                                discount_key: String(line.item_discount.discount_key || '').trim().toLowerCase() || null,
                                 label: String(line.item_discount.label || '').trim() || 'Item Discount',
                                 method: String(line.item_discount.method || '').trim().toLowerCase(),
                                 rate: line.item_discount.rate == null ? null : round4(line.item_discount.rate),
@@ -3998,8 +4061,23 @@ export const buildCheckoutPosUseCase = ({
             }
 
             let parkedSaleSettlement = null;
+            let parkedSaleInventoryReversalEffects = [];
+            let parkedSaleInventoryReconciled = false;
+            const reparkInventoryReconciliationRequested = Boolean(
+                inventoryEffectsOnly && payload?.parked_sale_inventory_reconciled === true
+            );
             if (parkedSaleId) {
-                const parkedSale = await posRepository.getParkedSaleById(parkedSaleId, { transaction, lock: true });
+                if (typeof posRepository.getParkedSaleById !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Parked-sale snapshot settlement is unavailable.',
+                        { statusCode: 503, details: { reason_code: 'PARKED_SALE_SNAPSHOT_LOOKUP_UNAVAILABLE' } }
+                    );
+                }
+                const parkedSale = await posRepository.getParkedSaleById(parkedSaleId, {
+                    transaction,
+                    lock: true
+                });
                 if (!parkedSale) {
                     throw new DomainError(
                         DomainErrorCode.RESOURCE_NOT_FOUND,
@@ -4022,8 +4100,34 @@ export const buildCheckoutPosUseCase = ({
                 }
                 parkedSaleSettlement = {
                     parkedSale,
-                    ...resolveParkedSaleSnapshotLines({ parkedSale, lines })
+                    ...resolveParkedSaleSnapshotLines({
+                        parkedSale,
+                        lines,
+                        removedLineReasons: payload.removed_line_reasons
+                    })
                 };
+                if (!reparkInventoryReconciliationRequested
+                    && parkedSaleSettlement.removedSnapshotLines.length > 0
+                    && parkedSaleSettlement.parkedSale.inventory_deducted_at) {
+                    const reverseParkedSaleGoodsIssue = stockCommands?.reverseParkedSaleGoodsIssue;
+                    if (typeof reverseParkedSaleGoodsIssue !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Inventory reconciliation is unavailable for this parked-sale deletion.',
+                            {
+                                statusCode: 503,
+                                details: { reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_UNAVAILABLE' }
+                            }
+                        );
+                    }
+                    const reversals = await reverseParkedSaleGoodsIssue({
+                        parked_sale_id: parkedSaleId,
+                        reason: `Parked-sale line deletion reconciliation for parked sale ${parkedSaleId}`
+                    }, normalizedUserId, transaction);
+                    parkedSaleInventoryReconciled = true;
+                    parkedSaleInventoryReversalEffects = Array.isArray(reversals) ? reversals : [];
+                }
+                if (reparkInventoryReconciliationRequested) parkedSaleInventoryReconciled = true;
             }
 
             const itemIds = [...new Set(lines.map((line) => Number.parseInt(line.item_id, 10)))];
@@ -4038,11 +4142,20 @@ export const buildCheckoutPosUseCase = ({
                     .filter(Boolean)
             )];
             if (historicalItemIds.length > 0 && typeof posRepository.findParkedSaleItemsByIds === 'function') {
-                const historicalItems = await posRepository.findParkedSaleItemsByIds(historicalItemIds, {
-                    transaction,
-                    lock: true,
-                    locationId: enforcedCheckoutLocationId
-                });
+                const historicalItems = await posRepository.findParkedSaleItemsByIds(
+                    [...new Set([
+                        ...historicalItemIds,
+                        ...lines
+                            .filter((line) => line?.parked_snapshot_line === true)
+                            .map((line) => parsePositiveInt(line?.item_id))
+                            .filter(Boolean)
+                    ])],
+                    {
+                        transaction,
+                        lock: true,
+                        locationId: enforcedCheckoutLocationId
+                    }
+                );
                 const mergedItems = new Map(items.map((item) => [Number(item.item_id), item]));
                 historicalItems.forEach((item) => mergedItems.set(Number(item.item_id), item));
                 items = [...mergedItems.values()];
@@ -4051,14 +4164,56 @@ export const buildCheckoutPosUseCase = ({
                 .map(buildHistoricalParkedSaleItem)
                 .filter((item) => item && !items.some((candidate) => Number(candidate?.item_id) === Number(item.item_id)));
             if (historicalFallbackItems.length > 0) items = [...items, ...historicalFallbackItems];
-            const inventoryPreissuedLineIndexes = parkedSaleSettlement?.parkedSale?.inventory_deducted_at
-                && parkedSaleInventoryReconciliation !== true
-                ? new Set(parkedSaleSettlement.historicalLinesByCheckoutIndex.keys())
-                : new Set();
-            const recipePlanLines = lines.map((line, index) => (
-                inventoryPreissuedLineIndexes.has(index) ? { ...line, quantity: 0 } : line
-            ));
             const itemMap = new Map(items.map((item) => [item.item_id, item]));
+            for (const [lineIndex, historicalSnapshotLine] of (parkedSaleSettlement?.historicalLinesByCheckoutIndex?.entries() || [])) {
+                const submittedLine = lines[lineIndex];
+                const snapshotQuantity = Number(historicalSnapshotLine?.quantity);
+                const submittedQuantity = Number(submittedLine?.quantity);
+                if (!Number.isFinite(snapshotQuantity)
+                    || !Number.isFinite(submittedQuantity)
+                    || submittedQuantity <= snapshotQuantity + PARKED_SALE_PRICE_EPSILON) continue;
+
+                const currentItem = itemMap.get(Number.parseInt(submittedLine?.item_id, 10));
+                const currentPrice = Number(currentItem?.default_sale_price);
+                const savedBasePrice = Number(historicalSnapshotLine?.base_sale_price);
+                const savedSalePrice = Number(historicalSnapshotLine?.sale_price);
+                const comparisonPrice = Number.isFinite(savedBasePrice) && savedBasePrice > 0
+                    ? savedBasePrice
+                    : savedSalePrice;
+                const itemIsCurrentlyUsable = Boolean(currentItem)
+                    && String(currentItem?.status || '').trim().toLowerCase() !== 'inactive'
+                    && currentItem?.pos_visible !== false
+                    && currentItem?.pos_location_available !== false;
+                if (!itemIsCurrentlyUsable || !Number.isFinite(currentPrice) || currentPrice <= 0) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Additional quantity is unavailable because the original parked item is missing or inactive.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'PARKED_SALE_ORIGINAL_LINE_ADDITION_UNAVAILABLE',
+                                item_id: Number.parseInt(submittedLine?.item_id, 10) || null,
+                                line_ref: String(submittedLine?.line_ref || '').trim() || null
+                            }
+                        }
+                    );
+                }
+                if (!Number.isFinite(comparisonPrice)
+                    || !sameParkedSaleNumber(currentPrice, comparisonPrice)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Additional quantity is disabled because the item price changed while parked.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'PARKED_SALE_SNAPSHOT_LINE_MISMATCH',
+                                item_id: Number.parseInt(submittedLine?.item_id, 10) || null,
+                                line_ref: String(submittedLine?.line_ref || '').trim() || null
+                            }
+                        }
+                    );
+                }
+            }
             const compositionItemIds = items
                 .filter((item) => isStockBearingItem(item))
                 .map((item) => Number.parseInt(item.item_id, 10))
@@ -4072,6 +4227,19 @@ export const buildCheckoutPosUseCase = ({
                     locationId: enforcedCheckoutLocationId
                 })
                 : [];
+            const inventoryPreissuedLineIndexes = parkedSaleSettlement?.parkedSale?.inventory_deducted_at
+                && !parkedSaleInventoryReconciled
+                ? new Set(parkedSaleSettlement.historicalLinesByCheckoutIndex.keys())
+                : new Set();
+            const recipePlanLines = lines.map((line, index) => {
+                if (!inventoryPreissuedLineIndexes.has(index)) return line;
+                const snapshotLine = parkedSaleSettlement.historicalLinesByCheckoutIndex.get(index);
+                const snapshotQuantity = Number(snapshotLine?.quantity) || 0;
+                return {
+                    ...line,
+                    quantity: round4(Math.max(0, Number(line.quantity || 0) - snapshotQuantity))
+                };
+            });
             const recipePlan = buildFnbRecipeConsumptionPlan({
                 lines: recipePlanLines,
                 itemMap,
@@ -4101,6 +4269,31 @@ export const buildCheckoutPosUseCase = ({
                 const quantity = Number(line.quantity);
                 const item = itemMap.get(itemId);
                 const historicalSnapshotLine = parkedSaleSettlement?.historicalLinesByCheckoutIndex?.get(lineIndex) || null;
+
+                if (historicalSnapshotLine) {
+                    const snapshotItemId = parsePositiveInt(historicalSnapshotLine.item_id);
+                    const sameItemId = snapshotItemId && snapshotItemId === parsePositiveInt(item?.item_id);
+                    const sameSku = String(historicalSnapshotLine.sku_code || historicalSnapshotLine.item_sku || historicalSnapshotLine.sku || '').trim()
+                        && String(historicalSnapshotLine.sku_code || historicalSnapshotLine.item_sku || historicalSnapshotLine.sku).trim().toLowerCase()
+                            === String(item?.sku_code || '').trim().toLowerCase();
+                    const sameName = String(historicalSnapshotLine.item_name || historicalSnapshotLine.name || '').trim()
+                        && String(historicalSnapshotLine.item_name || historicalSnapshotLine.name).trim().toLowerCase()
+                            === String(item?.name || '').trim().toLowerCase();
+                    if (!sameItemId && !sameSku && !sameName) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'A parked-sale line no longer maps to the original item. Review the line before checkout.',
+                            {
+                                statusCode: 409,
+                                details: {
+                                    reason_code: 'PARKED_SALE_SNAPSHOT_ITEM_MISMATCH',
+                                    item_id: itemId,
+                                    parked_item_id: snapshotItemId || null
+                                }
+                            }
+                        );
+                    }
+                }
 
                 if (line.scan_metadata?.code) {
                     const replayScan = await posRepository.resolveCatalogScan({
@@ -4146,22 +4339,22 @@ export const buildCheckoutPosUseCase = ({
                     && item.pos_visible !== false
                     && item.pos_location_available !== false
                     && descriptor.is_toggle_available !== false;
-                const historicalStockShortfall = Boolean(
-                    historicalSnapshotLine
-                    && !isStockExemptLine
-                    && descriptor.blocks_on_shortfall
-                    && (Number(item.current_stock) || 0) + 0.000001 < quantity
-                );
-                const canReconcileHistoricalInventory = Boolean(
-                    parkedSaleInventoryReconciliation === true
-                    && historicalSnapshotLine
-                    && item?.parked_snapshot_fallback !== true
-                );
-                const historicalNeedsStockExemption = Boolean(
-                    historicalSnapshotLine
-                    && !canReconcileHistoricalInventory
-                    && (!currentItemIsSellable || historicalStockShortfall)
-                );
+                const currentItemIsCatalogAvailable = String(item.status || '').trim().toLowerCase() !== 'inactive'
+                    && item.pos_visible !== false
+                    && item.pos_location_available !== false;
+                if (!historicalSnapshotLine && !currentItemIsCatalogAvailable) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        `Some POS-visible active items were not found: ${itemId}`,
+                        {
+                            statusCode: 404,
+                            details: {
+                                missing_item_ids: [itemId],
+                                reason_code: 'PARKED_SALE_ADDED_LINE_UNAVAILABLE'
+                            }
+                        }
+                    );
+                }
                 if (descriptor.is_toggle_available === false && !historicalSnapshotLine) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
@@ -4170,6 +4363,43 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
                 const currentStock = Number(item.current_stock) || 0;
+                const parkedSnapshotQuantity = historicalSnapshotLine
+                    ? Math.max(0, Number(historicalSnapshotLine.quantity) || 0)
+                    : 0;
+                const additionalParkedQuantity = historicalSnapshotLine
+                    ? Math.max(0, quantity - parkedSnapshotQuantity)
+                    : 0;
+                const historicalStockShortfall = Boolean(
+                    historicalSnapshotLine
+                    && !isStockExemptLine
+                    && descriptor.blocks_on_shortfall
+                    && currentStock + 0.000001 < parkedSnapshotQuantity
+                );
+                const addedQuantityStockShortfall = Boolean(
+                    historicalSnapshotLine
+                    && additionalParkedQuantity > 0
+                    && !isStockExemptLine
+                    && descriptor.blocks_on_shortfall
+                    && currentStock + 0.000001 < additionalParkedQuantity
+                );
+                if (addedQuantityStockShortfall) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `Insufficient stock for the added quantity of "${item.name}". Available: ${currentStock}, requested: ${additionalParkedQuantity}`,
+                        {
+                            statusCode: 400,
+                            details: {
+                                reason_code: 'PARKED_SALE_ADDED_QUANTITY_STOCK_SHORTFALL',
+                                item_id: item.item_id,
+                                line_ref: String(line.line_ref || '').trim() || null
+                            }
+                        }
+                    );
+                }
+                const historicalNeedsStockExemption = Boolean(
+                    historicalSnapshotLine
+                    && (!currentItemIsSellable || historicalStockShortfall)
+                );
                 const lineRecipeMovements = historicalNeedsStockExemption
                     ? []
                     : (recipePlan.movementsByLineIndex[lineIndex] || []);
@@ -4235,8 +4465,8 @@ export const buildCheckoutPosUseCase = ({
                 const baseSalePrice = inventoryEffectsOnly
                     ? 1
                     : (historicalSnapshotLine
-                        ? (Number.isFinite(liveBaseSalePrice) ? liveBaseSalePrice : 0)
-                        : requireExplicitSalePrice(item, 'POS checkout'));
+                    ? (Number.isFinite(liveBaseSalePrice) ? liveBaseSalePrice : 0)
+                    : requireExplicitSalePrice(item, 'POS checkout'));
                 const defaultSalePrice = round4(
                     baseSalePrice
                     + modifierResolution.modifierPriceDelta
@@ -4248,8 +4478,8 @@ export const buildCheckoutPosUseCase = ({
                 const resolvedPrice = inventoryEffectsOnly
                     ? 1
                     : (historicalSnapshotLine
-                        ? historicalSalePrice
-                        : (line.sale_price == null ? defaultSalePrice : Number(line.sale_price)));
+                    ? historicalSalePrice
+                    : (line.sale_price == null ? defaultSalePrice : Number(line.sale_price)));
 
                 if (!Number.isFinite(resolvedPrice) || resolvedPrice <= 0) {
                     throw new DomainError(
@@ -4259,8 +4489,7 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                const salePriceOverridden = !inventoryEffectsOnly
-                    && !historicalSnapshotLine
+                const salePriceOverridden = !inventoryEffectsOnly && !historicalSnapshotLine
                     && line.sale_price != null
                     && Math.abs(round4(resolvedPrice) - round4(defaultSalePrice)) > 0.0001;
                 const priceOverrideReason = String(line.price_override_reason || '').trim();
@@ -4283,6 +4512,11 @@ export const buildCheckoutPosUseCase = ({
 
                 const lineSubtotal = round4(quantity * resolvedPrice);
                 subtotalAmount += lineSubtotal;
+                const historicalPreissuedQuantity = historicalSnapshotLine
+                    && parkedSaleSettlement?.parkedSale?.inventory_deducted_at
+                    && !reparkInventoryReconciliationRequested
+                    ? Math.min(quantity, Math.max(0, Number(historicalSnapshotLine.quantity) || 0))
+                    : 0;
 
                 preparedLines.push({
                     line_ref: String(line.line_ref || '').trim() || null,
@@ -4302,11 +4536,8 @@ export const buildCheckoutPosUseCase = ({
                     // (resolveStockBearingDescriptor's carries_cost).
                     cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,
                     stock_effect_type: isStockExemptLine || historicalNeedsStockExemption ? 'stock_exempt' : 'inventory_issue',
-                    inventory_preissued: Boolean(
-                        historicalSnapshotLine
-                        && parkedSaleSettlement?.parkedSale?.inventory_deducted_at
-                        && parkedSaleInventoryReconciliation !== true
-                    ),
+                    inventory_preissued: historicalPreissuedQuantity > 0,
+                    inventory_preissued_quantity: round4(historicalPreissuedQuantity),
                     stock_exempt_reason: historicalNeedsStockExemption
                         ? 'historical_parked_sale'
                         : resolveStockExemptReason(item, descriptor),
@@ -4358,6 +4589,49 @@ export const buildCheckoutPosUseCase = ({
                     });
                 }
                 recipeMovementPlanByPreparedLine.push(lineRecipeMovements);
+                if (historicalSnapshotLine) {
+                    const currentPrice = Number(item.default_sale_price);
+                    const savedBasePrice = Number(historicalSnapshotLine.base_sale_price);
+                    const savedSalePrice = Number(historicalSnapshotLine.sale_price);
+                    const driftReasons = [];
+                    if (!currentItemIsSellable) driftReasons.push('item_not_currently_sellable');
+                    if (historicalStockShortfall) driftReasons.push('stock_shortfall');
+                    if (Number.isFinite(currentPrice)
+                        && Number.isFinite(savedBasePrice)
+                        && !sameParkedSaleNumber(currentPrice, savedBasePrice)) {
+                        driftReasons.push('catalog_price_changed');
+                    }
+                    if (!Number.isFinite(currentPrice) || currentPrice <= 0) driftReasons.push('current_price_missing');
+                    historicalSettlementAuditLines.push({
+                        line_ref: String(line.line_ref || '').trim() || null,
+                        item_id: item.item_id,
+                        item_name: historicalSnapshotLine.item_name || item.name || null,
+                        saved_sale_price: Number.isFinite(savedSalePrice) ? round4(savedSalePrice) : null,
+                        current_sale_price: Number.isFinite(currentPrice) ? round4(currentPrice) : null,
+                        drift_reasons: driftReasons,
+                        inventory_effect: historicalNeedsStockExemption ? 'stock_exempt' : 'inventory_issue'
+                    });
+                }
+            }
+
+            if (inventoryEffectsOnly) {
+                if (validateInventoryAvailability) {
+                    await validatePosInventoryIssues({
+                        inventoryCommandService: stockCommands,
+                        preparedLines,
+                        recipeMovementPlanByPreparedLine,
+                        locationId: enforcedCheckoutLocationId,
+                        userId: normalizedUserId,
+                        transaction
+                    });
+                }
+                const inventoryEffects = buildPosInventoryIssuePlan({
+                    preparedLines,
+                    recipeMovementPlanByPreparedLine,
+                    locationId: enforcedCheckoutLocationId
+                }).map(({ item_id, quantity, location_id }) => ({ item_id, quantity, location_id }));
+                if (ownsTransaction) await transaction.commit();
+                return ok({ inventory_effects: inventoryEffects });
             }
 
             subtotalAmount = round4(subtotalAmount);
@@ -4377,7 +4651,11 @@ export const buildCheckoutPosUseCase = ({
                     preparedLine: line,
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
-                    findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
+                    findActiveRule: (type, identity = {}) => posRepository.findActiveDiscountRuleByType(type, {
+                        ...identity,
+                        transaction,
+                        lock: true
+                    }),
                     findActiveEmployee: (employeeId) => posRepository.findActiveEmployeeById(employeeId, { transaction }),
                     findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction })
                 });
@@ -4507,7 +4785,11 @@ export const buildCheckoutPosUseCase = ({
                     subtotalAmount: itemDiscountCalculation.total_amount,
                     settings: discountSettings,
                     orderMethod: normalizedOrderMethod,
-                    findActiveRule: (type) => posRepository.findActiveDiscountRuleByType(type, { transaction, lock: true }),
+                    findActiveRule: (type, identity = {}) => posRepository.findActiveDiscountRuleByType(type, {
+                        ...identity,
+                        transaction,
+                        lock: true
+                    }),
                     findActiveEmployeeDirectory: (employeeId) => posRepository.findActiveDiscountEmployeeById(employeeId, { transaction }),
                     redeemVoucher
                 })
@@ -4550,7 +4832,7 @@ export const buildCheckoutPosUseCase = ({
             // 2026-08-20) -- the amount is merchant-set and server-enforced, not cashier-chosen, but
             // the same approval discipline applies to every governed discount type without
             // exception today. See the follow-up issue filed against this decision.
-            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher'].includes(governedApplication.type)) {
+            if (governedApplication && ['senior', 'pwd', 'employee', 'promo', 'manual', 'voucher', 'custom'].includes(governedApplication.type)) {
                 if (normalizedDiscountApproval?.discount_type
                     && normalizedDiscountApproval.discount_type !== governedApplication.type) {
                     throw new DomainError(
@@ -4671,7 +4953,11 @@ export const buildCheckoutPosUseCase = ({
             }));
             const governedCalculation = governedApplication
                 ? (governedApplication.type === 'voucher'
-                    ? buildVoucherGovernedCalculation({ lines: governedDiscountLines, voucher: governedVoucher })
+                    ? buildVoucherGovernedCalculation({
+                        lines: governedDiscountLines,
+                        voucher: governedVoucher,
+                        taxPolicy: governedApplication.tax_policy || null
+                    })
                     : calculatePosDiscount({
                         lines: governedDiscountLines,
                         application: {
@@ -4680,6 +4966,7 @@ export const buildCheckoutPosUseCase = ({
                             rate: governedApplication.rate,
                             amount: governedApplication.amount,
                             max_discount_amount: governedApplication.max_discount_amount,
+                            tax_policy: governedApplication.tax_policy || null,
                             lines: governedApplication.lines || [],
                             beneficiaries: governedApplication.beneficiaries || []
                         }
@@ -5065,6 +5352,34 @@ export const buildCheckoutPosUseCase = ({
                 },
                 lines: preparedLines
             }, { transaction });
+            if (parkedSaleId
+                && (historicalSettlementAuditLines.length > 0
+                    || (parkedSaleSettlement?.removedSnapshotLines?.length || 0) > 0)
+                && typeof posRepository.createAuditLog === 'function') {
+                await posRepository.createAuditLog({
+                    user_id: normalizedUserId,
+                    entity_type: 'pos_transaction',
+                    entity_id: posTransactionId,
+                    action: 'CREATE',
+                    event_type: 'pos_parked_sale_snapshot_settlement',
+                    shift_id: normalizedShiftId,
+                    terminal_id: normalizedTerminalId,
+                    location_id: enforcedCheckoutLocationId,
+                    changes: {
+                        event: 'pos_parked_sale_snapshot_settlement',
+                        parked_sale_id: parkedSaleId,
+                        transaction_id: posTransactionId,
+                        policy: 'original_parked_snapshot_price',
+                        lines: historicalSettlementAuditLines,
+                        removed_lines: (parkedSaleSettlement?.removedSnapshotLines || []).map((line) => ({
+                            line_ref: String(line?.line_ref || line?.line_key || '').trim() || null,
+                            item_id: parsePositiveInt(line?.item_id),
+                            item_name: String(line?.item_name || '').trim() || null
+                        })),
+                        removed_line_reasons: parkedSaleSettlement?.removedLineReasons || []
+                    }
+                }, { transaction });
+            }
             if (preparedEmployeeCreditDebit) {
                 await employeeCreditService.finalizeDebit({
                     prepared: preparedEmployeeCreditDebit,
@@ -5099,6 +5414,8 @@ export const buildCheckoutPosUseCase = ({
                         discount_type: governedApplication.type,
                         discount_method: governedCalculation.method,
                         discount_rate: governedCalculation.rate,
+                        tax_treatment: governedCalculation.vat_treatment || 'standard',
+                        tax_policy_version: governedCalculation.tax_policy_version || 1,
                         discount_amount: governedCalculation.discount_amount,
                         original_total: subtotalAmount,
                         final_total: totalAmount,
@@ -5284,74 +5601,28 @@ export const buildCheckoutPosUseCase = ({
             // Exempt lines (stock_effect_type='stock_exempt') never reach the
             // command below and are therefore never collected here.
             const stockChangedItemIds = new Set();
-            for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
-                const line = preparedLines[lineIndex];
-                if (line.inventory_preissued === true) continue;
-                // Recipe consumption always fires when the line has one, regardless
-                // of the finished item's own stock_effect_type: an untracked/toggle/
-                // service dish still physically consumes real ingredients. Only the
-                // finished item's own (movement-exempt) stock effect is skipped below.
-                const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
-                if (recipeMovements.length > 0) {
-                    for (const movement of recipeMovements) {
-                        await executeInventoryStockCommand({
-                            inventoryCommandService: stockCommands,
-                            command: 'issueStockForPosSale',
-                            movementData: {
-                                item_id: movement.ingredient_item_id,
-                                quantity: Number(movement.quantity),
-                                movement_type: 'goods_issue',
-                                location_id: enforcedCheckoutLocationId,
-                                reference_type: 'POS',
-                                reference_id: String(posTransactionId),
-                                notes: `F&B recipe consumption for ${movement.product_name} on POS checkout ${invoiceNumber}`
-                            },
-                            userId: normalizedUserId,
-                            transaction
-                        });
-                        const recipeItemId = parsePositiveInt(movement.ingredient_item_id);
-                        if (recipeItemId) stockChangedItemIds.add(recipeItemId);
-                    }
-                } else if (line.stock_effect_type !== 'stock_exempt') {
-                    await executeInventoryStockCommand({
-                        inventoryCommandService: stockCommands,
-                        command: 'issueStockForPosSale',
-                        movementData: {
-                            item_id: line.item_id,
-                            quantity: Number(line.quantity),
-                            movement_type: 'goods_issue',
-                            location_id: enforcedCheckoutLocationId,
-                            reference_type: 'POS',
-                            reference_id: String(posTransactionId),
-                            notes: `POS checkout ${invoiceNumber}`
-                        },
-                        userId: normalizedUserId,
-                        transaction
-                    });
-                    const directItemId = parsePositiveInt(line.item_id);
-                    if (directItemId) stockChangedItemIds.add(directItemId);
-                }
-
-                for (const modifier of line.fnb_modifiers_snapshot || []) {
-                    const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
-                    if (!linkedItemId) continue;
-                    await executeInventoryStockCommand({
-                        inventoryCommandService: stockCommands,
-                        command: 'issueStockForPosSale',
-                        movementData: {
-                            item_id: linkedItemId,
-                            quantity: Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
-                            movement_type: 'goods_issue',
-                            location_id: parsePositiveInt(modifier?.location_id) || enforcedCheckoutLocationId,
-                            reference_type: 'POS',
-                            reference_id: String(posTransactionId),
-                            notes: `F&B modifier consumption for ${modifier.option_name || `item ${linkedItemId}`} on POS checkout ${invoiceNumber}`
-                        },
-                        userId: normalizedUserId,
-                        transaction
-                    });
-                    stockChangedItemIds.add(linkedItemId);
-                }
+            for (const reversal of parkedSaleInventoryReversalEffects) {
+                const changedItemId = parsePositiveInt(reversal?.item_id);
+                if (changedItemId) stockChangedItemIds.add(changedItemId);
+            }
+            const stockIssuePlan = buildPosInventoryIssuePlan({
+                preparedLines,
+                recipeMovementPlanByPreparedLine,
+                locationId: enforcedCheckoutLocationId,
+                referenceType: 'POS',
+                referenceId: String(posTransactionId),
+                sourceLabel: `POS checkout ${invoiceNumber}`
+            });
+            for (const movementData of stockIssuePlan) {
+                await executeInventoryStockCommand({
+                    inventoryCommandService: stockCommands,
+                    command: 'issueStockForPosSale',
+                    movementData: { ...movementData, movement_type: 'goods_issue' },
+                    userId: normalizedUserId,
+                    transaction
+                });
+                const changedItemId = parsePositiveInt(movementData.item_id);
+                if (changedItemId) stockChangedItemIds.add(changedItemId);
             }
 
             const totalAmountCents = toCurrencyCents(totalAmount);
@@ -5702,6 +5973,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             const authorizationMode = approvalAuthorized
                 ? 'back_office_approval'
                 : (trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift'));
+
             if (!approvalAuthorized) {
                 if (String(existing.status || '').trim().toLowerCase() === 'voided') {
                     throw new DomainError(
@@ -6032,18 +6304,12 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }, { transaction });
 
             const afterVoidCommit = async () => {
-                // #1952: void owns its transaction, so post-commit publication is
-                // safe here. With an approval transaction, defer until the outer
-                // transaction commits so cache invalidation never precedes stock.
                 await publishPosStockChange({
                     publishCatalogChange,
                     tenantId: String(dbStore.getStore()?.tenantId || '').trim(),
                     reason: 'pos_void_stock_changed',
                     itemIds: [...voidStockChangedItemIds]
                 });
-
-                // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
-                // sale - must never fail the void that already succeeded.
                 try {
                     const voidTenantId = String(dbStore.getStore()?.tenantId || '').trim();
                     await reverseAffiliateCommissionForOrder({
@@ -6488,6 +6754,8 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
             const locationScope = await resolvePosReadLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS history read'
             });
             const data = await posRepository.listTransactions({
@@ -6540,6 +6808,8 @@ const buildReadScopedPosReportUseCase = ({ posRepository, repositoryMethod, fail
             const locationScope = await resolvePosReadLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS reports read'
             });
             const data = await repositoryMethod.call(posRepository, {
@@ -6781,8 +7051,11 @@ export const buildScanPosBarcodeUseCase = ({
     };
 };
 
-export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
-    return async ({ posTransactionId }) => {
+export const buildGetPosTransactionByIdUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ posTransactionId, query = {}, user = null }) => {
         const normalizedId = parsePositiveInt(posTransactionId);
         if (!normalizedId) {
             return fail(new DomainError(
@@ -6800,6 +7073,36 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                     'POS transaction not found',
                     { statusCode: 404 }
                 ));
+            }
+            if (query?.location_id != null) {
+                const normalizedUserId = parsePositiveInt(user?.user_id);
+                if (!normalizedUserId) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHENTICATION_FAILED,
+                        'Authenticated user is required to view POS transactions',
+                        { statusCode: 401 }
+                    ));
+                }
+                const locationScope = await resolveLocationScope({
+                    requestedLocationId: query.location_id,
+                    userId: normalizedUserId,
+                    user,
+                    allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
+                    operationLabel: 'POS transaction detail read'
+                });
+                const transactionLocationId = Number(
+                    data?.location_id
+                    || data?.location?.location_id
+                    || data?.pos_terminal_shift?.location_id
+                    || 0
+                );
+                if (!transactionLocationId || transactionLocationId !== Number(locationScope.location_id)) {
+                    return fail(new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'POS transaction not found',
+                        { statusCode: 404 }
+                    ));
+                }
             }
             const serialized = toPublicPosTransaction(data);
             const adjustments = typeof posRepository?.listPosTransactionAdjustmentsForTransaction === 'function'
@@ -7349,6 +7652,8 @@ export const buildListPosCatalogUseCase = ({
                 locationScope = await resolveLocationScope({
                     requestedLocationId: query?.location_id,
                     userId: normalizedUserId,
+                    user,
+                    allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                     operationLabel: 'POS catalog read'
                 });
             } catch (error) {
@@ -8354,10 +8659,13 @@ export const buildOpenTerminalShiftUseCase = ({
             ));
         }
 
-        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS) && user?.is_master_admin !== true) {
+        const canUseBranchDirectoryToOpen = hasEffectivePermission(user, PERMISSION_VIEW_BRANCH);
+        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS)
+            && user?.is_master_admin !== true
+            && !canUseBranchDirectoryToOpen) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'Administrator navigation is read-only. Sign in as the cashier to open the shift.',
+                'Administrator navigation is read-only unless branch-view operating access is explicitly granted. Sign in as the cashier or request the required POS branch capability.',
                 {
                     statusCode: 403,
                     details: { reason_code: 'ADMIN_SHIFT_OPEN_NOT_ALLOWED' }
@@ -8423,6 +8731,8 @@ export const buildOpenTerminalShiftUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId: requestedLocationId || terminalPolicyContext.registry_entry?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasTenantWideBranchAccessForOpenShift(user),
                 operationLabel: 'POS shift open',
                 allowNullWhenUnresolved: true
             });
@@ -8449,7 +8759,11 @@ export const buildOpenTerminalShiftUseCase = ({
             // Revalidate the current branch grant before an idempotent replay;
             // a revoked grant must not receive a previously successful unlock.
             await assertUserOperatingScope?.({
-                userId: normalizedUserId, terminalId, locationId: enforcedShiftLocationId, transaction
+                userId: normalizedUserId,
+                terminalId,
+                locationId: enforcedShiftLocationId,
+                transaction,
+                allowTenantWideLocationAccess: hasTenantWideBranchAccessForOpenShift(user)
             });
             const replay = await findOperationReplayEntry({
                 posRepository,
@@ -8496,6 +8810,7 @@ export const buildOpenTerminalShiftUseCase = ({
                         {
                             statusCode: 409,
                             details: {
+                                reason_code: 'POS_OPERATOR_ACTIVE_ELSEWHERE',
                                 existing_shift_id: existing.pos_terminal_shift_id,
                                 existing_terminal_id: existing.terminal_id || null,
                                 requested_terminal_id: terminalId || null
@@ -8560,6 +8875,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     {
                         statusCode: 409,
                         details: {
+                            reason_code: 'POS_TARGET_TERMINAL_OCCUPIED',
                             existing_shift_id: terminalShift.pos_terminal_shift_id,
                             terminal_id: terminalId,
                             active_cashier_id: terminalShift.cashier_id || null,
@@ -8592,6 +8908,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     {
                         statusCode: 409,
                         details: {
+                            reason_code: 'POS_TARGET_TERMINAL_OCCUPIED',
                             terminal_id: terminalId,
                             requested_cashier_id: normalizedUserId
                         }
@@ -8912,7 +9229,8 @@ export const buildSwitchTerminalShiftLocationUseCase = ({
                 shiftId: normalizedShiftId,
                 shift: existingShift,
                 transaction,
-                closingCashAmount
+                closingCashAmount,
+                cancelledBy: normalizedUserId
             });
             const switchClosingNote = `location_switch to ${enforcedTargetLocationId}: ${closingNote || reason}`.slice(0, 255);
             const switchOpeningNote = `location_switch from shift #${normalizedShiftId}: ${openingNote || reason}`.slice(0, 255);
@@ -9499,12 +9817,7 @@ const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, 
     );
 };
 
-const assertNoInFlightPaymentSessionsForShift = async ({
-    posRepository,
-    shiftId,
-    transaction,
-    cancelledBy = null
-}) => {
+const assertNoInFlightPaymentSessionsForShift = async ({ posRepository, shiftId, transaction, cancelledBy = null }) => {
     if (typeof posRepository.cancelEmptyInFlightPaymentSessionsForShift === 'function') {
         await posRepository.cancelEmptyInFlightPaymentSessionsForShift(shiftId, {
             transaction,
@@ -9568,7 +9881,8 @@ const buildShiftCloseCashData = async ({
     shiftId,
     shift,
     transaction,
-    closingCashAmount
+    closingCashAmount,
+    cancelledBy = null
 }) => {
     await assertNoUnresolvedParkedSalesForShift({
         posRepository,
@@ -9583,7 +9897,8 @@ const buildShiftCloseCashData = async ({
     await assertNoInFlightPaymentSessionsForShift({
         posRepository,
         shiftId,
-        transaction
+        transaction,
+        cancelledBy
     });
     await assertNoUnresolvedFundedPaymentSessionsForShift({
         posRepository,
@@ -9700,7 +10015,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository, revokeOperatorSe
                 shiftId: normalizedShiftId,
                 shift,
                 transaction,
-                closingCashAmount
+                closingCashAmount,
+                cancelledBy: normalizedUserId
             });
             const {
                 shiftPayload,
@@ -10249,6 +10565,8 @@ export const buildListOnlineOrderHistoryUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId: query?.location_id,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: hasEffectivePermission(user, PERMISSION_VIEW_BRANCH),
                 operationLabel: 'POS online order history read'
             });
             const history = await posRepository.listOnlineOrderHistory({
@@ -10292,10 +10610,11 @@ export const buildGetAdminLocationMonitorUseCase = ({
                 { statusCode: 401 }
             ));
         }
-        if (!hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
+        if (!hasEffectivePermission(user, PERMISSION_VIEW_BRANCH)
+            && !hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'POS location switching permission is required to monitor another branch without an active shift.',
+                'POS branch view permission is required to monitor another branch without an active shift.',
                 { statusCode: 403 }
             ));
         }
@@ -10313,6 +10632,8 @@ export const buildGetAdminLocationMonitorUseCase = ({
             const locationScope = await resolveLocationScope({
                 requestedLocationId,
                 userId: normalizedUserId,
+                user,
+                allowTenantWideBranchAccess: true,
                 operationLabel: 'POS administrator branch monitor'
             });
             const [orders, terminalShifts] = await Promise.all([
@@ -10356,7 +10677,8 @@ const buildCollectCashOnlineOrderUseCase = ({
     requiredFulfillmentStatus,
     operationKey,
     orderLabel,
-    fulfillmentLabel
+    fulfillmentLabel,
+    auditEventLabel = orderLabel
 }) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
@@ -10498,7 +10820,7 @@ const buildCollectCashOnlineOrderUseCase = ({
                 entity_id: orderId,
                 action: 'UPDATE',
                 changes: {
-                    event: `${orderLabel}_cash_collected`,
+                    event: `${auditEventLabel}_cash_collected`,
                     operator_session_id: parsePositiveInt(user?.operator_session_id),
                     payment_type: 'cash',
                     payment_timing: paymentTiming,
@@ -10578,8 +10900,288 @@ export const buildCollectCashDineInOrderUseCase = ({ posRepository }) => buildCo
     requiredFulfillmentStatus: 'ready_for_pickup',
     operationKey: POS_OPERATION_KEYS.DINE_IN_CASH_COLLECTION,
     orderLabel: 'dine-in',
+    auditEventLabel: 'dine_in',
     fulfillmentLabel: 'ready to serve'
 });
+
+// Dine-In orders are a service workflow, not a payment tender. An unpaid online
+// Dine-In order may therefore be settled at the terminal with any supported POS
+// payment method. This is deliberately a sibling of the legacy cash-only use
+// case above: the old route remains available for existing clients, while this
+// route owns the method-independent Dine-In checkout contract.
+export const buildCollectDineInPaymentUseCase = ({ posRepository, employeeCreditService = null }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const terminalId = sanitizeTerminalId(payload?.terminal_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const paymentMethod = String(payload?.payment_method || '').trim().toLowerCase();
+        const paymentReference = String(payload?.payment_reference || '').trim() || null;
+        const manualPaymentReceived = payload?.manual_payment_received === true;
+        const isCashPayment = paymentMethod === 'cash';
+        const cashReceived = isCashPayment ? round4(payload?.cash_received) : null;
+        const declaredAmount = isCashPayment ? null : round4(payload?.amount);
+        const employeeCreditAccountCode = String(payload?.employee_credit?.account_code || '').trim().toUpperCase() || null;
+
+        if (!orderId || !cashierId || !terminalId || !idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid order, terminal, and idempotency key are required.',
+                { statusCode: 422 }
+            ));
+        }
+        if (!DINE_IN_PAYMENT_METHODS.includes(paymentMethod)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Unsupported dine-in payment method.',
+                {
+                    statusCode: 422,
+                    details: {
+                        reason_code: 'DINE_IN_PAYMENT_METHOD_UNSUPPORTED',
+                        supported_methods: [...DINE_IN_PAYMENT_METHODS]
+                    }
+                }
+            ));
+        }
+        if (isCashPayment ? !(cashReceived > 0) : !(declaredAmount > 0)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'A positive payment amount is required.',
+                { statusCode: 422, details: { reason_code: 'DINE_IN_PAYMENT_AMOUNT_REQUIRED' } }
+            ));
+        }
+        if (!isCashPayment && !manualPaymentReceived) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Non-cash dine-in payment requires explicit confirmation that the store received the payment.',
+                { statusCode: 422, details: { reason_code: 'DINE_IN_PAYMENT_CONFIRMATION_REQUIRED' } }
+            ));
+        }
+        if (paymentMethod === 'employee_credit' && !employeeCreditAccountCode) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Employee Credit requires an employee account.',
+                { statusCode: 422, details: { reason_code: 'DINE_IN_EMPLOYEE_CREDIT_ACCOUNT_REQUIRED' } }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            terminal_id: terminalId,
+            payment_method: paymentMethod,
+            cash_received: cashReceived,
+            amount: declaredAmount,
+            manual_payment_received: manualPaymentReceived,
+            payment_reference: paymentReference || '',
+            employee_credit_account_code: employeeCreditAccountCode || ''
+        });
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DINE_IN_PAYMENT_COLLECTION,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const lockedReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DINE_IN_PAYMENT_COLLECTION,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (lockedReplay) {
+                await transaction.rollback();
+                transaction = null;
+                return ok(lockedReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online dine-in order not found.', { statusCode: 404 });
+            }
+            if (String(order.order_method || '').trim().toLowerCase() !== 'dine_in') {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Payment collection is available only for dine-in orders.', { statusCode: 409 });
+            }
+            if (String(order.payment_timing || '').trim().toLowerCase() !== 'on_dine_in') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Payment timing must be on_dine_in for dine-in orders.',
+                    { statusCode: 409, details: { reason_code: 'PAYMENT_TIMING_MISMATCH' } }
+                );
+            }
+            if (String(order.payment_status || '').trim().toLowerCase() !== 'unpaid') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This dine-in order has already been paid or cannot accept payment collection.',
+                    { statusCode: 409, details: { reason_code: 'DINE_IN_PAYMENT_NOT_UNPAID' } }
+                );
+            }
+            if (String(order.fulfillment_status || '').trim() !== 'ready_for_pickup') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Payment can be collected only when the dine-in order is ready to serve.',
+                    { statusCode: 409, details: { reason_code: 'DINE_IN_PAYMENT_NOT_READY' } }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                terminalId,
+                locationId: order.location_id || null,
+                shiftOwnerCashierId: user?.register_shift_owner_user_id || null,
+                authorizedOperatorUserId: user?.register_shift_owner_user_id ? cashierId : null,
+                transaction,
+                lock: true
+            });
+            const totalAmount = round4(order.total_amount);
+            if (isCashPayment) {
+                if (cashReceived < totalAmount) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Cash received must cover the dine-in order total.',
+                        { statusCode: 422, details: { total_amount: totalAmount, cash_received: cashReceived } }
+                    );
+                }
+            } else if (declaredAmount !== totalAmount) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A non-cash dine-in payment must match the exact order total.',
+                    { statusCode: 422, details: { total_amount: totalAmount, amount: declaredAmount } }
+                );
+            }
+
+            let preparedEmployeeCreditDebit = null;
+            if (paymentMethod === 'employee_credit') {
+                if (!employeeCreditService) {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Employee Credit service is not configured',
+                        { statusCode: 500 }
+                    );
+                }
+                preparedEmployeeCreditDebit = await employeeCreditService.prepareDebit({
+                    accountCode: employeeCreditAccountCode,
+                    amount: totalAmount,
+                    transaction
+                });
+            }
+
+            const collectedAt = new Date();
+            const changeAmount = isCashPayment ? round4(cashReceived - totalAmount) : null;
+            const paymentProvider = isCashPayment || paymentMethod === 'employee_credit' ? null : 'merchant_owned';
+            const updated = await posRepository.updateOrderById(orderId, {
+                payment_type: paymentMethod,
+                payment_status: 'paid',
+                amount_paid: totalAmount,
+                balance_due: 0,
+                cash_received: isCashPayment ? cashReceived : null,
+                change_amount: changeAmount,
+                payment_reference: paymentReference,
+                payment_provider: paymentProvider,
+                payment_breakdown: [{ payment_type: paymentMethod, count: 1, amount: totalAmount }],
+                payment_collected_at: collectedAt,
+                payment_collected_by: cashierId,
+                payment_collected_shift_id: activeShift.pos_terminal_shift_id,
+                payment_collected_terminal_id: terminalId,
+                cashier_id: parsePositiveInt(order.cashier_id) || cashierId,
+                shift_id: activeShift.pos_terminal_shift_id,
+                employee_credit_account_id: preparedEmployeeCreditDebit?.accountId || null,
+                employee_credit_user_id: preparedEmployeeCreditDebit?.userId || null,
+                employee_credit_employee_id: preparedEmployeeCreditDebit?.employeeId || null,
+                employee_credit_employee_name_snapshot: preparedEmployeeCreditDebit?.employeeName || null,
+                employee_credit_account_code_snapshot: preparedEmployeeCreditDebit?.maskedAccountCode || null,
+                employee_credit_amount: preparedEmployeeCreditDebit?.amount || null,
+                employee_credit_balance_after: null,
+                employee_credit_outstanding_after: preparedEmployeeCreditDebit?.outstandingAfter ?? null,
+                employee_credit_authorization_reference: preparedEmployeeCreditDebit?.authorizationReference || null
+            }, { transaction, lock: true });
+
+            if (preparedEmployeeCreditDebit) {
+                await employeeCreditService.finalizeDebit({
+                    prepared: preparedEmployeeCreditDebit,
+                    posTransactionId: orderId,
+                    actorUserId: cashierId,
+                    shiftId: activeShift.pos_terminal_shift_id,
+                    terminalId,
+                    locationId: order.location_id || null,
+                    idempotencyKey,
+                    transaction
+                });
+            }
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'pos_transaction',
+                entity_id: orderId,
+                action: 'UPDATE',
+                changes: {
+                    event: 'dine_in_payment_collected',
+                    operator_session_id: parsePositiveInt(user?.operator_session_id),
+                    payment_method: paymentMethod,
+                    payment_provider: paymentProvider,
+                    payment_timing: 'on_dine_in',
+                    payment_status: 'paid',
+                    manual_payment_received: manualPaymentReceived,
+                    payment_reference: paymentReference,
+                    amount: totalAmount,
+                    cash_received: isCashPayment ? cashReceived : null,
+                    change_amount: changeAmount,
+                    employee_credit_account_code: preparedEmployeeCreditDebit?.maskedAccountCode || null,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId,
+                    collected_at: collectedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const responsePayload = {
+                order: toPublicPosTransaction(updated),
+                collection: {
+                    order_method: 'dine_in',
+                    payment_timing: 'on_dine_in',
+                    payment_method: paymentMethod,
+                    payment_provider: paymentProvider,
+                    amount: totalAmount,
+                    cash_received: isCashPayment ? cashReceived : null,
+                    change_amount: changeAmount,
+                    payment_reference: paymentReference,
+                    collected_at: collectedAt.toISOString(),
+                    collected_by: cashierId,
+                    shift_id: activeShift.pos_terminal_shift_id,
+                    terminal_id: terminalId
+                },
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DINE_IN_PAYMENT_COLLECTION,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            return fail(mapPosUseCaseError(error, 'Failed to collect the dine-in payment'));
+        }
+    };
+};
 
 // Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance at
 // handover -- the missing middle of epic #815/#273. Phase 141 (#822) captures the downpayment
@@ -12421,11 +13023,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
     inventoryCommandService,
     commerceOrderLifecycleUseCase = null,
     activityRecorder = recordDgfyOrderActivity,
-    inventoryReservationService = null,
-    // #1931: tenant workflow-mode gate for Retail's accept-time goods-issue. Injected (same
-    // pattern as storeUseCases.js) so unit tests pin the mode explicitly instead of hitting
-    // SystemSetting; pos/index.js wires the real resolver.
-    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+    inventoryReservationService = null
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
@@ -12622,19 +13220,14 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             }
             const mutationTimestamp = new Date();
 
-            // #1931: Retail deducts stock at acceptance (placed -> confirmed), exactly once, even
-            // when the order is scheduled for later. Every other mode keeps the completion-time
-            // policy (ADR 0029 amendment, 2026-09-16). The `!existing.inventory_issued_at`
+            // Online fulfillment deducts stock at acceptance (placed -> confirmed), exactly once,
+            // even when the order is scheduled for later. The `!existing.inventory_issued_at`
             // evidence check is defense-in-depth alongside the edge guard below: `placed` has no
             // incoming edges and the row lock above serializes concurrent accepts, so the branch
             // can only commit once per order regardless of retries or idempotency keys.
             const isAcceptTransition = currentStatus === 'placed' && targetStatus === 'confirmed';
-            let tenantWorkflowMode = null;
-            if (isAcceptTransition && !existing.inventory_issued_at) {
-                tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
-            }
             let inventoryIssuedAt = null;
-            if (isAcceptTransition && tenantWorkflowMode === 'retail' && !existing.inventory_issued_at) {
+            if (isAcceptTransition && !existing.inventory_issued_at) {
                 await issueOnlineOrderStockForFulfillment({
                     order: existing,
                     posRepository,
@@ -12646,9 +13239,9 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 inventoryIssuedAt = mutationTimestamp;
             }
 
-            // Completion still deducts when no prior deduction exists (legacy Retail orders
-            // accepted before this change shipped, and every non-Retail order) and skips when
-            // the accept-time issue already ran -- persisted evidence, not a status assumption.
+            // Completion still deducts when no prior deduction exists (legacy orders accepted
+            // before confirmation-time issuing shipped) and skips when the accept-time issue
+            // already ran -- persisted evidence, not a status assumption.
             const inventoryAlreadyIssued = Boolean(existing.inventory_issued_at) || Boolean(inventoryIssuedAt);
             let inventoryReversedAt = null;
             if (currentStatus !== 'completed' && targetStatus === 'completed' && !inventoryAlreadyIssued) {
@@ -12664,34 +13257,29 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
             } else if (
                 currentStatus !== targetStatus
                 && ['cancelled', 'rejected'].includes(targetStatus)
-                && inventoryReservationService?.releaseOnlineOrderInventory
             ) {
-                await inventoryReservationService.releaseOnlineOrderInventory({
-                    sourceId: normalizedTransactionId,
-                    transaction,
-                    reason: targetStatus
-                });
-                // #1931: a post-acceptance staff reject reverses the accept-time goods-issue,
-                // once. A pre-acceptance placed -> rejected never issued anything, so a plain
-                // reservation release remains correct there. The evidence check short-circuits
-                // before the mode lookup, so non-Retail and never-issued orders never pay for it.
+                if (inventoryReservationService?.releaseOnlineOrderInventory) {
+                    await inventoryReservationService.releaseOnlineOrderInventory({
+                        sourceId: normalizedTransactionId,
+                        transaction,
+                        reason: targetStatus
+                    });
+                }
+                // A post-acceptance staff reject reverses the goods-issue once. A pre-acceptance
+                // placed -> rejected never issued anything, so a plain reservation release
+                // remains correct there. The evidence check keeps this idempotent.
                 if (targetStatus === 'rejected'
                     && existing.inventory_issued_at
                     && !existing.inventory_reversed_at
                 ) {
-                    if (tenantWorkflowMode == null) {
-                        tenantWorkflowMode = (await resolveWorkflowCapabilitySettings())?.mode || null;
-                    }
-                    if (tenantWorkflowMode === 'retail') {
-                        await reverseOnlineOrderGoodsIssueForOrder({
-                            orderId: normalizedTransactionId,
-                            stockCommands,
-                            actingUserId,
-                            transaction,
-                            reason: `Reversal of accept-time goods-issue for online order ${normalizedTransactionId} (staff reject after acceptance)`
-                        });
-                        inventoryReversedAt = mutationTimestamp;
-                    }
+                    await reverseOnlineOrderGoodsIssueForOrder({
+                        orderId: normalizedTransactionId,
+                        stockCommands,
+                        actingUserId,
+                        transaction,
+                        reason: `Reversal of confirmation-time goods-issue for online order ${normalizedTransactionId} (staff reject after acceptance)`
+                    });
+                    inventoryReversedAt = mutationTimestamp;
                 }
             }
 
@@ -12722,7 +13310,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 updatePayload.rejected_at = mutationTimestamp;
             }
 
-            // #1931: persisted one-time evidence for the accept-time issue and its reversal.
+            // Persisted one-time evidence for the confirmation-time issue and its reversal.
             // Additive columns -- existing consumers pass them through via toPublicPosTransaction.
             if (inventoryIssuedAt) {
                 updatePayload.inventory_issued_at = inventoryIssuedAt;

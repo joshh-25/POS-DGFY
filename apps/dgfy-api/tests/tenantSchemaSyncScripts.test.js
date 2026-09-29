@@ -5,6 +5,7 @@ import {
   assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
   buildTenantSchemaTableRepairSql,
+  buildTenantSchemaIndexRepairSql,
   createSyncFailureRecord,
   getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
@@ -84,6 +85,40 @@ describe('tenant schema sync script contracts', () => {
   it('publishes a stable checksum for the complete tenant capability registry', () => {
     expect(getTenantSchemaCapabilityChecksum()).toMatch(/^[a-f0-9]{64}$/);
     expect(getTenantSchemaCapabilityChecksum()).toBe(getTenantSchemaCapabilityChecksum());
+  });
+
+  it('tracks parked-sale cancellation ENUMs in the tenant drift registry', () => {
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.pos_parked_sales.status.enumValues)
+      .toEqual(['parked', 'claimed', 'completed', 'cancel_pending', 'cancelled']);
+    expect(REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS.business_admin_approval_requests.action_type.enumValues)
+      .toEqual(['pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel']);
+
+    const repairs = buildTenantSchemaEnumRepairSql([
+      { table: 'pos_parked_sales', column: 'status' },
+      { table: 'business_admin_approval_requests', column: 'action_type' }
+    ]);
+    expect(repairs).toHaveLength(2);
+    expect(repairs[0].sql).toContain("ENUM('parked','claimed','completed','cancel_pending','cancelled')");
+    expect(repairs[1].sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
+  });
+
+  it('repairs the tenant-local Business Admin approval table and indexes', () => {
+    const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
+    expect(table.sql).toContain('business_admin_approval_requests');
+    expect(table.sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
+    expect(table.sql).toContain('FOREIGN KEY (`requested_by`) REFERENCES `users` (`user_id`)');
+
+    const tableRepairs = buildTenantSchemaTableRepairSql(['business_admin_approval_requests']);
+    expect(tableRepairs).toEqual([{ table: 'business_admin_approval_requests', sql: table.sql }]);
+
+    const indexRepairs = buildTenantSchemaIndexRepairSql([
+      { table: 'business_admin_approval_requests', indexName: 'uq_business_admin_approval_action_idempotency' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_status_created' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_entity_created' },
+      { table: 'business_admin_approval_requests', indexName: 'idx_business_admin_approval_requested_created' }
+    ]);
+    expect(indexRepairs).toHaveLength(4);
+    expect(indexRepairs[0].sql).toContain('UNIQUE INDEX `uq_business_admin_approval_action_idempotency`');
   });
 
   it('normalizes known too-many-keys failures with stable fingerprint', () => {

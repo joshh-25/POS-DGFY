@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import PosReportsAdjustmentsTable from '../components/PosReportsAdjustmentsTable.jsx';
 
@@ -33,21 +33,25 @@ const rows = [
 describe('POS reports adjustments table', () => {
   afterEach(() => cleanup());
 
-  it('renders the complete adjustment table columns', () => {
+  it('renders prioritized adjustment columns plus the shared details action', async () => {
     render(<PosReportsAdjustmentsTable rows={rows} />);
 
-    ['Date/Time', 'Type', 'Reference No.', 'Order No.', 'Cashier', 'Reason', 'Amount (₱)', 'Affected Sales', 'Notes'].forEach((label) => {
+    ['Date/Time', 'Type', 'Reference No.', 'Order No.', 'Cashier', 'Amount (₱)', 'Affected Sales'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[().]/g, '\\$&')) })).toBeTruthy();
     });
-    expect(screen.getAllByText('Customer Return').length).toBeGreaterThan(0);
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     expect(screen.getAllByText('Refund').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Void').length).toBeGreaterThan(0);
     expect(screen.getAllByText('REF-000125').length).toBeGreaterThan(0);
     expect(screen.getAllByText('ORD-00034').length).toBeGreaterThan(0);
     expect(screen.getAllByText('John D.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱250.00').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–2 of 2 adjustments')).toBeTruthy();
+
+    await screen.getAllByRole('button', { name: 'View details for ORD-00034' })[0].click();
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByText('Customer Return')).toBeTruthy();
   });
 
   it('supports search-compatible filtering and sortable amount values', () => {

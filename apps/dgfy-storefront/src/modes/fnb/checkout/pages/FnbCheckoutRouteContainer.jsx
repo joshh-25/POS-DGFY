@@ -284,7 +284,6 @@ export function FnbCheckoutRouteContainer({
               }}
               orderMethod={orderMethod}
               orderTimingPolicy={orderTimingPolicy}
-              locationName={selectedStore?.location_name || selectedStore?.tenant_name || 'Main location'}
               scheduleHoursLabel={formatStorefrontHoursLabel(selectedStore?.storefront_hours, selectedStore?.storefront_hours_status?.display || '')}
               storefrontHours={selectedStore?.storefront_hours}
             />                      {isDeliveryOrder && (
@@ -764,11 +763,13 @@ export function FnbCheckoutRouteContainer({
                     allowCash: isDineInOrder && allowDineInPayAtStore
                   })}
                   DropdownComponent={StorefrontDropdown}
+                  portalMenu
+                  emptyMessage="No payment methods are currently available for this store."
                   labelStyle={{ ...checkoutTypography.sectionTitle, color: '#1e293b', fontFamily: CHECKOUT_FONT_FAMILY }}
-                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, padding: '0 42px 0 14px', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY } : { ...checkoutTypography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
+                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, ...checkoutTypography.control, height: CHECKOUT_CONTROL_MIN_HEIGHT, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, padding: '0 42px 0 14px', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY } : { ...checkoutTypography.control, height: CHECKOUT_CONTROL_MIN_HEIGHT, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, borderRadius: 12, fontFamily: CHECKOUT_FONT_FAMILY }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
                   optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
-                  selectedLabelStyle={{ ...checkoutTypography.control, fontFamily: CHECKOUT_FONT_FAMILY }}
+                  selectedLabelStyle={{ ...checkoutTypography.control, minHeight: 'unset', fontFamily: CHECKOUT_FONT_FAMILY }}
                   downpaymentCallout={(
                     <DownpaymentPaymentCallout
                       accentColor={fnbOrderBrand}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Ban, Bookmark, CheckCircle2, Clock3, RefreshCcw, RotateCcw } from 'lucide-react';
+import { AlertCircle, Ban, Bookmark, CheckCircle2, Clock3, Eye, RefreshCcw, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -55,10 +55,12 @@ export default function POSParkedSalesDialog({
     const [cancelLoadingId, setCancelLoadingId] = useState(null);
     const [cancelTarget, setCancelTarget] = useState(null);
     const [cancelReason, setCancelReason] = useState('');
+    const [viewTarget, setViewTarget] = useState(null);
     const [error, setError] = useState('');
     const [actionError, setActionError] = useState('');
 
     const normalizedTerminalId = normalizeTerminalId(terminalId);
+    const viewLines = Array.isArray(viewTarget?.snapshot?.lines) ? viewTarget.snapshot.lines : [];
     const activeRows = useMemo(
         () => (Array.isArray(rows) ? rows : []).filter((row) => ['parked', 'claimed', 'cancel_pending'].includes(String(row?.status || '').toLowerCase())),
         [rows]
@@ -167,27 +169,29 @@ export default function POSParkedSalesDialog({
         setActionError('');
         setCancelTarget(null);
         setCancelReason('');
+        setViewTarget(null);
         onOpenChange(false);
     };
 
     return (
-        <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && closeDialog()}>
-            <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-2xl flex-col overflow-hidden p-0 sm:max-h-[90vh]" data-testid="pos-parked-sales-dialog">
-                <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
-                    <div className="flex items-start justify-between gap-3 pr-7">
-                        <div>
-                            <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
-                                <Bookmark className="h-5 w-5 text-amber-600" />
-                                Parked Sales
-                            </DialogTitle>
-                            <DialogDescription className="mt-1 text-sm text-slate-600">
-                                Shared with authorized cashiers at this branch. Pay a parked sale now or resume it to add more items.
-                            </DialogDescription>
+        <>
+            <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && closeDialog()}>
+                <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-2xl flex-col overflow-hidden p-0 sm:max-h-[90vh]" data-testid="pos-parked-sales-dialog">
+                    <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
+                        <div className="flex items-start justify-between gap-3 pr-7">
+                            <div>
+                                <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
+                                    <Bookmark className="h-5 w-5 text-amber-600" />
+                                    Parked Sales
+                                </DialogTitle>
+                                <DialogDescription className="mt-1 text-sm text-slate-600">
+                                    Shared with authorized cashiers at this branch. Pay a parked sale now or resume it to add more items.
+                                </DialogDescription>
+                            </div>
                         </div>
-                    </div>
-                </DialogHeader>
+                    </DialogHeader>
 
-                <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4" aria-busy={loading || claimLoadingId !== null || cancelLoadingId !== null}>
+                    <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4" aria-busy={loading || claimLoadingId !== null || cancelLoadingId !== null}>
                     {cartHasItems && (
                         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800" role="alert">
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -233,7 +237,6 @@ export default function POSParkedSalesDialog({
                                     && Number(row?.shift_id) === Number(activeShiftId);
                                 const cancellationLocked = claimedElsewhere || !ownedByCurrentCashier;
                                 const lines = Array.isArray(row?.snapshot?.lines) ? row.snapshot.lines : [];
-                                const linePreview = lines.slice(0, 3).map((line) => line?.item_name || `Item #${line?.item_id || ''}`).filter(Boolean).join(', ');
                                 const loadingThisRow = claimLoadingId === parkedSaleId;
                                 return (
                                     <article key={parkedSaleId} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid={`pos-parked-sale-row-${parkedSaleId}`}>
@@ -247,9 +250,19 @@ export default function POSParkedSalesDialog({
                                                     </span>
                                                 </div>
                                                 <p className="mt-1 text-xs text-slate-500">{formatDateTime(row?.created_at)} · {Number(row?.line_count || lines.length).toLocaleString('en-US')} line{Number(row?.line_count || lines.length) === 1 ? '' : 's'} · ₱{money(row?.total_amount)}</p>
-                                                <p className="mt-2 line-clamp-2 text-sm font-medium text-slate-700">{linePreview || 'No line preview available.'}</p>
                                             </div>
                                             <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => setViewTarget(row)}
+                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null}
+                                                    className="rounded-lg border-slate-300 px-3 text-xs font-extrabold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    data-testid={`pos-parked-sale-view-${parkedSaleId}`}
+                                                >
+                                                    <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                                    View
+                                                </Button>
                                                 <Button
                                                     type="button"
                                                     onClick={() => handleClaim(row, 'pay')}
@@ -322,15 +335,66 @@ export default function POSParkedSalesDialog({
                             })}
                         </div>
                     )}
-                </div>
-
-                <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-3">
-                    <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-xs font-semibold text-slate-500">{activeRows.length} active parked sale{activeRows.length === 1 ? '' : 's'}</span>
-                        <Button type="button" variant="outline" onClick={closeDialog} disabled={claimLoadingId !== null || cancelLoadingId !== null}>Close</Button>
                     </div>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+
+                    <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-3">
+                        <div className="flex w-full items-center justify-between gap-3">
+                            <span className="text-xs font-semibold text-slate-500">{activeRows.length} active parked sale{activeRows.length === 1 ? '' : 's'}</span>
+                            <Button type="button" variant="outline" onClick={closeDialog} disabled={claimLoadingId !== null || cancelLoadingId !== null}>Close</Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={Boolean(viewTarget)}
+                onOpenChange={(nextOpen) => {
+                    if (!nextOpen) setViewTarget(null);
+                }}
+            >
+                <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-h-0 max-w-xl flex-col overflow-hidden p-0 sm:max-h-[90vh]" data-testid="pos-parked-sale-view-dialog">
+                    <DialogHeader className="shrink-0 border-b border-slate-200 px-5 py-4">
+                        <DialogTitle className="text-lg font-black text-slate-900">
+                            {viewTarget ? formatParkedSaleDisplayName(viewTarget) : 'Parked Sale Items'}
+                        </DialogTitle>
+                        <DialogDescription className="mt-1 text-sm text-slate-600">
+                            {viewLines.length} item lines in this parked sale.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                        {viewLines.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm font-semibold text-slate-600">
+                                No items available for this parked sale.
+                            </div>
+                        ) : (
+                            <div className="space-y-2" data-testid="pos-parked-sale-view-items">
+                                {viewLines.map((line, index) => {
+                                    const quantity = Number(line?.quantity || 0);
+                                    const unitPrice = Number(line?.sale_price || 0);
+                                    return (
+                                        <div
+                                            key={`${line?.line_key || line?.item_id || 'line'}-${index}`}
+                                            className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3"
+                                            data-testid={`pos-parked-sale-view-line-${viewTarget?.pos_parked_sale_id || 'sale'}-${index}`}
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-extrabold text-slate-900">{line?.item_name || `Item #${line?.item_id || ''}`}</p>
+                                                <p className="mt-0.5 text-xs font-semibold text-slate-500">Qty {quantity} · ₱{money(unitPrice)} each</p>
+                                            </div>
+                                            <p className="shrink-0 text-sm font-black text-slate-900">₱{money(quantity * unitPrice)}</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="shrink-0 border-t border-slate-200 px-5 py-3">
+                        <Button type="button" variant="outline" onClick={() => setViewTarget(null)}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }

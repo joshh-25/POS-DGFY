@@ -52,6 +52,7 @@ const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockCollectCashDeliveryOrderUseCase = jest.fn();
 const mockCollectCashDineInOrderUseCase = jest.fn();
+const mockCollectDineInPaymentUseCase = jest.fn();
 // Phase 148 (#825): the module mock enumerates every export posHandlers.js imports, so a new use
 // case has to be declared here too -- otherwise the whole suite fails to link, not just the tests
 // that exercise it.
@@ -147,6 +148,7 @@ const posHandlersBarrelOverrides = {
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
     collectCashDineInOrderUseCase: mockCollectCashDineInOrderUseCase,
+    collectDineInPaymentUseCase: mockCollectDineInPaymentUseCase,
     recordOrderBalancePaymentUseCase: mockRecordOrderBalancePaymentUseCase,
     assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
@@ -216,6 +218,7 @@ let listActiveDeliveryPersonnel;
 let listOnlineOrderHistory;
 let collectCashDeliveryOrder;
 let collectCashDineInOrder;
+let collectDineInPayment;
 let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
@@ -244,6 +247,7 @@ beforeAll(async () => {
     listOnlineOrderHistory = mod.listOnlineOrderHistory;
     collectCashDeliveryOrder = mod.collectCashDeliveryOrder;
     collectCashDineInOrder = mod.collectCashDineInOrder;
+    collectDineInPayment = mod.collectDineInPayment;
     assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
@@ -1287,7 +1291,7 @@ describe('posHandlers transport contracts', () => {
             validatedParams: { id: 90 },
             params: { id: 90 },
             validatedData: {
-                idempotency_key: 'dine-in-cash-20260409-90',
+                idempotency_key: 'dine-in-cash-20260925-90',
                 terminal_id: 'COUNTER-01',
                 cash_received: 200
             },
@@ -1319,6 +1323,59 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Cash payment collected for dine-in order.',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('collectDineInPayment returns the method-independent dine-in payment contract', async () => {
+        mockCollectDineInPaymentUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                collection: { order_method: 'dine_in', payment_method: 'gcash' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 91 },
+            params: { id: 91 },
+            validatedData: {
+                idempotency_key: 'dine-in-payment-20260925-91',
+                terminal_id: 'COUNTER-01',
+                payment_method: 'gcash',
+                amount: 150,
+                manual_payment_received: true
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            ip: '127.0.0.1',
+            get: jest.fn(() => 'test-agent'),
+            requestId: 'req-pos-dine-in-payment'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await collectDineInPayment(req, res, next);
+
+        expect(mockCollectDineInPaymentUseCase).toHaveBeenCalledWith({
+            posTransactionId: 91,
+            payload: req.validatedData,
+            user: req.user,
+            auditContext: {
+                ipAddress: '127.0.0.1',
+                userAgent: 'test-agent'
+            }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Dine-in payment collected.',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

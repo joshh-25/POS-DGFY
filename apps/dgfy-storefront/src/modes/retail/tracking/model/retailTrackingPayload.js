@@ -84,9 +84,11 @@ export function toRetailTrackingViewState(trackingPayload) {
       || root?.discount_label
       || raw?.discount_label
       || order?.discount_label
-      || 'Promo / Discount'
+      || 'Discount'
     ).trim(),
     serviceFeeAmount: numberOrNull(source.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
+    serviceFeeLabel: String(source.serviceFeeLabel || order?.service_fee_label_snapshot || root?.service_fee_label_snapshot || raw?.service_fee_label_snapshot || '').trim(),
+    vatAmount: numberOrNull(source.vatAmount ?? order?.vat_amount ?? root?.vat_amount ?? raw?.vat_amount),
     // #747: `order?.total_amount` (the server-persisted value) now outranks `root?.total_amount` /
     // `raw?.total_amount` -- those can carry a client-snapshotted pre-submission total (see
     // useCheckoutSubmission.js / useFnbCheckoutSubmission.js) that doesn't reflect a just-applied

@@ -290,7 +290,10 @@ import {
   startDgfyPosSession,
   startDgfyTenantSession
 } from '../../../packages/web-core/src/services/dgfyAuthService.js';
-import { buildBusinessBackOfficeHandoffUrl } from '../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
+import {
+  buildBusinessBackOfficeHandoffUrl,
+  buildPosDgfyHandoffUrl
+} from '../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -370,7 +373,6 @@ const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
-
 export default function StorefrontApp() {
   const {
     routeSlug,
@@ -718,10 +720,6 @@ export default function StorefrontApp() {
     if (elected !== PAYMENT_ELECTION_FULL) setElected(PAYMENT_ELECTION_FULL);
   }, [selectedStore?.payment_mode, elected]);
 
-  // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
-  // store+mode alongside the cart lines (useStorefrontCartPersistence, below) -- promo code rides
-  // the same snapshot. Retail/F&B/services only; see that hook's `enabled` condition.
-
   const {
     catalog,
     setCatalog,
@@ -794,6 +792,8 @@ export default function StorefrontApp() {
     if (!requiresOnlinePaymentForCurrentOrder || fnbPaymentType !== 'cash') return;
     setFnbPaymentType(resolveDefaultDownpaymentRail());
   }, [requiresOnlinePaymentForCurrentOrder, selectedStore?.payment_capabilities, fnbPaymentType, resolveDefaultDownpaymentRail, setFnbPaymentType]);
+  // #672/#768: seeded from a shareable `?voucher=` link on first load, then persisted per
+  // store+mode alongside the cart lines.
 
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
@@ -1175,6 +1175,7 @@ export default function StorefrontApp() {
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
     buildBusinessBackOfficeHandoffUrl,
+    buildPosDgfyHandoffUrl,
     createDgfyHandoff,
     buildPosAppUrl,
     startDgfyPosSession,
@@ -1817,8 +1818,6 @@ export default function StorefrontApp() {
     isSimpleMode,
     money,
     orderMethod,
-    fnbPaymentType,
-    allowDineInPayAtStore,
     fnbScheduledFor,
     paymentElection,
     quoteError,
@@ -2383,7 +2382,36 @@ export default function StorefrontApp() {
           cache: 'no-store'
         }
       );
-      const paymentSession = data?.payment_session || null;
+      let paymentSession = data?.payment_session || null;
+      const paymentStatusFromUrl = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('payment_status')
+        : null;
+      const directPaymentFlow = ['direct_gcash', 'direct_maya', 'direct_card'].includes(
+        String(paymentSession?.payment_flow || '').trim().toLowerCase()
+      );
+      const paymentEnvironment = selectedStore?.payment_capabilities?.[
+        String(paymentSession?.payment_method || '').trim().toLowerCase()
+      ]?.environment;
+      if (
+        paymentSession?.status === 'awaiting_payment'
+        && paymentStatusFromUrl === 'return'
+        && directPaymentFlow
+        && paymentEnvironment === 'test'
+      ) {
+        const reconciliation = await requestJson(
+          `/api/v1/store/checkout/payment-sessions/${encodeURIComponent(paymentSessionId)}/reconcile-test`,
+          {
+            method: 'POST',
+            storeSlug: selectedStore.slug,
+            authToken: isDgfyCustomerSignedIn
+              ? (readDgfyAuthToken() || readStoreAuthToken())
+              : readStoreAuthToken(),
+            body: {},
+            cache: 'no-store'
+          }
+        );
+        paymentSession = reconciliation?.payment_session || paymentSession;
+      }
       setQrphPaymentSession(paymentSession);
       pollResult = {
         status: String(paymentSession?.status || '').trim().toLowerCase()

@@ -92,7 +92,7 @@ beforeAll(async () => {
 });
 
 describe('POS historical parked-sale settlement', () => {
-    const buildHistoricalRepository = ({ checkoutLine, parkedLine, item }) => {
+    const buildHistoricalRepository = ({ checkoutLine, parkedLine, item, inventoryDeductedAt = null }) => {
         let createdTransaction = null;
         const parkedSale = {
             pos_parked_sale_id: 2201,
@@ -101,6 +101,7 @@ describe('POS historical parked-sale settlement', () => {
             claimed_terminal_id: 'TERM-01',
             shift_id: 901,
             location_id: 3,
+            inventory_deducted_at: inventoryDeductedAt,
             snapshot: { lines: [parkedLine] }
         };
         return {
@@ -147,7 +148,9 @@ describe('POS historical parked-sale settlement', () => {
         const harness = buildHistoricalRepository({
             parkedLine,
             checkoutLine: {
-                line_ref: 'parked-line-1',
+                // Resume/draft hydration may rebuild the client line reference;
+                // the saved item, price, quantity, and configuration still match.
+                line_ref: 'rebuilt-line-ref-1',
                 item_id: 71,
                 quantity: 1,
                 sale_price: 100,
@@ -269,7 +272,7 @@ describe('POS historical parked-sale settlement', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.details.reason_code).toBe('PARKED_SALE_SNAPSHOT_LINE_MISMATCH');
-        expect(harness.repository.findSellableItemsByIds).not.toHaveBeenCalled();
+        expect(harness.repository.findSellableItemsByIds).toHaveBeenCalledWith([72], expect.any(Object));
     });
 
     it('settles from the parked snapshot when the catalog row is physically missing', async () => {
@@ -324,6 +327,363 @@ describe('POS historical parked-sale settlement', () => {
             stock_effect_type: 'stock_exempt',
             stock_exempt_reason: 'historical_parked_sale'
         }));
+    });
+
+    it('rejects an added line when the original parked item is physically missing', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-missing-addition',
+            item_id: 731,
+            item_name: 'Discontinued Combo',
+            quantity: 1,
+            base_sale_price: 125,
+            sale_price: 125,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            checkoutLine: {
+                line_ref: 'parked-line-missing-addition',
+                item_id: 731,
+                quantity: 1,
+                sale_price: 125,
+                parked_snapshot_line: true
+            },
+            item: null
+        });
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService: { createStockMovement: jest.fn() },
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-missing-added-line',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [
+                    harness.checkoutLine,
+                    {
+                        line_ref: 'new-missing-item-line',
+                        item_id: 731,
+                        quantity: 1,
+                        sale_price: 125
+                    }
+                ]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'PARKED_SALE_ADDED_LINE_UNAVAILABLE'
+        }));
+    });
+
+    it('issues only the added quantity when an unchanged-price parked line increases quantity', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-added-quantity',
+            item_id: 74,
+            item_name: 'Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'parked-line-added-quantity',
+                item_id: 74,
+                quantity: 2,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: {
+                item_id: 74,
+                name: 'Coffee',
+                category: 'product',
+                status: 'active',
+                pos_visible: true,
+                pos_location_available: true,
+                current_stock: 1,
+                default_sale_price: 100,
+                fifo_enabled: false,
+                vat_type: 'vatable'
+            }
+        });
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 991 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn().mockResolvedValue({ status: 'completed' })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-added-quantity-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(harness.createdTransaction().lines[0]).toEqual(expect.objectContaining({
+            quantity: 2,
+            sale_price: 100,
+            inventory_preissued: true
+        }));
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 74,
+            quantity: 1,
+            movement_type: 'goods_issue',
+            location_id: 3
+        }), 12, expect.any(Object));
+    });
+
+    it('allows checkout after a reasoned parked-line deletion and reconciles reserved stock', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-deleted',
+            item_id: 75,
+            item_name: 'Old Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const replacementItem = {
+            item_id: 76,
+            name: 'New Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 5,
+            default_sale_price: 150,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'new-line-76',
+                item_id: 76,
+                quantity: 1,
+                sale_price: 150
+            },
+            item: replacementItem
+        });
+        harness.repository.findSellableItemsByIds.mockResolvedValue([replacementItem]);
+        const inventoryCommandService = {
+            reverseParkedSaleGoodsIssue: jest.fn().mockResolvedValue([{ item_id: 75 }]),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 992 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn().mockResolvedValue({ status: 'completed' })
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'parked-deletion-checkout-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-deleted',
+                    item_id: 75,
+                    reason: 'Customer removed item'
+                }],
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
+            parked_sale_id: 2201,
+            reason: 'Parked-sale line deletion reconciliation for parked sale 2201'
+        }, 12, expect.any(Object));
+        expect(inventoryCommandService.issueStockForPosSale).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 76,
+            quantity: 1,
+            movement_type: 'goods_issue'
+        }), 12, expect.any(Object));
+    });
+
+    it('does not reverse parked inventory twice during a re-park reconciliation', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-repark-deleted',
+            item_id: 79,
+            item_name: 'Deleted Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const replacementItem = {
+            item_id: 80,
+            name: 'Replacement Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 5,
+            default_sale_price: 150,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'replacement-line-80',
+                item_id: 80,
+                quantity: 1,
+                sale_price: 150
+            },
+            item: replacementItem
+        });
+        harness.repository.findSellableItemsByIds.mockResolvedValue([replacementItem]);
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            reverseParkedSaleGoodsIssue: jest.fn().mockResolvedValue([{ item_id: 79 }]),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 993 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            inventoryEffectsOnly: true,
+            validateInventoryAvailability: true,
+            payload: {
+                idempotency_key: 'parked-repark-reconcile-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                parked_sale_inventory_reconciled: true,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                removed_line_reasons: [{
+                    line_ref: 'parked-line-repark-deleted',
+                    item_id: 79,
+                    reason: 'Customer removed item'
+                }],
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(inventoryCommandService.reverseParkedSaleGoodsIssue).not.toHaveBeenCalled();
+        expect(result.data.inventory_effects).toEqual([
+            expect.objectContaining({ item_id: 80, quantity: 1, location_id: 3 })
+        ]);
+    });
+
+    it('re-issues a retained available original line after the old revision is reversed', async () => {
+        const parkedLine = {
+            line_key: 'parked-line-repark-retained',
+            item_id: 81,
+            item_name: 'Retained Coffee',
+            quantity: 1,
+            base_sale_price: 100,
+            sale_price: 100,
+            vat_type: 'vatable',
+            line_modifiers: []
+        };
+        const currentItem = {
+            item_id: 81,
+            name: 'Retained Coffee',
+            category: 'product',
+            status: 'active',
+            pos_visible: true,
+            pos_location_available: true,
+            current_stock: 10,
+            default_sale_price: 100,
+            fifo_enabled: false,
+            vat_type: 'vatable'
+        };
+        const harness = buildHistoricalRepository({
+            parkedLine,
+            inventoryDeductedAt: new Date(),
+            checkoutLine: {
+                line_ref: 'parked-line-repark-retained',
+                item_id: 81,
+                quantity: 1,
+                sale_price: 100,
+                parked_snapshot_line: true
+            },
+            item: currentItem
+        });
+        const inventoryCommandService = {
+            validateStockIssueAvailability: jest.fn(),
+            issueStockForPosSale: jest.fn().mockResolvedValue({ movement_id: 994 })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository: harness.repository,
+            inventoryCommandService,
+            completeClaimedPosParkedSaleUseCase: jest.fn()
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            inventoryEffectsOnly: true,
+            validateInventoryAvailability: true,
+            payload: {
+                idempotency_key: 'parked-repark-retained-1',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                shift_id: 901,
+                parked_sale_id: 2201,
+                parked_sale_inventory_reconciled: true,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [harness.checkoutLine]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.inventory_effects).toEqual([
+            expect.objectContaining({ item_id: 81, quantity: 1, location_id: 3 })
+        ]);
     });
 });
 

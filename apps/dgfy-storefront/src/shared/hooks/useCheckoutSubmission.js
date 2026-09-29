@@ -407,6 +407,9 @@ export function useCheckoutSubmission({
           requestJson,
           storeSlug: selectedStore.slug
         });
+        // The server has captured the guest proof in this payment session. Consume the
+        // browser-side proof now so a later order cannot reuse the first order's OTP state.
+        resetGuestCheckoutOtp?.();
         if (isStorefrontDirectPaymentSession(paymentSession)) {
           if (isStorefrontDirectCardPaymentSession(paymentSession)) {
             setQrphPaymentSession(paymentSession);

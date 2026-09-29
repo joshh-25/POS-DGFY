@@ -1,10 +1,12 @@
 import { CalendarDays, Zap } from 'lucide-react';
+import { useState } from 'react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { SimpleOrderMethodSelector } from './SimpleOrderMethodSelector.jsx';
 import { buildCheckoutSectionNumbers, resolveFulfillmentSelectorPresentation } from '../../../../shared/model/storefrontFulfillmentPresentation.js';
 import { FulfillmentMethodNotice } from '../../../../shared/components/checkout/FulfillmentMethodNotice.jsx';
+import { StorefrontScheduledDateTimePicker } from '../../../../shared/components/checkout/StorefrontScheduledDateTimePicker.jsx';
 import { buildLeadTimeExpectationMessage, resolveOrderTimingPolicy } from '../../../../shared/model/storefrontOrderTimingPolicy.js';
-import { CHECKOUT_CONTROL_MIN_HEIGHT, CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
+import { CHECKOUT_FONT_FAMILY, getCheckoutStepTypography } from '../../../../shared/components/checkout/checkoutUiTokens.js';
 
 const SIMPLE_BRAND = '#176B3A';
 const SIMPLE_BRAND_SHADOW_STRONG = 'rgba(23,107,58,0.16)';
@@ -24,12 +26,16 @@ export function SimpleCheckoutFulfillmentChoices({
   onScheduledForChange,
   orderMethod,
   simpleOrderMethodOptions = [],
+  storefrontHours,
   orderTimingPolicy = resolveOrderTimingPolicy()
 }) {
+  const [dateTimePickerOpen, setDateTimePickerOpen] = useState(false);
   // #1217: a single available method is a statement, not a question.
   const { showSelector: showOrderMethodSelector, notice: orderMethodNotice, soleOption: soleOrderMethod } =
     resolveFulfillmentSelectorPresentation(simpleOrderMethodOptions);
   const { showSchedule, showImmediate, showTimingChooser, showTimingStep } = orderTimingPolicy;
+  const showScheduledDateTimePicker = (showSchedule && !showImmediate)
+    || (showTimingChooser && fnbScheduleMode === 'schedule');
   const showTimingSection = showTimingStep && (showTimingChooser || showSchedule);
   const sectionNumbers = buildCheckoutSectionNumbers({ showOrderMethodSelector, showTimingStep: showTimingSection });
   const typography = getCheckoutStepTypography();
@@ -59,7 +65,10 @@ export function SimpleCheckoutFulfillmentChoices({
         <div style={{ ...typography.sectionTitle, color: '#1e293b' }}>{sectionNumbers.timing}. When would you like your order?</div>
         {showTimingChooser ? <div data-testid="order-timing-choice-grid" style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
           <SelectableOptionCard
-            onClick={() => onScheduleModeChange('asap')}
+            onClick={() => {
+              setDateTimePickerOpen(false);
+              onScheduleModeChange('asap');
+            }}
             label="NOW"
             icon={({ size }) => <Zap size={size} />}
             active={fnbScheduleMode === 'asap'}
@@ -105,38 +114,21 @@ export function SimpleCheckoutFulfillmentChoices({
         </div> : null}
         {showSchedule && !showImmediate ? <>
           <FulfillmentMethodNotice accentColor={SIMPLE_BRAND} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" />
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-              Scheduled date and time
-              <input type="datetime-local" value={fnbScheduledFor} onChange={(event) => onScheduledForChange(event.target.value)} style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px', background: '#f8fafc', color: '#1e293b', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }} />
-          </label>
         </> : null}
-        {showTimingChooser && fnbScheduleMode === 'schedule' ? (
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-            Scheduled date and time
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <style>{`.simple-modern-datetime-input::-webkit-calendar-picker-indicator { display: none !important; -webkit-appearance: none !important; }`}</style>
-              <div style={{ position: 'absolute', left: 14, color: SIMPLE_BRAND, pointerEvents: 'none' }}><CalendarDays size={18} /></div>
-              <input
-                type="datetime-local"
-                className="simple-modern-datetime-input"
-                value={fnbScheduledFor}
-                onChange={(event) => onScheduledForChange(event.target.value)}
-                onClick={(event) => {
-                  try {
-                    event.target.showPicker();
-                  } catch (error) {
-                    // The native picker is optional and not supported by every browser.
-                  }
-                }}
-                style={{ width: '100%', ...typography.control, minHeight: CHECKOUT_CONTROL_MIN_HEIGHT, border: '1px solid #cbd5e1', borderRadius: 12, padding: '0 14px 0 42px', background: '#f8fafc', color: '#1e293b', outline: 'none', boxShadow: 'inset 0 2px 4px rgba(15,23,42,0.02)', transition: 'all 200ms ease', cursor: 'pointer', boxSizing: 'border-box', fontFamily: CHECKOUT_FONT_FAMILY }}
-                onMouseEnter={(event) => { event.target.style.borderColor = SIMPLE_BRAND; event.target.style.background = '#ffffff'; }}
-                onMouseLeave={(event) => { if (document.activeElement !== event.target) { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; } }}
-                onFocus={(event) => { event.target.style.borderColor = SIMPLE_BRAND; event.target.style.background = '#ffffff'; event.target.style.boxShadow = `0 0 0 3px ${SIMPLE_BRAND_SHADOW_STRONG}, inset 0 2px 4px rgba(15,23,42,0.02)`; }}
-                onBlur={(event) => { event.target.style.borderColor = '#cbd5e1'; event.target.style.background = '#f8fafc'; event.target.style.boxShadow = 'inset 0 2px 4px rgba(15,23,42,0.02)'; }}
-              />
-            </div>
-          </label>
-        ) : null}</> : <FulfillmentMethodNotice accentColor={SIMPLE_BRAND} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
+       {showScheduledDateTimePicker ? (
+          <StorefrontScheduledDateTimePicker
+            brandColor={SIMPLE_BRAND}
+            brandShadow={SIMPLE_BRAND_SHADOW_STRONG}
+            isResponsive={isMobileViewport}
+            onApply={onScheduledForChange}
+            onOpenChange={setDateTimePickerOpen}
+            open={dateTimePickerOpen}
+            storefrontHours={storefrontHours}
+            leadTimeMinDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMinDays : null}
+            leadTimeMaxDays={orderTimingPolicy.hasLeadTime ? orderTimingPolicy.leadTimeMaxDays : null}
+            value={fnbScheduledFor}
+          />
+       ) : null}</> : <FulfillmentMethodNotice accentColor={SIMPLE_BRAND} message={buildLeadTimeExpectationMessage({ policy: orderTimingPolicy, isDeliveryOrder })} variant="info" data-testid="order-timing-expectation" />}
       </div>
     </div>
   );

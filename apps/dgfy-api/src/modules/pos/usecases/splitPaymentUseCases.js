@@ -630,7 +630,7 @@ export const buildAddPosPaymentAllocationUseCase = ({ posRepository, quotePosChe
         assertEmployeeCreditInternalFields({ payload, isEmployeeCredit });
         const paymentHandoffMode = String(payload.payment_handoff_mode || (paymentMethod === 'cash' || isEmployeeCredit ? 'internal' : 'external')).trim().toLowerCase();
         if (!['external', 'internal'].includes(paymentHandoffMode)) throw paymentError(DomainErrorCode.VALIDATION_FAILED, 'Unsupported payment handoff mode.', 422);
-        const manualPaymentReceived = isEmployeeCredit || (paymentMethod !== 'cash' && payload.manual_payment_received === true);
+        const manualPaymentReceived = !isEmployeeCredit && paymentMethod !== 'cash' && payload.manual_payment_received === true;
         const paymentProvider = manualPaymentReceived
             ? 'merchant_owned'
             : String(payload.payment_provider || '').trim().toLowerCase();

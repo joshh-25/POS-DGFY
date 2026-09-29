@@ -17,6 +17,7 @@ import {
   formatDeliveryCoordinates,
   parseDeliveryCoords
 } from '../utils/incomingQueueOrderFormatting.js';
+import { isDineInOrder } from '../utils/dineInSchedule.js';
 
 const WORKSPACE_VIEW_CONFIG = {
   incoming_queue: {
@@ -117,6 +118,7 @@ export default function TerminalSidebarPanel({
   const workspaceConfig = WORKSPACE_VIEW_CONFIG[workspaceView] || null;
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const activeIncomingOrders = incomingOrders.filter((order) => !isDineInOrder(order));
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
   const hiddenSectionsInMsme = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
@@ -574,16 +576,16 @@ export default function TerminalSidebarPanel({
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
               {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
             </p>
-          ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
+          ) : incomingOrdersState?.loading && activeIncomingOrders.length === 0 ? (
             <p className="text-xs text-slate-500">Loading incoming orders...</p>
-          ) : incomingOrders.length === 0 ? (
+          ) : activeIncomingOrders.length === 0 ? (
             <p className="text-xs text-slate-500">No online orders in active queue.</p>
           ) : (
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
               <p className="text-[11px] text-slate-500">
                 Completed or cancelled online orders move to History/Receipt Preview.
               </p>
-              {incomingOrders.map((order) => {
+              {activeIncomingOrders.map((order) => {
                 const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
                 const nextActions = getNextStatusActions(order);
                 const utilityActions = getIncomingOrderUtilityActions(order);

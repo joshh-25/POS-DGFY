@@ -386,6 +386,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             adminEmail: tenant.admin_email,
             adminPasswordHash: tenant.admin_password_hash
         }));
+        expect(response.body.data.provisioning_status).toBe('in_progress');
         expect(response.body.data).not.toHaveProperty('email_sent');
     });
 

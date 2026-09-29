@@ -49,8 +49,8 @@ export const buildBusinessAdminSettingsEditorUser = ({
         if (enabled && permission) permissions.push(permission);
     };
 
-    if (capability?.view) addPermission('settings:view', ['profile', 'pos', 'storefront', 'delivery', 'branches', 'attendance', 'registers'].includes(definition?.key));
-    if (capability?.edit) addPermission('settings:edit', ['profile', 'pos', 'storefront', 'delivery', 'branches', 'attendance', 'registers'].includes(definition?.key));
+    if (capability?.view) addPermission('settings:view', ['profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'attendance', 'registers'].includes(definition?.key));
+    if (capability?.edit) addPermission('settings:edit', ['profile', 'pos', 'taxes', 'discounts', 'storefront', 'delivery', 'branches', 'attendance', 'registers'].includes(definition?.key));
     if (definition?.key === 'storefront') {
         addPermission('settings:storefront_branding_edit', capability?.branding === true);
     }

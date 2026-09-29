@@ -294,6 +294,41 @@ describe('MapPinPicker MapLibre behavior', () => {
     expect(maplibreMocks.Marker).not.toHaveBeenCalled();
   });
 
+  it('Phase 329: renders the requested radius as a straight-line coverage preview', async () => {
+    const center = [122.5621, 10.7202];
+    render(<MapPinPicker latitude={center[1]} longitude={center[0]} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => {
+      const source = maplibreMocks.maps[0]?.getSource('delivery-radius');
+      expect(source?.data?.features).toHaveLength(1);
+    });
+
+    const coordinates = maplibreMocks.maps[0].getSource('delivery-radius').data.features[0].geometry.coordinates[0];
+    const distances = coordinates
+      .slice(0, -1)
+      .map((coordinate) => haversineMeters(center, coordinate));
+
+    expect(coordinates[0]).toEqual(coordinates[coordinates.length - 1]);
+    expect(Math.min(...distances)).toBeGreaterThan(4990);
+    expect(Math.max(...distances)).toBeLessThan(5010);
+    expect(screen.getByText(/Delivery coverage preview: 5\.00 km radius/i)).toBeTruthy();
+  });
+
+  it('Phase 329: a zero-kilometer radius keeps the overlay empty and hidden', async () => {
+    const { rerender } = render(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
+
+    await waitFor(() => expect(maplibreMocks.maps[0]?.getSource('delivery-radius')).toBeTruthy());
+    expect(maplibreMocks.maps[0].getSource('delivery-radius').data.features).toHaveLength(1);
+
+    rerender(<MapPinPicker latitude={10.7202} longitude={122.5621} deliveryRadiusKm={0} onChange={vi.fn()} />);
+
+    expect(maplibreMocks.maps[0].getSource('delivery-radius').data).toEqual({
+      type: 'FeatureCollection',
+      features: []
+    });
+    expect(screen.queryByText(/Delivery coverage preview/i)).toBeNull();
+  });
+
   it('renders a read-only map preview with the selected pin and no picker controls', async () => {
     render(<MapPinPicker readOnly latitude={10.7202} longitude={122.5621} deliveryRadiusKm={5} onChange={vi.fn()} />);
 

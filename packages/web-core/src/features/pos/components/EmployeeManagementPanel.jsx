@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Power, RefreshCw, Search, UserRoundCheck } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Power, RefreshCw, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import { createEmployee, fetchEmployees, updateEmployee } from '../services/employeeService.js';
-import PosSettingsPagination from '../settings/PosSettingsPagination.jsx';
+import PosTableSurface, { POS_TABLE_HEADER_CLASS, POS_TABLE_HEADER_CELL_CLASS, POS_TABLE_ROW_CLASS } from './PosTableSurface.jsx';
+import PosTableActionButton from './PosTableActionButton.jsx';
 import { PosResponsiveFormDrawer, usePosFormFocusScroll, usePosVisualViewportMetrics, usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
+import PosSearchField from './PosSearchField.jsx';
+import { POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
 
 const emptyForm = {
   employeeCode: '',
@@ -155,6 +159,7 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const filterContainerRef = useRef(null);
+  const filterButtonRef = useRef(null);
   const formBaselineRef = useRef(cloneEmployeeForm());
 
   const load = async () => {
@@ -234,6 +239,7 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
   const applyStatusFilter = () => {
     setStatusFilter(pendingStatusFilter);
     setFiltersOpen(false);
+    filterButtonRef.current?.focus();
   };
 
   const startEdit = (employee) => {
@@ -326,7 +332,11 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
       if (!filterContainerRef.current?.contains(event.target)) setFiltersOpen(false);
     };
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setFiltersOpen(false);
+      if (event.key === 'Escape') {
+        const focusWasInFilter = filterContainerRef.current?.contains(document.activeElement);
+        setFiltersOpen(false);
+        if (focusWasInFilter) filterButtonRef.current?.focus();
+      }
     };
 
     document.addEventListener('pointerdown', closeOnOutsidePointer);
@@ -426,18 +436,22 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
                 <p className="text-[12px] font-medium leading-5 text-slate-500">Add workmates without creating POS usernames, passwords, or roles.</p>
               </div>
             </div>
-            <Button type="button" variant="outline" size="sm" onClick={() => refreshActionRef?.current?.()} disabled={disabled || loading} className="h-9 w-9 shrink-0 p-0 sm:h-10 sm:w-auto sm:px-3">
+            <Button type="button" variant="outline" size="sm" onClick={() => refreshActionRef?.current?.()} disabled={disabled || loading} className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-3`}>
               <RefreshCw className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Refresh</span>
             </Button>
           </div>
 
           <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 min-[1200px]:flex min-[1200px]:items-center">
-            <div className="relative min-w-0 min-[1200px]:flex-1">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input type="search" aria-label="Search employees" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search employees by name, code, or email..." className="h-10 pl-9" />
-            </div>
+            <PosSearchField
+              inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
+              ariaLabel="Search employees"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search employees by name, code, or email..."
+              className="min-[1200px]:flex-1"
+            />
             <div ref={filterContainerRef} className="relative min-w-0">
-              <Button type="button" variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-haspopup="true" aria-controls="employee-filter-popover" title="Filters" className="h-10 w-10 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto">
+              <Button type="button" ref={filterButtonRef} variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersOpen ? 'employee-filter-popover' : undefined} title="Filters" className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto`}>
                 <Filter aria-hidden="true" className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Filters</span>
               </Button>
               {filterPopover}
@@ -447,26 +461,26 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
             </Button>
           </div>
 
-          <div className="mt-4 hidden overflow-hidden rounded-xl border border-slate-200 min-[1200px]:block">
+          <PosTableSurface className="mt-4 hidden min-[768px]:block">
             <div className="overflow-x-auto">
               <table className="w-full table-fixed text-left text-[13px] sm:text-[14px]">
                 <caption className="sr-only">Employee directory</caption>
-                <thead className="bg-slate-50 text-[11px] font-extrabold uppercase tracking-wide text-slate-500">
+                <thead className={POS_TABLE_HEADER_CLASS}>
                   <tr>
-                    <th scope="col" className="w-[42%] px-2 py-3 sm:px-2.5 sm:w-[24%]">Employee</th>
-                    <th scope="col" className="hidden w-[10%] px-2 py-3 sm:px-2.5 sm:table-cell">Code</th>
-                    <th scope="col" className="hidden w-[14%] px-2 py-3 sm:px-2.5 lg:table-cell">Contact</th>
-                    <th scope="col" className="hidden w-[14%] px-2 py-3 sm:px-2.5 md:table-cell">Location</th>
-                    <th scope="col" className="w-[18%] px-2 py-3 sm:px-2.5 sm:w-[10%]">Status</th>
-                    <th scope="col" className="hidden w-[13%] whitespace-nowrap px-2 py-3 sm:px-2.5 lg:table-cell">Date added</th>
-                    <th scope="col" className="w-[40%] px-2 py-3 text-right sm:px-2.5 sm:w-[15%]">Actions</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[42%] sm:w-[24%]`}>Employee</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[10%] sm:table-cell`}>Code</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[14%] lg:table-cell`}>Contact</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[14%] md:table-cell`}>Location</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[18%] sm:w-[10%]`}>Status</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} hidden w-[13%] whitespace-nowrap lg:table-cell`}>Date added</th>
+                    <th scope="col" className={`${POS_TABLE_HEADER_CELL_CLASS} w-[40%] text-right sm:w-[15%]`}>Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {pageEmployees.map((employee) => {
                     const locationName = employee.location?.location_name || 'All locations';
                     return (
-                      <tr key={employee.employee_id} className={employee.is_active ? 'bg-white' : 'bg-slate-50/80'}>
+                      <tr key={employee.employee_id} className={`${POS_TABLE_ROW_CLASS} ${employee.is_active ? 'bg-white' : 'bg-slate-50/80'}`}>
                         <td className="max-w-0 px-2 py-2.5 sm:px-2.5">
                           <div className="min-w-0">
                             <p className="truncate font-bold text-slate-950">{employee.full_name}</p>
@@ -482,8 +496,8 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
                         <td className="hidden whitespace-nowrap px-2 py-2.5 text-slate-600 sm:px-2.5 lg:table-cell">{formatDateAdded(employee.created_at)}</td>
                         <td className="px-2 py-2.5 sm:px-2.5">
                           <div className="flex flex-wrap justify-end gap-1">
-                            <Button type="button" variant="outline" size="sm" onClick={() => startEdit(employee)} disabled={disabled} aria-label={`Edit ${employee.full_name}`} title={`Edit ${employee.full_name}`} className="h-8 w-8 p-0 text-[#1A4E8D] hover:bg-blue-50 hover:text-[#123B6D]"><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></Button>
-                            <Button type="button" variant="outline" size="sm" onClick={() => setActive(employee, !employee.is_active)} disabled={disabled} aria-label={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} title={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} className={`h-8 w-8 p-0 ${employee.is_active ? 'border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700' : 'border-[#BFD4EC] text-[#1A4E8D] hover:bg-blue-50 hover:text-[#123B6D]'}`}><Power aria-hidden="true" className="h-3.5 w-3.5" /></Button>
+                            <PosTableActionButton icon={Pencil} onClick={() => startEdit(employee)} disabled={disabled} aria-label={`Edit ${employee.full_name}`} title={`Edit ${employee.full_name}`} />
+                            <PosTableActionButton icon={Power} tone={employee.is_active ? 'danger' : 'primary'} onClick={() => setActive(employee, !employee.is_active)} disabled={disabled} aria-label={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} title={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} />
                           </div>
                         </td>
                       </tr>
@@ -499,8 +513,8 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
                 </tbody>
               </table>
             </div>
-          </div>
-          <div className="mt-4 grid gap-2 min-[1200px]:hidden">
+          </PosTableSurface>
+          <div className="mt-4 grid gap-2 min-[768px]:hidden">
             {pageEmployees.map((employee) => {
               const locationName = employee.location?.location_name || 'All locations';
               return (
@@ -518,8 +532,8 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
                       <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">{employee.email || employee.phone || 'No contact details'}</p>
                     </div>
                     <div className="flex shrink-0 flex-col gap-1">
-                      <Button type="button" variant="outline" size="sm" onClick={() => startEdit(employee)} disabled={disabled} aria-label={`Edit ${employee.full_name}`} title={`Edit ${employee.full_name}`} className="h-9 w-9 p-0 text-[#1A4E8D] hover:bg-blue-50 hover:text-[#123B6D]"><Pencil aria-hidden="true" className="h-3.5 w-3.5" /></Button>
-                      <Button type="button" variant="outline" size="sm" onClick={() => setActive(employee, !employee.is_active)} disabled={disabled} aria-label={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} title={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} className={`h-9 w-9 p-0 ${employee.is_active ? 'border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700' : 'border-[#BFD4EC] text-[#1A4E8D] hover:bg-blue-50 hover:text-[#123B6D]'}`}><Power aria-hidden="true" className="h-3.5 w-3.5" /></Button>
+                      <PosTableActionButton icon={Pencil} onClick={() => startEdit(employee)} disabled={disabled} aria-label={`Edit ${employee.full_name}`} title={`Edit ${employee.full_name}`} />
+                      <PosTableActionButton icon={Power} tone={employee.is_active ? 'danger' : 'primary'} onClick={() => setActive(employee, !employee.is_active)} disabled={disabled} aria-label={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} title={`${employee.is_active ? 'Disable' : 'Enable'} ${employee.full_name}`} />
                     </div>
                   </div>
                 </article>
@@ -532,18 +546,21 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
             ) : null}
           </div>
           <div className="mt-3">
-            <PosSettingsPagination
-              page={page}
+            <GlobalPagination
+              currentPage={page}
               totalPages={totalPages}
               pageSize={pageSize}
-              total={filteredEmployees.length}
+              totalItems={filteredEmployees.length}
               itemLabel="employees"
               pageSizeLabel="Employees per page"
+              pageInputLabel="Go to employee page"
               previousLabel="Previous employee page"
               nextLabel="Next employee page"
               onPageChange={setPage}
               onPageSizeChange={setPageSize}
               disabled={loading}
+              ariaLabel="Employee pagination"
+              className={POS_PAGINATION_FOOTER_CLASS}
             />
           </div>
         </div>

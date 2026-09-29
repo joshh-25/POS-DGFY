@@ -23,6 +23,16 @@ export const BUSINESS_ADMIN_SETTINGS_SECTIONS = Object.freeze({
         viewPermission: PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
         editPermission: PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
     }),
+    taxes: Object.freeze({
+        scope: 'tenant',
+        viewPermission: PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
+        editPermission: PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
+    }),
+    discounts: Object.freeze({
+        scope: 'tenant',
+        viewPermission: PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,
+        editPermission: PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS
+    }),
     storefront: Object.freeze({
         scope: 'tenant',
         viewPermission: PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS,

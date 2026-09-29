@@ -219,8 +219,7 @@ export default function ItemFormModal({
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
-  onGenerateStorefrontImage,
-  onOpenBulkPosSetup
+  onGenerateStorefrontImage
 }) {
   const [generatingImage, setGeneratingImage] = useState(false);
   const [formData, setFormData] = useState({

@@ -379,7 +379,7 @@ export default function DownpaymentSettingsPanel({
                             disabled={locked || !canManage || dineInPolicySaving || !dineInPolicyDirty || !selectedLocation}
                             onClick={() => void handleSaveDineInPaymentPolicy()}
                         >
-                            <Save className="mr-2 h-4 w-4" /> {dineInPolicySaving ? 'Updating…' : 'Update Dine-in Policy'}
+                            <Save className="mr-2 h-4 w-4" /> {dineInPolicySaving ? 'Saving…' : 'Save Dine-in Policy'}
                         </Button>
                     </div>
                 </div>

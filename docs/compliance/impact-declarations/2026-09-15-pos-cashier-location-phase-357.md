@@ -12,8 +12,8 @@ verification_evidence: disposable migrated MySQL acceptance matrix; read-only te
 rollback_note: Remove only the Phase 357 acceptance harness, audit command, documentation and compliance declaration together after review. No production rows, grants, schema, financial policy or authority behavior are changed by this phase.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-15T00:00:00.000Z
-preflight_request_ref: NOT-EXECUTED-PHASE-357-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.556Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-15-POS-CASHIER-LOCATION-PHASE-357
 ---
 
 # Phase 357 cashier location hardening

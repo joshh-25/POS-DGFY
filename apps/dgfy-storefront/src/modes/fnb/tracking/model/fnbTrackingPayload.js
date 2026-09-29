@@ -82,9 +82,11 @@ export function toFnbTrackingViewState(trackingPayload) {
       || root?.discount_label
       || raw?.discount_label
       || order?.discount_label
-      || 'Promo / Discount'
+      || 'Discount'
     ).trim(),
     serviceFeeAmount: numberOrNull(source.serviceFeeAmount ?? root?.service_fee_amount ?? root?.service_fee ?? raw?.service_fee_amount ?? raw?.service_fee ?? order?.service_fee_amount ?? order?.service_fee),
+    serviceFeeLabel: String(source.serviceFeeLabel || order?.service_fee_label_snapshot || root?.service_fee_label_snapshot || raw?.service_fee_label_snapshot || '').trim(),
+    vatAmount: numberOrNull(source.vatAmount ?? order?.vat_amount ?? root?.vat_amount ?? raw?.vat_amount),
     // RF-4 (PR #753 review): order.total_amount (server-persisted) now outranks root/raw's --
     // see retailTrackingPayload.js's own copy of this note for the full reasoning.
     totalAmount: numberOrNull(source.totalAmount ?? order?.total_amount ?? root?.total_amount ?? raw?.total_amount ?? raw?.order_total),

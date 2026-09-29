@@ -21,12 +21,35 @@ const findVisibleItemById = async (Item, itemId, options = {}) => {
   });
 };
 
+const findHistoricalItemById = async (Item, itemId, options = {}) => {
+  return Item.findOne({
+    ...options,
+    where: buildVisibleWhere(
+      { item_id: itemId },
+      { statusField: 'status', excludeInactiveStatus: false, includeDeleted: true }
+    )
+  });
+};
+
 const findArchivedItemById = async (Item, itemId, options = {}) => {
   return Item.findOne({
     ...options,
     where: { item_id: itemId }
   });
 };
+
+const isHistoricalOnlineGoodsIssue = (movementData = {}, { allowInactiveHistoricalItem = false } = {}) => (
+  allowInactiveHistoricalItem === true
+  && movementData.movement_type === 'goods_issue'
+  && movementData.reference_type === 'POS'
+  && /^ONLINE:\d+:/.test(String(movementData.reference_id || ''))
+);
+
+const findItemForMovement = async (Item, movementData, options = {}, policy = {}) => (
+  isHistoricalOnlineGoodsIssue(movementData, policy)
+    ? findHistoricalItemById(Item, movementData.item_id, options)
+    : findVisibleItemById(Item, movementData.item_id, options)
+);
 
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
@@ -233,11 +256,16 @@ const executeWithRetry = async (operation, maxRetries = 3) => {
   throw lastError;
 };
 
-export const createStockMovement = async (movementData, userId, transaction = null) => {
+export const createStockMovement = async (
+  movementData,
+  userId,
+  transaction = null,
+  policy = {}
+) => {
   // If an external transaction is provided, we CANNOT retry because we don't control the transaction scope.
   // The caller must handle retries in that case.
   if (transaction) {
-    return createStockMovementInternal(movementData, userId, transaction);
+    return createStockMovementInternal(movementData, userId, transaction, policy);
   }
 
   // If no external transaction, we manage the transaction and can retry on deadlock
@@ -245,7 +273,7 @@ export const createStockMovement = async (movementData, userId, transaction = nu
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
     const t = await sequelize.transaction();
     try {
-      const result = await createStockMovementInternal(movementData, userId, t);
+      const result = await createStockMovementInternal(movementData, userId, t, policy);
       await t.commit();
       return result;
     } catch (err) {
@@ -479,7 +507,12 @@ export const validateStockIssueAvailability = async (movementData = {}, userId, 
  * Internal implementation detailing the lock and movement logic
  * (Moved from original createStockMovement)
  */
-const createStockMovementInternal = async (movementData, userId, transaction) => {
+const createStockMovementInternal = async (
+  movementData,
+  userId,
+  transaction,
+  { allowInactiveHistoricalItem = false } = {}
+) => {
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
   const StockMovement = dbStore.get('StockMovement');
@@ -488,7 +521,6 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const {
-    item_id,
     quantity,
     movement_type,
     batch_id,
@@ -506,9 +538,7 @@ const createStockMovementInternal = async (movementData, userId, transaction) =>
     lock: transaction.LOCK.UPDATE
   };
 
-  const item = movementData.allow_archived_item === true
-    ? await findArchivedItemById(Item, item_id, options)
-    : await findVisibleItemById(Item, item_id, options);
+  const item = await findItemForMovement(Item, movementData, options, { allowInactiveHistoricalItem });
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -1044,7 +1074,7 @@ export const voidMovement = async (
   userId,
   reason,
   transaction = null,
-  { allowArchivedItem = false, allowMissingItem = false } = {}
+  { allowInactiveHistoricalItem = false } = {}
 ) => {
   const StockMovement = dbStore.get('StockMovement');
   const Item = dbStore.get('Item');
@@ -1115,11 +1145,17 @@ export const voidMovement = async (
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Update item stock / location stock
-    const item = allowArchivedItem
-      ? await findArchivedItemById(Item, item_id, { transaction, lock: transaction.LOCK.UPDATE })
-      : await findVisibleItemById(Item, item_id, { transaction });
-    if (!item && !allowMissingItem) {
+    // Update item stock / location stock. Online fulfillment reversals are allowed to use the
+    // immutable historical item row when the catalog row was soft-deleted after checkout. All
+    // other void operations retain the active-item guard.
+    const itemLookup = {
+      item_id,
+      movement_type,
+      reference_type: originalMovement.reference_type,
+      reference_id: originalMovement.reference_id
+    };
+    const item = await findItemForMovement(Item, itemLookup, { transaction }, { allowInactiveHistoricalItem });
+    if (!item) {
       const error = new Error('Item not found');
       error.statusCode = 404;
       throw error;
@@ -1359,7 +1395,13 @@ export const voidOnlineOrderGoodsIssue = async ({ orderId, userId, reason, trans
   const reversed = [];
   for (const movement of movements) {
     if (movement.reference_type === 'VOID' || String(movement.notes || '').includes('Voided by')) continue;
-    reversed.push(await voidMovement(movement.movement_id, userId, reason, transaction));
+    reversed.push(await voidMovement(
+      movement.movement_id,
+      userId,
+      reason,
+      transaction,
+      { allowInactiveHistoricalItem: true }
+    ));
   }
   return reversed;
 };

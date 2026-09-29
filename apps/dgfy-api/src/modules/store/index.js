@@ -42,6 +42,7 @@ import {
     buildVerifyStoreGuestCheckoutOtpUseCase,
     buildStoreCheckoutPaymentSessionUseCase,
     buildGetStoreCheckoutPaymentSessionUseCase,
+    buildReconcileStoreCheckoutPaymentSessionUseCase,
     buildConfirmStoreCheckoutSandboxPaymentUseCase,
     buildStoreCheckoutUseCase,
     buildTrackStoreOrderUseCase,
@@ -106,6 +107,17 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
 });
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository
+});
+// Keep the commerce-payment dependency lazy: finalization resolves Storefront checkout and the
+// two modules already have a deliberate cycle. This mirrors the existing order-lifecycle seam.
+const reconcileCommercePaymentSessionLazy = async (input) => {
+    const { reconcileCommercePaymentSessionUseCase } = await import('../commercePayments/index.js');
+    return reconcileCommercePaymentSessionUseCase(input);
+};
+export const reconcileStoreCheckoutPaymentSessionUseCase = buildReconcileStoreCheckoutPaymentSessionUseCase({
+    commercePaymentRepository,
+    reconcileCommercePaymentSessionUseCase: reconcileCommercePaymentSessionLazy,
+    paymongoMode: getPayMongoMode()
 });
 export const confirmStoreCheckoutSandboxPaymentUseCase = buildConfirmStoreCheckoutSandboxPaymentUseCase({
     commercePaymentRepository,

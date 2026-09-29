@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-25
+last_reviewed: 2026-09-26
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -19,6 +19,15 @@ Food & Beverage Mode (`fnb`) is the restaurant workflow mode. It is labeled `Foo
 - Storefront exposes a public F&B reservation request endpoint at `/api/v1/store/fnb/reservations`, guarded to F&B tenants and stored with `source=storefront`. Admin/POS reservation handling validates assigned table IDs and can filter schedules by status, table, and date range.
 - Reservation scheduling uses an explicit seating duration and reset buffer. Defaults are `90` duration minutes plus `15` buffer minutes, matching common full-service turn-time practice; requested/waitlisted reservations do not block capacity, while confirmed/seated reservations cannot overlap another confirmed/seated booking on any assigned table. Combined-table reservations store every table assignment and reject party sizes that exceed the selected seats.
 - Customer Access Mode and Inventory Display remain separate storefront controls.
+
+## Storefront Order Scheduling And Tracking
+
+- Storefront delivery, pickup, and dine-in use the shared date/time picker. Choosing dine-in does not open the calendar by itself; the customer opens it from the scheduled date/time field.
+- The picker blocks past dates and past same-day time slots in the branch business-hours timezone, derives available slots from those hours, and presents closed or unavailable dates as unavailable with an explanation. The minute dropdown offers five-minute increments (00, 05, …, 55); manual minute entry accepts one-minute increments (00–59), and entering 60 rolls to the next available hour. Invalid entry shows an inline error. If branch hours are missing, scheduling has no available slots.
+- The calendar offers valid Today, Tomorrow, and Next Week shortcuts. Swiping left/right changes month; swiping up/down changes year. The picker exposes help text for these gestures.
+- The calendar opens in the branch's current month and cannot navigate to earlier months; past days remain disabled. Configured location fulfillment lead-time minimum and maximum days restrict selectable scheduled dates for every order method, including delivery, pickup, and dine-in. Dine-in also has a 90-day maximum. Delivery and pickup have no additional fixed maximum when lead time is unconfigured.
+- F&B, Retail, and Simple Storefront tracking use the shared order-summary presentation. It displays a scheduled timestamp when the public tracking result includes `scheduled_for`, otherwise it displays the order time. The public tracking response includes the persisted `vat_amount` for informational display; the storefront does not infer VAT from totals or recalculate tax.
+- The checkout API rejects past scheduled instants for every order method and rejects scheduled dates outside a configured location lead-time window, using the branch business-hours timezone. Store-hours validation remains server-side. The checkout request shape is unchanged; the public tracking response additively includes `vat_amount`.
 
 ## Shared And F&B-Specific Data
 
@@ -122,5 +131,7 @@ Assigned-scope operational presets require at least one active location when the
 ## Validation
 
 Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, modifier migration and validator contracts, frontend F&B route/API/receipt contracts, production builds, architecture checks, docs lint, and diff hygiene. `to-staging/*`/`release/*` promotion PRs specifically — not every pull request — also run the blocking `promotion-quality-gate.yml` workflow (formerly `pr-quality-checks.yml`, #1018), which adds the complete backend test matrix, open-handle diagnostics, fresh migration-runner smoke coverage, frontend lint/tests/builds, index auditing, and compatibility-seam validation. If the gate is not run, ratings are preliminary; if it fails, production readiness cannot be claimed above controlled-pilot confidence.
+
+For Storefront order scheduling or tracking UI changes, run the focused fulfillment-choice, date/time-picker, time-input, shared tracking-summary, and affected completed-view tests; run the Storefront build; and inspect the checkout route at desktop and mobile sizes. Include the calendar popup at a short mobile height, and verify that the rendered viewport has no horizontal overflow. Tracking-completion visuals need a seeded completed-order fixture or component test when no completed order is available in the local environment.
 
 For broader release work, also use `npm run check:architecture`, `npm run lint:docs`, backend F&B use-case tests, Storefront recipe quote/checkout tests, online order completion inventory tests, frontend F&B route/registry tests, and POS checkout metadata tests for changes in this mode.

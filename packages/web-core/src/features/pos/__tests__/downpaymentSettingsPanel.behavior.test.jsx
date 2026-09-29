@@ -4,18 +4,18 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';
-import { listTenantLocations, updateTenantLocationDineInPaymentPolicy } from '@/services/tenantLocationService.js';
 
 const fetchDownpaymentSettings = vi.fn();
 const updateDownpaymentSettings = vi.fn();
+const listTenantLocations = vi.fn();
+const updateTenantLocationDineInPaymentPolicy = vi.fn();
 vi.mock('../services/downpaymentSettingsService.js', () => ({
     fetchDownpaymentSettings: (...args) => fetchDownpaymentSettings(...args),
     updateDownpaymentSettings: (...args) => updateDownpaymentSettings(...args)
 }));
-
 vi.mock('@/services/tenantLocationService.js', () => ({
-    listTenantLocations: vi.fn(),
-    updateTenantLocationDineInPaymentPolicy: vi.fn()
+    listTenantLocations: (...args) => listTenantLocations(...args),
+    updateTenantLocationDineInPaymentPolicy: (...args) => updateTenantLocationDineInPaymentPolicy(...args)
 }));
 
 const toastError = vi.fn();
@@ -84,7 +84,7 @@ describe('DownpaymentSettingsPanel', () => {
 
         await screen.findByText(/Full payment up front/i);
         await user.click(screen.getByText(/Downpayment required/i));
-        await user.click(screen.getByRole('button', { name: /save/i }));
+        await user.click(screen.getByRole('button', { name: /^Save$/i }));
 
         expect(updateDownpaymentSettings).not.toHaveBeenCalled();
         expect(toastError).toHaveBeenCalled();
@@ -101,7 +101,7 @@ describe('DownpaymentSettingsPanel', () => {
         await user.click(screen.getByText(/Downpayment required/i));
         await user.type(screen.getByLabelText(/Percentage \(%\)/i), '20');
         await user.type(screen.getByLabelText(/Minimum downpayment/i), '50');
-        await user.click(screen.getByRole('button', { name: /save/i }));
+        await user.click(screen.getByRole('button', { name: /^Save$/i }));
 
         await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));
         expect(updateDownpaymentSettings).toHaveBeenCalledWith({
@@ -121,7 +121,7 @@ describe('DownpaymentSettingsPanel', () => {
 
         await screen.findByDisplayValue('20.00');
         expect(screen.getByText(/can't change them/i)).toBeTruthy();
-        expect(screen.getByRole('button', { name: /save/i }).disabled).toBe(true);
+        expect(screen.getByRole('button', { name: /^Save$/i }).disabled).toBe(true);
     });
 
     // Phase 150 (#865): the Minimum downpayment field is a no-op/silent-override trap in fixed
@@ -156,7 +156,7 @@ describe('DownpaymentSettingsPanel', () => {
         await user.click(screen.getByText('percentage'));
         await user.click(await screen.findByText(/Fixed amount/i));
         await user.type(screen.getByLabelText(/Fixed amount \(₱\)/i), '500');
-        await user.click(screen.getByRole('button', { name: /save/i }));
+        await user.click(screen.getByRole('button', { name: /^Save$/i }));
 
         await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));
         expect(updateDownpaymentSettings).toHaveBeenCalledWith({
@@ -195,7 +195,7 @@ describe('DownpaymentSettingsPanel', () => {
         await user.click(screen.getByText(/Let the customer choose/i));
         await user.type(screen.getByLabelText(/Percentage \(%\)/i), '20');
         await user.type(screen.getByLabelText(/Minimum downpayment/i), '50');
-        await user.click(screen.getByRole('button', { name: /save/i }));
+        await user.click(screen.getByRole('button', { name: /^Save$/i }));
 
         await waitFor(() => expect(updateDownpaymentSettings).toHaveBeenCalledTimes(1));
         expect(updateDownpaymentSettings).toHaveBeenCalledWith({
@@ -217,38 +217,43 @@ describe('DownpaymentSettingsPanel', () => {
         expect(screen.getByDisplayValue('50.00')).toBeTruthy();
     });
 
-    it('loads and updates the selected branch Dine-in payment policy', async () => {
+    it('renders a locked scoped branch as read-only instead of a dropdown', async () => {
         fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
-        listTenantLocations.mockResolvedValueOnce([{
-            location_id: 1,
-            name: 'Masu Cafe',
-            updated_at: '2026-09-24T10:00:00.000Z',
-            allow_dine_in_pay_at_store: false
-        }]);
-        updateTenantLocationDineInPaymentPolicy.mockResolvedValueOnce({
-            location_id: 1,
-            name: 'Masu Cafe',
-            updated_at: '2026-09-24T10:01:00.000Z',
-            allow_dine_in_pay_at_store: true
-        });
-        const user = userEvent.setup();
+        listTenantLocations.mockResolvedValueOnce([{ location_id: 3, name: 'Ungka Branch' }]);
         render(
             <DownpaymentSettingsPanel
                 terminalUser={adminUser()}
                 sectionId="s"
-                locationOptions={[{ location_id: 1, name: 'Masu Cafe' }]}
+                locked
+                locationScopeId={3}
+                locationOptions={[{ location_id: 3, name: 'Ungka Branch' }]}
             />
         );
 
-        const policySwitch = await screen.findByRole('switch', { name: /allow pay in store for dine in/i });
-        expect(policySwitch.getAttribute('aria-checked')).toBe('false');
-        await user.click(policySwitch);
-        await user.click(screen.getByRole('button', { name: /update dine-in policy/i }));
+        expect(await screen.findByText('Ungka Branch')).toBeTruthy();
+        expect(screen.queryByRole('combobox', { name: /branch/i })).toBeNull();
+        expect(screen.getByTestId('dine-in-payment-policy-branch-readonly').textContent).toMatch(/locked/i);
+    });
 
-        await waitFor(() => expect(updateTenantLocationDineInPaymentPolicy).toHaveBeenCalledWith(1, {
-            allow_dine_in_pay_at_store: true,
-            expected_updated_at: '2026-09-24T10:00:00.000Z'
-        }));
-        expect(toastSuccess).toHaveBeenCalledWith('Dine-in payment policy updated');
+    it('keeps the branch selector available when the policy is not scoped or locked', async () => {
+        fetchDownpaymentSettings.mockResolvedValueOnce(fullPaymentSettings());
+        listTenantLocations.mockResolvedValueOnce([
+            { location_id: 1, name: 'Masu Cafe' },
+            { location_id: 3, name: 'Ungka Branch' }
+        ]);
+        render(
+            <DownpaymentSettingsPanel
+                terminalUser={adminUser()}
+                sectionId="s"
+                locationOptions={[
+                    { location_id: 1, name: 'Masu Cafe' },
+                    { location_id: 3, name: 'Ungka Branch' }
+                ]}
+            />
+        );
+
+        const branchSelect = await screen.findByRole('combobox', { name: /branch/i });
+        expect(branchSelect).toBeTruthy();
+        expect(branchSelect.disabled).toBe(false);
     });
 });

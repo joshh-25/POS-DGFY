@@ -147,14 +147,6 @@ export const createPosPaymentSession = async (payload = {}) => {
     return response.data?.data;
 };
 
-export const fetchActivePosPaymentSession = async (scope = {}) => {
-    const response = await api.get('/pos/payment-sessions/active', {
-        params: scope,
-        headers: getRegisteredTerminalHeaders(scope?.terminal_id)
-    });
-    return response.data?.data || null;
-};
-
 export const fetchPosPaymentSession = async (paymentSessionId, scope = {}) => {
     const response = await api.get(`/pos/payment-sessions/${paymentSessionId}`, {
         params: scope,
@@ -201,6 +193,11 @@ export const fetchPosDiscountEmployees = async () => {
     return response.data?.data?.employees || [];
 };
 
+export const fetchPosDiscountRules = async () => {
+    const response = await api.get('/pos/discount-rules');
+    return response.data?.data?.discount_rules || [];
+};
+
 export const verifyPosDiscountApproval = async (payload = {}) => {
     const response = await api.post('/pos/discount-approvals/verify', payload);
     return response.data?.data?.approver || null;
@@ -211,8 +208,8 @@ export const fetchPosTransactions = async (params = {}) => {
     return response.data?.data;
 };
 
-export const fetchPosTransactionById = async (id) => {
-    const response = await api.get(`/pos/transactions/${id}`);
+export const fetchPosTransactionById = async (id, params = {}) => {
+    const response = await api.get(`/pos/transactions/${id}`, { params });
     return response.data?.data;
 };
 
@@ -843,6 +840,16 @@ export const fetchAdminLocationMonitor = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchPosBranchDirectory = async (requestConfig = {}) => {
+    const response = await api.get('/pos/branch-directory', requestConfig);
+    return response.data?.data || { locations: [] };
+};
+
+export const recordPosBranchViewEvent = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/branch-directory/view-events', payload, requestConfig);
+    return response.data?.data;
+};
+
 export const updateOnlineOrderStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/status`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
@@ -874,6 +881,13 @@ export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) =
 
 export const collectCashDineInOrder = async (posTransactionId, payload = {}) => {
     const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const collectDineInPaymentOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-dine-in-payment`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
     return response.data?.data;
@@ -1078,9 +1092,13 @@ export default {
     fetchIncomingOnlineOrders,
     fetchOnlineOrderHistory,
     fetchActiveDeliveryPersonnel,
+    fetchAdminLocationMonitor,
+    fetchPosBranchDirectory,
+    recordPosBranchViewEvent,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
     collectCashDineInOrder,
+    collectDineInPaymentOrder,
     recordOrderBalancePayment,
     uploadOrderBalancePaymentProof,
     fetchOrderBalancePaymentProof,

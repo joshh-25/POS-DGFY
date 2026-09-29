@@ -1,7 +1,7 @@
 ---
 status: draft_pr
 owner: engineering
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-29
 related_adr: 0004-architecture-compliance-automation.md
 declaration_id: 2026-09-24-pr-2054-aggregate-compliance
 aggregate_scope: pr-2054-develop-compare
@@ -9,7 +9,7 @@ classification: regulatory
 surfaces: pos,settings,compliance,payments,terminal,inventory
 reason_codes_impacted: ALLOWED,UI_LAYOUT,PERMISSION_BOUNDARY,PAYMENT_AUTHORIZATION,SCHEMA_CHANGE,COMPLIANCE_POLICY
 policy_version: 2026.09.24
-verification_evidence: GITHUB_BASE_REF=develop npm run check:compliance,PR #2054 compare review identifies 74 inherited commits and 32 historical declarations
+verification_evidence: GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feature/2052-opis-split-back-office npm run check:compliance,local OPIS Storefront POS API tests and four-app builds
 rollback_note: Revert the aggregate declaration and its exact PR #2054 checker accommodation together; the underlying OPIS implementation is independently revertible by its implementation commits.
 preflight_result: no_breach
 preflight_reason_code: AGGREGATE_COMPARE_REVIEW
@@ -17,33 +17,34 @@ preflight_run_at: 2026-09-24T00:00:00+08:00
 preflight_request_ref: NOT-EXECUTED-PR-2054-AGGREGATE-LOCAL-ONLY
 ---
 
-# PR #2054 aggregate compliance declaration for the `develop` comparison
+# PR #2054 aggregate compliance declaration for the develop consolidation
 
 ## Compliance Impact Classification
 
-Regulatory. PR #2054 keeps the requested `develop` base while its feature head
-retains integration-line ancestry. GitHub consequently compares 74 commits,
-including changes from earlier work with separate phase declarations. The
-aggregate comparison includes the `adminTenantHandlers` tenant-administration
-surface and combines the `pos`, `settings`, `compliance`, `payments`, `terminal`,
+Regulatory. PR #2054 keeps the requested `develop` base while the feature head
+retains integration-line ancestry and consolidates a broad set of already
+declared develop changes. The combined comparison includes tenant
+administration and the `pos`, `settings`, `compliance`, `payments`, `terminal`,
 and `inventory` surfaces. This declaration captures that combined comparison;
 it does not change or rewrite the historical phase declarations.
 
-The actual OPIS follow-up in this PR relocates existing account actions in the
-sidebar, corrects the route test for that relocation, waits for an existing
-lazy-loaded POS panel in its integration test, and restores deployable app
-versions to their release floors. It does not grant permissions or alter
-payment, tenant, inventory, or compliance behavior.
+The consolidation preserves OPIS as the dedicated merchant Back Office while
+integrating POS terminal, payment, inventory, tax/discount, parked-sale, and
+Storefront changes. Merchant handoffs route to OPIS; POS retains terminal
+operations and uses the existing authorization model for Back Office access.
+OPIS Taxes and Discounts use the shared settings editors with server-derived
+capabilities. The API and migrations integrate the corresponding tax policy,
+discount configuration, parked-sale lifecycle, branch-directory, and stock
+behavior. No existing permission boundary is intentionally weakened.
 
 ## Affected Surfaces
 
-- `pos` and `terminal` — inherited POS product and terminal changes in the
-  aggregate compare, plus the updated lazy-panel test.
-- `settings` and `compliance` — inherited tenant administration and policy
-  changes, including the `adminTenantHandlers` path that sets the regulatory
-  classification floor.
-- `payments` and `inventory` — additional inherited surfaces identified by the
-  aggregate compare's changed-file rules.
+- `pos` and `terminal` — POS terminal and checkout behavior, including the
+  authorized handoff from POS to the dedicated OPIS app.
+- `settings` and `compliance` — tenant administration, tax/discount settings,
+  permission checks, and compliance-sensitive API paths.
+- `payments` and `inventory` — payment/settlement behavior, catalog and stock
+  handling, and their schema changes.
 
 ## Compliance Preconditions
 
@@ -52,17 +53,21 @@ payment, tenant, inventory, or compliance behavior.
    changed declarations against their own sensitive-file comparison.
 2. The historical phase declarations remain in place and are not edited to
    imitate the union of unrelated surfaces in this comparison.
-3. The OPIS account actions continue to use existing navigation and logout
-   behavior. No new authorization path is introduced by the follow-up.
-4. This declaration does not claim a live request-time preflight. Its
+3. OPIS remains the owner of merchant Back Office destinations. POS does not
+   restore its former Back Office shell; its handoff continues to use the
+   existing authorization checks and explicit confirmation.
+4. Taxes and Discounts remain guarded by server-derived settings capabilities;
+   payment, inventory, and schema behavior continues through the existing
+   backend policy and API paths.
+5. This declaration does not claim a live request-time preflight. Its
    `NOT-EXECUTED-*` reference remains a PR-stage placeholder for the normal
    compliance preflight sweep before promotion.
 
 ## Verification Evidence
 
-- `npm run test:frontend:opis` — 28 files and 131 tests passed.
-- `npm run test:frontend:contracts` — 122 files and 737 tests passed.
-- `npm run build:opis` passed; `git diff --check` passed.
-- `GITHUB_BASE_REF=develop npm run check:compliance` is the required aggregate
-  comparison validation; its result is recorded in the PR after the checker
-  accommodation is applied.
+- `GITHUB_BASE_REF=develop GITHUB_HEAD_REF=feature/2052-opis-split-back-office npm run check:compliance` passed for the aggregate comparison.
+- OPIS: 28 files / 131 tests passed. Storefront: 228 files / 1,242 tests passed. POS app: 3 files / 11 tests passed. Focused POS handoff/navigation suites: 55 tests passed.
+- Focused API tax/discount, parked-sale, branch-directory, F&B settlement, and discount-policy suites: 13 suites / 162 tests passed.
+- All four app builds passed; architecture, tenant-schema coverage, compatibility-seam, workspace-hygiene, ADR, app-version, and JS/CJS syntax checks passed.
+- The full IMS/web-core suite has known failures on both the integrated tree and pinned develop. The integrated run reported 67 failing tests; pinned develop reported 74. Three integration-only failures were corrected and their focused rerun passed. The remaining broad-suite failures are shared with develop and are not represented here as passing.
+- The backend fast matrix timed out after 600 seconds, and no MySQL/Redis containers were available for a migration rehearsal. Static tenant-schema coverage passed; this declaration does not claim database or live-preflight evidence.

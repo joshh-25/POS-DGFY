@@ -9,6 +9,10 @@ const parsePositiveInt = (value) => {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 };
 const sanitizeTerminalId = (value) => String(value || '').trim().toUpperCase();
+const normalizeDeviceEnforcement = (value) => (
+    String(value || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
+);
+
 const normalizeTerminalCashierIds = (rawValue) => (
     Array.isArray(rawValue)
         ? Array.from(new Set(rawValue
@@ -29,7 +33,7 @@ const normalizeRegistryEntry = (entry = {}) => {
         is_default: entry.is_default === true,
         pairing_version: String(entry.pairing_version || '').trim(),
         terminal_password_hash: String(entry.terminal_password_hash || '').trim(),
-        device_enforcement: String(entry.device_enforcement || '').trim().toLowerCase() === 'strict' ? 'strict' : 'off'
+        device_enforcement: normalizeDeviceEnforcement(entry.device_enforcement)
     };
 };
 

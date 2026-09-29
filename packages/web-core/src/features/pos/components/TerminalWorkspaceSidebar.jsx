@@ -1,15 +1,14 @@
 import React from 'react';
 import {
   BarChart3,
+  Briefcase,
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
   History,
-  LayoutDashboard,
   ListChecks,
   LogIn,
   Lock,
-  MapPinned,
   Percent,
   Settings2,
   ShoppingCart,
@@ -21,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
+import { isDineInOrder } from '../utils/dineInSchedule.js';
 
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
@@ -77,8 +77,8 @@ export default function TerminalWorkspaceSidebar({
   isMsmeMode = false,
   canViewPos = false,
   canViewAudit = false,
-  canAccessBusinessAdmin = false,
   canAccessPosOnlySetup = false,
+  canLaunchBackOffice = false,
   canViewVouchers = false,
   canManageCategories = false,
   showFnbService = false,
@@ -92,6 +92,7 @@ export default function TerminalWorkspaceSidebar({
   incomingOrdersState = { orders: [] },
   adminLocationMonitorState = { orders: [] },
   canViewAdminLocationMonitor = false,
+  branchViewLocationId = null,
   locationsState = { locations: [] },
   operatingLocationId = null,
   viewingLocationId = null,
@@ -102,25 +103,30 @@ export default function TerminalWorkspaceSidebar({
   settingsTargetViewMode = 'settings_profile',
   onSelectViewMode = () => {},
   onPrefetchViewMode = () => {},
-  onOpenBackOffice = () => {},
   onUnlock = () => {},
-  onLock = () => {}
+  onLock = () => {},
+  onOpenBackOffice = () => {}
 }) {
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const shouldShowBusinessAdmin = canAccessBusinessAdmin && !isCashierRole;
   const shouldShowIncomingQueue = showIncomingQueue;
   const hasActiveShift = Boolean(shiftState?.shift);
-  const isAdminBranchMonitor = !hasActiveShift && canViewAdminLocationMonitor;
+  const isBranchReadOnlyView = Boolean(branchViewLocationId);
+  const isAdminBranchMonitor = isBranchReadOnlyView || (!hasActiveShift && canViewAdminLocationMonitor);
+  const activeIncomingOrders = Array.isArray(incomingOrdersState?.orders)
+    ? incomingOrdersState.orders.filter((order) => !isDineInOrder(order))
+    : [];
+  const activeAdminOrders = Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders.filter((order) => !isDineInOrder(order))
+    : [];
   const incomingCount = canViewPos
-    ? (isAdminBranchMonitor && Array.isArray(adminLocationMonitorState?.orders)
-      ? adminLocationMonitorState.orders.length
-      : (Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders.length : 0))
+    ? (isAdminBranchMonitor ? activeAdminOrders.length : activeIncomingOrders.length)
     : 0;
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
-  const shouldRouteSettingsToBackOffice = shouldShowBusinessAdmin && !onboardingRestricted;
-  const shouldShowPosOnlySetup = canAccessPosOnlySetup && !onboardingRestricted;
+  const shouldShowPosOnlySetup = canAccessPosOnlySetup
+    && !onboardingRestricted
+    && settingsTargetViewMode !== 'terminal_setup';
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
@@ -176,7 +182,6 @@ export default function TerminalWorkspaceSidebar({
     || resolvedRegisterBranchName
     || ''
   ).trim();
-
   return (
     <aside
       className={`${className} h-full min-h-0 overflow-hidden rounded-none border-0 border-r border-slate-200 bg-white shadow-sm`}
@@ -266,8 +271,8 @@ export default function TerminalWorkspaceSidebar({
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
             onPrefetch={() => onPrefetchViewMode('checkout')}
-            disabled={locked || onboardingRestricted || !navigationShiftReady}
-            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
+            disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
+            caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to sell or manage the cart' : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened'))))}
             collapsed={isCollapsed}
           />
           {showFnbService && (
@@ -277,8 +282,8 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'fnb_service'}
               onClick={() => onSelectViewMode('fnb_service')}
               onPrefetch={() => onPrefetchViewMode('fnb_service')}
-              disabled={locked || onboardingRestricted || !navigationShiftReady}
-              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets'))}
+              disabled={locked || onboardingRestricted || isBranchReadOnlyView || !navigationShiftReady}
+              caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (isBranchReadOnlyView ? 'Exit branch view to operate F&B service' : (!navigationShiftReady ? 'Open shift first to continue' : 'Open checks, tables, and kitchen tickets')))}
               testId="pos-nav-fnb-service"
               collapsed={isCollapsed}
             />
@@ -394,53 +399,40 @@ export default function TerminalWorkspaceSidebar({
         <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
         {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>}
         <div className="space-y-2">
-          {shouldShowBusinessAdmin && (
-            <NavButton
-              label="Back Office"
-              icon={LayoutDashboard}
-              onClick={onOpenBackOffice}
-              disabled={!isOnline}
-              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : 'Business overview, reports, and branch operations')}
-              testId="pos-nav-backoffice"
-              collapsed={isCollapsed}
-            />
-          )}
-          {onboardingRestricted && (
-            <NavButton
-              label="Settings"
-              icon={Settings2}
-              active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
-              onClick={() => onSelectViewMode(settingsTargetViewMode)}
-              onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Profile, POS setup, and storefront tools')}
-              testId="pos-nav-settings"
-              collapsed={isCollapsed}
-            />
-          )}
-          {shouldRouteSettingsToBackOffice && (
+          {currentViewMode !== 'terminal_setup' && canLaunchBackOffice && !isCashierRole && <NavButton
+            label="Settings"
+            icon={Settings2}
+            active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
+              || (currentViewMode === 'terminal_setup' && settingsTargetViewMode === 'terminal_setup')}
+            onClick={() => onSelectViewMode(settingsTargetViewMode)}
+            onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
+            disabled={locked || !isOnline || isBranchReadOnlyView}
+            caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change settings' : 'Profile, POS setup, and storefront tools'))}
+            testId="pos-nav-settings"
+            collapsed={isCollapsed}
+          />}
+          {shouldShowPosOnlySetup && (
             <NavButton
               label="Terminal setup"
               icon={Settings2}
               active={currentViewMode === 'terminal_setup'}
               onClick={() => onSelectViewMode('terminal_setup')}
               onPrefetch={() => onPrefetchViewMode('terminal_setup')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Queue scope and local sound; device, printer, and terminal controls')}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change terminal settings' : 'Queue scope and local sound; device, printer, and terminal controls'))}
               testId="pos-nav-terminal-setup"
               collapsed={isCollapsed}
             />
           )}
-          {shouldShowPosOnlySetup && (
+          {canLaunchBackOffice && !isCashierRole && (
             <NavButton
-              label="POS setup"
-              icon={Settings2}
-              active={currentViewMode === 'terminal_setup'}
-              onClick={() => onSelectViewMode('terminal_setup')}
-              onPrefetch={() => onPrefetchViewMode('terminal_setup')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Terminal identity, branch queue, printer, and order sound')}
-              testId="pos-nav-pos-setup"
+              label="Back Office"
+              icon={Briefcase}
+              active={false}
+              onClick={() => onOpenBackOffice('/')}
+              disabled={!isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view before opening Back Office' : 'Open the dedicated DGFY Back Office'))}
+              testId="pos-nav-backoffice"
               collapsed={isCollapsed}
             />
           )}
@@ -458,7 +450,7 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'settings_vouchers'}
               onClick={() => onSelectViewMode('settings_vouchers')}
               onPrefetch={() => onPrefetchViewMode('settings_vouchers')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -475,7 +467,7 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'settings_pricelists'}
               onClick={() => onSelectViewMode('settings_pricelists')}
               onPrefetch={() => onPrefetchViewMode('settings_pricelists')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -491,7 +483,7 @@ export default function TerminalWorkspaceSidebar({
               icon={Percent}
               active={currentViewMode === 'settings_affiliates'}
               onClick={() => onSelectViewMode('settings_affiliates')}
-              disabled={locked || !isOnline}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={
                 locked
                   ? 'Unlock terminal to continue'
@@ -508,8 +500,8 @@ export default function TerminalWorkspaceSidebar({
               active={currentViewMode === 'audit'}
               onClick={() => onSelectViewMode('audit')}
               onPrefetch={() => onPrefetchViewMode('audit')}
-              disabled={locked || !isOnline}
-              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : 'Admin-only activity log for POS and account changes')}
+              disabled={locked || !isOnline || isBranchReadOnlyView}
+              caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to open the tenant audit log' : 'Admin-only activity log for POS and account changes'))}
               testId="pos-nav-audit"
               collapsed={isCollapsed}
             />

@@ -454,9 +454,32 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `fnb_modifier_options` ADD COLUMN `is_sold_out` TINYINT(1) NOT NULL DEFAULT 0"
         })
     }),
+    pos_discount_rules: Object.freeze({
+        discount_key: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD COLUMN `discount_key` VARCHAR(80) NULL COMMENT 'Stable machine key for a configurable POS discount'"
+        }),
+        description: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD COLUMN `description` VARCHAR(500) NULL COMMENT 'Optional administrator-facing explanation of the discount'"
+        }),
+        is_approved: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD COLUMN `is_approved` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Administrator approval gate; separate from transaction authorization'"
+        }),
+        configuration_source: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD COLUMN `configuration_source` VARCHAR(40) NOT NULL DEFAULT 'governed' COMMENT 'Origin of the discount configuration'"
+        }),
+        configuration_version: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD COLUMN `configuration_version` INT NOT NULL DEFAULT 1 COMMENT 'Configuration revision used for future cache and audit invalidation'"
+        })
+    }),
     pos_transaction_discounts: Object.freeze({
         promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `promo_code` VARCHAR(40) NULL COMMENT 'Commercial promo code validated by the server at checkout'"
+        }),
+        tax_treatment: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `tax_treatment` VARCHAR(20) NULL COMMENT 'Immutable VAT treatment resolved from the POS tax policy at checkout'"
+        }),
+        tax_policy_version: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `tax_policy_version` INT NULL COMMENT 'Version of the tenant POS tax policy used for this discount'"
         })
     }),
     pos_transaction_discount_lines: Object.freeze({
@@ -671,6 +694,33 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    // Phase 388: Business Admin approval metadata is tenant-local. The original migration
+    // created this table in the landlord database only, so this registry also repairs tenants
+    // that were provisioned before the approval workflow was introduced or restored without it.
+    business_admin_approval_requests: Object.freeze({
+        sql: "CREATE TABLE `business_admin_approval_requests` ("
+            + " `business_admin_approval_request_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `action_type` ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL,"
+            + " `entity_type` VARCHAR(60) NOT NULL, `entity_id` INT NOT NULL,"
+            + " `payload` JSON NOT NULL, `payload_hash` VARCHAR(64) NOT NULL,"
+            + " `status` ENUM('pending','approved','rejected','executed','expired','cancelled') NOT NULL DEFAULT 'pending',"
+            + " `reason` VARCHAR(500) NOT NULL, `idempotency_key` VARCHAR(120) NOT NULL,"
+            + " `requested_by` INT NOT NULL, `approved_by` INT NULL, `rejected_by` INT NULL,"
+            + " `approval_note` VARCHAR(500) NULL, `expires_at` DATETIME NULL,"
+            + " `approved_at` DATETIME NULL, `rejected_at` DATETIME NULL, `executed_at` DATETIME NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`business_admin_approval_request_id`),"
+            + " UNIQUE KEY `uq_business_admin_approval_action_idempotency` (`action_type`,`idempotency_key`),"
+            + " KEY `approved_by` (`approved_by`), KEY `rejected_by` (`rejected_by`),"
+            + " KEY `idx_business_admin_approval_status_created` (`status`,`created_at`),"
+            + " KEY `idx_business_admin_approval_entity_created` (`entity_type`,`entity_id`,`created_at`),"
+            + " KEY `idx_business_admin_approval_requested_created` (`requested_by`,`created_at`),"
+            + " CONSTRAINT `business_admin_approval_requests_ibfk_1` FOREIGN KEY (`requested_by`) REFERENCES `users` (`user_id`),"
+            + " CONSTRAINT `business_admin_approval_requests_ibfk_2` FOREIGN KEY (`approved_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,"
+            + " CONSTRAINT `business_admin_approval_requests_ibfk_3` FOREIGN KEY (`rejected_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
     // Phase 388: operational Business Admin expense ledger. This is intentionally
     // value-linked to users and locations instead of using cross-database FKs so
     // schema repair remains safe for every tenant and audit snapshots survive
@@ -1269,21 +1319,28 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
     pos_discount_rules: Object.freeze({
         sql: "CREATE TABLE `pos_discount_rules` (\n"
             + "  `id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `discount_key` varchar(80) NOT NULL,\n"
             + "  `name` varchar(100) NOT NULL,\n"
-            + "  `type` enum('senior','pwd','employee','promo','manual') NOT NULL,\n"
+            + "  `type` enum('senior','pwd','employee','promo','manual','custom') NOT NULL,\n"
             + "  `method` enum('percentage','fixed') NOT NULL DEFAULT 'percentage',\n"
             + "  `rate` decimal(7,4) DEFAULT NULL,\n"
             + "  `fixed_amount` decimal(14,4) DEFAULT NULL,\n"
+            + "  `description` varchar(500) DEFAULT NULL,\n"
             + "  `is_vat_exempt` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `requires_customer_id` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `requires_employee_id` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `requires_manager_approval` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `max_discount_amount` decimal(14,4) DEFAULT NULL,\n"
             + "  `is_active` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `is_approved` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `configuration_source` varchar(40) NOT NULL DEFAULT 'governed',\n"
+            + "  `configuration_version` int NOT NULL DEFAULT '1',\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
             + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY (`id`),\n"
-            + "  KEY `idx_pos_discount_rules_type_active` (`type`,`is_active`)\n"
+            + "  UNIQUE KEY `uq_pos_discount_rules_discount_key` (`discount_key`),\n"
+            + "  KEY `idx_pos_discount_rules_type_active` (`type`,`is_active`),\n"
+            + "  KEY `idx_pos_discount_rules_enabled_approved` (`is_active`,`is_approved`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     pos_transaction_discounts: Object.freeze({
@@ -2440,6 +2497,22 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
 // REQUIRED_TENANT_SCHEMA_COLUMNS because MySQL enforces this one as UNIQUE and a plain
 // column-presence check can't tell "column added, index still missing" apart from "both present".
 export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
+    // Phase 388: repair indexes for tenants whose approval table was created by
+    // sequelize.sync() before the approval model indexes were available.
+    business_admin_approval_requests: Object.freeze({
+        uq_business_admin_approval_action_idempotency: Object.freeze({
+            sql: "ALTER TABLE `business_admin_approval_requests` ADD UNIQUE INDEX `uq_business_admin_approval_action_idempotency` (`action_type`,`idempotency_key`)"
+        }),
+        idx_business_admin_approval_status_created: Object.freeze({
+            sql: "ALTER TABLE `business_admin_approval_requests` ADD INDEX `idx_business_admin_approval_status_created` (`status`,`created_at`)"
+        }),
+        idx_business_admin_approval_entity_created: Object.freeze({
+            sql: "ALTER TABLE `business_admin_approval_requests` ADD INDEX `idx_business_admin_approval_entity_created` (`entity_type`,`entity_id`,`created_at`)"
+        }),
+        idx_business_admin_approval_requested_created: Object.freeze({
+            sql: "ALTER TABLE `business_admin_approval_requests` ADD INDEX `idx_business_admin_approval_requested_created` (`requested_by`,`created_at`)"
+        })
+    }),
     // Phase 388: repair indexes for tenants whose expense table was created by
     // sequelize.sync() before the model indexes were available.
     business_admin_expenses: Object.freeze({
@@ -2472,6 +2545,17 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_transactions: Object.freeze({
         idx_pos_transactions_operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
+        })
+    }),
+    pos_discount_rules: Object.freeze({
+        uq_pos_discount_rules_discount_key: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD UNIQUE INDEX `uq_pos_discount_rules_discount_key` (`discount_key`)"
+        }),
+        idx_pos_discount_rules_type_active: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD INDEX `idx_pos_discount_rules_type_active` (`type`,`is_active`)"
+        }),
+        idx_pos_discount_rules_enabled_approved: Object.freeze({
+            sql: "ALTER TABLE `pos_discount_rules` ADD INDEX `idx_pos_discount_rules_enabled_approved` (`is_active`,`is_approved`)"
         })
     }),
     // Phase 210 (#1179). Repair path for a tenant whose pos_order_address_changes table exists
@@ -2897,11 +2981,11 @@ export async function relaxPosShiftCashierForeignKey(connection, tenantDb) {
 export const REQUIRED_TENANT_SCHEMA_SEEDS = Object.freeze({
     pos_discount_rules: Object.freeze({
         insertSql: "INSERT INTO `pos_discount_rules` "
-            + "(`name`, `type`, `method`, `rate`, `is_vat_exempt`, `requires_customer_id`, `requires_employee_id`, `requires_manager_approval`, `is_active`, `created_at`, `updated_at`) VALUES "
-            + "('Senior Citizen', 'senior', 'percentage', 20, 1, 1, 0, 0, 1, NOW(), NOW()), "
-            + "('PWD', 'pwd', 'percentage', 20, 1, 1, 0, 0, 1, NOW(), NOW()), "
-            + "('Employee Discount', 'employee', 'percentage', NULL, 0, 0, 1, 1, 1, NOW(), NOW()), "
-            + "('Manual Discount', 'manual', 'percentage', NULL, 0, 0, 0, 1, 1, NOW(), NOW())"
+            + "(`discount_key`, `name`, `type`, `method`, `rate`, `is_vat_exempt`, `requires_customer_id`, `requires_employee_id`, `requires_manager_approval`, `is_active`, `is_approved`, `configuration_source`, `configuration_version`, `created_at`, `updated_at`) VALUES "
+            + "('senior', 'Senior Citizen', 'senior', 'percentage', 20, 1, 1, 0, 0, 1, 1, 'governed', 1, NOW(), NOW()), "
+            + "('pwd', 'PWD', 'pwd', 'percentage', 20, 1, 1, 0, 0, 1, 1, 'governed', 1, NOW(), NOW()), "
+            + "('employee', 'Employee Discount', 'employee', 'percentage', NULL, 0, 0, 1, 1, 1, 1, 'governed', 1, NOW(), NOW()), "
+            + "('manual', 'Manual Discount', 'manual', 'percentage', NULL, 0, 0, 0, 1, 1, 1, 'governed', 1, NOW(), NOW())"
     })
 });
 
@@ -2910,6 +2994,12 @@ export const REQUIRED_TENANT_SCHEMA_SEEDS = Object.freeze({
 // column itself was created). Presence checks alone won't catch this drift, so these are
 // tracked separately and repaired via `ALTER ... MODIFY COLUMN` rather than `ADD COLUMN`.
 export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
+    pos_discount_rules: Object.freeze({
+        type: Object.freeze({
+            enumValues: Object.freeze(['senior', 'pwd', 'employee', 'promo', 'manual', 'custom']),
+            sql: "ALTER TABLE `pos_discount_rules` MODIFY COLUMN `type` ENUM('senior','pwd','employee','promo','manual','custom') NOT NULL"
+        })
+    }),
     items: Object.freeze({
         category: Object.freeze({
             enumValues: Object.freeze(['raw_material', 'packaging', 'product', 'supplies', 'service']),
@@ -2983,13 +3073,24 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             enumValues: Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show', 'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection']),
             sql: "ALTER TABLE `service_bookings` MODIFY COLUMN `status` ENUM('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL DEFAULT 'requested'"
         })
+    }),
+    pos_parked_sales: Object.freeze({
+        status: Object.freeze({
+            enumValues: Object.freeze(['parked', 'claimed', 'completed', 'cancel_pending', 'cancelled']),
+            sql: "ALTER TABLE `pos_parked_sales` MODIFY COLUMN `status` ENUM('parked','claimed','completed','cancel_pending','cancelled') NOT NULL DEFAULT 'parked'"
+        })
+    }),
+    business_admin_approval_requests: Object.freeze({
+        action_type: Object.freeze({
+            enumValues: Object.freeze(['pos_refund', 'force_close_shift', 'pos_void', 'pos_parked_sale_cancel']),
+            sql: "ALTER TABLE `business_admin_approval_requests` MODIFY COLUMN `action_type` ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel') NOT NULL"
+        })
     })
 });
 
-// Bumped past both parents' versions (HEAD 2026-09-19.1, origin/develop 2026-09-24.2) at merge
-// time -- the merged manifest is a superset of both branches' schema requirements, distinct
-// content from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-25.1';
+// Bumped past both parent versions because the merged manifest contains requirements
+// unique to each branch and is distinct from either parent alone.
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-29.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

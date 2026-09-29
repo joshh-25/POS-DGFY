@@ -7,6 +7,7 @@ import {
   getDineInScheduleRemainingSeconds,
   getDineInScheduleState,
   getDineInScheduleStateLabel,
+  isDineInOrder,
   getDineInScheduleTimingLabel,
   isScheduledDineInOrder,
   sortDineInScheduleOrders
@@ -22,8 +23,11 @@ const buildOrder = (overrides = {}) => ({
   fulfillment_status: 'confirmed',
   ...overrides
 });
+
 describe('dine-in schedule helpers', () => {
   it('only treats valid scheduled dine-in orders as scheduled service work', () => {
+    expect(isDineInOrder(buildOrder())).toBe(true);
+    expect(isDineInOrder(buildOrder({ order_method: 'pickup' }))).toBe(false);
     expect(isScheduledDineInOrder(buildOrder())).toBe(true);
     expect(isScheduledDineInOrder(buildOrder({ order_method: 'pickup' }))).toBe(false);
     expect(isScheduledDineInOrder(buildOrder({ scheduled_for: 'not-a-date' }))).toBe(false);
@@ -78,12 +82,13 @@ describe('dine-in schedule helpers', () => {
     expect(getDineInScheduleAlertMilestone(buildOrder({ scheduled_for: '2026-09-23T12:00:00.000Z' }), NOW)).toBe(null);
   });
 
-  it('sorts scheduled dine-in orders by serving time, then creation time', () => {
+  it('sorts scheduled dine-in orders first and keeps immediate dine-in service after them', () => {
     const later = buildOrder({ pos_transaction_id: 9002, scheduled_for: '2026-09-23T14:00:00.000Z' });
     const earlier = buildOrder({ pos_transaction_id: 9003, scheduled_for: '2026-09-23T12:30:00.000Z' });
-    const nonScheduled = buildOrder({ pos_transaction_id: 9004, order_method: 'pickup' });
+    const immediate = buildOrder({ pos_transaction_id: 9004, scheduled_for: null });
+    const pickup = buildOrder({ pos_transaction_id: 9005, order_method: 'pickup' });
 
-    expect(sortDineInScheduleOrders([later, nonScheduled, earlier]).map((order) => order.pos_transaction_id))
-      .toEqual([9003, 9002]);
+    expect(sortDineInScheduleOrders([later, pickup, immediate, earlier]).map((order) => order.pos_transaction_id))
+      .toEqual([9003, 9002, 9004]);
   });
 });

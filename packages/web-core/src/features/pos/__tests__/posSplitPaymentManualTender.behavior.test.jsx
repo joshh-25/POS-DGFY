@@ -45,7 +45,9 @@ afterEach(() => {
 });
 
 describe('POS manual walk-in tender', () => {
-    it('renders the split-payment form without creating an empty server session', async () => {
+    it('does not create a server session until a payment is recorded', async () => {
+        serviceMocks.createPosPaymentSession.mockResolvedValue(openSession);
+        const onSessionStateChange = vi.fn();
         render(
             <POSSplitPaymentDialog
                 open
@@ -55,6 +57,7 @@ describe('POS manual walk-in tender', () => {
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
+                onSessionStateChange={onSessionStateChange}
             />
         );
 
@@ -62,28 +65,46 @@ describe('POS manual walk-in tender', () => {
         expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
         expect(serviceMocks.fetchPosPaymentSession).not.toHaveBeenCalled();
         expect(window.localStorage.length).toBe(0);
-        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
+        expect(onSessionStateChange).not.toHaveBeenCalled();
     });
 
-    it('does not create a server session until the cashier records a payment', async () => {
+    it('does not auto-complete a ready session because opening the checkout is side-effect free', async () => {
+        const readySession = {
+            ...openSession,
+            status: 'ready_to_complete',
+            paid_amount: 1250,
+            remaining_amount: 0,
+            allocations: []
+        };
+        serviceMocks.createPosPaymentSession.mockResolvedValue(readySession);
+        const onReadyToComplete = vi.fn().mockResolvedValue(true);
         render(
             <POSSplitPaymentDialog
                 open
                 onOpenChange={vi.fn()}
-                cart={[{ item_id: 36, quantity: 1, sale_price: 90 }]}
-                totalAmount={90}
+                onReadyToComplete={onReadyToComplete}
+                cart={[]}
+                totalAmount={1250}
                 shiftId={41}
                 locationId={3}
                 terminalId="COUNTER-01"
             />
         );
 
-        await screen.findByText('Payment Methods');
+        await waitFor(() => expect(screen.getByTestId('pos-split-payment-dialog')).toBeTruthy());
         expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
+        expect(onReadyToComplete).not.toHaveBeenCalled();
+        expect(serviceMocks.completePosPaymentSession).not.toHaveBeenCalled();
+        expect(screen.queryByTestId('pos-split-payment-saved-sale')).toBeNull();
     });
 
-    it('does not create or restart a session request when the checkout snapshot changes identity', async () => {
+    it('does not restart the session request when the checkout snapshot object changes identity', async () => {
+        serviceMocks.createPosPaymentSession.mockResolvedValue({
+            ...openSession,
+            total_amount: 90,
+            remaining_amount: 90
+        });
+        const user = userEvent.setup();
         const view = render(
             <POSSplitPaymentDialog
                 open
@@ -100,6 +121,10 @@ describe('POS manual walk-in tender', () => {
         await screen.findByText('Payment Methods');
         expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
 
+        await user.type(screen.getByRole('spinbutton', { name: 'Amount for GCash' }), '90');
+        await user.click(screen.getByRole('button', { name: 'Record Payment' }));
+        await waitFor(() => expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1));
+
         view.rerender(
             <POSSplitPaymentDialog
                 open
@@ -114,7 +139,7 @@ describe('POS manual walk-in tender', () => {
         );
 
         await new Promise((resolve) => setTimeout(resolve, 25));
-        expect(serviceMocks.createPosPaymentSession).not.toHaveBeenCalled();
+        expect(serviceMocks.createPosPaymentSession).toHaveBeenCalledTimes(1);
         expect(screen.getByRole('button', { name: 'Record Payment' }).disabled).toBe(true);
     });
 

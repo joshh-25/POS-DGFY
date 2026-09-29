@@ -33,9 +33,9 @@ const resolvePosOrigin = () => {
   return hostname ? `${protocol}//pos.${hostname}` : DEFAULT_PUBLIC_POS_ORIGIN;
 };
 
-export const getBusinessBackOfficeOrigin = () => resolvePosOrigin();
+export const getBusinessBackOfficeOrigin = () => getOpisBackOfficeOrigin();
 
-export const buildBusinessBackOfficeHandoffUrl = ({ tenantId = '', next = '/backoffice/overview', handoffToken = '' } = {}) => {
+export const buildPosDgfyHandoffUrl = ({ tenantId = '', next = '/terminal', handoffToken = '' } = {}) => {
   const params = new URLSearchParams();
   const normalizedTenantId = String(tenantId || '').trim();
   const normalizedHandoffToken = String(handoffToken || '').trim();
@@ -43,8 +43,8 @@ export const buildBusinessBackOfficeHandoffUrl = ({ tenantId = '', next = '/back
   params.set('next', normalizePath(next));
   if (normalizedHandoffToken) params.set('handoff_token', normalizedHandoffToken);
 
-  const target = new URL('/', getBusinessBackOfficeOrigin());
-  target.hash = `/dgfy/companies?${params.toString()}`;
+  const target = new URL('/dgfy/companies', resolvePosOrigin());
+  target.search = params.toString();
   return target.toString();
 };
 
@@ -106,6 +106,9 @@ export const buildOpisHandoffUrl = ({ tenantId = '', next = '/backoffice/overvie
   target.search = params.toString();
   return target.toString();
 };
+
+// Storefront business administration uses OPIS; terminal launches use the POS builder above.
+export const buildBusinessBackOfficeHandoffUrl = buildOpisHandoffUrl;
 
 // ── OPIS → POS terminal links (issue #2052 follow-up) ─────────────────────────
 // OPIS serves no /terminal route, so "Open POS terminal" affordances in the Back

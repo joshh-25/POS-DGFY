@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
 const NOOP = () => {};
@@ -21,9 +22,13 @@ const DROPDOWN_MENU_BASE_STYLE = {
   overflowY: 'auto'
 };
 
+const DROPDOWN_VIEWPORT_GUTTER = 8;
+const DROPDOWN_MENU_Z_INDEX = 3000;
+
 export function StorefrontDropdown({
   value,
   options,
+  emptyMessage = 'No options available.',
   onChange,
   placeholder = 'Select',
   disabled = false,
@@ -44,10 +49,14 @@ export function StorefrontDropdown({
   labelStyle = {},
   chevronSize = 18,
   compactLabel = false,
+  portalMenu = false,
   onOpenChange = NOOP
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
   const dropdownRef = useRef(null);
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
   const selectedOption = useMemo(
     () => options.find((option) => String(option.value) === String(value)) || null,
     [options, value]
@@ -56,13 +65,17 @@ export function StorefrontDropdown({
   useEffect(() => {
     if (!isOpen) return undefined;
     const handlePointerDown = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+      const clickedTrigger = dropdownRef.current?.contains(event.target);
+      const clickedMenu = menuRef.current?.contains(event.target);
+      if (!clickedTrigger && !clickedMenu) {
+        setMenuPosition(null);
         setIsOpen(false);
         onOpenChange(false);
       }
     };
     const handleEscape = (event) => {
       if (event.key === 'Escape') {
+        setMenuPosition(null);
         setIsOpen(false);
         onOpenChange(false);
       }
@@ -75,6 +88,195 @@ export function StorefrontDropdown({
     };
   }, [isOpen, onOpenChange]);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !portalMenu) return undefined;
+
+    const configuredGap = typeof menuStyle.marginTop === 'number' ? Math.max(0, menuStyle.marginTop) : 10;
+    const configuredMaxHeight = typeof menuStyle.maxHeight === 'number'
+      ? Math.max(1, menuStyle.maxHeight)
+      : DROPDOWN_MENU_BASE_STYLE.maxHeight;
+    let retryTimeoutId = null;
+    let retryCount = 0;
+
+    const schedulePositionRetry = () => {
+      if (retryTimeoutId !== null) return;
+      retryTimeoutId = window.setTimeout(() => {
+        retryTimeoutId = null;
+        updateMenuPosition();
+      }, 0);
+    };
+
+    const updateMenuPosition = () => {
+      const triggerElement = triggerRef.current;
+      const menuElement = menuRef.current;
+      if (!triggerElement || !menuElement) {
+        // A portaled menu can attach its ref one paint after the trigger's layout
+        // effect. Retry briefly so the menu never remains hidden after that first pass.
+        if (retryCount < 3) {
+          retryCount += 1;
+          schedulePositionRetry();
+        }
+        return;
+      }
+      retryCount = 0;
+
+      const triggerRect = triggerElement.getBoundingClientRect();
+      const menuRect = menuElement.getBoundingClientRect();
+      const belowSpace = Math.max(1, window.innerHeight - triggerRect.bottom - DROPDOWN_VIEWPORT_GUTTER - configuredGap);
+      const aboveSpace = Math.max(1, triggerRect.top - DROPDOWN_VIEWPORT_GUTTER - configuredGap);
+      const opensAbove = menuRect.height > belowSpace && aboveSpace > belowSpace;
+      const availableSpace = opensAbove ? aboveSpace : belowSpace;
+      const maxHeight = Math.max(1, Math.min(configuredMaxHeight, availableSpace));
+      const visibleHeight = Math.min(menuRect.height || configuredMaxHeight, maxHeight);
+      const top = opensAbove
+        ? Math.max(DROPDOWN_VIEWPORT_GUTTER, triggerRect.top - configuredGap - visibleHeight)
+        : Math.min(triggerRect.bottom + configuredGap, window.innerHeight - DROPDOWN_VIEWPORT_GUTTER - visibleHeight);
+      // The portal's initial render can measure a `width: 100%` menu against the viewport
+      // before menuWidthOverrides applies the trigger width. Use the trigger width for the
+      // alignment calculation so the first visible frame stays anchored to the field.
+      const menuUsesTriggerWidth = menuStyle.width === '100%'
+        || menuStyle.minWidth === undefined
+        || menuStyle.minWidth === '100%';
+      const menuWidth = menuUsesTriggerWidth ? triggerRect.width : (menuRect.width || triggerRect.width);
+      const preferredLeft = menuPlacement === 'bottom-end'
+        ? triggerRect.right - menuWidth
+        : triggerRect.left;
+      const left = Math.max(
+        DROPDOWN_VIEWPORT_GUTTER,
+        Math.min(preferredLeft, Math.max(DROPDOWN_VIEWPORT_GUTTER, window.innerWidth - menuWidth - DROPDOWN_VIEWPORT_GUTTER))
+      );
+
+      setMenuPosition((previous) => {
+        const next = {
+          top,
+          left,
+          maxHeight,
+          triggerWidth: triggerRect.width
+        };
+        if (
+          previous
+          && previous.top === next.top
+          && previous.left === next.left
+          && previous.maxHeight === next.maxHeight
+          && previous.triggerWidth === next.triggerWidth
+        ) {
+          return previous;
+        }
+        return next;
+      });
+    };
+
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    window.addEventListener('scroll', updateMenuPosition, true);
+    return () => {
+      if (retryTimeoutId !== null) {
+        window.clearTimeout(retryTimeoutId);
+      }
+      window.removeEventListener('resize', updateMenuPosition);
+      window.removeEventListener('scroll', updateMenuPosition, true);
+    };
+  }, [
+    isOpen,
+    menuPlacement,
+    menuStyle.marginTop,
+    menuStyle.maxHeight,
+    menuStyle.width,
+    menuStyle.minWidth,
+    menuStyle.maxWidth,
+    options.length,
+    portalMenu
+  ]);
+
+  const portalTarget = portalMenu && typeof document !== 'undefined' ? document.body : null;
+  const menuWidthOverrides = portalMenu && menuPosition?.triggerWidth
+    ? {
+      ...(menuStyle.width === '100%' ? { width: `${menuPosition.triggerWidth}px` } : null),
+      ...((menuStyle.minWidth === undefined || menuStyle.minWidth === '100%')
+        ? { minWidth: `${menuPosition.triggerWidth}px` }
+        : null)
+    }
+    : {};
+  const renderedMenu = isOpen && !disabled ? (
+    <div
+      ref={menuRef}
+      role="listbox"
+      style={portalMenu
+        ? {
+          ...DROPDOWN_MENU_BASE_STYLE,
+          ...(menuPlacement === 'bottom-end' ? { left: 'auto', right: 0 } : null),
+          ...menuStyle,
+          position: 'fixed',
+          top: menuPosition?.top ?? 0,
+          left: menuPosition?.left ?? 0,
+          right: 'auto',
+          marginTop: 0,
+          zIndex: DROPDOWN_MENU_Z_INDEX,
+          maxHeight: menuPosition?.maxHeight ?? DROPDOWN_MENU_BASE_STYLE.maxHeight,
+          maxWidth: menuStyle.maxWidth || `calc(100vw - ${DROPDOWN_VIEWPORT_GUTTER * 2}px)`,
+          boxSizing: 'border-box',
+          visibility: menuPosition ? 'visible' : 'hidden',
+          ...menuWidthOverrides
+        }
+        : {
+          ...DROPDOWN_MENU_BASE_STYLE,
+          ...(menuPlacement === 'bottom-end' ? { left: 'auto', right: 0 } : null),
+          ...menuStyle
+        }}
+    >
+      {options.length === 0 ? (
+        <span style={{ padding: '11px 14px', color: '#64748b', fontSize: 14 }}>{emptyMessage}</span>
+      ) : options.map((option) => {
+        const isSelected = String(option.value) === String(value);
+        return (
+          <button
+            key={`${option.value}`}
+            type="button"
+            role="option"
+            aria-selected={isSelected}
+            onClick={() => {
+              onChange(option.value);
+              setMenuPosition(null);
+              setIsOpen(false);
+              onOpenChange(false);
+            }}
+            style={{
+              width: '100%',
+              borderRadius: 14,
+              border: isSelected ? '1px solid #fed7aa' : '1px solid transparent',
+              background: isSelected ? '#fff7ed' : '#ffffff',
+              color: '#0f172a',
+              padding: option.description ? '10px 14px' : '11px 14px',
+              textAlign: 'left',
+              cursor: 'pointer',
+              display: 'grid',
+              gap: option.description ? 4 : 0,
+              boxSizing: 'border-box',
+              ...optionStyle,
+              ...(isSelected ? selectedOptionStyle : {})
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              {option.icon ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0, ...(isSelected ? selectedOptionIconStyle : {}) }}>
+                  {React.createElement(option.icon, { size: 16 })}
+                </span>
+              ) : null}
+              <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0, ...optionLabelStyle, ...(isSelected ? selectedOptionLabelStyle : {}) }}>
+                {option.label}
+              </span>
+            </span>
+            {option.description ? (
+              <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.35 }}>
+                {option.description}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
   return (
     <div ref={dropdownRef} style={{ position: 'relative', minWidth: 0, ...containerStyle }}>
       <button
@@ -86,12 +288,14 @@ export function StorefrontDropdown({
         aria-expanded={isOpen}
         onClick={() => {
           if (disabled) return;
+          setMenuPosition(null);
           setIsOpen((previous) => {
             const nextOpenState = !previous;
             onOpenChange(nextOpenState);
             return nextOpenState;
           });
         }}
+        ref={triggerRef}
         style={{
           width: '100%',
           minHeight: 44,
@@ -172,64 +376,7 @@ export function StorefrontDropdown({
         />
       </button>
 
-      {isOpen && !disabled ? (
-        <div
-          role="listbox"
-          style={{
-            ...DROPDOWN_MENU_BASE_STYLE,
-            ...(menuPlacement === 'bottom-end' ? { left: 'auto', right: 0 } : null),
-            ...menuStyle
-          }}
-        >
-          {options.map((option) => {
-            const isSelected = String(option.value) === String(value);
-            return (
-              <button
-                key={`${option.value}`}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                onClick={() => {
-                  onChange(option.value);
-                  setIsOpen(false);
-                  onOpenChange(false);
-                }}
-                style={{
-                  width: '100%',
-                  borderRadius: 14,
-                  border: isSelected ? '1px solid #fed7aa' : '1px solid transparent',
-                  background: isSelected ? '#fff7ed' : '#ffffff',
-                  color: '#0f172a',
-                  padding: option.description ? '10px 14px' : '11px 14px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'grid',
-                  gap: option.description ? 4 : 0,
-                  boxSizing: 'border-box',
-                  ...optionStyle,
-                  ...(isSelected ? selectedOptionStyle : {})
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  {option.icon ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: isSelected ? '#c2410c' : '#64748b', flexShrink: 0, ...(isSelected ? selectedOptionIconStyle : {}) }}>
-                      {React.createElement(option.icon, { size: 16 })}
-                    </span>
-                  ) : null}
-                  <span style={{ fontSize: 14, fontWeight: isSelected ? 800 : 700, lineHeight: 1.3, minWidth: 0, ...optionLabelStyle, ...(isSelected ? selectedOptionLabelStyle : {}) }}>
-                    {option.label}
-                  </span>
-                </span>
-                {option.description ? (
-                  <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.35 }}>
-                    {option.description}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+      {portalTarget ? createPortal(renderedMenu, portalTarget) : renderedMenu}
     </div>
   );
 }

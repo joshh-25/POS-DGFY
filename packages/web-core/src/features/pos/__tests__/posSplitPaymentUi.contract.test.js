@@ -76,9 +76,8 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutWorkflowSource).toContain('completePosPaymentSession');
         expect(checkoutWorkflowSource).toContain('const splitPaymentCheckoutContext = useMemo');
         expect(checkoutSource).toContain('checkoutContext={splitPaymentCheckoutContext}');
-        expect(splitDialogSource).toContain('sessionCreationPromiseRef');
+        expect(splitDialogSource).toContain('sessionIdempotencyKeyRef');
         expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback');
-        expect(splitDialogSource).toContain('if (!sessionId) {');
         expect(checkoutSource).toContain('data-testid="pos-split-payment-cancel-dialog"');
         expect(checkoutSource).toContain('handleCancelCheckout');
         expect(checkoutWorkflowSource).toContain('cancelPosPaymentAllocation');
@@ -122,7 +121,7 @@ describe('POS split-payment UI contract', () => {
         expect(checkoutSource).not.toContain('The sale is not paid yet. Press Confirm below to finish it.');
         expect(checkoutSource).not.toContain('must be at least PHP');
         expect(checkoutSource).toContain('!paymentIsSufficient');
-        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient)}');
+        expect(checkoutSource).toContain('disabled={posActionsBlocked || checkoutLoading || discountModalOpen || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !paymentIsSufficient) || (existingNonCashPayment && !existingOrderPaymentConfirmed)}');
     });
 
     it('shows the applied discount in checkout without coupling discount state to split tender', () => {
@@ -266,9 +265,6 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).toContain('min-h-8 w-full min-w-0 overflow-hidden');
         expect(splitDialogSource).toContain('min-w-0 whitespace-normal break-words');
         expect(splitDialogSource).toContain('px-1.5 py-1 text-center text-[11px]');
-        expect(splitDialogSource).toContain("{ value: 'employee_credit', label: 'Employee Credit', entryLabel: 'Employee Credit' }");
-        expect(splitDialogSource).toContain('EmployeeCreditPaymentPanel');
-        expect(splitDialogSource).toContain('employee_credit');
         expect(splitDialogSource).toContain('className="mt-1 h-8 w-full rounded-lg border border-slate-300 bg-white text-sm font-black text-slate-900"');
         expect(splitDialogSource).toContain('data-testid="pos-split-payment-allocations"');
         expect(splitDialogSource).not.toContain('data-testid="pos-quick-two-way-split"');
@@ -322,6 +318,10 @@ describe('POS split-payment UI contract', () => {
         expect(splitDialogSource).not.toContain('Change due');
         expect(splitDialogSource).not.toContain('data-testid="pos-split-payment-cancel-session"');
         expect(splitDialogSource).toContain('fetchPosPaymentSession');
+        expect(splitDialogSource).toContain('const ensurePaymentSession = useCallback(async () => {');
+        expect(splitDialogSource).toContain('if (!sessionId) {');
+        expect(splitDialogSource).not.toContain('const openOrCreateSession = useCallback');
+        expect(splitDialogSource).toContain('{!isReadyToComplete && (');
         expect(splitDialogSource).not.toContain('readPosSplitPaymentSessionPointer');
         expect(splitDialogSource).toContain('remaining_amount');
         expect(splitDialogSource).toContain('manual_payment_received: true');

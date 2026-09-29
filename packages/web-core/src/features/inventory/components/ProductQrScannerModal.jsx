@@ -266,7 +266,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           )}
         </div>
 
-        <div className="pos-items-modal-footer flex shrink-0 justify-end gap-3 border-t border-slate-200 px-4 pt-4">
+        <div className="pos-items-modal-footer grid shrink-0 grid-cols-2 items-center gap-3 border-t border-slate-200 px-4 pt-4">
           <Button
             type="button"
             onClick={() => {
@@ -274,7 +274,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
               setCameraRequested(true);
             }}
             disabled={!cameraAvailable || cameraRequested || starting}
-            className="min-h-11 bg-blue-600 text-white hover:bg-blue-700"
+            className="min-h-11 w-full justify-center bg-blue-600 text-white hover:bg-blue-700"
           >
             {starting ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
@@ -283,7 +283,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
             )}
             {starting ? 'Starting...' : cameraRequested ? 'Scanning...' : 'Scan'}
           </Button>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full justify-center">
             Enter manually
           </Button>
         </div>

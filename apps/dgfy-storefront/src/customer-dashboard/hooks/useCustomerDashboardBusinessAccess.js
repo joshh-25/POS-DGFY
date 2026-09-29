@@ -1,13 +1,13 @@
 ﻿import { useCallback } from 'react';
 import { toast } from 'sonner';
 
-export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildBusinessBackOfficeHandoffUrl, createDgfyHandoff, startDgfyTenantSession, dgfySessionAccount, normalizeStorefrontErrorMessage }) {
-  // Sends the DGFY session over to POS Back Office for the tenant the user
+export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildBusinessBackOfficeHandoffUrl, buildPosDgfyHandoffUrl, createDgfyHandoff, startDgfyTenantSession, dgfySessionAccount, normalizeStorefrontErrorMessage }) {
+  // Sends the DGFY session over to OPIS for the tenant the user
   // just picked, via the single-use handoff token. Starting a tenant session
   // here instead would set its cookies on the storefront origin, which the
   // cross-origin jump then discards; POS exchanges the token on its own
   // origin before opening the requested workspace.
-  const redirectToBusinessBackOfficeCompany = useCallback(async (tenantId, token, next = '/backoffice/catalog') => {
+  const redirectToBusinessBackOfficeCompany = useCallback(async (tenantId, token, next = '/catalog') => {
     let handoffToken = '';
     try {
       const handoff = await createDgfyHandoff(token);
@@ -24,14 +24,14 @@ export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, req
     if (!handoffToken) {
       throw new Error('A secure POS sign-in could not be created. Please sign in again and retry.');
     }
-    const targetUrl = buildBusinessBackOfficeHandoffUrl({ tenantId, next, handoffToken });
+    const targetUrl = buildPosDgfyHandoffUrl({ tenantId, next, handoffToken });
     if (targetWindow) {
       if (targetWindow.closed) throw new Error('The POS tab was closed before it could open.');
       targetWindow.location.replace(targetUrl);
       return;
     }
     window.location.href = targetUrl;
-  }, [buildBusinessBackOfficeHandoffUrl, createDgfyHandoff]);
+  }, [buildPosDgfyHandoffUrl, createDgfyHandoff]);
 
   const requestDgfyBusinessSecurityCode = useCallback(() => requestJson('/api/v1/dgfy/account/business-step-up/request', { method: 'POST', authToken: readDgfyAuthToken(), cache: 'no-store' }), [readDgfyAuthToken, requestJson]);
   const handleAcceptDgfyCompanyInvitation = useCallback(async ({ membershipId, emailOtpCode }) => {
@@ -51,10 +51,10 @@ export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, req
   }, [handleLoadAccountPanel, readDgfyAuthToken, requestJson]);
   const switchDgfyCompanyFromStorefront = useCallback(async ({ tenantId, emailOtpCode }) => {
     const normalizedTenantId = String(tenantId || '').trim();
-    if (!normalizedTenantId) throw new Error('Select a company to open in POS Back Office.');
+    if (!normalizedTenantId) throw new Error('Select a company to open in OPIS.');
     const token = readDgfyAuthToken();
     await requestJson(`/api/v1/dgfy/account/companies/${encodeURIComponent(normalizedTenantId)}/switch`, { method: 'POST', authToken: token, body: { email_otp_code: emailOtpCode }, cache: 'no-store' });
-    await redirectToBusinessBackOfficeCompany(normalizedTenantId, token, '/backoffice/overview');
+    await redirectToBusinessBackOfficeCompany(normalizedTenantId, token, '/');
   }, [readDgfyAuthToken, redirectToBusinessBackOfficeCompany, requestJson]);
   const handleOpenBusinessInventory = useCallback(async (membership) => {
     const company = membership?.company || {};
@@ -62,7 +62,7 @@ export function useCustomerDashboardBusinessAccess({ handleLoadAccountPanel, req
     const token = readDgfyAuthToken();
     if (!tenantId) return toast.error('Business session details are unavailable.');
     if (!token && !dgfySessionAccount?.id) return toast.error('Sign in again to open this business inventory.');
-    try { await redirectToBusinessBackOfficeCompany(tenantId, token, '/backoffice/catalog'); } catch (error) { toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open the business Back Office right now.')); }
+    try { await redirectToBusinessBackOfficeCompany(tenantId, token, '/catalog'); } catch (error) { toast.error(normalizeStorefrontErrorMessage(error, 'Unable to open the business Back Office right now.')); }
   }, [dgfySessionAccount?.id, normalizeStorefrontErrorMessage, readDgfyAuthToken, redirectToBusinessBackOfficeCompany]);
   const handleOpenBusinessPos = useCallback(async (membership, { openInNewTab = false, next = '/terminal' } = {}) => {
     const tenantId = String(membership?.tenant_id || membership?.tenantId || membership?.company?.tenant_id || membership?.company?.id || membership?.tenant?.id || membership?.storefront?.tenant_id || membership?.storefront?.id || membership?.id || '').trim();

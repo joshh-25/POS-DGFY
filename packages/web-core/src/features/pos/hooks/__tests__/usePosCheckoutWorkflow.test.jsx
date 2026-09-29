@@ -215,6 +215,50 @@ describe('usePosCheckoutWorkflow', () => {
         });
     });
 
+    it('marks a snapshot-matching parked line as original when its client marker is missing', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 27,
+            snapshot: {
+                lines: [{
+                    line_key: 'line-7',
+                    item_id: 7,
+                    item_name: 'Coffee',
+                    quantity: 1,
+                    sale_price: 100
+                }]
+            },
+            removed_line_reasons: [{
+                line_ref: 'line-8',
+                item_id: 8,
+                reason: 'Customer removed item'
+            }]
+        };
+        const { result } = renderCheckout({
+            activeParkedSale: parkedSale,
+            safeCart: [{
+                line_key: 'line-7',
+                item_id: 7,
+                item_name: 'Coffee',
+                quantity: 1,
+                sale_price: 100,
+                vat_type: 'vatable'
+            }]
+        });
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(createPosCheckout).toHaveBeenCalledWith(expect.objectContaining({
+            parked_sale_id: 27,
+            removed_line_reasons: parkedSale.removed_line_reasons,
+            lines: [expect.objectContaining({
+                line_ref: 'line-7',
+                parked_snapshot_line: true
+            })]
+        }));
+    });
+
     it('blocks checkout and explains when a changed price has no override reason', async () => {
         const validationMessage = 'Enter a price override reason of at least 3 characters for Coffee before checkout.';
         const { result, props } = renderCheckout({
@@ -569,12 +613,11 @@ describe('usePosCheckoutWorkflow', () => {
                 item_id: 7,
                 item_name: 'Coffee',
                 quantity: 1,
-                parked_snapshot_line: true
+                parked_snapshot_line: true,
+                parked_original_quantity: 1
             })
         ]);
-        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
-            description: 'Add items as needed, then checkout.'
-        });
+        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale. Add items as needed, then checkout.');
     });
 
     it('rejects local parked-sale blockers before fetching the catalog', async () => {
@@ -665,27 +708,50 @@ describe('usePosCheckoutWorkflow', () => {
 
         expect(validation.ok).toBe(true);
         expect(validation.resumeContext.warnings.join(' ')).toContain('Coffee is no longer available');
+    });
+
+    it('opens Pay with the saved parked total when a parked item was removed from the catalog', async () => {
+        fetchPosCatalog.mockResolvedValue([]);
+        const { result, props } = renderCheckout({ safeCart: [], cartTotal: 0 });
+        const parkedSale = {
+            pos_parked_sale_id: 30,
+            total_amount: 435,
+            snapshot: {
+                order_method: 'dine_in',
+                lines: [{
+                    item_id: 104,
+                    item_name: 'Performance Item 030',
+                    sku_code: 'PERF-030',
+                    quantity: 1,
+                    base_sale_price: 435,
+                    sale_price: 435
+                }]
+            }
+        };
+
+        let validation;
+        await act(async () => {
+            validation = await result.current.validateParkedSaleForResume(parkedSale, 'pay');
+        });
+
+        expect(validation.ok).toBe(true);
+        expect(validation.resumeContext.warnings.join(' ')).toContain('Performance Item 030 is no longer available');
 
         await act(async () => {
-            await result.current.handleParkedSaleClaimed({
-                pos_parked_sale_id: 27,
-                snapshot: {
-                    order_method: 'dine_in',
-                    lines: [{
-                        item_id: 7,
-                        item_name: 'Coffee',
-                        sku_code: 'COF-01',
-                        quantity: 1,
-                        base_sale_price: 125,
-                        sale_price: 125
-                    }]
-                }
-            }, 'resume', validation.resumeContext);
+            await result.current.handleParkedSaleClaimed(parkedSale, 'pay', validation.resumeContext);
         });
 
-        expect(posToast.success).toHaveBeenCalledWith('Resumed Parked Sale #27', {
-            description: 'Add items as needed, then checkout. 1 saved-item warning. Review the cart before checkout.'
-        });
+        expect(props.setCart).toHaveBeenCalledWith([
+            expect.objectContaining({
+                item_id: 104,
+                item_name: 'Performance Item 030',
+                sale_price: 435,
+                parked_snapshot_line: true,
+                parked_line_item_missing: true
+            })
+        ]);
+        expect(props.setCustomerPaymentAmountInput).toHaveBeenCalledWith('435.00');
+        expect(props.setCheckoutConfirmModalOpen).toHaveBeenCalledWith(true);
     });
 
     it('replays a queued checkout with its original idempotency key and marks it resolved', async () => {

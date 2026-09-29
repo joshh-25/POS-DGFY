@@ -67,6 +67,8 @@ const REGISTRY_ROWS = [
   { delivery_personnel_id: 2, display_name: 'Inactive Rider', is_active: false, location_id: null, phone: null, notes: 'Weekend coverage' }
 ];
 
+const getDeliveryPersonnelTable = () => screen.getByRole('table', { name: 'Delivery personnel directory' });
+
 const buildProps = (overrides = {}) => ({
   viewMode: 'settings_pos',
   terminalUser: {
@@ -103,7 +105,7 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
     fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
 
     expect(await screen.findByRole('heading', { name: 'Delivery Personnel' })).toBeTruthy();
-    expect((await screen.findAllByText('Juan Dela Cruz')).length).toBeGreaterThan(0);
+    expect(within(getDeliveryPersonnelTable()).getByText('Juan Dela Cruz')).toBeTruthy();
     expect(onDeliveryPersonnelChanged).toHaveBeenCalledWith(REGISTRY_ROWS);
   });
 
@@ -150,8 +152,9 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
       fireEvent.click((await screen.findAllByRole('tab', { name: 'Employees' }))[0]);
       fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
 
-      expect((await screen.findAllByText('Juan Dela Cruz')).length).toBeGreaterThan(0);
-      expect(screen.getAllByRole('article')).toHaveLength(2);
+      const personnelCards = screen.getAllByRole('article');
+      expect(personnelCards).toHaveLength(2);
+      expect(within(personnelCards[0]).getByText('Juan Dela Cruz')).toBeTruthy();
       fireEvent.click(await screen.findByRole('button', { name: 'Add Delivery Personnel' }));
 
       const drawer = screen.getByRole('dialog', { name: 'Add Delivery Personnel' });
@@ -179,14 +182,15 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
     fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Filters' }));
 
+    const personnelTable = getDeliveryPersonnelTable();
     const filterRegion = await screen.findByRole('region', { name: 'Filter delivery personnel' });
     expect(within(filterRegion).getByRole('button', { name: 'Enabled' }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(within(filterRegion).getByRole('button', { name: 'Enabled' }));
-    expect(screen.getAllByText('Inactive Rider').length).toBeGreaterThan(0);
+    expect(within(personnelTable).getByText('Inactive Rider')).toBeTruthy();
     fireEvent.click(within(filterRegion).getByRole('button', { name: 'Done' }));
 
-    await waitFor(() => expect(screen.queryByText('Inactive Rider')).toBeNull());
-    expect(screen.getAllByText('Juan Dela Cruz').length).toBeGreaterThan(0);
+    await waitFor(() => expect(within(personnelTable).queryByText('Inactive Rider')).toBeNull());
+    expect(within(personnelTable).getByText('Juan Dela Cruz')).toBeTruthy();
   });
 
   it('keeps icon-only edit and activation actions wired to the delivery service', async () => {
@@ -195,10 +199,11 @@ describe('Delivery personnel registry panel inside the Settings > Employees pane
 
     fireEvent.click((await screen.findAllByRole('tab', { name: 'Employees' }))[0]);
     fireEvent.click(await screen.findByRole('tab', { name: 'Delivery Personnel' }));
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Edit Juan Dela Cruz' }))[0]);
+    const personnelTable = getDeliveryPersonnelTable();
+    fireEvent.click(within(personnelTable).getByRole('button', { name: 'Edit Juan Dela Cruz' }));
     expect(await screen.findByDisplayValue('Juan Dela Cruz')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    fireEvent.click((screen.getAllByRole('button', { name: 'Disable Juan Dela Cruz' }))[0]);
+    fireEvent.click(within(personnelTable).getByRole('button', { name: 'Disable Juan Dela Cruz' }));
 
     await waitFor(() => expect(updateDeliveryPersonnel).toHaveBeenCalledWith(1, { is_active: false }));
     expect(createDeliveryPersonnel).not.toHaveBeenCalled();

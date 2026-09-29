@@ -13,8 +13,8 @@ verification_evidence: focused shared iMin and queue contracts, POS unit suite, 
 rollback_note: Revert the Phase 385 queue lazy-loader, workspace-shell extraction, prefetch routing, focused contract, baseline note, ledger entry, and this declaration together. No API, schema, payment, fiscal, authorization, persistence, tenant, inventory, or hardware command rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-17T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-385-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-17-IMIN-INCOMING-QUEUE-DEFERRAL-PHASE-385
 ---
 
 # iMin incoming queue chunk deferral

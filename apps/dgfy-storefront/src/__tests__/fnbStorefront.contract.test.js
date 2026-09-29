@@ -233,6 +233,12 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
     expect(submission).toContain('createStorefrontOnlinePaymentSession');
+    const sessionCreation = submission.indexOf('const paymentSession = await createStorefrontOnlinePaymentSession');
+    const proofResetAfterSessionCreation = submission.indexOf('resetGuestCheckoutOtp?.();', sessionCreation);
+    const paymentSessionBranch = submission.indexOf('if (isStorefrontDirectPaymentSession(paymentSession))', sessionCreation);
+    expect(sessionCreation).toBeGreaterThan(-1);
+    expect(proofResetAfterSessionCreation).toBeGreaterThan(sessionCreation);
+    expect(proofResetAfterSessionCreation).toBeLessThan(paymentSessionBranch);
     expect(onlinePaymentSessionSource()).toContain('/api/v1/store/checkout/payment-sessions');
     expect(onlinePaymentSessionSource()).toContain('payment_type: normalizedPaymentType');
     expect(storefrontAppSource()).toContain('QRPH_PAYMENT_POLL_INTERVAL_MS');
@@ -340,9 +346,10 @@ describe('Food & Beverage storefront contract', () => {
     expect(fnbTrackingAdapterSource()).toContain('discountLabel');
     expect(fnbTrackingPayloadSource()).toContain('discount_amount: view.discountAmount');
     expect(fnbTrackingDrawerTotalsSource()).toContain('Promo / Discount');
-    expect(fnbTrackingActiveViewSource()).toContain('viewModel.discountLabel');
-    expect(fnbTrackingCompletedViewSource()).toContain('viewModel.discountLabel');
-    expect(pickupTrackingMobileViewSource()).toContain('discountLabel');
+    expect(fnbTrackingActiveViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(fnbTrackingCompletedViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(readSource('shared/components/tracking/StorefrontTrackingOrderSummary.jsx')).toContain('discount_label: trackingResult?.discountLabel');
+    expect(pickupTrackingMobileViewSource()).toContain('<StorefrontTrackingOrderSummary');
   });
 
   it('keeps public reservation request and registration links working', () => {

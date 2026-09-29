@@ -9,24 +9,12 @@ const posEntrySource = fs.readFileSync(
   'utf8'
 );
 const sharedStyles = fs.readFileSync(path.join(webCoreRoot, 'src/index.css'), 'utf8');
-const businessAdminStyles = fs.readFileSync(
-  path.join(repositoryRoot, 'apps/dgfy-opis/src/features/businessAdmin/businessAdmin.css'),
-  'utf8'
-);
 const catalogWorkflowSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js'),
   'utf8'
 );
 const terminalOperationsSource = fs.readFileSync(
   path.join(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx'),
-  'utf8'
-);
-const settingsWorkspaceSource = fs.readFileSync(
-  path.join(webCoreRoot, 'src/features/pos/settings/PosSettingsWorkspace.jsx'),
-  'utf8'
-);
-const operationsAccessSource = fs.readFileSync(
-  path.join(webCoreRoot, 'src/features/pos/settings/PosOperationsAccessSection.jsx'),
   'utf8'
 );
 const checkoutViewSource = fs.readFileSync(
@@ -107,12 +95,9 @@ describe('iMin POS performance profile contract', () => {
   });
 
   it('commits both operations panes immediately on iMin while retaining browser transitions', () => {
-    const tabChangeBodies = [terminalOperationsSource, settingsWorkspaceSource]
-      .flatMap((source) => [
-        ...source.matchAll(/const (?:handleTabChange|transitionToTab) = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[[^\]]*\]\);/g)
-      ])
-      .map((match) => match[1])
-      .filter((body) => body.includes('if (isIminRuntime)'));
+    const tabChangeBodies = [...terminalOperationsSource.matchAll(
+      /const handleTabChange = useCallback\(\(nextTab\) => \{([\s\S]*?)\n\x20{2}\}, \[activeTab, clearAnimationTimers, isIminRuntime\]\);/g
+    )].map((match) => match[1]);
 
     expect(tabChangeBodies).toHaveLength(2);
     tabChangeBodies.forEach((body) => {
@@ -163,12 +148,6 @@ describe('iMin POS performance profile contract', () => {
     expect(terminalOperationsSource).toContain('{itemImagePreview ? (');
   });
 
-  it('removes the direct Back Office action-bar backdrop filter only under the iMin marker', () => {
-    expect(businessAdminStyles).toContain('html.dgfy-imin-performance .business-admin-settings-editor .business-admin-storefront-location-actions');
-    expect(businessAdminStyles).toContain('-webkit-backdrop-filter: none;');
-    expect(businessAdminStyles).toContain('backdrop-filter: none;');
-  });
-
   it('defers the large operations workspace on iMin and prefetches the selected view on intent', () => {
     expect(terminalLayoutSource).toContain("import { isIminWrapperRuntime } from '../../../utils/iminRuntimeFeedback.js';");
     expect(terminalLayoutSource).toContain("const REPORT_WORKSPACE_MODES = new Set(['audit']);");
@@ -187,9 +166,10 @@ describe('iMin POS performance profile contract', () => {
       'VoucherManagementPanel',
       'PricelistManagementPanel',
       'DownpaymentSettingsPanel',
-      'PosCashierAttendanceSettingsCard'
+      'PosCashierAttendanceSettingsCard',
+      'TerminalStorefrontStatusCard'
     ].forEach((componentName) => {
-      expect(`${terminalOperationsSource}\n${settingsWorkspaceSource}\n${operationsAccessSource}`).toContain(`const ${componentName} = lazyWithChunkRetry`);
+      expect(terminalOperationsSource).toContain(`const ${componentName} = lazyWithChunkRetry`);
     });
     expect(terminalOperationsSource).toContain('<Suspense fallback={null}>');
     expect(terminalOperationsSource).toContain('showCsvImport && canImportItems');

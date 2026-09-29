@@ -12,8 +12,8 @@ verification_evidence: focused_POS_settings_contract_tests,npm_run_build_pos,git
 rollback_note: Revert the POS cashier-access settings changes and this declaration; the existing server-side user removal contract and historical records remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-19T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-430-LOCAL-ONLY
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-19-POS-CASHIER-ACCESS-REMOVAL
 ---
 
 # POS cashier access removal

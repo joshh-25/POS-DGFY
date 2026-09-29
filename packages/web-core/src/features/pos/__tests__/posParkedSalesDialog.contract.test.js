@@ -37,13 +37,18 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('fetchPosParkedSales');
         expect(dialogSource).toContain('if (!open) return undefined;');
         expect(dialogSource).toContain('Pay a parked sale now or resume it to add more items.');
+        expect(dialogSource).toContain('data-testid={`pos-parked-sale-view-${parkedSaleId}`}');
+        expect(dialogSource).toContain('>\n                                                    View\n');
+        expect(dialogSource).toContain('data-testid="pos-parked-sale-view-dialog"');
+        expect(dialogSource).toContain('data-testid="pos-parked-sale-view-items"');
+        expect(dialogSource).not.toContain('const linePreview =');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-pay-${parkedSaleId}`}');
         expect(dialogSource).toContain('data-testid={`pos-parked-sale-resume-${parkedSaleId}`}');
         expect(dialogSource).not.toContain('aria-label="Refresh parked sales"');
         expect(dialogSource).not.toContain('>Refresh</');
     });
 
-    it('shows the customer or order name with the short parked-sale ID instead of the long stored reference', () => {
+    it('shows the customer or order name without exposing the parked-sale number or stored reference', () => {
         expect(dialogSource).toContain('formatParkedSaleDisplayName(row)');
         expect(workflowSource).toContain('formatParkedSaleDisplayName(claimedSale)');
         expect(workflowSource).toContain('formatParkedSaleDisplayName(parkedSale)');
@@ -89,6 +94,7 @@ describe('POS parked-sales pay/resume contract', () => {
         expect(dialogSource).toContain('Stock remains deducted until approved.');
         expect(dialogSource).toContain("const cancellationPending = status === 'cancel_pending';");
         expect(dialogSource).toContain("status === 'cancel_pending'");
+        expect(terminalViewSource).toContain("if (cancelledSale?.status !== 'cancelled') return;");
         expect(dialogSource).not.toContain("const PARKED_SALE_AUTO_CANCEL_REASON");
         expect(workflowSource).toContain("operation: 'parked_sale'");
         expect(terminalRenderSource).toContain('data-testid="pos-pending-sync-banner"');

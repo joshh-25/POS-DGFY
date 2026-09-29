@@ -111,7 +111,7 @@ describe('Food & Beverage frontend contract', () => {
     expect(fnbPage).not.toContain('PosFnbModifierManager');
     expect(fnbPage).not.toContain('FnbModifierManager');
     expect(posWorkspace).toContain('PosFnbModifiersWorkspace');
-    expect(posWorkspace).toContain("label: 'Menu modifiers'");
+    expect(posWorkspace).toContain("label: 'Item Options'");
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {

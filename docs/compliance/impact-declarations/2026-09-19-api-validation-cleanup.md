@@ -11,9 +11,9 @@ policy_version: 2026.09.19
 verification_evidence: focused_api_tests,api_lint,architecture_guardrails,controller_boundary_check,git_diff_check
 rollback_note: Revert this checkpoint commit to restore the prior API imports, repository response shaping, use-case signatures, model-factory option handling, and contract-test expectations; no tenant data or fiscal records are changed.
 preflight_result: no_breach
-preflight_reason_code: VALIDATION_HARDENING
-preflight_run_at: 2026-09-19T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-429-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-26T08:42:50.557Z
+preflight_request_ref: PREFLIGHT-36230356710-2026-09-19-API-VALIDATION-CLEANUP
 ---
 
 # API validation cleanup checkpoint

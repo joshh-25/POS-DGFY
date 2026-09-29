@@ -1823,6 +1823,8 @@ function PaymentsWorkspace({ data }) {
 const BUSINESS_ADMIN_EDITOR_TABS = Object.freeze({
     profile: ['profile', 'pos_setup'],
     pos: ['pos_setup'],
+    taxes: ['taxes'],
+    discounts: ['discounts'],
     storefront: ['storefront'],
     delivery: ['delivery_pricing'],
     branches: ['storefront'],

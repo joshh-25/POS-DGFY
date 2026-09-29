@@ -41,6 +41,7 @@ import {
     normalizeStoreProfileReadFlag
 } from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog, resolveWorkflowModeAuditBeforeValues } from './workflowModeAuditLog.js';
+import { applyPosTaxPolicyAuditLog, resolvePosTaxPolicyAuditBeforeValue } from './posTaxPolicyAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
@@ -463,6 +464,10 @@ export const buildUpdateSettingByKeyUseCase = ({
                 settingsRepository,
                 settingsData: { [key]: normalizedValue }
             });
+            const posTaxPolicyAuditBeforeValue = await resolvePosTaxPolicyAuditBeforeValue({
+                settingsRepository,
+                settingsData: { [key]: normalizedValue }
+            });
             if (
                 key === WORKFLOW_MODE_SETTING_KEY
                 || key === ENABLED_CAPABILITIES_SETTING_KEY
@@ -494,6 +499,17 @@ export const buildUpdateSettingByKeyUseCase = ({
                 });
             } catch (error) {
                 logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+                    error: error?.message
+                });
+            }
+            try {
+                await applyPosTaxPolicyAuditLog({
+                    settingsData: { [key]: normalizedValue },
+                    beforeValue: posTaxPolicyAuditBeforeValue,
+                    actorUser
+                });
+            } catch (error) {
+                logger.warn('[PosTaxPolicyAudit] failed to record tax policy change log', {
                     error: error?.message
                 });
             }

@@ -1,17 +1,11 @@
 import React from 'react';
 import {
-  Bike,
   Check,
-  Clock3,
-  FileText,
-  Pizza,
   RotateCcw,
-  ShoppingBag,
   Star,
   Store,
 } from 'lucide-react';
-import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';
-import { StorefrontOrderInstructions } from '../../../../shared/components/storefront/StorefrontOrderInstructions.jsx';
+import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';
 
 export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport, viewModel }) {
   const {
@@ -19,23 +13,17 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
     dgfyBorder,
     dgfyPrimary,
     finalStatusLabel,
-    hasDeliveryFee,
-    hasServiceFee,
-    hasSubtotal,
     isPickup,
-    orderTypeLabel,
     primaryReviewInvite,
-    receiptItems,
     reviewInviteByItemId,
-    showBreakdown,
     storeAddress,
     storeDisplayName,
     storeLogoUrl,
     trackingPinInput,
     trackingResult,
   } = viewModel;
-  const { goStoreCatalogPage, goStoreOrderPage, openFnbItemReviewFromInvite } = actions;
-  const { money } = formatters;
+  const { copyTextToClipboard, goStoreCatalogPage, goStoreOrderPage, openFnbItemReviewFromInvite } = actions;
+  const { formatTicketDate, money, servicesBodyFont, servicesDisplayFont } = formatters;
 
   return (
                       <div style={{ maxWidth: 560, margin: '0 auto', borderRadius: 20, padding: isMobileViewport ? 20 : 28, background: '#fff', boxShadow: '0 4px 32px rgba(15,23,42,.07)', border: '1px solid #e2e8f0' }}>
@@ -88,109 +76,32 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
                         </div>
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Reference / date / type strip ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
-                        <div style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px', display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3,1fr)', gap: isMobileViewport ? 12 : 8, marginBottom: 20 }}>
-                          {[
-                            { icon: <FileText size={16} color={dgfyPrimary} />, label: 'Reference No.', value: trackingResult.tracking_pin || trackingPinInput },
-                            { icon: <Clock3 size={16} color={dgfyPrimary} />, label: isPickup ? 'Picked Up On' : 'Delivered On', value: completedOnLabel },
-                            { icon: isPickup ? <ShoppingBag size={16} color={dgfyPrimary} /> : <Bike size={16} color={dgfyPrimary} />, label: 'Order Type', value: orderTypeLabel },
-                          ].map(({ icon, label, value }) => (
-                            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#64748b', fontSize: 12 }}>{icon}<span>{label}</span></div>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', overflowWrap: 'break-word', wordBreak: 'normal' }}>{value}</div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <StorefrontOrderInstructions value={trackingResult.specialInstructions} accentColor={dgfyPrimary} compact />
-
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Ordered items ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
-                        {receiptItems.length > 0 && (
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-                              Ordered Items ({receiptItems.length})
-                            </div>
-                            <div style={{ display: 'grid', gap: 12 }}>
-                              {receiptItems.map((item, idx) => {
-                                const itemQty = Number.isFinite(Number(item.qty)) ? Number(item.qty) : 1;
-                                const itemAmount = Number.isFinite(Number(item.amount)) ? Number(item.amount) : null;
-                                const unitPrice = itemAmount != null ? itemAmount / itemQty : null;
-                                const invite = reviewInviteByItemId.get(Number(item.item_id));
-                                return (
-                                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <div style={{ width: 44, height: 44, borderRadius: 10, background: '#f1f5f9', display: 'flex', placeItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative', overflow: 'hidden' }}>
-                                      <Pizza size={20} color="#94a3b8" />
-                                      <div style={{ position: 'absolute', bottom: 0, left: 0, background: dgfyPrimary, color: '#fff', fontSize: 10, fontWeight: 800, padding: '1px 5px', borderRadius: '0 6px 0 0' }}>{itemQty}x</div>
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{item.name}</div>
-                                      {unitPrice != null && <div style={{ fontSize: 12, color: '#64748b' }}>{money(unitPrice)} each</div>}
-                                      {invite ? (
-                                        <button
-                                          type="button"
-                                          onClick={() => openFnbItemReviewFromInvite(invite)}
-                                          style={{
-                                            marginTop: 8,
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: 6,
-                                            minHeight: 32,
-                                            padding: '0 12px',
-                                            borderRadius: 10,
-                                            border: `1px solid ${dgfyBorder}`,
-                                            background: '#EEF6FD',
-                                            color: dgfyPrimary,
-                                            fontSize: 12,
-                                            fontWeight: 800,
-                                            cursor: 'pointer'
-                                          }}
-                                        >
-                                          <Star size={14} fill={dgfyPrimary} color={dgfyPrimary} />
-                                          Review this item
-                                        </button>
-                                      ) : null}
-                                    </div>
-                                    {itemAmount != null && (
-                                      <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', flexShrink: 0 }}>{money(itemAmount)}</div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Total amount ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
-                        <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 14, marginBottom: 20 }}>
-                          {showBreakdown && (
-                            <>
-                              {hasSubtotal && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 6 }}>
-                                  <span>Subtotal</span><span>{money(trackingResult.subtotalAmount)}</span>
-                                </div>
-                              )}
-                              {viewModel.hasDiscount && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#15803d', fontWeight: 700, marginBottom: 6 }}>
-                                  <span>{viewModel.discountLabel || 'Promo / Discount'}</span><span>- {money(trackingResult.discountAmount)}</span>
-                                </div>
-                              )}
-                              {hasDeliveryFee && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 6 }}>
-                                  <span>Delivery fee</span><span>{money(trackingResult.deliveryFee)}</span>
-                                </div>
-                              )}
-                              {hasServiceFee && (
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#64748b', marginBottom: 6 }}>
-                                  <span>Service fee</span><span>{money(trackingResult.serviceFeeAmount)}</span>
-                                </div>
-                              )}
-                            </>
-                          )}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
-                            <span style={{ fontSize: 15, fontWeight: 900, color: '#0f172a' }}>Total Amount</span>
-                            <span style={{ fontSize: 18, fontWeight: 900, color: dgfyPrimary }}>{money(trackingResult.totalAmount || 0)}</span>
-                          </div>
-                          <DownpaymentTrackingSummary trackingResult={trackingResult} money={money} orderMethod={isPickup ? 'pickup' : 'delivery'} />
-                        </div>
+                        <StorefrontTrackingOrderSummary
+                          accentColor={dgfyPrimary}
+                          bodyFont={servicesBodyFont}
+                          completedOnLabel={completedOnLabel}
+                          displayFont={servicesDisplayFont}
+                          formatTicketDate={formatTicketDate}
+                          money={money}
+                          onCopyPin={(pin) => copyTextToClipboard?.(pin, 'Order PIN copied.')}
+                          renderItemAction={(item) => {
+                            const invite = reviewInviteByItemId.get(Number(item.item_id));
+                            return invite ? (
+                              <button
+                                type="button"
+                                onClick={() => openFnbItemReviewFromInvite(invite)}
+                                style={{ marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 32, padding: '0 12px', borderRadius: 10, border: `1px solid ${dgfyBorder}`, background: '#EEF6FD', color: dgfyPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer' }}
+                              >
+                                <Star size={14} fill={dgfyPrimary} color={dgfyPrimary} /> Review this item
+                              </button>
+                            ) : null;
+                          }}
+                          statusLabel={finalStatusLabel}
+                          trackingResult={{ ...trackingResult, tracking_pin: trackingResult.tracking_pin || trackingPinInput }}
+                        />
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Order Again CTA ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
                         <button

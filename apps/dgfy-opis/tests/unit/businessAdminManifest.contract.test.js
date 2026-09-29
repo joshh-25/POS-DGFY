@@ -124,6 +124,8 @@ describe('Back Office canonical manifest contract', () => {
         expect(BACKOFFICE_SETTINGS_SECTION_MANIFEST.map((section) => section.key)).toEqual([
             'profile',
             'pos',
+            'taxes',
+            'discounts',
             'storefront',
             'delivery',
             'branches',

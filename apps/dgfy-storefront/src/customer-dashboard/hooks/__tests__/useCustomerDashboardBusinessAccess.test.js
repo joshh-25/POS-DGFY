@@ -16,7 +16,10 @@ const buildDeps = (overrides = {}) => ({
   requestJson: vi.fn(),
   readDgfyAuthToken: vi.fn(() => 'dgfy-token'),
   buildBusinessBackOfficeHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
-    `https://pos.dgfy.ph/#/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
+    `https://opis.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
+  )),
+  buildPosDgfyHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
+    `https://pos.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
   )),
   createDgfyHandoff: vi.fn(),
   startDgfyTenantSession: vi.fn(),
@@ -44,10 +47,10 @@ afterEach(() => {
 // Locks in the fix for the "Open business inventory" dead end: starting a
 // tenant session on dgfy.ph's own origin (the old code) set cookies that the
 // cross-origin jump then discarded, landing the user outside their business.
-// The fix mints a single-use handoff token and lets POS Back Office start its
-// tenant session on its own origin.
+// The fix mints a single-use handoff token and lets OPIS start its tenant
+// session on its own origin.
 describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () => {
-  it('mints a handoff token and redirects through POS Back Office with it, without starting a tenant session on this origin', async () => {
+  it('mints a handoff token and redirects through OPIS with it, without starting a tenant session on this origin', async () => {
     const deps = buildDeps();
     deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-abc' });
     const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
@@ -60,10 +63,10 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () =>
     await waitFor(() => expect(deps.createDgfyHandoff).toHaveBeenCalledWith('dgfy-token'));
     expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      next: '/backoffice/catalog',
+      next: '/catalog',
       handoffToken: 'handoff-abc'
     });
-    expect(window.location.href).toBe('https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-1&next=%2Fbackoffice%2Fcatalog&handoff_token=handoff-abc');
+    expect(window.location.href).toBe('https://opis.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fcatalog&handoff_token=handoff-abc');
   });
 
   it('degrades to a tokenless redirect (does not dead-end) when minting the handoff fails', async () => {
@@ -78,10 +81,10 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () =>
 
     await waitFor(() => expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      next: '/backoffice/catalog',
+      next: '/catalog',
       handoffToken: ''
     }));
-    expect(window.location.href).toBe('https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-1&next=%2Fbackoffice%2Fcatalog');
+    expect(window.location.href).toBe('https://opis.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fcatalog');
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -109,12 +112,12 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
     });
 
     await waitFor(() => expect(deps.createDgfyHandoff).toHaveBeenCalledWith('dgfy-token'));
-    expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
+    expect(deps.buildPosDgfyHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-pos',
       next: '/terminal',
       handoffToken: 'handoff-pos'
     });
-    expect(window.location.href).toBe('https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-pos');
+    expect(window.location.href).toBe('https://pos.dgfy.ph/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-pos');
   });
 
   it('does not route Day Close PIN setup through POS', async () => {
@@ -134,7 +137,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
       body: { current_password: 'current-password', pin: '1234' },
       cache: 'no-store'
     });
-    expect(deps.buildBusinessBackOfficeHandoffUrl).not.toHaveBeenCalled();
+    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
     expect(window.location.href).toBe('');
   });
 
@@ -179,7 +182,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
     expect(window.open).toHaveBeenCalledWith('', '_blank');
     expect(targetWindow.opener).toBeNull();
     expect(targetWindow.location.replace).toHaveBeenCalledWith(
-      'https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-new-tab'
+      'https://pos.dgfy.ph/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-new-tab'
     );
     expect(window.location.href).toBe('');
   });
@@ -217,7 +220,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
 });
 
 describe('useCustomerDashboardBusinessAccess switchDgfyCompanyFromStorefront', () => {
-  it('calls the OTP-gated switch endpoint, then redirects through POS Back Office with a handoff token', async () => {
+  it('calls the OTP-gated switch endpoint, then redirects through OPIS with a handoff token', async () => {
     const deps = buildDeps();
     deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-xyz' });
     const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
@@ -230,7 +233,7 @@ describe('useCustomerDashboardBusinessAccess switchDgfyCompanyFromStorefront', (
     );
     expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-2',
-      next: '/backoffice/overview',
+      next: '/',
       handoffToken: 'handoff-xyz'
     });
     expect(window.location.href).toContain('tenant_id=tenant-2');

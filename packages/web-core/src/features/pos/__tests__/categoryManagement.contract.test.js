@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const itemOptionsWorkspacePath = path.resolve(__dirname, '../components/PosFnbModifiersWorkspace.jsx');
+const itemOptionsManagerPath = path.resolve(__dirname, '../components/PosFnbModifierManager.jsx');
+const itemOptionsSelectPath = path.resolve(__dirname, '../components/PosFnbSelect.jsx');
 const sidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const layoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
@@ -14,6 +17,15 @@ describe('POS category management contract', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
 
     expect(source).toContain('Category Management');
+    expect(source).toContain('Search Categories');
+    expect(source).toContain('Add Categories');
+    expect(source).toContain('CircleSlash');
+    expect(source).toContain('Items Assigned');
+    expect(source).toContain('Category Name');
+    expect(source).toContain('Description/Notes');
+    expect(source).toContain('Classic Milk Tea');
+    expect(source).toContain('Optional description for the category');
+    expect(source).toContain('Save Category');
     expect(source).toContain("is_active: folder?.is_active !== false");
     expect(source).toContain('create_category_name: typedCategoryName');
     expect(source).toContain('Select or create a category');
@@ -59,9 +71,58 @@ describe('POS category management contract', () => {
     expect(catalogStart).toBeGreaterThan(-1);
     expect(catalogSource).toContain('aria-label="Items workspace navigation"');
     expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(catalogSource).toContain("const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);");
+    expect(catalogSource).toContain("transition: 'transform 150ms ease, opacity 150ms ease'");
+    expect(catalogSource).toContain('onKeyDown={(event) => handleTabKeyDown(event, tab.id)}');
     expect(source).toContain('<ItemsCatalogWorkspace');
     expect(settingsSource).not.toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(settingsSource).not.toContain('<CategoryManagementWorkspace');
+  });
+
+  it('keeps non-item catalog tabs inside a bounded vertical scroll viewport', () => {
+    const source = fs.readFileSync(workspacePath, 'utf8');
+    const catalogStart = source.indexOf('function ItemsCatalogWorkspace');
+    const workspaceExport = source.indexOf('export default function TerminalOperationsWorkspace');
+    const catalogSource = source.slice(catalogStart, workspaceExport);
+
+    expect(catalogSource).toContain('className="pos-items-catalog-workspace flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-4 overflow-hidden"');
+    expect(catalogSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 max-w-full flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
+    expect(catalogSource).toContain("visibleTab === 'categories'");
+    expect(catalogSource).toContain("visibleTab === 'fnb-modifiers'");
+    expect(catalogSource).toContain('<CategoryManagementWorkspace />');
+    expect(catalogSource).toContain('<PosFnbModifiersWorkspace');
+  });
+
+  it('keeps Item Options controls aligned with the compact Items presentation', () => {
+    const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
+    const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
+
+    expect(workspaceSource).toContain('grid min-h-0 min-w-0 flex-1 items-stretch gap-3 overflow-hidden lg:grid-cols-2');
+    expect(workspaceSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
+    expect(workspaceSource).toContain('dgfy-pos-scroll-region mt-3 max-h-48 space-y-1 overflow-y-auto pr-1');
+    expect(workspaceSource).toContain('rounded-xl border border-slate-200 bg-white p-3');
+    expect(workspaceSource).toContain('h-9 w-full rounded-lg border border-[#1A4E8D]');
+    expect(workspaceSource).toContain('grid min-w-0 grid-cols-2 gap-2');
+    expect(managerSource).toContain('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm');
+    expect(managerSource).toContain('dgfy-pos-scroll-region mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain');
+    expect(managerSource).toContain('dgfy-pos-scroll-region max-h-[32rem] min-w-0 space-y-2 overflow-y-auto pr-1');
+    expect(managerSource).toContain('text-[10px] font-bold uppercase tracking-wide');
+    expect(managerSource).toContain('h-9 shrink-0 items-center');
+    expect(managerSource).toContain('border-t border-slate-200');
+  });
+
+  it('uses styled listbox controls instead of browser-native select menus', () => {
+    const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
+    const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
+    const selectSource = fs.readFileSync(itemOptionsSelectPath, 'utf8');
+
+    expect(workspaceSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
+    expect(managerSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
+    expect(workspaceSource).not.toContain('<select');
+    expect(managerSource).not.toContain('<select');
+    expect(selectSource).toContain('role="combobox"');
+    expect(selectSource).toContain('role="listbox"');
+    expect(selectSource).toContain('shadow-xl shadow-slate-900/15');
   });
 
   it('preserves category-only access and keeps category mutations online-only', () => {

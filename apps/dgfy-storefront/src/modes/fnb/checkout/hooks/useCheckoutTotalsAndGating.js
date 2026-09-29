@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { canCheckout, getCheckoutBlockReason } from '../../../../shared/model/checkoutRules.js';
-import { DGFY_CONVENIENCE_FEE_LABEL, DGFY_CONVENIENCE_FEE_RATE, ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
+import { ORDER_METHOD_OPTIONS } from '../../../../shared/model/storefrontConstants.js';
 import {
   resolveLocationFulfillmentSupport
 } from '../../../../shared/model/storefrontOrderMethodOptions.js';
@@ -8,7 +8,6 @@ import {
   resolveStorefrontFnbFulfillmentOptions,
   resolveStorefrontFulfillmentOptions
 } from '../../../../shared/model/storefrontFulfillmentOptions.js';
-import { round4 } from '../../../../shared/utils/storefrontFormatters.js';
 import { buildServiceCartValidationIssues } from '../../../services/booking/model/serviceBookingValidation.js';
 import { buildFnbCartStatusLabel } from '../model/fnbCartPresentation.js';
 
@@ -38,8 +37,6 @@ export function useCheckoutTotalsAndGating({
   isSimpleMode,
   money,
   orderMethod,
-  fnbPaymentType,
-  allowDineInPayAtStore,
   fnbScheduledFor,
   // Phase 150 (#866): the customer's pay-in-full-vs-downpayment election, meaningful only at a
   // payment_mode='customer_choice' store.
@@ -61,22 +58,19 @@ export function useCheckoutTotalsAndGating({
   const totalsForDisplay = useMemo(() => {
     const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
     const discountAmount = quoteResult?.discount_amount != null ? Number(quoteResult.discount_amount) : 0;
-    const isDineInPayAtStore = isFnbMode
-      && orderMethod === 'dine_in'
-      && fnbPaymentType === 'cash'
-      && allowDineInPayAtStore === true;
-    const serviceFee = isDineInPayAtStore
-      ? 0
-      : quoteResult?.service_fee_amount != null
+    // Phase 333: the Storefront no longer derives a customer-facing DGFY fee
+    // locally when a quote is unavailable. Keep the legacy field only for
+    // compatibility with quote consumers; it is never rendered to customers.
+    const serviceFee = quoteResult?.service_fee_amount != null
       ? Number(quoteResult.service_fee_amount)
-      : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
+      : 0;
     const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
     // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
     // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).
     const voucherDiscountAmount = quoteResult?.voucher_discount_amount != null ? Number(quoteResult.voucher_discount_amount) : 0;
-    const totalAmount = isDineInPayAtStore
-      ? subtotal - discountAmount - voucherDiscountAmount + deliveryFee
-      : quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount - voucherDiscountAmount + deliveryFee + serviceFee;
+    const totalAmount = quoteResult?.total_amount != null
+      ? Number(quoteResult.total_amount)
+      : subtotal - discountAmount - voucherDiscountAmount + deliveryFee;
     return {
       subtotal_amount: subtotal,
       discount_amount: discountAmount,
@@ -84,7 +78,6 @@ export function useCheckoutTotalsAndGating({
       discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
       voucher_discount_amount: voucherDiscountAmount,
       service_fee_amount: serviceFee,
-      service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
       delivery_fee: deliveryFee,
       vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
       vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
@@ -100,7 +93,7 @@ export function useCheckoutTotalsAndGating({
       balance_due_amount: quoteResult?.balance_due_amount ?? null,
       downpayment_refundable: quoteResult?.downpayment_refundable ?? null
     };
-  }, [allowDineInPayAtStore, cartTotal, fnbPaymentType, isFnbMode, orderMethod, quoteResult]);
+  }, [cartTotal, quoteResult]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
   const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
   const promoStatusTone = checkoutError || quoteError

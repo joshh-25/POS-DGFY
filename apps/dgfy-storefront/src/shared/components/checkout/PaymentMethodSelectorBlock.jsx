@@ -1,13 +1,21 @@
+const PAYMENT_DROPDOWN_MAX_HEIGHT = 220;
+const PAYMENT_DROPDOWN_OPTION_STYLE = {
+  minHeight: 40,
+  padding: '8px 12px'
+};
+
 export function PaymentMethodSelectorBlock({
   label = 'Payment Type',
   value,
   onChange,
   options = [],
+  emptyMessage,
   DropdownComponent,
   triggerStyle,
   menuStyle,
   optionStyle,
   selectedLabelStyle,
+  portalMenu = true,
   labelColor = '#475569',
   labelStyle,
   // Phase 142 (#823): an optional node rendered under the dropdown -- the downpayment amount
@@ -23,6 +31,18 @@ export function PaymentMethodSelectorBlock({
 }) {
   if (typeof DropdownComponent !== 'function') return null;
 
+  // Payment menus stay dense and scrollable so the checkout card does not grow
+  // excessively tall. The shared dropdown still owns portal positioning and
+  // viewport collision handling, keeping this sizing change isolated to payment.
+  const paymentMenuStyle = {
+    ...(menuStyle || {}),
+    maxHeight: PAYMENT_DROPDOWN_MAX_HEIGHT
+  };
+  const paymentOptionStyle = {
+    ...(optionStyle || {}),
+    ...PAYMENT_DROPDOWN_OPTION_STYLE
+  };
+
   return (
     <>
       <label style={{ display: 'grid', gap: 6, fontSize: 12, color: labelColor, ...labelStyle }}>
@@ -31,10 +51,12 @@ export function PaymentMethodSelectorBlock({
           value={value}
           onChange={(nextValue) => onChange(String(nextValue))}
           options={options}
+          emptyMessage={emptyMessage}
           triggerStyle={triggerStyle}
-          menuStyle={menuStyle}
-          optionStyle={optionStyle}
+          menuStyle={paymentMenuStyle}
+          optionStyle={paymentOptionStyle}
           selectedLabelStyle={selectedLabelStyle}
+          portalMenu={portalMenu}
         />
       </label>
       {downpaymentCallout}

@@ -239,7 +239,9 @@ export const usePosHistoryVoidWorkflow = ({
                 setLastReceiptContract(inferReceiptContract(historyRow));
                 return;
             }
-            const detail = await fetchPosTransactionById(posTransactionId);
+            const detail = await fetchPosTransactionById(posTransactionId, {
+                location_id: selectedLocationId || undefined
+            });
             setLastReceipt(detail || null);
             setLastReceiptContract(inferReceiptContract(detail));
         } catch (error) {
@@ -247,7 +249,7 @@ export const usePosHistoryVoidWorkflow = ({
         } finally {
             setHistoryDetailLoading(false);
         }
-    }, [setCurrentViewMode, setExternalReceiptModalActive, setLastReceipt, setLastReceiptContract, setReceiptPreviewModalOpen, setReceiptPreviewSource]);
+    }, [selectedLocationId, setCurrentViewMode, setExternalReceiptModalActive, setLastReceipt, setLastReceiptContract, setReceiptPreviewModalOpen, setReceiptPreviewSource]);
 
     const handleVoidHistoryTransaction = useCallback(async (historyRow, reason) => {
         const posTransactionId = Number(historyRow?.pos_transaction_id);
@@ -306,7 +308,9 @@ export const usePosHistoryVoidWorkflow = ({
         setRefundWorkflowLoading(true);
         setRefundWorkflowTransaction({ ...historyRow, pos_transaction_id: posTransactionId });
         try {
-            const detail = await fetchPosTransactionById(posTransactionId);
+            const detail = await fetchPosTransactionById(posTransactionId, {
+                location_id: selectedLocationId || undefined
+            });
             setRefundWorkflowTransaction(detail || null);
         } catch (error) {
             setRefundWorkflowTransaction(null);
@@ -314,7 +318,7 @@ export const usePosHistoryVoidWorkflow = ({
         } finally {
             setRefundWorkflowLoading(false);
         }
-    }, [canVoidTransactions]);
+    }, [canVoidTransactions, selectedLocationId]);
 
     const closeHistoryRefundWorkflow = useCallback(() => {
         if (refundWorkflowSubmitting) return;
@@ -366,7 +370,9 @@ export const usePosHistoryVoidWorkflow = ({
                 throw new Error('This transaction requires manual review; no automatic refund action is authorized.');
             }
 
-            const refreshed = await fetchPosTransactionById(transactionId);
+            const refreshed = await fetchPosTransactionById(transactionId, {
+                location_id: selectedLocationId || undefined
+            });
             setRefundWorkflowTransaction(refreshed || null);
             await loadHistory(historyPage);
             toast.success('Refund evidence recorded.');
@@ -376,7 +382,7 @@ export const usePosHistoryVoidWorkflow = ({
         } finally {
             setRefundWorkflowSubmitting(false);
         }
-    }, [activeShiftId, historyPage, loadHistory, normalizedTerminalId, refundWorkflowTransaction]);
+    }, [activeShiftId, historyPage, loadHistory, normalizedTerminalId, refundWorkflowTransaction, selectedLocationId]);
 
     const openInPosReport = useCallback(() => {
         setCurrentViewMode(isCashierRole ? 'history' : 'reports');
@@ -391,7 +397,9 @@ export const usePosHistoryVoidWorkflow = ({
         const loadExternalReceipt = async () => {
             setHistoryDetailLoading(true);
             try {
-                const detail = await fetchPosTransactionById(id);
+                const detail = await fetchPosTransactionById(id, {
+                    location_id: selectedLocationId || undefined
+                });
                 if (cancelled) return;
                 setLastReceipt(detail || null);
                 setLastReceiptContract(inferReceiptContract(detail));
@@ -414,7 +422,7 @@ export const usePosHistoryVoidWorkflow = ({
         return () => {
             cancelled = true;
         };
-    }, [externalReceiptTransactionId, onExternalReceiptHydrated, sessionLocked, setExternalReceiptModalActive, setLastReceipt, setLastReceiptContract, setReceiptPreviewModalOpen, setReceiptPreviewSource]);
+    }, [externalReceiptTransactionId, onExternalReceiptHydrated, selectedLocationId, sessionLocked, setExternalReceiptModalActive, setLastReceipt, setLastReceiptContract, setReceiptPreviewModalOpen, setReceiptPreviewSource]);
 
     useEffect(() => {
         if (sessionLocked) return;

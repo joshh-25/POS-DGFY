@@ -35,7 +35,8 @@ export const issueStockForOnlineFulfillment = (movementData, userId, transaction
       reference_type: 'POS'
     }),
     userId,
-    transaction
+    transaction,
+    { allowInactiveHistoricalItem: true }
   )
 );
 
@@ -61,7 +62,7 @@ export const returnStockForVoidedSale = (movementData, userId, transaction = nul
   )
 );
 
-// #1931: one-time reversal of a Retail online order's accept-time goods-issue, for the
+// One-time reversal of an online order's confirmation-time goods-issue, for the
 // post-acceptance cancel/reject paths. Unlike every command above this does not create one
 // movement -- it voids each of the order's own `ONLINE:<orderId>:` goods-issue movements via
 // voidMovement (FIFO-aware, with its downstream-consumption guard), inside the caller's
@@ -81,7 +82,6 @@ export const reverseParkedSaleGoodsIssue = (movementData = {}, userId, transacti
     parkedSaleId: movementData?.parked_sale_id,
     userId,
     reason: movementData?.reason || `Reversal of parked POS sale ${movementData?.parked_sale_id}`,
-    preserveItemIds: movementData?.preserve_item_ids,
     transaction
   })
 );

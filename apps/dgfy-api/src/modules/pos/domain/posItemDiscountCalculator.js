@@ -38,6 +38,8 @@ const calculateLineItemDiscount = (line, application) => {
             discount_amount: discountAmount,
             vat_removed: Number(calculatedLine.vat_removed || 0),
             vat_exempt_amount: Number(calculatedLine.vat_exempt_amount || 0),
+            tax_treatment: calculation.vat_treatment || application.vat_treatment || 'standard',
+            tax_policy_version: Number(calculation.tax_policy_version || application.tax_policy?.version || 1),
             customer_name: application.customer_name || null,
             id_number: application.id_number || null,
             employee_name: application.employee_name || null,

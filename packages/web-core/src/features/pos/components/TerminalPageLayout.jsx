@@ -109,6 +109,7 @@ export default function TerminalPageLayout({
     canViewAttendance = false,
     canOperateAttendance = false,
     canViewAudit = false,
+    canLaunchBackOffice = false,
     onboardingRestricted = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
@@ -123,7 +124,6 @@ export default function TerminalPageLayout({
     canManageVouchers = false,
     canManagePricelists = false,
     canViewVouchers = false,
-    canAccessBusinessAdmin = false,
     canAccessPosOnlySetup = false,
     canAdminBypassShiftPrompt = false,
     showIncomingQueue = true,
@@ -135,6 +135,7 @@ export default function TerminalPageLayout({
     dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
     refreshDayCloseReadiness = async () => null,
     onOpenMyDayClosePin = () => {},
+    onOpenBackOffice = () => {},
     terminalUser,
     accessibleCompanies = [],
     companySwitching = false,
@@ -148,6 +149,12 @@ export default function TerminalPageLayout({
     incomingOrdersState,
     orderHistoryState = { loading: false, orders: [], pagination: null },
     adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+    branchDirectoryState = { loading: false, locations: [], scope: '', errorMessage: '' },
+    branchViewLocationId = null,
+    canViewBranchLocations = false,
+    onViewBranch = async () => false,
+    onExitBranchView = async () => {},
+    refreshBranchDirectory = async () => null,
     adminTerminalSwitching = false,
     onSelectAdminTerminal = async () => false,
     refreshAdminLocationMonitor = async () => {},
@@ -167,7 +174,6 @@ export default function TerminalPageLayout({
     queueLocationScopeId,
     handleSelectViewMode,
     settingsEntryViewMode = 'settings_profile',
-    onOpenBackOffice = () => {},
     handleLock,
     handleCashierSignIn = () => {},
     checkoutOperatorLocked = false,
@@ -217,6 +223,12 @@ export default function TerminalPageLayout({
     ensureDeliveryPersonnelLoaded,
     handleDeliveryJobStatusChange,
     handleOpenCashCollection,
+    dineInCashCheckout = null,
+    dineInCashCheckoutSaving = false,
+    dineInCashCheckoutError = '',
+    // The standard Checkout Tab owns the payment input for incoming dine-in orders.
+    onDineInCashCheckoutSubmit = () => {},
+    onCancelDineInCashCheckout = () => {},
     handleOpenBalanceSettlement,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
@@ -284,7 +296,28 @@ export default function TerminalPageLayout({
   const queueCount = Number(queuedTerminalOperationCount || 0);
   const blockedQueueCount = Number(queuedTerminalBlockedCount || 0);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
-  const workspaceBackOfficeHandler = onOpenBackOffice;
+  const isBranchReadOnlyView = Boolean(branchViewLocationId);
+  const branchViewLocation = (Array.isArray(locationsState?.locations) ? locationsState.locations : [])
+    .find((location) => Number(location?.location_id || location?.id || 0) === Number(branchViewLocationId || 0));
+  const branchViewLocationName = String(
+    branchViewLocation?.name
+    || branchViewLocation?.location_name
+    || 'Selected branch'
+  ).trim();
+  const workspaceLocationId = isBranchReadOnlyView
+    ? (branchViewLocationId || viewingLocationId || operatingLocationId)
+    : operatingLocationId;
+  const workspaceCanViewPos = canViewPos || (isBranchReadOnlyView && canViewBranchLocations);
+  const workspaceCanTransactPos = isBranchReadOnlyView ? false : canTransactPos;
+  const workspaceCanOpenShift = isBranchReadOnlyView ? false : canOpenShift;
+  const workspaceCanCloseShift = isBranchReadOnlyView ? false : canCloseShift;
+  const workspaceCanCloseDay = isBranchReadOnlyView ? false : canCloseDay;
+  const workspaceCanAdjustCashDrawer = isBranchReadOnlyView ? false : canAdjustCashDrawer;
+  const workspaceCanSwitchPosLocation = isBranchReadOnlyView ? false : canSwitchPosLocation;
+  const workspaceCanRecoverStaleShifts = isBranchReadOnlyView ? false : canRecoverStaleShifts;
+  const workspaceCheckoutBlockedReason = isBranchReadOnlyView
+    ? 'Read-only branch view: selling, checkout, and cash mutations are disabled.'
+    : checkoutBlockedReason;
   const operatorScopeKey = `${operatingLocationId || ''}:${normalizedActiveTerminalId}:${activeShiftId || ''}`;
   const incomingOrders = useMemo(() => (
     showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
@@ -309,10 +342,11 @@ export default function TerminalPageLayout({
       shift_controls: 'Shift',
       cash_drawer: 'Cash Drawer Event',
       close_shift: 'Shift',
-      terminal_setup: canAccessBusinessAdmin ? 'Terminal Setup' : 'POS Setup'
+      terminal_setup: 'POS Setup'
     };
     return titles[posViewMode] || 'POS Catalog';
-  }, [canAccessBusinessAdmin, posViewMode]);
+  }, [posViewMode]);
+  const activeHeaderSubtitle = posViewMode === 'items' ? 'Catalog Description' : '';
 
   const handleFnbCheckoutContext = useCallback((context) => {
     setFnbCheckoutContext(context);
@@ -388,6 +422,7 @@ export default function TerminalPageLayout({
   const isFloatingSidebarLayout = IS_DGFY_POS_SURFACE
     ? (isTabletLayout || !isDesktopWide)
     : !isDesktopWide;
+  const isItemsView = posViewMode === 'items';
   const shellLayoutClassName = IS_DGFY_POS_SURFACE
     ? (isTabletLayout
       ? 'md:grid md:grid-cols-[68px_minmax(0,1fr)]'
@@ -439,17 +474,23 @@ export default function TerminalPageLayout({
   const operatorMutationLocked = !isCheckoutWorkspaceMode && shiftOperatorMutationLocked;
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedSidebarSurfaceClassName = locked
-    ? (canAccessBusinessAdmin ? 'select-none opacity-80' : 'pointer-events-none select-none opacity-80 blur-[2px]')
+    ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  const workspacePaneClassName = isCheckoutWorkspaceMode
+  const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
+  const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
     : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
+  const checkoutWorkspaceRowsClassName = isBranchReadOnlyView
+    ? 'grid-rows-[auto_minmax(0,1fr)]'
+    : 'grid-rows-[minmax(0,1fr)]';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
-    : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
-  const workspaceSectionClassName = isCheckoutWorkspaceMode
-    ? 'h-full min-h-0 min-w-0 max-w-full overflow-hidden transition'
+    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
+    : isItemsCatalogWorkspace
+      ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ''}`
+      : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
+  const workspaceSectionClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
+    ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
 
   useEffect(() => {
@@ -600,7 +641,7 @@ export default function TerminalPageLayout({
   );
 
   const renderCompanyProfileMenu = (className, mutedEmailClassName) => (
-    <div className={`relative ${className}`}>
+    <div className={`relative ${className} dgfy-pos-header-profile`}>
       <button
         type="button"
         onClick={() => setCompanyMenuOpen((open) => !open)}
@@ -612,8 +653,8 @@ export default function TerminalPageLayout({
           <UserRound size={22} className="text-white" />
         </span>
         <span className="min-w-0 leading-tight">
-          <span className="block truncate text-[12px] font-extrabold">{terminalUser?.username || 'Locked'}</span>
-          <span className={`block truncate text-[11px] ${mutedEmailClassName}`}>{terminalUser?.email || 'Sign in required'}</span>
+          <span className="block truncate text-[12px] font-extrabold dgfy-pos-header-profile-name">{terminalUser?.username || 'Locked'}</span>
+          <span className={`block truncate text-[11px] ${mutedEmailClassName} dgfy-pos-header-profile-email`}>{terminalUser?.email || 'Sign in required'}</span>
         </span>
       </button>
       {companyMenuOpen && (
@@ -653,7 +694,7 @@ export default function TerminalPageLayout({
           {companySwitchBlockedReason && (
             <p className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">{companySwitchBlockedReason}</p>
           )}
-          {canCloseDay && !locked ? (
+          {workspaceCanCloseDay && !locked ? (
             <div className="border-t border-slate-100 p-2">
               <button
                 type="button"
@@ -680,6 +721,7 @@ export default function TerminalPageLayout({
     <div
       className={`dgfy-pos-shell overflow-hidden min-w-0 ${shellLayoutClassName}`}
       data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}
+      data-pos-items-view={isItemsView ? 'true' : undefined}
     >
       {notificationPanel}
       {(!effectiveSidebarCollapsed || isTabletLayout) && (
@@ -693,10 +735,11 @@ export default function TerminalPageLayout({
               isMsmeMode={isMsmeMode}
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
-              canViewPos={canViewPos}
+              canViewPos={workspaceCanViewPos}
               canViewAudit={canViewAudit}
-              canAccessBusinessAdmin={canAccessBusinessAdmin}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
+              canLaunchBackOffice={canLaunchBackOffice}
+              onOpenBackOffice={onOpenBackOffice}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showFnbService={showFnbService}
@@ -705,15 +748,17 @@ export default function TerminalPageLayout({
               canAccessServiceOperations={canAccessServiceOperations}
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
-              canAdjustCashDrawer={canAdjustCashDrawer}
-              canCloseDay={canCloseDay}
+              canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+              canCloseDay={workspaceCanCloseDay}
               shiftState={shiftState}
               incomingOrdersState={incomingOrdersState}
               adminLocationMonitorState={adminLocationMonitorState}
-              canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
+              canViewAdminLocationMonitor={canViewBranchLocations}
+              branchViewLocationId={branchViewLocationId}
               locationsState={locationsState}
               operatingLocationId={operatingLocationId}
               viewingLocationId={viewingLocationId}
+              canSwitchPosLocation={workspaceCanSwitchPosLocation}
               accessibleCompanies={accessibleCompanies}
               terminalMeta={terminalMeta}
               queueLocationScopeId={queueLocationScopeId}
@@ -727,7 +772,6 @@ export default function TerminalPageLayout({
               onSelectTerminal={onSelectTerminal}
               onSelectViewMode={handleSelectViewMode}
               onPrefetchViewMode={preloadWorkspaceForViewMode}
-              onOpenBackOffice={onOpenBackOffice}
               onUnlock={() => setDrawerOpen(true)}
               onLock={handleLock}
             />
@@ -746,31 +790,36 @@ export default function TerminalPageLayout({
         key={locked ? 'terminal-header-locked' : 'terminal-header-unlocked'}
         className={`dgfy-pos-panel dgfy-pos-panel-strong sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 sm:px-5 lg:px-7 ${lockedHeaderSurfaceClassName} dgfy-pos-topbar`}
       >
-        <div className={headerShellClassName}>
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className={`${headerShellClassName} dgfy-pos-header-shell`}>
+          <div className="flex min-w-0 flex-1 items-center gap-3 dgfy-pos-header-main">
             <button
               type="button"
               onClick={() => {
-                if (locked && !canAccessBusinessAdmin) return;
+                if (locked) return;
                 if (!isFloatingSidebarLayout) {
                   setSidebarCollapsed((collapsed) => !collapsed);
                   return;
                 }
                 setMobileNavOpen(true);
               }}
-              disabled={locked && !canAccessBusinessAdmin}
-              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked && !canAccessBusinessAdmin ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
+              disabled={locked}
+              className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl text-[#1A4E8D] ${locked ? 'cursor-not-allowed opacity-45' : 'pointer-events-auto hover:bg-slate-100'}`}
               aria-label={!isFloatingSidebarLayout ? (effectiveSidebarCollapsed ? 'Show sidebar' : 'Hide sidebar') : 'Open sidebar menu'}
               aria-pressed={!isFloatingSidebarLayout ? effectiveSidebarCollapsed : undefined}
             >
               <Menu className="h-6 w-6" />
             </button>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 dgfy-pos-header-title">
               <div className="flex min-w-0 items-center gap-2 lg:gap-3">
                 <div className="min-w-0 flex-1">
                   <h1 className="min-w-0 truncate text-[18px] font-black leading-tight tracking-tight text-[#0F172A] lg:text-[22px]">
                     {activeHeaderTitle}
                   </h1>
+                  {activeHeaderSubtitle ? (
+                    <p className="hidden truncate text-xs font-medium leading-4 text-[#64748B] sm:block">
+                      {activeHeaderSubtitle}
+                    </p>
+                  ) : null}
                   <div
                     className="mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
                     data-testid="pos-mobile-terminal-indicator"
@@ -787,10 +836,11 @@ export default function TerminalPageLayout({
                     </span>
                   </div>
                 </div>
-                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex">
+                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal">
                   <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
                   <span className="text-[11px] font-extrabold text-slate-800">
-                    Terminal: {normalizedActiveTerminalId || 'COUNTER-01'}
+                    <span className="dgfy-pos-header-terminal-prefix">Terminal: </span>
+                    {normalizedActiveTerminalId || 'COUNTER-01'}
                   </span>
                   <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
                     • {isOnline ? 'Online' : 'Offline'}
@@ -799,7 +849,7 @@ export default function TerminalPageLayout({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4 dgfy-pos-header-actions">
             <PosTextSizeControl
               id="pos-text-size-header"
               value={posTextSize}
@@ -942,10 +992,11 @@ export default function TerminalPageLayout({
                 isMsmeMode={isMsmeMode}
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
-                canViewPos={canViewPos}
+                canViewPos={workspaceCanViewPos}
                 canViewAudit={canViewAudit}
-                canAccessBusinessAdmin={canAccessBusinessAdmin}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
+                canLaunchBackOffice={canLaunchBackOffice}
+                onOpenBackOffice={onOpenBackOffice}
                 canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
                 showFnbService={showFnbService}
@@ -953,16 +1004,18 @@ export default function TerminalPageLayout({
                 showIncomingQueue={showIncomingQueue}
                 canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
-                canAdjustCashDrawer={canAdjustCashDrawer}
-                canCloseDay={canCloseDay}
+              canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+              canCloseDay={workspaceCanCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
                 adminLocationMonitorState={adminLocationMonitorState}
-                canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
+                canViewAdminLocationMonitor={canViewBranchLocations}
+                branchViewLocationId={branchViewLocationId}
                 orderHistoryState={orderHistoryState}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
                 viewingLocationId={viewingLocationId}
+              canSwitchPosLocation={workspaceCanSwitchPosLocation}
                 accessibleCompanies={accessibleCompanies}
                 terminalMeta={terminalMeta}
                 queueLocationScopeId={queueLocationScopeId}
@@ -976,7 +1029,6 @@ export default function TerminalPageLayout({
                 onSelectTerminal={onSelectTerminal}
                 onSelectViewMode={handleSelectViewMode}
                 onPrefetchViewMode={preloadWorkspaceForViewMode}
-                onOpenBackOffice={onOpenBackOffice}
                 onUnlock={() => {
                   setDrawerOpen(true);
                   setMobileNavOpen(false);
@@ -992,67 +1044,96 @@ export default function TerminalPageLayout({
       )}
 
       <div className={`${workspaceContentClassName} ${lockedSurfaceClassName}`}>
+        {isBranchReadOnlyView ? (
+          <div
+            className="mx-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm text-blue-950"
+            data-testid="pos-branch-view-banner"
+          >
+            <div className="min-w-0">
+              <p className="font-extrabold">Viewing {branchViewLocationName}</p>
+              <p className="mt-0.5 text-xs font-semibold text-blue-800">Read-only POS view. Sales, checkout, cash, shift, and configuration changes are disabled.</p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-extrabold text-blue-900 hover:bg-blue-100"
+              onClick={() => onExitBranchView?.()}
+            >
+              Exit branch view
+            </button>
+          </div>
+        ) : null}
         <div
           id={TERMINAL_SECTION_IDS.checkoutWorkspace}
           className={workspaceSectionClassName}
         >
           {!locked && (isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
             <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
-            <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
-              <POSCheckoutTerminal
-                workflowMode={workflowMode}
-                effectiveCapabilities={effectiveCapabilities}
-                sessionLocked={locked}
-                isMsmeMode={isMsmeMode}
-                sidebarCollapsed={effectiveSidebarCollapsed}
-                canViewHistory={canViewPos}
-                terminalUser={terminalUser}
-                selectedLocationId={operatingLocationId}
-                activeShiftId={activeShiftId}
-                activeShiftCashierId={shiftState?.shift?.cashier_id || null}
-                terminalId={normalizedActiveTerminalId}
-                terminalMeta={terminalMeta}
-                fnbContext={fnbCheckoutContext}
-                checkoutBlockedReason={checkoutBlockedReason}
-                onManualUniversalSync={onManualUniversalSync}
-                manualSyncPolicy={manualSyncPolicy}
-                universalPendingSyncCount={queueCount + blockedQueueCount}
-                offlineSnapshotScope={offlineSnapshotScope}
-                onQueueOfflineItemDraft={onQueueOfflineItemDraft}
-                onQueueOfflineOperation={onQueueOfflineOperation}
-                onCheckoutCompleted={(...args) => {
-                  setFnbCheckoutContext(null);
-                  return handleCheckoutCompleted?.(...args);
-                }}
-                onCheckoutAuthorityInvalid={onCheckoutAuthorityInvalid}
-                viewMode={posViewMode}
-                onViewModeChange={setPosViewMode}
-                onCheckoutLifecycleChange={onCheckoutLifecycleChange}
-                modalOnly={!isCheckoutWorkspaceMode}
-                externalReceiptTransactionId={receiptRequestId}
-                externalHistoryQuery={historyRequestQuery}
-                onExternalReceiptHydrated={() => {
-                  setReceiptRequestId(null);
-                }}
-                onExternalReceiptClosed={() => {
-                  setIncomingReceiptOpeningId(null);
-                  if (receiptReturnViewMode) {
-                    setPosViewMode(receiptReturnViewMode);
-                    setReceiptReturnViewMode(null);
-                  }
-                }}
-                onExternalHistoryHydrated={() => {
-                  setHistoryRequestQuery('');
-                }}
-                externalCatalogSearch={catalogSearchPrefill}
-                onExternalCatalogHydrated={onCatalogSearchHydrated}
-              />
-            </Suspense>
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
+                <POSCheckoutTerminal
+                  workflowMode={workflowMode}
+                  effectiveCapabilities={effectiveCapabilities}
+                  sessionLocked={locked}
+                  isMsmeMode={isMsmeMode}
+                  sidebarCollapsed={effectiveSidebarCollapsed}
+                  canViewHistory={workspaceCanViewPos}
+                  terminalUser={terminalUser}
+                  selectedLocationId={workspaceLocationId}
+                  activeShiftId={activeShiftId}
+                  activeShiftCashierId={shiftState?.shift?.cashier_id || null}
+                  terminalId={normalizedActiveTerminalId}
+                  terminalMeta={terminalMeta}
+                  fnbContext={fnbCheckoutContext}
+                  checkoutBlockedReason={workspaceCheckoutBlockedReason}
+                  readOnlyBranchView={isBranchReadOnlyView}
+                  onManualUniversalSync={onManualUniversalSync}
+                  manualSyncPolicy={manualSyncPolicy}
+                  universalPendingSyncCount={queueCount + blockedQueueCount}
+                  offlineSnapshotScope={offlineSnapshotScope}
+                  onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+                  onQueueOfflineOperation={onQueueOfflineOperation}
+                  onCheckoutCompleted={(...args) => {
+                    setFnbCheckoutContext(null);
+                    return handleCheckoutCompleted?.(...args);
+                  }}
+                  onCheckoutAuthorityInvalid={onCheckoutAuthorityInvalid}
+                  viewMode={posViewMode}
+                  onViewModeChange={setPosViewMode}
+                  onCheckoutLifecycleChange={onCheckoutLifecycleChange}
+                  modalOnly={!isCheckoutWorkspaceMode}
+                  externalReceiptTransactionId={receiptRequestId}
+                  externalHistoryQuery={historyRequestQuery}
+                  onExternalReceiptHydrated={() => {
+                    setReceiptRequestId(null);
+                  }}
+                  onExternalReceiptClosed={() => {
+                    setIncomingReceiptOpeningId(null);
+                    if (receiptReturnViewMode) {
+                      setPosViewMode(receiptReturnViewMode);
+                      setReceiptReturnViewMode(null);
+                    }
+                  }}
+                  onExternalHistoryHydrated={() => {
+                    setHistoryRequestQuery('');
+                  }}
+                  externalCatalogSearch={catalogSearchPrefill}
+                  onExternalCatalogHydrated={onCatalogSearchHydrated}
+                  dineInCashCheckout={dineInCashCheckout}
+                  dineInCashCheckoutSaving={dineInCashCheckoutSaving}
+                  dineInCashCheckoutError={dineInCashCheckoutError}
+                  onDineInCashCheckoutSubmit={onDineInCashCheckoutSubmit}
+                  onCancelDineInCashCheckout={onCancelDineInCashCheckout}
+                />
+              </Suspense>
             </div>
           )}
 
           {isOperationsWorkspaceMode && (
-            <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
+            <div
+              key="operations-workspace"
+              className={isItemsCatalogWorkspace
+                ? 'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'
+                : 'min-w-0 max-w-full catalog-slide-enter'}
+            >
             {posViewMode === 'fnb_service' ? (
               <div id={TERMINAL_SECTION_IDS.fnbService} data-testid="pos-fnb-service-workspace">
                 {locked ? (
@@ -1082,7 +1163,6 @@ export default function TerminalPageLayout({
                 activeTerminalId={normalizedActiveTerminalId}
                 terminalRegistry={terminalRegistry}
                 terminalIdOptions={terminalIdOptions}
-                posOnlyMode={!canAccessBusinessAdmin}
                 locked={locked}
                 terminalMeta={terminalMeta}
                 shiftState={shiftState}
@@ -1090,7 +1170,7 @@ export default function TerminalPageLayout({
                 reportRefreshKey={reportRefreshKey}
                 settingsRefreshKey={settingsRefreshKey}
                 employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
-                canViewPos={canViewPos}
+                canViewPos={workspaceCanViewPos}
                 canCreateItems={canCreateItems}
                 canManageServiceCatalog={canManageServiceCatalog}
                 canViewFnbModifiers={canViewFnbModifiers}
@@ -1104,13 +1184,19 @@ export default function TerminalPageLayout({
                 onSelectViewMode={handleSelectViewMode}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
-                canTransactPos={canTransactPos}
-                canOpenShift={canOpenShift}
-                canCloseShift={canCloseShift}
+                canTransactPos={workspaceCanTransactPos}
+                canOpenShift={workspaceCanOpenShift}
+                canCloseShift={workspaceCanCloseShift}
                 canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
-                canViewAdminLocationMonitor={canAdminBypassShiftPrompt && canSwitchPosLocation}
-                canAdjustCashDrawer={canAdjustCashDrawer}
-                canCloseDay={canCloseDay}
+                canViewAdminLocationMonitor={canViewBranchLocations}
+                branchDirectoryState={branchDirectoryState}
+                branchViewLocationId={branchViewLocationId}
+                canViewBranchLocations={canViewBranchLocations}
+                onViewBranch={onViewBranch}
+                onExitBranchView={onExitBranchView}
+                refreshBranchDirectory={refreshBranchDirectory}
+                canAdjustCashDrawer={workspaceCanAdjustCashDrawer}
+                canCloseDay={workspaceCanCloseDay}
                 dayCloseReadinessState={dayCloseReadinessState}
                 refreshDayCloseReadiness={refreshDayCloseReadiness}
                 openShiftForm={openShiftForm}
@@ -1121,7 +1207,7 @@ export default function TerminalPageLayout({
                 setCloseShiftForm={setCloseShiftForm}
                 shiftActionLoading={shiftActionLoading}
                 handleOpenShift={handleOpenShift}
-                canSwitchPosLocation={canSwitchPosLocation}
+                canSwitchPosLocation={workspaceCanSwitchPosLocation}
                 handleSwitchShiftLocation={handleSwitchShiftLocation}
                 handleRecordCashEvent={handleRecordCashEvent}
                 handleCloseShift={handleCloseShift}
@@ -1132,7 +1218,7 @@ export default function TerminalPageLayout({
                 handleViewCashierHistoryShift={handleViewCashierHistoryShift}
                 refreshOperationalContext={refreshOperationalContext}
                 locationsState={locationsState}
-                operatingLocationId={operatingLocationId}
+                operatingLocationId={workspaceLocationId}
                 setOperatingLocationId={setOperatingLocationId}
                 viewingLocationId={viewingLocationId}
                 setViewingLocationId={setViewingLocationId}
@@ -1143,7 +1229,7 @@ export default function TerminalPageLayout({
                 adminTerminalSwitching={adminTerminalSwitching}
                 onSelectAdminTerminal={onSelectAdminTerminal}
                 refreshAdminLocationMonitor={refreshAdminLocationMonitor}
-                canRecoverStaleShifts={canRecoverStaleShifts}
+                canRecoverStaleShifts={workspaceCanRecoverStaleShifts}
                 handleForceCloseStaleShift={handleForceCloseStaleShift}
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
@@ -1171,7 +1257,6 @@ export default function TerminalPageLayout({
                 setDrawerOpen={setDrawerOpen}
                 refreshTerminalUser={refreshTerminalUser}
                 refreshTerminalMeta={refreshTerminalMeta}
-                onOpenBackOffice={workspaceBackOfficeHandler}
                 onPosSetupSaved={onPosSetupSaved}
                 onStorefrontSetupSaved={onStorefrontSetupSaved}
                 onStorefrontContentStateChange={onStorefrontContentStateChange}
@@ -1221,9 +1306,7 @@ export default function TerminalPageLayout({
           onIdentityChange={handleIdentityChange}
           onUseDifferentAccount={handleUseDifferentAccount}
           onLegacySubmit={handleLegacyLogin}
-          canAccessBusinessAdmin={canAccessBusinessAdmin}
           terminalUser={terminalUser}
-          onOpenBackOffice={onOpenBackOffice}
           posTextSize={posTextSize}
           onPosTextSizeChange={onPosTextSizeChange}
         />

@@ -176,8 +176,8 @@ describe('POS Workflow Panels Contract', () => {
     rerender(<FnbWorkflowPanel key="cart-1" {...panelProps} cartItemCount={1} />);
 
     expect(screen.getByTestId('pos-checkout-order-method-buttons')).toBeDefined();
-    expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
-    expect(screen.getByPlaceholderText('Applies to the whole order')).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Edit table & notes' })).toBeNull();
+    expect(screen.getByText('Table # (Optional)')).toBeDefined();
+    expect(screen.getByText('Order Notes (Global)')).toBeDefined();
+    expect(screen.queryByRole('button', { name: /add table & notes|edit table & notes|hide table & notes/i })).toBeNull();
   });
 });

@@ -41,6 +41,7 @@ const checkoutLineSchema = Joi.object({
     sale_price: Joi.number().min(0).precision(4).allow(null).optional().messages({
         'number.min': 'Sale price must be 0 or greater'
     }),
+    parked_snapshot_line: Joi.boolean().valid(true).optional(),
     price_override_reason: Joi.string().trim().max(255).allow(null, '').optional(),
     course: Joi.string().valid(...FNB_COURSES).allow(null, '').optional(),
     line_modifiers: Joi.array().items(Joi.object().unknown(true)).optional(),
@@ -49,7 +50,9 @@ const checkoutLineSchema = Joi.object({
     kitchen_station_id: Joi.number().integer().positive().allow(null).optional(),
     selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).unique().optional(),
     item_discount: Joi.object({
-        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').default('manual'),
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'custom').default('manual'),
+        discount_rule_id: Joi.number().integer().positive().allow(null).optional(),
+        discount_key: Joi.string().trim().max(80).allow('', null).optional(),
         label: Joi.string().trim().max(100).allow('', null).optional(),
         method: Joi.string().valid('percentage', 'fixed').required(),
         rate: Joi.number().min(0).max(100).precision(4).allow(null).optional(),
@@ -72,7 +75,7 @@ const checkoutLineSchema = Joi.object({
         manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
         employee_user_id: Joi.number().integer().positive().allow(null).optional(),
         employee_directory_id: Joi.number().integer().positive().allow(null).optional(),
-        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
+        discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'custom').optional()
     }).unknown(false).allow(null).optional(),
     scan_metadata: Joi.object({
         barcode_id: Joi.number().integer().positive().optional(),
@@ -104,7 +107,9 @@ const governedDiscountSchema = Joi.object({
     // #712: sale-level only -- a voucher's own voucher_scopes/pricelist decides which lines it
     // touches, matching how the storefront already works. No per-line voucher entry
     // (checkoutLineSchema.item_discount, below) is added for this type.
-    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').required(),
+    type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher', 'custom').required(),
+    rule_id: Joi.number().integer().positive().allow(null).optional(),
+    discount_key: Joi.string().trim().max(80).allow('', null).optional(),
     label: Joi.string().trim().max(100).allow('', null).optional(),
     method: Joi.when('type', {
         is: 'voucher',
@@ -151,8 +156,24 @@ const posDiscountApprovalSchema = Joi.object({
         then: Joi.number().integer().positive().required(),
         otherwise: Joi.number().integer().positive().allow(null).optional()
     }),
-    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher').optional()
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual', 'voucher', 'custom').optional()
 });
+
+// This field is sent when a cashier removes an original line while editing a
+// claimed parked sale. It must be declared because the validator strips
+// unknown fields before the use case receives the request.
+const parkedSaleLineRemovalReasonSchema = Joi.object({
+    line_ref: Joi.string().trim().max(120).allow('', null).optional(),
+    line_key: Joi.string().trim().max(120).allow('', null).optional(),
+    item_id: Joi.number().integer().positive().allow(null).optional(),
+    item_name: Joi.string().trim().max(255).allow('', null).optional(),
+    reason: Joi.string().trim().min(3).max(255).required()
+}).unknown(false);
+
+const parkedSaleLineRemovalReasonsSchema = Joi.array()
+    .items(parkedSaleLineRemovalReasonSchema)
+    .max(100)
+    .optional();
 
 const checkoutPosSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required().messages({
@@ -211,6 +232,7 @@ const checkoutPosSchema = Joi.object({
     // generation detail, not a request contract). '' / null are accepted because the use case maps
     // them to "no attribution", never to an error.
     affiliate_code: Joi.string().trim().max(40).allow('', null).optional(),
+    removed_line_reasons: parkedSaleLineRemovalReasonsSchema,
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
     })
@@ -312,7 +334,7 @@ const createPosParkedSaleSchema = Joi.object({
 const listPosParkedSalesQuerySchema = Joi.object({
     shift_id: Joi.number().integer().positive().required(),
     location_id: Joi.number().integer().positive().optional(),
-    status: Joi.string().valid('parked', 'claimed').optional(),
+    status: Joi.string().valid('parked', 'claimed', 'cancel_pending').optional(),
     limit: Joi.number().integer().min(1).max(200).default(100)
 });
 
@@ -330,7 +352,8 @@ const reparkPosParkedSaleSchema = createPosParkedSaleSchema.fork(
     ['idempotency_key'],
     (schema) => schema.forbidden()
 ).keys({
-    expected_revision: Joi.number().integer().positive().required()
+    expected_revision: Joi.number().integer().positive().required(),
+    removed_line_reasons: parkedSaleLineRemovalReasonsSchema
 });
 
 const splitPaymentSnapshotLineSchema = Joi.object({
@@ -752,6 +775,13 @@ const adminLocationMonitorQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(200)
 });
 
+const branchViewEventSchema = Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    event: Joi.string().trim().lowercase().valid('enter', 'exit').required(),
+    operating_location_id: Joi.number().integer().positive().optional(),
+    active_shift_id: Joi.number().integer().positive().optional()
+});
+
 const shiftIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
@@ -1084,6 +1114,39 @@ const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
     cash_received: Joi.number().positive().precision(4).required()
+});
+
+// An unpaid online Dine-In order is settled at the POS terminal. Dine-In is
+// the service method, so the payment tender is selected independently here.
+// Non-cash methods require an explicit cashier confirmation and an exact amount;
+// cash allows change and is validated from cash_received by the use case.
+const collectDineInPaymentSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    terminal_id: Joi.string().trim().max(100).required(),
+    payment_method: Joi.string().trim().lowercase().valid('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit').required(),
+    cash_received: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    }),
+    amount: Joi.number().positive().precision(4).when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.required()
+    }),
+    manual_payment_received: Joi.boolean().when('payment_method', {
+        is: 'cash',
+        then: Joi.forbidden(),
+        otherwise: Joi.valid(true).required()
+    }),
+    payment_reference: Joi.string().trim().max(120).allow('', null).optional(),
+    employee_credit: Joi.object({
+        account_code: Joi.string().trim().uppercase().min(4).max(40).required()
+    }).when('payment_method', {
+        is: 'employee_credit',
+        then: Joi.required(),
+        otherwise: Joi.forbidden()
+    })
 });
 
 // Phase 148 (#825): staff-recorded settlement of a downpayment order's remaining balance. Distinct
@@ -1567,6 +1630,7 @@ export const validateProcurementExportQuery = validateSchema(procurementExportQu
 export const validateOnlineOrderHistoryQuery = validateSchema(onlineOrderHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateDeliveryPersonnelListQuery = validateSchema(deliveryPersonnelListQuerySchema, 'query', 'validatedQuery');
 export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
+export const validateBranchViewEvent = validateSchema(branchViewEventSchema, 'body', 'validatedData');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateAttendanceMutation = validateSchema(attendanceMutationSchema, 'body', 'validatedData');
@@ -1611,6 +1675,7 @@ export const validateDeliveryRunListQuery = validateSchema(deliveryRunListQueryS
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validateCollectCashDineInOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateCollectDineInPayment = validateSchema(collectDineInPaymentSchema, 'body', 'validatedData');
 export const validateRecordOrderBalancePayment = validateSchema(recordOrderBalancePaymentSchema, 'body', 'validatedData');
 export const validatePosBalancePaymentProofParams = validateSchema(balancePaymentProofParamsSchema, 'params', 'validatedParams');
 export const validateDeliveryCompletionEvidenceBody = validateSchema(deliveryCompletionEvidenceBodySchema, 'body', 'validatedData');
