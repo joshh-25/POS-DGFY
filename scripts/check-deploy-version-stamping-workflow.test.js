@@ -144,6 +144,13 @@ test('checkVersionlessDevResolver: real builder workflows pass', () => {
   }
 });
 
+test('deployment orchestrator does not forward obsolete branch-specific DEV tag inputs', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deployment-orchestrator.yml'), 'utf8');
+  assert.doesNotMatch(text, /dev_pr_ref|DEV_PR_REF|--pr-ref/);
+});
+
 test('checkMetaStepStampsFloorRevisionLabels: floor unconditional, revision conditional', () => {
   const text = `
             echo "org.dgfy-platform.release-floor=\${RELEASE_FLOOR}"
@@ -441,7 +448,7 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
 // checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #2055
 // (Phase 346): per-app-group release_revision_* inputs are threaded deploy.yml ->
 // deployment-orchestrator.yml -> builders (each job forwards its own app's entry out of
-// resolve-build-plan's revisions_json map plus dev_pr_ref), and declared + forwarded per
+// resolve-build-plan's revisions_json map), and declared + forwarded per
 // job-group on deploy-main.yml (plus --release-revisions-json into resolve-build-plan and
 // the per-app promote-aliases job).
 
