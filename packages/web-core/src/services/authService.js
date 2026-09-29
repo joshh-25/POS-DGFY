@@ -104,7 +104,7 @@ export const loginCashier = async (credentials, requestConfig = {}) => {
   return response.data.data;
 };
 
-export const logout = async () => {
+export const logout = async ({ redirectTo = '/login' } = {}) => {
   let logoutError = null;
   try {
     await api.post('/auth/logout');
@@ -115,7 +115,7 @@ export const logout = async () => {
       reason: 'logout',
       broadcast: true,
       emitAuthEvents: true,
-      redirectTo: '/login'
+      redirectTo
     });
   }
 

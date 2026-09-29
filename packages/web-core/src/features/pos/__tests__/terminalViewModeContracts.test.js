@@ -246,31 +246,15 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
-  it('refreshes shared settings while the authenticated terminal is locked without refreshing operations', () => {
-    expect(terminalPageContent).toContain("if ((!allowWhileLocked && locked) || terminalUser?.is_master_admin !== true)");
-    expect(terminalPageContent).toContain('if (locked && !allowWhileLocked) return;');
-    expect(terminalPageContent).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
-    expect(terminalPageContent).toContain('|| formData.dgfyTenantId');
-    expect(terminalPageContent).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
-    expect(terminalPageContent).toContain(
-      'hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
-    );
-    expect(terminalPageContent).toContain(
-      'refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
-    );
-    expect(terminalPageContent).toContain('if (!locked && canViewPos) {');
-  });
-
-  it('refreshes the mounted settings editor after a scoped Business Admin update', () => {
-    expect(terminalPageContent).toContain('setSettingsRefreshKey((previous) => previous + 1);');
-    expect(terminalPageContent).toContain('settingsRefreshKey={settingsRefreshKey}');
-    expect(terminalPageLayoutContent).toContain('settingsRefreshKey={settingsRefreshKey}');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey = 0');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey,');
-    expect(posSettingsWorkspaceContent).toContain('previousSettingsRefreshKeyRef.current === settingsRefreshKey');
-    expect(posSettingsWorkspaceContent).toContain('hasUnsavedSettingsChanges');
-    expect(posSettingsWorkspaceContent).toContain('void hydrateSettingsWorkspace({ silent: true });');
-    expect(posSettingsWorkspaceContent).toContain('data-testid="pos-settings-external-refresh-pending"');
+  it('opens the dedicated OPIS Back Office through an authorized terminal confirmation', () => {
+    expect(terminalPageContent).toContain("import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';");
+    expect(terminalPageContent).toContain('if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;');
+    expect(terminalPageContent).toContain('setBackOfficeConfirmOpen(true);');
+    expect(terminalPageContent).toContain('openOpisBackOffice({ path: pathOnly ||');
+    expect(terminalPageLayoutContent).toContain('onOpenBackOffice={onOpenBackOffice}');
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-backoffice"');
+    expect(terminalPageContent).toContain('Open Back Office?');
+    expect(terminalPageContent).toContain('DGFY Back Office opens in OPIS in a new tab.');
   });
 
   it('keeps terminal setup printer actions compact and aligned with terminal selection', () => {
@@ -558,7 +542,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalWorkspaceSidebarContent).toContain('{onboardingRestricted && (');
+    expect(terminalWorkspaceSidebarContent).toContain('onboardingRestricted = false');
     expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
@@ -676,7 +660,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('opens active queue orders in TerminalPage without routing them through receipt history', () => {
-    expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId);');
+    expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId, {');
     expect(terminalPageContent).toContain('<OnlineOrderDetailsModal');
     expect(terminalPageContent).toContain('<OnlineOrderReceiptModal');
     expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');

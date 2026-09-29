@@ -62,6 +62,7 @@ import {
   switchDgfyCompanyForTenantSession
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
+import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
@@ -547,6 +548,8 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
+  const [backOfficeConfirmOpen, setBackOfficeConfirmOpen] = useState(false);
+  const [backOfficeTargetPath, setBackOfficeTargetPath] = useState('/');
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [closeShiftBlocker, setCloseShiftBlocker] = useState(null);
   const [closedShiftReport, setClosedShiftReport] = useState(null);
@@ -1022,6 +1025,9 @@ export default function TerminalPage() {
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
+  const canAccessBusinessAdmin = !isCashierRole && (
+    isMasterAdminOperator || normalizedTerminalRole === 'admin' || hasPermission('business_admin:access')
+  );
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
@@ -1554,12 +1560,23 @@ export default function TerminalPage() {
     allowWhileLocked = false,
     canViewPosOverride = null
   } = {}) => {
-    const requestSequence = operationalContextRequestSequenceRef.current + 1;
-    operationalContextRequestSequenceRef.current = requestSequence;
     const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
       ? Number(operatingLocationIdOverride || operatingLocationId)
       : null;
+    const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
+    if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
+      // A stale locked/permission snapshot must not cancel or hide a valid refresh
+      // that is already in flight.
+      return { shift: null, cashSummary: null, salesSummary: null };
+    }
+    if (!terminalId) {
+      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
+      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
+      return { shift: null, cashSummary: null, salesSummary: null };
+    }
+    const requestSequence = operationalContextRequestSequenceRef.current + 1;
+    operationalContextRequestSequenceRef.current = requestSequence;
     const requestScopeKey = buildPosOperationalScopeKey({
       terminalId,
       locationId: scopedOperatingLocationId
@@ -1571,17 +1588,6 @@ export default function TerminalPage() {
       requestScopeKey,
       currentScopeKey: operationalContextScopeRef.current
     });
-    const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
-    if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
-      setShiftState((prev) => ({ ...prev, loading: false }));
-      setTodayDashboard((prev) => ({ ...prev, loading: false }));
-      return { shift: null, cashSummary: null, salesSummary: null };
-    }
-    if (!terminalId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
-      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
-      return { shift: null, cashSummary: null, salesSummary: null };
-    }
     const preservedTakeoverContext = takeoverShiftContextRef.current;
     const preservedTakeoverLocationId = Number(
       preservedTakeoverContext?.locationId || preservedTakeoverContext?.shift?.location_id || 0
@@ -3854,28 +3860,38 @@ export default function TerminalPage() {
         todayDashboard: preserveShiftContext.todayDashboard || {}
       }
       : null;
+    let operationalContext = null;
     if (normalizedPreservedShiftContext) {
       takeoverShiftContextRef.current = normalizedPreservedShiftContext;
       setLocked(false);
       setDrawerOpen(false);
+      const preservedCashSummary = normalizedPreservedShiftContext.shiftState.cashSummary || null;
+      const preservedSalesSummary = normalizedPreservedShiftContext.shiftState.salesSummary || null;
       setShiftState({
         loading: false,
         shift: normalizedPreservedShiftContext.shift,
-        cashSummary: normalizedPreservedShiftContext.shiftState.cashSummary || null,
-        salesSummary: normalizedPreservedShiftContext.shiftState.salesSummary || null
+        cashSummary: preservedCashSummary,
+        salesSummary: preservedSalesSummary
       });
+      const preservedBusinessDate = normalizedPreservedShiftContext.todayDashboard.businessDate || null;
+      const preservedDashboardSalesSummary = normalizedPreservedShiftContext.todayDashboard.salesSummary || null;
       setTodayDashboard({
         loading: false,
-        businessDate: normalizedPreservedShiftContext.todayDashboard.businessDate || null,
-        salesSummary: normalizedPreservedShiftContext.todayDashboard.salesSummary || null
+        businessDate: preservedBusinessDate,
+        salesSummary: preservedDashboardSalesSummary
       });
       await Promise.all([
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         refreshTenantLocations({ suppressGlobalErrors: true })
       ]);
+      operationalContext = {
+        shift: normalizedPreservedShiftContext.shift,
+        cashSummary: preservedCashSummary,
+        salesSummary: preservedSalesSummary
+      };
     } else {
       await hydrateUser({ suppressGlobalErrors: true });
-      await Promise.all([
+      const [, , refreshedOperationalContext] = await Promise.all([
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         refreshTenantLocations({ suppressGlobalErrors: true }),
         refreshOperationalContext({
@@ -3884,6 +3900,7 @@ export default function TerminalPage() {
           suppressGlobalErrors: true
         })
       ]);
+      operationalContext = refreshedOperationalContext;
     }
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
     setCashierUnlockSession(null);
@@ -3906,6 +3923,7 @@ export default function TerminalPage() {
     setTerminalUnlockModalOpen(false);
     setUnlockFailure(null);
     await notifyStockAlertsAfterUnlock();
+    return operationalContext;
   };
 
   const handleSelectAdminTerminal = async (selectedTerminalId) => {
@@ -4906,6 +4924,62 @@ export default function TerminalPage() {
         return;
       }
 
+      const restoreResumePrompt = ({ terminalId, locationId, activeShift }) => {
+        const priorCashierSession = cashierUnlockSession || {};
+        setStoredTerminalLock(true);
+        setStoredTerminalLockReason('shift_start_required');
+        setLocked(true);
+        setDrawerOpen(false);
+        setActiveTerminalId(terminalId);
+        setOperatingLocationId(locationId);
+        setTerminalUnlockForm((prev) => ({
+          ...prev,
+          terminalId,
+          terminalPassword: '',
+          cashierPassword: '',
+          openingFloatAmount: '',
+          openingNote: ''
+        }));
+        setCashierUnlockSession({
+          ...priorCashierSession,
+          source: priorCashierSession.source || 'dgfy_pos',
+          email: priorCashierSession.email || String(terminalUser?.email || terminalUser?.username || terminalUnlockForm.cashierEmail || '').trim(),
+          userId: priorCashierSession.userId || terminalUser?.user_id || activeShift?.cashier_id || null,
+          role: priorCashierSession.role || terminalUser?.role || 'cashier',
+          permissions: Array.isArray(priorCashierSession.permissions)
+            ? priorCashierSession.permissions
+            : parseUserPermissions(terminalUser),
+          tenantId: priorCashierSession.tenantId || selectedTenantId,
+          companyToken: priorCashierSession.companyToken || resolvedCompanyToken,
+          terminalId,
+          activeShift: activeShift || priorCashierSession.activeShift || null
+        });
+        setTerminalUnlockMode('resume_shift');
+        setTerminalUnlockRequired(true);
+        setTerminalUnlockModalOpen(true);
+        toast.error("We couldn't confirm your existing shift. No new shift or opening cash is needed — try unlocking again.");
+      };
+
+      const completeConfirmedShiftResume = async ({ terminalId, locationId, activeShift }) => {
+        let operationalContext = await completeTerminalUnlock(terminalId, {
+          operatingLocationIdOverride: locationId
+        });
+        if (!operationalContext?.shift) {
+          operationalContext = await refreshOperationalContext({
+            terminalIdOverride: terminalId,
+            operatingLocationIdOverride: locationId,
+            suppressGlobalErrors: true,
+            allowWhileLocked: true
+          });
+        }
+        if (operationalContext?.shift) {
+          toast.success('Existing cashier shift resumed.');
+          return true;
+        }
+        restoreResumePrompt({ terminalId, locationId, activeShift });
+        return false;
+      };
+
       if (requiresOpeningCash || resumeExistingShift) {
         if (!cashierSessionActive && !resolvedCompanyToken) {
           toast.error('Unable to resolve the selected company session for cashier sign-in.');
@@ -4963,10 +5037,11 @@ export default function TerminalPage() {
         if (currentShiftDecision.mode === 'resume') {
           const currentShiftTerminalId = currentShiftDecision.terminalId;
           const currentShiftLocationId = currentShiftDecision.locationId;
-          await completeTerminalUnlock(currentShiftTerminalId, {
-            operatingLocationIdOverride: currentShiftLocationId
+          await completeConfirmedShiftResume({
+            terminalId: currentShiftTerminalId,
+            locationId: currentShiftLocationId,
+            activeShift: currentShift
           });
-          toast.success('Existing cashier shift resumed.');
           return;
         }
 
@@ -4982,6 +5057,15 @@ export default function TerminalPage() {
         if (selectedTerminalDecision.mode === 'blocked') {
           throw new Error(selectedTerminalDecision.message);
         }
+      }
+
+      if (resumeExistingShift) {
+        await completeConfirmedShiftResume({
+          terminalId: selectedTerminalId,
+          locationId: resolvedLocationId,
+          activeShift: null
+        });
+        return;
       }
 
       if (requiresOpeningCash) {
@@ -5006,11 +5090,9 @@ export default function TerminalPage() {
         operatingLocationIdOverride: resolvedLocationId
       });
       toast.success(
-        resumeExistingShift
-          ? 'Existing cashier shift resumed.'
-          : requiresOpeningCash
-            ? 'POS unlocked and cashier shift opened successfully.'
-            : 'Terminal unlocked successfully.'
+        requiresOpeningCash
+          ? 'POS unlocked and cashier shift opened successfully.'
+          : 'Terminal unlocked successfully.'
       );
     } catch (error) {
       reportTerminalFailure(error, 'terminal_unlock');
@@ -6633,6 +6715,37 @@ export default function TerminalPage() {
     if (dirty !== true) setPendingStorefrontContentViewMode('');
   }, []);
 
+  const handleOpenBackOffice = useCallback((target = {}) => {
+    if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;
+    setMobileNavOpen(false);
+    const requestedPath = typeof target === 'string' ? target : target?.path;
+    const normalizedPath = String(requestedPath || '/').trim();
+    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
+      ? normalizedPath
+      : (normalizedPath.startsWith('/') && !normalizedPath.startsWith('//') ? normalizedPath : '/');
+    const activeBranchId = Number(
+      shiftState?.shift?.location_id || viewingLocationId || operatingLocationId || queueLocationScopeId || 0
+    );
+    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
+      && Number.isInteger(activeBranchId) && activeBranchId > 0) {
+      const [pathOnly, queryString = ''] = safePath.split('?');
+      const params = new URLSearchParams(queryString);
+      params.set('branch_id', String(activeBranchId));
+      safePath = `${pathOnly}?${params.toString()}`;
+    }
+    setBackOfficeTargetPath(safePath);
+    setBackOfficeConfirmOpen(true);
+  }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
+
+  const handleConfirmOpenBackOffice = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    setBackOfficeConfirmOpen(false);
+    const canonicalPath = String(backOfficeTargetPath || '/').replace(/^\/business-admin(?=\/|$)/, '/backoffice');
+    const [pathOnly, queryString = ''] = canonicalPath.split('?');
+    const outcome = openOpisBackOffice({ path: pathOnly || '/', search: queryString ? `?${queryString}` : '' });
+    toast.success(outcome === 'new-tab' ? 'Back Office opened in OPIS.' : 'Opening Back Office in OPIS.');
+  }, [backOfficeTargetPath]);
+
   const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
       setMobileNavOpen(false);
@@ -7195,7 +7308,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -7215,6 +7328,10 @@ function PosRestorationLoadingScreen() {
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
+              backOfficeConfirmOpen,
+              backOfficeTargetPath,
+              setBackOfficeConfirmOpen,
+              handleConfirmOpenBackOffice,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -7372,6 +7489,7 @@ function PosRestorationLoadingScreen() {
           canViewAttendance={canViewAttendance}
           canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
+          canLaunchBackOffice={canAccessBusinessAdmin}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}
@@ -7396,6 +7514,7 @@ function PosRestorationLoadingScreen() {
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           onOpenMyDayClosePin={openMyDayClosePin}
+          onOpenBackOffice={handleOpenBackOffice}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           canOpenShift={canOpenShift}
           terminalUser={terminalUser}

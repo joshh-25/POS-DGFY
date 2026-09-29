@@ -27,7 +27,7 @@ const makeSetting = (updatedAt = CURRENT_VERSION) => ({
   setting_value: 'Old value',
   data_type: 'string',
   description: 'Tagline',
-    updated_at: updatedAt
+  updated_at: updatedAt
 });
 
 const makeTaxSetting = (categories, version = 7) => ({
@@ -48,7 +48,6 @@ const standardTaxCategories = {
   promo: { vat_treatment: 'standard' },
   voucher: { vat_treatment: 'standard' }
 };
-
 describe('settingsRepository optimistic concurrency', () => {
   beforeEach(() => {
     jest.clearAllMocks();

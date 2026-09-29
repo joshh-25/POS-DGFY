@@ -149,7 +149,7 @@ describe('Simple (MSME) checkout summary -- fee/VAT split (#1615)', () => {
       expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
 
       render(<SimpleCheckoutSummaryContent {...desktopBaseProps} totals={totals} isDeliveryOrder />);
-      expect(screen.getByText('Delivery Fee')).toBeTruthy();
+      expect(screen.getByText('Delivery fee')).toBeTruthy();
       expect(screen.getByText('PHP 50.00')).toBeTruthy();
       expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.queryByText('PHP 1.05')).toBeNull();

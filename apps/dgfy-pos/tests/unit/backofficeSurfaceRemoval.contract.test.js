@@ -8,18 +8,20 @@ const repositoryRoot = path.resolve(posRoot, '../..');
 
 const readRepositoryFile = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
-describe('POS Back Office removal contract', () => {
-  it('removes the merchant Back Office runtime surface and entry points', () => {
+describe('POS and OPIS Back Office boundary contract', () => {
+  it('keeps the Back Office in OPIS and limits POS to a compatibility handoff', () => {
     expect(fs.existsSync(path.join(posRoot, 'src/features/businessAdmin'))).toBe(false);
-    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/merchantBackOffice'))).toBe(false);
+    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/merchantBackOffice'))).toBe(true);
 
     const posEntry = readRepositoryFile('apps/dgfy-pos/src/main.jsx');
     const posSidebar = readRepositoryFile('packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx');
-    const apiEntry = readRepositoryFile('apps/dgfy-api/src/server.js');
+    const opisEntry = readRepositoryFile('apps/dgfy-opis/src/main.jsx');
 
-    expect(posEntry).not.toMatch(/BusinessAdminPage|BackOfficeLoginPage|\/backoffice/);
-    expect(posSidebar).not.toMatch(/BusinessAdmin|BackOffice|\/backoffice/);
-    expect(apiEntry).not.toMatch(/businessAdmin|BusinessAdmin/);
+    expect(posEntry).not.toMatch(/BusinessAdminPage|BackOfficeLoginPage/);
+    expect(posEntry).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
+    expect(posEntry).toContain('<Route path="/business-admin/*" element={<OpisCompatRedirect />} />');
+    expect(posSidebar).toContain('pos-nav-backoffice');
+    expect(opisEntry).toContain("const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));");
   });
 
   it('keeps the standalone terminal, checkout, and reports routes wired', () => {

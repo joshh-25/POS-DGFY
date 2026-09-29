@@ -50,7 +50,8 @@ const DGLAUNDRY_OPERATIONS_ORIGIN = 'https://laundry.dgfy.ph';
 export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
-  const destinationLabel = String(targetSurface || '').trim().toLowerCase() === 'pos' ? 'DGFY POS' : 'SKUpervisor';
+  const normalizedSurface = String(targetSurface || '').trim().toLowerCase();
+  const destinationLabel = normalizedSurface === 'pos' ? 'DGFY POS' : normalizedSurface === 'opis' ? 'DGFY OPIS' : 'SKUpervisor';
   const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | 'error'
   const [error, setError] = useState('');
   const [companies, setCompanies] = useState([]);

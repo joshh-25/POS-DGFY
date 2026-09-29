@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "intentional_deletions": [
+    {
+      "path": "apps/dgfy-ims/Pages/Dashboard.jsx",
+      "decision": "reject",
+      "reason": "Reject the retired IMS duplicate. The final tree routes the legacy merchant surface through apps/dgfy-ims/src/pages/MerchantSurfaceRetired.jsx, while the canonical overview is owned by the POS Back Office."
+    },
+    {
+      "path": "apps/dgfy-ims/Pages/PurchaseOrders.jsx",
+      "decision": "reject",
+      "reason": "Reject the retired IMS duplicate. The final POS Back Office manifest owns procurement through packages/web-core/src/features/merchantBackOffice/pages/PurchaseOrdersPage.jsx."
+    },
+    {
+      "path": "apps/dgfy-ims/Pages/StockMovements.jsx",
+      "decision": "reject",
+      "reason": "Reject the retired IMS duplicate. The final POS Back Office manifest owns stock movements through packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx."
+    },
+    {
+      "path": "apps/dgfy-storefront/src/auth/storefrontSkupervisorLink.js",
+      "decision": "reject",
+      "reason": "Reject the obsolete cross-origin URL helper. Final legal and registration links use the same-origin storefront URL helper, while merchant access uses the canonical POS Back Office handoff; no final consumer imports this deleted module."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/services/__tests__/posSplitPaymentSessionStore.test.js",
+      "decision": "reject",
+      "reason": "Reject the localStorage recovery contract together with its implementation. The final split-payment flow is server-authoritative and creates a payment session lazily when payment is recorded; targeted split-payment coverage verifies that behavior."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/services/posSplitPaymentSessionStore.js",
+      "decision": "reject",
+      "reason": "Reject the target-side localStorage payment-session pointer store. The final POS split-payment flow intentionally has no local recovery-store import and uses the server session with deferred creation instead."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/utils/__tests__/skupervisorHandoff.test.js",
+      "decision": "reject",
+      "reason": "Reject the tests for the retired combined SKUpervisor/POS handoff module. Final StorefrontApp consumers use the canonical businessBackOfficeHandoff contract and its dedicated tests."
+    },
+    {
+      "path": "packages/web-core/src/features/pos/utils/skupervisorHandoff.js",
+      "decision": "reject",
+      "reason": "Reject the retired combined SKUpervisor/POS handoff module. The final cross-app merchant handoff is owned by businessBackOfficeHandoff.js and targets the POS Back Office, with no remaining final imports of this module."
+    }
+  ]
+}

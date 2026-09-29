@@ -70,6 +70,7 @@ const UNCONDITIONAL_TRIGGER_PATTERNS = Object.freeze({
     'dgfy-ims': /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
     'dgfy-pos': /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
     'dgfy-storefront': /^(apps\/dgfy-storefront\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+    'dgfy-opis': /^(apps\/dgfy-opis\/|packages\/pos-receipt\/|infrastructure\/docker\/dgfy-opis\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
 });
 
 /**
@@ -140,7 +141,7 @@ function printResult(result) {
 function writeGithubOutput(result) {
     const outputPath = process.env.GITHUB_OUTPUT;
     if (!outputPath) return;
-    const suffixByApp = { 'dgfy-ims': 'ims', 'dgfy-pos': 'pos', 'dgfy-storefront': 'storefront' };
+    const suffixByApp = { 'dgfy-ims': 'ims', 'dgfy-pos': 'pos', 'dgfy-storefront': 'storefront', 'dgfy-opis': 'opis' };
     const lines = Object.entries(result)
         .map(([app, entry]) => `frontend_${suffixByApp[app]}=${entry.trigger}`)
         .join('\n');

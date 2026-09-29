@@ -55,6 +55,10 @@ import {
   stopTenantProvisioningReconciliationScheduler
 } from './schedulers/tenantProvisioningReconciliationScheduler.js';
 import {
+  startBusinessAdminAlertScheduler,
+  stopBusinessAdminAlertScheduler
+} from './schedulers/businessAdminAlertScheduler.js';
+import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
@@ -276,6 +280,7 @@ const isDevelopmentOriginAllowed = (origin) => {
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:518[0-9]$/,
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
+    /^https?:\/\/opis\.localhost:517[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:518[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/,
@@ -296,7 +301,10 @@ const isDevelopmentOriginAllowed = (origin) => {
       || host === 'skupervisor.dgfy.ph'
       || host === 'pos.dgfy.ph'
       || host === 'dgfy.ph'
-      || host === 'store.dgfy.ph';
+      || host === 'store.dgfy.ph'
+      || host === 'opis.dgfy.ph'
+      || host === 'opis.dev.dgfy.ph'
+      || host === 'opis.stage.dgfy.ph';
     return Boolean(knownSurface);
   } catch {
     return false;
@@ -804,6 +812,7 @@ import adminTemplateRoutes from './routes/adminTemplates.js';
 import adminRegistrationIndustryRoutes from './routes/adminRegistrationIndustries.js';
 import complianceRoutes from './routes/compliance.js';
 import onboardingRoutes from './routes/onboarding.js';
+import businessAdminRoutes from './routes/businessAdmin.js';
 
 // Auth routes (authLimiter applied selectively per-route in auth.js)
 app.use('/api/v1/auth', authRoutes);
@@ -854,6 +863,7 @@ app.use('/api/v1/admin/registration-industries', adminRegistrationIndustryRoutes
 app.use('/api/v1/admin', adminAuthRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/onboarding', onboardingRoutes);
+app.use('/api/v1/business-admin', businessAdminRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
@@ -984,6 +994,7 @@ const startServer = async () => {
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
     startTenantProvisioningReconciliationScheduler();
+    startBusinessAdminAlertScheduler();
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
     startCatalogImageUploadWorker();
@@ -1073,6 +1084,7 @@ const startServer = async () => {
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
       stopTenantProvisioningReconciliationScheduler();
+      stopBusinessAdminAlertScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {

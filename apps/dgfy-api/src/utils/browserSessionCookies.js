@@ -12,6 +12,30 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   affiliateAttribution: 'sku_aff_attr'
 });
 
+// OPIS (DGFY Back Office, issue #2052) runs on its own origin (opis.dgfy.ph) with an
+// independent browser session: company switching or logout in OPIS must never disrupt an
+// active POS terminal, even when SESSION_COOKIE_DOMAIN=.dgfy.ph shares legacy sku_*
+// cookies across subdomains. The opis_* namespace is selected per request by the
+// x-dgfy-app-surface: opis header (a cookie-namespace selector only; it grants no
+// authorization) and never falls back to or clears the sku_* POS namespace.
+export const OPIS_SESSION_COOKIE_NAMES = Object.freeze({
+  tenantRefresh: 'opis_refresh_token',
+  tenantContext: 'opis_tenant_context',
+  csrf: 'opis_csrf_token'
+});
+
+export const APP_SURFACE_HEADER = 'x-dgfy-app-surface';
+
+export const resolveSessionNamespace = (req) => (
+  String(req?.headers?.[APP_SURFACE_HEADER] || '').trim().toLowerCase() === 'opis'
+    ? 'opis'
+    : 'sku'
+);
+
+const cookieNamesForRequest = (req) => (
+  resolveSessionNamespace(req) === 'opis' ? OPIS_SESSION_COOKIE_NAMES : SESSION_COOKIE_NAMES
+);
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_REFRESH_MAX_AGE_MS = 7 * ONE_DAY_MS;
 const DEFAULT_ACCESS_MAX_AGE_MS = ONE_DAY_MS;
@@ -87,23 +111,24 @@ const appendSetCookie = (res, cookie) => {
   res.setHeader('Set-Cookie', Array.isArray(existing) ? [...existing, cookie] : [existing, cookie]);
 };
 
-export const issueCsrfToken = (res, { maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS } = {}) => {
+export const issueCsrfToken = (res, { maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS } = {}, req = null) => {
   const token = crypto.randomBytes(32).toString('base64url');
-  appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.csrf, token, {
+  appendSetCookie(res, serializeCookie(cookieNamesForRequest(req).csrf, token, {
     httpOnly: false,
     maxAgeMs
   }));
   return token;
 };
 
-export const setTenantSessionCookies = (res, { refreshToken, tenantToken }) => {
+export const setTenantSessionCookies = (res, { refreshToken, tenantToken }, req = null) => {
+  const names = cookieNamesForRequest(req);
   if (refreshToken) {
-    appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.tenantRefresh, refreshToken));
+    appendSetCookie(res, serializeCookie(names.tenantRefresh, refreshToken));
   }
   if (tenantToken) {
-    appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.tenantContext, tenantToken));
+    appendSetCookie(res, serializeCookie(names.tenantContext, tenantToken));
   }
-  issueCsrfToken(res);
+  issueCsrfToken(res, {}, req);
 };
 
 export const setBearerSessionCookie = (res, name, token, { maxAgeMs = DEFAULT_ACCESS_MAX_AGE_MS } = {}) => {
@@ -116,21 +141,29 @@ export const clearSessionCookie = (res, name, { httpOnly = true } = {}) => {
   appendSetCookie(res, serializeCookie(name, '', { clear: true, httpOnly }));
 };
 
-export const clearTenantSessionCookies = (res) => {
-  clearSessionCookie(res, SESSION_COOKIE_NAMES.tenantRefresh);
-  clearSessionCookie(res, SESSION_COOKIE_NAMES.tenantContext);
-  clearSessionCookie(res, SESSION_COOKIE_NAMES.csrf, { httpOnly: false });
+export const clearTenantSessionCookies = (res, req = null) => {
+  const names = cookieNamesForRequest(req);
+  clearSessionCookie(res, names.tenantRefresh);
+  clearSessionCookie(res, names.tenantContext);
+  clearSessionCookie(res, names.csrf, { httpOnly: false });
 };
 
-export const clearAllBrowserSessionCookies = (res) => {
+export const clearAllBrowserSessionCookies = (res, req = null) => {
+  // OPIS logout clears only the opis_* namespace: it must never clear the sku_* POS
+  // cookies that keep an active terminal signed in (issue #2052). The default sku
+  // namespace keeps its existing full-clear behavior for backward compatibility.
+  if (resolveSessionNamespace(req) === 'opis') {
+    clearTenantSessionCookies(res, req);
+    return;
+  }
   Object.entries(SESSION_COOKIE_NAMES).forEach(([key, name]) => {
     clearSessionCookie(res, name, { httpOnly: key !== 'csrf' });
   });
 };
 
-export const getTenantRefreshToken = (req) => getCookie(req, SESSION_COOKIE_NAMES.tenantRefresh);
-export const getTenantContextToken = (req) => getCookie(req, SESSION_COOKIE_NAMES.tenantContext);
-export const getCsrfCookie = (req) => getCookie(req, SESSION_COOKIE_NAMES.csrf);
+export const getTenantRefreshToken = (req) => getCookie(req, cookieNamesForRequest(req).tenantRefresh);
+export const getTenantContextToken = (req) => getCookie(req, cookieNamesForRequest(req).tenantContext);
+export const getCsrfCookie = (req) => getCookie(req, cookieNamesForRequest(req).csrf);
 
 // Affiliate attribution: a store-scoped, HttpOnly cookie holding a JSON map of
 // tenant_id -> enrollment_id. A visitor can carry attribution for more than one
@@ -194,9 +227,12 @@ export const isMobileClientRequest = (req) =>
 // clients have no cookie, so they submit the refresh token they were
 // issued in the JSON body instead - only honored when the mobile header is
 // set, so a stray body field can't be used to bypass the cookie flow.
+// OPIS (opis namespace) never consumes the legacy sku_* POS cookie: strict
+// isolation both directions, even under a shared SESSION_COOKIE_DOMAIN.
 export const getSubmittedRefreshToken = (req) => {
   const cookieToken = getTenantRefreshToken(req);
   if (cookieToken) return cookieToken;
+  if (resolveSessionNamespace(req) === 'opis') return '';
   if (isMobileClientRequest(req)) {
     return String(req?.body?.refreshToken || '').trim();
   }

@@ -614,7 +614,7 @@ async function orchestrateAndReconcile(declarationPaths) {
       results.push(entry);
     }
 
-    const outcome = reconcileOrFailClosed(results, { runId: 'local' }, {
+    const outcome = reconcileOrFailClosed(results, { runId: runLabel.toUpperCase() }, {
       log: (msg) => console.log(msg),
       logError: (msg) => console.error(msg)
     });

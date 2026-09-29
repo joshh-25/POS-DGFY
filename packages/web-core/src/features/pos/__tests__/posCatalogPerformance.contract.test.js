@@ -37,6 +37,9 @@ describe('hosted POS catalog performance contracts', () => {
     expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain("loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(posItemImageSource).toContain("import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';");
+    expect(posItemImageSource).toContain('sources={targetSources}');
+    expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');

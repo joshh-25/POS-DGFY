@@ -9,6 +9,29 @@
       "tests": [],
       "rollback": "Seam is read-only; disabling it has no data effect. Revert by removing the command and its manifest entry.",
       "removal_criteria": "Legacy backup decommissioned (future milestone, CUT-02)."
+    },
+    {
+      "id": "opis-pos-backoffice-redirect",
+      "type": "api-boundary",
+      "status": "active",
+      "rationale": "POS no longer hosts the merchant Back Office (moved to apps/dgfy-opis, issue #2052). Its /backoffice/* and /business-admin/* routes redirect externally to OPIS preserving path and query, so bookmarked merchant links keep working during the #1354 migration.",
+      "tests": [
+        "apps/dgfy-opis/src/__tests__/opisRoutes.test.js",
+        "packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js"
+      ],
+      "rollback": "Revert apps/dgfy-pos/src/main.jsx to render the Back Office shell in-app; OPIS remains independently usable.",
+      "removal_criteria": "Remove once #1354 migration completes and verified replacement links cover every retained POS path (no inbound merchant traffic to the redirect for one full release cycle)."
+    },
+    {
+      "id": "opis-ims-merchant-handoff",
+      "type": "api-boundary",
+      "status": "active",
+      "rationale": "IMS retired merchant surfaces hand off to the dedicated Back Office, now OPIS instead of POS (issue #2052). The tenant_id/next/handoff_token handoff contract is unchanged; only the origin resolves to OPIS.",
+      "tests": [
+        "packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js"
+      ],
+      "rollback": "Point apps/dgfy-ims/src/pages/MerchantSurfaceRetired.jsx back at the POS handoff builder; no data migration involved.",
+      "removal_criteria": "Remove once #1354 migration completes and IMS merchant routes are deleted rather than redirected."
     }
   ]
 }

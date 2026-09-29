@@ -1921,6 +1921,15 @@ body[data-dgfy-pos-surface] [role="dialog"] {
   backdrop-filter: none !important;
 }
 
+/* Locked and disabled POS surfaces use a regular CSS filter rather than
+ * backdrop-filter. Keep those filters off in the fixed Chrome 80-84 iMin
+ * WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"],
+html.dgfy-imin-performance [class~="blur-sm"],
+html.dgfy-imin-performance [class~="blur-[0.5px]"] {
+  filter: none !important;
+}
+
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
 html.dgfy-imin-performance .animate-pos-card-scale-up,
 html.dgfy-imin-performance .animate-pos-illustration-float,

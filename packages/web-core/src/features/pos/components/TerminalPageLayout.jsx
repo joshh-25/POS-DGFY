@@ -125,6 +125,7 @@ export default function TerminalPageLayout({
     canViewAttendance = false,
     canOperateAttendance = false,
     canViewAudit = false,
+    canLaunchBackOffice = false,
     onboardingRestricted = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
@@ -150,6 +151,7 @@ export default function TerminalPageLayout({
     dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
     refreshDayCloseReadiness = async () => null,
     onOpenMyDayClosePin = () => {},
+    onOpenBackOffice = () => {},
     terminalUser,
     accessibleCompanies = [],
     companySwitching = false,
@@ -761,6 +763,8 @@ export default function TerminalPageLayout({
               canViewPos={workspaceCanViewPos}
               canViewAudit={canViewAudit}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
+              canLaunchBackOffice={canLaunchBackOffice}
+              onOpenBackOffice={onOpenBackOffice}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
               showFnbService={showFnbService}
@@ -1016,6 +1020,8 @@ export default function TerminalPageLayout({
                 canViewPos={workspaceCanViewPos}
                 canViewAudit={canViewAudit}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
+                canLaunchBackOffice={canLaunchBackOffice}
+                onOpenBackOffice={onOpenBackOffice}
                 canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
                 showFnbService={showFnbService}

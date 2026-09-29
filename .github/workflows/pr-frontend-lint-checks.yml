@@ -19,7 +19,7 @@ on:
   workflow_call:
     inputs:
       app:
-        description: Which frontend app to lint (dgfy-ims, dgfy-pos, or dgfy-storefront)
+        description: Which frontend app to lint (dgfy-ims, dgfy-pos, dgfy-storefront, or dgfy-opis)
         required: true
         type: string
       runner_labels_json:
@@ -91,7 +91,7 @@ jobs:
       # Same --resolve-plugins-relative-to pattern as promotion-quality-gate.yml's own
       # "Run web-core lint" step (#918) -- packages/web-core has no lint script/devDependencies
       # of its own (ADR 0071 Decision 4 [binding]), so coverage runs from the calling app's
-      # already-installed ESLint. IMS-only (#1748): POS/Storefront checks stay app-local, running
+      # already-installed ESLint. IMS-only (#1748): POS/Storefront/OPIS checks stay app-local, running
       # only their own `npm run lint`. Both lint steps in this job are blocking by default -- no
       # continue-on-error -- this is a brand-new job, not subject to promotion-quality-gate.yml's
       # #1063 advisory regime.

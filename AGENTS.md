@@ -11,8 +11,8 @@ stale; the real code lives under:
 - `apps/dgfy-api` — backend
 - `apps/dgfy-migration-runner` — migrations/seeders (split out of the API)
 - `apps/dgfy-android-bridge` — Android
-- `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront` — the three frontend apps (issue #322)
-- `packages/web-core` — the shared frontend trunk all three of the above consume via a `file:`
+- `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-opis` — the four frontend apps (issues #322, #2052)
+- `packages/web-core` — the shared frontend trunk all four of the above consume via a `file:`
   dependency; it has no build step, no `node_modules`, and no lockfile of its own
 
 Full path maps, before/after commands, and in-flight-branch merge guidance:
@@ -20,17 +20,12 @@ Full path maps, before/after commands, and in-flight-branch merge guidance:
 declarations, or other dated/historical records — see that doc's "note for AI agents" for the
 full leave-alone list.
 
-## Feature placement policy: back-office-level work goes to POS, not IMS (interim)
+## Feature placement policy: back-office-level work goes to OPIS
 
-Pat's call (#1554): to DGFY's merchant customers, POS is already functioning as the back office
-today — it's where they actually operate, not IMS. **Until #1354's dedicated DGFY Back Office
-ships, new back-office-level feature work targets `apps/dgfy-pos`, not `apps/dgfy-ims`.** Don't
-let a feature default into IMS just because an existing page (e.g. `ItemsPage.jsx`) already lives
-there — that happened twice in the same batch (#1318, #1495 Part B) with confirmed zero POS reach,
-because nobody weighed IMS vs POS vs "hold until Back Office," not because IMS was the right call.
-This is not a blanket "prefer POS" rule — see the boundary below — and it is not retroactive: it
-governs where *new* work lands, not a migration of #1318/#1495's own IMS-only UI or anything else
-already shipped.
+Pat accepted ADR 0087 on 2026-09-29, establishing `apps/dgfy-opis` as DGFY's dedicated Back Office.
+New back-office-level feature work targets OPIS, not IMS or POS. This replaces the interim #1554
+rule that routed this work to POS while #1354's dedicated Back Office was being built. The change
+governs new work; it does not retroactively move shipped POS or IMS UI.
 
 **"Back-office-level" means**, at minimum: catalog/inventory authoring (item creation, category
 management, pricing rules), CSV/bulk import-export tooling, and cross-location configuration.
@@ -38,20 +33,15 @@ It does **not** mean POS terminal operational flows — checkout, delivery run a
 management — which already correctly live under `TerminalPage.jsx` and are unaffected by this
 rule.
 
-This deliberately overrides, on an interim basis, ADR 0071's Context framing that "IMS ships
-back-office admin work" — see that ADR's 2026-09-03 Amendment, added alongside this section, for
-why that's a dated Amendment rather than a silent contradiction between an authoritative doc and
-this file. Two related, **unsettled** questions this rule does not answer:
+ADR 0087 supersedes ADR 0071's former back-office placement framing. One related, **unsettled**
+question this rule does not answer:
 
-- **#1354** is the target end state — once the dedicated Back Office ships, new back-office-level
-  work targets it, not POS. This rule is the bridge until then, not a permanent POS mandate.
 - **#358** — whether `apps/dgfy-ims` is extracted and kept, frozen, or deprecated — stays open.
   This rule is itself a data point toward that decision (new work no longer defaults to IMS), not
   a resolution of it; flagged on #358, not decided here.
 
-**Labeling:** issue for back-office-level work landing in POS under this rule gets `area:pos`
-(matching where the code actually lands), not `area:skupervisor` — see
-`docs/process/ISSUE-TAXONOMY.md`'s `area:*` table, whose own meaning is unchanged by this note.
+**Labeling:** OPIS back-office issues use `area:skupervisor` (the admin/back-office product surface);
+POS terminal operational work uses `area:pos`. See `docs/process/ISSUE-TAXONOMY.md`.
 
 ## Engineering-investment priority: apps/dgfy-ims is low-priority and on a deprecation track
 
@@ -62,10 +52,10 @@ extract-and-freeze, or deprecate — stays open and undecided under #358; this n
 of those three outcomes and holds regardless of which eventually wins.
 
 **New or proactive engineering investment — tests, tooling, refactors, and any non-required feature
-work — should default away from IMS toward `apps/dgfy-pos` / `apps/dgfy-storefront`, absent an
-explicit reason.** This is broader than the Feature placement policy above (which only routes *new
-back-office-level feature* work to POS): it covers every kind of proactive effort, including new
-test coverage. See `.agents/skills/observer/SKILL.md`'s noise policy and
+work — should default away from IMS toward the app that owns the behavior: OPIS for back-office
+work, POS for terminal operations, and Storefront for customer commerce.** This is broader than the
+Feature placement policy above: it covers every kind of proactive effort, including new test
+coverage. See `.agents/skills/observer/SKILL.md`'s noise policy and
 `.agents/skills/pm/SKILL.md`'s filing procedure for where this is reflected in role-level judgment
 calls, and `docs/testing/README.md`'s IMS E2E section for the test-coverage-specific instance —
 read the rule here, it is not restated in any of those three.
