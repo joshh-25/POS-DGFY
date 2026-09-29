@@ -3,7 +3,7 @@ status: proposed
 authority_level: authoritative
 owner: architecture
 date: 2026-09-29
-last_reviewed: 2026-09-29
+last_reviewed: 2026-09-30
 review_by: 2027-03-29
 applies_to: frontend_architecture
 topic: pos_opis_backoffice_overlap
@@ -29,10 +29,13 @@ not the merge parent of PR #2054.
 
 ## Decision
 
-1. POS may serve the inventoried pre-#2054 Business Admin workflows at
-   `/backoffice/*` and `/business-admin/*`, plus the historical `/sales` and
-   `/reports` aliases. This narrowly supersedes ADR 0087 Decision 1's POS
-   redirect requirement only for this inventory. `[binding]`
+1. POS may serve the inventoried pre-#2054 Business Admin workflows at the
+   POS-native `/business-admin/*` route, plus the historical `/sales` and
+   `/reports` aliases. POS does not link to OPIS; OPIS is accessed manually
+   while the existing POS workflows remain available during a gradual,
+   user-aware transition. OPIS remains the permanent Back Office destination.
+   This narrowly supersedes ADR 0087 Decision 1's POS redirect requirement
+   only for this inventory. `[binding]`
 2. OPIS remains an independently buildable, deployable Back Office with its
    canonical root-level routes, app-owned account actions, and independent
    `opis_*` session namespace. POS retains its `sku_*` session namespace.
@@ -51,7 +54,11 @@ not the merge parent of PR #2054.
 ## Consequences
 
 - POS and OPIS may expose the same inventoried workflows while preserving
-  separate routers, deployments, and browser sessions.
+  separate routers, deployments, and browser sessions. POS presents these as
+  Business Admin and does not link to the OPIS Back Office.
+- OPIS remains the permanent Back Office product. This POS restoration is a
+  transition step; future migration of administrative functions into OPIS will
+  be gradual and user-aware, with scope and sequencing determined separately.
 - OPIS-only Taxes and Discounts settings and OPIS account controls remain
   unavailable in POS. Existing terminal tax and discount behavior is unchanged.
 - The capability-level availability, owner, and permission inventory lives in

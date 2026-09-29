@@ -12,9 +12,11 @@ Own entry point (`src/main.jsx`) plus the Electron packaging config. The actual 
 (`TerminalPage`, `POSCheckoutTerminal`, and the rest of `features/pos/`) is shared code that
 lives in `packages/web-core` and is mounted here the same way `apps/dgfy-ims` mounts it.
 POS also serves the restored Business Admin capability inventory from
-`packages/web-core/src/features/businessAdmin/` at `/backoffice/*` and
-`/business-admin/*`, with `/sales` and `/reports` aliases. OPIS remains independently
-available at its root routes; new back-office-level feature work defaults to OPIS.
+`packages/web-core/src/features/businessAdmin/` at `/business-admin/*`, with `/sales`
+and `/reports` aliases. POS has no OPIS Back Office link; OPIS remains the permanent,
+independently available Back Office at its root routes and is accessed manually for
+now. New back-office-level feature work defaults to OPIS while future migration is
+handled gradually and with user awareness.
 
 ## Commands
 

@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-architecture
 date: 2026-09-29
-last_reviewed: 2026-09-29
+last_reviewed: 2026-09-30
 review_by: 2027-03-29
 applies_to: apps/dgfy-pos, apps/dgfy-opis, packages/web-core
 topic: pos_opis_business_admin_overlap
@@ -30,9 +30,12 @@ ownership. A requested `branch_id` is constrained to branches visible to the
 authenticated user. The UI does not turn read-only or unavailable-command states
 into new mutations.
 
-POS keeps HashRouter under `/backoffice/*` and `/business-admin/*`, plus `/sales`
-and `/reports` aliases. OPIS keeps BrowserRouter root routes. OPIS alone exposes
-the additional Taxes and Discounts settings sections and account controls. POS
+POS keeps HashRouter under `/business-admin/*`, plus `/sales` and `/reports`
+aliases. OPIS keeps BrowserRouter root routes and is manually accessed while
+POS contains no direct OPIS links or references. OPIS is the permanent Back
+Office destination; restored POS workflows coexist during a gradual,
+user-aware transition whose migration scope and sequencing remain future work.
+OPIS alone exposes the additional Taxes and Discounts settings sections and account controls. POS
 terminal tax and discount workflows remain available under their existing owners.
 
 The baseline links below resolve to the user-selected commit. The legacy Business
@@ -45,8 +48,8 @@ and [`main.jsx`](https://github.com/Sieitzz/dgfy-platform/blob/e4af6b768b3cfe3f1
 
 | Baseline capability / route key | Current shared implementation | POS | OPIS | Canonical owner and scope |
 | --- | --- | --- | --- | --- |
-| `overview` | Overview workspace | `/backoffice/overview`, `/business-admin/overview` | `/` | Business Admin read model; authenticated tenant, branch/date filters, cost masking, `business_admin:access`. |
-| `sales` | Sales timeline module | `/backoffice/sales`, `/business-admin/sales`, `/sales` | `/sales` | POS and Dispatch finalized read models; tenant and visible branch scope; no duplicate financial calculation. |
+| `overview` | Overview workspace | `/business-admin/overview` | `/` | Business Admin read model; authenticated tenant, branch/date filters, cost masking, `business_admin:access`. |
+| `sales` | Sales timeline module | `/business-admin/sales`, `/sales` | `/sales` | POS and Dispatch finalized read models; tenant and visible branch scope; no duplicate financial calculation. |
 | `orders` | Order center and shared receipt renderer | `…/orders` | `/orders` | POS transaction/receipt owner; tenant and allowed branch; refund/void commands remain POS-owned and separately authorized. |
 | `payments` | Payment workspace | `…/payments` | `/payments` | Payments provider/read model plus POS transaction snapshots; tenant scope and existing payment permissions. |
 | `customers` | Customer workspace | `…/customers` | `/customers` | Tenant customer identity and POS order summaries; no global identity merge; customer mutations use existing API permissions. |
@@ -84,9 +87,11 @@ and [`main.jsx`](https://github.com/Sieitzz/dgfy-platform/blob/e4af6b768b3cfe3f1
 | `settings/payments` | Shared payment policy editor | `…/settings/payments` | `/settings/payments` | Downpayment policy owner; tenant scope and existing `downpayment:view`/`downpayment:settings` authorization. |
 | `settings/registers` | Shared register/terminal policy editor | `…/settings/registers` | `/settings/registers` | POS register/device policy owner; branch scope and existing settings/terminal permissions. |
 
-The ellipsis in a POS route means the complete prefix is `/backoffice` or
-`/business-admin`. All listed workflows are available in both apps after the
+The ellipsis in a POS route means the complete prefix is `/business-admin`. All listed workflows are available in both apps after the
 restoration, subject to server authorization and workflow-mode visibility.
+OPIS remains the permanent Back Office destination. The restored POS routes
+preserve current access during a gradual, user-aware transition; migration
+scope and sequencing will be determined as that transition is planned.
 POS filters settings navigation and direct-route resolution to the nine baseline
 sections listed above. OPIS retains separate Taxes and Discounts sections from
 its post-extraction implementation.

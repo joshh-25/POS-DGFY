@@ -24,8 +24,9 @@ for new back-office-level feature work under [ADR 0087](../architecture/adr/0087
 Issue #2140 restores the inventoried pre-#2054 Business Admin workflows in POS
 while retaining OPIS and its independent routes, deployment, and session. Both
 apps consume one shared shell from `packages/web-core`; POS serves
-`/backoffice/*` and `/business-admin/*` through HashRouter, with `/sales` and
-`/reports` aliases, while OPIS keeps its root-level BrowserRouter routes. The
+`/business-admin/*` through HashRouter, with `/sales` and `/reports` aliases,
+while OPIS keeps its root-level BrowserRouter routes and is accessed manually
+from POS. POS does not expose an OPIS Back Office link. The
 overlap is documented capability by capability in
 [the POS/OPIS overlap inventory](pos-opis-business-admin-overlap.md) and
 proposed [ADR 0088](../architecture/adr/0088-pos-opis-backoffice-overlap.md).
@@ -969,3 +970,12 @@ Canonical API and command owners remain unchanged. The POS redirect seam is
 removed; the IMS handoff to OPIS remains active. Proposed ADR 0088 requires
 tech-lead approval before merge. See the
 [capability overlap inventory](pos-opis-business-admin-overlap.md).
+
+## 2026-09-30 — POS-native Business Admin entry (issue #2140 follow-up)
+
+The POS restoration presents the historical workflows as POS Business Admin at
+`/business-admin/*`; it does not add a POS Back Office route or a link to OPIS.
+The `/sales` and `/reports` aliases remain local POS aliases. OPIS remains the
+permanent Back Office destination with independent root routes; POS workflows
+coexist during a gradual, user-aware transition, and OPIS is accessed manually
+in the meantime. This does not move new Back Office feature ownership from OPIS.
