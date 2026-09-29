@@ -346,10 +346,16 @@ describe('Food & Beverage storefront contract', () => {
     expect(fnbTrackingAdapterSource()).toContain('discountLabel');
     expect(fnbTrackingPayloadSource()).toContain('discount_amount: view.discountAmount');
     expect(fnbTrackingDrawerTotalsSource()).toContain('Promo / Discount');
+    // The per-view `viewModel.discountLabel` marker moved into the shared tracking
+    // order-summary boundary (branch a0b0eded0): each view renders
+    // <StorefrontTrackingOrderSummary>, which maps trackingResult.discountLabel
+    // into the shared breakdown (StorefrontTrackingOrderSummary.jsx). The rendered
+    // contract is proven by StorefrontTrackingOrderSummary.test.jsx ('Weekend offer'
+    // + '- ₱10.00').
     expect(fnbTrackingActiveViewSource()).toContain('<StorefrontTrackingOrderSummary');
     expect(fnbTrackingCompletedViewSource()).toContain('<StorefrontTrackingOrderSummary');
-    expect(readSource('shared/components/tracking/StorefrontTrackingOrderSummary.jsx')).toContain('discount_label: trackingResult?.discountLabel');
     expect(pickupTrackingMobileViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(readSource('shared/components/tracking/StorefrontTrackingOrderSummary.jsx')).toContain('discountLabel');
   });
 
   it('keeps public reservation request and registration links working', () => {

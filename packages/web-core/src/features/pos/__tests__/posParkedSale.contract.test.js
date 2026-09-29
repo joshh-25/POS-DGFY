@@ -7,7 +7,11 @@ const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const componentPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const componentViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
 const componentDialogPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutConfirmDialog.jsx');
-const componentSource = [componentPath, componentViewPath, componentDialogPath]
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body to
+// usePosTerminalViewModel; include it so behavior markers validate at the
+// extracted boundary.
+const componentHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
+const componentSource = [componentPath, componentHookPath, componentViewPath, componentDialogPath]
     .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
     .join('\n');
 const workflowSource = fs.readFileSync(

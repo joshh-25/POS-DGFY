@@ -13,7 +13,9 @@ describe('iMin notification policy contract', () => {
     [
       'src/features/pos/components/HospitalityPosPanel.jsx',
       'src/features/pos/components/POSBarcodeScanner.jsx',
-      'src/features/pos/components/POSCheckoutTerminal.jsx',
+      // Staging repair 2026-09-28-01 (#2110) extracted the terminal shell body
+      // (including its notification calls) to usePosTerminalViewModel.
+      'src/features/pos/hooks/usePosTerminalViewModel.js',
       'src/features/pos/components/PosTenantSetupModal.jsx',
       'src/features/pos/components/SkupervisorPOSBarcodeScanner.jsx',
       'src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx',

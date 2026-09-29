@@ -7,12 +7,12 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,IMPACT_DECLARATION_REQUIRED
 policy_version: 2026.09.25
-verification_evidence: npm run build:pos,npx vitest run ../../packages/web-core/src/features/pos/__tests__/terminalPageOperationalContextSequenceGuard.contract.test.js,git diff --check
+verification_evidence: npm run build:pos,npm run build:skupervisor,npx vitest run ../../packages/web-core/src/features/pos/__tests__/terminalPageOperationalContextSequenceGuard.contract.test.js,GITHUB_BASE_REF=main GITHUB_HEAD_REF=hotfix/2128-pos-shift-resume-race npm run check:app-versions,git diff --check
 rollback_note: Revert the POS shift-resume sequencing and recovery changes, their contract and E2E coverage, and this declaration together. No API, schema, or production shift data was changed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-29T09:01:49Z
-preflight_request_ref: NOT-EXECUTED-2026-09-29-POS-SHIFT-RESUME-RACE
+preflight_run_at: 2026-09-29T09:46:21.396Z
+preflight_request_ref: PREFLIGHT-LOCAL-2026-09-29-POS-SHIFT-RESUME-RACE
 ---
 
 # POS Shift Resume Race Recovery
@@ -31,10 +31,9 @@ shift ownership, or stored shift history.
 
 ## Compliance Preconditions
 
-- Live request-time preflight was not executed for this local PR. The `NOT-EXECUTED-*` reference is
-  discoverable by the continuous preflight sweep, which must reconcile it before promotion. The
-  front-matter result and reason code are placeholders required by the declaration format; they do
-  not claim a completed live evaluation.
+- A live request-time preflight was executed locally on 2026-09-29 against the isolated fixture
+  environment. It returned `no_breach` (`ALLOWED`) and was reconciled as
+  `PREFLIGHT-LOCAL-2026-09-29-POS-SHIFT-RESUME-RACE`.
 - The resume path continues to use the authenticated tenant, location, terminal, and cashier
   context. It does not create or close shifts, change ownership, replace opening cash, or mutate
   production data.
@@ -52,5 +51,5 @@ shift ownership, or stored shift history.
   unavailable. Tablet coverage remains open because the repository has no tablet Playwright
   project.
 - `git diff --check` passed.
-- App version check passed in `develop` PR context; no app version bump applies to this shared
-  frontend package change.
+- Direct-main hotfix version check passed with POS and IMS patch bumps from 1.27.0 to 1.27.1; the
+  shared `web-core` change is reachable from both apps.

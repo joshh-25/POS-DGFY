@@ -49,7 +49,9 @@ describe('standalone POS catalog card presentation', () => {
 
     it('keeps standalone desktop cards equal within each content-sized row', () => {
         const viewSource = read('packages/web-core/src/features/pos/components/POSCheckoutTerminalView.jsx');
-        const terminalSource = read('packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx');
+        // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+        const terminalSource = read('packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx')
+          + read('packages/web-core/src/features/pos/hooks/usePosTerminalViewModel.js');
 
         expect(viewSource).toContain('gridAutoRows: `${catalogGridLayout.cardHeight}px`');
         expect(viewSource).toContain('gridTemplateColumns: IS_DGFY_POS_SURFACE && isTabletViewport');

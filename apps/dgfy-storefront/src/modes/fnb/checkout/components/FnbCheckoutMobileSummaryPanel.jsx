@@ -29,6 +29,7 @@ export function FnbCheckoutMobileSummaryPanel({
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
   isDeliveryOrder,
+  isTotalStale = false,
   itemCountLabel,
   money,
   onBackToCart,
@@ -106,6 +107,7 @@ export function FnbCheckoutMobileSummaryPanel({
             </div>
             <div style={{ overflowY: 'auto', padding: '16px 16px 20px', display: 'grid', gap: 16 }}>
               <div style={{ fontSize: 34, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>{money(totals.total_amount)}</div>
+              {isTotalStale ? <div role="status" style={{ color: '#64748b', fontSize: 12 }}>Recalculating total…</div> : null}
               <div style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
                 {showFulfillmentSummary && <SummaryRow label="Fulfillment" value={orderMethod === 'dine_in' ? 'Dine In' : isDeliveryOrder ? 'Delivery' : 'Pickup'} />}
                 {showFulfillmentSummary && <SummaryRow label="Schedule" value={scheduleLabel} />}
@@ -161,6 +163,7 @@ export function FnbCheckoutMobileSummaryPanel({
             <div style={{ width: 46, height: 46, borderRadius: 14, border: '1px solid #dbe5ee', background: '#f8fbff', display: 'grid', placeItems: 'center', color: brandColor }}><ShoppingBag size={20} /></div>
             <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
               <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{itemCountLabel} - {money(totals.total_amount)}</div>
+              {isTotalStale ? <div role="status" style={{ color: '#64748b', fontSize: 11 }}>Recalculating total…</div> : null}
               <div style={{ fontSize: 14, color: brandColor, fontWeight: 700 }}>View Order Summary</div>
             </div>
             <ChevronDown size={20} color={brandColor} style={{ transform: showSummary ? 'rotate(180deg)' : 'none', transition: 'transform 200ms ease' }} />
