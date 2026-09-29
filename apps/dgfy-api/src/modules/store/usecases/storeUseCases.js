@@ -3750,7 +3750,6 @@ export const buildStoreCartQuoteUseCase = ({
                 storeCustomer,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
-                revenueSharingEnabled,
                 // #746: this is a preview -- see resolveCheckoutContext's own comment on the option.
                 requireCheckoutContact: false,
                 // Phase 237 (#1329, ADR 0078 Decision 2 [binding], D6): a cart quote must never
@@ -3999,7 +3998,6 @@ export const buildStoreCheckoutUseCase = ({
                 tenantId: normalizedTenantId,
                 downpaymentSettingsRepository,
                 roadDistanceProvider,
-                revenueSharingEnabled,
                 pinnedDeliveryBreakdown
             });
             const { normalized } = resolved;

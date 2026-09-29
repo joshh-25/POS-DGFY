@@ -438,7 +438,7 @@ describe('POS split-payment engine', () => {
             status: 'successful',
             payment_method: 'employee_credit',
             payment_handoff_mode: 'internal',
-            payment_provider: 'merchant_owned',
+            payment_provider: null,
             applied_amount: 500
         }));
         expect(result.data.session.paid_amount).toBe(500);
@@ -588,7 +588,7 @@ describe('POS split-payment engine', () => {
             status: 'successful',
             payment_method: 'employee_credit',
             payment_handoff_mode: 'internal',
-            payment_provider: 'merchant_owned',
+            payment_provider: null,
             applied_amount: 500
         }));
         expect(result.data.allocation).not.toHaveProperty('employee_credit_account_code');
