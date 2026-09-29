@@ -212,6 +212,7 @@ export default function ItemFormModal({
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onTogglePosAlwaysAvailable,
+  onOpenBulkPosSetup,
   onTogglePosLocationAvailability,
   onResetPosLocationAvailability,
   onToggleStorefrontVisibility,
