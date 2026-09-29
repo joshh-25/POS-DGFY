@@ -242,9 +242,6 @@ jobs:
       #     app+floor, same-source retry reuses its own N so a re-dispatch converges instead
       #     of burning a number). The map is emitted as revisions_json for the skip plan AND
       #     the builder jobs, so both resolve byte-identical tags -- allocation happens
-      #     exactly once per dispatch. dev_pr_ref carries the sanitized ref (X.Y.Z-<slug>-dev)
-      #     when this opt-in is off, so an ad-hoc feature-branch DEV dispatch still gets a
-      #     stable, non-candidate-selectable tag.
       #   - STAGING -- revisions arrive per app-group from the dispatch inputs (promoter-filled
       #     from the candidate manifest's per-app release_revision map); groups fan out to apps
       #     (api covers both backends).
@@ -272,12 +269,10 @@ jobs:
               printf '%s=%s\n' "${APP}" "${N}"
             done | node -e "const m={};for(const l of require('fs').readFileSync(0,'utf8').trim().split('\n')){if(!l)continue;const i=l.indexOf('=');m[l.slice(0,i)]='r'+l.slice(i+1);}console.log(JSON.stringify(m))")"
             echo "revisions_json=${REVISIONS_JSON}" >> "$GITHUB_OUTPUT"
-            echo "dev_pr_ref=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "${DISPATCH_ENVIRONMENT}" = "DEV" ]; then
             echo "revisions_json={}" >> "$GITHUB_OUTPUT"
-            echo "dev_pr_ref=${REF_NAME}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.RELEASE_REVISION_API);put('dgfy-migration-runner',process.env.RELEASE_REVISION_API);put('dgfy-ims',process.env.RELEASE_REVISION_IMS);put('dgfy-pos',process.env.RELEASE_REVISION_POS);put('dgfy-storefront',process.env.RELEASE_REVISION_STOREFRONT);put('dgfy-opis',process.env.RELEASE_REVISION_OPIS);console.log(JSON.stringify(m))")"
@@ -404,7 +399,6 @@ jobs:
       runner_labels_json: ${{ inputs.runner_labels_json }}
       candidate_source_sha: ${{ inputs.candidate_source_sha }}
       release_revision: ${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).dgfy-opis }}
-      dev_pr_ref: ${{ needs.resolve-build-plan.outputs.dev_pr_ref }}
     secrets: inherit
     permissions:
       contents: read
