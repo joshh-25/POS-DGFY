@@ -6,8 +6,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const mainPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
-const businessAdminPath = path.resolve(__dirname, '../businessAdmin/BusinessAdminPage.jsx');
-const businessAdminManifestPath = path.resolve(__dirname, '../businessAdmin/businessAdminManifest.js');
+const businessAdminPath = path.resolve(__dirname, '../../../../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+const businessAdminManifestPath = path.resolve(__dirname, '../../../../../apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
 const retiredMerchantPagePaths = [
   'Items',
   'JobOrders',

@@ -13,7 +13,7 @@ const TARGET_FILES = [
   path.join(webCoreRoot, 'Components/items/details/CostFinancialSection.jsx'),
   path.join(webCoreRoot, 'Components/items/details/StockInventorySection.jsx'),
   path.join(webCoreRoot, 'Components/po/POCreateWizard.jsx'),
-  path.join(webCoreRoot, 'src/features/businessAdmin/BusinessAdminPage.jsx'),
+  path.join(repoRoot, 'apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx'),
   path.join(webCoreRoot, 'src/features/merchantBackOffice/pages/PurchaseOrdersPage.jsx'),
   path.join(webCoreRoot, 'src/features/merchantBackOffice/pages/ReportsPage.jsx')
 ];

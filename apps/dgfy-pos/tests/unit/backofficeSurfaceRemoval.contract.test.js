@@ -8,20 +8,17 @@ const repositoryRoot = path.resolve(posRoot, '../..');
 
 const readRepositoryFile = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
-describe('POS administration and OPIS Back Office coexistence contract', () => {
-  it('uses one shared shell, keeps POS on its native route, and has no OPIS route target', () => {
-    expect(fs.existsSync(path.join(posRoot, 'src/features/businessAdmin'))).toBe(false);
-    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/businessAdmin/BusinessAdminPage.jsx'))).toBe(true);
+describe('production POS surface boundary contract', () => {
+  it('does not register Back Office routes or expose OPIS handoffs', () => {
+    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/merchantBackOffice'))).toBe(true);
 
     const posEntry = readRepositoryFile('apps/dgfy-pos/src/main.jsx');
     const posSidebar = readRepositoryFile('packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx');
     const opisEntry = readRepositoryFile('apps/dgfy-opis/src/main.jsx');
 
-    expect(posEntry).toContain('src/features/businessAdmin/BusinessAdminPage.jsx');
-    expect(posEntry).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
-    expect(posEntry).not.toContain('<Route path="/backoffice/*"');
-    expect(posSidebar).toContain('pos-nav-business-admin');
-    expect(posSidebar).not.toContain('Open the dedicated DGFY Back Office');
+    expect(posEntry).not.toMatch(/BusinessAdminPage|BackOfficeLoginPage|backoffice|business-admin|opis/i);
+    expect(posEntry).toContain('<Route path="/sales" element={<SkupervisorSalesRedirect />} />');
+    expect(posSidebar).not.toMatch(/Back Office|OPIS|pos-nav-backoffice/i);
     expect(opisEntry).toContain("const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));");
   });
 

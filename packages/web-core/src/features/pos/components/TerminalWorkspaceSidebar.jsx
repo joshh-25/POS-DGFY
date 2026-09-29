@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   BarChart3,
-  Briefcase,
   CalendarCheck,
   ClipboardCheck,
   ClipboardList,
@@ -78,7 +77,6 @@ export default function TerminalWorkspaceSidebar({
   canViewPos = false,
   canViewAudit = false,
   canAccessPosOnlySetup = false,
-  canLaunchBackOffice = false,
   canViewVouchers = false,
   canManageCategories = false,
   showFnbService = false,
@@ -105,7 +103,6 @@ export default function TerminalWorkspaceSidebar({
   onPrefetchViewMode = () => {},
   onUnlock = () => {},
   onLock = () => {},
-  onOpenBackOffice = () => {}
 }) {
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
@@ -399,7 +396,7 @@ export default function TerminalWorkspaceSidebar({
         <div className={`${isCollapsed ? 'my-3' : 'my-5'} border-t border-slate-200`} />
         {!isCollapsed && <p className="mb-3 text-[11px] font-extrabold uppercase tracking-wide text-[#334155]">Settings</p>}
         <div className="space-y-2">
-          {currentViewMode !== 'terminal_setup' && canLaunchBackOffice && !isCashierRole && <NavButton
+          <NavButton
             label="Settings"
             icon={Settings2}
             active={['location_scope', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)
@@ -410,7 +407,7 @@ export default function TerminalWorkspaceSidebar({
             caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change settings' : 'Profile, POS setup, and storefront tools'))}
             testId="pos-nav-settings"
             collapsed={isCollapsed}
-          />}
+          />
           {shouldShowPosOnlySetup && (
             <NavButton
               label="Terminal setup"
@@ -421,18 +418,6 @@ export default function TerminalWorkspaceSidebar({
               disabled={locked || !isOnline || isBranchReadOnlyView}
               caption={locked ? 'Unlock terminal to continue' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view to change terminal settings' : 'Queue scope and local sound; device, printer, and terminal controls'))}
               testId="pos-nav-terminal-setup"
-              collapsed={isCollapsed}
-            />
-          )}
-          {canLaunchBackOffice && !isCashierRole && (
-            <NavButton
-              label="Business Admin"
-              icon={Briefcase}
-              active={false}
-              onClick={() => onOpenBackOffice('/business-admin/overview')}
-              disabled={!isOnline || isBranchReadOnlyView}
-              caption={locked ? 'Manager access remains available while checkout is locked' : (!isOnline ? 'Available online only' : (isBranchReadOnlyView ? 'Exit branch view before opening Business Admin' : 'Open POS administration tools'))}
-              testId="pos-nav-business-admin"
               collapsed={isCollapsed}
             />
           )}

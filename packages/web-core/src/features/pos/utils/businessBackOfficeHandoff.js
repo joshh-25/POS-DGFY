@@ -80,14 +80,6 @@ const resolveOpisOrigin = () => {
 
 export const getOpisBackOfficeOrigin = () => resolveOpisOrigin();
 
-// IMS and other app handoffs use OPIS's BrowserRouter paths; POS terminal
-// administration uses its own HashRouter routes.
-export const buildOpisBackOfficeUrl = ({ path = '/backoffice/overview', search = '' } = {}) => {  const normalizedPath = normalizePath(path);
-  const normalizedSearch = String(search || '').trim();
-  const query = normalizedSearch.startsWith('?') || !normalizedSearch ? normalizedSearch : `?${normalizedSearch}`;
-  return `${getOpisBackOfficeOrigin()}${normalizedPath}${query}`;
-};
-
 // IMS merchant-surface handoff retargeted to OPIS (issue #2052): same tenant_id / next /
 // handoff_token contract as the POS handoff above, resolved against the OPIS origin whose
 // /dgfy/companies route exchanges the one-time handoff exactly like POS did.

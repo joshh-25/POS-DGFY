@@ -12,7 +12,6 @@ dotenv.config({ path: path.resolve(__dirname, '.env.e2e') });
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
-const opisURL = process.env.E2E_OPIS_URL || 'http://localhost:5176';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
 
@@ -74,13 +73,6 @@ export default defineConfig({
       command: 'npm run dev',
       cwd: __dirname,
       url: `${baseURL}/login`,
-      reuseExistingServer: !process.env.CI,
-      timeout: 120_000,
-    },
-    {
-      command: 'npm run dev',
-      cwd: path.resolve(__dirname, '../dgfy-opis'),
-      url: opisURL,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

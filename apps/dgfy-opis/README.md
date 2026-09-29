@@ -7,12 +7,10 @@ The dedicated DGFY Back Office (OPIS) frontend at `opis.dgfy.ph` (`opis.dev.dgfy
 
 ## Contents
 
-Own entry point (`src/main.jsx`) and app-owned account actions. The shared Business Admin
-shell, service, styles, manifest, settings models, and receipt UI live in
-`packages/web-core/src/features/businessAdmin/` and are consumed by both OPIS and POS.
-OPIS's canonical routes are root-level (`/`, `/sales`, `/settings/profile`, etc.);
-`/backoffice/*` and `/business-admin/*` redirect to the equivalent root route. Shared auth
-pages/services come from `packages/web-core`; the API stays
+Own entry point (`src/main.jsx`) plus the migrated Back Office shell
+(`src/features/businessAdmin/`, moved from `apps/dgfy-pos` preserving history). Canonical
+routes are `/backoffice/*`; `/business-admin/*` is retained as an alias. `/` opens the Back
+Office overview. Shared auth pages/services come from `packages/web-core`; the API stays
 under `/api/v1/business-admin` with its existing server-side tenant, branch, and permission
 checks.
 
@@ -31,10 +29,9 @@ Run from this directory, or via the equivalent root script (`npm run <name>` fro
 ## Environment
 
 Copy `.env.example` → `.env.local` (gitignored). Local origin defaults to
-`http://localhost:5176`. `VITE_OPIS_URL` is used by IMS and other OPIS handoffs; POS
-administration stays on the POS origin. This app's env surface is scoped to only the
-`VITE_*` vars its own code and what it pulls from `packages/web-core` actually read — do not
-copy another app's `.env.example` wholesale.
+`http://localhost:5176`. `VITE_OPIS_URL` points POS/IMS compatibility redirects at this app.
+This app's env surface is scoped to only the `VITE_*` vars its own code and what it pulls
+from `packages/web-core` actually read — do not copy another app's `.env.example` wholesale.
 
 ## Deploy
 
@@ -47,5 +44,4 @@ Own image `ghcr.io/sieitzz/dgfy-opis`, own Dockerfile
 No copy of the shared trunk — everything it depends on from the former `apps/dgfy-web/src`/
 `Components` lives in `packages/web-core`, consumed via retargeted `@/...` Vite aliases plus
 deep relative imports (see `packages/web-core/README.md`). No POS terminal, pairing, shift, or
-checkout code — those stay in `apps/dgfy-pos`. The shared Business Admin shell presents the
-inventoried workflows in both apps; new back-office-level feature work still defaults to OPIS.
+checkout code — those stay in `apps/dgfy-pos`.
