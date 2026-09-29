@@ -925,8 +925,9 @@ moved from `apps/dgfy-pos/src/features/businessAdmin` to `apps/dgfy-opis`
 `/backoffice/*` and the `/business-admin/*` alias, an isolated `opis_*`
 browser-session namespace, POS external redirects preserving path/query, and IMS
 handoff retargeting. POS terminal operational flows are unaffected. The interim
-"POS is the canonical merchant back-office surface" framing above holds only until
-PR #2026 merges and proposed ADR 0087 is accepted; thereafter OPIS is canonical.
+"POS is the canonical merchant back-office surface" framing above was superseded
+when ADR 0087 was accepted on 2026-09-29; OPIS is now canonical for new back-office
+work.
 See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.md),
 [ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
 and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
