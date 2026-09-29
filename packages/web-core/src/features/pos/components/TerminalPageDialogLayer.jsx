@@ -934,7 +934,7 @@ export default function TerminalPageDialogLayer({ model }) {
             <DialogHeader>
               <DialogTitle className="text-lg font-black text-slate-950">Open Back Office?</DialogTitle>
               <DialogDescription className="text-sm leading-6 text-slate-600">
-                DGFY Back Office opens in OPIS in a new tab. Your POS terminal remains open.
+                DGFY Back Office opens in a new tab. Your POS terminal remains open.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:justify-end">

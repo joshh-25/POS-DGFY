@@ -4,8 +4,7 @@ import {
   buildOpisHandoffUrl,
   buildPosTerminalUrl,
   getBusinessBackOfficeOrigin,
-  getOpisBackOfficeOrigin,
-  openOpisBackOffice
+  getOpisBackOfficeOrigin
 } from '../businessBackOfficeHandoff.js';
 
 const originalWindow = globalThis.window;
@@ -114,28 +113,5 @@ describe('buildPosTerminalUrl (OPIS → POS terminal links, issue #2052 follow-u
     vi.stubEnv('VITE_POS_TERMINAL_URL', 'https://pos.stage.dgfy.ph');
     setLocation({ hostname: 'opis.dgfy.ph' });
     expect(buildPosTerminalUrl()).toBe('https://pos.stage.dgfy.ph/terminal');
-  });
-});
-
-describe('openOpisBackOffice', () => {
-  it('opens a new tab when popups are allowed', () => {
-    vi.stubEnv('VITE_OPIS_URL', 'https://opis.dgfy.ph');
-    const assign = vi.fn();
-    const fakeWindow = { open: vi.fn(() => ({})), location: { assign } };
-    expect(openOpisBackOffice({ path: '/backoffice/settings', windowObj: fakeWindow })).toBe('new-tab');
-    expect(fakeWindow.open).toHaveBeenCalledWith(
-      'https://opis.dgfy.ph/backoffice/settings',
-      '_blank',
-      'noopener,noreferrer'
-    );
-    expect(assign).not.toHaveBeenCalled();
-  });
-
-  it('falls back to same-tab navigation with recovery when the popup is blocked', () => {
-    vi.stubEnv('VITE_OPIS_URL', 'https://opis.dgfy.ph');
-    const assign = vi.fn();
-    const fakeWindow = { open: vi.fn(() => null), location: { assign } };
-    expect(openOpisBackOffice({ path: '/backoffice/catalog', search: '?q=beans', windowObj: fakeWindow })).toBe('same-tab');
-    expect(assign).toHaveBeenCalledWith('https://opis.dgfy.ph/backoffice/catalog?q=beans');
   });
 });

@@ -62,7 +62,6 @@ import {
   switchDgfyCompanyForTenantSession
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
-import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
@@ -6739,11 +6738,16 @@ export default function TerminalPage() {
 
   const handleConfirmOpenBackOffice = useCallback(() => {
     if (typeof window === 'undefined') return;
-    setBackOfficeConfirmOpen(false);
     const canonicalPath = String(backOfficeTargetPath || '/').replace(/^\/business-admin(?=\/|$)/, '/backoffice');
-    const [pathOnly, queryString = ''] = canonicalPath.split('?');
-    const outcome = openOpisBackOffice({ path: pathOnly || '/', search: queryString ? `?${queryString}` : '' });
-    toast.success(outcome === 'new-tab' ? 'Back Office opened in OPIS.' : 'Opening Back Office in OPIS.');
+    const backOfficeWindow = window.open('', '_blank');
+    setBackOfficeConfirmOpen(false);
+    if (!backOfficeWindow) {
+      toast.error('Your browser blocked the Back Office tab. Allow popups for POS, then try again. The terminal remains open.');
+      return;
+    }
+    backOfficeWindow.opener = null;
+    backOfficeWindow.location.replace(`${window.location.origin}/#${canonicalPath}`);
+    toast.success('Back Office opened in POS.');
   }, [backOfficeTargetPath]);
 
   const handleSelectViewMode = useCallback(async (nextMode) => {

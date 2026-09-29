@@ -7,8 +7,8 @@ import {
   BACKOFFICE_NAV_GROUPS,
   buildBackOfficeModulePath,
   getBackOfficeModuleDefinition
-} from '../features/businessAdmin/businessAdminManifest.js';
-import { parseBusinessAdminPath } from '../features/businessAdmin/businessAdminSettingsModel.js';
+} from '../../../../packages/web-core/src/features/businessAdmin/businessAdminManifest.js';
+import { parseBusinessAdminPath } from '../../../../packages/web-core/src/features/businessAdmin/businessAdminSettingsModel.js';
 import { createPageUrl, getPageNameFromPath } from '../utils.js';
 import { canonicalizeOpisPath } from '../opisRoutes.js';
 
@@ -16,6 +16,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const mainSource = readFileSync(resolve(here, '../main.jsx'), 'utf8');
 const businessAdminPageSource = readFileSync(
   resolve(here, '../features/businessAdmin/BusinessAdminPage.jsx'),
+  'utf8'
+);
+const sharedBusinessAdminPageSource = readFileSync(
+  resolve(here, '../../../../packages/web-core/src/features/businessAdmin/BusinessAdminPage.jsx'),
   'utf8'
 );
 
@@ -41,11 +45,12 @@ describe('OPIS routes (issue #2052)', () => {
   });
 
   it('wires account actions below the POS terminal link in the Back Office sidebar', () => {
-    const posTerminalIndex = businessAdminPageSource.indexOf('aria-label="Open POS terminal"');
-    const accountActionsIndex = businessAdminPageSource.indexOf('<BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />');
+    const posTerminalIndex = sharedBusinessAdminPageSource.indexOf('aria-label="Open POS terminal"');
+    const accountActionsIndex = sharedBusinessAdminPageSource.indexOf('accountActions({ sidebarCollapsed })');
 
     expect(posTerminalIndex).toBeGreaterThanOrEqual(0);
     expect(accountActionsIndex).toBeGreaterThan(posTerminalIndex);
+    expect(businessAdminPageSource).toContain('<BusinessAdminAccountActions sidebarCollapsed={sidebarCollapsed} />');
   });
 
   it('resolves both dashboard and section paths at the origin root', () => {
@@ -110,17 +115,17 @@ describe('OPIS Back Office manifest', () => {
 
 describe('OPIS "Open POS terminal" links (issue #2052 follow-up)', () => {
   it('navigates cross-origin via real hrefs, not react-router Links', () => {
-    expect(businessAdminPageSource).not.toContain('to="/terminal"');
-    expect(businessAdminPageSource).toContain('href={buildPosTerminalUrl()}');
-    expect(businessAdminPageSource).toContain(
-      "href={buildPosTerminalUrl({ path: '/terminal', search: `?view=${encodeURIComponent('terminal_setup')}` })}"
+    expect(sharedBusinessAdminPageSource).toContain("to={surface === 'pos' ? '/terminal' : undefined}");
+    expect(sharedBusinessAdminPageSource).toContain("href={surface === 'pos' ? undefined : buildPosTerminalUrl()}");
+    expect(sharedBusinessAdminPageSource).toContain(
+      "href={surface === 'pos' ? undefined : buildPosTerminalUrl({ path: '/terminal', search: `?view=${encodeURIComponent('terminal_setup')}` })}"
     );
   });
 
   it('keeps the dirty-guard contract on the external GuardedLink mode', () => {
-    expect(businessAdminPageSource).toContain('window.location.assign(externalHref)');
-    expect(businessAdminPageSource).toContain('shouldBlockSettingsNavigation(isDirty)');
-    expect(businessAdminPageSource).toContain('onLeave?.()');
+    expect(sharedBusinessAdminPageSource).toContain('window.location.assign(externalHref)');
+    expect(sharedBusinessAdminPageSource).toContain('shouldBlockSettingsNavigation(isDirty)');
+    expect(sharedBusinessAdminPageSource).toContain('onLeave?.()');
   });
 });
 

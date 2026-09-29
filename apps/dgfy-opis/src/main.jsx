@@ -11,7 +11,7 @@ import VersionBadge from '../../../packages/web-core/src/components/common/Versi
 import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
 import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
-import { BACKOFFICE_MANIFEST } from './features/businessAdmin/businessAdminManifest.js';
+import { BACKOFFICE_MANIFEST } from '../../../packages/web-core/src/features/businessAdmin/businessAdminManifest.js';
 import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
 import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
 import {

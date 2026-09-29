@@ -246,15 +246,14 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
-  it('opens the dedicated OPIS Back Office through an authorized terminal confirmation', () => {
-    expect(terminalPageContent).toContain("import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';");
+  it('opens local POS Back Office through an authorized terminal confirmation', () => {
+    expect(terminalPageContent).toContain("window.open('', '_blank')");
     expect(terminalPageContent).toContain('if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;');
     expect(terminalPageContent).toContain('setBackOfficeConfirmOpen(true);');
-    expect(terminalPageContent).toContain('openOpisBackOffice({ path: pathOnly ||');
     expect(terminalPageLayoutContent).toContain('onOpenBackOffice={onOpenBackOffice}');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-backoffice"');
     expect(terminalPageContent).toContain('Open Back Office?');
-    expect(terminalPageContent).toContain('DGFY Back Office opens in OPIS in a new tab.');
+    expect(terminalPageContent).toContain('backOfficeWindow.opener = null;');
   });
 
   it('keeps terminal setup printer actions compact and aligned with terminal selection', () => {

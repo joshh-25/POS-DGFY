@@ -89,12 +89,13 @@ const runManagerBackOfficeFlow = async (page) => {
   const backOffice = await popupPromise;
   const popupDiagnostics = installRuntimeDiagnostics(backOffice);
   try {
-    await backOffice.waitForURL(/#\/backoffice\/overview$/, { timeout: 30_000 });
+    await backOffice.waitForURL(/#\/backoffice\/overview\?view=reports$/, { timeout: 30_000 });
     await backOffice.waitForLoadState('domcontentloaded');
     const backOfficeUrl = new URL(backOffice.url());
     expect(backOfficeUrl.pathname).toBe('/');
-    expect(backOfficeUrl.search).toBe('?view=reports');
-    expect(backOfficeUrl.hash).toBe('#/backoffice/overview');
+    expect(backOfficeUrl.origin).toBe(new URL(originalUrl).origin);
+    expect(backOfficeUrl.search).toBe('');
+    expect(backOfficeUrl.hash).toBe('#/backoffice/overview?view=reports');
     const backOfficeBrandLabels = backOffice.getByText('Business back office', { exact: true });
     await expect.poll(async () => {
       const labelCount = await backOfficeBrandLabels.count();

@@ -18,7 +18,7 @@ const terminalWorkspaceSidebarSource = readSource('../components/TerminalWorkspa
 const terminalOperationsWorkspaceSource = readSource('../components/TerminalOperationsWorkspace.jsx');
 const settingsWorkspaceSource = readSource('../settings/PosSettingsWorkspace.jsx');
 const terminalLocalControlsSource = readSource('../settings/TerminalLocalControlsSection.jsx');
-const businessAdminPageSource = readSource('../../../../../../apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+const businessAdminPageSource = readSource('../../businessAdmin/BusinessAdminPage.jsx');
 const posRouteSource = readSource('../../../../../../apps/dgfy-pos/src/main.jsx');
 
 const renderSidebar = ({ terminalUser = { role: 'admin' }, canLaunchBackOffice = true, canAccessPosOnlySetup = false, currentViewMode = 'checkout', isCollapsed = false, locked = false, onOpenBackOffice = vi.fn(), onSelectViewMode = vi.fn() } = {}) => render(
@@ -176,20 +176,21 @@ describe('POS Back Office navigation', () => {
     expect(screen.queryByTestId('pos-nav-settings')).toBeNull();
   });
 
-  it('keeps the authorized OPIS handoff and compatibility routes aligned', () => {
+  it('keeps authorized manager access on POS while preserving the confirmation flow', () => {
     expect(terminalPageSource).toContain('const canAccessBusinessAdmin = !isCashierRole && (');
     expect(terminalPageSource).toContain("|| normalizedTerminalRole === 'admin'");
     expect(terminalPageSource).toContain("|| hasPermission('business_admin:access')");
     expect(terminalPageSource).toContain("if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;");
     expect(terminalPageSource).toContain('setBackOfficeConfirmOpen(true);');
     expect(terminalPageSource).toContain('setBackOfficeTargetPath(safePath);');
-    expect(terminalPageSource).toContain("import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';");
-    expect(terminalPageSource).toContain('openOpisBackOffice({ path: pathOnly ||');
+    expect(terminalPageSource).toContain("window.open('', '_blank')");
+    expect(terminalPageSource).toContain('backOfficeWindow.opener = null;');
+    expect(terminalPageSource).toContain('window.location.origin}/#${canonicalPath}');
     expect(terminalPageDialogLayerSource).toContain('Open Back Office?');
-    expect(terminalPageDialogLayerSource).toContain('DGFY Back Office opens in OPIS in a new tab.');
+    expect(terminalPageDialogLayerSource).toContain('DGFY Back Office opens in a new tab.');
     expect(terminalLockDrawerSource).toContain('pos-lock-drawer-open-backoffice');
-    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
-    expect(posRouteSource).toContain('<Route path="/business-admin/*" element={<OpisCompatRedirect />} />');
+    expect(posRouteSource).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />');
+    expect(posRouteSource).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
     expect(terminalPageSource).toContain('canLaunchBackOffice={canAccessBusinessAdmin}');
     expect(terminalPageLayoutSource).toContain('canLaunchBackOffice={canLaunchBackOffice}');
     expect(terminalPageLayoutSource).toContain('onOpenBackOffice={onOpenBackOffice}');
