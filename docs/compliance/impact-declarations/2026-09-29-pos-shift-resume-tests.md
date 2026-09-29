@@ -12,8 +12,8 @@ verification_evidence: focused POS shift-resume contract run (2 files, 8 passed)
 rollback_note: Revert this declaration together with the paired shift-resume regression tests (terminalPageShiftResumeRace.contract.test.js and dgfy-business-shift-resume.spec.js). No runtime, API, schema, or production shift data change is involved, so no backend or migration rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-29T16:34:52Z
-preflight_request_ref: NOT-EXECUTED-2129-POS-SHIFT-RESUME-TESTS
+preflight_run_at: 2026-09-29T18:19:07.068Z
+preflight_request_ref: PREFLIGHT-36610162825-2026-09-29-POS-SHIFT-RESUME-TESTS
 ---
 
 # POS Shift-Resume Regression Tests (#2129)
