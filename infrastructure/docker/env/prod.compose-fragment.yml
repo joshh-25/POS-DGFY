@@ -216,6 +216,22 @@ services:
       timeout: 5s
       retries: 5
 
+# --- Fragment 3 addition (issue #2052, epic #1354): dgfy-opis ---
+# PASTE alongside the three services above when the OPIS cutover runs. Nothing is
+# retired: POS keeps its terminal routes; its /backoffice/* and /business-admin/*
+# paths redirect to OPIS in-app. Port 8084 (host nginx dials it directly -- see the
+# nginx service patch below).
+#
+#   dgfy-opis:
+#     image: ghcr.io/sieitzz/dgfy-opis:${IMAGE_TAG:-latest}
+#     restart: unless-stopped
+#     networks: [dgfy_internal]
+#     healthcheck:
+#       test: ["CMD", "curl", "-fsS", "http://localhost:8084/"]
+#       interval: 15s
+#       timeout: 5s
+#       retries: 5
+
 # =============================================================================
 # nginx service patch (prod only) -- depends_on
 # =============================================================================
@@ -232,6 +248,8 @@ services:
 #       dgfy-pos:               # <-- new
 #         condition: service_healthy
 #       dgfy-storefront:        # <-- new
+#         condition: service_healthy
+#       dgfy-opis:              # <-- new (issue #2052 fragment 3)
 #         condition: service_healthy
 #
 # Known, unrelated drift, NOT addressed by this fragment: the repo's own

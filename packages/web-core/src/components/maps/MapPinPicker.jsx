@@ -1,5 +1,5 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as maplibreModule from 'maplibre-gl';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Crosshair, Maximize2, Search as SearchIcon, X } from 'lucide-react';

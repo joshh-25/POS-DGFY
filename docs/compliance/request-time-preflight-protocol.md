@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: compliance
-last_reviewed: 2026-09-06
+last_reviewed: 2026-09-24
 applies_to: compliance_sensitive_feature_work
 topic: request_time_preflight_protocol
 related_adr: 0007-dual-mode-pos-compliance-program.md
@@ -76,6 +76,13 @@ Reference URLs:
 1. `npm run check:compliance` enforces declaration quality for sensitive file changes.
    - Enforces computed minimum classification floor from changed paths/surfaces.
    - Enforces strict preflight evidence semantics for `major|regulatory` declarations.
+   - Narrow aggregate-compare accommodation: PR #2054 keeps its explicitly directed `develop`
+     base while retaining integration-line ancestry. For exactly
+     `feature/2052-opis-split-back-office` -> `develop`, the checker validates the declared
+     `2026-09-24-pr-2054-aggregate-compliance` against the combined sensitive-file diff instead
+     of reclassifying every historical phase declaration against that union. The accommodation
+     is locked to this base/head/declaration tuple; all other feature PRs retain per-declaration
+     validation.
 2. `.husky/pre-commit` enforces declaration checks on staged sensitive files.
    This is **bypassable** with `git commit --no-verify` and, as of 2026-08-07,
    is the *only* thing enforcing this — treat it as a developer convenience,

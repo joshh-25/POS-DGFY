@@ -1,6 +1,6 @@
-# PROD frontend, split into three independent images (ADR 0071 / PR #513 /
-# issue #915) -- replaces the single combined `frontend:` service. Same
-# apps, same PROD GitHub Environment VITE_* values baked in at build time.
+# PROD frontend, split into four independent images (ADR 0071 / PR #513 /
+# issue #915, plus dgfy-opis via issue #2052) -- replaces the single combined
+# `frontend:` service. Same apps, same PROD GitHub Environment VITE_* values baked in at build time.
 # Shares the same backend (docker-compose.api.yml) below.
 #
 # None of the three take any runtime environment variables -- confirmed
@@ -40,6 +40,16 @@ services:
     networks: [dgfy_internal]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8083/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  dgfy-opis:
+    image: ghcr.io/sieitzz/dgfy-opis:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/"]
       interval: 15s
       timeout: 5s
       retries: 5

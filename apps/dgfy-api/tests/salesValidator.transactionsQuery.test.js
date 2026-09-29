@@ -31,6 +31,24 @@ describe('Sales transactions query validator', () => {
         expect(req.validatedQuery.pos_order_source).toBe('online_store');
     });
 
+    it('preserves validated sales date filters as ISO strings for repository boundaries', () => {
+        const req = {
+            query: {
+                date_from: '2026-09-20',
+                date_to: '2026-09-23'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validateSalesTransactionsQuery(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery.date_from).toBe('2026-09-20');
+        expect(req.validatedQuery.date_to).toBe('2026-09-23');
+    });
+
     it('rejects unsupported pos_order_source values', () => {
         const req = {
             query: {

@@ -1,6 +1,6 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
-import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
+import { getCookie, getTenantContextToken, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -199,8 +199,10 @@ export const authenticate = async (req, res, next) => {
         });
       }
 
+      // OPIS (x-dgfy-app-surface: opis) reads its isolated opis_tenant_context cookie;
+      // every other surface keeps the legacy sku_tenant_context read (issue #2052).
       const activeBrowserCompanyToken = String(
-        getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+        getTenantContextToken(req) || ''
       ).trim();
       const requestCompanyToken = String(
         req?.tenant?.company_token || req.headers['x-company-token'] || ''

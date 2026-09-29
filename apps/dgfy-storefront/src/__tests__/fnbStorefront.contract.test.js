@@ -346,9 +346,10 @@ describe('Food & Beverage storefront contract', () => {
     expect(fnbTrackingAdapterSource()).toContain('discountLabel');
     expect(fnbTrackingPayloadSource()).toContain('discount_amount: view.discountAmount');
     expect(fnbTrackingDrawerTotalsSource()).toContain('Promo / Discount');
-    expect(fnbTrackingActiveViewSource()).toContain('viewModel.discountLabel');
-    expect(fnbTrackingCompletedViewSource()).toContain('viewModel.discountLabel');
-    expect(pickupTrackingMobileViewSource()).toContain('discountLabel');
+    expect(fnbTrackingActiveViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(fnbTrackingCompletedViewSource()).toContain('<StorefrontTrackingOrderSummary');
+    expect(readSource('shared/components/tracking/StorefrontTrackingOrderSummary.jsx')).toContain('discount_label: trackingResult?.discountLabel');
+    expect(pickupTrackingMobileViewSource()).toContain('<StorefrontTrackingOrderSummary');
   });
 
   it('keeps public reservation request and registration links working', () => {

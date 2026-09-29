@@ -192,3 +192,35 @@ services:
 #   docker compose config >/dev/null   # validates the hand-edited file
 #   docker compose up -d --remove-orphans   # also retires the orphaned
 #                                            # `frontend` container
+
+# =============================================================================
+# Cutover fragment 3 -- OPIS fourth app (issue #2052, epic #1354)
+# =============================================================================
+# A SEPARATE, LATER cutover from the two above -- this one adds `dgfy-opis`
+# (the dedicated Back Office at opis.stage.dgfy.ph) alongside the three services
+# from fragment 2. Nothing is retired: POS keeps its terminal routes; its
+# /backoffice/* and /business-admin/* paths redirect to OPIS in-app.
+#
+# PASTE the service below next to the fragment-2 services. Host-port publish
+# follows the same convention: internal 8084, remapped to 127.0.0.1:9084:8084
+# on STAGING (host nginx dials localhost:9084 -- see
+# infrastructure/nginx-host/stage.dgfy.ph.conf's opis block).
+#
+# services:
+#   dgfy-opis:
+#     image: ghcr.io/sieitzz/dgfy-opis:${IMAGE_TAG:-latest}
+#     restart: unless-stopped
+#     networks: [dgfy_stage]
+#     ports:
+#       - "127.0.0.1:9084:8084"
+#     healthcheck:
+#       test: ["CMD", "curl", "-fsS", "http://localhost:8084/"]
+#       interval: 15s
+#       timeout: 5s
+#       retries: 5
+#
+# --- Apply ---
+#
+#   cd /opt/dgfy-stage
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   docker compose up -d

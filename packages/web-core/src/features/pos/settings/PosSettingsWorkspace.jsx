@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { Banknote, BadgePercent, KeyRound, Receipt, Save, Settings2, Store, Truck, Undo2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -35,11 +36,11 @@ import {
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import { fetchPosSetupCashiers } from '../services/posService.js';
-import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';
 import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSettingsCard.jsx';
 import PosEmployeesSettingsPane from './PosEmployeesSettingsPane.jsx';
 import PosProfileSettingsPane from './PosProfileSettingsPane.jsx';
@@ -60,8 +61,10 @@ import {
   mergeStorefrontContentBaseline,
   selectStorefrontContentFields
 } from './storefrontContentSnapshot.js';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
+
+const DownpaymentSettingsPanel = lazyWithChunkRetry(() => import('../components/DownpaymentSettingsPanel.jsx'));
 
 
 const SETTINGS_FIELD_LABELS = {
@@ -367,6 +370,7 @@ export default function PosSettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('downpayment:settings');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
+  const isIminRuntime = isIminWrapperRuntime();
   const [storefrontSubtab, setStorefrontSubtab] = useState('setup');
   const [storefrontSelectedLocationId, setStorefrontSelectedLocationId] = useState(null);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -1095,6 +1099,17 @@ export default function PosSettingsWorkspace({
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
 
+    if (isIminRuntime) {
+      setActiveTab(nextTab);
+      setRenderedTab(nextTab);
+      setPaneInlineStyle({
+        transform: 'translateX(0)',
+        opacity: 1,
+        transition: 'none'
+      });
+      return;
+    }
+
     const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
     const enterOffset = movingForward ? 28 : -28;
@@ -1133,7 +1148,7 @@ export default function PosSettingsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers]);
+  }, [activeTab, clearAnimationTimers, isIminRuntime]);
 
   const handleStorefrontContentNavigationRequest = useCallback((nextSubtab) => {
     if (!nextSubtab || nextSubtab === storefrontSubtab) return;
@@ -1717,7 +1732,7 @@ export default function PosSettingsWorkspace({
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open !== false,
       is_active: locationForm.is_active !== false,
@@ -2119,13 +2134,15 @@ export default function PosSettingsWorkspace({
     }
     if (renderedTab === 'payments' && canViewDownpayment) {
       return (
-        <DownpaymentSettingsPanel
-          terminalUser={terminalUser}
-          locked={locked}
-          sectionId={sectionId}
-          locationScopeId={locationScopeId}
-          locationOptions={locations}
-        />
+        <Suspense fallback={null}>
+          <DownpaymentSettingsPanel
+            terminalUser={terminalUser}
+            locked={locked}
+            sectionId={sectionId}
+            locationScopeId={locationScopeId}
+            locationOptions={locations}
+          />
+        </Suspense>
       );
     }
     if (renderedTab === 'delivery_pricing' && canEditSettings) {

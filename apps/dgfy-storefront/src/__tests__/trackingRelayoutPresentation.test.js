@@ -74,37 +74,19 @@ describe('shared tracking relayout contract', () => {
   });
 
   it('keeps the shared special-instructions divider as the only boundary divider', () => {
-    const orderDetailsViews = [
-      'modes/fnb/tracking/components/FnbTrackingActiveView.jsx',
-      'modes/retail/tracking/components/RetailTrackingActiveView.jsx',
-      'modes/simple/tracking/components/SimpleTrackingRoutePage.jsx',
-      'features/tracking/components/PickupTrackingMobileView.jsx',
-    ];
-
-    for (const path of orderDetailsViews) {
-      const view = source(path);
-      const instructionsRender = view.lastIndexOf('<StorefrontOrderInstructions');
-      expect(instructionsRender).toBeGreaterThan(-1);
-      const boundary = view.slice(Math.max(0, instructionsRender - 320), instructionsRender);
-      expect(boundary).not.toContain("borderBottom: '1px dashed #cbd5e1'");
-    }
+    const summary = source('shared/components/tracking/StorefrontTrackingOrderSummary.jsx');
+    const instructions = source('shared/components/storefront/StorefrontOrderInstructions.jsx');
+    expect(summary).toContain('<StorefrontOrderInstructions value={trackingResult?.specialInstructions}');
+    expect(instructions).toContain("borderTop: '1px solid #e2e8f0'");
+    expect(instructions).not.toContain("borderBottom: '1px dashed #cbd5e1'");
   });
 
   it('keeps the order-time-to-divider spacing compact', () => {
-    const orderDetailsViews = [
-      'modes/fnb/tracking/components/FnbTrackingActiveView.jsx',
-      'modes/retail/tracking/components/RetailTrackingActiveView.jsx',
-      'modes/simple/tracking/components/SimpleTrackingRoutePage.jsx',
-      'features/tracking/components/PickupTrackingMobileView.jsx',
-    ];
-
-    for (const path of orderDetailsViews) {
-      const view = source(path);
-      const instructionsRender = view.lastIndexOf('<StorefrontOrderInstructions');
-      const orderTimeLabel = view.lastIndexOf('>Order time</div>', instructionsRender);
-      expect(orderTimeLabel).toBeGreaterThan(-1);
-      const orderTimeBoundary = view.slice(Math.max(0, orderTimeLabel - 500), orderTimeLabel);
-      expect(orderTimeBoundary).toContain('paddingBottom: 4');
-    }
+    const summary = source('shared/components/tracking/StorefrontTrackingOrderSummary.jsx');
+    const instructions = source('shared/components/storefront/StorefrontOrderInstructions.jsx');
+    expect(summary).toContain("scheduledFor ? 'Scheduled for' : 'Order time'");
+    expect(summary.indexOf('scheduleTime')).toBeLessThan(summary.indexOf('<StorefrontOrderInstructions'));
+    expect(summary).toContain('compact');
+    expect(instructions).toContain('paddingTop: compact ? 10 : 14');
   });
 });

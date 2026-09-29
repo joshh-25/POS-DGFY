@@ -635,6 +635,10 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+const businessAdminApprovalSchema = Joi.object({
+    note: Joi.string().trim().max(1000).allow('', null).default('')
+});
+
 // Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
 // GET has no body at all.
 const balancePaymentProofParamsSchema = Joi.object({
@@ -1609,6 +1613,7 @@ export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverrid
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
 export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
+export const validateDecideBusinessAdminApproval = validateSchema(businessAdminApprovalSchema, 'body', 'validatedData');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');

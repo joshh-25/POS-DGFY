@@ -52,8 +52,8 @@ describe('Simple tracking route boundary', () => {
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(page).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
-    expect(page).toContain('<DownpaymentTrackingSummary trackingResult={viewModel.trackingResult}');
+    expect(page).toContain("import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';");
+    expect(page).toContain('<StorefrontTrackingOrderSummary');
   });
 
   it('mounts Simple tracking at the app route boundary and leaves other modes on their paths', () => {
@@ -98,10 +98,10 @@ describe('Retail tracking route boundary', () => {
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(activeView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
-    expect(activeView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
-    expect(completedView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
-    expect(completedView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
+    expect(activeView).toContain("import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';");
+    expect(activeView).toContain('<StorefrontTrackingOrderSummary');
+    expect(completedView).toContain("import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';");
+    expect(completedView).toContain('<StorefrontTrackingOrderSummary');
   });
 });
 
@@ -118,9 +118,9 @@ describe('F&B tracking route boundary', () => {
     expect(payloadModel).toContain('paymentStatus:');
     expect(payloadModel).toContain('balanceDue:');
     expect(payloadModel).toContain('order?.balance_due');
-    expect(activeView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
-    expect(activeView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
-    expect(completedView).toContain("import { DownpaymentTrackingSummary } from '../../../../shared/components/tracking/DownpaymentTrackingSummary.jsx';");
-    expect(completedView).toContain('<DownpaymentTrackingSummary trackingResult={trackingResult}');
+    expect(activeView).toContain("import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';");
+    expect(activeView).toContain('<StorefrontTrackingOrderSummary');
+    expect(completedView).toContain("import { StorefrontTrackingOrderSummary } from '../../../../shared/components/tracking/StorefrontTrackingOrderSummary.jsx';");
+    expect(completedView).toContain('<StorefrontTrackingOrderSummary');
   });
 });

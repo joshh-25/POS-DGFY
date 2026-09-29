@@ -19,8 +19,11 @@ const listSalesTransactionsQuerySchema = Joi.object({
     payment_type: Joi.string().valid(...PAYMENT_TYPES).optional(),
     order_method: Joi.string().valid(...ORDER_METHOD_FILTERS).optional(),
     pos_order_source: Joi.string().valid(...POS_ORDER_SOURCES).optional(),
-    date_from: Joi.date().iso().optional(),
-    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    // Keep the validated ISO value as a string. The sales repository applies
+    // tenant-business-day boundaries from the date-only prefix and must not
+    // receive Joi's converted JavaScript Date representation.
+    date_from: Joi.date().iso().raw().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).raw().optional(),
     sort_by: Joi.string().valid(...SORT_BY_VALUES).optional(),
     sort_order: Joi.string().lowercase().valid(...SORT_ORDER_VALUES).optional(),
     export: Joi.string().trim().lowercase().valid('csv').optional()

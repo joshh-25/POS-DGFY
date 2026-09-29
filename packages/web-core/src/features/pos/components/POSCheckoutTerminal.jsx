@@ -290,6 +290,10 @@ export default function POSCheckoutTerminal({
         setReceiptSettings,
         setLowStockDisplayThreshold
     });
+    useEffect(() => {
+        if (isTabletViewport) setMobileCheckoutPanelOpen(false);
+    }, [isTabletViewport]);
+
     // F&B service can be enabled as a capability on a counter/retail terminal.
     // Once a check is attached, checkout must use the F&B line and settlement
     // contract even when the base terminal workflow is not the fnb preset.
@@ -302,10 +306,6 @@ export default function POSCheckoutTerminal({
         isFnbWorkflow: isFnbWorkflow || isDineInCashCheckoutRequested,
         allowedMethods: posWorkflow.allowedMethods
     });
-
-    useEffect(() => {
-        if (isTabletViewport) setMobileCheckoutPanelOpen(false);
-    }, [isTabletViewport]);
     const parkedSaleEmptyCartHandlerRef = useRef(null);
     const handleCartBecameEmpty = useCallback(() => {
         if (typeof parkedSaleEmptyCartHandlerRef.current === 'function') {

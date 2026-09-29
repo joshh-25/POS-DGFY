@@ -214,7 +214,7 @@ test('reconcileOrFailClosed never calls reconcileDeclarationFile for a non-200-s
   let reconcileCallCount = 0;
   const outcome = reconcileOrFailClosed(
     [{ declaration: 'x.md', verdict: { pass: false, result: 'no_breach', reason_code: 'ALLOWED' }, http_code: '500' }],
-    { runId: 'local' },
+    { runId: 'LOCAL-123' },
     { reconcileDeclarationFile: () => { reconcileCallCount += 1; return 'unused'; } }
   );
   assert.equal(outcome.ok, false);
@@ -231,7 +231,7 @@ test('reconcileOrFailClosed reconciles every entry when all pass', () => {
       { declaration: 'a.md', verdict: { pass: true, result: 'no_breach' } },
       { declaration: 'b.md', verdict: { pass: true, result: 'not_applicable' } }
     ],
-    { runId: 'local' },
+    { runId: 'LOCAL-123' },
     {
       reconcileDeclarationFile: (declarationPath, verdict, { runId }) => {
         reconcileCalls.push({ declarationPath, verdict, runId });
@@ -243,8 +243,8 @@ test('reconcileOrFailClosed reconciles every entry when all pass', () => {
   assert.equal(outcome.ok, true);
   assert.equal(outcome.failed.length, 0);
   assert.deepEqual(outcome.reconciled, [
-    { declaration: 'a.md', ref: 'PREFLIGHT-local-a.md' },
-    { declaration: 'b.md', ref: 'PREFLIGHT-local-b.md' }
+    { declaration: 'a.md', ref: 'PREFLIGHT-LOCAL-123-a.md' },
+    { declaration: 'b.md', ref: 'PREFLIGHT-LOCAL-123-b.md' }
   ]);
   assert.equal(reconcileCalls.length, 2);
 });
@@ -257,7 +257,7 @@ test('reconcileOrFailClosed reconciles nothing when any entry fails (fail-closed
       { declaration: 'a.md', verdict: { pass: true, result: 'no_breach' } },
       { declaration: 'b.md', verdict: { pass: false, result: 'breach', reason_code: 'COMPLIANCE_ACTIVATION_REQUIRED' } }
     ],
-    { runId: 'local' },
+    { runId: 'LOCAL-123' },
     {
       reconcileDeclarationFile: () => { reconcileCallCount += 1; return 'unused'; },
       logError: (msg) => failedLogs.push(msg)
@@ -275,7 +275,7 @@ test('reconcileOrFailClosed reconciles nothing when any entry fails (fail-closed
 test('reconcileOrFailClosed treats a missing/undefined verdict.pass as a failure', () => {
   const outcome = reconcileOrFailClosed(
     [{ declaration: 'a.md', verdict: {} }],
-    { runId: 'local' },
+    { runId: 'LOCAL-123' },
     { reconcileDeclarationFile: () => { throw new Error('should not be called'); } }
   );
   assert.equal(outcome.ok, false);

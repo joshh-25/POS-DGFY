@@ -17,10 +17,11 @@ const {
 // identify the exact artifact. Frontends keep environment-qualified tags (baked VITE_*);
 // dgfy-api and dgfy-migration-runner use environment-neutral candidate tags.
 
-test('app-type classification: three frontends, two backends', () => {
+test('app-type classification: four frontends, two backends', () => {
   assert.equal(isFrontendApp('dgfy-ims'), true);
   assert.equal(isFrontendApp('dgfy-pos'), true);
   assert.equal(isFrontendApp('dgfy-storefront'), true);
+  assert.equal(isFrontendApp('dgfy-opis'), true);
   assert.equal(isFrontendApp('dgfy-api'), false);
   assert.equal(isBackendApp('dgfy-api'), true);
   assert.equal(isBackendApp('dgfy-migration-runner'), true);

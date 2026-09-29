@@ -74,6 +74,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('canAccessBusinessAdmin');
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
+    expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
+    expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
   });
 
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {

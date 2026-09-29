@@ -97,7 +97,8 @@ const REQUIRED_PR_CHECKS_MARKERS = [
   // are the cheap "job silently removed or renamed" tripwire on top of it.
   'frontend-ims-lint-check',
   'frontend-pos-lint-check',
-  'frontend-storefront-lint-check'
+  'frontend-storefront-lint-check',
+  'frontend-opis-lint-check'
 ];
 
 /**
@@ -113,7 +114,8 @@ const REQUIRED_PR_CHECKS_MARKERS = [
 const DEVELOP_PR_LINT_JOB_BY_APP = Object.freeze({
   'dgfy-ims': { job: 'frontend-ims-lint-check', changedOutput: 'frontend_ims' },
   'dgfy-pos': { job: 'frontend-pos-lint-check', changedOutput: 'frontend_pos' },
-  'dgfy-storefront': { job: 'frontend-storefront-lint-check', changedOutput: 'frontend_storefront' }
+  'dgfy-storefront': { job: 'frontend-storefront-lint-check', changedOutput: 'frontend_storefront' },
+  'dgfy-opis': { job: 'frontend-opis-lint-check', changedOutput: 'frontend_opis' }
 });
 
 function checkDevelopPrLintJobMapping(prChecksText) {

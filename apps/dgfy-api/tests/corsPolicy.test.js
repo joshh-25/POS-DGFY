@@ -2,6 +2,28 @@ import { describe, expect, it } from '@jest/globals';
 import { buildCorsPolicy } from '../src/config/corsPolicy.js';
 
 describe('corsPolicy', () => {
+  it('allows the OPIS local development origin and named DEV/stage/prod surfaces', () => {
+    const development = buildCorsPolicy({ isProduction: false });
+    const production = buildCorsPolicy({
+      isProduction: true,
+      corsOrigin: 'https://opis.dgfy.ph,https://opis.dev.dgfy.ph,https://opis.stage.dgfy.ph'
+    });
+
+    expect(development.resolveCorsAllowed('http://opis.localhost:5176')).toBe(true);
+    expect(development.resolveCorsAllowed('https://opis.dev.dgfy.ph')).toBe(true);
+    expect(development.resolveCorsAllowed('https://opis.stage.dgfy.ph')).toBe(true);
+    expect(development.resolveCorsAllowed('https://opis.dgfy.ph')).toBe(true);
+    expect(production.resolveCorsAllowed('https://opis.dgfy.ph')).toBe(true);
+    expect(production.resolveCorsAllowed('https://opis.dev.dgfy.ph')).toBe(true);
+    expect(production.resolveCorsAllowed('https://opis.stage.dgfy.ph')).toBe(true);
+  });
+
+  it('does not allow arbitrary OPIS-like hosts in production', () => {
+    const production = buildCorsPolicy({ isProduction: true, corsOrigin: 'https://dgfy.ph' });
+
+    expect(production.resolveCorsAllowed('https://opis.preview.dgfy.ph')).toBe(false);
+  });
+
   it('allows tenant storefront localhost preview origins in development only', () => {
     const development = buildCorsPolicy({ isProduction: false });
     const production = buildCorsPolicy({ isProduction: true, corsOrigin: 'https://dgfy.ph' });

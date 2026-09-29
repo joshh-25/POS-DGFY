@@ -53,6 +53,7 @@ const APPS = Object.freeze([
     'dgfy-ims',
     'dgfy-pos',
     'dgfy-storefront',
+    'dgfy-opis',
 ]);
 
 // Same prefix-table shape as check-compliance-impact.js's PROMOTION_HEAD_BY_BASE /
