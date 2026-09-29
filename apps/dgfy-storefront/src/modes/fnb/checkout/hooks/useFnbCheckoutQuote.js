@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 import { buildFnbCheckoutPayload } from '../model/buildFnbCheckoutPayload.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
@@ -74,6 +74,25 @@ export function useFnbCheckoutQuote({
   extractStockViolation,
 }) {
   const quoteRequestIdRef = useRef(0);
+  const latestQuoteContextRef = useRef(null);
+
+  const quoteContext = useCallback(({ promoCode = checkoutPromoCode, voucherCode = checkoutVoucherCode } = {}) => JSON.stringify({
+    cartSignature,
+    deliveryAddress: String(deliveryAddress || '').trim(),
+    deliveryLatitude: isDeliveryOrder ? String(customerPin?.latitude ?? '').trim() : '',
+    deliveryLongitude: isDeliveryOrder ? String(customerPin?.longitude ?? '').trim() : '',
+    isDeliveryOrder,
+    orderMethod,
+    paymentElection: paymentElection === 'downpayment' ? 'downpayment' : 'full',
+    paymentType: String(fnbPaymentType || 'cash').trim().toLowerCase(),
+    promoCode: String(promoCode || '').trim().toUpperCase(),
+    selectedLocationId: selectedLocationId ?? selectedStore?.location_id ?? null,
+    storeSlug: selectedStore?.slug || '',
+    voucherCode: String(voucherCode || '').trim().toUpperCase(),
+  }), [cartSignature, checkoutPromoCode, checkoutVoucherCode, customerPin, deliveryAddress, fnbPaymentType, isDeliveryOrder, orderMethod, paymentElection, selectedLocationId, selectedStore]);
+  useLayoutEffect(() => {
+    latestQuoteContextRef.current = quoteContext();
+  }, [quoteContext]);
 
   // #672: voucherCode is a second, independent override alongside promoCode -- the two checkout
   // discounts are separate fields (see buildFnbCheckoutPayload.js), so each needs its own override
@@ -132,6 +151,14 @@ export function useFnbCheckoutQuote({
     // after the response would attribute the quote to whatever the cart looks like when the network
     // finally returns -- which is exactly the cart edit that should have invalidated it.
     const signatureAtRequest = cartSignature;
+    const contextAtRequest = quoteContext({
+      promoCode: promoCodeOverride,
+      voucherCode: voucherCodeOverride,
+    });
+    // State setters may schedule the render that updates default promo/voucher values. Treat this
+    // explicit request context as current immediately; a later render will replace it if inputs
+    // change again while the request is in flight.
+    latestQuoteContextRef.current = contextAtRequest;
     const requestId = quoteRequestIdRef.current + 1;
     quoteRequestIdRef.current = requestId;
 
@@ -145,6 +172,9 @@ export function useFnbCheckoutQuote({
     // latest mutation may publish a result; otherwise an older discounted response can resurrect
     // the voucher after the shopper has already removed it.
     if (requestId !== quoteRequestIdRef.current) return null;
+    // A fulfillment/address/cart change can happen before the debounced replacement request is
+    // dispatched. Read the render-updated ref so a response cannot publish into that new context.
+    if (contextAtRequest !== latestQuoteContextRef.current) return null;
     setQuoteResult(data);
     setQuotedCartSignature(signatureAtRequest);
     setQuoteNeedsRefresh(false);
@@ -161,6 +191,7 @@ export function useFnbCheckoutQuote({
     readDgfyAuthToken,
     readStoreAuthToken,
     requestJson,
+    quoteContext,
     selectedStore,
     setQuotedCartSignature,
     setQuoteNeedsRefresh,

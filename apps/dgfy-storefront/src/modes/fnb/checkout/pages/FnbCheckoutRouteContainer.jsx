@@ -143,6 +143,7 @@ export function FnbCheckoutRouteContainer({
   isFnbOrderResponsiveFlow,
   isFnbOrderSubpage,
   isGuestCheckoutOtpCooldownActive,
+  isTotalStale,
   isMobileViewport,
   money,
   orderMethod,
@@ -615,6 +616,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              isTotalStale={isTotalStale}
               orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
@@ -645,6 +647,7 @@ export function FnbCheckoutRouteContainer({
             brandColor={fnbOrderBrand}
             brandDark={fnbOrderBrandDark}
             canContinue={fnbCustomerStepComplete}
+            showDeliveryFeeExpectationNote={fulfillmentOptions?.some((option) => option.value === 'delivery' && option.available)}
             guestEmailVerificationContent={!isDgfyCustomerSignedIn ? (
               <FnbGuestEmailVerification
                 bodyFont={servicesBodyFont}
@@ -699,6 +702,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              isTotalStale={isTotalStale}
               orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
@@ -827,6 +831,7 @@ export function FnbCheckoutRouteContainer({
               checkoutAllowed={checkoutAllowed}
               displayFont={servicesDisplayFont}
               isDeliveryOrder={isDeliveryOrder}
+              isTotalStale={isTotalStale}
               orderMethod={orderMethod}
               money={money}
               onImageError={(itemId) => {
@@ -862,6 +867,7 @@ export function FnbCheckoutRouteContainer({
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
           isDeliveryOrder={isDeliveryOrder}
+          isTotalStale={isTotalStale}
           orderMethod={orderMethod}
           itemCountLabel={fnbMobileSummaryItemCountLabel}
           money={money}
