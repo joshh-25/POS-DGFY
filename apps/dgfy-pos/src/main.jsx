@@ -6,7 +6,6 @@ import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
-import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx';
 import { publishPosUpdateNoticeState } from '../../../packages/web-core/src/features/pos/utils/posUpdateNotice.js';
 import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
@@ -32,8 +31,8 @@ import {
 } from '../../../packages/web-core/src/observability/analyticsClient.js';
 import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
 import { installIminPerformanceProfile } from '../../../packages/web-core/src/utils/iminRuntimeFeedback.js';
-import { buildOpisBackOfficeUrl } from '../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import '../../../packages/web-core/src/index.css';
+import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 
 // Keep POS-only body portals (dialogs, menus, and notifications) on the same
 // typography stack as the shell, including routes that render before the
@@ -68,7 +67,7 @@ function PosRouteNotFound() {
         <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
         <h1 className="mt-2 text-2xl font-black text-slate-950">Route not available</h1>
         <p className="mt-2 text-sm text-slate-600">
-          This standalone POS app serves the DGFY terminal. The merchant Back Office now lives in DGFY OPIS.
+          This standalone POS app serves the DGFY terminal. Sales reports open in SKUpervisor.
         </p>
         <Link
           to="/terminal"
@@ -81,41 +80,19 @@ function PosRouteNotFound() {
   );
 }
 
-function LegacyBackOfficeRoute({ section = 'overview' }) {
-  const location = useLocation();
+function SkupervisorSalesRedirect() {
   useEffect(() => {
-    // The merchant Back Office moved to the dedicated OPIS app (issue #2052).
-    // Preserve the section path and query across the external redirect.
-    window.location.assign(buildOpisBackOfficeUrl({ path: `/backoffice/${section}`, search: location.search || '' }));
-  }, [location.search, section]);
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
-      <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">Back Office moved</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          The merchant Back Office now lives in DGFY OPIS. Taking you there…
-        </p>
-      </section>
-    </main>
-  );
-}
+    const query = typeof window === 'undefined' ? '' : window.location.search;
+    window.location.replace(buildSkupervisorPath('/sales', query));
+  }, []);
 
-function OpisCompatRedirect() {
-  const location = useLocation();
-  useEffect(() => {
-    // Compatibility seam opis-pos-backoffice-redirect (issue #2052): POS no longer hosts
-    // /backoffice/* or /business-admin/*; hand off to OPIS preserving path and query.
-    // @compat-seam id=opis-pos-backoffice-redirect
-    window.location.assign(buildOpisBackOfficeUrl({ path: location.pathname, search: location.search || '' }));
-  }, [location.pathname, location.search]);
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
       <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
         <p className="text-xs font-bold uppercase tracking-wide text-[#1A4E8D]">DGFY POS</p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">Back Office moved</h1>
+        <h1 className="mt-2 text-2xl font-black text-slate-950">Opening SKUpervisor</h1>
         <p className="mt-2 text-sm text-slate-600">
-          The merchant Back Office now lives in DGFY OPIS. Taking you there…
+          Sales reports are handled in the SKUpervisor app context.
         </p>
       </section>
     </main>
@@ -136,9 +113,6 @@ const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAut
 const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
 const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'));
 const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
-const MobileReceivePage = lazy(() => import('../../../packages/web-core/src/features/merchantBackOffice/pages/MobileReceivePage.jsx'));
-// NOTE (issue #2052): the merchant Back Office shell moved to apps/dgfy-opis. POS keeps no
-// Back Office implementation; /backoffice/* and /business-admin/* redirect to OPIS below.
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -377,11 +351,7 @@ const mountApp = () => {
                   <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
                   <Route path="/register-company" element={<RegisterCompany />} />
                   <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
-                  <Route path="/business-admin/*" element={<OpisCompatRedirect />} />
-                  <Route path="/backoffice/*" element={<OpisCompatRedirect />} />
-                  <Route path="/receive/:token" element={<ProtectedRoute><MobileReceivePage /></ProtectedRoute>} />
-                  <Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />
-                  <Route path="/reports" element={<LegacyBackOfficeRoute section="reports" />} />
+                  <Route path="/sales" element={<SkupervisorSalesRedirect />} />
                   <Route path="/" element={<TerminalPage />} />
                   <Route path="/terminal" element={<TerminalPage />} />
                   <Route path="/login" element={<TerminalPage />} />

@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-15
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-30
 review_by: 2027-03-14
 applies_to: apps/dgfy-pos, apps/dgfy-api
 topic: business_admin_backoffice_parity
@@ -17,13 +17,26 @@ for capability discovery, not an instruction to copy UTAK code or its data
 model. `BO-01` through `BO-15` are stable capability slices; they do not reset
 the repository's continuous phase numbering.
 
-## Architecture and ownership
+## Current POS routing status — 2026-09-30
 
-Until the dedicated Back Office product in issue #1354 ships, the POS app is
-the canonical merchant back-office surface. This follows the interim
-placement rule in `AGENTS.md` and the amended [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md).
-The route is available at `/business-admin/*` and `/backoffice/*` on POS
-(port 5174). The old `apps/dgfy-web` surface is not revived.
+The POS production baseline is `origin/main`. POS does not register the
+`/backoffice/*` or `/business-admin/*` routes, does not offer a Back Office
+launch control, and does not link directly to OPIS. `/sales` continues to open
+SKUpervisor, as it does in production. OPIS remains the permanent, independently
+deployed Back Office and is accessed manually at its own app origin. The dated
+sections below record historical POS Back Office behavior and do not describe
+the current POS route tree. ADR 0088 proposes superseding ADR 0087's former POS
+redirect requirement; tech-lead approval is required before that decision can
+take effect.
+
+## Historical architecture and ownership
+
+At the time these workflows were implemented, the POS app was the canonical
+merchant Back Office surface under the interim placement rule in `AGENTS.md`
+and amended [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md).
+The historical POS routes were `/business-admin/*` and `/backoffice/*` (port
+5174). The old `apps/dgfy-web` surface was not revived. This section records
+that implementation; the current POS route tree is described above.
 
 Business Admin is a tenant-scoped read and control-plane projection. It calls
 the canonical owners instead of creating parallel truth:
@@ -940,3 +953,14 @@ The dashboard remains at `/`; Back Office sections now use root-level URLs such 
 `/business-admin/*` links redirect to their root-level equivalent while preserving
 query and hash. OPIS-owned authentication, company registration, and protected receive
 routes keep their reserved paths. See the updated route contract in ADR 0087.
+
+## 2026-09-30 — POS references removed (issue #2140)
+
+The POS app now matches the `origin/main` route boundary: historical Back Office
+paths fall through to the ordinary POS route-not-found screen, terminal
+navigation has no Back Office launch action, and POS does not hand off to OPIS.
+The production `/sales` handoff to SKUpervisor remains. OPIS continues as the
+permanent standalone Back Office and remains manually accessible at its own
+origin. No OPIS routes, app implementation, API contracts, or session behavior
+were removed. This records the corrected product direction; the original issue
+and plan handoff still contain the earlier, reversed restoration request.

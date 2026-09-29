@@ -62,7 +62,6 @@ import {
   switchDgfyCompanyForTenantSession
 } from '@/services/dgfyAuthService.js';
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
-import { openOpisBackOffice } from '../utils/businessBackOfficeHandoff.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
@@ -548,8 +547,6 @@ export default function TerminalPage() {
   const [terminalUser, setTerminalUser] = useState(null);
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
-  const [backOfficeConfirmOpen, setBackOfficeConfirmOpen] = useState(false);
-  const [backOfficeTargetPath, setBackOfficeTargetPath] = useState('/');
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
   const [closeShiftBlocker, setCloseShiftBlocker] = useState(null);
   const [closedShiftReport, setClosedShiftReport] = useState(null);
@@ -1025,9 +1022,6 @@ export default function TerminalPage() {
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
-  const canAccessBusinessAdmin = !isCashierRole && (
-    isMasterAdminOperator || normalizedTerminalRole === 'admin' || hasPermission('business_admin:access')
-  );
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = canViewPos;
   // Voucher admin UI (#614). #655 added a dedicated `vouchers:manage` permission and dual-gated
@@ -6715,37 +6709,6 @@ export default function TerminalPage() {
     if (dirty !== true) setPendingStorefrontContentViewMode('');
   }, []);
 
-  const handleOpenBackOffice = useCallback((target = {}) => {
-    if (!terminalUser || !apiReachable || !canAccessBusinessAdmin) return;
-    setMobileNavOpen(false);
-    const requestedPath = typeof target === 'string' ? target : target?.path;
-    const normalizedPath = String(requestedPath || '/').trim();
-    let safePath = /^(?:\/(?:backoffice|business-admin)(?:\/|$))/.test(normalizedPath)
-      ? normalizedPath
-      : (normalizedPath.startsWith('/') && !normalizedPath.startsWith('//') ? normalizedPath : '/');
-    const activeBranchId = Number(
-      shiftState?.shift?.location_id || viewingLocationId || operatingLocationId || queueLocationScopeId || 0
-    );
-    if (/^\/(?:backoffice|business-admin)\/settings(?:\/|$)/.test(safePath)
-      && Number.isInteger(activeBranchId) && activeBranchId > 0) {
-      const [pathOnly, queryString = ''] = safePath.split('?');
-      const params = new URLSearchParams(queryString);
-      params.set('branch_id', String(activeBranchId));
-      safePath = `${pathOnly}?${params.toString()}`;
-    }
-    setBackOfficeTargetPath(safePath);
-    setBackOfficeConfirmOpen(true);
-  }, [apiReachable, canAccessBusinessAdmin, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id, terminalUser, viewingLocationId]);
-
-  const handleConfirmOpenBackOffice = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    setBackOfficeConfirmOpen(false);
-    const canonicalPath = String(backOfficeTargetPath || '/').replace(/^\/business-admin(?=\/|$)/, '/backoffice');
-    const [pathOnly, queryString = ''] = canonicalPath.split('?');
-    const outcome = openOpisBackOffice({ path: pathOnly || '/', search: queryString ? `?${queryString}` : '' });
-    toast.success(outcome === 'new-tab' ? 'Back Office opened in OPIS.' : 'Opening Back Office in OPIS.');
-  }, [backOfficeTargetPath]);
-
   const handleSelectViewMode = useCallback(async (nextMode) => {
     if (locked) {
       setMobileNavOpen(false);
@@ -7308,7 +7271,7 @@ function PosRestorationLoadingScreen() {
     <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Suspense fallback={null}>
-          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || backOfficeConfirmOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
+          {(cashCollectionOrder || balanceSettlementOrder || balanceProofViewerUrl || balanceProofViewerLoading || terminalUnlockModalOpen || shiftOpeningModalOpen || settingsAccessPinModalOpen || closeShiftConfirmOpen || stockAlertSummary || closedShiftReportOpen || postShiftHandoff || zReadingPrintOpen || zReadingCloseConfirmOpen || myDayClosePinOpen || tenantSetupModalOpen || incomingOrderModalOpen || incomingOrderReceiptOpen || scheduledDineInAlert || hardwareMessage || showLegacyDgfyLinkBanner) ? (
             <TerminalPageDialogLayer model={{
               DEFAULT_CURRENCY,
               POS_TERMINAL_SETUP_STEPS,
@@ -7328,10 +7291,6 @@ function PosRestorationLoadingScreen() {
               balanceProofError,
               balanceProofViewerUrl,
               balanceProofViewerLoading,
-              backOfficeConfirmOpen,
-              backOfficeTargetPath,
-              setBackOfficeConfirmOpen,
-              handleConfirmOpenBackOffice,
               canAdminBypassShiftPrompt,
               canOpenShift,
               canSubmitOpenShift,
@@ -7489,7 +7448,6 @@ function PosRestorationLoadingScreen() {
           canViewAttendance={canViewAttendance}
           canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
-          canLaunchBackOffice={canAccessBusinessAdmin}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}
@@ -7514,7 +7472,6 @@ function PosRestorationLoadingScreen() {
           dayCloseReadinessState={dayCloseReadinessState}
           refreshDayCloseReadiness={refreshDayCloseReadiness}
           onOpenMyDayClosePin={openMyDayClosePin}
-          onOpenBackOffice={handleOpenBackOffice}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           canOpenShift={canOpenShift}
           terminalUser={terminalUser}

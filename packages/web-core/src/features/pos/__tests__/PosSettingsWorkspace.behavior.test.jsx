@@ -70,7 +70,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('extracted POS Settings workspace', () => {
-  it('switches the Business Admin POS settings tabs and moves the active underline state', async () => {
+  it('switches the POS settings tabs and moves the active underline state', async () => {
     render(<PosSettingsWorkspace {...buildProps({
       initialTab: 'pos_setup',
       allowedTabIds: ['pos_setup', 'taxes', 'discounts'],

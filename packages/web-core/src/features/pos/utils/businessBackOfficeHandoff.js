@@ -80,16 +80,6 @@ const resolveOpisOrigin = () => {
 
 export const getOpisBackOfficeOrigin = () => resolveOpisOrigin();
 
-// @compat-seam id=opis-pos-backoffice-redirect
-// OPIS serves proper paths (BrowserRouter + nginx SPA fallback), so the handoff
-// is a plain same-path URL -- no hash. POS itself stays on HashRouter; only the
-// emitted OPIS target changed.
-export const buildOpisBackOfficeUrl = ({ path = '/backoffice/overview', search = '' } = {}) => {  const normalizedPath = normalizePath(path);
-  const normalizedSearch = String(search || '').trim();
-  const query = normalizedSearch.startsWith('?') || !normalizedSearch ? normalizedSearch : `?${normalizedSearch}`;
-  return `${getOpisBackOfficeOrigin()}${normalizedPath}${query}`;
-};
-
 // IMS merchant-surface handoff retargeted to OPIS (issue #2052): same tenant_id / next /
 // handoff_token contract as the POS handoff above, resolved against the OPIS origin whose
 // /dgfy/companies route exchanges the one-time handoff exactly like POS did.
@@ -121,20 +111,4 @@ export const buildPosTerminalUrl = ({ path = '/terminal', search = '' } = {}) =>
   const normalizedSearch = String(search || '').trim();
   const query = normalizedSearch.startsWith('?') || !normalizedSearch ? normalizedSearch : `?${normalizedSearch}`;
   return `${resolvePosOrigin()}${normalizedPath}${query}`;
-};
-
-// Opens an OPIS Back Office URL in a new tab with clear recovery when the popup is
-// blocked: falls back to same-tab navigation so the merchant never lands on a dead
-// button. Returns 'new-tab' when a tab was opened, 'same-tab' on fallback.
-export const openOpisBackOffice = ({ path = '/backoffice/overview', search = '', windowObj = typeof window === 'undefined' ? null : window } = {}) => {
-  const url = buildOpisBackOfficeUrl({ path, search });
-  if (!windowObj) return 'same-tab';
-  try {
-    const opened = windowObj.open(url, '_blank', 'noopener,noreferrer');
-    if (opened) return 'new-tab';
-  } catch {
-    // A blocked or failed popup falls through to same-tab navigation below.
-  }
-  windowObj.location.assign(url);
-  return 'same-tab';
 };

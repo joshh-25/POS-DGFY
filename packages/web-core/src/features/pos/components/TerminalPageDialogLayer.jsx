@@ -41,9 +41,6 @@ export default function TerminalPageDialogLayer({ model }) {
     balanceProofError,
     balanceProofViewerUrl,
     balanceProofViewerLoading,
-    backOfficeConfirmOpen,
-    backOfficeTargetPath,
-    handleConfirmOpenBackOffice,
     setBalanceProofFile,
     handleCloseBalancePaymentProofViewer,
     canAdminBypassShiftPrompt,
@@ -927,20 +924,6 @@ export default function TerminalPageDialogLayer({ model }) {
                 </Button>
               </DialogFooter>
             </form>
-          </DialogContent>
-        </Dialog>
-        <Dialog open={backOfficeConfirmOpen} onOpenChange={(open) => { if (!open) model.setBackOfficeConfirmOpen?.(false); }}>
-          <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-black text-slate-950">Open Back Office?</DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-slate-600">
-                DGFY Back Office opens in OPIS in a new tab. Your POS terminal remains open.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => model.setBackOfficeConfirmOpen?.(false)}>Cancel</Button>
-              <Button type="button" onClick={handleConfirmOpenBackOffice}>Open Back Office</Button>
-            </DialogFooter>
           </DialogContent>
         </Dialog>
         <Dialog open={closeShiftConfirmOpen} onOpenChange={setCloseShiftConfirmOpen}>
