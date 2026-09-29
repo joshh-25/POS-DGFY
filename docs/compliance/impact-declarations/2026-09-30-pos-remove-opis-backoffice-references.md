@@ -11,8 +11,8 @@ verification_evidence: POS unit 11 passed; OPIS unit 131 passed; focused shared 
 rollback_note: Revert the POS route and navigation cleanup, its boundary contracts, the compatibility-seam removal, ADR 0088, and this declaration together. No API, schema, migration, or production data changes are included.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-30T00:00:00Z
-preflight_request_ref: NOT-EXECUTED-2140-POS-OPIS-REFERENCE-REMOVAL
+preflight_run_at: 2026-09-29T17:58:06.019Z
+preflight_request_ref: PREFLIGHT-36608223661-2026-09-30-POS-REMOVE-OPIS-BACKOFFICE-REFERENCES
 ---
 
 # Remove OPIS Back Office References from POS
