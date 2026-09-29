@@ -11,21 +11,12 @@
       "removal_criteria": "Legacy backup decommissioned (future milestone, CUT-02)."
     },
     {
-      "id": "opis-pos-backoffice-redirect",
-      "type": "api-boundary",
-      "status": "removed",
-      "rationale": "Issue #2140 restores local POS Back Office routes while retaining OPIS. Shared presentation code lives in packages/web-core; POS and OPIS use app-owned route and session adapters.",
-      "tests": [],
-      "rollback": "Restore POS external redirects and the ADR 0087 routing rule if this overlap is rolled back; OPIS remains independently usable.",
-      "removal_criteria": "Removed by issue #2140 when the POS/OPIS overlap decision is accepted."
-    },
-    {
       "id": "opis-ims-merchant-handoff",
       "type": "api-boundary",
       "status": "active",
       "rationale": "IMS retired merchant surfaces hand off to the dedicated Back Office, now OPIS instead of POS (issue #2052). The tenant_id/next/handoff_token handoff contract is unchanged; only the origin resolves to OPIS.",
       "tests": [
-        "packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js"
+        "packages/web-core/src/features/pos/utils/__tests__/businessBackOfficeHandoff.test.js"
       ],
       "rollback": "Point apps/dgfy-ims/src/pages/MerchantSurfaceRetired.jsx back at the POS handoff builder; no data migration involved.",
       "removal_criteria": "Remove once #1354 migration completes and IMS merchant routes are deleted rather than redirected."

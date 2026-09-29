@@ -110,7 +110,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0085 | [POS Employee Credit Mixed Split Tender](0085-pos-employee-credit-mixed-split-tender.md) | `accepted` | pos_employee_credit_mixed_split_tender | 2027-03-21 | 6 |
 | 0086 | [POS Parked-Sale Stock and High-Risk Approval Lifecycle](0086-pos-parked-sale-stock-and-high-risk-approval-lifecycle.md) | `accepted` | pos_parked_sale_stock_and_high_risk_approval_lifecycle | 2027-03-24 | 7 |
 | 0087 | [Dedicated DGFY Back Office as a Fourth Frontend App (`apps/dgfy-opis`)](0087-dedicated-back-office-fourth-frontend-app-opis.md) | `accepted` | opis_fourth_frontend_app | 2027-03-29 | 5 |
-| 0088 | [POS and OPIS Business Admin overlap](0088-pos-opis-backoffice-overlap.md) | `proposed` | pos_opis_backoffice_overlap | 2027-03-29 | 4 |
+| 0088 | [POS Has No Back Office Routes or OPIS Handoff](0088-pos-has-no-back-office-routes-or-opis-handoff.md) | `proposed` | opis_fourth_frontend_app | 2027-03-30 | 4 |
 
 ## Renumbered (collision stubs)
 

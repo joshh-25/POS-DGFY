@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-15
-last_reviewed: 2026-09-29
+last_reviewed: 2026-09-30
 review_by: 2027-03-14
 applies_to: apps/dgfy-pos, apps/dgfy-api
 topic: business_admin_backoffice_parity
@@ -17,25 +17,26 @@ for capability discovery, not an instruction to copy UTAK code or its data
 model. `BO-01` through `BO-15` are stable capability slices; they do not reset
 the repository's continuous phase numbering.
 
-## Architecture and ownership
+## Current POS routing status — 2026-09-30
 
-As of 2026-09-29, OPIS is DGFY's dedicated Back Office and the default target
-for new back-office-level feature work under [ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md).
-Issue #2140 restores the inventoried pre-#2054 Business Admin workflows in POS
-while retaining OPIS and its independent routes, deployment, and session. Both
-apps consume one shared shell from `packages/web-core`; POS serves
-`/business-admin/*` through HashRouter, with `/sales` and `/reports` aliases,
-while OPIS keeps its root-level BrowserRouter routes and is accessed manually
-from POS. POS does not expose an OPIS Back Office link. The
-overlap is documented capability by capability in
-[the POS/OPIS overlap inventory](pos-opis-business-admin-overlap.md) and
-proposed [ADR 0088](../architecture/adr/0088-pos-opis-backoffice-overlap.md).
-ADR 0088 remains proposed until tech-lead approval; ADR 0087 remains the
-authoritative rule before that approval.
+The POS production baseline is `origin/main`. POS does not register the
+`/backoffice/*` or `/business-admin/*` routes, does not offer a Back Office
+launch control, and does not link directly to OPIS. `/sales` continues to open
+SKUpervisor, as it does in production. OPIS remains the permanent, independently
+deployed Back Office and is accessed manually at its own app origin. The dated
+sections below record historical POS Back Office behavior and do not describe
+the current POS route tree. ADR 0088 proposes superseding ADR 0087's former POS
+redirect requirement; tech-lead approval is required before that decision can
+take effect.
 
-The old `apps/dgfy-web` surface is not revived. New back-office feature work
-continues to default to OPIS; this restoration does not resolve the open
-structural question in #358.
+## Historical architecture and ownership
+
+At the time these workflows were implemented, the POS app was the canonical
+merchant Back Office surface under the interim placement rule in `AGENTS.md`
+and amended [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md).
+The historical POS routes were `/business-admin/*` and `/backoffice/*` (port
+5174). The old `apps/dgfy-web` surface was not revived. This section records
+that implementation; the current POS route tree is described above.
 
 Business Admin is a tenant-scoped read and control-plane projection. It calls
 the canonical owners instead of creating parallel truth:
@@ -57,11 +58,6 @@ the canonical owners instead of creating parallel truth:
 - Fiscal evidence is read-only until the BIR/CAS accreditation and legal
   filing gates in [ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md)
   are satisfied.
-
-The shared UI surface selector controls presentation only. API tenant identity,
-branch visibility, permission projection, canonical command ownership, cost
-masking, and cookie namespaces remain enforced by their existing owners. Neither
-app's Business Admin access grants permissions to the other.
 
 The API follows the governed `routes -> controllers -> usecases ->
 repositories -> models` boundary from
@@ -945,10 +941,10 @@ handoff retargeting. POS terminal operational flows are unaffected. The interim
 "POS is the canonical merchant back-office surface" framing above was superseded
 when ADR 0087 was accepted on 2026-09-29; OPIS is now canonical for new back-office
 work.
-That entry records the state at the time. Issue #2140 later removed the POS
-redirect seam and restored the selected capability inventory using shared code;
-the IMS merchant handoff remains pointed at OPIS. See the
-[overlap inventory](pos-opis-business-admin-overlap.md).
+See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.md),
+[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
+and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
+seams.
 
 ## 2026-09-24 — OPIS root-level section URLs (issue #2052 follow-up)
 
@@ -958,24 +954,13 @@ The dashboard remains at `/`; Back Office sections now use root-level URLs such 
 query and hash. OPIS-owned authentication, company registration, and protected receive
 routes keep their reserved paths. See the updated route contract in ADR 0087.
 
-## 2026-09-29 — POS/OPIS coexistence (issue #2140)
+## 2026-09-30 — POS references removed (issue #2140)
 
-POS again serves the pre-#2054 Business Admin capability inventory under its
-historical prefixed routes and aliases. The reusable shell, service, styles,
-manifest, settings models, and receipt UI now live in `packages/web-core`; each
-app retains its own router, route mapping, recovery behavior, and session
-namespace. POS restricts settings to its nine baseline sections. OPIS retains
-its root routes, account actions, and OPIS-only Taxes/Discounts sections.
-Canonical API and command owners remain unchanged. The POS redirect seam is
-removed; the IMS handoff to OPIS remains active. Proposed ADR 0088 requires
-tech-lead approval before merge. See the
-[capability overlap inventory](pos-opis-business-admin-overlap.md).
-
-## 2026-09-30 — POS-native Business Admin entry (issue #2140 follow-up)
-
-The POS restoration presents the historical workflows as POS Business Admin at
-`/business-admin/*`; it does not add a POS Back Office route or a link to OPIS.
-The `/sales` and `/reports` aliases remain local POS aliases. OPIS remains the
-permanent Back Office destination with independent root routes; POS workflows
-coexist during a gradual, user-aware transition, and OPIS is accessed manually
-in the meantime. This does not move new Back Office feature ownership from OPIS.
+The POS app now matches the `origin/main` route boundary: historical Back Office
+paths fall through to the ordinary POS route-not-found screen, terminal
+navigation has no Back Office launch action, and POS does not hand off to OPIS.
+The production `/sales` handoff to SKUpervisor remains. OPIS continues as the
+permanent standalone Back Office and remains manually accessible at its own
+origin. No OPIS routes, app implementation, API contracts, or session behavior
+were removed. This records the corrected product direction; the original issue
+and plan handoff still contain the earlier, reversed restoration request.
