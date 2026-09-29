@@ -661,22 +661,49 @@ test('--floor: an unparseable version is surfaced as invalid, never silently tre
     }
 });
 
-test('--floor: a missing version (no package.json at one ref) is also surfaced as invalid', async () => {
+test('--floor: a newly introduced app with a valid initial version has no historical floor', async () => {
     const root = makeGitRepo();
-    // dgfy-api doesn't exist yet at this "base" commit at all.
-    const fixtureWithoutApi = baseFixture();
-    delete fixtureWithoutApi['apps/dgfy-api/package.json'];
-    delete fixtureWithoutApi['apps/dgfy-api/src/index.js'];
-    writeFiles(root, fixtureWithoutApi);
-    const baseGitRef = commitAll(root, 'pre-dgfy-api snapshot');
+    const fixtureWithoutOpis = baseFixture();
+    delete fixtureWithoutOpis['apps/dgfy-opis/package.json'];
+    delete fixtureWithoutOpis['apps/dgfy-opis/src/index.js'];
+    writeFiles(root, fixtureWithoutOpis);
+    const baseGitRef = commitAll(root, 'pre-opis snapshot');
 
-    writeFiles(root, baseFixture());
-    const headGitRef = commitAll(root, 'dgfy-api added');
+    writeFiles(root, {
+        'apps/dgfy-opis/package.json': pkgJson('1.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        'apps/dgfy-opis/src/index.js': 'module.exports = {};\n',
+    });
+    const headGitRef = commitAll(root, 'dgfy-opis added');
 
     try {
         const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
-        assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-api'));
-        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
+        const opis = result.results.find((entry) => entry.app === 'dgfy-opis');
+        assert.ok(opis);
+        assert.equal(opis.newApp, true);
+        assert.equal(opis.floorTarget, null);
+        assert.equal(opis.unparseable, false);
+        assert.equal(result.invalid.some((entry) => entry.app === 'dgfy-opis'), false);
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-opis'), false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('--floor: a missing head package.json remains invalid even for a new app', async () => {
+    const root = makeGitRepo();
+    const fixtureWithoutOpis = baseFixture();
+    delete fixtureWithoutOpis['apps/dgfy-opis/package.json'];
+    delete fixtureWithoutOpis['apps/dgfy-opis/src/index.js'];
+    writeFiles(root, fixtureWithoutOpis);
+    const baseGitRef = commitAll(root, 'pre-opis snapshot');
+
+    writeFiles(root, { 'apps/dgfy-opis/src/index.js': 'module.exports = {};\n' });
+    const headGitRef = commitAll(root, 'opis source without package metadata');
+
+    try {
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-opis'));
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-opis'), false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
