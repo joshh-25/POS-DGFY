@@ -7,7 +7,9 @@ const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const checkoutViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
 const itemOptionsPath = path.resolve(webCoreRoot, 'src/features/pos/components/ItemOptionsDialog.jsx');
-const checkoutContent = [checkoutPath, checkoutViewPath]
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const checkoutHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
+const checkoutContent = [checkoutPath, checkoutHookPath, checkoutViewPath]
   .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
   .join('\n');
 const itemOptionsContent = fs.readFileSync(itemOptionsPath, 'utf8');

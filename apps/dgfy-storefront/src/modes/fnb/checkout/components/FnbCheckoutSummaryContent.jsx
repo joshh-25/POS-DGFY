@@ -22,7 +22,7 @@ function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont
 /** Shared desktop F&B summary content. The view does not call APIs or mutate checkout state. */
 export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
-  checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError, orderMethod,
+  checkoutAllowed, displayFont, isDeliveryOrder, isTotalStale = false, money, onImageError, orderMethod,
   paymentStep = false, promoDiscountSummaryRow, specialInstructions = '', voucherDiscountSummaryRow, promoPanel, scheduleLabel, showFulfillmentSummary = true, totals,
   variant = 'detailed'
 }) {
@@ -65,6 +65,7 @@ export function FnbCheckoutSummaryContent({
     <div style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: 18, background: '#fff', boxShadow: '0 12px 24px rgba(15,23,42,.06)', display: 'grid', gap: 14 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: accentColor, textTransform: 'uppercase', letterSpacing: '0.08em', fontFamily: variant === 'customer' ? bodyFont : undefined }}>Order Summary</div>
       <div style={{ fontSize: 38, fontWeight: 800, color: '#1e293b', lineHeight: 1, fontFamily: variant === 'customer' ? displayFont : undefined }}>{money(totals.total_amount)}</div>
+      {isTotalStale ? <div role="status" style={{ color: '#64748b', fontSize: 12 }}>Recalculating total…</div> : null}
       <div style={{ display: 'grid', gap: 10, fontSize: 13, color: '#334155' }}>
         {statusRows.map((row) => <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{row.label}</span><strong>{row.value}</strong></div>)}
       </div>
@@ -91,7 +92,12 @@ export function FnbCheckoutSummaryContent({
 
   return (
     <>
-      {variant === 'compact' ? <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} specialInstructions={specialInstructions} footnote={<VatDisclosureNote />} /> : detailedCard}
+      {variant === 'compact' ? (
+        <>
+          <OrderSummaryCard accentColor={accentColor} totalLabel="Order Summary" totalAmount={totals.total_amount} money={money} promoPanel={promoPanel} statusRows={statusRows} lineItems={lineItems} totalsRows={totalsRows} bodyFont={bodyFont} displayFont={displayFont} specialInstructions={specialInstructions} footnote={<VatDisclosureNote />} />
+          {isTotalStale ? <div role="status" style={{ color: '#64748b', fontSize: 12 }}>Recalculating total…</div> : null}
+        </>
+      ) : detailedCard}
       <FnbCheckoutTrustCard accentColor={accentColor} accentSoft={accentSoft} accentTint={accentTint} displayFont={displayFont} headingWeight={variant === 'customer' ? 800 : 700} />
     </>
   );

@@ -7,6 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8');
 const readCheckoutRenderSource = () => [
     read('../components/POSCheckoutTerminal.jsx'),
+    // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+    read('../hooks/usePosTerminalViewModel.js'),
     read('../components/POSCheckoutTerminalView.jsx'),
     read('../components/POSCheckoutConfirmDialog.jsx'),
     read('../components/POSCheckoutTerminalReceiptDialogs.jsx'),

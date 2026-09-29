@@ -1,11 +1,10 @@
 import { Suspense } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+const PosCashierAttendanceSettingsCard = lazyWithChunkRetry(() => import('../components/PosCashierAttendanceSettingsCard.jsx'));
 import PosOperationsDefaultsSection from './PosOperationsDefaultsSection.jsx';
 import PosAccountPermissionsSection from './PosAccountPermissionsSection.jsx';
 import TerminalLocalControlsSection from './TerminalLocalControlsSection.jsx';
 import usePosOperationsAccessController from './usePosOperationsAccessController.js';
-
-const PosCashierAttendanceSettingsCard = lazyWithChunkRetry(() => import('../components/PosCashierAttendanceSettingsCard.jsx'));
 
 export default function PosOperationsAccessSection({
   terminalUser, locked, canEditSettings, loading, savingTab, handlePosSave, posForm, setPosForm, locations, incomingOrders,

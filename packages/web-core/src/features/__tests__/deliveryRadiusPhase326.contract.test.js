@@ -36,10 +36,15 @@ describe('Phase 329 delivery-radius contract', () => {
 
   it('keeps the API zero-radius contract and the POS settings preview aligned', () => {
     const validatorSource = readRepoFile('apps/dgfy-api/src/validators/tenantLocationValidator.js');
-    const terminalOperationsSource = readRepoFile('packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    // The location form moved out of TerminalOperationsWorkspace into the extracted
+    // settings boundary: the save payload lives in PosSettingsWorkspace, the radius
+    // preview next to the radius input in PosStorefrontSettingsPane.
+    const settingsWorkspaceSource = readRepoFile('packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx');
+    const storefrontPaneSource = readRepoFile('packages/web-core/src/features/pos/settings/PosStorefrontSettingsPane.jsx');
 
     expect(validatorSource).toContain('delivery_radius_km: Joi.number().min(0).max(100).precision(2).default(5)');
-    expect(terminalOperationsSource).toContain('normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)');
-    expect(terminalOperationsSource).not.toContain('locationForm.delivery_radius_km || 5.00');
+    expect(settingsWorkspaceSource).toContain('delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km)');
+    expect(storefrontPaneSource).toContain('normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)');
+    expect(storefrontPaneSource).not.toContain('locationForm.delivery_radius_km || 5.00');
   });
 });

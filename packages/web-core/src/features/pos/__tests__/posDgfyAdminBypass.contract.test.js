@@ -48,7 +48,12 @@ describe('DGFY POS administrator bypass contract', () => {
   it('uses settings permission rather than role name for shift bypass visibility', () => {
     expect(terminalPageSource).toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;");
     expect(terminalPageSource).toContain('const isMasterAdminOperator = terminalUser?.is_master_admin === true;');
-    expect(terminalPageSource).toContain('const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);');
+    // Reformatted multi-line since the branch-location allowance landed; the
+    // settings-permission gate and its branch-location extension are preserved.
+    expect(terminalPageSource).toContain('const canOpenShift = canTransactPos && (');
+    expect(terminalPageSource).toContain('!canAdminBypassShiftPrompt');
+    expect(terminalPageSource).toContain('|| isMasterAdminOperator');
+    expect(terminalPageSource).toContain('|| canViewBranchLocations');
     expect(terminalPageSource).not.toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || normalizedTerminalRole === 'admin'");
   });
 

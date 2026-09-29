@@ -33,7 +33,9 @@ describe('CSV import workflow-mode contracts', () => {
 
     expect(source).toContain('data-testid="csv-import-preview-table-scroll"');
     expect(source).toContain('csv-import-preview-table-scroll max-h-[13rem] overflow-auto');
-    expect(source).toContain('shrink-0 gap-2 border-t border-slate-200');
+    // Footer restyled slate-200 -> slate-100 with dialog padding; the bounded
+    // preview above is unchanged.
+    expect(source).toContain('gap-2 border-t border-slate-100 p-4 pt-3');
   });
 
   it('passes workflow_mode query/body values for CSV exports', () => {
