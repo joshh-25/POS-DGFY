@@ -12,9 +12,9 @@ policy_version: 2026.09.23
 verification_evidence: OPIS/cookie-namespace/CSRF/handoff/refresh unit suites (backend 36, web-core 64, OPIS 122, IMS 2726, Storefront 1200, POS 9 — all green); POS/IMS/Storefront/OPIS builds; OPIS Docker build/run smoke (200 shell, 404 hashed asset); architecture, compatibility-seam, agent-surface, documentation, hygiene, version, reachability, trigger, diff, and prod-audit checks,OPIS BrowserRouter migration and in-app auth-recovery suites and four-app builds
 rollback_note: Revert the Phase 461 commits by domain; POS Back Office redirect and IMS handoff fall back to in-app/POS targets with no data migration to undo.
 preflight_result: no_breach
-preflight_reason_code: OPIS_BACKOFFICE_SPLIT
-preflight_run_at: 2026-09-23T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-OPIS-2052-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-23-OPIS-SPLIT-BACK-OFFICE-PHASE-461
 ---
 
 # OPIS split of the Back Office into a dedicated app — Phase 461

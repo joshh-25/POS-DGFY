@@ -12,9 +12,9 @@ policy_version: 2026.09.23
 verification_evidence: dgfy-api pos-module import evaluation (pre-fix ReferenceError reproduced, post-fix IMPORT OK with dummy secrets, no DB); node --check; OPIS suite (27 files, 127 tests, green); web-core handoff plus back-office navigation suites (2 files, 25 tests, green); four-app builds (opis, pos, skupervisor, store)
 rollback_note: Revert the Phase 464 commits by domain; the api crash-loop returns if the import line is reverted (DEV 502s resume); OPIS routing/links fall back to the redirect/dead-link behavior with no data migration to undo.
 preflight_result: no_breach
-preflight_reason_code: OPIS_STABILIZATION
-preflight_run_at: 2026-09-23T15:03:52Z
-preflight_request_ref: NOT-EXECUTED-OPIS-2052-STABILIZATION-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-23-OPIS-STABILIZATION-PHASE-464
 ---
 
 # OPIS stabilization follow-up — Phase 464

@@ -12,9 +12,9 @@ policy_version: 2026.09.22
 verification_evidence: Shared POS contract suite; POS and IMS security E2E; POS, IMS, and Storefront builds; architecture, compatibility, schema-coverage, documentation, hygiene, and diff checks
 rollback_note: Revert the candidate repair commits and this declaration; no API, migration, payment, tenant-data, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: BACKOFFICE_PR_READINESS
-preflight_run_at: 2026-09-22T20:18:40+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-459-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-22-POS-DEVELOPMENT-PR-READINESS-PHASE-459
 ---
 
 # POS Development PR readiness — Phase 459
