@@ -12,9 +12,9 @@ policy_version: 2026.09.22
 verification_evidence: POS and API focused regression suites; shared Back Office contracts; unauthenticated security E2E; direct-route smoke; POS/IMS/Storefront builds; architecture, documentation, runtime, and diff checks
 rollback_note: Remove the F&B checkout-state extraction, the stale presentation-contract correction, this declaration, and the Phase 452 ledger entry; no API, schema, payment, inventory, tenant, or production-row rollback is required.
 preflight_result: no_breach
-preflight_reason_code: BACKOFFICE_REGRESSION_AUDIT
-preflight_run_at: 2026-09-22T11:20:17+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-452-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-22-BACKOFFICE-REGRESSION-AUDIT-PHASE-452
 ---
 
 # Full Back Office regression audit — Phase 452

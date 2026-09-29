@@ -11,9 +11,9 @@ policy_version: 2026.09.24
 verification_evidence: npm run test:frontend:contracts,git diff --check
 rollback_note: Revert the test timeout adjustment and this declaration; production behavior is unchanged.
 preflight_result: no_breach
-preflight_reason_code: UI_LAYOUT
-preflight_run_at: 2026-09-24T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PR-2054-POS-LAZY-TEST-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-24-POS-LAZY-QUEUE-TEST
 ---
 
 # POS lazy-loaded queue integration test stabilization

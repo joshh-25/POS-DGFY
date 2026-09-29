@@ -11,9 +11,9 @@ policy_version: 2026.09.15
 verification_evidence: POS, Storefront, and IMS full suites; shared route and handoff contracts; POS/Storefront/IMS lint/build; authenticated Masu Cafe migrated-module and IMS retirement-handoff browser verification; compliance/architecture/docs checks
 rollback_note: Revert the Phase 370 POS Back Office modules, shared handoff/receiving boundary, Storefront links, IMS retirement routes, tests, documentation, and declaration together; no catalog, inventory, transaction, payment, user, or session data is rewritten.
 preflight_result: no_breach
-preflight_reason_code: DGFY_TENANT_SESSION_HANDOFF
-preflight_run_at: 2026-09-15T00:00:00+08:00
-preflight_request_ref: NOT-EXECUTED-PHASE-370-LOCAL-ONLY
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-29T11:32:45.994Z
+preflight_request_ref: PREFLIGHT-36561910280-2026-09-15-POS-BACKOFFICE-CONSOLIDATION
 ---
 
 # POS Back Office merchant-surface consolidation
