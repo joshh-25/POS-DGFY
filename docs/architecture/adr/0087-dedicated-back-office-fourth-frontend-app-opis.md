@@ -1,10 +1,10 @@
 ---
-status: proposed
+status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-09-23
-last_reviewed: 2026-09-24
-review_by: 2027-03-23
+last_reviewed: 2026-09-29
+review_by: 2027-03-29
 applies_to: repository_layout
 topic: opis_fourth_frontend_app
 supersedes_in_part: docs/architecture/adr/0071-frontend-split-into-three-apps.md
@@ -14,9 +14,8 @@ supersedes_in_part: docs/architecture/adr/0071-frontend-split-into-three-apps.md
 
 ## Status
 
-Proposed (2026-09-23) — tech-lead approval pending via the issue #2052 implementation PR
-review. Until approved, the `[binding]` clauses below constrain nothing (ADR 0039:
-`proposed` ADRs constrain nothing); the implementation PR carries them for review.
+Accepted (2026-09-29) — Pat approved the architecture decision before the operational rollout.
+The implementation PR is #2054; the environment rollout is tracked separately under #2052.
 
 ## Context
 
@@ -101,11 +100,11 @@ decision. `[default]`
   the `frontend-opis-{build,lint}-check` jobs). The required feature branch
   `feat/DGFY-459-pos-development-pr-ready` is a temporary `pr-checks.yml` trigger for the
   #2052 integration line; it is removed once PR #2026 merges.
-- **Once this ADR is accepted**, `AGENTS.md`'s interim "back-office-level work goes to
-  POS" rule retires for new work: new back-office-level feature work targets OPIS, and
-  the `area:pos`-for-back-office labeling note falls away with it. That retirement is a
-  separate, small docs change on the integration line — not part of this decision — and
-  must not land before this ADR is accepted.
+- **On acceptance**, `AGENTS.md`'s interim "back-office-level work goes to POS" rule
+  retires for new work: new back-office-level feature work targets OPIS, and the
+  `area:pos`-for-back-office labeling note falls away with it. The corresponding policy
+  updates landed alongside acceptance in `AGENTS.md` and
+  `docs/process/ISSUE-TAXONOMY.md`.
 - **Operational rollout dependencies** (DNS records in #2051, TLS, GHCR package
   visibility/pull permissions, per-environment server config) need release coordination;
   configuration in the implementing PR does not prove deployment readiness, and this PR

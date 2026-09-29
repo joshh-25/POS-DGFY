@@ -8,8 +8,8 @@ When to use:
 ## Frontend Workspace Layout (read before running any frontend command)
 
 The frontend is four independent Vite apps plus one shared package (ADR 0071,
-`docs/architecture/adr/0071-frontend-split-into-three-apps.md`, plus proposed successor ADR
-0087 for OPIS, `docs/architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md`):
+`docs/architecture/adr/0071-frontend-split-into-three-apps.md`, as extended by accepted ADR 0087
+for OPIS, `docs/architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md`):
 
 | Workspace | Surface | Dev port | Root dev script | Root build script |
 |---|---|---|---|---|
