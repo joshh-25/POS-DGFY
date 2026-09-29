@@ -52,6 +52,7 @@ export function useCheckoutTotalsAndGating({
   storefrontClosedByHours
 }) {
   const [currentTime] = useState(() => Date.now());
+  const isTotalStale = Boolean(isFnbMode && !hasServiceCart && (quoteNeedsRefresh || !quoteResult));
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
   ), [cart]);
@@ -68,32 +69,41 @@ export function useCheckoutTotalsAndGating({
     // #604's own field is `voucher_discount_amount`, separate from promo's `discount_amount` --
     // the two checkout discounts are independent (see buildFnbCheckoutPayload.js's own note).
     const voucherDiscountAmount = quoteResult?.voucher_discount_amount != null ? Number(quoteResult.voucher_discount_amount) : 0;
-    const totalAmount = quoteResult?.total_amount != null
+    const quotedTotalAmount = quoteResult?.total_amount != null
       ? Number(quoteResult.total_amount)
       : subtotal - discountAmount - voucherDiscountAmount + deliveryFee;
+    const currentCartTotal = Math.max(0, Number(cartTotal) || 0);
+    const displayDiscountAmount = isTotalStale
+      ? Math.min(currentCartTotal, Math.max(0, discountAmount))
+      : discountAmount;
+    const displayVoucherDiscountAmount = isTotalStale
+      ? Math.min(Math.max(0, currentCartTotal - displayDiscountAmount), Math.max(0, voucherDiscountAmount))
+      : voucherDiscountAmount;
+    const staleDiscounts = displayDiscountAmount + displayVoucherDiscountAmount;
+    const totalAmount = isTotalStale ? currentCartTotal - staleDiscounts : quotedTotalAmount;
     return {
-      subtotal_amount: subtotal,
-      discount_amount: discountAmount,
+      subtotal_amount: isTotalStale ? currentCartTotal : subtotal,
+      discount_amount: displayDiscountAmount,
       discount_label: quoteResult?.discount_label || 'Promo Discount',
       discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
-      voucher_discount_amount: voucherDiscountAmount,
+      voucher_discount_amount: displayVoucherDiscountAmount,
       service_fee_amount: serviceFee,
-      delivery_fee: deliveryFee,
-      vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
-      vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
-      vat_exempt_sales: quoteResult?.vat_exempt_sales != null ? Number(quoteResult.vat_exempt_sales) : 0,
-      zero_rated_sales: quoteResult?.zero_rated_sales != null ? Number(quoteResult.zero_rated_sales) : 0,
+      delivery_fee: isTotalStale ? 0 : deliveryFee,
+      vatable_sales: !isTotalStale && quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
+      vat_amount: !isTotalStale && quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
+      vat_exempt_sales: !isTotalStale && quoteResult?.vat_exempt_sales != null ? Number(quoteResult.vat_exempt_sales) : 0,
+      zero_rated_sales: !isTotalStale && quoteResult?.zero_rated_sales != null ? Number(quoteResult.zero_rated_sales) : 0,
       total_amount: totalAmount,
       // Phase 142 (#823): server-authoritative only -- never derived client-side like the fields
       // above. Passed straight through from the quote response (null when absent, matching the
       // quote's own present-and-null convention -- see storeUseCases.js's Phase 140 comment on
       // why null, never 0 or the total, is load-bearing here).
-      payment_mode: quoteResult?.payment_mode ?? null,
-      downpayment_amount: quoteResult?.downpayment_amount ?? null,
-      balance_due_amount: quoteResult?.balance_due_amount ?? null,
-      downpayment_refundable: quoteResult?.downpayment_refundable ?? null
+      payment_mode: isTotalStale ? null : quoteResult?.payment_mode ?? null,
+      downpayment_amount: isTotalStale ? null : quoteResult?.downpayment_amount ?? null,
+      balance_due_amount: isTotalStale ? null : quoteResult?.balance_due_amount ?? null,
+      downpayment_refundable: isTotalStale ? null : quoteResult?.downpayment_refundable ?? null
     };
-  }, [cartTotal, quoteResult]);
+  }, [cartTotal, isTotalStale, quoteResult]);
   const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
   const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
   const promoStatusTone = checkoutError || quoteError
@@ -141,19 +151,16 @@ export function useCheckoutTotalsAndGating({
       : resolveStorefrontFulfillmentOptions(fulfillmentLocation)),
     [fulfillmentLocation, isFnbMode]
   );
-  // Phase 142 (#823): fnb/simple/retail's product checkout normally never requires a quote (each
-  // has its own client-computable totals fallback) -- but a downpayment-required store's payment
-  // split is server-only, so those three modes DO require the quote in that one case. Reads the
-  // catalog-resolved payment_mode directly (not totalsForDisplay.payment_mode, which is quote-
-  // sourced and therefore not yet known before the first quote lands -- the exact thing this gate
-  // exists to force).
+  // F&B checkout always requires a fresh quote before submission so displayed fulfillment fees
+  // and the payable total come from the same current context. Other product modes retain their
+  // client-computable totals fallback except when a downpayment split needs a server quote.
   // Phase 150 (#866): a customer_choice store's split is server-only too, but ONLY once the
   // customer has actually elected "downpayment" -- an election of "full" needs no quote-forcing,
   // exactly like a plain full_payment store.
   const isDownpaymentStore = selectedStore?.payment_mode === 'downpayment_required'
     || (selectedStore?.payment_mode === 'customer_choice' && paymentElection === 'downpayment');
   const requireQuoteForCheckout = !hasServiceCart
-    && (isDownpaymentStore || (!isFnbMode && !isSimpleMode && !isRetailMode));
+    && (isFnbMode || isDownpaymentStore || (!isFnbMode && !isSimpleMode && !isRetailMode));
   const baseCheckoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,
@@ -216,6 +223,7 @@ export function useCheckoutTotalsAndGating({
     checkoutBlockReason,
     fnbCartStatusLabel,
     hasStockViolation,
+    isTotalStale,
     promoDiscountSummaryRow,
     promoStatusMessage,
     promoStatusTone,
