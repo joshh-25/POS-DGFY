@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     getBusinessAdminWorkflowPageName,
     isBusinessAdminWorkflowSectionVisible
-} from '../../src/features/businessAdmin/businessAdminWorkflowVisibility.js';
+} from '../businessAdminWorkflowVisibility.js';
 
 describe('Business Admin workflow visibility contract', () => {
     it('maps workflow-sensitive Back Office sections to shared page capabilities', () => {

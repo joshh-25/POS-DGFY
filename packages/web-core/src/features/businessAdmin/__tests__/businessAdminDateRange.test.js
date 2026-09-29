@@ -7,7 +7,7 @@ import {
     getDefaultDateRangePreset,
     isHistoricalBusinessAdminSection,
     shiftDateOnly
-} from '../../src/features/businessAdmin/businessAdminDateRange.js';
+} from '../businessAdminDateRange.js';
 
 describe('Business Admin historical date-range model', () => {
     it('uses a bounded 30-day default only for historical data sections', () => {

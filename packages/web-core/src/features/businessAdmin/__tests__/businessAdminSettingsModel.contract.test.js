@@ -10,7 +10,7 @@ import {
     resolveSettingsBranchId,
     settingsScopeLabel,
     shouldBlockSettingsNavigation
-} from '../../src/features/businessAdmin/businessAdminSettingsModel.js';
+} from '../businessAdminSettingsModel.js';
 
 describe('Business Admin settings navigation model', () => {
     const capabilities = {

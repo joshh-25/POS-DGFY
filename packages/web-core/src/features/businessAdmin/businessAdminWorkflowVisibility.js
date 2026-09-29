@@ -1,4 +1,4 @@
-import { isWorkflowPageVisible } from '../../../../../packages/web-core/src/features/settings/workflowMode.js';
+import { isWorkflowPageVisible } from '../settings/workflowMode.js';
 import { BACKOFFICE_MANIFEST } from './businessAdminManifest.js';
 
 // Business Admin section keys are not identical to the shared workflow-page

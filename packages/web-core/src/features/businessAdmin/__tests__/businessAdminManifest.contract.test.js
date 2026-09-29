@@ -7,8 +7,8 @@ import {
     buildBackOfficeModulePath,
     getBackOfficeModuleDefinition,
     MERCHANT_BACKOFFICE_MODULE_META
-} from '../../src/features/businessAdmin/businessAdminManifest.js';
-import { BUSINESS_ADMIN_WORKFLOW_PAGE_BY_SECTION } from '../../src/features/businessAdmin/businessAdminWorkflowVisibility.js';
+} from '../businessAdminManifest.js';
+import { BUSINESS_ADMIN_WORKFLOW_PAGE_BY_SECTION } from '../businessAdminWorkflowVisibility.js';
 
 describe('Back Office canonical manifest contract', () => {
     it('derives the existing navigation order and membership from module metadata', () => {

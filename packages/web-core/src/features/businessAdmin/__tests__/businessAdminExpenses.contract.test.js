@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const page = fs.readFileSync(path.resolve(__dirname, '../../src/features/businessAdmin/BusinessAdminPage.jsx'), 'utf8');
-const service = fs.readFileSync(path.resolve(__dirname, '../../src/features/businessAdmin/businessAdminService.js'), 'utf8');
-const css = fs.readFileSync(path.resolve(__dirname, '../../src/features/businessAdmin/businessAdmin.css'), 'utf8');
+const page = fs.readFileSync(path.resolve(__dirname, '../BusinessAdminPage.jsx'), 'utf8');
+const service = fs.readFileSync(path.resolve(__dirname, '../businessAdminService.js'), 'utf8');
+const css = fs.readFileSync(path.resolve(__dirname, '../businessAdmin.css'), 'utf8');
 
 describe('Business Admin expense ledger contract', () => {
   it('loads, creates, and voids tenant-local expense records', () => {

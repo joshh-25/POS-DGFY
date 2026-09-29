@@ -5,12 +5,12 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
+const repoRoot = path.resolve(__dirname, '../../../../../../');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('Business Admin attendance workspace contract', () => {
     it('connects the dedicated API route to the canonical POS lifecycle reader', () => {
-        const service = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminService.js');
+        const service = readRepoFile('packages/web-core/src/features/businessAdmin/businessAdminService.js');
         const route = readRepoFile('apps/dgfy-api/src/routes/businessAdmin.js');
         const useCase = readRepoFile('apps/dgfy-api/src/modules/businessAdmin/usecases/businessAdminAttendanceUseCase.js');
         const repository = readRepoFile('apps/dgfy-api/src/modules/pos/repositories/posRepository.js');
@@ -23,7 +23,7 @@ describe('Business Admin attendance workspace contract', () => {
     });
 
     it('renders filters, both read-only tables, and explicit empty/denied states', () => {
-        const page = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+        const page = readRepoFile('packages/web-core/src/features/businessAdmin/BusinessAdminPage.jsx');
 
         expect(page).toContain('function AttendanceWorkspace');
         expect(page).toContain("activeSection === 'attendance'");

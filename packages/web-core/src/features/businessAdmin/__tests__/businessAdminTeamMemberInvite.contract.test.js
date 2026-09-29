@@ -6,15 +6,15 @@ import { describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const businessAdminPage = fs.readFileSync(
-    path.resolve(__dirname, '../../src/features/businessAdmin/BusinessAdminPage.jsx'),
+    path.resolve(__dirname, '../BusinessAdminPage.jsx'),
     'utf8'
 );
 const businessAdminCss = fs.readFileSync(
-    path.resolve(__dirname, '../../src/features/businessAdmin/businessAdmin.css'),
+    path.resolve(__dirname, '../businessAdmin.css'),
     'utf8'
 );
 const userManagementModal = fs.readFileSync(
-    path.resolve(__dirname, '../../../../packages/web-core/Components/users/UserManagementModal.jsx'),
+    path.resolve(__dirname, '../../../../../../packages/web-core/Components/users/UserManagementModal.jsx'),
     'utf8'
 );
 

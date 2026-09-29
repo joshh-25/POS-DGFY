@@ -6,7 +6,7 @@ import {
     publishBusinessAdminSettingsUpdated,
     shouldRefreshBusinessAdminSettingsUpdate,
     subscribeToBusinessAdminSettingsUpdates
-} from '../../src/../../../packages/web-core/src/features/pos/utils/businessAdminSettingsSync.js';
+} from '../../pos/utils/businessAdminSettingsSync.js';
 
 afterEach(() => {
     vi.unstubAllGlobals();

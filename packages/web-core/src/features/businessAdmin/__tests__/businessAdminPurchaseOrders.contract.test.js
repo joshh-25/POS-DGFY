@@ -5,12 +5,12 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
+const repoRoot = path.resolve(__dirname, '../../../../../../');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const purchaseOrdersPage = readRepoFile('packages/web-core/src/features/merchantBackOffice/pages/PurchaseOrdersPage.jsx');
 const purchaseOrdersHook = readRepoFile('packages/web-core/src/hooks/usePurchaseOrders.js');
-const businessAdminCss = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdmin.css');
+const businessAdminCss = readRepoFile('packages/web-core/src/features/businessAdmin/businessAdmin.css');
 
 describe('POS Back Office purchase orders presentation contract', () => {
   it('keeps purchase-order lifecycle actions and permission gates intact', () => {

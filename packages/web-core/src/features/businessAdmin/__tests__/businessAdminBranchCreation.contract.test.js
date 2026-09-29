@@ -6,19 +6,19 @@ import { describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const businessAdminPage = fs.readFileSync(
-    path.resolve(__dirname, '../../src/features/businessAdmin/BusinessAdminPage.jsx'),
+    path.resolve(__dirname, '../BusinessAdminPage.jsx'),
     'utf8'
 );
 const businessAdminCss = fs.readFileSync(
-    path.resolve(__dirname, '../../src/features/businessAdmin/businessAdmin.css'),
+    path.resolve(__dirname, '../businessAdmin.css'),
     'utf8'
 );
 const settingsWorkspace = fs.readFileSync(
-    path.resolve(__dirname, '../../../../packages/web-core/src/features/pos/settings/PosSettingsWorkspace.jsx'),
+    path.resolve(__dirname, '../../pos/settings/PosSettingsWorkspace.jsx'),
     'utf8'
 );
 const storefrontSettingsPane = fs.readFileSync(
-    path.resolve(__dirname, '../../../../packages/web-core/src/features/pos/settings/PosStorefrontSettingsPane.jsx'),
+    path.resolve(__dirname, '../../pos/settings/PosStorefrontSettingsPane.jsx'),
     'utf8'
 );
 

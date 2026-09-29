@@ -1,4 +1,4 @@
-import api from '../../../../../packages/web-core/src/services/api.js';
+import api from '../../services/api.js';
 
 const unwrap = (response) => response?.data?.data ?? response?.data ?? {};
 

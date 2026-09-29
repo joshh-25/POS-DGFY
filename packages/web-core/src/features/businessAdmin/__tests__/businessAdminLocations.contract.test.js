@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const read = (relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8');
-const businessAdminPage = read('../../src/features/businessAdmin/BusinessAdminPage.jsx');
-const businessAdminCss = read('../../src/features/businessAdmin/businessAdmin.css');
-const businessAdminManifest = read('../../src/features/businessAdmin/businessAdminManifest.js');
-const settingsModel = read('../../src/features/businessAdmin/businessAdminSettingsModel.js');
-const terminalSettings = read('../../../../packages/web-core/src/features/pos/settings/PosTerminalSettingsSection.jsx');
+const businessAdminPage = read('../BusinessAdminPage.jsx');
+const businessAdminCss = read('../businessAdmin.css');
+const businessAdminManifest = read('../businessAdminManifest.js');
+const settingsModel = read('../businessAdminSettingsModel.js');
+const terminalSettings = read('../../pos/settings/PosTerminalSettingsSection.jsx');
 
 describe('Business Admin Locations consolidation contract', () => {
     it('renders Branches and Registers under one Locations workspace', () => {

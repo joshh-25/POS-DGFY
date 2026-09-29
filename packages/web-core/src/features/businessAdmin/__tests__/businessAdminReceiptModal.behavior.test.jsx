@@ -3,10 +3,10 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import BusinessAdminReceiptModal from '../../src/features/businessAdmin/BusinessAdminReceiptModal.jsx';
-import { getAllSettings } from '../../../../packages/web-core/src/services/settingsService.js';
+import BusinessAdminReceiptModal from '../BusinessAdminReceiptModal.jsx';
+import { getAllSettings } from '../../../services/settingsService.js';
 
-vi.mock('../../../../packages/web-core/src/services/settingsService.js', () => ({
+vi.mock('../../../services/settingsService.js', () => ({
     getAllSettings: vi.fn()
 }));
 

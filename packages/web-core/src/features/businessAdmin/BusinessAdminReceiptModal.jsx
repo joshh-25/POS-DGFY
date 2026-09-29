@@ -7,9 +7,9 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle
-} from '../../../../../packages/web-core/Components/ui/dialog.jsx';
-import ReceiptPrintView from '../../../../../packages/web-core/src/features/pos/components/ReceiptPrintView.jsx';
-import { getAllSettings } from '../../../../../packages/web-core/src/services/settingsService.js';
+} from '../../../Components/ui/dialog.jsx';
+import ReceiptPrintView from '../pos/components/ReceiptPrintView.jsx';
+import { getAllSettings } from '../../services/settingsService.js';
 
 const RECEIPT_SETTING_KEYS = [
     'pos_registered_name',

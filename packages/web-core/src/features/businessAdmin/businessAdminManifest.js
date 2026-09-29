@@ -30,18 +30,18 @@ import {
   Wrench
 } from 'lucide-react';
 
-const CatalogPage = lazy(() => import('../../../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'));
-const SuppliersPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/SuppliersPage.jsx'));
-const PurchaseOrdersPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/PurchaseOrdersPage.jsx'));
-const JobOrdersPage = lazy(() => import('../../../../../packages/web-core/src/features/jobOrders/pages/JobOrdersPage.jsx'));
-const StockMovementsPage = lazy(() => import('../../../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'));
-const DispatchOrdersPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/DispatchOrdersPage.jsx'));
-const ServicesPage = lazy(() => import('../../../../../packages/web-core/src/features/services/pages/ServicesPage.jsx'));
-const FnbPage = lazy(() => import('../../../../../packages/web-core/src/features/fnb/pages/FnbPage.jsx'));
-const HospitalityPage = lazy(() => import('../../../../../packages/web-core/src/features/hospitality/pages/HospitalityPage.jsx'));
-const SalesPage = lazy(() => import('../../../../../packages/web-core/src/features/sales/pages/SalesPage.jsx'));
-const ReportsPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx'));
-const AiChatPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx'));
+const CatalogPage = lazy(() => import('../inventory/pages/ItemsPage.jsx'));
+const SuppliersPage = lazy(() => import('../merchantBackOffice/pages/SuppliersPage.jsx'));
+const PurchaseOrdersPage = lazy(() => import('../merchantBackOffice/pages/PurchaseOrdersPage.jsx'));
+const JobOrdersPage = lazy(() => import('../jobOrders/pages/JobOrdersPage.jsx'));
+const StockMovementsPage = lazy(() => import('../stockMovements/pages/StockMovementsPage.jsx'));
+const DispatchOrdersPage = lazy(() => import('../merchantBackOffice/pages/DispatchOrdersPage.jsx'));
+const ServicesPage = lazy(() => import('../services/pages/ServicesPage.jsx'));
+const FnbPage = lazy(() => import('../fnb/pages/FnbPage.jsx'));
+const HospitalityPage = lazy(() => import('../hospitality/pages/HospitalityPage.jsx'));
+const SalesPage = lazy(() => import('../sales/pages/SalesPage.jsx'));
+const ReportsPage = lazy(() => import('../merchantBackOffice/pages/ReportsPage.jsx'));
+const AiChatPage = lazy(() => import('../merchantBackOffice/pages/AiChatPage.jsx'));
 
 const BUSINESS_ADMIN_ACCESS_PERMISSION = 'business_admin:access';
 

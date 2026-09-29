@@ -12,10 +12,10 @@ describe('Back Office Reports presentation contract', () => {
   const reportsPage = readRepoFile('packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx');
   const reportsHook = readRepoFile('packages/web-core/src/hooks/useReports.js');
   const tabs = readRepoFile('packages/web-core/Components/ui/tabs.jsx');
-  const businessAdminPage = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
-  const businessAdminService = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminService.js');
+  const businessAdminPage = readRepoFile('packages/web-core/src/features/businessAdmin/BusinessAdminPage.jsx');
+  const businessAdminService = readRepoFile('packages/web-core/src/features/businessAdmin/businessAdminService.js');
   const businessAdminRoutes = readRepoFile('apps/dgfy-api/src/routes/businessAdmin.js');
-  const migratedModule = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
+  const migratedModule = readRepoFile('packages/web-core/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
 
   it('keeps Reports on one report-owned filter surface', () => {
     const filterList = businessAdminPage.match(/const showDateFilters = \[(.*?)\]\.includes\(activeSection\);/s)?.[1] || '';

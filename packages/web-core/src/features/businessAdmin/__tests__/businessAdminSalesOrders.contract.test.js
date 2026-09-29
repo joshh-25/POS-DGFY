@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
+const repoRoot = path.resolve(__dirname, '../../../../../../');
 const readRepoFile = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
-const manifest = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
-const businessAdminPage = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
+const manifest = readRepoFile('packages/web-core/src/features/businessAdmin/businessAdminManifest.js');
+const businessAdminPage = readRepoFile('packages/web-core/src/features/businessAdmin/BusinessAdminPage.jsx');
 const salesPage = readRepoFile('packages/web-core/src/features/sales/pages/SalesPage.jsx');
 const main = readRepoFile('apps/dgfy-pos/src/main.jsx');
 
@@ -49,7 +49,7 @@ describe('Business Admin Sales & Orders consolidation contract', () => {
         expect(salesPage).toContain('Open the canonical Orders detail for payment, refund, item, and audit history.');
         expect(salesPage).toContain('navigate(`/backoffice/orders?transaction_id=${encodeURIComponent(selected.source_id)}`)');
         expect(main).toContain('<Route path="/sales" element={<LegacyBackOfficeRoute section="sales" />} />');
-        expect(main).toContain('<Route path="/business-admin/*" element={<OpisCompatRedirect />} />');
-        expect(main).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
+        expect(main).toContain('<Route path="/business-admin/*" element={<BusinessAdminPage surface="pos" />} />');
+        expect(main).toContain('<Route path="/backoffice/*" element={<BusinessAdminPage surface="pos" />} />');
     });
 });
