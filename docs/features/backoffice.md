@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: product-and-pos
 date: 2026-09-15
-last_reviewed: 2026-09-24
+last_reviewed: 2026-09-29
 review_by: 2027-03-14
 applies_to: apps/dgfy-pos, apps/dgfy-api
 topic: business_admin_backoffice_parity
@@ -19,11 +19,22 @@ the repository's continuous phase numbering.
 
 ## Architecture and ownership
 
-Until the dedicated Back Office product in issue #1354 ships, the POS app is
-the canonical merchant back-office surface. This follows the interim
-placement rule in `AGENTS.md` and the amended [ADR 0071](../architecture/adr/0071-frontend-split-into-three-apps.md).
-The route is available at `/business-admin/*` and `/backoffice/*` on POS
-(port 5174). The old `apps/dgfy-web` surface is not revived.
+As of 2026-09-29, OPIS is DGFY's dedicated Back Office and the default target
+for new back-office-level feature work under [ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md).
+Issue #2140 restores the inventoried pre-#2054 Business Admin workflows in POS
+while retaining OPIS and its independent routes, deployment, and session. Both
+apps consume one shared shell from `packages/web-core`; POS serves
+`/backoffice/*` and `/business-admin/*` through HashRouter, with `/sales` and
+`/reports` aliases, while OPIS keeps its root-level BrowserRouter routes. The
+overlap is documented capability by capability in
+[the POS/OPIS overlap inventory](pos-opis-business-admin-overlap.md) and
+proposed [ADR 0088](../architecture/adr/0088-pos-opis-backoffice-overlap.md).
+ADR 0088 remains proposed until tech-lead approval; ADR 0087 remains the
+authoritative rule before that approval.
+
+The old `apps/dgfy-web` surface is not revived. New back-office feature work
+continues to default to OPIS; this restoration does not resolve the open
+structural question in #358.
 
 Business Admin is a tenant-scoped read and control-plane projection. It calls
 the canonical owners instead of creating parallel truth:
@@ -45,6 +56,11 @@ the canonical owners instead of creating parallel truth:
 - Fiscal evidence is read-only until the BIR/CAS accreditation and legal
   filing gates in [ADR 0042](../architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md)
   are satisfied.
+
+The shared UI surface selector controls presentation only. API tenant identity,
+branch visibility, permission projection, canonical command ownership, cost
+masking, and cookie namespaces remain enforced by their existing owners. Neither
+app's Business Admin access grants permissions to the other.
 
 The API follows the governed `routes -> controllers -> usecases ->
 repositories -> models` boundary from
@@ -928,10 +944,10 @@ handoff retargeting. POS terminal operational flows are unaffected. The interim
 "POS is the canonical merchant back-office surface" framing above was superseded
 when ADR 0087 was accepted on 2026-09-29; OPIS is now canonical for new back-office
 work.
-See Phase 461 in the [implementation phase ledger](IMPLEMENTATION_PHASE_LEDGER.md),
-[ADR 0087](../architecture/adr/0087-dedicated-back-office-fourth-frontend-app-opis.md),
-and the `opis-pos-backoffice-redirect` / `opis-ims-merchant-handoff` compatibility
-seams.
+That entry records the state at the time. Issue #2140 later removed the POS
+redirect seam and restored the selected capability inventory using shared code;
+the IMS merchant handoff remains pointed at OPIS. See the
+[overlap inventory](pos-opis-business-admin-overlap.md).
 
 ## 2026-09-24 — OPIS root-level section URLs (issue #2052 follow-up)
 
@@ -940,3 +956,16 @@ The dashboard remains at `/`; Back Office sections now use root-level URLs such 
 `/business-admin/*` links redirect to their root-level equivalent while preserving
 query and hash. OPIS-owned authentication, company registration, and protected receive
 routes keep their reserved paths. See the updated route contract in ADR 0087.
+
+## 2026-09-29 — POS/OPIS coexistence (issue #2140)
+
+POS again serves the pre-#2054 Business Admin capability inventory under its
+historical prefixed routes and aliases. The reusable shell, service, styles,
+manifest, settings models, and receipt UI now live in `packages/web-core`; each
+app retains its own router, route mapping, recovery behavior, and session
+namespace. POS restricts settings to its nine baseline sections. OPIS retains
+its root routes, account actions, and OPIS-only Taxes/Discounts sections.
+Canonical API and command owners remain unchanged. The POS redirect seam is
+removed; the IMS handoff to OPIS remains active. Proposed ADR 0088 requires
+tech-lead approval before merge. See the
+[capability overlap inventory](pos-opis-business-admin-overlap.md).

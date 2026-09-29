@@ -13,14 +13,11 @@
     {
       "id": "opis-pos-backoffice-redirect",
       "type": "api-boundary",
-      "status": "active",
-      "rationale": "POS no longer hosts the merchant Back Office (moved to apps/dgfy-opis, issue #2052). Its /backoffice/* and /business-admin/* routes redirect externally to OPIS preserving path and query, so bookmarked merchant links keep working during the #1354 migration.",
-      "tests": [
-        "apps/dgfy-opis/src/__tests__/opisRoutes.test.js",
-        "packages/web-core/src/features/pos/utils/__tests__/opisBackOfficeHandoff.test.js"
-      ],
-      "rollback": "Revert apps/dgfy-pos/src/main.jsx to render the Back Office shell in-app; OPIS remains independently usable.",
-      "removal_criteria": "Remove once #1354 migration completes and verified replacement links cover every retained POS path (no inbound merchant traffic to the redirect for one full release cycle)."
+      "status": "removed",
+      "rationale": "Issue #2140 restores local POS Back Office routes while retaining OPIS. Shared presentation code lives in packages/web-core; POS and OPIS use app-owned route and session adapters.",
+      "tests": [],
+      "rollback": "Restore POS external redirects and the ADR 0087 routing rule if this overlap is rolled back; OPIS remains independently usable.",
+      "removal_criteria": "Removed by issue #2140 when the POS/OPIS overlap decision is accepted."
     },
     {
       "id": "opis-ims-merchant-handoff",

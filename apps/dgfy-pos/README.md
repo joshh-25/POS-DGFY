@@ -11,6 +11,10 @@ terminals.
 Own entry point (`src/main.jsx`) plus the Electron packaging config. The actual terminal UI
 (`TerminalPage`, `POSCheckoutTerminal`, and the rest of `features/pos/`) is shared code that
 lives in `packages/web-core` and is mounted here the same way `apps/dgfy-ims` mounts it.
+POS also serves the restored Business Admin capability inventory from
+`packages/web-core/src/features/businessAdmin/` at `/backoffice/*` and
+`/business-admin/*`, with `/sales` and `/reports` aliases. OPIS remains independently
+available at its root routes; new back-office-level feature work defaults to OPIS.
 
 ## Commands
 
@@ -45,4 +49,5 @@ Own image `ghcr.io/sieitzz/dgfy-pos`, own Dockerfile
 
 No copy of the shared trunk — the POS terminal feature and everything else it depends on from
 the former `apps/dgfy-web/src`/`Components` live in `packages/web-core`, consumed via retargeted
-`@/...` Vite aliases plus deep relative imports (see `packages/web-core/README.md`).
+`@/...` Vite aliases plus deep relative imports (see `packages/web-core/README.md`). The
+Business Admin implementation is shared with OPIS; it is not copied into this app's `src` tree.
