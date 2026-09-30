@@ -11,6 +11,8 @@ const mockAttendanceFindAll = jest.fn();
 const mockOperatorFindAll = jest.fn();
 const mockHandoffFindAll = jest.fn();
 const mockZReadingSnapshotFindOne = jest.fn();
+const mockZReadingSnapshotFindAndCountAll = jest.fn();
+const mockUserFindAll = jest.fn();
 const mockSequelize = {
     fn: jest.fn((...args) => ({ fn: args })),
     col: jest.fn((name) => ({ col: name })),
@@ -22,7 +24,7 @@ const PosTransactionModel = { modelName: 'PosTransaction', findAll: mockFindAll,
 const PosTransactionLineModel = { modelName: 'PosTransactionLine', findAll: mockLineFindAll };
 const ItemModel = { modelName: 'Item' };
 const ItemFolderModel = { modelName: 'ItemFolder', findAll: mockItemFolderFindAll };
-const UserModel = { modelName: 'User' };
+const UserModel = { modelName: 'User', findAll: mockUserFindAll };
 const PosTerminalShiftModel = { modelName: 'PosTerminalShift', findAll: mockShiftFindAll };
 const PosCashDrawerEventModel = { modelName: 'PosCashDrawerEvent' };
 const PosTransactionDiscountModel = { modelName: 'PosTransactionDiscount' };
@@ -32,7 +34,12 @@ const EmployeeAttendanceSessionModel = { modelName: 'EmployeeAttendanceSession',
 const EmployeeBreakSegmentModel = { modelName: 'EmployeeBreakSegment' };
 const PosTerminalOperatorSessionModel = { modelName: 'PosTerminalOperatorSession', findAll: mockOperatorFindAll };
 const PosDrawerHandoffEventModel = { modelName: 'PosDrawerHandoffEvent', findAll: mockHandoffFindAll };
-const PosZReadingSnapshotModel = { modelName: 'PosZReadingSnapshot', findOne: mockZReadingSnapshotFindOne };
+const TenantLocationModel = { modelName: 'TenantLocation', findByPk: jest.fn() };
+const PosZReadingSnapshotModel = {
+    modelName: 'PosZReadingSnapshot',
+    findOne: mockZReadingSnapshotFindOne,
+    findAndCountAll: mockZReadingSnapshotFindAndCountAll
+};
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
@@ -68,6 +75,8 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
                     return PosTerminalOperatorSessionModel;
                 case 'PosDrawerHandoffEvent':
                     return PosDrawerHandoffEventModel;
+                case 'TenantLocation':
+                    return TenantLocationModel;
                 case 'PosZReadingSnapshot':
                     return PosZReadingSnapshotModel;
                 default:
@@ -97,6 +106,8 @@ describe('posRepository reports analytics', () => {
         mockOperatorFindAll.mockResolvedValue([]);
         mockHandoffFindAll.mockResolvedValue([]);
         mockZReadingSnapshotFindOne.mockResolvedValue(null);
+        mockZReadingSnapshotFindAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+        mockUserFindAll.mockResolvedValue([]);
     });
 
     it('uses one canonical discount source with safe legacy fallbacks', () => {
@@ -1693,5 +1704,161 @@ describe('posRepository reports analytics', () => {
             start_at: '2026-09-02T16:00:00.000Z',
             end_at_exclusive: '2026-09-04T16:00:00.000Z'
         }));
+    });
+
+    it('lists persisted Z-readings by authorized branch and optional business-date range', async () => {
+        mockZReadingSnapshotFindAndCountAll.mockResolvedValue({
+            rows: [{ reading_identifier: 'ZR-20260905-00000001' }],
+            count: 1
+        });
+
+        const result = await posRepository.listZReadingSnapshots({
+            locationId: 12,
+            dateFrom: '2026-09-01',
+            dateTo: '2026-09-30',
+            page: 2,
+            limit: 10
+        });
+
+        const [options] = mockZReadingSnapshotFindAndCountAll.mock.calls[0];
+        expect(options.where.location_id).toBe(12);
+        expect(options.where.reading_identifier[Op.like]).toBe('ZR-%');
+        expect(options.where.business_date[Op.gte]).toBe('2026-09-01');
+        expect(options.where.business_date[Op.lte]).toBe('2026-09-30');
+        expect(options.limit).toBe(10);
+        expect(options.offset).toBe(10);
+        expect(result).toEqual(expect.objectContaining({
+            rows: [{ reading_identifier: 'ZR-20260905-00000001', closed_by_display_name: null }],
+            pagination: { page: 2, limit: 10, total: 1, totalPages: 1 }
+        }));
+    });
+
+    it('searches Z-reading history by reading metadata and cashier identity within the branch', async () => {
+        mockZReadingSnapshotFindAndCountAll.mockResolvedValue({
+            rows: [{
+                reading_identifier: 'ZR-20260905-00000001',
+                closed_by_user_id: 11,
+                closed_from_terminal_id: 'COUNTER-01'
+            }],
+            count: 1
+        });
+        mockUserFindAll
+            .mockResolvedValueOnce([{ user_id: 11, username: 'Len2', email: 'len2@example.com' }])
+            .mockResolvedValueOnce([{ user_id: 11, username: 'Len2', email: 'len2@example.com' }])
+            .mockResolvedValueOnce([{ user_id: 11, username: 'Len2', email: 'len2@example.com' }]);
+
+        const result = await posRepository.listZReadingSnapshots({
+            locationId: 12,
+            search: 'Len2',
+            terminalId: 'COUNTER-01',
+            closedBy: 'Len2'
+        });
+
+        const [options] = mockZReadingSnapshotFindAndCountAll.mock.calls[0];
+        expect(options.where.location_id).toBe(12);
+        expect(options.where.closed_from_terminal_id[Op.like]).toBe('%COUNTER-01%');
+        expect(options.where.closed_by_user_id[Op.in]).toEqual([11]);
+        expect(options.where[Op.or]).toEqual(expect.arrayContaining([
+            { reading_identifier: { [Op.like]: '%Len2%' } },
+            { closed_by_user_id: { [Op.in]: [11] } }
+        ]));
+        expect(result.rows[0].closed_by_display_name).toBe('Len2');
+    });
+
+    it('captures cashier, shift drawer, tender, refund, and invoice details without combining shifts', async () => {
+        TenantLocationModel.findByPk.mockResolvedValue({ location_id: 12, name: 'Main Branch' });
+        mockShiftFindAll.mockResolvedValue([{
+            pos_terminal_shift_id: 31,
+            terminal_id: 'COUNTER-01',
+            cashier_id: 10,
+            opening_float_amount: '100.00',
+            expected_cash_amount: '130.00',
+            closing_cash_amount: '125.00',
+            cash_variance_amount: '-5.00',
+            opened_at: '2026-09-05T08:00:00.000Z',
+            closed_at: '2026-09-05T16:00:00.000Z',
+            cashier: { user_id: 10, username: 'Opening Cashier' },
+            operatorSessions: [{
+                pos_terminal_operator_session_id: 55,
+                user_id: 11,
+                started_at: '2026-09-05T09:00:00.000Z',
+                ended_at: '2026-09-05T12:00:00.000Z',
+                operator: { user_id: 11, username: 'Relief Cashier' }
+            }]
+        }]);
+        mockFindAll
+            .mockResolvedValueOnce([
+                {
+                    pos_transaction_id: 1,
+                    invoice_number: 'INV-0001',
+                    total_amount: '100.00',
+                    payment_breakdown: [{ payment_type: 'cash', amount: 100 }],
+                    cashier_id: 11,
+                    shift_id: 31,
+                    operator_session_id: 55,
+                    created_at: '2026-09-05T09:30:00.000Z',
+                    cashier: { user_id: 11, username: 'Relief Cashier' }
+                },
+                {
+                    pos_transaction_id: 2,
+                    invoice_number: 'INV-0002',
+                    total_amount: '50.00',
+                    payment_type: 'gcash',
+                    cashier_id: 10,
+                    shift_id: 31,
+                    operator_session_id: null,
+                    created_at: '2026-09-05T10:00:00.000Z',
+                    cashier: { user_id: 10, username: 'Opening Cashier' }
+                }
+            ])
+            .mockResolvedValueOnce([{
+                pos_transaction_id: 3,
+                invoice_number: 'INV-VOID-0003',
+                total_amount: '20.00',
+                shift_id: 31,
+                voided_at: '2026-09-05T11:00:00.000Z'
+            }]);
+        mockAdjustmentFindAll.mockResolvedValue([
+            { original_shift_id: 31, adjustment_type: 'cash_refund', status: 'succeeded', amount: '7.00' },
+            { original_shift_id: 31, adjustment_type: 'external_refund', status: 'pending', amount: '4.00' }
+        ]);
+
+        const details = await posRepository.getZReadingSnapshotDetails({
+            businessDate: '2026-09-05',
+            startAt: new Date('2026-09-04T16:00:00.000Z'),
+            endAt: new Date('2026-09-05T16:00:00.000Z'),
+            locationId: 12
+        });
+
+        expect(details.branch_name).toBe('Main Branch');
+        expect(details.receipt_ranges).toEqual(expect.objectContaining({
+            sales: { beginning_invoice_number: 'INV-0001', ending_invoice_number: 'INV-0002' },
+            voids: { beginning_invoice_number: 'INV-VOID-0003', ending_invoice_number: 'INV-VOID-0003' },
+            returns: expect.objectContaining({ tracked: false })
+        }));
+        expect(details.refunds).toEqual(expect.objectContaining({
+            succeeded_count: 1,
+            succeeded_amount: 7,
+            pending_count: 1,
+            pending_amount: 4
+        }));
+        expect(details.shifts).toEqual([expect.objectContaining({
+            shift_id: 31,
+            transaction_count: 2,
+            sales_amount: 150,
+            opening_cashier: expect.objectContaining({ display_name: 'Opening Cashier' }),
+            cash: {
+                opening_float_amount: 100,
+                expected_cash_amount: 130,
+                counted_cash_amount: 125,
+                variance_amount: -5
+            },
+            adjustments: expect.objectContaining({ void_transaction_count: 1, void_amount: 20 }),
+            cashier_sales: expect.arrayContaining([
+                expect.objectContaining({ display_name: 'Relief Cashier', attribution_type: 'operator_session', transaction_count: 1, sales_amount: 100 }),
+                expect.objectContaining({ display_name: 'Opening Cashier', attribution_type: 'recorded_cashier', transaction_count: 1, sales_amount: 50 })
+            ]),
+            receipt_ranges: expect.objectContaining({ sales: { beginning_invoice_number: 'INV-0001', ending_invoice_number: 'INV-0002' } })
+        })]);
     });
 });

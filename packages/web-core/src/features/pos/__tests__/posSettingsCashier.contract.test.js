@@ -138,7 +138,7 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('gives cashier actions a readable search width and solid invite treatment', () => {
-    expect(cashierTableSource).toContain('className="relative min-w-0 flex-1 sm:w-64 sm:flex-none"');
+    expect(cashierTableSource).toContain('className="min-w-0 flex-1 sm:w-64 sm:flex-none"');
     expect(cashierTableSource).toContain('className="h-9 w-10 shrink-0 justify-center gap-1.5 rounded-lg border border-[#1A4E8D] bg-[#1A4E8D] p-0 text-[13px] font-semibold text-white shadow-sm hover:bg-[#143F73] sm:w-auto sm:px-3 sm:text-[14px]"');
     expect(cashierTableSource).toContain('<UserRoundPlus className="h-4 w-4 shrink-0" aria-hidden="true" />');
     expect(cashierTableSource).toContain('<span className="sr-only sm:not-sr-only">Invite Cashier</span>');
@@ -409,7 +409,7 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('uses tighter mobile settings gutters with a clear tab-to-content gap', () => {
-    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="settings"');
+    expect(workspaceSource).toMatch(/<PosPageFrame\s+id=\{sectionId\}\s+page="settings"/);
     expect(workspaceSource).toContain('id="pos-settings-panel"');
     expect(workspaceSource).toContain('className="min-w-0"');
   });
@@ -678,8 +678,8 @@ describe('regular POS Setup cashier management contract', () => {
   });
 
   it('removes redundant Storefront pane headings below the nested subtab rail', () => {
-    const subtabRailIndex = storefrontPaneSource.indexOf('      <PosSubtabNavigation');
-    const panelIndex = storefrontPaneSource.indexOf('      <div id="pos-storefront-panel"');
+    const subtabRailIndex = storefrontPaneSource.indexOf('<PosSubtabNavigation');
+    const panelIndex = storefrontPaneSource.indexOf('id="pos-storefront-panel"');
 
     expect(subtabRailIndex).toBeGreaterThanOrEqual(0);
     expect(panelIndex).toBeGreaterThan(subtabRailIndex);

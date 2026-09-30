@@ -560,8 +560,18 @@ export const fetchPosDayCloseReadiness = async (businessDate = null) => {
     return response.data?.data;
 };
 
-export const fetchDailyZReading = async (businessDate) => {
-    const response = await api.get(`/pos/z-reading/${businessDate}`);
+export const fetchDailyZReading = async (businessDate, params = {}) => {
+    const response = await api.get(`/pos/z-reading/${businessDate}`, { params });
+    return response.data?.data;
+};
+
+export const fetchPosZReadingDetails = async (businessDate, params = {}) => {
+    const response = await api.get(`/pos/z-reading/${businessDate}/details`, { params });
+    return response.data?.data;
+};
+
+export const fetchPosZReadingHistory = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/z-readings', { params, ...requestConfig });
     return response.data?.data;
 };
 
@@ -1091,6 +1101,8 @@ export default {
     reportPosDeviceClientResult,
     closePosDay,
     fetchDailyZReading,
+    fetchPosZReadingDetails,
+    fetchPosZReadingHistory,
     fetchCurrentXReading,
     incrementGovernedResetCounter,
     fetchCurrentTerminalShift,

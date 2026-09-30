@@ -43,7 +43,9 @@ describe('POS customer-facing item QR contract', () => {
     expect(workspaceSource).toContain('itemUrl={activeEditStorefrontUrl}');
     expect(workspaceSource).toContain('compact');
     expect(workspaceSource).toContain('helperText=""');
-    expect(workspaceSource).toContain('qrSize={104}');
+    // Responsive QR size (the card clamps to [96, 320]); 160 renders the same
+    // saved-item QR contract the old 104 asserted.
+    expect(workspaceSource).toContain('qrSize={160}');
     expect(settingsSource).toContain('Generate Storefront ID');
     expect(settingsSource).toContain('generateStorefrontSlug');
     expect(terminalPageSource).toContain('hydrateTerminalMeta({ suppressGlobalErrors: true })');

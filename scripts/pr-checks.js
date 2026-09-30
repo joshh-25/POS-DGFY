@@ -66,11 +66,12 @@ const REPO_SLUG = 'Sieitzz/dgfy-platform';
 // tool reproduces, and it doesn't gate a develop/staging merge today. Not an
 // oversight (#725 RF-3).
 const PATH_FILTERS = {
-  frontend_ims: /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
-  frontend_pos: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
-  frontend_storefront: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)/,
-  dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
-  migration_runner: /^(apps\/dgfy-migration-runner\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
+  frontend_ims: /^(apps\/dgfy-ims\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-ims\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+  frontend_pos: /^(apps\/dgfy-pos\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-pos\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+  frontend_storefront: /^(apps\/dgfy-storefront\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-storefront\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+  frontend_opis: /^(apps\/dgfy-opis\/|packages\/pos-receipt\/|packages\/shared-constants\/|packages\/web-core\/|infrastructure\/docker\/dgfy-opis\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|pr-frontend-lint-checks|deploy|deploy-main)\.yml)/,
+  dgfy_api: /^(apps\/dgfy-api\/|packages\/shared-constants\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-api\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)/,
+  migration_runner: /^(apps\/dgfy-migration-runner\/|packages\/tenant-bootstrap\/|infrastructure\/docker\/dgfy-migration-runner\/|\.dockerignore|\.github\/workflows\/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)/,
 };
 
 // #1454: NOT part of PATH_FILTERS. PATH_FILTERS is the verbatim port of
@@ -188,6 +189,7 @@ function detectComponents(changedFiles) {
     frontend_ims: changedFiles.some((file) => PATH_FILTERS.frontend_ims.test(file)),
     frontend_pos: changedFiles.some((file) => PATH_FILTERS.frontend_pos.test(file)),
     frontend_storefront: changedFiles.some((file) => PATH_FILTERS.frontend_storefront.test(file)),
+    frontend_opis: changedFiles.some((file) => PATH_FILTERS.frontend_opis.test(file)),
     dgfy_api: changedFiles.some((file) => PATH_FILTERS.dgfy_api.test(file)),
     migration_runner: changedFiles.some((file) => PATH_FILTERS.migration_runner.test(file)),
   };
@@ -434,6 +436,7 @@ function runChecks(options, changedFiles, components) {
     { key: 'frontend_ims', name: 'frontend-ims-build-check', dir: 'apps/dgfy-ims' },
     { key: 'frontend_pos', name: 'frontend-pos-build-check', dir: 'apps/dgfy-pos' },
     { key: 'frontend_storefront', name: 'frontend-storefront-build-check', dir: 'apps/dgfy-storefront' },
+    { key: 'frontend_opis', name: 'frontend-opis-build-check', dir: 'apps/dgfy-opis' },
   ];
   for (const app of frontendApps) {
     if (!components[app.key]) continue;
@@ -467,6 +470,7 @@ function runFullTierDockerChecks(checks, components) {
     { key: 'frontend_ims', name: 'frontend-ims-build-check (docker)', file: 'infrastructure/docker/dgfy-ims/Dockerfile' },
     { key: 'frontend_pos', name: 'frontend-pos-build-check (docker)', file: 'infrastructure/docker/dgfy-pos/Dockerfile' },
     { key: 'frontend_storefront', name: 'frontend-storefront-build-check (docker)', file: 'infrastructure/docker/dgfy-storefront/Dockerfile' },
+    { key: 'frontend_opis', name: 'frontend-opis-build-check (docker)', file: 'infrastructure/docker/dgfy-opis/Dockerfile' },
   ];
   for (const build of builds) {
     if (!components[build.key]) continue;

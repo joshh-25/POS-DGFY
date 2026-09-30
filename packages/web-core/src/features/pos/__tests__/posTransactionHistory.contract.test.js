@@ -24,10 +24,11 @@ const receiptDialogsContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
     'utf8'
 );
-const terminalContent = fs.readFileSync(
-    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
-    'utf8'
-);
+const terminalContent = [
+    'src/features/pos/components/POSCheckoutTerminal.jsx',
+    // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+    'src/features/pos/hooks/usePosTerminalViewModel.js',
+].map((relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativePath), 'utf8')).join('\n');
 const historyWorkflowContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosHistoryVoidWorkflow.js'),
     'utf8'
@@ -108,7 +109,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('overflow-visible rounded-none border-0 bg-transparent shadow-none');
         expect(panelContent).toContain('label="Rest. charge"');
         expect(panelContent).toContain("updateFilterDialogPosition('filters', filterButtonRef.current);");
-        expect(panelContent).toContain('pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? \'gap-1\' : \'gap-2\'}');
+        expect(panelContent).toContain('pos-history-action-cell pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? \'gap-1\' : \'gap-2\'}');
         expect(panelContent).toContain('data-testid="pos-history-filter-button"');
         expect(panelContent).toContain("import PosFilterCountBadge from './PosFilterCountBadge.jsx';");
         expect(panelContent).toContain('<PosFilterCountBadge count={activeFilterCount} />');
@@ -130,10 +131,17 @@ describe('POS transaction history search and filter contract', () => {
         expect(appStyles).toContain('position: static;');
         expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape {');
         expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {');
-        expect(appStyles).toContain('width: 22%;');
-        expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape .pos-history-action-column {');
+        expect(appStyles).toContain('width: 26%;');
+        expect(panelContent).toContain("import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';");
+        expect(panelContent).toContain('<thead className={POS_TABLE_HEADER_STANDARD_CLASS}>');
+        expect(appStyles).toContain('.pos-table-header--standard > tr > th {\n  height: var(--pos-table-header-height);');
+        expect(appStyles).toContain('.dgfy-pos-history-table--tablet .pos-history-action-column > .pos-history-action-cell,');
+        expect(appStyles).toContain('min-height: 4rem;');
+        expect(appStyles).toContain('min-height: 4.25rem;');
+        expect(appStyles).toContain('.dgfy-pos-history-table--tablet .pos-history-action-column {');
         expect(appStyles).toContain('text-align: center;');
-        expect(appStyles).toContain('.dgfy-pos-history-table--tablet-landscape .pos-history-action-column > .pos-history-row-content {');
+        expect(appStyles).toContain('.dgfy-pos-history-table--tablet .pos-history-action-column > .pos-history-action-cell,');
+        expect(appStyles).toContain('padding-left: 0.5rem;\n  padding-right: 0.5rem;');
         expect(appStyles).toContain('justify-content: center;');
         expect(appStyles).not.toContain('.pos-history-action-button--tablet {');
         expect(appStyles).toContain('vertical-align: middle;');
@@ -317,18 +325,22 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('pos-history-row-content pos-history-row-content--column min-w-0 leading-tight');
         expect(panelContent).toContain('text-[11px] text-slate-500');
         expect(panelContent).toContain('pos-history-row-content pos-history-row-content--column min-w-0 max-w-full gap-0.5 leading-tight');
-        expect(panelContent).toContain('pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? \'gap-1\' : \'gap-2\'}');
+        expect(panelContent).toContain('pos-history-action-cell pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? \'gap-1\' : \'gap-2\'}');
         expect(panelContent).toContain('money(row.service_fee_amount)');
         expect(panelContent).toContain('money(row.restaurant_service_charge_amount)');
         expect(panelContent).not.toContain('>View</span>');
         expect(panelContent).not.toContain('>Void</');
     });
 
-    it('allocates a compact discount column and keeps total amounts on one line', () => {
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] px-2 py-4 text-left');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px]');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] break-words px-2 py-4 text-[#334155]');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right font-black tabular-nums');
+    it('keeps discount visible on mobile cards and total amounts on one line', () => {
+        // The desktop table dropped its fixed 8rem Discount column; discount
+        // now renders in the mobile detail rows while the table keeps
+        // single-line rows. Both surfaces below prove the rendered contract.
+        expect(panelContent).toContain("{ key: 'discount', label: 'Discount', value: getHistoryDiscountLabel(row) }");
+        expect(panelContent).toContain('label="Discount"');
+        expect(panelContent).toContain('discount_label_snapshot');
+        expect(panelContent).toContain('whitespace-nowrap');
+        expect(panelContent).toContain('>Total</th>');
     });
 
     it('renders a visible void status and audit details for voided transactions', () => {

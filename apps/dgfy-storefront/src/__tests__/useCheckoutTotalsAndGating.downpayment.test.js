@@ -4,10 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 import { useCheckoutTotalsAndGating } from '../modes/fnb/checkout/hooks/useCheckoutTotalsAndGating.js';
 
-// Phase 142 (#823): requireQuoteForCheckout was unconditionally false for fnb/simple/retail --
-// this pins the one exception (a downpayment_required store) and confirms the full_payment case
-// is genuinely unaffected, plus that the four downpayment fields pass through totalsForDisplay
-// server-authoritative only.
+// F&B checkout requires a current quote before submission; other storefront modes retain their
+// existing quote policy. The quote's payment-split fields remain server-authoritative.
 const baseProps = ({ selectedStore, quoteResult = null }) => ({
   accessCapabilities: {},
   cart: [],
@@ -38,11 +36,31 @@ describe('useCheckoutTotalsAndGating -- downpayment requireQuote (#823)', () => 
     expect(result.current.requireQuoteForCheckout).toBe(true);
   });
 
-  it('does not require a quote in fnb/simple/retail for a full_payment store (unaffected)', () => {
+  it('requires a current quote for F&B full_payment checkout', () => {
     const { result } = renderHook(() => useCheckoutTotalsAndGating(baseProps({
       selectedStore: { slug: 'demo', payment_mode: 'full_payment' }
     })));
-    expect(result.current.requireQuoteForCheckout).toBe(false);
+    expect(result.current.requireQuoteForCheckout).toBe(true);
+  });
+
+  it('shows a safe current-cart total and blocks checkout while an F&B quote is stale', () => {
+    const { result } = renderHook(() => useCheckoutTotalsAndGating({
+      ...baseProps({
+        selectedStore: { slug: 'demo', payment_mode: 'full_payment' },
+        quoteResult: { subtotal_amount: 488, delivery_fee: 50, total_amount: 538 },
+      }),
+      cartCount: 2,
+      cartTotal: 488,
+      orderMethod: 'pickup',
+      quoteNeedsRefresh: true,
+    }));
+
+    expect(result.current.isTotalStale).toBe(true);
+    expect(result.current.totalsForDisplay.total_amount).toBe(488);
+    expect(result.current.totalsForDisplay.delivery_fee).toBe(0);
+    expect(result.current.totalsForDisplay.subtotal_amount).toBe(488);
+    expect(result.current.checkoutBlockReason).toBe('stale_quote');
+    expect(result.current.checkoutAllowed).toBe(false);
   });
 
   it('passes the four downpayment fields through totalsForDisplay from the quote, null when absent', () => {
@@ -87,17 +105,17 @@ describe('useCheckoutTotalsAndGating -- downpayment requireQuote (#823)', () => 
       expect(result.current.requireQuoteForCheckout).toBe(true);
     });
 
-    it('does not require a quote when the election is "full"', () => {
+    it('requires a quote when the election is "full"', () => {
       const { result } = renderHook(() => useCheckoutTotalsAndGating({
         ...baseProps({ selectedStore: customerChoiceStore }),
         paymentElection: 'full'
       }));
-      expect(result.current.requireQuoteForCheckout).toBe(false);
+      expect(result.current.requireQuoteForCheckout).toBe(true);
     });
 
-    it('does not require a quote when no election has been made yet (undefined)', () => {
+    it('requires a quote when no election has been made yet (undefined)', () => {
       const { result } = renderHook(() => useCheckoutTotalsAndGating(baseProps({ selectedStore: customerChoiceStore })));
-      expect(result.current.requireQuoteForCheckout).toBe(false);
+      expect(result.current.requireQuoteForCheckout).toBe(true);
     });
 
     it('blocks with downpayment_zero_total only when the election is "downpayment" and the quote zeroed out', () => {

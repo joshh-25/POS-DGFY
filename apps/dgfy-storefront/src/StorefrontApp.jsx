@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   ArrowLeft,
@@ -291,9 +291,9 @@ import {
   startDgfyTenantSession
 } from '../../../packages/web-core/src/services/dgfyAuthService.js';
 import {
-  buildPosDgfyHandoffUrl,
-  buildSkupervisorHandoffUrl
-} from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
+  buildBusinessBackOfficeHandoffUrl,
+  buildPosDgfyHandoffUrl
+} from '../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -1174,7 +1174,7 @@ export default function StorefrontApp() {
     rememberDgfySignedOutEmail,
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
-    buildSkupervisorHandoffUrl,
+    buildBusinessBackOfficeHandoffUrl,
     buildPosDgfyHandoffUrl,
     createDgfyHandoff,
     buildPosAppUrl,
@@ -1793,6 +1793,7 @@ export default function StorefrontApp() {
     checkoutBlockReason,
     fnbCartStatusLabel,
     hasStockViolation,
+    isTotalStale,
     promoDiscountSummaryRow,
     promoStatusMessage,
     promoStatusTone,
@@ -1853,7 +1854,7 @@ export default function StorefrontApp() {
     setHighlightedDiscoveryMarkerKey,
     setHighlightedStoreSlug
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isStorePage) return;
     setQuoteNeedsRefresh(true);
     // Phase 150 (#866): paymentElection changes the split the quote would compute at a
@@ -3225,6 +3226,7 @@ export default function StorefrontApp() {
     isFnbOrderResponsiveFlow,
     isFnbOrderSubpage,
     isGuestCheckoutOtpCooldownActive,
+    isTotalStale,
     isMobileViewport,
     money,
     orderMethod,

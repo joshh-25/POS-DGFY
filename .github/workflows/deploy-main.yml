@@ -30,6 +30,10 @@ on:
         description: Build/push the dgfy-storefront image. Uncheck to skip.
         type: boolean
         default: true
+      build_frontend_opis:
+        description: Build/push the dgfy-opis image. Uncheck to skip.
+        type: boolean
+        default: true
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -80,8 +84,13 @@ on:
       candidate_source_sha_frontend_storefront:
         description: >-
           Same contract as candidate_source_sha_api above, resolved for dgfy-storefront specifically
-          (its own build_frontend_storefront flag rebuilds it independently of the other two
+          (its own build_frontend_storefront flag rebuilds it independently of the other
           frontends).
+        required: false
+        type: string
+        default: ''
+      candidate_source_sha_frontend_opis:
+        description: Same candidate source identity contract as the other frontend apps, for dgfy-opis.
         required: false
         type: string
         default: ''
@@ -125,6 +134,11 @@ on:
         required: false
         type: string
         default: ''
+      release_revision_frontend_opis:
+        description: Same per-app revision contract as the other frontend apps, for dgfy-opis.
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: deploy-main-${{ github.ref }}
@@ -139,12 +153,12 @@ permissions:
 # (#894/#896), so the `dgfy-{ims,pos,storefront}-beta` images/containers this
 # workflow used to build and deploy no longer have anything to serve.
 # Dispatching this with every build_* box left checked (the default) now
-# builds and deploys three frontend images, prod-only:
+# builds and deploys four frontend images, prod-only (dgfy-opis added by issue #2052):
 #
-#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest
+#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest / dgfy-opis:latest
 #                         -- built against the PROD GitHub Environment's
 #                         VITE_* (dgfy.ph auth/handoff URLs). Served by the
-#                         `dgfy-{ims,pos,storefront}` containers -> the
+#                         `dgfy-{ims,pos,storefront,opis}` containers -> the
 #                         *.dgfy.ph production domains AND, via the nginx
 #                         redirect, every *.beta.dgfy.ph request too.
 #   * api / migration-runner -- built ONCE (from apps/dgfy-api, plus a paired
@@ -168,9 +182,9 @@ permissions:
 # edit lands in that same `docker compose up -d`, not on its own (that server
 # edit + restart is #913's remaining, human-only scope as of this comment).
 #
-# After all four images are pushed, a SINGLE publish job SSH-deploys once
+# After all five images are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
-# refreshes all three frontend containers and backend:latest in one go. The
+# refreshes all four frontend containers and backend:latest in one go. The
 # deploy is resolved from the PROD Environment's SSH secrets (validated in
 # the 2026-07-20 cutover).
 #
@@ -328,6 +342,7 @@ jobs:
       should_build_dgfy_ims: ${{ steps.resolve.outputs.should_build_dgfy_ims }}
       should_build_dgfy_pos: ${{ steps.resolve.outputs.should_build_dgfy_pos }}
       should_build_dgfy_storefront: ${{ steps.resolve.outputs.should_build_dgfy_storefront }}
+      should_build_dgfy_opis: ${{ steps.resolve.outputs.should_build_dgfy_opis }}
     steps:
       - name: Clear stale sparse-checkout state (workspace-hygiene v1)
         shell: bash
@@ -406,7 +421,7 @@ jobs:
           # content-equivalent/skip and the promote-aliases job below aliases the reused
           # staging digest instead of rebuilding it.
           SKIP_ARGS=(--revision "${{ github.sha }}" --environment PROD)
-          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);console.log(JSON.stringify(m))")"
+          REVISIONS_JSON="$(node -e "const m={};const put=(k,v)=>{if(v&&String(v).trim())m[k]=String(v).trim();};put('dgfy-api',process.env.API_R);put('dgfy-migration-runner',process.env.API_R);put('dgfy-ims',process.env.IMS_R);put('dgfy-pos',process.env.POS_R);put('dgfy-storefront',process.env.STOREFRONT_R);put('dgfy-opis',process.env.OPIS_R);console.log(JSON.stringify(m))")"
           if [ "${REVISIONS_JSON}" != "{}" ]; then
             SKIP_ARGS+=(--release-revisions-json "${REVISIONS_JSON}")
           fi
@@ -416,6 +431,7 @@ jobs:
           IMS_R: ${{ inputs.release_revision_frontend_ims }}
           POS_R: ${{ inputs.release_revision_frontend_pos }}
           STOREFRONT_R: ${{ inputs.release_revision_frontend_storefront }}
+          OPIS_R: ${{ inputs.release_revision_frontend_opis }}
 
   # Shared dgfy-api image (environment-agnostic; built once, tagged latest
   # to match deploy-api.yml's/deploy-migration-runner.yml's image_tags
@@ -581,6 +597,30 @@ jobs:
       contents: read
       packages: write
 
+  frontend-opis-prod:
+    needs: [ guard-branch, resolve-build-plan ]
+    if: >-
+      needs.guard-branch.result == 'success' && needs.resolve-build-plan.result == 'success' &&
+      inputs.build_frontend_opis && needs.resolve-build-plan.outputs.should_build_dgfy_opis == 'true'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-opis
+      environment: PROD
+      image_tags: "latest"
+      candidate_source_sha: ${{ inputs.candidate_source_sha_frontend_opis }}
+      release_revision: ${{ inputs.release_revision_frontend_opis }}
+      # Phase 233 (#1365) scaffold, INERT: per docs/ops/CI_RUNNER_POLICY.md, hosted
+      # (ubuntu-latest) is the intended class for every production build/deploy job.
+      # Flip in Phase 234 (live cutover) or as the logged fallback switch -- never silently.
+      # Phase 234 Wave 3 (#1365, F-5): delegates to the file-level runner_labels_json
+      # workflow_dispatch input above -- one flip point covers all 6 jobs; see that input's own
+      # commented/active default: pair for the fallback-switch mechanism.
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
   # Single SSH deploy that refreshes all four images on the server in one
   # `docker compose pull && up -d`. Runs unless any image build actually
   # failed or was cancelled - a `skipped` result (e.g. a build_* dispatch
@@ -689,7 +729,7 @@ jobs:
           set -euo pipefail
           FAILURES=0
           SKIPPED=0
-          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront; do
+          for APP in dgfy-api dgfy-migration-runner dgfy-ims dgfy-pos dgfy-storefront dgfy-opis; do
             # #2055 (Phase 346): each app aliases its OWN allocated revision -- an unchecked
             # app-group (empty input, nothing built) is skipped, never aliased blind.
             case "${APP}" in
@@ -697,6 +737,7 @@ jobs:
               dgfy-ims) APP_REVISION="${{ inputs.release_revision_frontend_ims }}" ;;
               dgfy-pos) APP_REVISION="${{ inputs.release_revision_frontend_pos }}" ;;
               dgfy-storefront) APP_REVISION="${{ inputs.release_revision_frontend_storefront }}" ;;
+              dgfy-opis) APP_REVISION="${{ inputs.release_revision_frontend_opis }}" ;;
             esac
             if [ -z "${APP_REVISION:-}" ]; then
               echo "[promote-aliases] ${APP}: no revision input for this app-group (unchecked build) -- skipping, not aliasing."

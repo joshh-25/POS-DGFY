@@ -660,6 +660,10 @@ const posTransactionIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
 
+const businessAdminApprovalSchema = Joi.object({
+    note: Joi.string().trim().max(1000).allow('', null).default('')
+});
+
 // Phase 204 (#965): params-only -- the multipart body on the POST carries only the file, and the
 // GET has no body at all.
 const balancePaymentProofParamsSchema = Joi.object({
@@ -707,6 +711,17 @@ const zReadingDateParamSchema = Joi.object({
 
 const zReadingQuerySchema = Joi.object({
     location_id: Joi.number().integer().positive().optional()
+});
+
+const zReadingHistoryQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional(),
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    search: Joi.string().trim().max(120).allow('').optional(),
+    terminal_id: Joi.string().trim().max(100).allow('').optional(),
+    closed_by: Joi.string().trim().max(100).allow('').optional(),
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20)
 });
 
 const closeDaySchema = Joi.object({
@@ -1645,10 +1660,12 @@ export const validatePosCatalogOverridesQuery = validateSchema(posCatalogOverrid
 export const validatePosTransactionIdParam = validateSchema(posTransactionIdParamSchema, 'params', 'validatedParams');
 export const validatePosPackingEvidenceParams = validateSchema(packingEvidenceParamsSchema, 'params', 'validatedParams');
 export const validatePosPackingEvidenceImageParams = validateSchema(packingEvidenceImageParamsSchema, 'params', 'validatedParams');
+export const validateDecideBusinessAdminApproval = validateSchema(businessAdminApprovalSchema, 'body', 'validatedData');
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
 export const validateZReadingQuery = validateSchema(zReadingQuerySchema, 'query', 'validatedQuery');
+export const validateZReadingHistoryQuery = validateSchema(zReadingHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'validatedData');
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');

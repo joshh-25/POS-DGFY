@@ -447,6 +447,7 @@ export default function EmployeeManagementPanel({ disabled = false, onEmployeesC
               ariaLabel="Search employees"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
+              onClear={() => setSearchQuery('')}
               placeholder="Search employees by name, code, or email..."
               className="min-[1200px]:flex-1"
             />

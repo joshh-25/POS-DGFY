@@ -27,7 +27,12 @@ describe('POS pagination layout contract', () => {
   });
 
   it('keeps compact phone page-size and page-jump controls inside the footer', () => {
-    expect(paginationSource).toContain('dgfy-global-pagination__page-size-suffix');
+    // The `-suffix` marker was renamed to `-value` ("{n} / page"); page-size
+    // labels remain configurable for each paginated surface.
+    expect(paginationSource).toContain('dgfy-global-pagination__page-size-value');
+    expect(paginationSource).toContain('{selectedPageSize}<span');
+    expect(paginationSource).toContain("pageSizeLabel = 'Items per page'");
+    expect(paginationSource).toContain('ariaLabel={pageSizeLabel}');
     expect(appStyles).toContain('grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);');
     expect(appStyles).toContain('min-width: 0;\n    max-width: 100%;');
     expect(appStyles).toContain('min-width: 3.25rem;\n    padding-inline: 0.5rem;');

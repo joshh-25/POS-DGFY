@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-09-26
+last_reviewed: 2026-09-29
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -28,6 +28,13 @@ Food & Beverage Mode (`fnb`) is the restaurant workflow mode. It is labeled `Foo
 - The calendar opens in the branch's current month and cannot navigate to earlier months; past days remain disabled. Configured location fulfillment lead-time minimum and maximum days restrict selectable scheduled dates for every order method, including delivery, pickup, and dine-in. Dine-in also has a 90-day maximum. Delivery and pickup have no additional fixed maximum when lead time is unconfigured.
 - F&B, Retail, and Simple Storefront tracking use the shared order-summary presentation. It displays a scheduled timestamp when the public tracking result includes `scheduled_for`, otherwise it displays the order time. The public tracking response includes the persisted `vat_amount` for informational display; the storefront does not infer VAT from totals or recalculate tax.
 - The checkout API rejects past scheduled instants for every order method and rejects scheduled dates outside a configured location lead-time window, using the branch business-hours timezone. Store-hours validation remains server-side. The checkout request shape is unchanged; the public tracking response additively includes `vat_amount`.
+
+## Storefront Quote Freshness And Fee Presentation
+
+- A Storefront F&B quote is valid only for the cart, fulfillment method, selected location, delivery address/pin, payment election/type, and promo/voucher inputs used to request it. A response for an older context must not replace the current quote or clear its refresh requirement.
+- While a quote is stale or being recalculated, the displayed total uses the current cart subtotal less known discounts, omits unresolved delivery-fee and VAT values, and shows a recalculation status. Checkout stays blocked until a quote for the current context is accepted.
+- Step 1 shows the non-monetary delivery-fee expectation only when the selected fulfillment location offers Delivery: “Delivery fee is shown in Step 2 after you choose Delivery. Pickup has no delivery fee.” Step 1 never shows a delivery-fee amount. Step 2 shows a delivery-fee row only for the currently selected Delivery method after its current quote resolves; Pickup never shows that row.
+- The Storefront remains a display and quote consumer; delivery-fee resolution and payable totals remain server-owned under ADR 0078 and ADR 0012.
 
 ## Shared And F&B-Specific Data
 

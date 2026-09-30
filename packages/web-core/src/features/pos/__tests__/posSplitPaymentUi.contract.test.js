@@ -9,6 +9,11 @@ const checkoutSource = [
         path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
         'utf8'
     ),
+    // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+    fs.readFileSync(
+        path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js'),
+        'utf8'
+    ),
     fs.readFileSync(
         path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx'),
         'utf8'

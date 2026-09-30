@@ -4,14 +4,12 @@ import { createPortal } from 'react-dom';
 import {
     AlertCircle,
     CarTaxiFront,
-    Delete,
     Folder,
     Minus,
     Plus,
     Percent,
     Printer,
     ScanLine,
-    Search,
     ShoppingCart,
     X,
     Eye,
@@ -42,6 +40,7 @@ import { getParkedLineEditState } from '../utils/posParkedSaleResume.js';
 import { POS_HARDWARE_CAPABILITIES } from '../hardware/posHardwareContract.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import PosItemImage from './PosItemImage.jsx';
+import PosSearchField from './PosSearchField.jsx';
 import { formatQuantity, getCartLineSubtotal, getLineKey, money, resolvePosCatalogImageSources, sanitizeQuantityInput, VAT_TYPE_LABEL } from '../utils/posCheckoutTerminalUtils.js';
 import POSCheckoutConfirmDialog from './POSCheckoutConfirmDialog.jsx';
 import { POSCheckoutTerminalReceiptDialogs } from './POSCheckoutTerminalReceiptDialogs.jsx';
@@ -512,56 +511,26 @@ return (
                     <div className={`${isTabletPortraitMobileLayout ? 'flex-wrap items-center' : isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 ${isTabletPortraitMobileLayout ? 'relative gap-2.5' : 'max-sm:relative max-sm:gap-2.5'}`}>
                         {/* Mobile: keep the search field visible by default. */}
                         {!isTabletViewport && (
-                            <div className={`relative flex min-w-0 flex-1 items-center ${isTabletPortraitMobileLayout ? '' : 'sm:hidden'}`}>
-                                <Search size={16} className="pointer-events-none absolute left-3 text-[#1A4E8D]" />
-                                <input
-                                    type="text"
-                                    value={search}
-                                    onChange={(event) => setSearch(event.target.value)}
-                                    placeholder="Search POS-visible items..."
-                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-10 text-[13px] text-[#0F172A] shadow-sm placeholder:text-[#64748B] transition focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-100"
-                                />
-                                <button
-                                    type="button"
-                                    aria-label="Clear search"
-                                    onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => {
-                                        setSearch('');
-                                    }}
-                                    className={`absolute right-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition ${search ? 'hover:bg-slate-100' : ''}`}
-                                >
-                                    <Delete
-                                        className="h-4 w-4"
-                                        style={{ color: search ? '#000000' : '#cbd5e1' }}
-                                    />
-                                </button>
-                            </div>
-                        )}
-                        {/* Desktop / tablet: original search label */}
-                        <label className={`${isTabletPortraitMobileLayout ? 'flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100' : isTabletViewport ? 'flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-[12px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100' : 'flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100'} ${isTabletPortraitMobileLayout ? '' : 'max-sm:hidden'}`}
-                        >
-                            <Search size={20} className="shrink-0 text-[#1A4E8D]" />
-                            <span className="sr-only">Search POS-visible items</span>
-                            <input
-                                type="text"
+                            <PosSearchField
+                                ariaLabel="Search POS-visible items"
                                 value={search}
                                 onChange={(event) => setSearch(event.target.value)}
+                                onClear={() => setSearch('')}
                                 placeholder="Search POS-visible items..."
-                                    className="h-auto min-w-0 w-full border-0 bg-transparent p-0 text-[13px] text-[#0F172A] shadow-none outline-none ring-0 placeholder:text-[#64748B] focus:outline-none focus:ring-0"
+                                className={`flex min-w-0 flex-1 items-center ${isTabletPortraitMobileLayout ? '' : 'sm:hidden'}`}
+                                inputClassName="h-10"
                             />
-                            <button
-                                type="button"
-                                aria-label="Clear search"
-                                onClick={() => setSearch('')}
-                                className={`shrink-0 rounded-md p-1 transition ${search ? 'hover:bg-slate-100' : ''}`}
-                                disabled={!search}
-                            >
-                                <Delete
-                                    className="h-4 w-4"
-                                    style={{ color: search ? '#000000' : '#cbd5e1' }}
-                                />
-                            </button>
-                        </label>
+                        )}
+                        {/* Desktop / tablet: original search label */}
+                        <PosSearchField
+                            ariaLabel="Search POS-visible items"
+                            value={search}
+                            onChange={(event) => setSearch(event.target.value)}
+                            onClear={() => setSearch('')}
+                            placeholder="Search POS-visible items..."
+                            className={`min-w-0 flex-1 ${isTabletPortraitMobileLayout ? '' : 'max-sm:hidden'}`}
+                            inputClassName={isTabletViewport || isTabletPortraitMobileLayout ? 'h-10' : 'h-11'}
+                        />
                         {isTabletViewport ? (
                             <div className="flex shrink-0">
                                 <Suspense fallback={(

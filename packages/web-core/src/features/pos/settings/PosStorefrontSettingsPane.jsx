@@ -1,10 +1,11 @@
 import { forwardRef, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Info, List, Mail, MapPin,
-  Maximize2, Minimize2, Move, Phone, Search,
+  Maximize2, Minimize2, Move, Phone,
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -24,6 +25,7 @@ import StorefrontDeliveryPartnersSettings from './StorefrontDeliveryPartnersSett
 import StorefrontReviewsSettings from './StorefrontReviewsSettings.jsx';
 import { STOREFRONT_TYPOGRAPHY } from './StorefrontSectionPrimitives.jsx';
 import PosSubtabNavigation from '../components/PosSubtabNavigation.jsx';
+import PosSearchField from '../components/PosSearchField.jsx';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -1271,11 +1273,15 @@ function StoreLocationsSummary({ storefrontForm, storefrontLocations, canEditSet
               </div>
               <span className="text-[11px] font-semibold text-[#64748B]">{filteredLocations.length} shown</span>
             </div>
-            <label className="relative mt-3 hidden lg:block">
-              <span className="sr-only">Search branches</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8399BA]" aria-hidden="true" />
-              <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search branches..." className="h-9 w-full min-w-0 rounded-lg border-slate-200 pl-9 text-[12px]" />
-            </label>
+            <PosSearchField
+              ariaLabel="Search branches"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              onClear={() => setSearchTerm('')}
+              placeholder="Search branches..."
+              className="mt-3 hidden lg:block"
+              inputClassName="h-9 text-[12px]"
+            />
             <div className="mt-3 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:block lg:max-h-[420px] lg:space-y-2 lg:overflow-x-hidden lg:overflow-y-auto lg:pr-1 lg:pb-0">
               {filteredLocations.length > 0 ? filteredLocations.map((location) => {
                 const isSelected = selectedLocation?.location_id === location.location_id;
@@ -1360,7 +1366,10 @@ export default function PosStorefrontSettingsPane({
   storefrontTenantId = '',
   editingLocationId = null,
   readOnly = false,
+  settingsSurface = 'pos',
   editorSection = 'storefront',
+  startWithNewLocation = false,
+  locationEditorOnly = false,
   activeSubtab: controlledActiveSubtab, onActiveSubtabChange, selectedLocationId: controlledSelectedLocationId, onSelectedLocationChange,
   hasActivePrimaryStorefrontLocation, requestedCustomerAccessMode, effectiveCustomerAccessMode, platformMaxCustomerAccessMode,
   customerAccessRollbackActive, customerAccessLimitation, locked, loading, savingTab, canEditSettings,
@@ -1386,7 +1395,9 @@ export default function PosStorefrontSettingsPane({
     setLocationForm((current) => ({ ...current, [field]: value !== false }));
   }, [lastFulfillmentMethodLocked, setLocationForm]);
   const [editSnapshot, setEditSnapshot] = useState(null);
-  const [locationEditSnapshot, setLocationEditSnapshot] = useState(null);
+  const [locationEditSnapshot, setLocationEditSnapshot] = useState(() => (
+    startWithNewLocation ? cloneStorefrontForm(createDefaultLocationForm()) : null
+  ));
   const [localSelectedLocationId, setLocalSelectedLocationId] = useState(null);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const coverAdjustmentRef = useRef(null);
@@ -1396,10 +1407,13 @@ export default function PosStorefrontSettingsPane({
   const selectedLocationId = controlledSelectedLocationId ?? localSelectedLocationId;
   const setSelectedLocationId = onSelectedLocationChange || setLocalSelectedLocationId;
   const canEdit = canEditSettings && !readOnly && !locked && !loading;
-  const setupActive = activeSubtab === 'setup';
-  const contentActive = activeSubtab === 'content';
-  const locationsActive = activeSubtab === 'locations';
-  const reviewsActive = activeSubtab === 'reviews';
+  const autoStartLocationEditor = startWithNewLocation && !readOnly && !loading;
+  const viewActiveSubtab = autoStartLocationEditor ? 'locations' : activeSubtab;
+  const viewIsEditing = autoStartLocationEditor || isEditing;
+  const setupActive = viewActiveSubtab === 'setup';
+  const contentActive = viewActiveSubtab === 'content';
+  const locationsActive = viewActiveSubtab === 'locations';
+  const reviewsActive = viewActiveSubtab === 'reviews';
   const categoryCount = normalizeStoreContentStringList(storefrontForm?.storefrontCategories).length;
   const categoriesFitBesideWhy = categoryCount >= 1 && categoryCount <= 5;
   const normalizedLocationSearchTerm = locationSearchTerm.trim().toLowerCase();
@@ -1409,13 +1423,15 @@ export default function PosStorefrontSettingsPane({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedLocationSearchTerm));
   });
+  const locationEditorOnlySurface = settingsSurface !== 'business-admin' || readOnly || startWithNewLocation;
+  const showLocationEditorOnly = locationEditorOnly && locationEditorOnlySurface;
   const locationPluralLabel = editorSection === 'branches' ? 'Branches' : 'Storefront Locations';
   const locationEditorTitle = editingLocationId
     ? STOREFRONT_LOCATION_LABELS.editBranch
     : STOREFRONT_LOCATION_LABELS.addBranch;
   const locationDirty = Boolean(
     locationsActive
-    && isEditing
+    && viewIsEditing
     && locationEditSnapshot
     && JSON.stringify(locationForm) !== JSON.stringify(locationEditSnapshot)
   );
@@ -1519,16 +1535,16 @@ export default function PosStorefrontSettingsPane({
   );
 
     return (
-    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
-      <PosSubtabNavigation
-        tabs={STOREFRONT_SUBTABS}
-        activeTab={activeSubtab}
-        onTabChange={handleSubtabChange}
-        ariaLabel="Storefront settings sections"
-        idPrefix="pos-storefront-tab"
-        panelId="pos-storefront-panel"
-        disabled={isEditing}
-      />
+    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${showLocationEditorOnly ? 'business-admin-location-editor-only' : ''} ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
+       {!showLocationEditorOnly ? <PosSubtabNavigation
+         tabs={STOREFRONT_SUBTABS}
+         activeTab={viewActiveSubtab}
+         onTabChange={handleSubtabChange}
+         ariaLabel="Storefront settings sections"
+         idPrefix="pos-storefront-tab"
+         panelId="pos-storefront-panel"
+         disabled={viewIsEditing}
+       /> : null}
       <p className="sr-only" aria-live="polite">
         {Object.values(storefrontBooleanState).some((status) => status === 'saving')
           ? 'Saving Storefront setting.'
@@ -1539,8 +1555,8 @@ export default function PosStorefrontSettingsPane({
               : ''}
       </p>
 
-      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${activeSubtab}`} className="min-w-0">
-      {!isEditing && setupActive ? (
+      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${viewActiveSubtab}`} className="min-w-0">
+      {!viewIsEditing && setupActive ? (
         <StoreSetupSummary
           storefrontForm={storefrontForm}
           storefrontPublicUrl={storefrontPublicUrl}
@@ -1561,12 +1577,12 @@ export default function PosStorefrontSettingsPane({
           savingTab={savingTab}
         />
       ) : null}
-      {!isEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
-      {!isEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
+      {!viewIsEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
+      {!viewIsEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
         if (typeof handleStorefrontGroupSave !== 'function') return false;
         return handleStorefrontGroupSave('basic', { ...storefrontForm, storefrontHours: nextHours });
       }} /> : null}
-      {!isEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
+      {!viewIsEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
 
       <StorefrontGroupEditor
         group={contentActive && editingGroup && editingGroup !== 'all' ? editingGroup : null}
@@ -1585,10 +1601,10 @@ export default function PosStorefrontSettingsPane({
         onSave={saveContentGroup}
         onCancel={cancelEditing}
         savingTab={savingTab}
-        hidden={!isEditing}
+        hidden={!viewIsEditing}
       />
 
-      <div className={`${setupActive && isEditing ? '' : 'hidden'} space-y-8`}>
+      <div className={`${setupActive && viewIsEditing ? '' : 'hidden'} space-y-8`}>
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="grid gap-3 md:grid-cols-2">
           <StorefrontToggle
@@ -1741,7 +1757,7 @@ export default function PosStorefrontSettingsPane({
       </div>
       {renderEditFooter('Save Store Setup')}
       </div>
-      {contentActive && isEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
+      {contentActive && viewIsEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="relative min-w-0">
@@ -1898,7 +1914,7 @@ export default function PosStorefrontSettingsPane({
       </div>
 
       </div> : null}
-      {locationsActive && isEditing ? (
+      {locationsActive && viewIsEditing && !showLocationEditorOnly ? (
         <StorefrontBusinessHoursSection
           hours={storefrontForm?.storefrontHours}
           canEditSettings={canEdit}
@@ -1909,7 +1925,7 @@ export default function PosStorefrontSettingsPane({
           }}
         />
       ) : null}
-      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && isEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
+      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && viewIsEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
           <div>
             <h2 className="business-admin-storefront-locations-header text-[14px] font-extrabold text-[#0F172A]">
               {locationPluralLabel}{storefrontLocationRequired ? <RequiredMark /> : null}
@@ -1925,16 +1941,15 @@ export default function PosStorefrontSettingsPane({
                 <span className="shrink-0 text-[11px] font-semibold text-[#64748B]">{filteredStorefrontLocations.length} shown</span>
               </div>
 
-              <label className="relative mt-3 block">
-                <span className="sr-only">Search branches</span>
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8399BA]" aria-hidden="true" />
-                <Input
-                  value={locationSearchTerm}
-                  onChange={(event) => setLocationSearchTerm(event.target.value)}
-                  placeholder="Search branches..."
-                  className="h-9 w-full min-w-0 rounded-lg border-slate-200 pl-9 text-[12px]"
-                />
-              </label>
+              <PosSearchField
+                ariaLabel="Search branches"
+                value={locationSearchTerm}
+                onChange={(event) => setLocationSearchTerm(event.target.value)}
+                onClear={() => setLocationSearchTerm('')}
+                placeholder="Search branches..."
+                className="mt-3"
+                inputClassName="h-9 text-[12px]"
+              />
 
               <div className="business-admin-storefront-location-list-scroll mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
                 {filteredStorefrontLocations.length > 0 ? filteredStorefrontLocations.map((location) => {
@@ -2030,7 +2045,7 @@ export default function PosStorefrontSettingsPane({
                   <div className="mt-5 border-t border-slate-100 pt-4">
                     <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-[#1A4E8D]" aria-hidden="true" /><h4 className={STOREFRONT_TYPOGRAPHY.itemLabel}>Operational Settings</h4></div>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
+                      <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.deliveryRadius}<RequiredMark /></Label><Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="5" className="h-9 rounded-lg border-slate-200 text-[13px]" /><p className="text-xs text-slate-500">Saves as {normalizeDeliveryRadiusKm(locationForm.delivery_radius_km).toFixed(2)} km</p></div>
                       <div className="grid gap-1.5"><Label className={STOREFRONT_LOCATION_FIELD_LABEL_CLASS}>{STOREFRONT_LOCATION_LABELS.estimatedWaitTime}<RequiredMark /></Label><Input value={locationForm.current_wait_time_minutes} onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))} placeholder="15" className="h-9 rounded-lg border-slate-200 text-[13px]" /></div>
                     </div>
 

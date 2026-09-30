@@ -98,7 +98,9 @@ describe('buildFnbCheckoutPayload', () => {
     });
 
     expect(payload.scheduled_for).not.toBeNull();
-    expect(payload.scheduled_for).toBe(new Date('2026-08-01T10:30').toISOString());
+    // Branch-local wall clock (Asia/Manila default per storefrontScheduleTimezone.js):
+    // 10:30 Manila == 02:30 UTC. Explicit +08:00 offset keeps this TZ-independent.
+    expect(payload.scheduled_for).toBe(new Date('2026-08-01T10:30:00+08:00').toISOString());
   });
 
   it('keeps scheduled_for null when fnbScheduleMode is "asap" even if a stale fnbScheduledFor value is present', () => {
@@ -136,7 +138,8 @@ describe('buildFnbCheckoutPayload', () => {
       cart: [{ item_id: 2, quantity: 1 }]
     });
 
-    expect(payload.scheduled_for).toBe(new Date('2026-09-30T18:30').toISOString());
+    // Same branch-wall contract as above: 18:30 Manila == 10:30 UTC.
+    expect(payload.scheduled_for).toBe(new Date('2026-09-30T18:30:00+08:00').toISOString());
   });
 
   // Phase 150 (#866).

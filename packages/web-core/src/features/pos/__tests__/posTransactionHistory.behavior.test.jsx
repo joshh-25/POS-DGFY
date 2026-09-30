@@ -445,6 +445,26 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(setters.setHistoryDateTo).toHaveBeenCalledWith('');
     });
 
+    it('keeps History Clear all outside the horizontally scrolling filter chips on mobile', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            historySearch: 'NFS-000003',
+            historyStatus: 'completed',
+            historyPaymentType: 'cash',
+            historyCashierName: 'Len2'
+        })} />);
+
+        const filterGroup = screen.getByRole('group', { name: 'Applied history filters' });
+        const chipRail = filterGroup.querySelector('.dgfy-pos-applied-filter-scroll');
+        const clearAllButton = within(filterGroup).getByRole('button', { name: 'Clear all history filters' });
+
+        expect(chipRail?.className).toContain('overflow-x-auto');
+        expect(chipRail?.contains(clearAllButton)).toBe(false);
+        expect(filterGroup.className).toContain('flex-nowrap');
+        expect(filterGroup.className).not.toContain('overflow-x-auto');
+    });
+
     it('clears the active preset when switching to a custom date range', () => {
         render(<HistoryHarness onLoadHistory={vi.fn()} />);
 
@@ -738,8 +758,13 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
 
         expect(screen.getByTestId('pos-history-toolbar').className).toContain('flex-nowrap');
         expect(screen.getByTestId('pos-history-toolbar').className).not.toContain('flex-wrap');
-        expect(screen.getByLabelText('Applied history filters').className).toContain('overflow-x-auto');
-        expect(screen.getByLabelText('Applied history filters').className).toContain('flex-nowrap');
+        const appliedFilterGroup = screen.getByLabelText('Applied history filters');
+        const chipRail = appliedFilterGroup.querySelector('.dgfy-pos-applied-filter-scroll');
+        const clearAllButton = within(appliedFilterGroup).getByRole('button', { name: 'Clear all history filters' });
+        expect(appliedFilterGroup.className).toContain('flex-nowrap');
+        expect(appliedFilterGroup.className).not.toContain('overflow-x-auto');
+        expect(chipRail?.className).toContain('overflow-x-auto');
+        expect(chipRail?.contains(clearAllButton)).toBe(false);
 
         const historyList = screen.getByTestId('pos-history-mobile-list');
         const historyCard = screen.getByTestId('pos-history-mobile-card-1');

@@ -22,7 +22,7 @@ describe('buildStorefrontOrderBreakdownRows', () => {
     expect(rows.map(({ label }) => label)).toEqual([
       'Subtotal',
       'Weekend promo',
-      'Delivery fee',
+      'Delivery Fee',
       'VAT (included in item prices)',
       'Total',
     ]);
@@ -54,6 +54,16 @@ describe('buildStorefrontOrderBreakdownRows', () => {
       'VAT (included in item prices)',
       'Total',
     ]);
+  });
+
+  it('does not display a delivery fee row for pickup even if the last quote still contains one', () => {
+    const rows = buildStorefrontOrderBreakdownRows({
+      money,
+      orderMethod: 'pickup',
+      totals: { subtotal_amount: 488, delivery_fee: 50, total_amount: 538 },
+    });
+
+    expect(rows.map(({ label }) => label)).not.toContain('Delivery Fee');
   });
 
   it('does not expose a legacy service fee when the saved label is absent', () => {

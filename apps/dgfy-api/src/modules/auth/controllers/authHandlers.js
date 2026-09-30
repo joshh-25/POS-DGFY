@@ -190,7 +190,7 @@ export const login = async (req, res, next) => {
       setTenantSessionCookies(res, {
         refreshToken: result.data?.refreshToken,
         tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
-      });
+      }, req);
     }
 
     if (result?.success) {
@@ -232,7 +232,7 @@ export const refreshToken = async (req, res, next) => {
       setTenantSessionCookies(res, {
         refreshToken: result.data?.refreshToken,
         tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
-      });
+      }, req);
     }
 
     if (result?.success) {
@@ -265,8 +265,8 @@ export const refreshToken = async (req, res, next) => {
   }
 };
 
-export const issueBrowserCsrfToken = async (_req, res) => {
-  issueCsrfToken(res);
+export const issueBrowserCsrfToken = async (req, res) => {
+  issueCsrfToken(res, {}, req);
   return res.status(200).json({
     success: true,
     data: null,
@@ -290,7 +290,7 @@ export const logout = async (req, res, next) => {
       const result = await blacklistTokenUseCase({ token: refreshToken });
       unwrapApplicationResultOrThrow(result, 'Refresh token logout failed');
     }
-    clearTenantSessionCookies(res);
+    clearTenantSessionCookies(res, req);
 
     await persistSecurityAuditEvent(req, {
       eventType: 'security_logout',
@@ -456,7 +456,7 @@ export const acceptInvitation = async (req, res, next) => {
       setTenantSessionCookies(res, {
         refreshToken: result.data?.refreshToken,
         tenantToken: result.data?.company?.token || req.headers?.['x-company-token'] || null
-      });
+      }, req);
     }
 
     return sendUseCaseResult(res, result, {

@@ -9,10 +9,22 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../..');
 const manifestPath = path.resolve(repoRoot, 'apps/dgfy-pos/manifest.webmanifest');
 const publicRoot = path.resolve(repoRoot, 'apps/dgfy-pos/public');
+const appShellPath = path.resolve(repoRoot, 'apps/dgfy-pos/index.html');
+const serviceWorkerPath = path.resolve(publicRoot, 'sw.js');
 
 const readManifest = () => JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 describe('POS PWA manifest identity contracts', () => {
+  it('uses and offline-caches the provided POS browser favicon', () => {
+    const appShell = fs.readFileSync(appShellPath, 'utf8');
+    const serviceWorker = fs.readFileSync(serviceWorkerPath, 'utf8');
+    const requiredShellAssets = serviceWorker.match(/const REQUIRED_SHELL_ASSETS = \[([\s\S]*?)\];/)?.[1] || '';
+
+    expect(appShell).toMatch(/<link rel="icon" type="image\/png" href="\.\/favicon\.png"\s*\/>/);
+    expect(fs.existsSync(path.join(publicRoot, 'favicon.png'))).toBe(true);
+    expect(requiredShellAssets).toContain('${BASE_PATH}favicon.png');
+  });
+
   it('identifies the standalone application exclusively as DGFY POS', () => {
     const manifest = readManifest();
 

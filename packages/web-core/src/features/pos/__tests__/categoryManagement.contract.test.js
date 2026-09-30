@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const terminalOperationsWorkspacePath = workspacePath;
 const itemOptionsWorkspacePath = path.resolve(__dirname, '../components/PosFnbModifiersWorkspace.jsx');
 const itemOptionsManagerPath = path.resolve(__dirname, '../components/PosFnbModifierManager.jsx');
 const itemOptionsSelectPath = path.resolve(__dirname, '../components/PosFnbSelect.jsx');
@@ -101,7 +102,8 @@ describe('POS category management contract', () => {
     expect(workspaceSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
     expect(workspaceSource).toContain('dgfy-pos-scroll-region mt-3 max-h-48 space-y-1 overflow-y-auto pr-1');
     expect(workspaceSource).toContain('rounded-xl border border-slate-200 bg-white p-3');
-    expect(workspaceSource).toContain('h-9 w-full rounded-lg border border-[#1A4E8D]');
+    expect(workspaceSource).toContain('PosSearchField id={`${selectorId}-search`}');
+    expect(workspaceSource).toContain('inputClassName="h-9"');
     expect(workspaceSource).toContain('grid min-w-0 grid-cols-2 gap-2');
     expect(managerSource).toContain('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm');
     expect(managerSource).toContain('dgfy-pos-scroll-region mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain');
@@ -114,15 +116,22 @@ describe('POS category management contract', () => {
   it('uses styled listbox controls instead of browser-native select menus', () => {
     const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
     const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
+    const terminalOperationsSource = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     const selectSource = fs.readFileSync(itemOptionsSelectPath, 'utf8');
 
     expect(workspaceSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(managerSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(workspaceSource).not.toContain('<select');
     expect(managerSource).not.toContain('<select');
+    expect(terminalOperationsSource).toContain("closest('.pos-items-modal-scroll-region')");
+    expect(terminalOperationsSource).toContain("overflowY: 'auto'");
+    expect(terminalOperationsSource).toContain('pos-items-dropdown-option flex min-h-8');
     expect(selectSource).toContain('role="combobox"');
     expect(selectSource).toContain('role="listbox"');
     expect(selectSource).toContain('shadow-xl shadow-slate-900/15');
+    expect(selectSource).toContain("closest('.pos-items-modal-scroll-region')");
+    expect(selectSource).toContain("overflowY: 'auto'");
+    expect(selectSource).toContain("overflowX: 'hidden'");
   });
 
   it('preserves category-only access and keeps category mutations online-only', () => {

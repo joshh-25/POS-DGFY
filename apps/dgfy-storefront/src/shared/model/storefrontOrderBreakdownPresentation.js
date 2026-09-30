@@ -1,7 +1,7 @@
 export const STOREFRONT_ORDER_BREAKDOWN_LABELS = Object.freeze({
   subtotal: 'Subtotal',
   discount: 'Discount',
-  deliveryFee: 'Delivery fee',
+  deliveryFee: 'Delivery Fee',
   total: 'Total',
 });
 

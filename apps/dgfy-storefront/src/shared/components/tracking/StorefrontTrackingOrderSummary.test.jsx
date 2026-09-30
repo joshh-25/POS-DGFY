@@ -51,7 +51,7 @@ describe('StorefrontTrackingOrderSummary', () => {
 
     expect(screen.getByText('Weekend offer')).toBeTruthy();
     expect(screen.getByText('- ₱10.00')).toBeTruthy();
-    expect(screen.getByText('Delivery fee')).toBeTruthy();
+    expect(screen.getByText('Delivery Fee')).toBeTruthy();
     expect(screen.queryByText('DGFY convenience fee')).toBeNull();
     expect(screen.getByText('VAT (included in item prices)')).toBeTruthy();
     expect(screen.getByText('VAT shown above is already included in item prices and is calculated before any promo or voucher discount.')).toBeTruthy();
@@ -61,6 +61,6 @@ describe('StorefrontTrackingOrderSummary', () => {
   it('does not show a delivery-fee row on pickup orders', () => {
     renderSummary({ order_method: 'pickup', subtotalAmount: 100, deliveryFee: 15, totalAmount: 100 });
 
-    expect(screen.queryByText('Delivery fee')).toBeNull();
+    expect(screen.queryByText('Delivery Fee')).toBeNull();
   });
 });

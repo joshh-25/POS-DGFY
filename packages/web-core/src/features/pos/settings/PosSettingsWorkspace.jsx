@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { Banknote, BadgePercent, KeyRound, Receipt, Save, Settings2, Store, Truck, Undo2, UserRound, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -36,10 +36,12 @@ import {
   serializeStorefrontBusinessHours
 } from '@/src/features/settings/storefrontBusinessHours.js';
 import { evaluateFulfillmentLeadTime } from '@/src/features/settings/fulfillmentLeadTime.js';
+import { normalizeDeliveryRadiusKm } from '@/src/features/settings/deliveryRadius.js';
 import { normalizeCoverPhotoTransform } from '@sieitzz/shared-constants/coverPhotoTransform';
 import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import { fetchPosSetupCashiers } from '../services/posService.js';
-import DownpaymentSettingsPanel from '../components/DownpaymentSettingsPanel.jsx';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
+const DownpaymentSettingsPanel = lazyWithChunkRetry(() => import('../components/DownpaymentSettingsPanel.jsx'));
 import PosDeliveryPricingSettingsCard from '../components/PosDeliveryPricingSettingsCard.jsx';
 import PosEmployeesSettingsPane from './PosEmployeesSettingsPane.jsx';
 import PosProfileSettingsPane from './PosProfileSettingsPane.jsx';
@@ -1717,7 +1719,7 @@ export default function PosSettingsWorkspace({
       address_line: String(locationForm.address_line || '').trim(),
       latitude: Number(locationForm.latitude),
       longitude: Number(locationForm.longitude),
-      delivery_radius_km: Number(locationForm.delivery_radius_km || 0),
+      delivery_radius_km: normalizeDeliveryRadiusKm(locationForm.delivery_radius_km),
       current_wait_time_minutes: Number(locationForm.current_wait_time_minutes || 0),
       is_open: locationForm.is_open !== false,
       is_active: locationForm.is_active !== false,
@@ -2119,13 +2121,15 @@ export default function PosSettingsWorkspace({
     }
     if (renderedTab === 'payments' && canViewDownpayment) {
       return (
-        <DownpaymentSettingsPanel
-          terminalUser={terminalUser}
-          locked={locked}
-          sectionId={sectionId}
-          locationScopeId={locationScopeId}
-          locationOptions={locations}
-        />
+        <Suspense fallback={null}>
+          <DownpaymentSettingsPanel
+            terminalUser={terminalUser}
+            locked={locked}
+            sectionId={sectionId}
+            locationScopeId={locationScopeId}
+            locationOptions={locations}
+          />
+        </Suspense>
       );
     }
     if (renderedTab === 'delivery_pricing' && canEditSettings) {
@@ -2159,14 +2163,16 @@ export default function PosSettingsWorkspace({
       id={sectionId}
       page="settings"
       data-pos-settings-workspace="true"
-      className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3 max-[767px]:overflow-x-clip"
+      className="max-[767px]:overflow-x-clip"
     >
       {showSettingsTabNavigation ? (
-        <PosSettingsTabNavigation
-          tabs={visibleSettingsTabs}
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-        />
+        <div className="max-[767px]:overflow-x-clip">
+          <PosSettingsTabNavigation
+            tabs={visibleSettingsTabs}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+          />
+        </div>
       ) : null}
       <div
         id="pos-settings-panel"

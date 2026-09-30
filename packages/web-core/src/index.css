@@ -1,8 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* Shared POS pagination follows the mobile wireframe: the range and Go to
-   label share the first row, while page size and navigation share the second. */
+/* Shared POS pagination keeps the page-size label compact on mobile while
+   preserving room for navigation and the direct page-jump control. */
 .dgfy-global-pagination__mobile-go-to-label {
   display: none;
 }
@@ -26,11 +26,12 @@
 @media (max-width: 767.98px) {
   .dgfy-global-pagination {
     display: grid !important;
-    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);
     grid-template-rows: auto auto;
-    column-gap: 0.25rem;
+    column-gap: 0.2rem;
     row-gap: 0.25rem;
     align-items: center;
+    min-width: 0;
     padding: 0.25rem 0.5rem !important;
   }
 
@@ -51,15 +52,23 @@
   .dgfy-global-pagination__page-size {
     grid-column: 1;
     grid-row: 2;
-    min-width: 5.75rem;
+    min-width: 0;
     max-width: 100%;
   }
 
   .dgfy-global-pagination__page-size-trigger {
     width: 100%;
-    min-width: 5.75rem;
+    min-width: 3.25rem;
     padding-inline: 0.5rem;
     font-size: 0.75rem;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .dgfy-global-pagination__page-size-suffix,
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none !important;
   }
 
   .dgfy-global-pagination__previous {
@@ -82,7 +91,7 @@
 
   .dgfy-global-pagination__mobile-go-to-label {
     display: block;
-    grid-column: 5;
+    grid-column: 4 / -1;
     grid-row: 1;
     justify-self: end;
     white-space: nowrap;
@@ -102,13 +111,6 @@
   }
 }
 
-@media (max-width: 360px) {
-  .dgfy-global-pagination {
-    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
-    column-gap: 0.2rem;
-  }
-}
-
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -122,10 +124,14 @@ body {
   box-sizing: border-box;
 }
 
-/* Reports keep the sortable header's 36px hit area, centered in the same
-   51px title row used by History. Body rows retain their existing spacing. */
-.pos-reports-responsive-table > thead > tr > th {
-  height: 51px;
+/* Standard POS data tables use one shared title-row height. The 36px report
+   sort target remains vertically centered inside this row. */
+:root {
+  --pos-table-header-height: 3.1875rem;
+}
+
+.pos-table-header--standard > tr > th {
+  height: var(--pos-table-header-height);
   padding-top: 0;
   padding-bottom: 0;
   vertical-align: middle;
@@ -461,6 +467,32 @@ body {
   background: #94a3b8;
 }
 
+/* Active-filter chips scroll independently so Clear all stays in reach on phones. */
+.dgfy-pos-applied-filter-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+@media (max-width: 767px) {
+  .dgfy-pos-applied-filter-scroll {
+    touch-action: pan-x;
+  }
+}
+
 /* Active filter counts use the same compact badge on History and Reports.
    Phone and portrait-tablet controls keep the count outside the icon button so
    the button remains a consistent square target. */
@@ -473,112 +505,34 @@ body {
   }
 }
 
-/* Shared POS pagination keeps the mobile state compact while retaining the
-   direct page-jump form beside the sequential navigation controls. */
-.dgfy-global-pagination__mobile-go-to-label {
-  display: none;
-}
-
-.dgfy-global-pagination__page-size-suffix {
-  display: inline;
-}
-
-.dgfy-global-pagination__page-size-trigger {
-  border-color: #dbe4f0;
-  background: #ffffff;
-  color: #334155;
-  letter-spacing: -0.01em;
-}
-
-.dgfy-global-pagination__page-size-trigger:hover:not(:disabled) {
-  border-color: rgba(26, 78, 141, 0.5);
-  background: #f8fbff;
-}
-
-.dgfy-global-pagination__page-size-menu {
-  min-width: 100%;
-}
-
-@media (max-width: 767.98px) {
+/* The POS shell leaves less room than the viewport on narrow phones. Reflow
+   the page jump below navigation instead of clipping either control. */
+@media (max-width: 360px) {
   .dgfy-global-pagination {
-    display: grid !important;
-    grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);
-    grid-template-rows: auto auto;
-    column-gap: 0.2rem;
-    row-gap: 0.25rem;
-    align-items: center;
-    min-width: 0;
-    padding: 0.25rem 0.5rem !important;
-  }
-
-  .dgfy-global-pagination__summary,
-  .dgfy-global-pagination__controls,
-  .dgfy-global-pagination__go-to {
-    display: contents !important;
+    grid-template-columns: minmax(0, 1fr) 2.25rem minmax(0, 1fr) 2.25rem;
+    grid-template-rows: auto auto auto;
   }
 
   .dgfy-global-pagination__summary-text {
-    grid-column: 1 / 4;
+    grid-column: 1 / -1;
     grid-row: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
   }
 
   .dgfy-global-pagination__page-size {
     grid-column: 1;
     grid-row: 2;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .dgfy-global-pagination__page-size-trigger {
-    width: 100%;
-    min-width: 3.25rem;
-    padding-inline: 0.5rem;
-    font-size: 0.75rem;
-    justify-content: center;
-    gap: 0.25rem;
-  }
-
-  .dgfy-global-pagination__page-size-suffix,
-  .dgfy-global-pagination__go-to-label,
-  .dgfy-global-pagination__go-to-suffix {
-    display: none !important;
-  }
-
-  .dgfy-global-pagination__previous {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .dgfy-global-pagination__status {
-    grid-column: 3;
-    grid-row: 2;
-    width: 100%;
-    min-width: 0;
-    padding-inline: 0.25rem;
-  }
-
-  .dgfy-global-pagination__next {
-    grid-column: 4;
-    grid-row: 2;
   }
 
   .dgfy-global-pagination__mobile-go-to-label {
-    display: block;
-    grid-column: 4 / -1;
-    grid-row: 1;
-    justify-self: end;
-    white-space: nowrap;
-    font-weight: 500;
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
   }
 
   .dgfy-global-pagination__go-to-input {
-    grid-column: 5;
-    grid-row: 2;
-    width: 100%;
-    min-width: 0;
+    grid-column: 2 / -1;
+    grid-row: 3;
   }
 }
 
@@ -1396,6 +1350,27 @@ body.dgfy-pos-document-scroll-lock {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
+.dgfy-pos-header-terminal-row {
+  display: contents;
+}
+
+/* Small tablets use the mobile header hierarchy: title above an unboxed
+   terminal and status line. Wider tablets keep the title and badge together. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .dgfy-pos-header-page-subtitle,
+  .dgfy-pos-header-terminal-row {
+    display: none !important;
+  }
+
+  .dgfy-pos-header-title > div {
+    flex-wrap: nowrap;
+  }
+
+  .dgfy-pos-header-mobile-terminal {
+    display: flex !important;
+  }
+}
+
 /* The parked-sales shortcut is portaled into this host only for workflows
  * that support it. Keep the empty host out of the header layout so unsupported
  * workflows do not show a blank button-sized gap. */
@@ -1671,6 +1646,12 @@ body[data-pos-text-size="extra-large"] {
     overflow-wrap: anywhere;
   }
 
+  /* Keep the tablet History title row centered while data cells retain the
+     top alignment needed for readable wrapping at larger text sizes. */
+  body[data-pos-text-size] .dgfy-pos-history-table--tablet > thead > tr > th {
+    vertical-align: middle;
+  }
+
   body[data-pos-text-size] [aria-label="POS transaction history table"] button:not(.pos-table-action-button) {
     min-height: max(3rem, calc(3rem * var(--pos-text-size-scale, 1)));
     height: auto;
@@ -1919,6 +1900,15 @@ body[data-dgfy-pos-surface] [data-dialog-overlay="true"],
 body[data-dgfy-pos-surface] [role="dialog"] {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
+}
+
+/* Locked and disabled POS surfaces use a regular CSS filter rather than
+ * backdrop-filter. Keep those filters off in the fixed Chrome 80-84 iMin
+ * WebView as well. */
+html.dgfy-imin-performance [class~="blur-[2px]"],
+html.dgfy-imin-performance [class~="blur-sm"],
+html.dgfy-imin-performance [class~="blur-[0.5px]"] {
+  filter: none !important;
 }
 
 html.dgfy-imin-performance .animate-pos-overlay-fade-in,
@@ -2442,6 +2432,15 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   justify-content: center;
 }
 
+.dgfy-pos-history-table--single-view > tbody > tr > td.pos-history-action-column > .pos-history-action-cell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.25rem;
+  align-items: center;
+  justify-content: center;
+}
+
 .dgfy-pos-history-table--single-view .pos-history-action-column {
   min-width: 0;
   position: static;
@@ -2468,13 +2467,11 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
-  padding-left: 0.375rem;
-  padding-right: 0.375rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .dgfy-pos-history-table--tablet > thead > tr > :is(th, td) {
-  padding-top: 0.625rem;
-  padding-bottom: 0.625rem;
   font-size: 0.6875rem;
   line-height: 1.15;
 }
@@ -2502,6 +2499,15 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   justify-content: center;
 }
 
+.dgfy-pos-history-table--tablet > tbody > tr > td.pos-history-action-column > .pos-history-action-cell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: center;
+}
+
 .dgfy-pos-history-table--tablet .pos-history-action-column {
   min-width: 0;
   position: static;
@@ -2523,23 +2529,38 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col {
+  width: 14%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(2) {
+  width: 15%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(3),
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(4) {
+  width: 15%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(5) {
   width: 15%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {
-  width: 22%;
+  width: 26%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > :is(thead, tbody) > tr > :is(th, td) {
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
-.dgfy-pos-history-table--tablet-landscape .pos-history-action-column {
+.dgfy-pos-history-table--tablet .pos-history-action-column {
   text-align: center;
 }
 
-.dgfy-pos-history-table--tablet-landscape .pos-history-action-column > .pos-history-row-content {
+.dgfy-pos-history-table--tablet .pos-history-action-column > .pos-history-action-cell,
+.dgfy-pos-history-table--single-view .pos-history-action-column > .pos-history-action-cell {
+  max-width: 100%;
   justify-content: center;
 }
 
@@ -3022,4 +3043,4923 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 
 [data-catalog-editor] .wizard-step-content {
   padding: 0.75rem 1rem;
+}
+
+
+
+/* POS > Items scoped styles */
+
+
+/* POS Items import uses the DGFY blue palette instead of the generic wizard teal. */
+.wizard-step-navigator--dgfy .wizard-step-navigator__button:hover,
+
+.wizard-step-navigator--dgfy .wizard-step-navigator__button:focus-visible {
+  border-color: #1a4e8d;
+  color: #1a4e8d;
+  box-shadow: 0 0 0 3px rgb(26 78 141 / 0.16);
+}
+
+.wizard-step-navigator--dgfy .wizard-step-navigator__button--active {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+}
+
+.wizard-step-navigator--dgfy .wizard-step-navigator__button--completed {
+  border-color: #c7dcf3;
+  background: #eef5ff;
+  color: #1a4e8d;
+}
+
+.wizard-step-navigator--dgfy .wizard-step-navigator__connector--completed {
+  background: #1a4e8d;
+}
+
+.wizard-step-navigator--dgfy .wizard-step-navigator__button--active + .wizard-step-navigator__label {
+  color: #1a4e8d;
+}
+
+@media (max-width: 767.98px) {
+
+  .dgfy-global-pagination__page-size-suffix--hide-on-mobile {
+    display: none !important;
+  }
+}
+
+/* Add/Edit item footers use equal desktop breathing room above and below the
+ * fixed-height controls. Keep the safe-area inset for devices that need it,
+ * but do not add extra bottom space to the desktop composition. */
+.pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer {
+  --pos-items-footer-control-height: 2.5rem;
+  padding-top: 0.5rem;
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pos-items-catalog-form-modal .pos-items-modal-footer-info,
+
+.pos-items-catalog-form-modal .pos-items-modal-footer-actions > :where(button, [role="button"]) {
+  box-sizing: border-box;
+  height: var(--pos-items-footer-control-height) !important;
+  min-height: var(--pos-items-footer-control-height) !important;
+}
+
+@media (min-width: 640px) {
+  .pos-items-form-scale.pos-items-modal-panel {
+    height: auto;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+/* Horizontal filter rows stay discoverable when their chips exceed a phone's
+   width; unlike the general-purpose hidden scrollbar utility, this surface
+   exposes the native scrollbar and enables horizontal touch panning. */
+
+/* Shared POS pagination follows the mobile wireframe: the range and Go to
+   label share the first row, while page size and navigation share the second. */
+
+/* Keep the History controls slightly above the phone home indicator. This is
+   intentionally scoped to this footer because the shared mobile pagination
+   rule uses !important padding and other paginated surfaces should not move. */
+
+/* Keep the void dialog's title, field, and actions on one shared content
+   gutter. DialogContent has a default horizontal inset while DialogHeader and
+   DialogFooter add their own padding, which otherwise makes the field wider
+   than the action row. */
+
+/* Catalog pagination owns the available width; keep the scrollbar from
+   reserving an extra card column when the catalog becomes scrollable. */
+
+/* The POS item catalog is intentionally a stable four-row desktop viewport:
+   eight cards remain visible and the ninth card onward scrolls inside the
+   catalog instead of pushing the workspace footer down. The row height matches
+   the compact two-column item card at the normal POS text scale. */
+@media (min-width: 1280px) {
+.dgfy-pos-items-catalog-results {
+    grid-auto-rows: 6.75rem;
+    max-height: calc(4 * 6.75rem + 3 * 0.5rem);
+  }
+}
+
+/* Item Options shares the Items tab shell, so its manager, assignment panels,
+   option rows, and controls use the same compact card contract as the item
+   catalog. Keep this scope local to the feature so other POS configuration
+   surfaces are not changed accidentally. */
+.pos-items-options-workspace {
+  --pos-items-options-panel-border: #cbd5e1;
+  --pos-items-options-panel-shadow: 0 8px 20px rgb(148 163 184 / 0.08);
+  --pos-items-options-control-height: 2.25rem;
+}
+
+.pos-items-options-workspace .pos-items-options-panel {
+  box-sizing: border-box;
+  border-color: var(--pos-items-options-panel-border);
+  box-shadow: var(--pos-items-options-panel-shadow);
+}
+
+.pos-items-options-workspace .pos-items-options-assignment-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.pos-items-options-workspace .pos-items-options-grid {
+  align-items: stretch;
+}
+
+.pos-items-options-workspace .pos-items-options-assignment-column {
+  min-height: 0;
+  margin-inline-end: -0.5rem;
+  padding-right: 0;
+}
+
+.pos-items-options-workspace .pos-items-options-list {
+  box-sizing: border-box;
+  margin-inline-end: -0.5rem;
+  padding-inline: 0;
+  scrollbar-gutter: stable;
+}
+
+.pos-items-options-workspace .pos-items-options-option-row {
+  box-sizing: border-box;
+  min-height: var(--pos-items-options-control-height);
+}
+
+.pos-items-options-workspace .pos-items-options-control {
+  box-sizing: border-box;
+  min-height: var(--pos-items-options-control-height);
+}
+
+.pos-items-options-workspace .pos-items-options-actions button {
+  min-height: var(--pos-items-options-control-height);
+}
+
+.pos-items-options-workspace .pos-items-options-group-card {
+  box-sizing: border-box;
+}
+.pos-items-options-workspace .pos-items-options-group-actions {
+  align-self: center;
+}
+
+.pos-items-options-edit-label-mobile {
+  display: none;
+}
+
+.pos-items-options-control-leading-icon {
+  display: none;
+}
+
+/* Every Items-tab listbox uses the same compact menu contract. The menu shell
+   owns scrolling so the scrollbar stays flush with the right edge. */
+.pos-items-dropdown-menu,
+
+.pos-items-catalog-category-menu {
+  box-sizing: border-box;
+  max-height: 11.5rem;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.125rem !important;
+  scrollbar-gutter: stable;
+  scrollbar-color: #94a3b8 transparent;
+  scrollbar-width: thin;
+}
+
+.pos-items-dropdown-menu:hover,
+
+.pos-items-dropdown-menu:focus-within,
+
+.pos-items-dropdown-menu:active,
+
+.pos-items-catalog-category-menu:hover,
+
+.pos-items-catalog-category-menu:focus-within,
+
+.pos-items-catalog-category-menu:active {
+  scrollbar-color: #94a3b8 transparent;
+}
+
+.pos-items-dropdown-option {
+  box-sizing: border-box;
+  min-height: 2rem;
+}
+
+.pos-items-dropdown-menu::-webkit-scrollbar,
+
+.pos-items-catalog-category-menu::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.pos-items-dropdown-menu::-webkit-scrollbar-track,
+
+.pos-items-catalog-category-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pos-items-dropdown-menu::-webkit-scrollbar-thumb,
+
+.pos-items-catalog-category-menu::-webkit-scrollbar-thumb {
+  border: 2px solid #f1f5f9;
+  border-radius: 999px;
+  background: #94a3b8;
+  background-clip: padding-box;
+  transition: background-color 140ms ease;
+}
+
+.pos-items-dropdown-menu:hover::-webkit-scrollbar-thumb,
+
+.pos-items-dropdown-menu:focus-within::-webkit-scrollbar-thumb,
+
+.pos-items-dropdown-menu:active::-webkit-scrollbar-thumb,
+
+.pos-items-catalog-category-menu:hover::-webkit-scrollbar-thumb,
+
+.pos-items-catalog-category-menu:focus-within::-webkit-scrollbar-thumb,
+
+.pos-items-catalog-category-menu:active::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+.pos-items-dropdown-menu::-webkit-scrollbar-thumb:hover,
+
+.pos-items-catalog-category-menu::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  background-clip: padding-box;
+}
+
+.pos-items-dropdown-menu::-webkit-scrollbar-button,
+
+.pos-items-catalog-category-menu::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pos-items-form-scale .pos-items-catalog-select.pos-items-dropdown-trigger {
+  box-sizing: border-box;
+  min-height: 2.5rem;
+}
+
+.pos-items-category-replacement-select.pos-items-dropdown-trigger {
+  box-sizing: border-box;
+  min-height: 2.5rem;
+  border-color: #e2e8f0;
+  border-radius: 0.75rem;
+  color: #0f172a;
+  font-size: 0.875rem;
+}
+
+.pos-items-options-editor-dialog {
+  box-sizing: border-box;
+}
+
+@media (max-width: 1023.98px) {
+  .pos-items-options-workspace .pos-items-options-grid {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager,
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel {
+    min-height: 18rem;
+  }
+}
+
+/* On phones, the workspace itself moves between the stacked sections while
+   each option/selection catalog owns its own scroll position. This keeps the
+   section heading, selector, search field, and action footer stationary while
+   a long catalog is being reviewed. The scope is intentionally limited to
+   Item Options so other POS lists keep their existing scroll behavior. */
+@media (max-width: 767.98px) {
+  /* Item Options uses the same mobile surface contract as Items and
+     Categories: one shared gutter, 40px controls, 10px gaps, and the same
+     slate/blue component geometry. Keep these tokens scoped to this feature
+     so desktop and unrelated POS configuration screens are untouched. */
+  .pos-items-options-workspace {
+    --pos-items-options-control-height: 2.5rem;
+    --pos-items-options-control-radius: 0.625rem;
+    --pos-items-options-card-radius: 0.5rem;
+    --pos-items-options-title-size: 1rem;
+    --pos-items-options-body-size: 0.75rem;
+    --pos-items-options-body-line-height: 1rem;
+    --pos-items-options-card-border: #cbd5e1;
+    --pos-items-options-text: #0f172a;
+    --pos-items-options-muted: #64748b;
+    --pos-items-options-blue: #1a4e8d;
+    box-sizing: border-box;
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 100%;
+    padding-inline: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-grid {
+    gap: 1rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-column {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 1rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header {
+    gap: 0.5rem;
+  }
+
+  /* Manager headers wrap their copy in a div while assignment headers do not.
+     Address both shapes explicitly so the mobile reference never leaks the
+     desktop eyebrow or leaves the header oversized. */
+  .pos-items-options-workspace .pos-items-options-panel-header > p:first-child,
+
+  .pos-items-options-workspace .pos-items-options-panel-header > div:first-child > p:first-child {
+    display: none;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header h2 {
+    margin-top: 0;
+    font-size: var(--pos-items-options-title-size);
+    line-height: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header > p:last-child,
+
+  .pos-items-options-workspace .pos-items-options-panel-header > div:first-child > p:last-child {
+    max-width: 18rem;
+    font-size: var(--pos-items-options-body-size);
+    line-height: 1.25rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header > .pos-items-options-add-button {
+    height: 2.5rem;
+    width: 2.5rem;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    border-radius: 0.75rem;
+    padding: 0;
+    gap: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header > .pos-items-options-add-button svg {
+    height: 1.25rem;
+    width: 1.25rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-add-label {
+    display: none;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+    border-color: var(--pos-items-options-card-border);
+    border-radius: var(--pos-items-options-card-radius);
+    padding: 0.875rem;
+    box-shadow: none;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card p.text-sm {
+    font-size: var(--pos-items-options-title-size);
+    line-height: 1.25rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card p.text-\[10px\] {
+    font-size: var(--pos-items-options-body-size);
+    line-height: var(--pos-items-options-body-line-height);
+  }
+
+  .pos-items-options-workspace .pos-items-options-count {
+    font-size: var(--pos-items-options-body-size);
+    line-height: var(--pos-items-options-body-line-height);
+  }
+
+  .pos-items-options-edit-label-desktop {
+    display: none;
+  }
+
+  .pos-items-options-edit-label-mobile {
+    display: inline;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel > div:not(.pos-items-options-panel-header) > label {
+    font-size: 0.65625rem;
+    line-height: 0.875rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel + .pos-items-options-assignment-panel {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 1rem !important;
+    padding-top: 1rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-panel-header h2 {
+    font-size: var(--pos-items-options-title-size);
+    line-height: 1.25rem;
+    letter-spacing: -0.01em;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card-header > div:first-child {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-card-header > div:first-child > p.text-\[10px\] + p.text-\[10px\] {
+    margin-top: 0.25rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-actions button {
+    height: 2.5rem;
+    min-height: 2.5rem;
+    border-radius: 0.5rem;
+    min-width: 0;
+    padding-inline: 0.75rem;
+    font-size: 0.8125rem;
+    gap: 0.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-group-actions button svg {
+    height: 0.875rem;
+    width: 0.875rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-statuses {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 0.375rem;
+    row-gap: 0;
+    margin-top: 0.75rem;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .pos-items-options-workspace .pos-items-options-status-badge {
+    box-sizing: border-box;
+    width: 100%;
+    height: 1.25rem;
+    min-height: 1.25rem;
+    min-width: 0;
+    justify-content: center;
+    gap: 0;
+    border-radius: 999px;
+    padding: 0.1875rem 0.375rem;
+    font-size: 0.625rem;
+    font-weight: 800;
+    line-height: 0.875rem;
+    letter-spacing: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pos-items-options-workspace .pos-items-options-status-dot {
+    display: none;
+  }
+
+  .pos-items-options-workspace .pos-items-options-status-badge--green {
+    background: #10b981;
+    color: #fff;
+  }
+
+  .pos-items-options-workspace .pos-items-options-status-badge--red {
+    background: #f43f5e;
+    color: #fff;
+  }
+
+  .pos-items-options-workspace .pos-items-options-status-badge--blue {
+    background: #1a4e8d;
+    color: #fff;
+  }
+
+  .pos-items-options-workspace .pos-items-options-option-row {
+    min-height: 2.25rem;
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.5rem;
+    font-size: var(--pos-items-options-body-size);
+    gap: 0.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-option-row input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-option-row > span:last-child {
+    font-size: 0.65625rem;
+    line-height: 0.875rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-control,
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel input[id$="-search"] {
+    height: var(--pos-items-options-control-height);
+    min-height: var(--pos-items-options-control-height);
+    border-color: var(--pos-items-options-blue);
+    border-radius: var(--pos-items-options-control-radius);
+    box-shadow: none;
+    font-size: 0.8125rem;
+  }
+
+  .pos-items-options-workspace input::placeholder {
+    color: #94a3b8;
+    opacity: 1;
+  }
+
+  .pos-items-options-workspace .pos-items-options-control {
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel input[id$="-search"] {
+    padding-left: 0.875rem;
+    padding-right: 2.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-search-icon {
+    right: 0.875rem;
+    left: auto;
+  }
+
+  .pos-items-options-workspace .pos-items-options-control svg,
+
+  .pos-items-options-workspace .pos-items-options-search-icon {
+    height: 0.75rem;
+    width: 0.75rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-control-leading-icon {
+    display: block;
+    height: 0.875rem;
+    width: 0.875rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-actions {
+    gap: 0.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-actions button {
+    height: var(--pos-items-options-control-height);
+    min-height: var(--pos-items-options-control-height);
+    border-radius: var(--pos-items-options-control-radius);
+    font-size: 0.8125rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-actions button svg {
+    height: 0.875rem;
+    width: 0.875rem;
+  }
+
+  .pos-items-options-workspace {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .pos-items-options-workspace .pos-items-options-grid {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-column {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    margin-inline-end: 0;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager,
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel,
+
+  .pos-items-options-workspace .pos-items-options-list {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager,
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel {
+    flex: 0 0 auto;
+    height: auto;
+    max-height: none;
+    min-height: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager .pos-items-options-list,
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-list {
+    flex: 0 0 auto;
+    max-height: 15.625rem;
+    margin-inline-end: 0;
+    overflow-y: scroll;
+    overscroll-behavior: contain;
+    padding-right: 0.25rem;
+    scrollbar-color: #94a3b8 #f1f5f9;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager .pos-items-options-group-list {
+    height: min(34rem, calc(100dvh - 15rem));
+    max-height: min(34rem, calc(100dvh - 15rem));
+    overflow-y: scroll;
+    overscroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.25rem;
+    scrollbar-width: thin;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-list {
+    max-height: 10.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-manager .pos-items-options-list > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-list > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.25rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel {
+    gap: 0;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-list {
+    flex: 0 0 auto;
+  }
+
+  .pos-items-options-workspace .pos-items-options-list::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+
+  .pos-items-options-workspace .pos-items-options-list::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: #f1f5f9;
+  }
+
+  .pos-items-options-workspace .pos-items-options-list::-webkit-scrollbar-thumb {
+    border: 2px solid #f1f5f9;
+    border-radius: 999px;
+    background: #94a3b8;
+  }
+
+  .pos-items-options-workspace .pos-items-options-list::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+}
+
+@media (max-width: 639.98px) {
+  .pos-items-options-workspace .pos-items-options-assignment-panel input[id$="-search"]:focus {
+    border-color: #1a4e8d;
+  }
+
+  .pos-items-options-workspace .pos-items-options-assignment-panel .pos-items-options-search-icon {
+    right: 0.875rem;
+    left: auto;
+  }
+}
+
+/* Items and scanner dialogs render through portals outside .dgfy-pos-shell.
+   Keep their focused controls at iOS's non-zooming size without disabling
+   user-controlled pinch zoom for the rest of the application. */
+
+/* Catalog navigation (Sell/History/Shift/etc.) slide-in: mobile only, right -> left entrance. */
+
+/*
+ * The production iMin wrapper runs a fixed Chrome 80-84 WebView. Full-screen
+ * backdrop filters force that device to repaint and composite the complete POS
+ * workspace behind every dialog, drawer, and lock overlay. The runtime marker
+ * is installed only by apps/dgfy-pos, so browser POS, IMS, and Storefront keep
+ * their normal blur and motion treatment.
+ */
+
+/* POS extended views use a solid dimmed backdrop so the underlying checkout
+ * surface stays readable and the overlay does not create a frosted-glass
+ * effect that varies between desktop, tablet, and mobile browsers. Dialog
+ * overlays are portaled to body, so TerminalPage's body marker scopes this
+ * rule without changing IMS or Storefront. */
+
+/*
+ * Mirrors .pos-receipt-print-dialog/.pos-receipt-print-content above: a
+ * plain `vh` value first, then the `dvh` refinement -- a real CSS fallback,
+ * since a browser that doesn't understand `dvh` simply ignores that second
+ * declaration and keeps the `vh` one instead of dropping max-height
+ * entirely. Belt-and-braces alongside the Dialog primitive's own
+ * unit-independent clamp (Components/ui/dialog.jsx) for the one dialog this
+ * was reported unreachable on: Confirm Checkout on a tablet-sized WebView.
+ */
+
+/* Portrait checkout scroll contract.
+ *
+ * The checkout body already toggles between locked/expanded overflow states.
+ * Give only the two portrait responsive surfaces an explicit flex column
+ * contract: the natural-height sheet owns the bottom anchor, the body owns
+ * vertical scrolling once the viewport ceiling is reached, and the
+ * header/footer stay fixed. Desktop, mobile landscape, and tablet landscape do
+ * not receive these classes and therefore keep their existing layout behavior. */
+
+/* Let the workspace transition push the bottom sheet's top edge. Keeping the
+ * sheet natural-height avoids a compact-height measurement followed by a
+ * second viewport-height reflow. The max-height only becomes a ceiling when
+ * the discount form is taller than the available phone/tablet viewport. */
+
+/* Mobile and tablet portrait sheets share one top boundary. The class is
+ * supplied by the measured POS viewport state so the rule also works inside
+ * the desktop device-preview shell. Mobile landscape does not receive this
+ * class and keeps its existing sheet height. */
+
+/* Use an explicit state marker for the scroll owner. This avoids relying on
+ * utility-class ordering in the portaled DialogContent and keeps the rule
+ * limited to mobile/tablet portrait checkout. The expanded body remains the
+ * single scroll owner once the natural-height sheet reaches its ceiling. */
+
+/* The inline discount form is intentionally collapsed while its reveal
+ * transition runs. Once open, however, the grid item must use the form's
+ * intrinsic height so the portrait checkout body can expose the overflow.
+ * Without this, the grid row resolves to the visible slice (roughly one
+ * control row), the workspace clips the remaining fields, and the body has
+ * no scrollable overflow even though the form is taller than the viewport. */
+
+/* Keep the Apply Discount row close to the controls below it in portrait
+ * checkout. This is intentionally scoped so desktop, mobile landscape, and
+ * tablet landscape keep their existing vertical rhythm. */
+
+/* Give the phone's Apply Discount buttons a small visual buffer before the
+ * Eligible Items heading without increasing the button height itself. */
+
+/* A vertical swipe that starts on a one-row control strip must still reach the
+ * checkout body. Keep the phone's intentional horizontal strip behavior, but
+ * allow the same gesture to participate in vertical scrolling. Tablet
+ * portrait's strips are already non-scrollable through the scoped rules above. */
+/*
+ * POS Items custom modals cannot rely on dynamic viewport units because the
+ * iMin wrapper supports Chrome 80. Keep the vh declaration first so older
+ * WebViews retain a real constraint, then let newer browsers refine it with
+ * dvh as the software keyboard and browser chrome change the visual viewport.
+ */
+.pos-items-form-scale.pos-items-modal-panel {
+  height: calc(100vh - 1.5rem);
+  height: calc(100dvh - 1.5rem);
+  max-height: calc(100vh - 1.5rem);
+  max-height: calc(100dvh - 1.5rem);
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* Add/Edit item modals inherit the Items and Categories scroll treatment:
+ * compact, transparent until interaction, and without browser arrow buttons. */
+.pos-items-form-scale .pos-items-modal-scroll-region,
+
+.pos-items-form-scale .pos-items-modal-scrollbar {
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region:hover,
+.pos-items-form-scale
+.pos-items-modal-scroll-region:focus-within,
+.pos-items-form-scale
+.pos-items-modal-scroll-region:active,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:hover,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:focus-within,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:active {
+  scrollbar-color: #94a3b8 transparent;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region::-webkit-scrollbar,
+
+.pos-items-form-scale .pos-items-modal-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region::-webkit-scrollbar-track,
+
+.pos-items-form-scale .pos-items-modal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region::-webkit-scrollbar-thumb,
+
+.pos-items-form-scale .pos-items-modal-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+  transition: background-color 140ms ease;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region:hover::-webkit-scrollbar-thumb,
+.pos-items-form-scale
+.pos-items-modal-scroll-region:focus-within::-webkit-scrollbar-thumb,
+.pos-items-form-scale
+.pos-items-modal-scroll-region:active::-webkit-scrollbar-thumb,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:hover::-webkit-scrollbar-thumb,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:focus-within::-webkit-scrollbar-thumb,
+
+.pos-items-form-scale .pos-items-modal-scrollbar:active::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region::-webkit-scrollbar-thumb:hover,
+
+.pos-items-form-scale .pos-items-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+  background-clip: padding-box;
+}
+
+.pos-items-form-scale .pos-items-modal-scroll-region::-webkit-scrollbar-button,
+
+.pos-items-form-scale .pos-items-modal-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.pos-items-form-scale .pos-items-modal-footer {
+  padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+/* The Add Item and Edit Item bodies need a balanced content gutter. The
+ * scrollbar is intentionally reserved on both edges so the form does not
+ * appear to drift toward the left when the body becomes scrollable. */
+.pos-items-form-scale .pos-items-modal-body {
+  box-sizing: border-box;
+  padding-inline: 1.25rem;
+  scrollbar-gutter: stable both-edges;
+}
+
+@media (max-width: 639px) {
+  .pos-items-form-scale .pos-items-modal-body {
+    padding-inline: 0.75rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .pos-items-form-scale.pos-items-modal-panel {
+    height: auto;
+    max-height: calc(100vh - 3rem);
+    max-height: calc(100dvh - 3rem);
+  }
+}
+
+/* Add/Edit item forms use the readable desktop baseline shared by both tabs.
+ * Keep this opt-in so compact controls elsewhere in POS are unaffected. */
+.pos-items-form-scale :where([class*="text-[10px]"]) {
+  font-size: 0.6875rem !important;
+  line-height: 1.125rem;
+}
+
+.pos-items-form-scale :where([class*="text-[8px]"]) {
+  font-size: 0.625rem !important;
+  line-height: 1rem;
+}
+
+.pos-items-form-scale :where([class*="text-[9px]"]) {
+  font-size: 0.6875rem !important;
+  line-height: 1.125rem;
+}
+
+.pos-items-form-scale :where([class*="text-[11px]"]) {
+  font-size: 0.75rem !important;
+  line-height: 1.25rem;
+}
+
+.pos-items-form-scale :where(label) {
+  font-size: 0.75rem !important;
+  line-height: 1.125rem;
+}
+
+.pos-items-form-scale :where(button, [role="button"]):not([role="switch"]) {
+  font-size: 0.75rem;
+}
+
+.pos-items-form-scale :where(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  font-size: 0.8125rem !important;
+  line-height: 1.125rem;
+}
+
+.pos-items-form-scale :where(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), select) {
+  height: 2.5rem !important;
+  min-height: 2.5rem;
+}
+
+.pos-items-form-scale :where(textarea) {
+  min-height: 4.5rem;
+}
+
+.pos-items-form-scale :where(input[type="checkbox"], input[type="radio"]) {
+  width: 1rem !important;
+  height: 1rem !important;
+  min-width: 1rem;
+  min-height: 1rem !important;
+  flex: 0 0 1rem;
+}
+
+  .pos-items-form-scale :where(button:not([role="switch"]):not(.wizard-step-navigator__button):not([aria-expanded]):not([data-pos-item-image-remove]):not([data-pos-qr-share]):not([aria-label^="Close"]):not([aria-label*="Previous"]):not([aria-label*="Next"]):not([aria-label*="Show "]):not([aria-label*="Focus "])) {
+  min-height: 2.5rem;
+}
+
+.pos-items-form-scale :where([data-pos-item-image-remove]) {
+  height: 2rem !important;
+  min-height: 2rem !important;
+}
+
+.pos-items-form-scale :where([class~="gap-2.5"]) {
+  gap: 1rem;
+}
+
+.pos-items-catalog-form-modal :where([class~="gap-2.5"]) {
+  gap: 1.25rem;
+}
+
+.pos-items-form-scale .csv-import-mode-option {
+  min-height: 4.5rem;
+  box-sizing: border-box;
+  align-items: flex-start;
+}
+
+/* CSV import keeps the Items modal's spacing rhythm across all three steps.
+ * The content remains compact enough for the footer to stay visible while
+ * long previews and error lists continue to scroll inside their own regions. */
+.csv-import-modal .csv-import-step-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.csv-import-modal .csv-import-modal-body {
+  box-sizing: border-box;
+  padding-right: 1.25rem;
+  padding-left: 1.25rem;
+  padding-top: 0.875rem;
+  padding-bottom: 1rem;
+  scrollbar-gutter: stable both-edges;
+}
+
+.csv-import-modal .csv-import-upload-dropzone {
+  min-height: 7.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.csv-import-modal .csv-import-template-panel {
+  min-height: 4.5rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.csv-import-modal .csv-import-mode-section {
+  padding-top: 0.125rem;
+}
+
+.csv-import-modal .csv-import-mode-option {
+  min-height: 4.5rem;
+  padding: 0.75rem;
+}
+
+.csv-import-modal .csv-import-summary-grid > :where(div),
+
+.csv-import-modal .csv-import-result-stats > :where(div) {
+  min-height: 4.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.csv-import-modal .csv-import-result-step {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.csv-import-modal .csv-import-result-step > :where(.mx-auto) {
+  flex-shrink: 0;
+}
+
+.csv-import-modal .csv-import-modal-footer {
+  align-items: center;
+  grid-auto-rows: minmax(2.5rem, auto);
+}
+
+.csv-import-modal .csv-import-modal-footer > :where(button) {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 639px) {
+  .csv-import-modal .csv-import-modal-body {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .csv-import-modal .csv-import-result-modal-body {
+    flex: 0 1 auto !important;
+  }
+
+  .csv-import-modal .csv-import-result-modal-body .csv-import-result-step {
+    gap: 0.5rem;
+    padding-block: 0.5rem;
+  }
+
+  .csv-import-modal .csv-import-result-modal-body .csv-import-result-stats > :where(div) {
+    min-height: 3.75rem;
+  }
+
+  .csv-import-modal .csv-import-summary-error-card {
+    grid-column: 1 / -1;
+    width: calc(50% - 0.25rem);
+    justify-self: center;
+  }
+
+  .csv-import-modal .csv-import-template-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .csv-import-modal .csv-import-template-panel > :where(button) {
+    width: 100%;
+  }
+
+  .csv-import-modal .csv-import-preview-table-scroll {
+    max-height: 15rem;
+    padding: 0.5rem;
+    touch-action: pan-x pan-y;
+    overflow-x: auto;
+    scrollbar-color: #94a3b8 #e2e8f0;
+    scrollbar-width: thin;
+  }
+
+  .csv-import-modal .csv-import-preview-table-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .csv-import-modal .csv-import-preview-table-scroll::-webkit-scrollbar-track {
+    border-radius: 9999px;
+    background: #e2e8f0;
+  }
+
+  .csv-import-modal .csv-import-preview-table-scroll::-webkit-scrollbar-thumb {
+    border: 1px solid #e2e8f0;
+    border-radius: 9999px;
+    background: #94a3b8;
+  }
+
+  .csv-import-modal .csv-import-preview-table-scroll::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+
+  .csv-import-modal .csv-import-preview-table {
+    min-width: 29rem;
+    table-layout: auto;
+  }
+
+  .csv-import-modal .csv-import-modal-footer > :where(button) {
+    min-width: 0;
+    padding-inline: 0.5rem;
+    white-space: nowrap;
+    font-size: 0.6875rem;
+    line-height: 1.1;
+  }
+
+  .csv-import-modal .csv-import-modal-footer > :where(button) > :where(svg) {
+    flex: 0 0 auto;
+  }
+}
+
+/* CSV import keeps the Items modal's spacing rhythm across all three steps.
+ * The content remains compact enough for the footer to stay visible while
+ * long previews and error lists continue to scroll inside their own regions. */
+
+.pos-items-form-scale .csv-import-preview-chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  min-height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pos-items-form-scale .csv-import-preview-action-chip {
+  min-width: 4.75rem;
+}
+
+.pos-items-form-scale .csv-import-preview-status-chip {
+  min-width: 3.5rem;
+}
+
+/* Keep the preview table to roughly three compact data rows so the modal
+ * footer remains visible; additional rows scroll inside the table only. */
+.pos-items-form-scale .csv-import-preview-table-scroll {
+  max-height: 13rem;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.pos-items-form-scale .wizard-step-navigator--compact {
+  display: flex;
+  align-items: center;
+  padding-block: 0.25rem !important;
+}
+
+.pos-items-form-scale .wizard-step-navigator--compact .wizard-step-navigator__track {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  align-items: center;
+}
+
+.pos-items-form-scale .wizard-step-navigator__button--compact {
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+  min-height: 1.5rem !important;
+}
+
+.pos-items-form-scale .csv-import-stepper {
+  --csv-step-circle-size: 1.625rem;
+  --csv-step-track-gap: 1.125rem;
+  overflow-x: hidden;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0.5rem 0 !important;
+}
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__track {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  width: min(100%, 20rem);
+  max-width: 20rem;
+  min-width: 0 !important;
+  gap: var(--csv-step-track-gap);
+  margin-inline: auto;
+  align-items: start;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: auto auto;
+  gap: 0.375rem;
+  align-items: start;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__button {
+  position: relative;
+  z-index: 1;
+  width: var(--csv-step-circle-size) !important;
+  height: var(--csv-step-circle-size) !important;
+  min-height: var(--csv-step-circle-size) !important;
+  justify-self: center;
+  padding: 0;
+  font-size: 0.6875rem;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item:first-child .wizard-step-navigator__button {
+  justify-self: start;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item:last-child .wizard-step-navigator__button {
+  justify-self: end;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__label {
+  min-width: 0;
+  color: #64748b;
+  width: max-content;
+  max-width: 100%;
+  justify-self: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item:first-child .wizard-step-navigator__label {
+  justify-self: start;
+  transform: translateX(calc((var(--csv-step-circle-size) - 100%) / 2));
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item:last-child .wizard-step-navigator__label {
+  justify-self: end;
+  transform: translateX(calc((100% - var(--csv-step-circle-size)) / 2));
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__button--active + .wizard-step-navigator__label {
+  font-weight: 700;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__connector {
+  position: absolute;
+  top: calc(var(--csv-step-circle-size) / 2 - 1px);
+  left: calc(50% + 0.8125rem);
+  width: calc(150% - 1.3125rem);
+  min-width: 0;
+  height: 2px;
+  flex: none;
+  border-radius: 9999px;
+  background: #bae6fd;
+  z-index: 0;
+}
+
+.pos-items-form-scale .csv-import-stepper .wizard-step-navigator__item:first-child .wizard-step-navigator__connector {
+  left: var(--csv-step-circle-size);
+}
+
+.pos-items-form-scale .pos-items-status-grid {
+  grid-auto-rows: minmax(4.5rem, auto);
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.pos-items-form-scale .pos-items-status-grid > :where(div) {
+  min-height: 4.5rem;
+  height: 100%;
+}
+
+/* Add Item and Edit Item share the same field and auxiliary-panel language.
+ * Keep these contracts scoped to the item modals so compact controls elsewhere
+ * in POS retain their own density. */
+.pos-items-form-scale .pos-items-modal-field {
+  height: 2.5rem;
+  min-height: 2.5rem;
+  border: 1px solid #cbd5e1;
+  border-color: #cbd5e1;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+}
+
+.pos-items-form-scale .pos-items-modal-field:focus {
+  border-color: #1a4e8d;
+  box-shadow: 0 0 0 2px rgb(219 234 254 / 0.9);
+}
+
+/* Modal fields share the input height, but the description control must keep
+ * its own multiline geometry instead of collapsing to a single line. */
+.pos-items-form-scale .pos-items-modal-textarea {
+  box-sizing: border-box;
+  height: 4.5rem;
+  min-height: 4.5rem;
+  resize: vertical;
+  line-height: 1.25rem;
+  overflow-y: auto;
+}
+
+.pos-items-form-scale .pos-items-modal-label {
+  min-height: 1.25rem;
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1rem;
+}
+
+.pos-items-form-scale .pos-items-modal-section-title {
+  color: #0f172a;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1rem;
+}
+
+.pos-items-form-scale .pos-items-modal-secondary-panel {
+  align-self: flex-start;
+  height: fit-content;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: rgb(248 250 252 / 0.6);
+  padding: 0.625rem;
+}
+
+.pos-items-form-scale .pos-items-modal-option-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: max(15.625rem, calc(var(--pos-items-create-options-max-height, 15.625rem) - 5.5rem));
+  overflow-y: auto;
+}
+
+/* Add Options uses the live Description / Notes height as an upper bound. The
+ * panel remains content-driven for short lists and only its option list
+ * scrolls when the available height is exceeded. */
+.pos-items-form-scale .pos-items-create-options-panel {
+  box-sizing: border-box;
+  display: flex;
+  align-self: flex-start;
+  height: fit-content;
+  min-height: 0;
+  max-height: var(--pos-items-create-options-max-height, none);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pos-items-form-scale .pos-items-edit-categories-panel {
+  box-sizing: border-box;
+  display: flex;
+  align-self: stretch;
+  height: var(--pos-items-edit-categories-height, auto);
+  min-height: 0;
+  max-height: var(--pos-items-edit-categories-height, none);
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pos-items-form-scale .pos-items-edit-categories-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.pos-items-form-scale .pos-items-modal-option-row {
+  min-height: 2.5rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  padding: 0.375rem 0.5rem;
+  color: #334155;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1rem;
+}
+
+.pos-items-form-scale .pos-items-modal-option-row input[type="checkbox"] {
+  accent-color: #1a4e8d;
+}
+
+.pos-items-form-scale .pos-items-modal-checkbox {
+  box-sizing: border-box;
+  width: 1rem !important;
+  height: 1rem !important;
+  min-width: 1rem;
+  min-height: 1rem !important;
+  margin: 0;
+  flex: 0 0 1rem;
+  accent-color: #1a4e8d;
+}
+
+.pos-items-form-scale .pos-items-modal-currency-prefix {
+  left: 0.625rem;
+  color: #94a3b8;
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+/* Add Item and Edit Item use the same status-toggle treatment. Keep the
+ * geometry here so modal-specific utility classes cannot make the sliders
+ * render at different sizes. */
+.pos-items-form-scale [role="switch"].pos-items-status-switch {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 1.5rem;
+  min-height: 1.5rem;
+  border-width: 2px;
+}
+
+.pos-items-form-scale [role="switch"].pos-items-status-switch > span {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* POS Add/Edit thumbnails use four equal, square preview tiles at every
+   viewport size. This differs from the storefront-management carousel's
+   horizontal strip, so scope it to the catalog item form dialogs. */
+.pos-items-catalog-form-modal .pos-items-image-carousel-thumbnails {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pos-items-catalog-form-modal .pos-items-image-carousel-thumbnail {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 0 !important;
+  max-height: none;
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+/* Add/Edit Item share one compact portrait-tablet modal contract. Keep the
+   dialog narrower and denser without changing the phone or PC composition;
+   the body remains the only scrolling region and the footer stays fixed. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .pos-items-modal-overlay {
+    padding: 2.5rem;
+  }
+
+  .pos-items-catalog-form-modal {
+    --pos-items-modal-side-margin: max(4rem, calc(50vw - 23rem));
+    width: 100%;
+    max-width: min(46rem, calc(100vw - 8rem));
+    height: calc(100vh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    height: calc(100dvh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    max-height: calc(100vh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    max-height: calc(100dvh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body {
+    padding-inline: 1rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body > section:first-child,
+
+  .pos-items-catalog-form-modal .pos-items-form-columns,
+
+  .pos-items-catalog-form-modal .pos-items-status-grid {
+    margin-top: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body > section:first-child {
+    gap: 0.375rem;
+    padding: 0.625rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid {
+    gap: 0.625rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid > :where(div) {
+    min-height: 3rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns {
+    gap: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns > :where(div, section) {
+    gap: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns .pos-items-image-upload-dropzone {
+    min-height: 5.5rem;
+    padding: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-field,
+
+  .pos-items-catalog-form-modal :where(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), select) {
+    height: 2rem !important;
+    min-height: 2rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-textarea,
+
+  .pos-items-catalog-form-modal :where(textarea) {
+    height: 3.25rem;
+    min-height: 3.25rem !important;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-label,
+
+  .pos-items-catalog-form-modal .pos-items-modal-section-title {
+    font-size: 0.6875rem;
+    line-height: 0.9375rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-secondary-panel {
+    padding: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-option-row {
+    min-height: 2rem;
+    padding: 0.25rem 0.375rem;
+  }
+
+  .pos-items-catalog-form-modal :where(button, [role="button"]):not([role="switch"]) {
+    min-height: 2rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-navigation {
+    box-sizing: border-box;
+    width: 2rem;
+    min-width: 2rem;
+    max-width: 2rem;
+    height: 2rem;
+    min-height: 2rem;
+    max-height: 2rem;
+    flex: 0 0 2rem;
+    padding: 0;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-stage {
+    aspect-ratio: 4 / 3;
+    height: auto;
+    min-height: 0;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-main-image,
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-placeholder {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-main-image {
+    object-fit: cover;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-thumbnails {
+    grid-template-columns: repeat(4, minmax(4.25rem, 1fr));
+    justify-content: stretch;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-thumbnail {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: auto;
+    min-height: 0 !important;
+    max-height: none;
+    padding: 0;
+    aspect-ratio: 1;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-dot {
+    box-sizing: border-box;
+    width: 0.375rem;
+    min-width: 0.375rem;
+    height: 0.375rem;
+    min-height: 0.375rem !important;
+    max-height: 0.375rem;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-image-carousel-dot[aria-current="true"] {
+    width: 1rem;
+    min-width: 1rem;
+  }
+
+  .pos-items-catalog-form-modal button[aria-label^="More information about Product Image"] {
+    box-sizing: border-box;
+    width: 1.25rem;
+    min-width: 1.25rem;
+    max-width: 1.25rem;
+    height: 1.25rem;
+    min-height: 1.25rem !important;
+    max-height: 1.25rem;
+    flex: 0 0 1.25rem;
+    padding: 0;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer :where(button, [role="button"]) {
+    height: 2rem !important;
+    min-height: 2rem !important;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem;
+    padding: 0.375rem 1rem;
+    --pos-items-footer-control-height: 2rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-footer-info {
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-footer-actions {
+    width: 100%;
+    gap: 0.375rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-footer-actions > :where(button, [role="button"]) {
+    display: inline-flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
+    white-space: nowrap;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-footer-actions > :where(button, [role="button"]) > :where(svg) {
+    flex: 0 0 auto;
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}
+
+/* The compact portrait-tablet rule above ends at 1023px. Larger portrait
+   tablets (notably 1024px CSS-width devices) keep the desktop dialog width,
+   but still need top/bottom margins that match the dialog's side gutters. */
+@media (orientation: portrait) and (min-width: 1024px) and (max-width: 1199.98px) {
+  .pos-items-catalog-form-modal {
+    --pos-items-modal-side-margin: max(1rem, calc(50vw - 27rem));
+    height: calc(100vh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    height: calc(100dvh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    max-height: calc(100vh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+    max-height: calc(100dvh - var(--pos-items-modal-side-margin) - var(--pos-items-modal-side-margin));
+  }
+}
+
+/* Landscape tablets have enough width for the desktop form composition, but
+   not enough height for the unbounded desktop modal. Keep both Add and Edit
+   forms in three compact columns while the body owns the scroll and the
+   footer stays visible. */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  .pos-items-modal-overlay {
+    padding: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal {
+    width: 100%;
+    max-width: calc(100vw - 1.5rem);
+    height: calc(100vh - 1.5rem);
+    height: calc(100dvh - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body {
+    padding-inline: 1rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body > section:first-child,
+
+  .pos-items-catalog-form-modal .pos-items-status-grid,
+
+  .pos-items-catalog-form-modal .pos-items-form-columns {
+    margin-top: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid {
+    gap: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid > :where(div) {
+    min-height: 4rem;
+    padding: 0.5rem;
+  }
+
+  .pos-items-form-scale .pos-items-form-columns {
+    --pos-items-side-column: calc((100% - 2rem) / 3);
+    grid-template-columns:
+      minmax(0, var(--pos-items-side-column))
+      minmax(0, calc(var(--pos-items-side-column) + 2rem))
+      minmax(0, var(--pos-items-side-column));
+    gap: 1rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns .pos-items-image-upload-dropzone {
+    min-height: 7.5rem;
+    padding: 0.625rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-option-row {
+    min-height: 2.25rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer {
+    padding-inline: 1rem;
+    padding-block: 0.5rem;
+    --pos-items-footer-control-height: 2.25rem;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer :where(button, [role="button"]) {
+    height: 2.25rem;
+    min-height: 2.25rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pos-items-form-scale .pos-items-form-columns {
+    --pos-items-side-column: calc((100% - 5.5rem) / 3);
+    grid-template-columns:
+      minmax(0, var(--pos-items-side-column))
+      minmax(0, calc(var(--pos-items-side-column) + 4rem))
+      minmax(0, var(--pos-items-side-column));
+  }
+}
+
+/* Keep the Primary image control clear of the carousel dots on wider layouts.
+   Mobile and tablet portrait retain the lower-left placement. */
+@media screen and (orientation: landscape) and (min-width: 1024px),
+       screen and (min-width: 1280px) {
+  .pos-items-catalog-form-modal .pos-items-image-carousel-primary-toggle {
+    bottom: 2rem;
+  }
+}
+
+/* POS date filters render a single decorative calendar icon; suppress the
+   native browser calendar-picker-indicator so it doesn't render a second,
+   overlapping calendar affordance inside the same input. */
+
+/* Keep transaction action cells above row content when the history table uses
+   a narrow scrolling layout. PC-style tablet mode overrides the sticky
+   positioning below so its columns inherit the desktop flow. */
+
+/* The normal-size desktop history view must keep its fixed column contract.
+   The text-size compatibility layer above intentionally relaxes table sizing
+   and wrapping for large text, but its `overflow-wrap: anywhere` rule would
+   otherwise split the Restaurant heading inside the word. */
+
+/* Tablets use the same twelve-column history contract as PC, but on a compact
+   fixed canvas. The surrounding scroll region provides intentional horizontal
+   panning instead of collapsing financial fields into an unrelated layout. */
+
+/* Tablet landscape has enough width for the full financial table, but not for
+   the desktop table's 1180px canvas. Fit the same twelve columns to the
+   available panel width and reserve a slightly wider final column so the two
+   action controls stay visible without disturbing the financial values. */
+
+/* Icon-only transaction actions keep a fixed square hit area. The text-size
+   compatibility rule above intentionally allows table buttons to grow for
+   wrapped labels, but that rule must not stretch these icon controls into
+   rectangular hover surfaces. */
+
+/* History and Items use the same desktop filter language. Keep the shared
+ * surface contract in one place so a tab cannot drift in border, typography,
+ * choice-control, or footer treatment while retaining its own filter state. */
+
+/* Filter surfaces are extended POS views, so they inherit the same modal
+ * chrome as Add/Edit and import flows instead of becoming a separate visual
+ * language when opened from a toolbar. */
+
+/* This selector intentionally outranks the text-size table-button rule so
+   the square contract remains true at every POS text-size setting. */
+
+@media (max-width: 767.98px) {
+
+
+  .pos-items-mobile-tab-strip {
+    margin-inline: 0;
+    overflow-x: hidden;
+  }
+
+
+  .pos-items-mobile-tab-list {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    padding: 0;
+  }
+
+
+  .pos-items-mobile-tab {
+    min-width: 0;
+    justify-content: center;
+    gap: 0.375rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1.1;
+  }
+
+
+  .pos-items-mobile-tab svg {
+    height: 1rem;
+    width: 1rem;
+    flex-shrink: 0;
+  }
+
+  /* Add/Edit Item use the same mobile bottom-sheet motion and viewport
+     anchoring as the Items and History filter surfaces. Desktop modal sizing
+     remains controlled by the base panel rules above. */
+  .pos-items-modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+
+  .pos-items-mobile-sheet-panel {
+    height: auto !important;
+    max-height: min(90vh, 40rem) !important;
+    max-height: min(90dvh, 40rem) !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    animation: dgfy-pos-history-mobile-sheet-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: bottom, opacity;
+  }
+
+  /* Keep the option-group editor content-driven on phones. The footer is a
+     normal flex sibling, so forcing a full-height sheet only creates a large
+     empty region below the last option. The max-height still lets the body
+     scroll on short devices without changing tablet or desktop geometry. */
+  .pos-items-options-editor-dialog {
+    box-sizing: border-box;
+    position: fixed !important;
+    top: auto !important;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    height: min(90vh, 40rem) !important;
+    height: min(90dvh, 40rem) !important;
+    max-height: min(calc(100dvh - 1rem), 40rem) !important;
+    margin: 0 !important;
+    min-height: 0;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+  }
+
+  .pos-fnb-option-group-editor-header,
+
+  .pos-fnb-option-group-editor-footer {
+    position: relative;
+    z-index: 1;
+  }
+
+  .pos-fnb-option-group-editor-body {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-anchor: none;
+    overscroll-behavior: contain;
+    padding-top: 1rem !important;
+    scroll-padding-top: 1rem;
+    scrollbar-gutter: stable;
+  }
+
+  /* Keep the CSV import actions clear of the phone home indicator. The
+   * utility padding on DialogFooter is intentionally overridden only for
+   * this mobile sheet so the action row remains visually aligned with the
+   * Add/Edit Item sheets without changing desktop dialogs. */
+
+  /* Keep the Add Options and Additional Categories surfaces compact on
+     mobile. Show five full rows and part of the next row as an intentional
+     overflow cue; longer lists scroll inside the list instead of expanding
+     the sheet or pushing the modal actions below the viewport. */
+  .pos-items-form-scale .pos-items-create-options-panel,
+
+  .pos-items-form-scale .pos-items-edit-categories-panel {
+    height: fit-content !important;
+    max-height: none !important;
+  }
+
+  .pos-items-form-scale .pos-items-modal-option-list,
+
+  .pos-items-form-scale .pos-items-edit-categories-list {
+    flex: 0 0 auto;
+    max-height: 15.625rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/*
+ * Landscape phones have enough horizontal room for a compact dialog, but not
+ * enough vertical room for a full-width bottom sheet. Keep the portrait sheet
+ * behavior above and switch only this mobile orientation to a centered dialog.
+ * The explicit sizing also prevents the date controls from inheriting the
+ * taller portrait-mobile dimensions and clipping the footer.
+ */
+
+/* F&B POS Saving Modal Keyframes */
+
+/*
+ * Mobile Items catalog reference contract.
+ * Keep this surface intentionally separate from the desktop catalog: the
+ * reference uses large stacked cards with an image/summary row, a 2x2 metric
+ * block, and paired Edit/Delete actions. All rules are phone-only so the
+ * desktop Items grid is not changed.
+ */
+@media (max-width: 639.98px) {
+
+  .pos-items-workspace-shell {
+    --pos-items-mobile-gutter: 0.5rem;
+    padding: 0 var(--pos-items-mobile-gutter) 1rem;
+    padding-inline: var(--pos-items-mobile-gutter) !important;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  .pos-items-mobile-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0;
+  }
+
+  .pos-items-mobile-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .pos-items-mobile-import-actions {
+    display: flex;
+    flex: 0 0 100%;
+    min-width: 0;
+    gap: 0.5rem;
+  }
+
+  .pos-categories-mobile-toolbar {
+    flex-direction: row !important;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+
+  .pos-categories-mobile-actions {
+    flex-wrap: nowrap !important;
+    gap: 0.5rem;
+  }
+
+  .pos-categories-mobile-search input {
+    padding-left: 2.25rem;
+    padding-right: 0.75rem;
+  }
+
+  .pos-categories-mobile-search > svg {
+    right: auto;
+    left: 0.75rem;
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .pos-categories-mobile-action-label {
+    display: none;
+  }
+
+  .pos-categories-mobile-results {
+    padding-right: 0;
+  }
+
+  .pos-categories-mobile-list > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.75rem;
+  }
+
+  .pos-categories-mobile-grid {
+    gap: 0.75rem;
+  }
+
+  .pos-categories-mobile-card {
+    border-radius: 0.5rem;
+    box-shadow: none;
+  }
+
+  .pos-categories-mobile-card-title {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+
+  .pos-categories-mobile-card-description,
+
+  .pos-categories-mobile-card-count {
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
+
+  .pos-categories-mobile-card-actions button {
+    height: 2rem;
+    width: 2rem;
+    min-height: 2rem;
+    min-width: 2rem;
+    border-radius: 0.5rem;
+  }
+
+  .pos-categories-mobile-card-actions button svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .pos-items-mobile-search {
+    position: relative;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .pos-items-mobile-search input {
+    height: 2.5rem;
+    border-width: 1px;
+    border-radius: 0.625rem;
+    padding-left: 2.25rem;
+    padding-right: 2.5rem;
+  }
+
+  .pos-items-mobile-search > div > svg:first-child {
+    right: auto;
+    left: 0.75rem;
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .pos-items-mobile-icon-button {
+    display: grid;
+    height: 2.5rem;
+    width: 2.5rem;
+    flex: 0 0 2.5rem;
+    place-items: center;
+    border: 1px solid #1a4e8d;
+    border-radius: 0.625rem;
+    background: #fff;
+    color: #1a4e8d;
+    transition: background-color 150ms ease, color 150ms ease;
+  }
+
+  .pos-items-mobile-icon-button:hover,
+
+  .pos-items-mobile-icon-button:focus-visible,
+
+  .pos-items-mobile-icon-button--active {
+    background: #1a4e8d;
+    color: #fff;
+  }
+
+  .pos-items-mobile-icon-button svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .pos-items-mobile-import-button {
+    display: inline-flex;
+    width: auto;
+    min-width: 0;
+    flex: 1 1 0%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding-inline: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .pos-items-mobile-results {
+    gap: 0.75rem;
+    padding-right: 0;
+  }
+
+  /* The mobile catalog is a separate composition from the desktop item row.
+   * Keep the reference proportions here instead of relying on desktop card
+   * utilities to collapse and then trying to enlarge them again. */
+  .pos-items-reference-mobile-card {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.75rem;
+    gap: 0.75rem;
+    border-width: 1px;
+    border-radius: 0.5rem;
+  }
+
+  .pos-items-reference-mobile-card-top {
+    gap: 0.625rem;
+  }
+
+  .pos-items-reference-mobile-card-image {
+    aspect-ratio: 1 / 1;
+    height: clamp(4.75rem, 24vw, 5.75rem);
+    width: clamp(4.75rem, 24vw, 5.75rem);
+    flex: 0 0 auto;
+    overflow: hidden;
+    padding: 0;
+    border-radius: 0.375rem;
+  }
+
+  .pos-items-reference-mobile-card-title {
+    font-size: 1.125rem;
+    line-height: 1.125;
+  }
+
+  .pos-items-reference-mobile-card-subtitle,
+
+  .pos-items-reference-mobile-card-meta p {
+    font-size: 0.75rem;
+    line-height: 1.25;
+  }
+
+  .pos-items-reference-mobile-card-meta {
+    margin-top: 0.5rem;
+    gap: 0.25rem;
+  }
+
+  .pos-items-reference-mobile-card-meta > div {
+    gap: 0.375rem;
+  }
+
+  .pos-items-reference-mobile-card-meta svg {
+    height: 0.875rem;
+    width: 0.875rem;
+    stroke-width: 2;
+  }
+
+  .pos-items-reference-mobile-card-metrics {
+    border-width: 1px;
+    border-radius: 0.625rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div {
+    min-height: clamp(2.25rem, 9.6vw, 2.75rem);
+    gap: 0.375rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div svg {
+    height: 1rem;
+    width: 1rem;
+    stroke-width: 2;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:first-child {
+    font-size: 0.65625rem;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:last-child {
+    font-size: 0.9375rem;
+    line-height: 1.15;
+  }
+
+  .pos-items-reference-mobile-card-actions button {
+    height: 2.5rem;
+    border-width: 1px;
+    border-radius: 0.625rem;
+    font-size: 0.8125rem;
+  }
+
+  .pos-items-reference-mobile-card-actions {
+    gap: 0.5rem;
+  }
+
+  .pos-items-reference-mobile-card-actions button svg {
+    height: 0.875rem;
+    width: 0.875rem;
+    stroke-width: 2;
+  }
+
+  .pos-items-mobile-card {
+    box-sizing: border-box;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    border-color: #cbd5e1;
+    border-radius: 1.25rem;
+    padding: clamp(1rem, 4.27vw, 2rem);
+    box-shadow: none;
+  }
+
+  .pos-items-mobile-card-grid {
+    display: grid !important;
+    height: auto !important;
+    min-height: 0 !important;
+    grid-template-columns: clamp(4.75rem, 20vw, 9.375rem) minmax(0, 1fr);
+    gap: clamp(0.75rem, 2.67vw, 1.25rem);
+  }
+
+  .pos-items-mobile-card-image {
+    height: clamp(4.75rem, 20vw, 9.375rem) !important;
+    width: clamp(4.75rem, 20vw, 9.375rem) !important;
+    min-height: clamp(4.75rem, 20vw, 9.375rem) !important;
+    min-width: 0;
+    border-radius: 0;
+  }
+
+  .pos-items-mobile-card-summary {
+    align-self: start;
+    padding: 0;
+  }
+
+  .pos-items-mobile-card-summary-inner {
+    min-height: 0;
+    justify-content: flex-start;
+  }
+
+  .pos-items-mobile-card-title {
+    font-size: clamp(1rem, 4.27vw, 2rem);
+    line-height: 1.1;
+  }
+
+  .pos-items-mobile-card-subtitle {
+    margin-top: 0.25rem;
+    font-size: clamp(0.75rem, 2.4vw, 1rem);
+    line-height: 1.25rem;
+    text-decoration: underline;
+    text-decoration-color: #cbd5e1;
+    text-underline-offset: 0.25rem;
+  }
+
+  .pos-items-mobile-card-meta {
+    gap: 0.25rem;
+    margin-top: 0.875rem;
+    border-top: 0;
+  }
+
+  .pos-items-mobile-card-meta > div {
+    gap: 0.75rem;
+  }
+
+  .pos-items-mobile-card-meta svg {
+    height: clamp(1.25rem, 5.33vw, 1.75rem);
+    width: clamp(1.25rem, 5.33vw, 1.75rem);
+  }
+
+  .pos-items-mobile-card-meta p {
+    font-size: clamp(0.75rem, 2.4vw, 1rem);
+    line-height: 1.25rem;
+  }
+
+  .pos-items-mobile-card-lower {
+    grid-column: 1 / -1;
+    display: grid !important;
+    gap: clamp(0.75rem, 2.67vw, 1rem);
+  }
+
+  .pos-items-mobile-card-metrics {
+    display: grid;
+    grid-column: 1 / -1 !important;
+    border-color: #cbd5e1;
+    border-radius: 1rem;
+  }
+
+  .pos-items-mobile-card-metrics > div {
+    min-height: clamp(4rem, 10.67vw, 5rem);
+    gap: 0.625rem;
+    padding: 0.625rem clamp(0.75rem, 3.2vw, 1rem);
+  }
+
+  .pos-items-mobile-card-metrics svg {
+    height: clamp(1.5rem, 6.4vw, 2rem);
+    width: clamp(1.5rem, 6.4vw, 2rem);
+  }
+
+  .pos-items-mobile-card-metrics p:first-child {
+    font-size: clamp(0.75rem, 2.4vw, 1rem);
+    line-height: 1.1rem;
+  }
+
+  .pos-items-mobile-card-metrics p:last-child {
+    font-size: clamp(1.125rem, 4.27vw, 1.5rem);
+    line-height: 1.5rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:last-child {
+    flex: 0 0 auto;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div {
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 1 / -1 !important;
+    gap: 0.75rem;
+  }
+
+  .pos-items-mobile-card-actions > div {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .pos-items-mobile-card-actions button {
+    height: clamp(2.75rem, 9.33vw, 3.5rem);
+    min-width: 0;
+    border-radius: 0.625rem;
+    font-size: clamp(0.9375rem, 3.2vw, 1.25rem);
+  }
+
+  .pos-items-mobile-card-actions button svg {
+    height: clamp(1.25rem, 5.33vw, 1.75rem);
+    width: clamp(1.25rem, 5.33vw, 1.75rem);
+  }
+
+}
+
+/* Tablet portrait Items uses the mobile card composition in a two-column
+   results grid. Keep this breakpoint isolated so phone and PC layouts do not
+   inherit the tablet sizing or visibility overrides. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .pos-items-mobile-results.dgfy-pos-items-catalog-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .pos-items-mobile-results .pos-items-reference-mobile-card {
+    display: flex;
+    min-width: 0;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-width: 1px;
+    border-radius: 0.75rem;
+  }
+
+  .pos-items-mobile-results .pos-items-desktop-card {
+    display: none;
+  }
+
+  .pos-items-reference-mobile-card-top {
+    grid-template-columns: clamp(4.5rem, 12vw, 5.75rem) minmax(0, 1fr);
+    gap: 0.625rem;
+  }
+
+  .pos-items-reference-mobile-card-image {
+    height: clamp(4.5rem, 12vw, 5.75rem);
+    width: clamp(4.5rem, 12vw, 5.75rem);
+  }
+
+  .pos-items-reference-mobile-card-summary {
+    overflow: hidden;
+  }
+
+  .pos-items-reference-mobile-card-title {
+    font-size: 1rem;
+    line-height: 1.15;
+  }
+
+  .pos-items-reference-mobile-card-subtitle,
+
+  .pos-items-reference-mobile-card-meta p {
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .pos-items-reference-mobile-card-meta {
+    margin-top: 0.5rem;
+    gap: 0.25rem;
+  }
+
+  .pos-items-reference-mobile-card-meta > div {
+    gap: 0.375rem;
+  }
+
+  .pos-items-reference-mobile-card-meta svg {
+    height: 0.875rem;
+    width: 0.875rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics {
+    border-width: 1px;
+    border-radius: 0.625rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div {
+    min-height: 2.5rem;
+    gap: 0.375rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:first-child {
+    font-size: 0.625rem;
+    line-height: 1.15;
+  }
+
+  .pos-items-reference-mobile-card-metrics > div > div > p:last-child {
+    font-size: 0.75rem;
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .pos-items-reference-mobile-card-actions {
+    gap: 0.375rem;
+  }
+
+  .pos-items-reference-mobile-card-actions button {
+    height: 2.5rem;
+    min-width: 0;
+    padding-inline: 0.375rem;
+    border-radius: 0.625rem;
+    font-size: 0.6875rem;
+    line-height: 1.15;
+    white-space: normal;
+  }
+}
+
+/* Portrait-tablet Items keeps the compact navigation rail used by the rest of
+   the POS tablet surface. Categories reuse the mobile cards in two columns,
+   and the shared tab strip fills the workspace beside the rail. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] {
+    grid-template-columns: 68px minmax(0, 1fr) !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-persistent-sidebar {
+    display: flex !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-workspace-content {
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-workspace-shell {
+    padding-inline: 0.5rem !important;
+    padding-top: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-strip {
+    margin-inline: 0;
+    overflow-x: hidden;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-list {
+    display: grid;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    padding: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab {
+    min-width: 0;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 3rem;
+    padding: 0.75rem 0.5rem;
+    font-size: 0.875rem;
+    line-height: 1.2;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab svg {
+    height: 1.125rem;
+    width: 1.125rem;
+    flex-shrink: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-toolbar {
+    gap: 0.75rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-search input {
+    height: 2.75rem;
+    border-radius: 0.625rem;
+    font-size: 0.875rem;
+    line-height: 1.2;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-actions {
+    gap: 0.625rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-actions > button {
+    min-height: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.625rem;
+    padding-inline: 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-actions > button svg {
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-list {
+    gap: 0.75rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card {
+    padding: 0.875rem;
+    border-radius: 0.625rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-title {
+    font-size: 1.125rem;
+    line-height: 1.375rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-description,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-count {
+    font-size: 0.8125rem;
+    line-height: 1.125rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-actions {
+    gap: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-actions button {
+    height: 2.5rem;
+    width: 2.5rem;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    border-radius: 0.625rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-card-actions button svg {
+    height: 1.125rem;
+    width: 1.125rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-reference-mobile-card-image {
+    border-radius: 0.5rem;
+  }
+}
+
+/* Landscape tablets inherit the desktop Items surface and two-column results,
+   but reflow each catalog card into readable rows because the sidebar leaves
+   less width than a desktop card. Keep this scoped to the 1024–1279px range
+   plus the 1280px coarse-touch iMin tablet viewport. */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-strip {
+    margin-inline: 0;
+    overflow-x: hidden;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-list {
+    width: 100%;
+    min-width: 0;
+    gap: 0;
+    padding: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab {
+    min-width: 0;
+    flex: 1 1 0%;
+    justify-content: center;
+    padding-inline: 0.75rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-results.dgfy-pos-items-catalog-results,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-results.dgfy-pos-items-catalog-results {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    grid-auto-rows: minmax(11rem, auto);
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    min-height: 10.5rem;
+    gap: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card {
+    min-height: 11rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    min-width: 0;
+    aspect-ratio: 1 / 1;
+    align-self: start;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    min-height: 5rem;
+    align-items: flex-start;
+    padding-left: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner {
+    display: grid;
+    grid-template-rows: auto auto;
+    justify-content: normal;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner > div:first-child {
+    display: flex;
+    min-height: 0;
+    align-items: center;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-meta {
+    min-height: 0;
+    justify-content: center;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 7.5rem);
+    align-items: stretch;
+    min-height: 4rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-height: 4rem;
+    height: auto;
+    width: 100%;
+    align-self: stretch;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div {
+    width: 100%;
+    flex: none;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button {
+    min-height: 2rem;
+    height: 2rem;
+  }
+}
+
+/* Enlarged text must be allowed to consume space in the Items catalog. The
+   normal catalog deliberately uses compact fixed rows, but reusing those rows
+   at 115%/130% clips titles, metrics, and actions. Keep this hardening scoped
+   to Items so Categories and Item Options retain their existing contracts. */
+@media screen and (min-width: 768px) {
+  body[data-pos-text-size="large"] .pos-items-desktop-toolbar,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-toolbar {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-toolbar > .relative,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-toolbar > .relative {
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-actions,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-actions {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-actions > button,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-actions > button {
+    min-width: 0;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card,
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid,
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions {
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card :where(
+    .pos-items-mobile-card-title,
+    .pos-items-mobile-card-subtitle,
+    .pos-items-mobile-card-meta p,
+    .pos-items-mobile-card-metrics p
+  ),
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card :where(
+    .pos-items-mobile-card-title,
+    .pos-items-mobile-card-subtitle,
+    .pos-items-mobile-card-meta p,
+    .pos-items-mobile-card-metrics p
+  ) {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary {
+    align-items: flex-start;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: flex-start;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner > div:first-child,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner > div:first-child {
+    min-height: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-metrics p:last-child,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-metrics p:last-child {
+    overflow-wrap: normal;
+    white-space: nowrap;
+    word-break: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-actions button,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-actions button {
+    min-height: 2.625rem;
+    height: auto;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+}
+
+@media screen and (min-width: 1280px) {
+  body[data-pos-text-size="large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(8rem, auto);
+    max-height: 33.5rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(9rem, auto);
+    max-height: 37.5rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid {
+    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid {
+    grid-template-columns: minmax(8rem, 9rem) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-image,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    padding-left: 0.75rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-lower,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-lower {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+    align-items: stretch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 5.5rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions > div,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions > div {
+    height: 100%;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions button,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions button {
+    min-height: 2.75rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-items-catalog-results,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(14rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-image,
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-image {
+    align-self: stretch;
+    aspect-ratio: auto;
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+}
+
+@media screen and (max-width: 639.98px) {
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-title,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-title {
+    font-size: calc(1.125rem * var(--pos-text-size-scale, 1));
+    line-height: 1.15;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-subtitle,
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-meta p,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-subtitle,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-meta p,
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-metrics p,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-metrics p {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-actions button,
+
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-actions button {
+    height: auto;
+    min-height: 2.875rem;
+    line-height: 1.2;
+    white-space: normal;
+  }
+}
+
+/* Enlarged mobile text needs room for the shared Items/Categories/Item
+   Options navigation. Keep the normal three-column strip unchanged, but let
+   the enlarged variants scroll horizontally instead of forcing labels into
+   overlapping columns. Keep the text-size menu labels on one line as well. */
+@media screen and (max-width: 767.98px) {
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-strip,
+
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-strip {
+    overflow-x: auto;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-strip::-webkit-scrollbar,
+
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-list,
+
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-list {
+    display: flex;
+    width: max-content;
+    min-width: max-content;
+    gap: 0.25rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab,
+
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding-inline: 0.75rem;
+    font-size: calc(0.75rem * var(--pos-text-size-scale, 1));
+    white-space: nowrap;
+  }
+}
+
+/* Items workspace controls inherit the History page's button contract: a
+   predictable hit area, one-pixel outline, rounded corners, medium-weight
+   labels, and no accidental shadow on toolbar actions. Keep semantic colors
+   from each action (primary, edit, destructive) while normalizing geometry
+   across Items, Categories, and Item Options. */
+.pos-items-catalog-workspace :where(
+  .pos-items-desktop-actions > button,
+  .pos-categories-mobile-actions > button,
+  .pos-items-options-actions > button,
+  .pos-items-options-add-button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-items-reference-mobile-card-actions button,
+  .pos-items-mobile-card-actions button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-categories-mobile-card-actions button,
+  .pos-items-options-group-actions button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-items-desktop-actions > button,
+  .pos-categories-mobile-actions > button,
+  .pos-items-options-actions > button,
+  .pos-items-options-add-button,
+  .pos-items-reference-mobile-card-actions button,
+  .pos-items-mobile-card-actions button,
+  .pos-categories-mobile-card-actions button,
+  .pos-items-options-group-actions button
+) > :where(svg) {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1023.98px) {
+  .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-reference-mobile-card-actions button,
+    .pos-items-mobile-card-actions button,
+    .pos-categories-mobile-card-actions button,
+    .pos-items-options-group-actions button
+  ) {
+    height: 2.5rem;
+    min-height: 2.5rem;
+  }
+}
+@media screen and (min-width: 768px) {
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-options-group-actions button
+  ),
+
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-options-group-actions button
+  ) {
+    height: auto;
+    min-height: 2.5rem;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ),
+
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ) {
+    height: auto;
+    min-height: 2.625rem;
+    white-space: normal;
+  }
+}
+
+@media screen and (max-width: 767.98px) {
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ),
+
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ) {
+    height: auto;
+    min-height: 2.875rem;
+    white-space: normal;
+  }
+}
+
+/* Landscape tablets use the desktop catalog composition at enlarged text
+   sizes. Keep the card padding even on all sides and give the top content and
+   lower metrics/actions their own rows so the image never crowds or overlaps
+   the card footer. This is intentionally limited to landscape tablets; the
+   mobile and regular PC contracts remain unchanged. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(14rem, auto);
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(16rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card {
+    box-sizing: border-box;
+    height: 100% !important;
+    padding: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    height: 100% !important;
+    min-height: 0;
+    gap: 0.625rem;
+    grid-template-rows: minmax(0, auto) minmax(5.5rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    min-height: 13rem;
+    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    min-height: 15rem;
+    grid-template-columns: minmax(8rem, 9rem) minmax(0, 1fr);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    border-radius: 0.5rem;
+    height: auto !important;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0 !important;
+    min-width: 0;
+    overflow: hidden;
+    width: 100% !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    overflow: visible;
+    padding-left: 0.75rem !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: flex-start;
+    overflow: visible;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+    align-items: stretch;
+    min-height: 5.5rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+    height: auto;
+    min-height: 5.5rem;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    gap: 0.375rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button,
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button {
+    height: auto;
+    min-height: 2.75rem;
+    white-space: normal;
+  }
+}
+
+/* Portrait tablets have the same constrained toolbar problem as phones: the
+   desktop text buttons compete with the search field. Reuse the existing
+   mobile controls only in this range so every visible control shares the
+   mobile 40px hit-area contract. Landscape tablets and desktop keep the
+   desktop toolbar. */
+@media screen and (orientation: portrait) and (min-width: 768px) and (max-width: 1199.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-toolbar {
+    display: none !important;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-controls {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-toolbar {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-search {
+    position: relative;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-search input,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-icon-button {
+    box-sizing: border-box;
+    height: 2.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-search input {
+    width: 100%;
+    border-radius: 0.625rem;
+    padding-left: 2.25rem;
+    padding-right: 2.5rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-search > div > svg:first-child {
+    right: auto;
+    left: 0.75rem;
+    height: 1rem;
+    width: 1rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-icon-button {
+    display: grid;
+    width: 2.5rem;
+    min-width: 2.5rem;
+    flex: 0 0 2.5rem;
+    place-items: center;
+    border: 1px solid #1a4e8d;
+    border-radius: 0.625rem;
+    background: #fff;
+    color: #1a4e8d;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-action-label {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-category-refresh-button {
+    border-color: #1a4e8d;
+    background-color: #1a4e8d;
+    color: #fff;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-categories-mobile-actions > button {
+    box-sizing: border-box;
+    flex: 0 0 2.5rem;
+    width: 2.5rem;
+    min-width: 2.5rem;
+    max-width: 2.5rem;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    max-height: 2.5rem;
+    padding: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-primary-button {
+    border-color: #1a4e8d;
+    background-color: #1a4e8d;
+    color: #fff;
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-primary-button:hover,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-primary-button:focus-visible,
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-primary-button:active {
+    border-color: #143f73;
+    background-color: #143f73;
+    color: #fff;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button {
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button:focus-visible {
+    border-color: #1a4e8d;
+    background-color: #1a4e8d;
+    color: #fff;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button[aria-pressed="true"] {
+    border-color: #1a4e8d;
+    background-color: #1a4e8d;
+    color: #fff;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button:active {
+    border-color: #143f73;
+    background-color: #143f73;
+    color: #fff;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button:focus-visible {
+    outline: 2px solid #93c5fd;
+    outline-offset: 2px;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-actions {
+    display: contents;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button > span {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-icon-button svg {
+    height: 1rem;
+    width: 1rem;
+  }
+}
+
+/* The mobile Items workspace navigation is a constrained phone control. Keep
+   only this strip independent of the POS text-size preference so its three
+   labels, icons, and underline remain aligned; the rest of the mobile UI may
+   continue to scale normally. The list can still scroll if a very narrow
+   viewport cannot fit all three fixed-size tabs. */
+@media screen and (max-width: 767.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-strip {
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab-list {
+    display: flex;
+    width: 100%;
+    min-width: 100%;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab {
+    box-sizing: border-box;
+    flex: 1 1 0%;
+    min-width: max-content;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 6px;
+    font-size: 14px;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-tab svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Category card actions are icon-only controls. Keep their width and height
+   locked to the same square hit area after the text-size rules run; those
+   rules previously changed only the height and made the buttons rectangular. */
+.pos-items-catalog-workspace .pos-categories-mobile-card-actions button {
+  box-sizing: border-box;
+  display: grid;
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  min-width: 2.25rem !important;
+  min-height: 2.25rem !important;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+  place-items: center;
+}
+
+@media (max-width: 1023.98px), screen and (min-width: 768px) {
+  .pos-items-catalog-workspace .pos-categories-mobile-card-actions button {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-width: 2.5rem !important;
+    min-height: 2.5rem !important;
+  }
+}
+
+/* Normal text on landscape tablets needs the same complete card contract as
+   the enlarged variants. The previous 11rem row could not fit the 6rem image,
+   four metric cells, two actions, gap, and equal card padding, which clipped
+   the lower edge of every catalog card. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(12rem, auto);
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card {
+    box-sizing: border-box;
+    height: 100% !important;
+    min-height: 12rem;
+    padding: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    height: 100% !important;
+    min-height: 11rem;
+    gap: 0.5rem;
+    grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr);
+    grid-template-rows: minmax(0, auto) minmax(4.25rem, auto);
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    border-radius: 0.5rem;
+    height: auto !important;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0 !important;
+    min-width: 0;
+    overflow: hidden;
+    width: 100% !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    overflow: visible;
+    padding-left: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 7.5rem);
+    align-items: stretch;
+    min-height: 4.25rem;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+    height: auto;
+    min-height: 4.25rem;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button {
+    height: auto;
+    min-height: 2rem;
+    white-space: normal;
+  }
+}
+
+/* Portrait tablets have enough room for the Item Options header action, but
+   not when its label is allowed to wrap inside a shrink-to-fit button. Keep
+   the full action label on one line and preserve the touch-target height. */
+@media screen and (orientation: portrait) and (min-width: 768px) and (max-width: 1199.98px) {
+  .pos-items-options-workspace .pos-items-options-panel-header > .pos-items-options-add-button {
+    box-sizing: border-box;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: max-content;
+    min-width: max-content;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    gap: 0.375rem;
+    padding: 0 0.875rem;
+    font-size: 0.8125rem;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .pos-items-options-workspace .pos-items-options-panel-header > .pos-items-options-add-button svg {
+    flex: 0 0 auto;
+  }
+}
+
+/* Landscape tablets have limited vertical space inside the device frame. The
+   existing landscape form uses the full viewport and desktop spacing, which
+   makes both Add Item and Edit Item feel oversized. Keep the same three-column
+   composition but apply one smaller, balanced contract to both dialogs. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  .pos-items-modal-overlay {
+    padding: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal {
+    max-width: min(60rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body {
+    padding-inline: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body > section:first-child,
+
+  .pos-items-catalog-form-modal .pos-items-status-grid,
+
+  .pos-items-catalog-form-modal .pos-items-form-columns {
+    margin-top: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-body > section:first-child {
+    gap: 0.25rem;
+    padding: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid {
+    gap: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-status-grid > :where(div) {
+    min-height: 3.25rem;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .pos-items-form-scale .pos-items-form-columns {
+    --pos-items-side-column: calc((100% - 3rem) / 3);
+    grid-template-columns:
+      minmax(0, var(--pos-items-side-column))
+      minmax(0, calc(var(--pos-items-side-column) + 1.5rem))
+      minmax(0, var(--pos-items-side-column));
+    gap: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns > :where(div, section) {
+    gap: 0.75rem;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-form-columns .pos-items-image-upload-dropzone {
+    min-height: 6rem;
+    padding: 0.5rem;
+  }
+
+  .pos-items-catalog-form-modal :where(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), select) {
+    height: 2.25rem !important;
+    min-height: 2.25rem !important;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-textarea,
+
+  .pos-items-catalog-form-modal :where(textarea) {
+    height: 4rem;
+    min-height: 4rem !important;
+  }
+
+  .pos-items-catalog-form-modal .pos-items-modal-option-row {
+    min-height: 2rem;
+    padding: 0.25rem 0.375rem;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer {
+    padding-inline: 0.75rem;
+    padding-block: 0.375rem;
+    --pos-items-footer-control-height: 2rem;
+  }
+
+  .pos-items-form-scale.pos-items-catalog-form-modal .pos-items-modal-footer :where(button, [role="button"]) {
+    height: 2rem;
+    min-height: 2rem;
+  }
+}
+
+/* Add/Edit Item opens through a body portal. On tablet and PC, keep its
+   backdrop tied to the complete visual viewport and use the same dimming
+   strength as the other POS modal surfaces so fixed bottom badges/footers do
+   not remain visibly lit through the overlay. */
+@media screen and (min-width: 768px) {
+  .pos-items-modal-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background-color: rgb(15 23 42 / 0.6);
+    isolation: isolate;
+  }
+}
+
+/* Filter and Add Items are the primary actions in the Items toolbar. Keep
+   their DGFY blue fill consistent across desktop, mobile, and tablet layouts. */
+.pos-items-primary-action,
+
+.pos-items-catalog-workspace .pos-items-mobile-primary-button {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+  color: #fff;
+}
+
+.pos-items-primary-action:hover,
+
+.pos-items-primary-action:focus-visible,
+
+.pos-items-primary-action:active,
+
+.pos-items-catalog-workspace .pos-items-mobile-primary-button:hover,
+
+.pos-items-catalog-workspace .pos-items-mobile-primary-button:focus-visible,
+
+.pos-items-catalog-workspace .pos-items-mobile-primary-button:active,
+
+.pos-items-catalog-workspace .pos-items-mobile-primary-button.pos-items-mobile-icon-button--active {
+  border-color: #143f73;
+  background: #143f73;
+  color: #fff;
+}
+
+/* Keep the existing solid-blue keyboard-focus and selected states for Import. */
+.pos-items-catalog-workspace .pos-items-desktop-import-button:focus-visible,
+
+.pos-items-catalog-workspace .pos-items-desktop-import-button[aria-pressed="true"] {
+  border-color: #1a4e8d;
+  background-color: #1a4e8d;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-desktop-import-button:active {
+  border-color: #143f73;
+  background-color: #143f73;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-desktop-import-button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* POS > Items category creation keeps its existing focus and pressed colors. */
+.pos-items-catalog-workspace .pos-items-category-add-action {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.pos-items-catalog-workspace .pos-items-category-add-action[aria-pressed="true"] {
+  border-color: #1a4e8d;
+  background-color: #1a4e8d;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-category-add-action:focus-visible,
+
+.pos-items-catalog-workspace .pos-items-category-add-action:active {
+  border-color: #143f73;
+  background-color: #143f73;
+  color: #fff;
+}
+
+.pos-items-catalog-workspace .pos-items-category-add-action:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.pos-items-options-workspace .pos-items-options-add-button {
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.pos-items-options-workspace .pos-items-options-add-button[aria-pressed="true"] {
+  border-color: #1a4e8d;
+  background-color: #1a4e8d;
+  color: #fff;
+}
+
+.pos-items-options-workspace .pos-items-options-add-button:focus-visible,
+
+.pos-items-options-workspace .pos-items-options-add-button:active {
+  border-color: #143f73;
+  background-color: #143f73;
+  color: #fff;
+}
+
+.pos-items-options-workspace .pos-items-options-add-button:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+/* These are hover-only overrides for the four POS > Items action types. The
+   selected, keyboard-focus, and pressed appearances remain unchanged. Keep
+   selectors specific enough to beat the outline Button and mobile icon-button
+   defaults without touching their base styles or dimensions. */
+.pos-items-catalog-workspace .pos-items-desktop-import-button:hover:not([aria-pressed="true"]):not(:active):not(:focus-visible),
+
+.dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button:hover:not([aria-pressed="true"]):not(:active):not(:focus-visible),
+
+.pos-items-catalog-workspace .pos-items-category-add-action:hover:not([aria-pressed="true"]):not(:active):not(:focus-visible),
+
+.pos-items-options-workspace .pos-items-options-add-button:hover:not([aria-pressed="true"]):not(:active):not(:focus-visible) {
+  border-color: #1a4e8d;
+  background-color: #eff6ff;
+  color: #0f172a;
+}
+
+/* Reset actions in POS > Items use the same restrained red treatment as the
+   reference control, while keeping the existing dimensions and typography. */
+.pos-items-reset-action {
+  border: 1px solid #fda4af;
+  background-color: #fff9fa;
+  color: #be123c;
+  box-shadow: none;
+}
+
+.pos-items-reset-action:hover,
+
+.pos-items-reset-action:focus-visible {
+  border-color: #fb7185;
+  background-color: #fff1f2;
+  color: #9f1239;
+}
+
+.pos-items-reset-action:active {
+  border-color: #f43f5e;
+  background-color: #fecdd3;
+  color: #9f1239;
+}
+
+/* Keep every Items metric card consistent: icon, label, and value share one
+   vertically aligned row in both the phone reference card and the compact
+   desktop/tablet card. */
+.pos-items-reference-mobile-card-metrics > div,
+
+.pos-items-mobile-card-metrics > div {
+  align-items: center;
+}
+
+.pos-items-reference-mobile-card-metrics > div > div,
+
+.pos-items-mobile-card-metrics > div > div {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.pos-items-reference-mobile-card-metrics > div > div > p:first-child,
+
+.pos-items-mobile-card-metrics > div > div > p:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-items-reference-mobile-card-metrics > div > div > p:last-child,
+
+.pos-items-mobile-card-metrics > div > div > p:last-child {
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Keep the same solid DGFY primary-action treatment at every desktop text
+   size. The compact responsive metric treatment remains independent. */
+@media screen and (min-width: 1280px) and (hover: hover) and (pointer: fine) {
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics > div > div {
+    display: block;
+    flex: initial;
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics > div > div > p:first-child {
+    overflow: visible;
+    text-align: left;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics > div > div > p:last-child {
+    flex: initial;
+    text-align: left;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: max-content;
+    max-height: none;
+    scrollbar-color: transparent transparent;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results:hover,
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results:focus-within,
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results:active {
+    scrollbar-color: #94a3b8 transparent;
+  }
+}
+
+/* Mobile browsers may zoom the page when a focused editable control is below
+   16px. Keep the guard limited to POS Items and its portaled Add/Edit forms;
+   other POS workspaces and dialogs keep their own field sizing. */
+@media screen and (max-width: 767.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    textarea,
+    select,
+    [contenteditable="true"]
+  ),
+
+  .pos-items-modal-overlay :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+    textarea,
+    select,
+    [contenteditable="true"]
+  ) {
+    font-size: 16px !important;
+  }
+}
+
+/* Keep the phone Items import actions readable and consistent with the other
+   mobile toolbar controls. Both labels stay on one line while the flex layout
+   continues to give each action equal width. */
+@media screen and (max-width: 767.98px) {
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button {
+    box-sizing: border-box;
+    gap: 0.5rem;
+    padding-inline: 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button > svg {
+    flex: 0 0 auto;
+    height: 0.875rem;
+    width: 0.875rem;
+  }
+
+  .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-import-button > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+/* Staging repair 2026-09-28-01 (#2110): restore the POS Items modal viewport,
+   button-consistency, and large-text catalog contracts dropped by the candidate
+   CSS rewrite. Source: ce740caa0 index.css regions, appended last so equal-
+   specificity ties resolve to the contracted values. */
+/* Add/Edit Item share one compact portrait-tablet modal contract. Both surfaces use one portrait-tablet composition. */
+@media (orientation: portrait) and (min-width: 768px) and (max-width: 1023.98px) {
+.pos-items-modal-overlay {
+    padding: 2rem;
+  }
+.pos-items-catalog-form-modal {
+    width: 100%;
+    max-width: calc(100vw - 4rem);
+    height: calc(100vh - 4rem);
+    height: calc(100dvh - 4rem);
+    max-height: calc(100vh - 4rem);
+    max-height: calc(100dvh - 4rem);
+  }
+.pos-items-catalog-form-modal .pos-items-modal-body {
+    padding-inline: 1rem;
+    padding-bottom: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-body > section:first-child,
+  .pos-items-catalog-form-modal .pos-items-form-columns,
+  .pos-items-catalog-form-modal .pos-items-status-grid {
+    margin-top: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-body > section:first-child {
+    gap: 0.375rem;
+    padding: 0.625rem;
+  }
+.pos-items-catalog-form-modal .pos-items-status-grid {
+    gap: 0.375rem;
+  }
+.pos-items-catalog-form-modal .pos-items-status-grid > :where(div) {
+    min-height: 3rem;
+    padding: 0.375rem 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-form-columns {
+    gap: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-form-columns > :where(div, section) {
+    gap: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-form-columns label[for="pos-item-image"],
+  .pos-items-catalog-form-modal .pos-items-form-columns label[for="pos-item-edit-image"] {
+    min-height: 5.5rem;
+    padding: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-field,
+  .pos-items-catalog-form-modal :where(input:not([type="file"]):not([type="checkbox"]):not([type="radio"]), select) {
+    height: 2rem !important;
+    min-height: 2rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-textarea,
+  .pos-items-catalog-form-modal :where(textarea) {
+    height: 3.25rem;
+    min-height: 3.25rem !important;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-label,
+  .pos-items-catalog-form-modal .pos-items-modal-section-title {
+    font-size: 0.6875rem;
+    line-height: 0.9375rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-secondary-panel {
+    padding: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-option-row {
+    min-height: 2rem;
+    padding: 0.25rem 0.375rem;
+  }
+.pos-items-catalog-form-modal :where(button, [role="button"]):not([role="switch"]) {
+    min-height: 2rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer :where(button, [role="button"]) {
+    height: 2rem !important;
+    min-height: 2rem !important;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem;
+    padding: 0.375rem 1rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer-info {
+    min-height: 2rem;
+    padding: 0.375rem 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer-actions {
+    width: 100%;
+    gap: 0.375rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer-actions > :where(button, [role="button"]) {
+    display: inline-flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    padding-inline: 0.5rem;
+    white-space: nowrap;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer-actions > :where(button, [role="button"]) > :where(svg) {
+    flex: 0 0 auto;
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+}
+
+/* Landscape tablets have enough width for the desktop form composition. This block tunes the shared Add/Edit Item modal for landscape tablets only. */
+@media (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+.pos-items-modal-overlay {
+    padding: 1rem;
+  }
+.pos-items-catalog-form-modal {
+    width: 100%;
+    max-width: calc(100vw - 2rem);
+    height: calc(100vh - 2rem);
+    height: calc(100dvh - 2rem);
+    max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
+  }
+.pos-items-catalog-form-modal .pos-items-modal-body {
+    padding-inline: 1rem;
+    padding-bottom: 0.75rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-body > section:first-child,
+  .pos-items-catalog-form-modal .pos-items-status-grid,
+  .pos-items-catalog-form-modal .pos-items-form-columns {
+    margin-top: 0.75rem;
+  }
+.pos-items-catalog-form-modal .pos-items-status-grid {
+    gap: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-status-grid > :where(div) {
+    min-height: 4rem;
+    padding: 0.5rem;
+  }
+.pos-items-form-scale .pos-items-form-columns {
+    --pos-items-side-column: calc((100% - 2rem) / 3);
+    grid-template-columns:
+      minmax(0, var(--pos-items-side-column))
+      minmax(0, calc(var(--pos-items-side-column) + 2rem))
+      minmax(0, var(--pos-items-side-column));
+    gap: 1rem;
+  }
+.pos-items-catalog-form-modal .pos-items-form-columns label[for="pos-item-image"],
+  .pos-items-catalog-form-modal .pos-items-form-columns label[for="pos-item-edit-image"] {
+    min-height: 7.5rem;
+    padding: 0.625rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-option-row {
+    min-height: 2.25rem;
+    padding: 0.375rem 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer {
+    padding-inline: 1rem;
+    padding-block: 0.5rem;
+  }
+.pos-items-catalog-form-modal .pos-items-modal-footer :where(button, [role="button"]) {
+    height: 2.25rem;
+    min-height: 2.25rem;
+  }
+}
+
+@media (min-width: 1280px) {
+.pos-items-form-scale .pos-items-form-columns {
+    --pos-items-side-column: calc((100% - 5.5rem) / 3);
+    grid-template-columns:
+      minmax(0, var(--pos-items-side-column))
+      minmax(0, calc(var(--pos-items-side-column) + 4rem))
+      minmax(0, var(--pos-items-side-column));
+  }
+}
+
+/* Enlarged text must be allowed to consume space in the Items catalog. The
+   normal catalog deliberately uses compact fixed rows, but reusing those rows
+   at 115%/130% clips titles, metrics, and actions. Keep this hardening scoped
+   to Items so Categories and Item Options retain their existing contracts. */
+@media screen and (min-width: 768px) {
+  body[data-pos-text-size="large"] .pos-items-desktop-toolbar,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-toolbar {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-toolbar > .relative,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-toolbar > .relative {
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-actions,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-actions {
+    min-width: 0;
+    flex-wrap: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-actions > button,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-actions > button {
+    min-width: 0;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card,
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid,
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions {
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card :where(
+    .pos-items-mobile-card-title,
+    .pos-items-mobile-card-subtitle,
+    .pos-items-mobile-card-meta p,
+    .pos-items-mobile-card-metrics p
+  ),
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card :where(
+    .pos-items-mobile-card-title,
+    .pos-items-mobile-card-subtitle,
+    .pos-items-mobile-card-meta p,
+    .pos-items-mobile-card-metrics p
+  ) {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary {
+    align-items: flex-start;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: flex-start;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner > div:first-child,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary-inner > div:first-child {
+    min-height: 0;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-metrics p:last-child,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-metrics p:last-child {
+    overflow-wrap: normal;
+    white-space: nowrap;
+    word-break: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-actions button,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-actions button {
+    min-height: 2.625rem;
+    height: auto;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+}
+
+@media screen and (min-width: 1280px) {
+  body[data-pos-text-size="large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(8rem, auto);
+    max-height: 33.5rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(9rem, auto);
+    max-height: 37.5rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid {
+    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid {
+    grid-template-columns: minmax(8rem, 9rem) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-image,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    padding-left: 0.75rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-lower,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-lower {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+    align-items: stretch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-metrics {
+    grid-column: 1;
+    grid-row: 1;
+    min-height: 5.5rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions > div,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions > div {
+    height: 100%;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions button,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card-grid .pos-items-mobile-card-actions button {
+    min-height: 2.75rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-items-catalog-results,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(14rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .pos-items-desktop-card .pos-items-mobile-card-image,
+  body[data-pos-text-size="extra-large"] .pos-items-desktop-card .pos-items-mobile-card-image {
+    align-self: stretch;
+    aspect-ratio: auto;
+    height: auto;
+    max-height: none;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+}
+
+@media screen and (min-width: 1024px) {
+  body[data-pos-text-size="extra-large"] .pos-text-size-control__trigger {
+    width: 14rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .pos-text-size-control__trigger > span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+}
+
+@media screen and (max-width: 639.98px) {
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-title,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-title {
+    font-size: calc(1.125rem * var(--pos-text-size-scale, 1));
+    line-height: 1.15;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-subtitle,
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-meta p,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-subtitle,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-meta p,
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-metrics p,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-metrics p {
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-reference-mobile-card-actions button,
+  body[data-pos-text-size="extra-large"] .pos-items-reference-mobile-card-actions button {
+    height: auto;
+    min-height: 2.875rem;
+    line-height: 1.2;
+    white-space: normal;
+  }
+}
+
+/* Enlarged mobile text needs room for the shared Items/Categories/Item
+   Options navigation. Keep the normal three-column strip unchanged, but let
+   the enlarged variants scroll horizontally instead of forcing labels into
+   overlapping columns. Keep the text-size menu labels on one line as well. */
+@media screen and (max-width: 767.98px) {
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-strip,
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-strip {
+    overflow-x: auto;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-strip::-webkit-scrollbar,
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab-list,
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab-list {
+    display: flex;
+    width: max-content;
+    min-width: max-content;
+    gap: 0.25rem;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-mobile-tab,
+  body[data-pos-text-size="extra-large"] .pos-items-mobile-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding-inline: 0.75rem;
+    font-size: calc(0.75rem * var(--pos-text-size-scale, 1));
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-text-size-control__option > span,
+  body[data-pos-text-size="extra-large"] .pos-text-size-control__option > span {
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .pos-text-size-control [role="listbox"],
+  body[data-pos-text-size="extra-large"] .pos-text-size-control [role="listbox"] {
+    min-width: 13rem;
+    max-width: calc(100vw - 1rem);
+  }
+}
+
+/* Items workspace controls inherit the History page's button contract: a
+   predictable hit area, one-pixel outline, rounded corners, medium-weight
+   labels, and no accidental shadow on toolbar actions. Keep semantic colors
+   from each action (primary, edit, destructive) while normalizing geometry
+   across Items, Categories, and Item Options. */
+.pos-items-catalog-workspace :where(
+  .pos-items-desktop-actions > button,
+  .pos-categories-mobile-actions > button,
+  .pos-items-options-actions > button,
+  .pos-items-options-add-button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-items-reference-mobile-card-actions button,
+  .pos-items-mobile-card-actions button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-categories-mobile-card-actions button,
+  .pos-items-options-group-actions button
+) {
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  border-width: 1px;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.08);
+}
+
+.pos-items-catalog-workspace :where(
+  .pos-items-desktop-actions > button,
+  .pos-categories-mobile-actions > button,
+  .pos-items-options-actions > button,
+  .pos-items-options-add-button,
+  .pos-items-reference-mobile-card-actions button,
+  .pos-items-mobile-card-actions button,
+  .pos-categories-mobile-card-actions button,
+  .pos-items-options-group-actions button
+) > :where(svg) {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1023.98px) {
+  .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-reference-mobile-card-actions button,
+    .pos-items-mobile-card-actions button,
+    .pos-categories-mobile-card-actions button,
+    .pos-items-options-group-actions button
+  ) {
+    height: 2.5rem;
+    min-height: 2.5rem;
+  }
+}
+
+/* Larger text settings must be allowed to grow controls instead of clipping
+   their labels. This keeps the History-style baseline while retaining the
+   existing readable layouts at large and extra-large sizes. */
+@media screen and (min-width: 768px) {
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-options-group-actions button
+  ),
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-desktop-actions > button,
+    .pos-categories-mobile-actions > button,
+    .pos-items-options-actions > button,
+    .pos-items-options-add-button,
+    .pos-items-options-group-actions button
+  ) {
+    height: auto;
+    min-height: 2.5rem;
+    white-space: normal;
+  }
+
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ),
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ) {
+    height: auto;
+    min-height: 2.625rem;
+    white-space: normal;
+  }
+}
+
+@media screen and (max-width: 767.98px) {
+  body[data-pos-text-size="large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ),
+  body[data-pos-text-size="extra-large"] .pos-items-catalog-workspace :where(
+    .pos-items-mobile-card-actions button,
+    .pos-items-reference-mobile-card-actions button
+  ) {
+    height: auto;
+    min-height: 2.875rem;
+    white-space: normal;
+  }
+}
+
+/* Landscape tablets use the desktop catalog composition at enlarged text
+   sizes. Keep the card padding even on all sides and give the top content and
+   lower metrics/actions their own rows so the image never crowds or overlaps
+   the card footer. This is intentionally limited to landscape tablets; the
+   mobile and regular PC contracts remain unchanged. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(14rem, auto);
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(16rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card {
+    box-sizing: border-box;
+    height: 100% !important;
+    padding: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    height: 100% !important;
+    min-height: 0;
+    gap: 0.625rem;
+    grid-template-rows: minmax(0, auto) minmax(5.5rem, auto);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    min-height: 13rem;
+    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    min-height: 15rem;
+    grid-template-columns: minmax(8rem, 9rem) minmax(0, 1fr);
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    border-radius: 0.5rem;
+    height: auto !important;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0 !important;
+    min-width: 0;
+    overflow: hidden;
+    width: 100% !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    overflow: visible;
+    padding-left: 0.75rem !important;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary-inner {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    gap: 0.25rem;
+    justify-content: flex-start;
+    overflow: visible;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 10rem);
+    align-items: stretch;
+    min-height: 5.5rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+    height: auto;
+    min-height: 5.5rem;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    gap: 0.375rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button {
+    height: auto;
+    min-height: 2.75rem;
+    white-space: normal;
+  }
+}
+
+/* Enlarged landscape-tablet headers must reserve space for the page title.
+   The terminal badge, text-size selector, notification button, and profile
+   currently consume enough width to collapse the title to one character at
+   115%/130%. Reduce only their tablet footprint and keep the title column at
+   a readable minimum; mobile and regular PC headers are unchanged. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-shell,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-shell {
+    gap: 0.75rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-main,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-main {
+    flex: 1 1 auto;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-title,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-title {
+    min-width: 8rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-title > div > div:first-child,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-title > div > div:first-child {
+    flex: 1 1 8rem;
+    min-width: 8rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-terminal,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-terminal {
+    flex: 0 1 auto;
+    max-width: 13.5rem;
+    min-width: 0;
+    gap: 0.375rem;
+    padding-inline: 0.625rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-terminal > span:first-of-type,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-terminal > span:first-of-type {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-terminal-prefix,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-terminal-prefix {
+    display: none;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-profile,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-profile {
+    max-width: 8rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-profile > button > span:last-child,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-profile > button > span:last-child {
+    max-width: 7rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .dgfy-pos-header-actions,
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .dgfy-pos-header-actions {
+    gap: 0.5rem;
+  }
+
+  body[data-pos-text-size="large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
+    width: 10.5rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
+    width: 10.5rem;
+  }
+}
+
+/* Category card actions are icon-only controls. Keep their width and height
+   locked to the same square hit area after the text-size rules run; those
+   rules previously changed only the height and made the buttons rectangular. */
+.pos-items-catalog-workspace .pos-categories-mobile-card-actions button {
+  box-sizing: border-box;
+  display: grid;
+  width: 2.25rem !important;
+  height: 2.25rem !important;
+  min-width: 2.25rem !important;
+  min-height: 2.25rem !important;
+  aspect-ratio: 1 / 1;
+  padding: 0 !important;
+  place-items: center;
+}
+
+@media (max-width: 1023.98px), screen and (min-width: 768px) {
+  .pos-items-catalog-workspace .pos-categories-mobile-card-actions button {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-width: 2.5rem !important;
+    min-height: 2.5rem !important;
+  }
+}
+
+/* The Extra Large landscape-tablet menu must escape the compact topbar and
+   have enough width for its scaled labels. Keep this scoped to the 130%
+   tablet case so Normal, Large, mobile, and regular PC layouts are untouched. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar {
+    overflow: visible;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control {
+    flex: 0 0 auto;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger > svg:last-child {
+    flex: 0 0 auto;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control [role="listbox"] {
+    width: 13.5rem;
+    max-width: calc(100vw - 1rem);
+    overflow: hidden;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__trigger {
+    width: 12rem;
+    max-width: 100%;
+    gap: 0.375rem;
+    overflow: hidden;
+    padding-inline: 0.5rem;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__option {
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control__option > span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* Normal text on landscape tablets needs the same complete card contract as
+   the enlarged variants. The previous 11rem row could not fit the 6rem image,
+   four metric cells, two actions, gap, and equal card padding, which clipped
+   the lower edge of every catalog card. */
+@media screen and (orientation: landscape) and (min-width: 1024px) and (max-width: 1279.98px),
+       screen and (orientation: landscape) and (min-width: 1280px) and (max-width: 1280px) and (pointer: coarse) {
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-items-catalog-results {
+    grid-auto-rows: minmax(12rem, auto);
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card {
+    box-sizing: border-box;
+    height: 100% !important;
+    min-height: 12rem;
+    padding: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {
+    height: 100% !important;
+    min-height: 11rem;
+    gap: 0.5rem;
+    grid-template-columns: minmax(5rem, 6rem) minmax(0, 1fr);
+    grid-template-rows: minmax(0, auto) minmax(4.25rem, auto);
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-image {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    aspect-ratio: auto;
+    border-radius: 0.5rem;
+    height: auto !important;
+    max-height: none;
+    max-width: 100%;
+    min-height: 0 !important;
+    min-width: 0;
+    overflow: hidden;
+    width: 100% !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-summary {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    overflow: visible;
+    padding-left: 0.5rem !important;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-lower {
+    display: grid !important;
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 7.5rem);
+    align-items: stretch;
+    min-height: 4.25rem;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+    height: auto;
+    min-height: 4.25rem;
+    width: 100%;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions {
+    display: flex !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    align-self: stretch;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions > div {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-actions button {
+    height: auto;
+    min-height: 2rem;
+    white-space: normal;
+  }
 }

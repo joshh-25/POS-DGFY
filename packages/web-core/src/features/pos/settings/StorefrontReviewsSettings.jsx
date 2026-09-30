@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle, Check, Grid2X2, List,
-  RefreshCw, Search, Star, X
+  RefreshCw, Search, Star
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import PosTableSurface from '../components/PosTableSurface.jsx';
+import PosSearchField from '../components/PosSearchField.jsx';
 import {
   STOREFRONT_TYPOGRAPHY,
   StorefrontEmptyState,
@@ -376,7 +376,16 @@ export default function StorefrontReviewsSettings({ tenantId = '' }) {
           {isPartialFeed ? <p className="text-[11px] leading-4 text-slate-500">Showing the latest {reviews.length} approved reviews available to this view.</p> : null}
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_150px_155px_auto] lg:items-end">
-              <div className="relative min-w-0 sm:col-span-2 lg:col-span-1"><Label htmlFor="storefront-review-search" className="sr-only">Search reviews</Label><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden="true" /><Input id="storefront-review-search" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reviews..." className="h-9 w-full min-w-0 rounded-lg border-slate-200 bg-white pl-9 pr-9 text-[13px]" />{query ? <button type="button" aria-label="Clear review search" onClick={() => setQuery('')} className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/30"><X className="h-3.5 w-3.5" aria-hidden="true" /></button> : null}</div>
+              <PosSearchField
+                id="storefront-review-search"
+                ariaLabel="Search reviews"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onClear={() => setQuery('')}
+                placeholder="Search reviews..."
+                className="min-w-0 sm:col-span-2 lg:col-span-1"
+                inputClassName="h-9"
+              />
               <label className="grid min-w-0 gap-1"><span className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-[#64748B]">Rating</span><select aria-label="Filter reviews by rating" value={ratingFilter} onChange={(event) => setRatingFilter(event.target.value)} className="h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20">{RATING_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
               <label className="grid min-w-0 gap-1"><span className="text-[10px] font-extrabold uppercase tracking-[0.06em] text-[#64748B]">Date Range</span><select aria-label="Filter reviews by date range" value={dateRange} onChange={(event) => setDateRange(event.target.value)} className="h-9 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-semibold text-slate-700 outline-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20">{DATE_RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
+export default function WorkspaceShell({ title, children, locked, bare = false, className = 'p-5' }) {
   const isIncomingQueue = title === 'Incoming Online Queue';
 
   if (isIncomingQueue) {
@@ -16,6 +16,10 @@ export default function WorkspaceShell({ title, children, locked, className = 'p
         </div>
       </section>
     );
+  }
+
+  if (bare) {
+    return <section className={`min-w-0 max-w-full ${className}`}>{children}</section>;
   }
 
   return (

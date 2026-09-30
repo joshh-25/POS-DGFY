@@ -29,6 +29,22 @@ const FnbDiningPanel = lazyWithChunkRetry(loadFnbDiningPanel);
 const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
 const AuditWorkspacePanel = lazyWithChunkRetry(loadAuditWorkspacePanel);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
+const STANDARD_POS_PAGE_FRAME_MODES = new Set([
+  'history',
+  'location_scope',
+  'reports',
+  'settings_pos',
+  'settings_profile',
+  'settings_storefront',
+  'terminal_setup'
+]);
+const REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES = new Set([
+  'reports',
+  'settings_pos',
+  'settings_profile',
+  'settings_storefront'
+]);
+const MSME_SETTINGS_SHIFT_FALLBACK_MODES = new Set(['location_scope', 'cash_drawer', 'terminal_setup']);
 const REPORT_WORKSPACE_MODES = new Set(['audit']);
 const QUEUE_WORKSPACE_MODES = new Set(['incoming_queue']);
 const SHIFT_WORKSPACE_MODES = new Set(['shift_controls', 'close_shift', 'cash_drawer']);
@@ -475,18 +491,27 @@ export default function TerminalPageLayout({
     ? 'pointer-events-none select-none opacity-80 blur-[2px]'
     : operatorMutationLocked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
+  // History, Reports, and Settings own their page-level gutters through
+  // PosPageFrame. Keep the generic shell padding for every other workspace.
+  // MSME-restricted settings modes are remapped to Shift Controls by the
+  // operations workspace and must retain the generic shell geometry.
+  const usesStandardPosPageFrame = IS_DGFY_POS_SURFACE
+    && STANDARD_POS_PAGE_FRAME_MODES.has(posViewMode)
+    && !(isMsmeMode && MSME_SETTINGS_SHIFT_FALLBACK_MODES.has(posViewMode));
+  const hidesWorkspaceScrollbar = usesStandardPosPageFrame
+    && REPORTS_SETTINGS_SCROLLBAR_HIDDEN_MODES.has(posViewMode);
   const isItemsCatalogWorkspace = isOperationsWorkspaceMode && posViewMode === 'items';
   const workspacePaneClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
-    : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
+    : `dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`;
   const checkoutWorkspaceRowsClassName = isBranchReadOnlyView
     ? 'grid-rows-[auto_minmax(0,1fr)]'
     : 'grid-rows-[minmax(0,1fr)]';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`
+    ? `grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden ${usesStandardPosPageFrame ? 'p-0' : `p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`}`
     : isItemsCatalogWorkspace
       ? `flex min-h-0 min-w-0 max-w-full flex-1 flex-col gap-2 overflow-hidden p-2${isItemsView ? ' pos-items-workspace-content' : ''}`
-      : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
+      : `grid min-w-0 max-w-full grid-cols-1 gap-2 ${usesStandardPosPageFrame ? 'p-0' : 'p-2'}`;
   const workspaceSectionClassName = isCheckoutWorkspaceMode || isItemsCatalogWorkspace
     ? 'flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
@@ -812,12 +837,12 @@ export default function TerminalPageLayout({
                     {activeHeaderTitle}
                   </h1>
                   {activeHeaderSubtitle ? (
-                    <p className="hidden truncate text-xs font-medium leading-4 text-[#64748B] sm:block">
+                    <p className="dgfy-pos-header-page-subtitle hidden truncate text-xs font-medium leading-4 text-[#64748B] sm:block">
                       {activeHeaderSubtitle}
                     </p>
                   ) : null}
                   <div
-                    className="mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
+                    className="dgfy-pos-header-mobile-terminal mt-0.5 flex min-w-0 items-center gap-1.5 leading-none sm:hidden"
                     data-testid="pos-mobile-terminal-indicator"
                     role="status"
                     aria-label={`Terminal ${normalizedActiveTerminalId || 'COUNTER-01'} is ${isOnline ? 'online' : 'offline'}`}
@@ -832,15 +857,17 @@ export default function TerminalPageLayout({
                     </span>
                   </div>
                 </div>
-                <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal">
-                  <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                  <span className="text-[11px] font-extrabold text-slate-800">
-                    <span className="dgfy-pos-header-terminal-prefix">Terminal: </span>
-                    {normalizedActiveTerminalId || 'COUNTER-01'}
-                  </span>
-                  <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    • {isOnline ? 'Online' : 'Offline'}
-                  </span>
+                <div className="dgfy-pos-header-terminal-row">
+                  <div className="hidden shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs sm:flex dgfy-pos-header-terminal">
+                    <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className="text-[11px] font-extrabold text-slate-800">
+                      <span className="dgfy-pos-header-terminal-prefix">Terminal: </span>
+                      {normalizedActiveTerminalId || 'COUNTER-01'}
+                    </span>
+                    <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      • {isOnline ? 'Online' : 'Offline'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -854,9 +881,9 @@ export default function TerminalPageLayout({
             />
             <div
               data-testid="pos-header-park-slot"
-              className={posViewMode === 'history'
-                ? 'hidden'
-                : 'dgfy-pos-header-park-slot relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'}
+              className={posViewMode === 'checkout'
+                ? 'dgfy-pos-header-park-slot relative flex h-8 w-8 shrink-0 translate-x-2 items-center justify-center rounded-xl text-[#1A4E8D] hover:bg-slate-100 lg:h-10 lg:w-10 lg:translate-x-2.5'
+                : 'hidden'}
             />
             {renderNotificationButton(compactBellClassName, 20)}
             {renderNotificationButton(desktopBellClassName, 24)}
@@ -910,7 +937,7 @@ export default function TerminalPageLayout({
       <div
         ref={workspacePaneRef}
         data-testid="pos-workspace-scroll-container"
-        className={workspacePaneClassName}
+        className={`${workspacePaneClassName} ${hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`}
       >
       {modeChangeNotice && (
         <div className="mx-4 mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">

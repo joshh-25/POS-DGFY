@@ -35,6 +35,7 @@ const TREES = [
   { name: 'apps/dgfy-ims', dir: 'apps/dgfy-ims' },
   { name: 'apps/dgfy-pos', dir: 'apps/dgfy-pos' },
   { name: 'apps/dgfy-storefront', dir: 'apps/dgfy-storefront' },
+  { name: 'apps/dgfy-opis', dir: 'apps/dgfy-opis' },
   { name: 'apps/dgfy-migration-runner', dir: 'apps/dgfy-migration-runner' },
   // Cross-app e2e/k6 package (issue #322 Phase 5) -- owns @lhci/cli now that
   // it moved out of the frontend apps (see the audit-allowlist.json entries

@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import PosReportsTopItemsTable from '../components/PosReportsTopItemsTable.jsx';
 
@@ -26,7 +27,7 @@ describe('POS reports top-selling items table', () => {
     ['Rank', 'Items', 'Quantity Sold', 'Net Sales (₱)', '% of Total Sales', 'Average Price (₱)', 'Orders'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
     });
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
     const tableRegion = screen.getByRole('region', { name: 'Top-selling items table' });
     expect(within(tableRegion).getByText('1')).toBeTruthy();
     expect(screen.getAllByText('Coca Cola 1.5L').length).toBeGreaterThan(0);
@@ -39,7 +40,7 @@ describe('POS reports top-selling items table', () => {
 
     const firstRowCells = tableRegion.querySelectorAll('tbody tr:first-child td');
     const headers = tableRegion.querySelectorAll('thead th');
-    const expectedAlignments = ['center', 'left', 'center', 'left', 'right', 'left', 'center'];
+    const expectedAlignments = ['center', 'left', 'center', 'left', 'right', 'left', 'center', 'center'];
     expectedAlignments.forEach((alignment, index) => {
       expect(headers[index].className).toContain(`text-${alignment}`);
       expect(firstRowCells[index].className).toContain(`text-${alignment}`);
@@ -60,6 +61,23 @@ describe('POS reports top-selling items table', () => {
     expect(itemValue.className).toContain('text-right');
     expect(itemValue.firstElementChild.className).toContain('max-[767px]:justify-end');
     expect(netSalesValue.className).toContain('text-right');
+  });
+
+  it('shows the full item name in the desktop details dialog', async () => {
+    const user = userEvent.setup();
+    const itemName = 'Argentina Corned Beef 175g with a long promotional description';
+    render(<PosReportsTopItemsTable rows={[{ ...rows[0], item_name: itemName }]} totalSales={25185} />);
+
+    const table = screen.getByRole('table');
+    await user.click(within(table).getByRole('button', { name: `View details for ${itemName}` }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Top-selling item details')).toBeTruthy();
+    expect(within(dialog).getAllByText(itemName)).toHaveLength(2);
+    const itemLabel = within(dialog).getByText('Items', { selector: 'dt' });
+    expect(itemLabel.nextElementSibling.textContent).toBe(itemName);
+    expect(itemLabel.nextElementSibling.querySelector('span:last-child').className).toContain('break-words');
+    expect(screen.getByTestId('pos-reports-top-items-details-dialog').className).toContain('min-[768px]:max-w-4xl');
   });
 
   it('keeps the table usable when there are no top items', () => {

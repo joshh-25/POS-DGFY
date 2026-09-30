@@ -136,24 +136,36 @@ test('detectComponents flags only the components a change actually touches', () 
     frontend_ims: false,
     frontend_pos: false,
     frontend_storefront: false,
+    frontend_opis: false,
     dgfy_api: true,
     migration_runner: false,
   });
 });
 
-test('detectComponents flags all three frontend apps for a shared-constants change', () => {
+test('detectComponents flags all four frontend apps for a shared-constants change', () => {
   const components = detectComponents(['packages/shared-constants/index.js']);
   assert.equal(components.frontend_ims, true);
   assert.equal(components.frontend_pos, true);
   assert.equal(components.frontend_storefront, true);
+  assert.equal(components.frontend_opis, true);
   assert.equal(components.dgfy_api, true);
 });
 
-test('detectComponents flags only dgfy-ims and dgfy-pos, not storefront, for a pos-receipt change', () => {
+test('detectComponents flags only dgfy-ims, dgfy-pos, and dgfy-opis, not storefront, for a pos-receipt change', () => {
   const components = detectComponents(['packages/pos-receipt/index.js']);
   assert.equal(components.frontend_ims, true);
   assert.equal(components.frontend_pos, true);
   assert.equal(components.frontend_storefront, false);
+  assert.equal(components.frontend_opis, true);
+});
+
+test('detectComponents flags only dgfy-opis for an OPIS app change', () => {
+  const components = detectComponents(['apps/dgfy-opis/src/main.jsx']);
+  assert.equal(components.frontend_ims, false);
+  assert.equal(components.frontend_pos, false);
+  assert.equal(components.frontend_storefront, false);
+  assert.equal(components.frontend_opis, true);
+  assert.equal(components.dgfy_api, false);
 });
 
 test('detectComponents flags nothing for a docs-only change', () => {
@@ -162,6 +174,7 @@ test('detectComponents flags nothing for a docs-only change', () => {
     frontend_ims: false,
     frontend_pos: false,
     frontend_storefront: false,
+    frontend_opis: false,
     dgfy_api: false,
     migration_runner: false,
   });

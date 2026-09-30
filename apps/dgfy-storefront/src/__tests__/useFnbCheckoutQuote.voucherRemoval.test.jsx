@@ -147,3 +147,98 @@ describe('useFnbCheckoutQuote voucher removal', () => {
     expect(props.setQuoteNeedsRefresh).toHaveBeenLastCalledWith(true);
   });
 });
+
+describe('useFnbCheckoutQuote fulfillment context', () => {
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((done) => { resolve = done; });
+    return { promise, resolve };
+  };
+
+  it('discards a delivery quote when pickup is selected before the response arrives', async () => {
+    const deliveryResponse = deferred();
+    const props = buildProps({
+      isDeliveryOrder: true,
+      orderMethod: 'delivery',
+      requestJson: vi.fn(() => deliveryResponse.promise),
+    });
+    const { result, rerender } = renderHook(({ currentProps }) => useFnbCheckoutQuote(currentProps), {
+      initialProps: { currentProps: props },
+    });
+    let request;
+    act(() => { request = result.current.requestQuote({ silent: true }); });
+
+    rerender({ currentProps: { ...props, isDeliveryOrder: false, orderMethod: 'pickup' } });
+    await act(async () => {
+      deliveryResponse.resolve({ total_amount: 538, delivery_fee: 50 });
+      await request;
+    });
+
+    expect(props.setQuoteResult).not.toHaveBeenCalled();
+    expect(props.setQuotedCartSignature).not.toHaveBeenCalled();
+    expect(props.setQuoteNeedsRefresh).not.toHaveBeenCalledWith(false);
+  });
+
+  it('discards an older delivery quote while a pickup quote is already in flight', async () => {
+    const deliveryResponse = deferred();
+    const pickupResponse = deferred();
+    const requestJson = vi.fn()
+      .mockReturnValueOnce(deliveryResponse.promise)
+      .mockReturnValueOnce(pickupResponse.promise);
+    const props = buildProps({ isDeliveryOrder: true, orderMethod: 'delivery', requestJson });
+    const { result, rerender } = renderHook(({ currentProps }) => useFnbCheckoutQuote(currentProps), {
+      initialProps: { currentProps: props },
+    });
+    let deliveryRequest;
+    act(() => { deliveryRequest = result.current.requestQuote({ silent: true }); });
+
+    const pickupProps = { ...props, isDeliveryOrder: false, orderMethod: 'pickup' };
+    rerender({ currentProps: pickupProps });
+    let pickupRequest;
+    act(() => { pickupRequest = result.current.requestQuote({ silent: true }); });
+    await act(async () => {
+      deliveryResponse.resolve({ total_amount: 538, delivery_fee: 50 });
+      await deliveryRequest;
+    });
+    expect(props.setQuoteResult).not.toHaveBeenCalled();
+    expect(props.setQuoteNeedsRefresh).not.toHaveBeenCalledWith(false);
+
+    await act(async () => {
+      pickupResponse.resolve({ total_amount: 488, delivery_fee: 0 });
+      await pickupRequest;
+    });
+    expect(props.setQuoteResult).toHaveBeenCalledTimes(1);
+    expect(props.setQuoteResult).toHaveBeenCalledWith({ total_amount: 488, delivery_fee: 0 });
+    expect(props.setQuoteNeedsRefresh).toHaveBeenCalledTimes(1);
+    expect(props.setQuoteNeedsRefresh).toHaveBeenCalledWith(false);
+  });
+
+  it('discards an address-priced quote after the delivery pin changes', async () => {
+    const deliveryResponse = deferred();
+    const props = buildProps({
+      customerPin: { latitude: 14.55, longitude: 121.02 },
+      deliveryAddress: 'Old address',
+      isDeliveryOrder: true,
+      orderMethod: 'delivery',
+      requestJson: vi.fn(() => deliveryResponse.promise),
+    });
+    const { result, rerender } = renderHook(({ currentProps }) => useFnbCheckoutQuote(currentProps), {
+      initialProps: { currentProps: props },
+    });
+    let request;
+    act(() => { request = result.current.requestQuote({ silent: true }); });
+
+    rerender({ currentProps: {
+      ...props,
+      customerPin: { latitude: 14.56, longitude: 121.03 },
+      deliveryAddress: 'New address',
+    } });
+    await act(async () => {
+      deliveryResponse.resolve({ total_amount: 568, delivery_fee: 80 });
+      await request;
+    });
+
+    expect(props.setQuoteResult).not.toHaveBeenCalled();
+    expect(props.setQuoteNeedsRefresh).not.toHaveBeenCalledWith(false);
+  });
+});

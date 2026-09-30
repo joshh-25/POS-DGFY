@@ -93,10 +93,13 @@ const buildProps = (overrides = {}) => ({
 // Categories section's own container, after confirming the memberships GET
 // resolved (success or failure -- callers assert on the outcome themselves).
 const openEditAndGetSection = async () => {
-  fireEvent.click(await screen.findByTitle('Edit Aloo Paratha'));
+  const editButtons = await screen.findAllByTitle('Edit Aloo Paratha');
+  fireEvent.click(editButtons[0]);
   await waitFor(() => expect(listItemFolders).toHaveBeenCalledWith(24));
   const heading = await screen.findByText('Additional Categories');
-  return heading.closest('div');
+  const section = heading.closest('.pos-items-modal-secondary-panel');
+  expect(section).toBeTruthy();
+  return section;
 };
 
 // Stages a primary-category selection via the edit modal's own
@@ -123,9 +126,7 @@ describe('POS edit-item modal: Additional Categories (#1318)', () => {
     render(<TerminalOperationsWorkspace {...buildProps({ canManageCategories: true })} />);
     const section = await openEditAndGetSection();
 
-    expect(screen.getByTestId('pos-edit-item-shared-catalog-notice')).toBeTruthy();
-    expect(screen.getByText(/Item name and selling price are shared across this tenant/i)).toBeTruthy();
-    expect(screen.getByText(/Stock and POS availability apply to the selected branch/i)).toBeTruthy();
+    expect(screen.getByRole('dialog').getAttribute('aria-labelledby')).toBe('pos-items-edit-modal-title');
 
     // The item's own primary category (Main Course, folder_id 10) must not
     // be offered as a secondary option -- selecting it would be redundant

@@ -79,7 +79,7 @@ server {
 # issuance and renewal), redirect everything else to HTTPS.
 server {
     listen 80;
-    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${DGFY_API_DOMAIN} ${DGLAUNDRY_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
+    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${OPIS_DOMAIN} ${DGFY_API_DOMAIN} ${DGLAUNDRY_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD} ${OPIS_DOMAIN_PROD};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -154,6 +154,16 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     return 301 https://${POS_DOMAIN_PROD}$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name ${OPIS_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+
+    return 301 https://${OPIS_DOMAIN_PROD}$request_uri;
 }
 
 # Storefront redirect. Deliberately drops ${STOREFRONT_ALT_DOMAIN} (bar.space.com.ph)
@@ -612,6 +622,130 @@ server {
 
     location / {
         set $frontend_upstream dgfy-storefront:8083;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# ============================================================================
+# PRODUCTION OPIS block (opis.dgfy.ph). Serves the `dgfy-opis` container
+# (issue #2052, prod VITE_* baked in) via the ${CERT_DOMAIN_PROD} certificate.
+# /api + /uploads proxy to the SAME shared `dgfy-api:5100` every other PROD
+# block above terminates on. Mirrors the POS block (including no /openfreemap
+# proxy); the Back Office catalog editor reuses the same menu-import endpoint.
+# ============================================================================
+
+server {
+    listen 443 ssl;
+    server_name ${OPIS_DOMAIN_PROD};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
+
+    location /api {
+        # #1824: default proxy_read_timeout (60s) is shorter than tenant
+        # approval/retry provisioning (~88s observed), which caused a spurious
+        # 504 on a request that succeeded in the backend. 180s gives headroom
+        # over the observed time.
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location = /api/v1/items/import/menu/jobs {
+        set $dgfy_api_upstream dgfy-api:5100;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$dgfy_api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # packages/web-core/src/observability/analyticsClient.js. Same three
+    # locations as the other PROD server blocks above.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $posthog_assets_upstream;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $posthog_assets_upstream;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $posthog_upstream;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host $posthog_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # OPIS intentionally has no /openfreemap proxy -- mirrors the POS block.
+
+    location / {
+        set $frontend_upstream dgfy-opis:8084;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;

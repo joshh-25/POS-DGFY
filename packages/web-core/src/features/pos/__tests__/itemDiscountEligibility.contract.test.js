@@ -31,6 +31,8 @@ describe('item Senior/PWD discount eligibility controls', () => {
   it('copies Senior/PWD eligibility from catalog items into POS cart lines', () => {
     const checkoutTerminal = [
       readFrontendFile('src/features/pos/components/POSCheckoutTerminal.jsx'),
+      // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+      readFrontendFile('src/features/pos/hooks/usePosTerminalViewModel.js'),
       readFrontendFile('src/features/pos/components/POSCheckoutTerminalView.jsx'),
       readFrontendFile('src/features/pos/components/POSDiscountWorkspace.jsx'),
       readFrontendFile('src/features/pos/utils/posDiscountSelection.js'),

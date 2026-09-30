@@ -7,11 +7,13 @@ import {
   BarChart3,
   Calculator,
   Calendar,
+  Check,
   CheckCircle2,
   Clock3,
   CreditCard,
   Download,
   Filter,
+  FileText,
   LayoutDashboard,
   Printer,
   Receipt,
@@ -35,12 +37,15 @@ import {
 import {
   exportPosReportCsv,
   fetchPosReportsBreakdown,
+  fetchPosZReadingDetails,
+  fetchPosZReadingHistory,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
 import PosLineTabNavigation from './PosLineTabNavigation.jsx';
 import PosReportsDateFilterPanel from './PosReportsDateFilterPanel.jsx';
 import PosReportsFilterPanel from './PosReportsFilterPanel.jsx';
+import PosSingleDatePicker from './PosSingleDatePicker.jsx';
 import PosReportsKpiCards from './PosReportsKpiCards.jsx';
 import PosReportsAdjustmentKpiCards from './PosReportsAdjustmentKpiCards.jsx';
 import PosReportsOverviewTable from './PosReportsOverviewTable.jsx';
@@ -56,6 +61,14 @@ import PosReportsBreakdownTable, { PosReportsBreakdownSummary } from './PosRepor
 import PosReportsComparisonPanel from './PosReportsComparisonPanel.jsx';
 import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
+import PosZReadingHistoryTable from './PosZReadingHistoryTable.jsx';
+import PosZReadingHistoryToolbar from './PosZReadingHistoryToolbar.jsx';
+import {
+  buildDailySalesCheckCsv,
+  buildDailySalesCheckPrintHtml,
+  buildZReadingHistoryCsv,
+  buildZReadingHistoryPrintHtml
+} from './posZReadingReconciliationExports.js';
 import PosSubtabNavigation from './PosSubtabNavigation.jsx';
 import PosPageFrame from './PosPageFrame.jsx';
 import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
@@ -66,12 +79,12 @@ import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
   BackOfficeReportDataTable as DataTable,
   BackOfficeReportEmptyState as EmptyState,
-  BackOfficeReportMetric as MetricCard,
   BackOfficeReportSectionCard as SectionCard
 } from '../../../components/backOffice/BackOfficePrimitives.jsx';
 
 const REPORT_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, granularity: 'daily', exportSection: 'daily' },
+  { id: 'z_readings', label: 'Z-Readings', icon: Calendar, granularity: 'daily', exportSection: 'daily' },
   { id: 'sales', label: 'Sales', icon: Receipt, granularity: 'daily', exportSection: 'sales' },
   { id: 'hourly', label: 'Hourly Sales', icon: Clock3, granularity: 'daily', breakdown: 'hourly', exportSection: 'hourly' },
   { id: 'item_sales', label: 'Item Sales', icon: ShoppingBag, granularity: 'daily', breakdown: 'items', exportSection: 'item_sales' },
@@ -95,6 +108,11 @@ const REPORT_OPERATION_SECTIONS = [
   { id: 'handoffs', label: 'Handoff', icon: ArrowLeftRight },
   { id: 'attendance', label: 'Attendance', icon: Clock3 },
   { id: 'employee_credit', label: 'Credit Activity', icon: CreditCard, permission: 'pos:employee_credit:report' }
+];
+
+const Z_READING_SECTIONS = [
+  { id: 'daily_check', label: 'Daily Sales Check', icon: CheckCircle2 },
+  { id: 'history', label: 'History', icon: Clock3 }
 ];
 
 const PAYMENT_OPTIONS = [
@@ -202,49 +220,166 @@ const downloadBlob = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-const ZReadingReconciliationCard = ({ data, currencySymbol }) => {
+const DailySalesCheckMetric = ({ label, value, description, className = '' }) => (
+  <div className={`min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/40 sm:p-4 ${className}`}>
+    <dt className="text-xs font-bold uppercase leading-4 tracking-wide text-slate-500">{label}</dt>
+    <dd className="mt-1.5 min-w-0 break-words text-xl font-black leading-tight tabular-nums text-slate-950 sm:text-2xl">
+      {value}
+      <span className="mt-1.5 block break-words text-xs font-normal leading-4 text-slate-600">{description}</span>
+    </dd>
+  </div>
+);
+
+export const ZReadingReconciliationCard = ({
+  data,
+  currencySymbol,
+  title = 'Z-reading reconciliation',
+  onPrint,
+  onExport,
+  actionsDisabled = false
+}) => {
   if (!data) return null;
 
   const status = String(data.status || 'not_comparable');
   const statusConfig = status === 'matched'
-    ? { label: 'Matched', Icon: CheckCircle2, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' }
+    ? { label: 'Matched', Icon: Check, className: 'border-emerald-200 bg-emerald-50 text-emerald-800' }
     : status === 'variance'
-      ? { label: 'Variance found', Icon: AlertTriangle, className: 'border-rose-200 bg-rose-50 text-rose-800' }
+      ? { label: 'Variance found', Icon: AlertTriangle, className: 'border-rose-200 bg-rose-50 text-rose-800', metricClassName: 'border-rose-200 bg-rose-50/60' }
       : { label: status === 'not_generated' ? 'Not generated' : 'Comparison unavailable', Icon: AlertTriangle, className: 'border-amber-200 bg-amber-50 text-amber-800' };
   const StatusIcon = statusConfig.Icon;
   const isComparable = status === 'matched' || status === 'variance';
-  const hasReportTotal = data.report_recognized_sales !== null && data.report_recognized_sales !== undefined;
-
+  const hasNumber = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+  const formatAmount = (value) => hasNumber(value) ? money(value, currencySymbol) : '—';
+  const formatCount = (value) => hasNumber(value) ? Number(value).toLocaleString('en-US') : '—';
+  const zVoids = hasNumber(data.z_void_transaction_count) || hasNumber(data.z_void_amount)
+    ? `${formatCount(data.z_void_transaction_count)} · ${formatAmount(data.z_void_amount)}`
+    : '—';
   return (
-    <SectionCard
-      title="Z-reading reconciliation"
-      actions={data.reading_identifier ? <span className="text-xs font-black text-slate-500">{data.reading_identifier}</span> : null}
+    <section
+      className="min-w-0 max-w-full"
+      aria-labelledby="daily-sales-check-heading"
     >
-      <div className={`rounded-2xl border px-4 py-3 ${statusConfig.className}`}>
-        <div className="flex items-start gap-3">
-          <StatusIcon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="text-sm font-black">{statusConfig.label}</p>
-            <p className="mt-1 text-xs font-semibold leading-5">{data.message || 'The selected report scope cannot be compared with a Z-reading.'}</p>
+      {typeof onPrint === 'function' && typeof onExport === 'function' ? (
+        <div className="mb-3 flex min-w-0 justify-end" role="group" aria-label="Daily Sales Check actions">
+          <div className="flex w-full flex-col gap-3 min-[360px]:w-auto min-[360px]:flex-row min-[768px]:gap-2">
+            <Button
+              type="button"
+              onClick={onPrint}
+              disabled={actionsDisabled}
+              aria-label="Print or save Daily Sales Check as PDF"
+              className="min-h-11 w-full min-w-0 justify-center gap-1.5 rounded-xl bg-slate-900 px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-slate-800 min-[360px]:w-auto sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
+            >
+              <Printer className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
+              <span>Print / Save PDF</span>
+            </Button>
+            <Button
+              type="button"
+              onClick={onExport}
+              disabled={actionsDisabled}
+              aria-label="Export Daily Sales Check as CSV"
+              className="min-h-11 w-full min-w-0 justify-center gap-1.5 rounded-xl bg-[#1A4E8D] px-3 text-[12px] font-extrabold text-white shadow-sm hover:bg-[#143F73] min-[360px]:w-auto sm:min-h-10 sm:px-4 sm:text-[13px] lg:min-h-9"
+            >
+              <Download className="h-4 w-4 shrink-0 text-white" aria-hidden="true" />
+              <span>Export CSV</span>
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      <header className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 id="daily-sales-check-heading" className="min-w-0 break-words text-sm font-black text-slate-950">{title}</h3>
+          <span
+            role="status"
+            aria-live="polite"
+            aria-describedby={status === 'not_comparable' && data.message ? 'daily-sales-check-status-message' : undefined}
+            className={`inline-flex min-h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold leading-4 ${statusConfig.className}`}
+          >
+            <StatusIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {statusConfig.label}
+          </span>
+        </div>
+        {data.reading_identifier ? (
+          <p className="flex min-w-0 items-center gap-1.5 break-all text-xs font-bold text-slate-600">
+            <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {data.reading_identifier}
+          </p>
+        ) : null}
+      </header>
+
+      {status === 'not_comparable' && data.message ? (
+        <p id="daily-sales-check-status-message" className="mt-3 break-words rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+          {data.message}
+        </p>
+      ) : null}
+
+      <dl className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Daily sales reconciliation">
+        <DailySalesCheckMetric
+          label="Report recognized sales"
+          value={formatAmount(data.report_recognized_sales)}
+          description="Completed, recognized transaction totals"
+        />
+        <DailySalesCheckMetric
+          label="Z-reading total"
+          value={formatAmount(data.z_total_amount)}
+          description={status === 'not_generated'
+            ? 'No immutable snapshot yet'
+            : isComparable
+              ? 'Saved immutable total for this business date'
+              : 'Unavailable for this report selection'}
+        />
+        <DailySalesCheckMetric
+          label="Difference"
+          value={isComparable ? formatAmount(data.variance) : '—'}
+          description={status === 'variance'
+            ? 'Recognized sales minus the saved total. Review scope and post-close events.'
+            : 'Shown only when both totals are comparable'}
+          className={statusConfig.metricClassName || ''}
+        />
+        <DailySalesCheckMetric
+          label="Report net sales"
+          value={formatAmount(data.report_net_sales)}
+          description="Different metric; includes line-level discounts/refunds"
+        />
+      </dl>
+
+      <div className="mt-4 grid min-w-0 gap-4 border-t border-slate-200 pt-4 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,auto)] xl:items-end">
+        <section className="min-w-0" aria-labelledby="daily-sales-additional-activity-heading">
+          <h4 id="daily-sales-additional-activity-heading" className="text-sm font-bold text-slate-950">Additional Activity</h4>
+          <dl className="mt-2 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="min-w-0">
+              <dt className="text-xs text-slate-600">Z voids</dt>
+              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{zVoids}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-slate-600">Report refunds / voids</dt>
+              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{formatAmount(data.report_refunds_voids)}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-slate-600">Report adjustments</dt>
+              <dd className="mt-1 break-words text-sm font-bold tabular-nums text-[#1A4E8D]">{formatAmount(data.report_adjustment_amount)}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <div className="grid min-w-0 grid-cols-1 gap-3 min-[520px]:grid-cols-2 xl:min-w-[18rem] xl:border-l xl:border-slate-200 xl:pl-4" aria-label="Reading timestamps">
+          <div className="flex min-w-0 items-start gap-2.5">
+            <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-600">Date &amp; time generated</p>
+              <p className="mt-0.5 break-words text-sm font-bold text-slate-950">{data.generated_at ? printDateTime(data.generated_at) : '—'}</p>
+            </div>
+          </div>
+          <div className="flex min-w-0 items-start gap-2.5">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+            <div className="min-w-0">
+              <p className="text-xs text-slate-600">Checked at</p>
+              <p className="mt-0.5 break-words text-sm font-bold text-slate-950">{data.evaluated_at ? printDateTime(data.evaluated_at) : '—'}</p>
+            </div>
           </div>
         </div>
       </div>
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Report recognized sales" value={hasReportTotal ? money(data.report_recognized_sales, currencySymbol) : '—'} hint="Completed, recognized transaction totals" />
-        <MetricCard label="Z-reading total" value={data.z_total_amount === null || data.z_total_amount === undefined ? '—' : money(data.z_total_amount, currencySymbol)} hint={data.generated_at ? `Generated ${printDateTime(data.generated_at)}` : 'No immutable snapshot yet'} />
-        <MetricCard label="Difference" value={data.variance === null || data.variance === undefined ? '—' : money(data.variance, currencySymbol)} tone={isComparable && Number(data.variance || 0) < 0 ? 'negative' : isComparable ? 'positive' : 'default'} hint={isComparable ? 'Report recognized sales minus Z-reading total' : 'Shown only when both totals are comparable'} />
-        <MetricCard label="Report net sales" value={money(data.report_net_sales, currencySymbol)} hint="Different metric; includes line-level discounts/refunds" />
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-500">
-        <span>Z voids: {Number(data.z_void_transaction_count || 0)} · {money(data.z_void_amount, currencySymbol)}</span>
-        <span>Report refunds/voids: {money(data.report_refunds_voids, currencySymbol)}</span>
-        <span>Report adjustments: {money(data.report_adjustment_amount, currencySymbol)}</span>
-        {data.generated_at ? <span>Generated: {printDateTime(data.generated_at)}</span> : null}
-        {data.evaluated_at ? <span>Checked: {printDateTime(data.evaluated_at)}</span> : null}
-      </div>
-    </SectionCard>
+    </section>
   );
 };
 
@@ -262,6 +397,27 @@ function PosReportsAnalyticsWorkspace({
   const [renderedTab, setRenderedTab] = useState('overview');
   const [operationSection, setOperationSection] = useState('cashiers');
   const [renderedOperationSection, setRenderedOperationSection] = useState('cashiers');
+  const [zReadingSection, setZReadingSection] = useState('daily_check');
+  const [dailySalesCheckDate, setDailySalesCheckDate] = useState(() => toDateInput(new Date()));
+  const [dailySalesCheckDateCustomized, setDailySalesCheckDateCustomized] = useState(false);
+  const [dailySalesCheckReport, setDailySalesCheckReport] = useState(null);
+  const [dailySalesCheckLoading, setDailySalesCheckLoading] = useState(false);
+  const [dailySalesCheckError, setDailySalesCheckError] = useState('');
+  const [dailySalesCheckRefreshKey, setDailySalesCheckRefreshKey] = useState(0);
+  const [zReadingHistoryRows, setZReadingHistoryRows] = useState([]);
+  const [zReadingHistorySearchInput, setZReadingHistorySearchInput] = useState('');
+  const [zReadingHistorySearchQuery, setZReadingHistorySearchQuery] = useState('');
+  const [zReadingHistoryFilters, setZReadingHistoryFilters] = useState({ terminalId: '', closedBy: '' });
+  const [zReadingHistoryActionBusy, setZReadingHistoryActionBusy] = useState(false);
+  const [zReadingHistoryActionError, setZReadingHistoryActionError] = useState('');
+  const [zReadingHistoryPage, setZReadingHistoryPage] = useState(1);
+  const [zReadingHistoryLimit, setZReadingHistoryLimit] = useState(20);
+  const [zReadingHistoryTotal, setZReadingHistoryTotal] = useState(0);
+  const [zReadingHistoryLoading, setZReadingHistoryLoading] = useState(false);
+  const [zReadingHistoryError, setZReadingHistoryError] = useState('');
+  const [zReadingHistoryRefreshKey, setZReadingHistoryRefreshKey] = useState(0);
+  const [zReadingHistoryPreview, setZReadingHistoryPreview] = useState({ open: false, row: null, data: null, loading: false, error: '' });
+  const zReadingPreviewRequestRef = useRef(0);
   const [reportPanelInlineStyle, setReportPanelInlineStyle] = useState({ opacity: 1, transition: 'none' });
   const reportPanelAnimationTimersRef = useRef([]);
   const [granularity, setGranularity] = useState('daily');
@@ -363,6 +519,7 @@ function PosReportsAnalyticsWorkspace({
   useEffect(() => () => clearReportPanelAnimationTimers(), [clearReportPanelAnimationTimers]);
   const reportFilterButtonRef = useRef(null);
   const reportDateFilterButtonRef = useRef(null);
+  const zReadingHistoryFilterButtonRef = useRef(null);
   const normalizedDateRange = useMemo(() => ({
     dateFrom: normalizeReportDateInput(dateRange.dateFrom),
     dateTo: normalizeReportDateInput(dateRange.dateTo)
@@ -398,6 +555,15 @@ function PosReportsAnalyticsWorkspace({
     transitionReportPanel(selectedTab.id, operationSection);
     setActiveTab(selectedTab.id);
     setOverviewSearchQuery('');
+    if (selectedTab.id === 'z_readings') {
+      setReportFiltersOpen(false);
+      setReportDateFilterOpen(false);
+    }
+  };
+
+  const handleZReadingSectionChange = (sectionId) => {
+    if (!Z_READING_SECTIONS.some((section) => section.id === sectionId)) return;
+    setZReadingSection(sectionId);
   };
 
   const handleOperationSectionChange = (sectionId) => {
@@ -432,6 +598,7 @@ function PosReportsAnalyticsWorkspace({
     setSource('');
     setCategoryId('');
     setOverviewSearchQuery('');
+    setZReadingHistoryPage(1);
     setReportFiltersOpen(false);
     setReportDateFilterOpen(false);
   };
@@ -466,6 +633,7 @@ function PosReportsAnalyticsWorkspace({
   const handleApplyReportDateRange = (nextDateRange) => {
     setDateRange({ ...nextDateRange });
     setReportDateFilterApplied(true);
+    setZReadingHistoryPage(1);
     setReportDateFilterOpen(false);
   };
 
@@ -494,9 +662,22 @@ function PosReportsAnalyticsWorkspace({
   }, [activeBreakdown, cashierId, categoryId, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, paymentType, source]);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setZReadingHistoryPage(1);
+      setZReadingHistorySearchQuery(String(zReadingHistorySearchInput || '').trim());
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [zReadingHistorySearchInput]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadReports = async () => {
+      if (activeTab === 'z_readings') {
+        setLoading(false);
+        return;
+      }
+
       if (isBreakdownTab) {
         setBreakdownLoading(true);
         setBreakdownError('');
@@ -606,7 +787,8 @@ function PosReportsAnalyticsWorkspace({
     operatingLocationId,
     paymentType,
     reportRefreshKey,
-    source
+    source,
+    activeTab
   ]);
 
   const summaryCards = reportData?.summary_cards || {};
@@ -619,6 +801,128 @@ function PosReportsAnalyticsWorkspace({
   const profitLoss = reportData?.profit_loss || {};
   const cashierLifecycle = reportData?.cashier_lifecycle || {};
   const zReadingReconciliation = reportData?.z_reading_reconciliation || null;
+
+  useEffect(() => {
+    if (dailySalesCheckDateCustomized) return;
+    const reportToday = normalizeReportDateInput(reportData?.date_bounds?.today);
+    if (reportToday && reportToday !== dailySalesCheckDate) setDailySalesCheckDate(reportToday);
+  }, [dailySalesCheckDate, dailySalesCheckDateCustomized, reportData?.date_bounds?.today]);
+
+  useEffect(() => {
+    if (activeTab !== 'z_readings' || zReadingSection !== 'daily_check') return undefined;
+    let cancelled = false;
+
+    const loadDailySalesCheck = async () => {
+      if (!isOnline) {
+        setDailySalesCheckReport(null);
+        setDailySalesCheckError('Daily Sales Check needs a live branch report and is unavailable offline.');
+        setDailySalesCheckLoading(false);
+        return;
+      }
+
+      setDailySalesCheckLoading(true);
+      setDailySalesCheckError('');
+      try {
+        const payload = await fetchPosReportsOverview({
+          granularity: 'daily',
+          date_from: dailySalesCheckDate,
+          date_to: dailySalesCheckDate,
+          location_id: Number(operatingLocationId) > 0 ? Number(operatingLocationId) : undefined
+        });
+        if (!cancelled) setDailySalesCheckReport(payload);
+      } catch (loadError) {
+        if (!cancelled) {
+          setDailySalesCheckReport(null);
+          setDailySalesCheckError(loadError?.response?.data?.message || 'Failed to load the Daily Sales Check.');
+        }
+      } finally {
+        if (!cancelled) setDailySalesCheckLoading(false);
+      }
+    };
+
+    loadDailySalesCheck();
+    return () => { cancelled = true; };
+  }, [activeTab, dailySalesCheckDate, dailySalesCheckRefreshKey, isOnline, operatingLocationId, reportRefreshKey, zReadingSection]);
+
+  useEffect(() => {
+    if (activeTab !== 'z_readings' || zReadingSection !== 'history') return undefined;
+    let cancelled = false;
+
+    const loadZReadingHistory = async () => {
+      if (!isOnline) {
+        setZReadingHistoryRows([]);
+        setZReadingHistoryTotal(0);
+        setZReadingHistoryError('Saved Z-reading history needs a live connection and is not cached on this terminal.');
+        setZReadingHistoryLoading(false);
+        return;
+      }
+
+      setZReadingHistoryLoading(true);
+      setZReadingHistoryError('');
+      try {
+        const payload = await fetchPosZReadingHistory({
+          date_from: normalizedDateRange.dateFrom || undefined,
+          date_to: normalizedDateRange.dateTo || undefined,
+          search: zReadingHistorySearchQuery || undefined,
+          terminal_id: zReadingHistoryFilters.terminalId || undefined,
+          closed_by: zReadingHistoryFilters.closedBy || undefined,
+          page: zReadingHistoryPage,
+          limit: zReadingHistoryLimit,
+          location_id: Number(operatingLocationId) > 0 ? Number(operatingLocationId) : undefined
+        });
+        if (!cancelled) {
+          setZReadingHistoryRows(Array.isArray(payload?.rows) ? payload.rows : []);
+          setZReadingHistoryTotal(Number(payload?.pagination?.total || 0));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setZReadingHistoryRows([]);
+          setZReadingHistoryTotal(0);
+          setZReadingHistoryError(loadError?.response?.data?.message || 'Failed to load saved Z-reading history.');
+        }
+      } finally {
+        if (!cancelled) setZReadingHistoryLoading(false);
+      }
+    };
+
+    loadZReadingHistory();
+    return () => { cancelled = true; };
+  }, [activeTab, isOnline, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, zReadingHistoryFilters.closedBy, zReadingHistoryFilters.terminalId, zReadingHistoryLimit, zReadingHistoryPage, zReadingHistoryRefreshKey, zReadingHistorySearchQuery, zReadingSection]);
+
+  const handlePreviewZReading = async (row) => {
+    const requestId = zReadingPreviewRequestRef.current + 1;
+    zReadingPreviewRequestRef.current = requestId;
+    setZReadingHistoryPreview({ open: true, row, data: null, loading: true, error: '' });
+    try {
+      const data = await fetchPosZReadingDetails(row.business_date, {
+        location_id: row.location_id || (Number(operatingLocationId) > 0 ? Number(operatingLocationId) : undefined)
+      });
+      if (requestId !== zReadingPreviewRequestRef.current) return;
+      if (data?.snapshot_persisted !== true) {
+        setZReadingHistoryPreview((current) => ({
+          ...current,
+          data: null,
+          loading: false,
+          error: 'The saved snapshot could not be confirmed. No on-demand reading is shown as history.'
+        }));
+        return;
+      }
+      setZReadingHistoryPreview((current) => ({ ...current, data, loading: false, error: '' }));
+    } catch (loadError) {
+      if (requestId === zReadingPreviewRequestRef.current) {
+        setZReadingHistoryPreview((current) => ({
+          ...current,
+          loading: false,
+          error: loadError?.response?.data?.message || 'Failed to load saved Z-reading details.'
+        }));
+      }
+    }
+  };
+
+  const closeZReadingPreview = () => {
+    zReadingPreviewRequestRef.current += 1;
+    setZReadingHistoryPreview({ open: false, row: null, data: null, loading: false, error: '' });
+  };
 
   const trendSeries = useMemo(() => {
     if (activeTab === 'comparison') {
@@ -652,7 +956,7 @@ function PosReportsAnalyticsWorkspace({
   );
   const shouldRenderReportPanel = isBreakdownTab
     ? Boolean(breakdownData)
-    : Boolean(reportData) && (hasData || activeTab === 'overview');
+    : activeTab === 'z_readings' || (Boolean(reportData) && (hasData || activeTab === 'overview'));
   const shouldShowOperationsSubtabs = activeTab === 'operations'
     && !isBreakdownTab
     && !isInitialLoading
@@ -725,6 +1029,120 @@ function PosReportsAnalyticsWorkspace({
       ...reportParams
     });
     downloadBlob(blob, filename);
+  };
+
+  const buildZReadingHistoryQuery = (page) => ({
+    date_from: normalizedDateRange.dateFrom || undefined,
+    date_to: normalizedDateRange.dateTo || undefined,
+    search: zReadingHistorySearchQuery || undefined,
+    terminal_id: zReadingHistoryFilters.terminalId || undefined,
+    closed_by: zReadingHistoryFilters.closedBy || undefined,
+    page,
+    limit: 100,
+    location_id: Number(operatingLocationId) > 0 ? Number(operatingLocationId) : undefined
+  });
+
+  const fetchAllMatchingZReadingHistory = async () => {
+    const firstPage = await fetchPosZReadingHistory(buildZReadingHistoryQuery(1));
+    const firstRows = Array.isArray(firstPage?.rows) ? firstPage.rows : [];
+    const totalPages = Math.max(1, Number(firstPage?.pagination?.totalPages) || 1);
+    const allRows = [...firstRows];
+
+    for (let firstUnrequestedPage = 2; firstUnrequestedPage <= totalPages; firstUnrequestedPage += 4) {
+      const pageNumbers = Array.from(
+        { length: Math.min(4, totalPages - firstUnrequestedPage + 1) },
+        (_, index) => firstUnrequestedPage + index
+      );
+      const payloads = await Promise.all(pageNumbers.map((page) => fetchPosZReadingHistory(buildZReadingHistoryQuery(page))));
+      payloads.forEach((payload) => {
+        if (Array.isArray(payload?.rows)) allRows.push(...payload.rows);
+      });
+    }
+
+    return allRows;
+  };
+
+  const handleExportZReadingHistory = async () => {
+    if (zReadingHistoryActionBusy) return;
+    setZReadingHistoryActionBusy(true);
+    setZReadingHistoryActionError('');
+    try {
+      const rows = await fetchAllMatchingZReadingHistory();
+      const csv = buildZReadingHistoryCsv(rows, { currencySymbol, formatMoney: money });
+      if (!csv) {
+        setZReadingHistoryActionError('No saved Z-readings match the current filters.');
+        return;
+      }
+      const dateRangeLabel = [normalizedDateRange.dateFrom, normalizedDateRange.dateTo].filter(Boolean).join('-') || 'all-dates';
+      downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `pos-z-reading-history-${dateRangeLabel}.csv`);
+    } catch (exportError) {
+      setZReadingHistoryActionError(exportError?.response?.data?.message || 'Could not export the matching Z-reading history. Try again.');
+    } finally {
+      setZReadingHistoryActionBusy(false);
+    }
+  };
+
+  const handlePrintZReadingHistory = async () => {
+    if (zReadingHistoryActionBusy || typeof window === 'undefined') return;
+    const printWindow = window.open('', '_blank', 'width=1120,height=900');
+    if (!printWindow) {
+      setZReadingHistoryActionError('Allow pop-ups for this POS page to print or save the history as PDF.');
+      return;
+    }
+
+    setZReadingHistoryActionBusy(true);
+    setZReadingHistoryActionError('');
+    try {
+      const rows = await fetchAllMatchingZReadingHistory();
+      const html = buildZReadingHistoryPrintHtml(rows, {
+        currencySymbol,
+        formatMoney: money,
+        dateFrom: normalizedDateRange.dateFrom,
+        dateTo: normalizedDateRange.dateTo,
+        search: zReadingHistorySearchQuery
+      });
+      if (!html) {
+        printWindow.close();
+        setZReadingHistoryActionError('No saved Z-readings match the current filters.');
+        return;
+      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+    } catch (printError) {
+      printWindow.close();
+      setZReadingHistoryActionError(printError?.response?.data?.message || 'Could not prepare the Z-reading history for printing. Try again.');
+    } finally {
+      setZReadingHistoryActionBusy(false);
+    }
+  };
+
+  const handleExportDailySalesCheck = () => {
+    const data = dailySalesCheckReport?.z_reading_reconciliation;
+    const formatOptions = { businessDate: dailySalesCheckDate, currencySymbol, formatMoney: money, formatDateTime: printDateTime };
+    const csv = buildDailySalesCheckCsv(data, formatOptions);
+    if (!csv) return;
+
+    const dateForFilename = String(data.business_date || dailySalesCheckDate || 'selected-date').replace(/[^\d-]/g, '') || 'selected-date';
+    downloadBlob(
+      new Blob([csv], { type: 'text/csv;charset=utf-8' }),
+      `pos-daily-sales-check-${dateForFilename}.csv`
+    );
+  };
+
+  const handlePrintDailySalesCheck = () => {
+    const data = dailySalesCheckReport?.z_reading_reconciliation;
+    const formatOptions = { businessDate: dailySalesCheckDate, currencySymbol, formatMoney: money, formatDateTime: printDateTime };
+    const html = buildDailySalesCheckPrintHtml(data, formatOptions);
+    if (typeof window === 'undefined' || !html) return;
+
+    const printWindow = window.open('', '_blank', 'width=900,height=750');
+    if (!printWindow) return;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
 
   const handlePrint = () => {
@@ -1045,6 +1463,91 @@ function PosReportsAnalyticsWorkspace({
     />
   );
 
+  const zReadingHistoryFilterChips = [
+    ...(reportDateFilterApplied ? [{
+      key: 'date',
+      label: `Date: ${normalizedDateRange.dateFrom || 'All dates'}${normalizedDateRange.dateTo ? ` – ${normalizedDateRange.dateTo}` : ''}`
+    }] : []),
+    ...(zReadingHistoryFilters.terminalId ? [{ key: 'terminal', label: `Terminal: ${zReadingHistoryFilters.terminalId}` }] : []),
+    ...(zReadingHistoryFilters.closedBy ? [{ key: 'closed-by', label: `Closed by: ${zReadingHistoryFilters.closedBy}` }] : [])
+  ];
+
+  const handleRemoveZReadingHistoryFilter = (filterKey) => {
+    if (filterKey === 'date') {
+      handleRemoveReportFilter('date');
+    } else if (filterKey === 'terminal') {
+      setZReadingHistoryFilters((current) => ({ ...current, terminalId: '' }));
+    } else if (filterKey === 'closed-by') {
+      setZReadingHistoryFilters((current) => ({ ...current, closedBy: '' }));
+    }
+    setZReadingHistoryPage(1);
+  };
+
+  const clearZReadingHistoryFilters = () => {
+    setDateRange(defaultDisplayDateRange);
+    setReportDateFilterApplied(false);
+    setZReadingHistorySearchInput('');
+    setZReadingHistorySearchQuery('');
+    setZReadingHistoryFilters({ terminalId: '', closedBy: '' });
+    setZReadingHistoryPage(1);
+    setReportDateFilterOpen(false);
+    setZReadingHistoryActionError('');
+  };
+
+  const renderZReadingToolbar = () => zReadingSection === 'daily_check' ? (
+    <div className="flex min-w-0 flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+      <div className="min-w-0">
+        <label htmlFor="pos-z-reading-business-date" className="block text-sm font-bold text-slate-800">Business date</label>
+        <p id="pos-z-reading-date-help" className="mt-1 text-xs leading-5 text-slate-500">
+          Choose one date to compare the full branch day against its saved Z-reading.
+        </p>
+      </div>
+      <PosSingleDatePicker
+        id="pos-z-reading-business-date"
+        value={dailySalesCheckDate}
+        todayDate={normalizeReportDateInput(reportData?.date_bounds?.today)}
+        describedBy="pos-z-reading-date-help"
+        onChange={(nextDate) => {
+          setDailySalesCheckDateCustomized(true);
+          setDailySalesCheckDate(nextDate);
+        }}
+      />
+    </div>
+  ) : (
+    <>
+      <PosZReadingHistoryToolbar
+        searchQuery={zReadingHistorySearchInput}
+        onSearchQueryChange={(nextValue) => {
+          setZReadingHistorySearchInput(nextValue);
+          setZReadingHistoryActionError('');
+        }}
+        filters={zReadingHistoryFilters}
+        onApplyFilters={(nextFilters) => {
+          setZReadingHistoryFilters(nextFilters);
+          setZReadingHistoryPage(1);
+          setZReadingHistoryActionError('');
+        }}
+        onRemoveFilter={handleRemoveZReadingHistoryFilter}
+        onClearAllFilters={clearZReadingHistoryFilters}
+        activeFilterChips={zReadingHistoryFilterChips}
+        onOpenDateFilter={() => setReportDateFilterOpen(true)}
+        dateFilterButtonRef={reportDateFilterButtonRef}
+        dateFilterOpen={reportDateFilterOpen}
+        filterButtonRef={zReadingHistoryFilterButtonRef}
+        onPrint={handlePrintZReadingHistory}
+        onExport={handleExportZReadingHistory}
+        printDisabled={!isOnline || zReadingHistoryLoading || zReadingHistoryTotal === 0 || zReadingHistorySearchInput.trim() !== zReadingHistorySearchQuery}
+        exportDisabled={!isOnline || zReadingHistoryLoading || zReadingHistoryTotal === 0 || zReadingHistorySearchInput.trim() !== zReadingHistorySearchQuery}
+        actionBusy={zReadingHistoryActionBusy}
+      />
+      {zReadingHistoryActionError ? (
+        <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800">
+          {zReadingHistoryActionError}
+        </div>
+      ) : null}
+    </>
+  );
+
   const renderTrendAndPaymentBreakdown = () => (
     <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
       <SectionCard title={activeTab === 'comparison' ? 'Comparison Trend' : displayGranularity === 'yearly' ? 'Yearly Breakdown' : displayGranularity === 'monthly' ? 'Monthly Trend' : 'Sales Trend'}>
@@ -1086,22 +1589,13 @@ function PosReportsAnalyticsWorkspace({
   );
 
   return (
-    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">
+    <PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">
       {renderReportFilterPanel()}
       {renderReportDateFilterPanel()}
       <div
         data-testid="pos-reports-sticky-content"
         className={`${POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6`}
       >
-      <div className="min-w-0">
-        <PosReportsKpiCards
-          summaryCards={summaryCards}
-          dailySummary={dailyReport.summary}
-          comparison={comparisonReport.flexible_range}
-          currencySymbol={currencySymbol}
-          selectedTender={selectedTender}
-        />
-      </div>
       <div
         data-testid="pos-reports-sticky-tabs"
         className={`min-w-0 ${POS_MOBILE_STICKY_TAB_ROW_CLASS}`}
@@ -1115,7 +1609,20 @@ function PosReportsAnalyticsWorkspace({
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
-        {shouldShowOperationsSubtabs ? (
+      </div>
+      {activeTab !== 'z_readings' ? (
+        <div className="min-w-0">
+          <PosReportsKpiCards
+            summaryCards={summaryCards}
+            dailySummary={dailyReport.summary}
+            comparison={comparisonReport.flexible_range}
+            currencySymbol={currencySymbol}
+            selectedTender={selectedTender}
+          />
+        </div>
+      ) : null}
+      {shouldShowOperationsSubtabs ? (
+        <div className="flex min-w-0 flex-col gap-2">
           <PosSubtabNavigation
             tabs={operationSections}
             activeTab={operationSection}
@@ -1126,19 +1633,33 @@ function PosReportsAnalyticsWorkspace({
             desktopColumns={operationSections.length === 6 ? 6 : 5}
             compactMobile
           />
-        ) : null}
-      </div>
-      {renderReportToolbar()}
+          {renderReportToolbar()}
+        </div>
+      ) : activeTab === 'z_readings' ? (
+        <>
+          <PosSubtabNavigation
+            tabs={Z_READING_SECTIONS}
+            activeTab={zReadingSection}
+            onTabChange={handleZReadingSectionChange}
+            ariaLabel="Z-reading reports"
+            idPrefix={`${sectionId || 'pos-reports'}-z-readings`}
+            panelId={`${sectionId || 'pos-reports'}-panel`}
+            desktopColumns={2}
+            compactMobile
+          />
+          {renderZReadingToolbar()}
+        </>
+      ) : renderReportToolbar()}
 
-      {showInlineError ? (
+      {activeTab !== 'z_readings' && showInlineError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           {activeError}
         </div>
       ) : null}
 
-      {isInitialLoading ? (
+      {activeTab !== 'z_readings' && isInitialLoading ? (
         <EmptyState message="Loading POS reports..." />
-      ) : showBlockingError ? (
+      ) : activeTab !== 'z_readings' && showBlockingError ? (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{activeError}</div>
       ) : !shouldRenderReportPanel ? (
         <EmptyState message="No POS report data found for the selected filters." />
@@ -1153,7 +1674,7 @@ function PosReportsAnalyticsWorkspace({
           className="relative space-y-4"
           style={reportPanelInlineStyle}
         >
-          {isRefreshing ? (
+          {activeTab !== 'z_readings' && isRefreshing ? (
             <div className="flex items-center justify-end">
               <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-[#1D4ED8]">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-[#2563EB]" />
@@ -1195,7 +1716,6 @@ function PosReportsAnalyticsWorkspace({
 
           {renderedTab === 'overview' ? (
             <div className="space-y-4">
-              <ZReadingReconciliationCard data={zReadingReconciliation} currencySymbol={currencySymbol} />
               <PosReportsOverviewTable
                 rows={trendSeries}
                 currencySymbol={currencySymbol}
@@ -1203,6 +1723,54 @@ function PosReportsAnalyticsWorkspace({
               />
 
             </div>
+          ) : null}
+
+          {renderedTab === 'z_readings' ? (
+            zReadingSection === 'daily_check' ? (
+              <div className="space-y-4">
+                {dailySalesCheckLoading ? (
+                  <EmptyState message="Loading the selected business date…" />
+                ) : dailySalesCheckError ? (
+                  <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm font-semibold text-rose-800">
+                    <span className="min-w-0">{dailySalesCheckError}</span>
+                    {isOnline ? (
+                      <Button type="button" variant="outline" onClick={() => setDailySalesCheckRefreshKey((current) => current + 1)}>
+                        Try again
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : dailySalesCheckReport?.z_reading_reconciliation ? (
+                  <ZReadingReconciliationCard
+                    data={dailySalesCheckReport.z_reading_reconciliation}
+                    currencySymbol={currencySymbol}
+                    title="Z-reading reconciliation"
+                    onPrint={handlePrintDailySalesCheck}
+                    onExport={handleExportDailySalesCheck}
+                    actionsDisabled={dailySalesCheckLoading}
+                  />
+                ) : (
+                  <EmptyState message="No comparison data is available for this business date." />
+                )}
+              </div>
+            ) : (
+              <PosZReadingHistoryTable
+                rows={zReadingHistoryRows}
+                loading={zReadingHistoryLoading}
+                error={zReadingHistoryError}
+                page={zReadingHistoryPage}
+                limit={zReadingHistoryLimit}
+                total={zReadingHistoryTotal}
+                onPageChange={setZReadingHistoryPage}
+                onPageSizeChange={(nextLimit) => {
+                  setZReadingHistoryLimit(Number(nextLimit) || 20);
+                  setZReadingHistoryPage(1);
+                }}
+                onRetry={() => setZReadingHistoryRefreshKey((current) => current + 1)}
+                onPreview={handlePreviewZReading}
+                preview={{ ...zReadingHistoryPreview, onClose: closeZReadingPreview }}
+                currencySymbol={currencySymbol}
+              />
+            )
           ) : null}
 
           {renderedTab === 'sales' ? (

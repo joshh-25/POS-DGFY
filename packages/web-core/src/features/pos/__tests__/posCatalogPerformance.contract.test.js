@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
 const checkoutViewPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalView.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const checkoutHookPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosTerminalViewModel.js');
 const catalogWorkflowPath = path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosCatalogWorkflow.js');
 const catalogImageFailureStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posCatalogImageFailureStore.js');
 const checkoutUtilsPath = path.resolve(webCoreRoot, 'src/features/pos/utils/posCheckoutTerminalUtils.js');
@@ -16,7 +18,7 @@ const operationsPath = path.resolve(webCoreRoot, 'src/features/pos/components/Te
 const pendingPreviewStorePath = path.resolve(webCoreRoot, 'src/features/pos/services/posPendingItemImagePreviewStore.js');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
-const readCheckoutRenderSource = () => [checkoutPath, checkoutViewPath].map(readSource).join('\n');
+const readCheckoutRenderSource = () => [checkoutPath, checkoutHookPath, checkoutViewPath].map(readSource).join('\n');
 
 describe('hosted POS catalog performance contracts', () => {
   it('uses optimized thumbnail variants and bounded image-loading priorities', () => {
@@ -35,6 +37,9 @@ describe('hosted POS catalog performance contracts', () => {
     expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain("loading={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'eager' : 'lazy'}");
     expect(checkoutSource).toContain("fetchpriority={isMobileViewport || isTabletPortraitMobileLayout || itemIndex < 4 ? 'high' : 'auto'}");
+    expect(posItemImageSource).toContain("import ResponsiveImage from '../../../components/media/ResponsiveImage.jsx';");
+    expect(posItemImageSource).toContain('sources={targetSources}');
+    expect(posItemImageSource).toContain('fetchPriority={resolvedFetchPriority}');
     expect(checkoutSource).toContain('width={144}');
     expect(checkoutSource).toContain('height={144}');
     expect(checkoutSource).toContain('sizes="144px"');
@@ -137,18 +142,18 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex-wrap items-center' : isTabletViewport ? 'flex-row items-center'");
     expect(checkoutSource).toContain("isTabletViewport ? 'lg:flex-row lg:items-start' : 'xl:flex-row xl:items-start'");
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
-    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex h-10 min-w-0 flex-1 items-center gap-2");
+    expect(checkoutSource).toContain("inputClassName={isTabletViewport || isTabletPortraitMobileLayout ? 'h-10' : 'h-11'}");
     expect(checkoutSource).toContain('<div className="flex shrink-0">');
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
     expect(checkoutSource).not.toContain('title="Show or hide catalog filters"');
     expect(checkoutSource).not.toContain('<Filter size={18} />');
   });
 
-  it('clears the complete desktop catalog search from the delete button', () => {
+  it('uses the shared clear behavior for the complete catalog search', () => {
     const checkoutSource = readCheckoutRenderSource();
 
-    expect(checkoutSource).toContain('aria-label="Clear search"');
-    expect(checkoutSource).toContain("onClick={() => setSearch('')}");
+    expect(checkoutSource).toContain("onClear={() => setSearch('')}");
+    expect(checkoutSource).toContain('ariaLabel="Search POS-visible items"');
     expect(checkoutSource).not.toContain('aria-label="Backspace search"');
   });
 

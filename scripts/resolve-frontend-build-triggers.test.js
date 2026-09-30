@@ -46,14 +46,15 @@ function cleanup(root) {
 }
 
 // Own dedicated fixture -- real Vite entry points (apps/<app>/src/main.jsx), same shape as
-// check-app-version-bump.test.js's reachabilityFixtureRepo(). dgfy-ims/dgfy-pos both reach
-// packages/web-core AND packages/pos-receipt from their own entries; dgfy-storefront reaches only
-// packages/web-core, matching the real repo's package.json fan-out (see resolve-web-core-
-// reachability.js's own header).
+// check-app-version-bump.test.js's reachabilityFixtureRepo(). dgfy-ims/dgfy-pos/dgfy-opis
+// reach packages/web-core AND packages/pos-receipt from their own entries;
+// dgfy-storefront reaches only packages/web-core, matching the real repo's package.json
+// fan-out (see resolve-web-core-reachability.js's own header).
 function baseFixture(root) {
     writeFiles(root, {
         'apps/dgfy-ims/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\nimport '../../../packages/pos-receipt/src/receipt.js';\n",
         'apps/dgfy-pos/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\nimport '../../../packages/pos-receipt/src/receipt.js';\n",
+        'apps/dgfy-opis/src/main.jsx': "import '../../../packages/web-core/src/reachable.js';\nimport '../../../packages/pos-receipt/src/receipt.js';\n",
         'apps/dgfy-storefront/src/main.jsx': "import '../../../packages/web-core/src/other.js';\n",
         'packages/web-core/src/reachable.js': 'export default {};\n',
         'packages/web-core/src/other.js': 'export default {};\n',
@@ -79,7 +80,7 @@ test('unconditional: a direct apps/dgfy-pos/ change triggers dgfy-pos only', asy
     }
 });
 
-test('unconditional: a packages/pos-receipt/ change triggers dgfy-ims and dgfy-pos, never dgfy-storefront', async () => {
+test('unconditional: a packages/pos-receipt/ change triggers dgfy-ims, dgfy-pos, and dgfy-opis, never dgfy-storefront', async () => {
     const root = makeGitRepo();
     const baseGitRef = baseFixture(root);
     try {
@@ -91,6 +92,8 @@ test('unconditional: a packages/pos-receipt/ change triggers dgfy-ims and dgfy-p
         assert.equal(result['dgfy-ims'].reason, 'unconditional');
         assert.equal(result['dgfy-pos'].trigger, true);
         assert.equal(result['dgfy-pos'].reason, 'unconditional');
+        assert.equal(result['dgfy-opis'].trigger, true);
+        assert.equal(result['dgfy-opis'].reason, 'unconditional');
         // dgfy-storefront has no packages/pos-receipt/ pattern at all (matches shared-changed-paths.yml
         // and this script's own UNCONDITIONAL_TRIGGER_PATTERNS table) -- confirmed here directly.
         assert.doesNotMatch(UNCONDITIONAL_TRIGGER_PATTERNS['dgfy-storefront'].source, /pos-receipt/);
@@ -125,7 +128,7 @@ test('unconditional: a root .dockerignore change triggers every frontend app', a
         const headGitRef = commitAll(root, 'dockerignore change');
 
         const result = await resolveFrontendBuildTriggers({ repoRoot: root, baseGitRef, headGitRef });
-        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']) {
             assert.equal(result[app].trigger, true, `expected ${app} to trigger`);
             assert.equal(result[app].reason, 'unconditional');
         }
@@ -142,7 +145,7 @@ test('unconditional: a relevant .github/workflows/ file change triggers every fr
         const headGitRef = commitAll(root, 'deploy-frontend workflow change');
 
         const result = await resolveFrontendBuildTriggers({ repoRoot: root, baseGitRef, headGitRef });
-        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']) {
             assert.equal(result[app].trigger, true, `expected ${app} to trigger`);
             assert.equal(result[app].reason, 'unconditional');
         }
@@ -151,7 +154,7 @@ test('unconditional: a relevant .github/workflows/ file change triggers every fr
     }
 });
 
-// #1748: the shared develop-PR lint workflow is an unconditional trigger for all three frontend
+// #1748: the shared develop-PR lint workflow is an unconditional trigger for all four frontend
 // apps -- a PR changing only pr-frontend-lint-checks.yml must not silently skip the POS/
 // Storefront lint callers it feeds (fail-open trigger gap). Mirrors shared-changed-paths.yml's
 // own per-app patterns, which list this workflow for every app.
@@ -163,11 +166,11 @@ test('unconditional: a shared lint-workflow change triggers every frontend app, 
         const headGitRef = commitAll(root, 'shared lint workflow change');
 
         const result = await resolveFrontendBuildTriggers({ repoRoot: root, baseGitRef, headGitRef });
-        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']) {
             assert.equal(result[app].trigger, true, `expected ${app} to trigger`);
             assert.equal(result[app].reason, 'unconditional');
         }
-        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']) {
             assert.match(UNCONDITIONAL_TRIGGER_PATTERNS[app].source, /pr-frontend-lint-checks/);
         }
     } finally {
@@ -242,7 +245,7 @@ test('no relevant change: an unrelated file (e.g. docs) triggers nothing', async
         const headGitRef = commitAll(root, 'unrelated docs change');
 
         const result = await resolveFrontendBuildTriggers({ repoRoot: root, baseGitRef, headGitRef });
-        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']) {
+        for (const app of ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']) {
             assert.equal(result[app].trigger, false, `expected ${app} not to trigger`);
             assert.equal(result[app].reason, 'no-relevant-change');
         }

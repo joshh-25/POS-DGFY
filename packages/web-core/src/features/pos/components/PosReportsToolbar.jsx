@@ -32,6 +32,7 @@ export default function PosReportsToolbar({
             ariaLabel="Search reports"
             value={searchQuery}
             onChange={(event) => onSearchQueryChange?.(event.target.value)}
+            onClear={() => onSearchQueryChange?.('')}
             placeholder="Search based on Date/Time, Transaction/Invoice, Cashier, or sales values"
             className="flex-1"
             inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}

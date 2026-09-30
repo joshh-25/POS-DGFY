@@ -19,16 +19,6 @@ const ROUTE_BUDGETS = [
   { app: 'skupervisor', prefix: 'Login-', limitKb: 22 },
   // Rebased 2026-06-02 after ADR 0026 added cookie/CSRF browser session
   // plumbing to POS-authenticated surfaces.
-  // SKUpervisor uses a deliberately separate checkout implementation from the
-  // standalone cashier surface, so its lazy chunk follows the component name.
-  // Rebased 2026-06-30 against the exact staging candidate after the POS
-  // terminal, operations workspace, and shared MapLibre route ownership drift
-  // was made visible by the release-local gate.
-  // Raised 106 -> 112 on 2026-09-01 during the develop->staging->main promotion's
-  // gate:release:local run: measured 109KB against Phase 229-232's POS delivery-run
-  // queue/split-view work, which this admin route shares chunks with. Small headroom
-  // restored, no code-splitting done.
-  { app: 'skupervisor', prefix: 'SkupervisorPOSCheckoutTerminal-', limitKb: 112 },
   // Standalone POS owns the cashier terminal route. Keep it separately budgeted
   // so the split app cannot drift behind the admin-only surface. Rebased after
   // offline queue, terminal-session, and hardware-runtime controls were added.
@@ -42,45 +32,6 @@ const ROUTE_BUDGETS = [
   // (measured 183.93KB). This is the second raise from the same workstream after #577; #392
   // tracks splitting POSCheckoutTerminal.jsx rather than raising the ceiling again.
   { app: 'pos', prefix: 'POSCheckoutTerminal-', limitKb: 190 },
-  // PR #11 renamed the admin POS route chunk from POSPage-* to SkupervisorPOSPage-*.
-  { app: 'skupervisor', prefix: 'SkupervisorPOSPage-', limitKb: 59 },
-  // Rebased after terminal auth, shift, queue orchestration, and setup-flow
-  // state remained in the route controller while checkout/layout render work
-  // split into lazy chunks.
-  // Rebased 2026-07-01 after the POS map hotfix restored lazy checkout chunks
-  // and measured the remaining route controller at 110.39KB.
-  // Rebased 2026-08-16 after terminal recovery, cross-cashier shift resume,
-  // admin audit authorization, and shared parked-sale ownership checks added
-  // route-level orchestration while their rendered workspaces remain lazy.
-  // Raised 121 -> 128 on 2026-08-23 after the downpayment epic's terminal-facing
-  // work (#822/#824/#825, #865/#866 -- split display, Settle Balance action,
-  // customer_choice controls) tipped the route controller to 121.6KB, tripping
-  // the near-zero-headroom gate #392 already flagged. #392 tracks the larger
-  // decision of whether to keep rebasing vs. split TerminalPage.jsx; this is
-  // just the rebase half with real headroom restored, not a resolution of it.
-  // Raised 128 -> 145 on 2026-08-28 after the gate actually tripped for real during
-  // a staging -> main promotion (target SHA 48180714d): TerminalPage-CIuRlP3D.js
-  // measured 136.6KB, over the 128KB limit. This is the THIRD rebase of this same
-  // chunk (see the two comment blocks above) with no code-splitting done in between.
-  // #392 stays open specifically because "accept the margin and bump the number" is
-  // now considered exhausted as a resolution path -- its remaining, and only
-  // accepted, close condition is splitting TerminalPage.jsx (6,468 lines, all inline
-  // route-controller logic, no eagerly-imported heavy components to lazy-load) for
-  // durable headroom. Do not treat a future trip on this same chunk as grounds for a
-  // fourth rebase without first re-reading #392's history.
-  // Raised 145 -> 152 on 2026-09-01 during the develop->staging->main promotion's
-  // gate:release:local run: TerminalPage-B0rboxZ-.js measured 149.38KB, over the
-  // 145KB limit. This is the FOURTH rebase of this same chunk. #392 explicitly
-  // names "accept the margin and rebase with a recorded reason" as one of its two
-  // accepted resolution paths (the other being splitting TerminalPage.jsx) -- this
-  // is that path, not a decision that #392 is resolved. #392 stays open; the
-  // recurring-rebase pattern on this chunk needs a real look soon.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 152 },
-  // Rebased 2026-06-30 to the current sales route candidate.
-  // Raised 49 -> 52 on 2026-09-01 during the develop->staging->main promotion's
-  // gate:release:local run: measured 49.96KB. Small headroom restored, no
-  // code-splitting done.
-  { app: 'skupervisor', prefix: 'SalesPage-', limitKb: 52 },
 ];
 
 class BudgetGateError extends Error {
@@ -162,7 +113,7 @@ function resolveRequiredAssetDirs(projectRoot) {
   }));
 }
 
-const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront'];
+const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront', 'apps/dgfy-opis'];
 
 function spawnFrontendBuild(projectRoot, appDir) {
   const buildCommand = `npm --prefix ${appDir} run build`;

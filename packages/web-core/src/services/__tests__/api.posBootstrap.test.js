@@ -51,6 +51,18 @@ describe('standalone POS API session bootstrap', () => {
     expect(refreshCallCount).toBe(0);
   });
 
+  it('does not bootstrap a legacy Back Office route on the POS origin', async () => {
+    window.history.replaceState({}, '', '/#/backoffice/overview');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    apiMock.onGet('/pos/catalog').reply(200, { data: { items: [] } });
+
+    const { default: api } = await import('../api.js');
+    await api.get('/pos/catalog');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('refreshes an established POS session on the first 401 and retries once with the new token', async () => {
     const { default: api } = await import('../api.js');
     const session = await import('../browserSession.js');

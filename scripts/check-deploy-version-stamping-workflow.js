@@ -31,6 +31,7 @@ const DOCKERFILES = Object.freeze([
   'infrastructure/docker/dgfy-ims/Dockerfile',
   'infrastructure/docker/dgfy-pos/Dockerfile',
   'infrastructure/docker/dgfy-storefront/Dockerfile',
+  'infrastructure/docker/dgfy-opis/Dockerfile',
 ]);
 
 const ORCHESTRATOR_FILE = '.github/workflows/deployment-orchestrator.yml';
@@ -45,6 +46,7 @@ const ORCHESTRATOR_VERSION_TAG_OUTPUTS = Object.freeze([
   ['frontend_ims_version_tag', 'frontend-ims'],
   ['frontend_pos_version_tag', 'frontend-pos'],
   ['frontend_storefront_version_tag', 'frontend-storefront'],
+  ['frontend_opis_version_tag', 'frontend-opis'],
   ['dgfy_api_version_tag', 'dgfy-api'],
   ['migration_runner_version_tag', 'dgfy-migration-runner'],
 ]);
@@ -311,6 +313,7 @@ const DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS = Object.freeze([
   'candidate_source_sha_frontend_ims',
   'candidate_source_sha_frontend_pos',
   'candidate_source_sha_frontend_storefront',
+  'candidate_source_sha_frontend_opis',
 ]);
 
 const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
@@ -319,6 +322,7 @@ const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
   ['frontend-ims-prod', 'candidate_source_sha_frontend_ims'],
   ['frontend-pos-prod', 'candidate_source_sha_frontend_pos'],
   ['frontend-storefront-prod', 'candidate_source_sha_frontend_storefront'],
+  ['frontend-opis-prod', 'candidate_source_sha_frontend_opis'],
 ]);
 
 /**

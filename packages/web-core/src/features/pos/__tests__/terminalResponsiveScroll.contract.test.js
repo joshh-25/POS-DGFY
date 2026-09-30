@@ -9,6 +9,8 @@ const __dirname = path.dirname(__filename);
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const posCheckoutHookPath = path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
 const fnbWorkflowPanelPath = path.resolve(__dirname, '../components/FnbWorkflowPanel.jsx');
@@ -39,7 +41,7 @@ describe('POS terminal responsive scroll contracts', () => {
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
-    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
+    posCheckoutContent = [posCheckoutPath, posCheckoutHookPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     workflowPanelContent = [fnbWorkflowPanelPath, counterWorkflowPanelPath]
@@ -74,6 +76,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('canAccessBusinessAdmin');
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
+    expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
+    expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
   });
 
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {
@@ -110,11 +115,12 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('locks the checkout workspace while preserving scrolling for other modes', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
-    expect(terminalLayoutContent).toContain(": 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y'");
+    expect(terminalLayoutContent).toContain('dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
     expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
     expect(terminalLayoutContent).toContain("'grid-rows-[auto_minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain("'grid-rows-[minmax(0,1fr)]'");
-    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden p-2');
+    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden');
+    expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0'");
     expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
@@ -160,24 +166,24 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(catalogContractContent).toContain('GlobalPagination');
     expect(catalogContractContent).toContain('role="listbox"');
     expect(catalogContractContent).toContain('role="option"');
-    expect(catalogContractContent).toContain('aria-label="Items per page"');
+    expect(catalogContractContent).toContain('ariaLabel={pageSizeLabel}');
     expect(posCheckoutContent).toContain('catalogPageSizeOptions,');
     expect(catalogContractContent).toContain('handleCatalogPageSizeChange');
     expect(catalogContractContent).toContain('data-catalog-page-size={catalogPageSize}');
     expect(catalogContractContent).toContain('getVisibleCatalogItems(catalogForDisplay, catalogPage, catalogPageSize)');
     expect(paginationContent).toContain('const changePage = (nextPage) =>');
     expect(paginationContent).toContain('data-testid={previousPageId}');
-    expect(paginationContent).toContain('aria-label="Previous page"');
+    expect(paginationContent).toContain('aria-label={previousLabel}');
     expect(paginationContent).toContain('data-testid={nextPageId}');
-    expect(paginationContent).toContain('aria-label="Next page"');
+    expect(paginationContent).toContain('aria-label={nextLabel}');
     expect(paginationContent).not.toContain('onClick={() => onPageChange(\'first\')}');
     expect(paginationContent).not.toContain('onClick={() => onPageChange(\'last\')}');
-    expect(paginationContent).toContain('aria-label="Go to page"');
+    expect(paginationContent).toContain('aria-label={pageInputLabel}');
     expect(paginationContent).toContain('value={goToPage}');
     expect(paginationContent).toContain("setGoToPage(event.target.value.replace(/[^0-9]/g, ''))");
     expect(paginationContent).toContain('const normalizedPage = Math.min(safeTotalPages, Math.max(1, Number(nextPage) || 1));');
     expect(paginationContent).toContain('showGoTo = true');
-    expect(paginationContent).toContain('aria-label="Go to page"');
+    expect(paginationContent).toContain('aria-label={pageInputLabel}');
     expect(paginationContent).toContain('aria-live="polite"');
     expect(paginationContent).toContain('max-md:flex-col');
     expect(catalogContractContent).not.toContain('Page {catalogPage} of {totalCatalogPages}');
@@ -197,7 +203,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(paginationContent).toContain('dgfy-global-pagination__controls');
     expect(paginationContent).toContain('dgfy-global-pagination__next h-10 w-10 rounded-lg');
     expect(paginationContent).toContain('dgfy-global-pagination__page-size-value whitespace-nowrap');
-    expect(paginationContent).toContain('{selectedPageSize} / page');
+    expect(paginationContent).toContain('{selectedPageSize}<span');
     expect(paginationContent).toContain('focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15');
     expect(paginationContent).toContain('max-md:flex-col max-md:items-stretch');
     expect(posCheckoutContent).not.toContain('border-t border-slate-100 pt-1 sm:w-auto sm:border-t-0');

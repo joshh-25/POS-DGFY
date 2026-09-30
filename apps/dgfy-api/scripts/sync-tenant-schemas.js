@@ -3088,7 +3088,9 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-25.2';
+// Bumped past both parent versions because the merged manifest contains requirements
+// unique to each branch and is distinct from either parent alone.
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-29.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {

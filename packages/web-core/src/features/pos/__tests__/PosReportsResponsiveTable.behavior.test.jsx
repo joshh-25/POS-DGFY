@@ -223,9 +223,16 @@ describe('POS Reports responsive table', () => {
     await user.click(within(table).getByRole('button', { name: 'View details for NFS-000003' }));
 
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Transaction Details')).toBeTruthy();
+    const title = within(dialog).getByText('Transaction Details');
+    expect(title.className).toContain('min-[768px]:text-[clamp(1.125rem,1.35vw,1.5rem)]');
     expect(within(dialog).getByText('NFS-000003')).toBeTruthy();
+    const detailsDialog = screen.getByTestId('pos-reports-table-details-dialog');
+    expect(detailsDialog.className).toContain('min-[768px]:max-w-4xl');
+    expect(detailsDialog.className).toContain('min-[768px]:bg-white');
     const desktopHiddenFieldLabel = within(dialog).getByText('Hidden field', { selector: 'dt' });
+    expect(desktopHiddenFieldLabel.className).toContain('min-[768px]:text-[clamp(0.75rem,0.8vw,0.8125rem)]');
+    expect(desktopHiddenFieldLabel.className).toContain('min-[768px]:text-[#334155]');
+    expect(desktopHiddenFieldLabel.nextElementSibling.className).toContain('min-[768px]:text-[clamp(0.8125rem,0.9vw,0.9375rem)]');
     expect(desktopHiddenFieldLabel.nextElementSibling.textContent).toBe('Hidden field');
   });
 
