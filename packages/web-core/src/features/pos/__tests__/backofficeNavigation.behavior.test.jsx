@@ -44,4 +44,20 @@ describe('POS Back Office boundary', () => {
     expect(screen.getByTestId('pos-nav-settings')).toBeDefined();
     expect(screen.queryByTestId('pos-nav-backoffice')).toBeNull();
   });
+
+  it('shows approval administration in POS for authorized administrators', () => {
+    render(
+      <TerminalWorkspaceSidebar
+        locked={false}
+        isOnline
+        terminalUser={{ role: 'admin' }}
+        currentViewMode="checkout"
+        canViewPos
+        canReviewVoidApprovals
+        shiftState={{ shift: null }}
+      />
+    );
+
+    expect(screen.getByTestId('pos-nav-approvals')).toBeDefined();
+  });
 });

@@ -169,6 +169,7 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';
+import { POS_VOID_APPROVAL_REVIEW_PERMISSIONS } from '../utils/posVoidApprovalFeature.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -249,11 +250,12 @@ const OPERATIONS_VIEW_MODES = [
   'audit',
   'items',
   'services',
-  'terminal_setup'
+  'terminal_setup',
+  'approvals'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup'];
+const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup', 'approvals'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
-const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history', 'approvals']);
 // RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
 // canViewVouchers permission check (the sidebar NavButton visibility and the
 // activeOperationsViewModes filter both already use it), not the settings:view PIN wall every
@@ -292,7 +294,8 @@ const TERMINAL_SECTION_IDS = {
   // while every other top-level mode gets one.
   vouchers: 'pos-section-vouchers',
   pricelists: 'pos-section-pricelists',
-  audit: 'pos-section-audit'
+  audit: 'pos-section-audit',
+  approvals: 'pos-section-approvals'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -1030,6 +1033,7 @@ export default function TerminalPage() {
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
+  const canReviewVoidApprovals = POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => hasPermission(permission));
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
   const canTransactPos = hasPermission('pos:transact');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
@@ -1069,6 +1073,7 @@ export default function TerminalPage() {
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
     const roleScopedModes = queueScopedModes
       .filter((mode) => mode !== 'audit' || canViewAudit)
+      .filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))
       .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
       .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
@@ -1076,7 +1081,7 @@ export default function TerminalPage() {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, isCashierRole, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -6833,8 +6838,13 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    if (nextMode === 'approvals' && (!canReviewVoidApprovals || isCashierRole)) {
+      toast.error('Approval administration requires an authorized POS administrator.');
+      setMobileNavOpen(false);
+      return;
+    }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
-    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services' || nextMode === 'audit';
+    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services' || nextMode === 'audit' || nextMode === 'approvals';
     if (!isOnline && isOfflineOnlineOnlyMode) {
       toast.error('This POS area is available online only. Offline mode supports local sales, pending receipts, and history.');
       setMobileNavOpen(false);
@@ -6919,6 +6929,7 @@ export default function TerminalPage() {
     canAdminBypassShiftPrompt,
     canAccessServiceOperations,
     canManageCategories,
+    canReviewVoidApprovals,
     canViewAudit,
     canViewPos,
     commitViewModeSelection,
@@ -7535,6 +7546,7 @@ function PosRestorationLoadingScreen() {
           canViewAttendance={canViewAttendance}
           canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
+          canReviewVoidApprovals={canReviewVoidApprovals}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}

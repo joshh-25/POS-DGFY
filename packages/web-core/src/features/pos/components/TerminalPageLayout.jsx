@@ -24,10 +24,12 @@ const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
 const loadFnbDiningPanel = () => import('../../fnb/components/FnbDiningPanel.jsx');
 const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
 const loadAuditWorkspacePanel = () => import('./AuditWorkspacePanel.jsx');
+const loadPosApprovalsWorkspace = () => import('./PosApprovalsWorkspace.jsx');
 const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);
 const FnbDiningPanel = lazyWithChunkRetry(loadFnbDiningPanel);
 const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
 const AuditWorkspacePanel = lazyWithChunkRetry(loadAuditWorkspacePanel);
+const PosApprovalsWorkspace = lazyWithChunkRetry(loadPosApprovalsWorkspace);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
 const STANDARD_POS_PAGE_FRAME_MODES = new Set([
   'history',
@@ -61,6 +63,9 @@ const preloadWorkspaceForViewMode = (viewMode) => {
   }
   if (normalizedViewMode === 'fnb_service') {
     return loadFnbDiningPanel().catch(() => {});
+  }
+  if (normalizedViewMode === 'approvals') {
+    return loadPosApprovalsWorkspace().catch(() => {});
   }
   if (QUEUE_WORKSPACE_MODES.has(normalizedViewMode)) {
     return Promise.all([
@@ -125,6 +130,7 @@ export default function TerminalPageLayout({
     canViewAttendance = false,
     canOperateAttendance = false,
     canViewAudit = false,
+    canReviewVoidApprovals = false,
     onboardingRestricted = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
@@ -344,6 +350,7 @@ export default function TerminalPageLayout({
       receipt: 'Receipt',
       history: 'History',
       reports: 'Report',
+      approvals: 'Approvals',
       fnb_service: 'F&B service',
       items: 'Items',
       services: 'Services',
@@ -760,6 +767,7 @@ export default function TerminalPageLayout({
               currentViewMode={posViewMode}
               canViewPos={workspaceCanViewPos}
               canViewAudit={canViewAudit}
+              canReviewVoidApprovals={canReviewVoidApprovals}
               canAccessPosOnlySetup={canAccessPosOnlySetup}
               canViewVouchers={canViewVouchers}
               canManageCategories={canManageCategories}
@@ -1017,6 +1025,7 @@ export default function TerminalPageLayout({
                 currentViewMode={posViewMode}
                 canViewPos={workspaceCanViewPos}
                 canViewAudit={canViewAudit}
+                canReviewVoidApprovals={canReviewVoidApprovals}
                 canAccessPosOnlySetup={canAccessPosOnlySetup}
                 canViewVouchers={canViewVouchers}
                 canManageCategories={canManageCategories}
@@ -1174,6 +1183,15 @@ export default function TerminalPageLayout({
             ) : posViewMode === 'audit' ? (
               <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading audit history...</div>}>
                 <AuditWorkspacePanel locked={locked} isOnline={isOnline} canViewAudit={canViewAudit} locations={locationsState?.locations || []} />
+              </Suspense>
+            ) : posViewMode === 'approvals' ? (
+              <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading approval administration...</div>}>
+                <PosApprovalsWorkspace
+                  locked={locked}
+                  isOnline={isOnline}
+                  canReview={canReviewVoidApprovals}
+                  currentUserId={terminalUser?.user_id || terminalUser?.id || null}
+                />
               </Suspense>
             ) : <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
