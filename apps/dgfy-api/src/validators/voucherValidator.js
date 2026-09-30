@@ -15,6 +15,10 @@
 
 import Joi from 'joi';
 import { VOUCHER_STATUSES } from '../modules/vouchers/domain/voucherEligibilityPolicy.js';
+import {
+    STOREFRONT_PROMO_SETTING_KEY,
+    STOREFRONT_PROMOS_SETTING_KEY
+} from '../modules/shared/utils/commercialPromoPolicy.js';
 
 // Capped at 40, not the column's full 64 (`vouchers.code` is VARCHAR(64)) -- #667 Phase 110:
 // `pos_transaction_discounts.promo_code`, the fiscal audit-row column a voucher redemption now
@@ -437,11 +441,32 @@ export const validateUpdateVoucher = validateSchema(updateVoucherSchema, 'body',
 export const validateVoucherIdParam = validateSchema(voucherIdParamSchema, 'params', 'validatedParams');
 export const validateVoucherListQuery = validateSchema(voucherListQuerySchema, 'query', 'validatedQuery');
 
+// #2159: revoke-only input for the transitional OPIS Legacy Promos surface. Identity is stable
+// (stored promo id first, normalized code second); `source_index` exists solely to disambiguate
+// duplicate codes inside the plural array, so it is forbidden for the singular compatibility key.
+// No writable-value fields exist here on purpose -- there is no create/edit/reset path.
+const legacyPromoRevokeSchema = Joi.object({
+    source_key: Joi.string().trim()
+        .valid(STOREFRONT_PROMO_SETTING_KEY, STOREFRONT_PROMOS_SETTING_KEY)
+        .required(),
+    promo_id: Joi.string().trim().min(1).max(64),
+    promo_code: Joi.string().trim().uppercase().min(1).max(40),
+    source_index: Joi.number().integer().min(0)
+        .when('source_key', { is: STOREFRONT_PROMO_SETTING_KEY, then: Joi.forbidden() })
+})
+    .or('promo_id', 'promo_code')
+    .messages({
+        'object.missing': 'promo_id or promo_code is required to identify the legacy promo entry'
+    });
+
+export const validateLegacyPromoRevoke = validateSchema(legacyPromoRevokeSchema, 'body', 'validatedData');
+
 // Exported for direct unit testing of the schema layer, without an Express round trip.
 export const __testables = Object.freeze({
     createVoucherSchema,
     updateVoucherSchema,
     voucherIdParamSchema,
     voucherListQuerySchema,
+    legacyPromoRevokeSchema,
     collectCrossFieldErrors
 });
