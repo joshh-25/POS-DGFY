@@ -134,8 +134,52 @@ describe('storefrontDiscoveryIndexService catalog visibility', () => {
         }));
     });
 
-    it('uses StorefrontCatalogOverride instead of POS override when building item_search_snapshot', async () => {
+    // #2159: the public index row is what Storefront discovery serves, so a revoked/exhausted/
+    // expired legacy code must never be materialized into it.
+    it('omits non-redeemable legacy promos from the discovery index snapshot', async () => {
         const SystemSetting = {
+            findAll: jest.fn().mockResolvedValue([
+                { setting_key: 'store_is_visible', setting_value: 'true' },
+                { setting_key: 'store_tenant_slug', setting_value: 'promo-visibility' },
+                { setting_key: 'ops_workflow_mode', setting_value: 'simple' },
+                { setting_key: 'storefront_hours', setting_value: JSON.stringify({ timezone: 'Asia/Manila' }) },
+                { setting_key: 'storefront_promo', setting_value: JSON.stringify({ active: true, promo_code: 'REVOKED30', discount_percent: 30, revoked: true }) },
+                { setting_key: 'storefront_promos', setting_value: JSON.stringify([
+                    { active: true, promo_code: 'OK10', discount_percent: 10 },
+                    { active: true, promo_code: 'EXHAUSTED20', discount_percent: 20, usage_limit: 3, used_count: 3 },
+                    { active: true, promo_code: 'EXPIRED30', discount_percent: 30, valid_until: '2020-01-01' },
+                    { active: true, promo_code: 'REVOKED40', discount_percent: 40, revoked: true }
+                ]) }
+            ])
+        };
+        mockGetTenantModels.mockReturnValue({
+            SystemSetting,
+            TenantLocation: { findAll: jest.fn().mockResolvedValue([{
+                location_id: 10,
+                name: 'Main',
+                address_line: 'Main Road',
+                latitude: 10.72,
+                longitude: 122.56,
+                is_active: true,
+                is_primary_storefront: true,
+                is_open: true
+            }]) },
+            Item: { findAll: jest.fn().mockResolvedValue([]) },
+            PosCatalogOverride: null,
+            StorefrontCatalogOverride: { name: 'StorefrontCatalogOverride' },
+            ServiceItemDetail: null,
+            ItemLocationStock: { findAll: jest.fn().mockResolvedValue([]) }
+        });
+
+        const result = await syncStorefrontDiscoveryIndexForTenant({ tenantId: 'tenant-1' });
+
+        expect(result.status).toBe('upserted');
+        const snapshot = mockIndexCreate.mock.calls[0][0];
+        expect(snapshot.storefront_promo).toBeNull();
+        expect(snapshot.storefront_promos.map((promo) => promo.promo_code)).toEqual(['OK10']);
+    });
+
+    it('uses StorefrontCatalogOverride instead of POS override when building item_search_snapshot', async () => {        const SystemSetting = {
             findAll: jest.fn().mockResolvedValue([
                 { setting_key: 'store_is_visible', setting_value: 'true' },
                 { setting_key: 'store_tenant_slug', setting_value: 'visibility-tenant' },

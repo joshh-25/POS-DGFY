@@ -27,7 +27,11 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
-import { parsePublicCommercialPromos } from '../../shared/utils/commercialPromoPolicy.js';
+import {
+    parsePublicCommercialPromos,
+    projectPublicLegacyPromo,
+    resolveCommercialPromoTimezone
+} from '../../shared/utils/commercialPromoPolicy.js';
 
 const CACHE_TTL_MS = 30 * 1000;
 const DISCOVERY_REDIS_CACHE_TTL_SECONDS = Math.max(
@@ -363,7 +367,10 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
     const whyChooseUs = parseJsonArray(settingsMap.storefront_why_choose_us).map((entry) => toTrimmedString(entry, 120)).filter(Boolean);
     const social = parseJsonObject(settingsMap.storefront_social_links) || null;
     const promo = parseJsonObject(settingsMap.storefront_promo) || null;
-    const promos = parsePublicCommercialPromos(parseJsonArray(settingsMap.storefront_promos));
+    // #2159: same timezone the checkout evaluator uses, so a revoked/exhausted/expired legacy code
+    // is withheld from the live profile projection on exactly the day checkout starts rejecting it.
+    const promoTimezone = resolveCommercialPromoTimezone(settingsMap);
+    const promos = parsePublicCommercialPromos(parseJsonArray(settingsMap.storefront_promos), { timezone: promoTimezone });
     const reviewHighlights = parseJsonArray(settingsMap.storefront_review_highlights)
         .map((entry) => {
             const comment = toTrimmedString(entry?.comment, 280);
@@ -398,7 +405,7 @@ const readStorefrontProfileSettings = async ({ tenantId, cacheVersion, cacheSign
         storefront_why_choose_us: whyChooseUs,
         storefront_social_links: social,
         storefront_review_highlights: reviewHighlights,
-        storefront_promo: promo,
+        storefront_promo: projectPublicLegacyPromo(promo, { timezone: promoTimezone }),
         storefront_promos: promos,
         storefront_ui_v2_enabled: parseBoolean(settingsMap.storefront_ui_v2_enabled, false),
         storefront_categories: normalizeStringList(settingsMap.storefront_categories, 12, 60),
@@ -671,7 +678,7 @@ const toPlainEntry = (row) => {
             };
         })
         .filter(Boolean),
-    storefront_promo: parseJsonObject(plain.storefront_promo) || null,
+    storefront_promo: projectPublicLegacyPromo(parseJsonObject(plain.storefront_promo)),
     storefront_promos: parsePublicCommercialPromos(parseJsonArray(plain.storefront_promos)),
     // #713 fix: this final row->response mapping is an explicit field allowlist, not a spread --
     // storefront_vouchers was computed correctly all the way through the index sync (and, after the
