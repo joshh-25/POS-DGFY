@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pencil, Plus, RotateCcw, Save, Trash2, X } from 'lucide-react';
 import PosFnbSelect from './PosFnbSelect.jsx';
 
@@ -118,6 +118,27 @@ export default function PosFnbModifierManager({
   const [initialDraft, setInitialDraft] = useState(emptyGroup);
   const [editorOpen, setEditorOpen] = useState(false);
   const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const editorScrollRef = useRef(null);
+
+  useEffect(() => {
+    if (!editorOpen) return undefined;
+
+    const resetEditorScroll = () => {
+      if (!editorScrollRef.current) return;
+      editorScrollRef.current.scrollTop = 0;
+      editorScrollRef.current.scrollLeft = 0;
+    };
+
+    resetEditorScroll();
+    const frame = typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame(resetEditorScroll)
+      : null;
+    return () => {
+      if (frame !== null && typeof window !== 'undefined' && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(frame);
+      }
+    };
+  }, [editorOpen, editingId]);
 
   const updateOption = (index, patch) => setDraft((current) => ({
     ...current,
@@ -185,7 +206,7 @@ export default function PosFnbModifierManager({
             <p className="mt-1 break-words text-xs leading-5 text-[#64748B]">Add customization and modifiers for POS items.</p>
           </div>
           {canManage ? (
-            <button type="button" onClick={openCreate} disabled={busy} aria-label="Add an Option Group" title="Add an Option Group" aria-pressed={editorOpen && !editingId} className={`pos-items-mobile-icon-button pos-items-options-add-button inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#1A4E8D] px-3 text-[13px] font-bold active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white disabled:cursor-not-allowed disabled:opacity-60 ${editorOpen && !editingId ? 'pos-items-mobile-icon-button--active bg-[#1A4E8D] text-white hover:bg-[#143F73]' : 'bg-white text-[#1A4E8D] hover:bg-blue-50'}`}>
+            <button type="button" onClick={openCreate} disabled={busy} aria-label="Add an Option Group" title="Add an Option Group" aria-pressed={editorOpen && !editingId} className={`pos-items-mobile-icon-button pos-items-options-add-button inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#1A4E8D] px-3 text-[13px] font-bold disabled:cursor-not-allowed disabled:opacity-60 ${editorOpen && !editingId ? 'pos-items-mobile-icon-button--active bg-[#1A4E8D] text-white' : 'bg-white text-[#1A4E8D]'}`}>
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
               <span className="pos-items-options-add-label">Add an Option Group</span>
             </button>
@@ -271,7 +292,7 @@ export default function PosFnbModifierManager({
               </button>
             </div>
 
-            <div data-testid="fnb-option-group-editor-scroll" className="pos-fnb-option-group-editor-body min-h-0 flex-1 overflow-y-auto px-4 pb-2 pt-4 sm:px-5">
+            <div ref={editorScrollRef} data-testid="fnb-option-group-editor-scroll" className="pos-fnb-option-group-editor-body min-h-0 flex-1 overflow-y-auto px-4 pb-2 pt-4 sm:px-5">
               <div className="space-y-3">
                 <div className="space-y-1.5">
                   <label htmlFor="pos-fnb-option-group-name" className="text-[10px] font-bold text-[#334155]">Option Group Name <span className="text-rose-500">*</span></label>
@@ -358,7 +379,7 @@ export default function PosFnbModifierManager({
             </div>
 
             <div className="pos-fnb-option-group-editor-footer grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5">
-              <button type="button" onClick={resetDraft} disabled={busy} className="inline-flex h-9 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg border border-[#1A4E8D] px-2 text-[11px] font-bold text-[#1A4E8D] hover:bg-blue-50 disabled:opacity-60">
+              <button type="button" onClick={resetDraft} disabled={busy} className="pos-items-reset-action inline-flex h-9 min-w-0 w-full items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-bold disabled:opacity-60">
                 <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
                 Reset All
               </button>

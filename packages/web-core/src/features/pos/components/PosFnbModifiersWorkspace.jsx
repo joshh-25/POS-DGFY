@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Package, RefreshCcw, RotateCcw, Search, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import {
   updateFnbModifierGroup
 } from '@/src/features/fnb/api/fnbApi.js';
 import { fetchPosCatalog } from '../services/posService.js';
-import { getFolders } from '@/services/itemService.js';
 import PosFnbModifierManager from './PosFnbModifierManager.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
 
@@ -105,7 +104,7 @@ function AssignmentPanel({
 
       {canManage ? (
         <div className="pos-items-options-actions mt-3 grid min-w-0 grid-cols-2 gap-2">
-          <Button type="button" variant="outline" onClick={reset} disabled={disabled} className="h-9 min-w-0 rounded-lg border-[#1A4E8D] bg-white px-2 text-[13px] font-bold text-[#1A4E8D] hover:bg-blue-50 active:border-[#1A4E8D] active:bg-[#1A4E8D] active:text-white">
+          <Button type="button" variant="outline" onClick={reset} disabled={disabled} className="pos-items-reset-action h-9 min-w-0 rounded-lg px-2 text-[13px] font-bold hover:bg-[#fff1f2] hover:text-[#9f1239]">
             <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             Reset All
           </Button>
@@ -122,6 +121,8 @@ export default function PosFnbModifiersWorkspace({
   isOnline = true,
   canManage = false,
   locations = [],
+  operatingLocationId = null,
+  locationsLoading = false,
   sectionId = 'pos-fnb-menu-modifiers'
 }) {
   const [groups, setGroups] = useState([]);
@@ -138,22 +139,47 @@ export default function PosFnbModifiersWorkspace({
   const [error, setError] = useState('');
   const [folderGroupSearch, setFolderGroupSearch] = useState('');
   const [itemGroupSearch, setItemGroupSearch] = useState('');
+  const scopedCatalogCache = useRef(new Map());
+  const workspaceReadSequence = useRef(0);
 
   const loadWorkspace = useCallback(async () => {
+    const sequence = ++workspaceReadSequence.current;
     if (!isOnline) {
       setLoading(false);
       return;
     }
     setLoading(true);
     setError('');
+    const scopedLocationId = Number(operatingLocationId || 0);
+    const hasLocationId = Number.isInteger(scopedLocationId) && scopedLocationId > 0;
+    const availableLocations = Array.isArray(locations) ? locations : [];
+    const hasAuthorizedLocation = hasLocationId && (
+      availableLocations.length === 0
+      || availableLocations.some((location) => Number(location?.location_id) === scopedLocationId)
+    );
+    const hasValidLocation = !locationsLoading && hasAuthorizedLocation;
+    const cachedCatalog = hasValidLocation
+      ? scopedCatalogCache.current.get(scopedLocationId)
+      : null;
+
+    if (!hasValidLocation) {
+      setItems([]);
+      setFolders([]);
+      setSelectedItemId('');
+      setSelectedFolderId('');
+      setLoading(locationsLoading);
+      setError(locationsLoading ? '' : 'Select an authorized location to load item options.');
+      return;
+    }
+
     try {
-      const [groupPayload, assignmentPayload, folderAssignmentPayload, catalogPayload, folderPayload] = await Promise.all([
+      const [groupPayload, assignmentPayload, folderAssignmentPayload, catalogPayload] = await Promise.all([
         listFnbModifierGroups({ include_inactive: true }),
         listFnbItemModifierGroups(),
         listFnbFolderModifierGroups(),
-        fetchPosCatalog({ limit: 500 }),
-        getFolders().catch(() => [])
+        fetchPosCatalog({ limit: 500, location_id: scopedLocationId })
       ]);
+      if (workspaceReadSequence.current !== sequence) return;
       const nextGroups = Array.isArray(groupPayload?.modifier_groups) ? groupPayload.modifier_groups : [];
       const nextAssignments = Array.isArray(assignmentPayload?.item_modifier_groups) ? assignmentPayload.item_modifier_groups : [];
       const nextFolderAssignments = Array.isArray(folderAssignmentPayload?.folder_modifier_groups) ? folderAssignmentPayload.folder_modifier_groups : [];
@@ -165,27 +191,37 @@ export default function PosFnbModifiersWorkspace({
         }
         return result;
       }, []).sort(byName);
-      const nextFolders = (Array.isArray(folderPayload) ? folderPayload : [])
-        .map((folder) => ({ folder_id: Number(folder?.folder_id), name: String(folder?.name || '').trim() }))
-        .filter((folder) => Number.isInteger(folder.folder_id) && folder.folder_id > 0 && folder.name)
-        .sort(byName);
+      const nextFolders = catalogFolders;
       setGroups(nextGroups);
       setAssignments(nextAssignments);
       setFolderAssignments(nextFolderAssignments);
       setItems(nextItems);
-      setFolders(nextFolders.length ? nextFolders : catalogFolders);
+      setFolders(nextFolders);
+      scopedCatalogCache.current.set(scopedLocationId, { items: nextItems, folders: nextFolders });
       setSelectedItemId((current) => (nextItems.some((item) => String(item.item_id) === String(current)) ? current : String(nextItems[0]?.item_id || '')));
       const nextFolderIds = new Set(nextItems.map((item) => Number(item.folder_id)).filter((id) => Number.isInteger(id) && id > 0));
       setSelectedFolderId((current) => (nextFolderIds.has(Number(current)) ? current : String([...nextFolderIds][0] || '')));
     } catch (loadError) {
-      setError(loadError?.response?.data?.message || 'Unable to load F&B item options in POS.');
+      if (workspaceReadSequence.current !== sequence) return;
+      if (cachedCatalog) {
+        setItems(cachedCatalog.items);
+        setFolders(cachedCatalog.folders);
+        setError('');
+      } else {
+        setItems([]);
+        setFolders([]);
+        setError(loadError?.response?.data?.message || 'Unable to load F&B item options in POS.');
+      }
     } finally {
-      setLoading(false);
+      if (workspaceReadSequence.current === sequence) setLoading(false);
     }
-  }, [isOnline]);
+  }, [isOnline, locations, locationsLoading, operatingLocationId]);
 
   useEffect(() => {
     loadWorkspace();
+    return () => {
+      workspaceReadSequence.current += 1;
+    };
   }, [loadWorkspace]);
 
   useEffect(() => {

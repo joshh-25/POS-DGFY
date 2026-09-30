@@ -12,35 +12,27 @@ describe('standalone POS Items workspace presentation', () => {
 
     expect(source).toContain("case 'items':");
     expect(source).toContain('<ItemsCatalogWorkspace');
-    expect(source).toContain("data-pos-items-design={IS_DGFY_POS_SURFACE ? 'apex' : undefined}");
-    expect(source).toContain('data-testid="pos-items-design-tabs"');
-    expect(source).toContain("data-pos-items-toolbar={IS_DGFY_POS_SURFACE ? 'true' : undefined}");
-    expect(source).toContain("data-pos-items-search-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}");
-    expect(source).toContain("currencySymbol = 'PHP'");
-    expect(source).toContain('const itemDisplayCurrency = currencyLabel(currencySymbol);');
-    expect(source).toContain("currencySymbol={terminalMeta?.pettyCashSymbol || 'PHP'}");
-    expect(source).toContain('{itemDisplayCurrency}{money(item.default_sale_price)}');
-    expect(source).toContain("`${itemDisplayCurrency}${money(item.cost_per_unit)}`");
-    expect(source).toContain('data-pos-items-table="true"');
-    expect(source).toContain('data-pos-items-row="true"');
-    expect(source).toContain("data-pos-items-card={IS_DGFY_POS_SURFACE ? 'true' : undefined}");
-    expect(source).toContain("data-pos-items-actions={IS_DGFY_POS_SURFACE ? 'true' : undefined}");
+    expect(source).toContain('className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex"');
+    expect(source).toContain('className="pos-items-desktop-actions flex shrink-0 flex-wrap items-center justify-end gap-2"');
+    expect(source).toContain('data-testid="pos-items-results"');
+    expect(source).toContain('pos-items-desktop-card-grid');
+    expect(source).toContain('pos-items-desktop-card"');
+    expect(source).toContain('Cost (₱):');
+    expect(source).toContain('Price (₱):');
+    expect(source).toContain('₱{money(item.default_sale_price)}');
+    expect(source).toContain('`₱${money(item.cost_per_unit)}`');
   });
 
-  it('keeps the reference table columns and item management actions', () => {
+  it('keeps the current card layout, search, and item management actions', () => {
     const source = readWorkspace();
 
-    expect(source).toContain("['Item', 'Details & Identification', 'Category', 'Stock Status', 'Profit Margin', 'Price', 'Cost', 'Actions']");
-    expect(source).toContain("const isMoneyColumn = heading === 'Price' || heading === 'Cost';");
-    expect(source).toContain("${isMoneyColumn ? 'text-right' : ''}");
-    expect(source).toContain('text-sm font-black tabular-nums text-[#0F172A]');
-    expect(source).toContain('text-sm font-bold tabular-nums text-[#0F172A]');
-    expect(source).toContain('Search by item name, SKU, or barcode');
-    expect(source).toContain('Add Item');
+    expect(source).toContain('Search item by Name, SKU, or Barcode');
+    expect(source).toContain('Add Items');
     expect(source).toContain('Import Items');
+    expect(source).toContain("const menuImportButtonLabel = 'Import Menu';");
     expect(source).toContain('SKU');
     expect(source).toContain('Barcode');
-    expect(source).toContain('Edit');
+    expect(source).toContain('Edit Item');
     expect(source).toContain('Delete');
     expect(source).toContain('onClick={() => openEdit(item)}');
     expect(source).toContain('onClick={() => setDeleteConfirmItem(item)}');

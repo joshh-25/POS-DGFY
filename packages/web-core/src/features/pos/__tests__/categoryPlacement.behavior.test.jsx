@@ -96,7 +96,7 @@ describe('Items category placement', () => {
     expect(drinksCard.tabIndex).toBe(0);
     expect(drinksCard.classList.contains('cursor-default')).toBe(true);
     expect(drinksCard.classList.contains('cursor-grab')).toBe(false);
-    const editButtons = screen.getAllByRole('button', { name: 'Edit' });
+    const editButtons = screen.getAllByTitle('Edit category Drinks');
     fireEvent.pointerDown(editButtons[0]);
     fireEvent.keyDown(editButtons[0], { code: 'Enter' });
     expect(draggablePointerDown).not.toHaveBeenCalled();
@@ -104,7 +104,7 @@ describe('Items category placement', () => {
     fireEvent.pointerDown(drinksCard);
     expect(draggablePointerDown).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByPlaceholderText('Search categories'), { target: { value: 'Drink' } });
+    fireEvent.change(screen.getByPlaceholderText('Search Categories'), { target: { value: 'Drink' } });
     expect(screen.getByTestId('pos-category-card-2').tabIndex).toBe(-1);
     expect(screen.getByTestId('pos-category-card-2').getAttribute('aria-disabled')).toBe('true');
   });
@@ -169,7 +169,7 @@ describe('Items category placement', () => {
     });
     render(<TerminalOperationsWorkspace {...buildProps({ operatingLocationId: 9, canEditItems: true })} />);
 
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'meat' } });
+    fireEvent.change(document.getElementById('pos-items-search'), { target: { value: 'meat' } });
 
     await waitFor(() => expect(fetchPosCatalogPage).toHaveBeenLastCalledWith({
       search: 'meat',
@@ -179,11 +179,45 @@ describe('Items category placement', () => {
       stock_filter: 'all',
       location_id: 9
     }));
-    expect(await screen.findByTitle('Edit Tomato Meatballs')).toBeTruthy();
-    expect(screen.getByText('Showing 1–1 of 1 items')).toBeTruthy();
+    expect((await screen.findAllByTitle('Edit Tomato Meatballs')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Showing 1–1 of 1 entries')).toBeTruthy();
   });
 
-  it('preserves the server-provided saved category order for All categories', async () => {
+  it('waits for a valid location context before requesting the catalog', async () => {
+    const locationState = {
+      loading: false,
+      locations: [{ location_id: 1, name: 'Main Branch', is_active: true }]
+    };
+    const { rerender } = render(<TerminalOperationsWorkspace {...buildProps({
+      operatingLocationId: null,
+      locationsState: locationState
+    })} />);
+
+    await waitFor(() => expect(fetchPosCatalogPage).not.toHaveBeenCalled());
+
+    rerender(<TerminalOperationsWorkspace {...buildProps({
+      operatingLocationId: 9,
+      locationsState: locationState
+    })} />);
+
+    await waitFor(() => expect(fetchPosCatalogPage).not.toHaveBeenCalled());
+
+    rerender(<TerminalOperationsWorkspace {...buildProps({
+      operatingLocationId: 1,
+      locationsState: locationState
+    })} />);
+
+    await waitFor(() => expect(fetchPosCatalogPage).toHaveBeenCalledWith({
+      search: '',
+      page: 1,
+      page_size: 20,
+      category_filter: 'all',
+      stock_filter: 'all',
+      location_id: 1
+    }));
+  });
+
+  it('keeps the current alphabetic item order when saved category order differs', async () => {
     getFolders.mockResolvedValue([
       { folder_id: 2, name: 'Drinks', sort_order: 0, is_active: true, show_in_pos_filter: true },
       { folder_id: 1, name: 'Mains', sort_order: 1, is_active: true, show_in_pos_filter: true }
@@ -197,9 +231,9 @@ describe('Items category placement', () => {
     });
     render(<TerminalOperationsWorkspace {...buildProps({ canEditItems: true })} />);
 
-    const drinksEdit = await screen.findByTitle('Edit Zulu Drink');
-    const mainsEdit = screen.getByTitle('Edit Alpha Main');
-    expect(drinksEdit.compareDocumentPosition(mainsEdit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const mainsEdit = (await screen.findAllByTitle('Edit Alpha Main'))[0];
+    const drinksEdit = screen.getAllByTitle('Edit Zulu Drink')[0];
+    expect(mainsEdit.compareDocumentPosition(drinksEdit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows Items and Categories as tabs for an authorized catalog administrator', () => {
@@ -210,12 +244,12 @@ describe('Items category placement', () => {
     expect(screen.getByRole('tab', { name: 'Items' }).getAttribute('aria-selected')).toBe('true');
   });
 
-  it('opens the online-only message when Categories is selected while offline', () => {
+  it('opens the online-only message when Categories is selected while offline', async () => {
     render(<TerminalOperationsWorkspace {...buildProps({ isOnline: false })} />);
 
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
 
-    expect(screen.getByText('Category management is available online only.')).toBeTruthy();
+    expect(await screen.findByText('Category management is available online only.')).toBeTruthy();
     expect(screen.getByRole('tab', { name: 'Categories' }).getAttribute('aria-selected')).toBe('true');
   });
 
@@ -227,7 +261,7 @@ describe('Items category placement', () => {
     })} />);
 
     expect(screen.getByText('Category management is available online only.')).toBeTruthy();
-    expect(screen.queryByText('Search by item name, SKU, or barcode')).toBeNull();
+    expect(screen.queryByPlaceholderText('Search item by Name, SKU, or Barcode')).toBeNull();
   });
 
   it('does not expose Category Management to an ordinary item viewer', () => {
@@ -243,7 +277,7 @@ describe('Items category placement', () => {
       canCreateItems: true
     })} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Item' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Items' })[0]);
 
     expect(screen.getByText('Product Category')).toBeTruthy();
     expect(screen.queryByText('Food Category')).toBeNull();
@@ -252,12 +286,12 @@ describe('Items category placement', () => {
   it('preserves food category terminology for F&B', () => {
     render(<TerminalOperationsWorkspace {...buildProps({ canCreateItems: true })} />);
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Add Item' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Items' })[0]);
 
     expect(screen.getByText('Food Category')).toBeTruthy();
   });
 
-  it('places edit-item barcode fields directly under the Food Category section', async () => {
+  it('places edit-item barcode fields in full-width stacked rows', async () => {
     fetchPosCatalogPage.mockResolvedValueOnce({ items: [{
       item_id: 24,
       name: 'Aloo Paratha',
@@ -269,14 +303,18 @@ describe('Items category placement', () => {
     }], pagination: { page: 1, page_size: 15, total: 1, total_pages: 1 } });
 
     render(<TerminalOperationsWorkspace {...buildProps({ canEditItems: true })} />);
-    fireEvent.click(await screen.findByTitle('Edit Aloo Paratha'));
+    fireEvent.click((await screen.findAllByTitle('Edit Aloo Paratha'))[0]);
 
-    const categoryLabel = screen.getByText('Food Category');
-    const manualBarcodeLabel = screen.getByText('Manual Barcode (priority)');
-    const gtinLabel = screen.getByText('GTIN / UPC / EAN');
+    const manualBarcodeInput = screen.getByLabelText('Manual Barcode (priority)');
+    const gtinInput = screen.getByLabelText('GTIN / UPC / EAN');
+    const manualBarcodeRow = manualBarcodeInput.parentElement;
+    const gtinRow = gtinInput.parentElement;
 
-    expect(categoryLabel.parentElement?.parentElement).toBe(manualBarcodeLabel.parentElement?.parentElement);
-    expect(manualBarcodeLabel.compareDocumentPosition(gtinLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(manualBarcodeRow?.className).toContain('sm:col-span-2');
+    expect(gtinRow?.className).toContain('sm:col-span-2');
+    expect(manualBarcodeRow?.className).toContain('space-y-1');
+    expect(gtinRow?.className).toContain('space-y-1');
+    expect(manualBarcodeInput.compareDocumentPosition(gtinInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows a separate service-create action only in Services mode with catalog permission', () => {
@@ -287,7 +325,7 @@ describe('Items category placement', () => {
     })} />);
 
     expect(screen.getAllByRole('button', { name: 'Add Service' }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole('button', { name: 'Add Item' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Add Items' }).length).toBeGreaterThan(0);
 
     rerender(<TerminalOperationsWorkspace {...buildProps({
       workflowMode: 'retail',
@@ -366,9 +404,9 @@ describe('Items category placement', () => {
       canManageServiceCatalog: true
     })} />);
 
-    expect(await screen.findByTitle('Edit Wash and Fold')).toBeTruthy();
-    expect(screen.getByText('Service catalog entry')).toBeTruthy();
-    expect(screen.getByText('Stock Exempt')).toBeTruthy();
+    expect((await screen.findAllByTitle('Edit Wash and Fold')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Service catalog entry').length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle('Stock Exempt').length).toBeGreaterThan(0);
     expect(screen.queryByText('Out of Stock')).toBeNull();
     expect(screen.getAllByText('Not tracked').length).toBeGreaterThan(0);
   });
