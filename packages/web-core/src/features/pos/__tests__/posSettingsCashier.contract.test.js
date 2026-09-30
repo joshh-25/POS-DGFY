@@ -679,7 +679,7 @@ describe('regular POS Setup cashier management contract', () => {
 
   it('removes redundant Storefront pane headings below the nested subtab rail', () => {
     const subtabRailIndex = storefrontPaneSource.indexOf('<PosSubtabNavigation');
-    const panelIndex = storefrontPaneSource.indexOf('<div id="pos-storefront-panel"');
+    const panelIndex = storefrontPaneSource.indexOf('id="pos-storefront-panel"');
 
     expect(subtabRailIndex).toBeGreaterThanOrEqual(0);
     expect(panelIndex).toBeGreaterThan(subtabRailIndex);
