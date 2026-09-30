@@ -63,6 +63,10 @@ const buildHarness = ({ shift = {}, parkedSale = null, parkedSales = [] } = {}) 
             business_admin_approval_request_id: 501,
             ...payload
         })),
+        updateBusinessAdminApprovalRequest: jest.fn(async (id, payload) => ({
+            business_admin_approval_request_id: id,
+            ...payload
+        })),
         getParkedSaleById: jest.fn(async () => currentParkedSale),
         findSellableItemsByIds: jest.fn().mockResolvedValue([]),
         updateParkedSale: jest.fn(async (id, payload) => {
@@ -532,6 +536,70 @@ describe('parked sale use cases', () => {
             reason: 'Customer changed order',
             status: 'pending'
         }), expect.objectContaining({ transaction: harness.transaction }));
+    });
+
+    it('allows an administrator to cancel a parked sale directly and reverse deducted stock', async () => {
+        const parkedSale = {
+            pos_parked_sale_id: 101,
+            status: 'cancel_pending',
+            shift_id: 41,
+            cashier_id: 15,
+            location_id: 3,
+            inventory_deducted_at: new Date()
+        };
+        const harness = buildHarness({ parkedSale });
+        harness.posRepository.findPendingBusinessAdminApprovalRequest.mockResolvedValue({
+            business_admin_approval_request_id: 502,
+            action_type: 'pos_parked_sale_cancel',
+            status: 'pending'
+        });
+        harness.inventoryCommandService.reverseParkedSaleGoodsIssue.mockResolvedValue([{
+            original_movement_id: 701,
+            reversal_movement_id: 702,
+            item_id: 7,
+            quantity: 1,
+            location_id: 3
+        }]);
+        const useCase = buildCancelPosParkedSaleUseCase({
+            posRepository: harness.posRepository,
+            inventoryCommandService: harness.inventoryCommandService
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            parkedSaleId: 101,
+            payload: { shift_id: 41, terminal_id: 'COUNTER-01', reason: 'Administrator correction' },
+            user: { user_id: 15, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            pending: false,
+            authorization_mode: 'admin_bypass',
+            parked_sale: expect.objectContaining({ status: 'cancelled' }),
+            stock_reversals: [expect.objectContaining({ reversal_movement_id: 702 })]
+        }));
+        expect(harness.inventoryCommandService.reverseParkedSaleGoodsIssue).toHaveBeenCalledWith({
+            parked_sale_id: 101,
+            reason: 'Administrator parked-sale cancellation: Administrator correction'
+        }, 15, harness.transaction);
+        expect(harness.posRepository.createBusinessAdminApprovalRequest).not.toHaveBeenCalled();
+        expect(harness.posRepository.updateBusinessAdminApprovalRequest).toHaveBeenCalledWith(502, expect.objectContaining({
+            status: 'cancelled'
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+        expect(harness.posRepository.updateParkedSale).toHaveBeenCalledWith(101, expect.objectContaining({
+            status: 'cancelled',
+            cancelled_by: 15,
+            cancel_reason: 'Administrator correction'
+        }), expect.objectContaining({ transaction: harness.transaction, lock: true }));
+        expect(harness.posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_parked_sale_cancelled',
+            changes: expect.objectContaining({
+                authorization_mode: 'admin_bypass',
+                approval_request_id: null,
+                approved_by: null
+            })
+        }), expect.objectContaining({ transaction: harness.transaction }));
+        expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
     });
 
     it('updates the same claimed parked sale and increments its revision', async () => {

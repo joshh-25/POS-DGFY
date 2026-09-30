@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildTerminalLocationMismatchMessage,
   buildValidationDetailMessage,
   buildVoucherReasonMessage
 } from '../posCheckoutErrorMessages.js';
@@ -38,6 +39,26 @@ describe('buildVoucherReasonMessage', () => {
     expect(buildVoucherReasonMessage(errorWithReasonCode('SOME_UNRELATED_CODE'))).toBeNull();
     expect(buildVoucherReasonMessage({})).toBeNull();
     expect(buildVoucherReasonMessage(undefined)).toBeNull();
+  });
+});
+
+describe('buildTerminalLocationMismatchMessage', () => {
+  it('maps the registered-terminal location error to actionable cashier copy', () => {
+    expect(buildTerminalLocationMismatchMessage({
+      response: {
+        status: 403,
+        data: {
+          error_code: 'POS_REGISTERED_TERMINAL_LOCATION_MISMATCH',
+          message: 'Requested location does not match the registered terminal location.'
+        }
+      }
+    })).toBe('Checkout is blocked because the selected terminal is registered to a different branch. Refresh the terminal context and try again.');
+  });
+
+  it('ignores unrelated POS errors', () => {
+    expect(buildTerminalLocationMismatchMessage({
+      response: { status: 403, data: { error_code: 'POS_OPERATOR_AUTHORITY_INVALID' } }
+    })).toBeNull();
   });
 });
 

@@ -26,7 +26,7 @@ describe('POS reports top-selling items table', () => {
     ['Rank', 'Items', 'Quantity Sold', 'Net Sales (₱)', '% of Total Sales', 'Average Price (₱)', 'Orders'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
     });
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     const tableRegion = screen.getByRole('region', { name: 'Top-selling items table' });
     expect(within(tableRegion).getByText('1')).toBeTruthy();
     expect(screen.getAllByText('Coca Cola 1.5L').length).toBeGreaterThan(0);
@@ -39,7 +39,7 @@ describe('POS reports top-selling items table', () => {
 
     const firstRowCells = tableRegion.querySelectorAll('tbody tr:first-child td');
     const headers = tableRegion.querySelectorAll('thead th');
-    const expectedAlignments = ['center', 'left', 'center', 'left', 'right', 'left', 'center', 'center'];
+    const expectedAlignments = ['center', 'left', 'center', 'left', 'right', 'left', 'center'];
     expectedAlignments.forEach((alignment, index) => {
       expect(headers[index].className).toContain(`text-${alignment}`);
       expect(firstRowCells[index].className).toContain(`text-${alignment}`);

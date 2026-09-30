@@ -6,7 +6,7 @@ import PosReportsRegistersTable from '../components/PosReportsRegistersTable.jsx
 
 const rows = [
   {
-    shift_ids: [81],
+    shift_id: 81,
     opening_cashier_name: 'John D.',
     opening_float_amount: 2000,
     cash_sales_amount: 4820,
@@ -15,7 +15,7 @@ const rows = [
     variance_amount: 0
   },
   {
-    shift_ids: [82],
+    shift_id: 82,
     opening_cashier_name: 'Maya S.',
     opening_float_amount: 2000,
     cash_sales_amount: 4820,
@@ -24,7 +24,7 @@ const rows = [
     variance_amount: 10
   },
   {
-    shift_ids: [83],
+    shift_id: 83,
     opening_cashier_name: 'Alex R.',
     opening_float_amount: 2000,
     cash_sales_amount: 4820,
@@ -33,7 +33,7 @@ const rows = [
     variance_amount: -10
   },
   {
-    shift_ids: [84],
+    shift_id: 84,
     opening_cashier_name: 'Open Drawer',
     opening_float_amount: 2000,
     cash_sales_amount: 4820,
@@ -52,8 +52,9 @@ describe('POS reports registers table', () => {
     ['Register Shift', 'Opening Cashier', 'Expected (₱)', 'Counted (₱)', 'Variance (₱)', 'Status'].forEach((label) => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.getAllByText('RS-81').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/RS-\d+,\s*RS-\d+/)).toBeNull();
     expect(screen.getAllByText('₱2,980.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Reconciled').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Over').length).toBeGreaterThan(0);

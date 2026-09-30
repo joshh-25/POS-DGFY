@@ -1,6 +1,7 @@
 import {
   assertLocalMutationAllowed,
-  parseArgs
+  parseArgs,
+  resolvePerformanceSeedInventoryPolicy
 } from '../scripts/seed-pos-catalog-performance-items.js';
 
 describe('POS catalog performance seed safeguards', () => {
@@ -16,6 +17,17 @@ describe('POS catalog performance seed safeguards', () => {
       allowLocalMutation: true,
       tenantId: 'tenant-local',
       batchId: 'batch-1'
+    });
+  });
+
+  it('keeps always-available performance fixtures on the untracked inventory mode', () => {
+    expect(resolvePerformanceSeedInventoryPolicy(17)).toEqual({
+      posAlwaysAvailable: true,
+      trackingMode: 'untracked'
+    });
+    expect(resolvePerformanceSeedInventoryPolicy(16)).toEqual({
+      posAlwaysAvailable: false,
+      trackingMode: 'count_ledger'
     });
   });
 

@@ -35,7 +35,7 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain("const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;");
     expect(workspaceSource).toMatch(/const offlineReportKey = useMemo\(\(\) => JSON\.stringify\(\{\s*granularity: displayGranularity,/);
     expect(workspaceSource).toMatch(/fetchPosReportsOverview\(\{\s*granularity: displayGranularity,/);
-    expect(workspaceSource).toMatch(/\}, \[\s*categoryId,\s*cashierId,\s*displayGranularity,/);
+    expect(workspaceSource).toMatch(/\}\), \[\s*categoryId,\s*cashierId,\s*displayGranularity,/);
   });
 
   it('groups operational reports under the Operations tab without removing their views', () => {
@@ -99,6 +99,13 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('{renderReportToolbar()}'));
     expect(workspaceSource).toContain("const shouldShowOperationsSubtabs = activeTab === 'operations'");
     expect(lineTabSource).toContain('role="tablist" aria-orientation="horizontal"');
+  });
+
+  it('hides only the Reports tab scrollbar while retaining horizontal overflow', () => {
+    expect(workspaceSource).toMatch(/ariaLabel="POS reports"\s+hideScrollbar/);
+    expect(lineTabSource).toContain('hideScrollbar = false');
+    expect(lineTabSource).toContain("hideScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''");
+    expect(lineTabSource).toContain('overflow-x-auto');
   });
 
   it('keeps mobile report tabs sticky through the full report content scroll range', () => {

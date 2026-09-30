@@ -8,7 +8,8 @@ import {
     validateListPosParkedSales,
     validateParkedSaleIdParam,
     validateReparkPosParkedSale,
-    validatePosCheckout
+    validatePosCheckout,
+    validateListPosExceptionApprovals
 } from '../src/validators/posValidator.js';
 
 const routeSource = fs.readFileSync(
@@ -31,7 +32,13 @@ describe('parked sale POS route contract', () => {
         expect(routeSource).toContain("router.post('/parked-sales/:id/claim', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateClaimPosParkedSale, posController.requireActiveOperatorForMutation, posController.claimParkedSale);");
         expect(routeSource).toContain("router.post('/parked-sales/:id/repark', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateReparkPosParkedSale, posController.requireActiveOperatorForMutation, posController.reparkParkedSale);");
         expect(routeSource).toContain("router.post('/parked-sales/:id/cancel', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validateParkedSaleIdParam, validateCancelPosParkedSale, posController.requireActiveOperatorForMutation, posController.cancelParkedSale);");
-        expect(routeSource).toContain("router.post('/approvals/:id/:decision', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), validatePosExceptionApprovalParam, validatePosExceptionApprovalBody, posController.decidePosExceptionApproval);");
+        expect(routeSource).toContain("    '/approvals',");
+        expect(routeSource).toContain('checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.ACCESS)');
+        expect(routeSource).toContain('checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)');
+        expect(routeSource).toContain('checkPermission(PERMISSIONS.BUSINESS_ADMIN.actions.APPROVE_HIGH_RISK)');
+        expect(routeSource).toContain('posController.listPosExceptionApprovals');
+        expect(routeSource).toContain("    '/approvals/:id/:decision',");
+        expect(routeSource).toContain('posController.decidePosExceptionApproval');
     });
 
     it('validates the lifecycle payloads and strips unsupported top-level fields', () => {
@@ -70,6 +77,7 @@ describe('parked sale POS route contract', () => {
             lines: [{ item_id: 7, quantity: 1, sale_price: 10 }]
         });
         const id = runValidator(validateParkedSaleIdParam, 'params', { id: '101' });
+        const approvals = runValidator(validateListPosExceptionApprovals, 'query', {});
 
         expect(create.nextCalled).toBe(true);
         expect(create.req.validatedData).not.toHaveProperty('unsupported');
@@ -93,5 +101,7 @@ describe('parked sale POS route contract', () => {
         }]);
         expect(id.nextCalled).toBe(true);
         expect(id.req.validatedParams.id).toBe(101);
+        expect(approvals.nextCalled).toBe(true);
+        expect(approvals.req.validatedQuery).toEqual({ status: 'pending', limit: 100 });
     });
 });

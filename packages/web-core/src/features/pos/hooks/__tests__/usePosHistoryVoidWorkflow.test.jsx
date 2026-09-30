@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     fetchPosTransactionById,
     fetchPosTransactions,
+    fetchPosVoidApprovals,
+    decidePosVoidApproval,
     recordExternalPosTransactionRefund,
     refundCashPosTransaction,
     refundProviderPosTransaction,
@@ -16,6 +18,8 @@ import { usePosHistoryVoidWorkflow } from '../usePosHistoryVoidWorkflow.js';
 vi.mock('../../services/posService', () => ({
     fetchPosTransactionById: vi.fn(),
     fetchPosTransactions: vi.fn(),
+    fetchPosVoidApprovals: vi.fn(),
+    decidePosVoidApproval: vi.fn(),
     recordExternalPosTransactionRefund: vi.fn(),
     refundCashPosTransaction: vi.fn(),
     refundProviderPosTransaction: vi.fn(),
@@ -48,6 +52,8 @@ describe('usePosHistoryVoidWorkflow', () => {
             pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }
         });
         fetchPosTransactionById.mockResolvedValue(completedRow);
+        fetchPosVoidApprovals.mockResolvedValue({ approvals: [] });
+        decidePosVoidApproval.mockResolvedValue({ approval_request: { status: 'executed' } });
         voidPosTransaction.mockResolvedValue({ transaction: { ...completedRow, status: 'voided' } });
         refundCashPosTransaction.mockResolvedValue({ transaction: { ...completedRow, payment_status: 'refunded' } });
         recordExternalPosTransactionRefund.mockResolvedValue({ transaction: { ...completedRow, payment_status: 'refund_pending' } });
@@ -152,7 +158,7 @@ describe('usePosHistoryVoidWorkflow', () => {
         }));
     });
 
-    it('does not treat a pending Back Office request as an executed void', async () => {
+    it('does not treat a pending manager request as an executed void', async () => {
         const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
         voidPosTransaction.mockResolvedValue({ pending: true, approval_request: { status: 'pending' } });
         const { result } = renderHistory({
@@ -172,6 +178,100 @@ describe('usePosHistoryVoidWorkflow', () => {
         expect(onFinancialMutationCompleted).not.toHaveBeenCalled();
         expect(fetchPosTransactions).toHaveBeenCalled();
         expect(result.current.voidingTransactionId).toBe(null);
+    });
+
+    it('opens the inline POS approval popup when the canonical void request is pending', async () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 501,
+            action_type: 'pos_void',
+            entity_id: 7,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Correct duplicate sale',
+            payload: { transaction_id: 7, amount: 75, invoice_number: 'NFS-000007' }
+        };
+        voidPosTransaction.mockResolvedValue({ pending: true, approval_request: approvalRequest });
+        const { result } = renderHistory({
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: 42,
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true
+        });
+
+        await act(async () => {
+            await result.current.handleVoidHistoryTransaction(
+                { pos_transaction_id: 7 },
+                'Correct duplicate sale'
+            );
+        });
+
+        expect(result.current.voidApprovalDialogOpen).toBe(true);
+        expect(result.current.voidApprovalSelectedRequest).toEqual(approvalRequest);
+        expect(fetchPosVoidApprovals).toHaveBeenCalledWith({ status: 'pending', limit: 100 });
+    });
+
+    it('uses the canonical approval decision endpoint and refreshes totals after approval', async () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 501,
+            action_type: 'pos_void',
+            entity_id: 7,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Correct duplicate sale',
+            payload: { transaction_id: 7, amount: 75 }
+        };
+        const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
+        decidePosVoidApproval.mockResolvedValue({
+            approval_request: { ...approvalRequest, status: 'executed' },
+            transaction: { ...completedRow, status: 'voided' }
+        });
+        const { result } = renderHistory({
+            currentViewMode: 'history',
+            canVoidTransactions: true,
+            isAdminOperator: true,
+            activeShiftId: 42,
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            onFinancialMutationCompleted
+        });
+
+        await act(async () => {
+            await result.current.decideVoidApproval(approvalRequest, 'approve', 'Manager reviewed');
+        });
+
+        expect(decidePosVoidApproval).toHaveBeenCalledWith(501, 'approve', { note: 'Manager reviewed' });
+        expect(onFinancialMutationCompleted).toHaveBeenCalledWith(expect.objectContaining({
+            pos_transaction_id: 7
+        }));
+        expect(fetchPosVoidApprovals).toHaveBeenCalledWith({ status: 'pending', limit: 100 });
+    });
+
+    it('approves a parked-sale cancellation without trying to refresh it as a transaction', async () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 503,
+            action_type: 'pos_parked_sale_cancel',
+            entity_type: 'pos_parked_sale',
+            entity_id: 33,
+            requested_by: 10,
+            status: 'pending',
+            payload: { parked_sale_id: 33, park_reference: 'PARK-00033' }
+        };
+        const onFinancialMutationCompleted = vi.fn().mockResolvedValue(undefined);
+        const { result } = renderHistory({
+            currentViewMode: 'history',
+            canReviewVoidApprovals: true,
+            inlineVoidApprovalEnabled: true,
+            onFinancialMutationCompleted
+        });
+
+        await act(async () => {
+            await result.current.decideVoidApproval(approvalRequest, 'approve', 'Manager reviewed');
+        });
+
+        expect(decidePosVoidApproval).toHaveBeenCalledWith(503, 'approve', { note: 'Manager reviewed' });
+        expect(fetchPosTransactionById).not.toHaveBeenCalled();
+        expect(onFinancialMutationCompleted).not.toHaveBeenCalled();
     });
 
     it('blocks a cashier void when the cashier has no open shift', async () => {

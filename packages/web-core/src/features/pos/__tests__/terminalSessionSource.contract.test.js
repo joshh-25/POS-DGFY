@@ -67,6 +67,27 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('canViewPos');
   });
 
+  it('does not race generic context refresh against saved shift hydration', () => {
+    expect(terminalPageSource).toContain(
+      'if (locked || loadingUser) return;\n    refreshOperationalContext();\n  }, [loadingUser, locked, refreshOperationalContext]);'
+    );
+  });
+
+  it('restores a locked POS shift pointer after refresh without persisting or bypassing cashier authentication', () => {
+    const resumeStart = terminalPageSource.indexOf('const handleCashierResumeSubmit = async');
+    const resumeEnd = terminalPageSource.indexOf('const handleCashierTakeoverSubmit', resumeStart);
+    const resumeSource = terminalPageSource.slice(resumeStart, resumeEnd);
+
+    expect(terminalPageSource).toContain('readStoredCashierResumeContext');
+    expect(terminalPageSource).toContain("IS_DGFY_POS_SURFACE && readStoredTerminalLockReason() === 'terminal_reunlock'");
+    expect(terminalPageSource).toContain('writeStoredCashierResumeContext(hasResumableLock ? cashierResumeContext : null);');
+    expect(terminalPageSource).toContain('const canResumeLockedShiftInThisTab = (');
+    expect(resumeSource).toContain('const loginResult = await loginDgfyAccount({');
+    expect(resumeSource).toContain('await resumePosCashier({');
+    expect(resumeSource).toContain('authenticatedCashierId !== expectedCashierId');
+    expect(resumeSource).not.toContain('openTerminalShift(');
+  });
+
   it('closes the login drawer after terminal unlock completes', () => {
     const completionStart = terminalPageSource.indexOf('const completeTerminalUnlock');
     const completionEnd = terminalPageSource.indexOf('const handleSelectAdminTerminal', completionStart);
