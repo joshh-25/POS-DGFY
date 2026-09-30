@@ -1,7 +1,7 @@
 import { forwardRef, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   CalendarDays, Camera, Check, CheckCircle2, Copy, Edit3, Info, List, Mail, MapPin,
-  Maximize2, Minimize2, Move, Phone, Search,
+  Maximize2, Minimize2, Move, Phone,
   Plus, Save, Settings2, Star, Store, Trash2, Type, Upload, Users
 } from 'lucide-react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -25,6 +25,7 @@ import StorefrontDeliveryPartnersSettings from './StorefrontDeliveryPartnersSett
 import StorefrontReviewsSettings from './StorefrontReviewsSettings.jsx';
 import { STOREFRONT_TYPOGRAPHY } from './StorefrontSectionPrimitives.jsx';
 import PosSubtabNavigation from '../components/PosSubtabNavigation.jsx';
+import PosSearchField from '../components/PosSearchField.jsx';
 import { LAST_FULFILLMENT_METHOD_LOCKED_MESSAGE } from '@sieitzz/shared-constants/orderMethods';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -1272,11 +1273,15 @@ function StoreLocationsSummary({ storefrontForm, storefrontLocations, canEditSet
               </div>
               <span className="text-[11px] font-semibold text-[#64748B]">{filteredLocations.length} shown</span>
             </div>
-            <label className="relative mt-3 hidden lg:block">
-              <span className="sr-only">Search branches</span>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8399BA]" aria-hidden="true" />
-              <Input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search branches..." className="h-9 w-full min-w-0 rounded-lg border-slate-200 pl-9 text-[12px]" />
-            </label>
+            <PosSearchField
+              ariaLabel="Search branches"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              onClear={() => setSearchTerm('')}
+              placeholder="Search branches..."
+              className="mt-3 hidden lg:block"
+              inputClassName="h-9 text-[12px]"
+            />
             <div className="mt-3 flex max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:block lg:max-h-[420px] lg:space-y-2 lg:overflow-x-hidden lg:overflow-y-auto lg:pr-1 lg:pb-0">
               {filteredLocations.length > 0 ? filteredLocations.map((location) => {
                 const isSelected = selectedLocation?.location_id === location.location_id;
@@ -1936,16 +1941,15 @@ export default function PosStorefrontSettingsPane({
                 <span className="shrink-0 text-[11px] font-semibold text-[#64748B]">{filteredStorefrontLocations.length} shown</span>
               </div>
 
-              <label className="relative mt-3 block">
-                <span className="sr-only">Search branches</span>
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8399BA]" aria-hidden="true" />
-                <Input
-                  value={locationSearchTerm}
-                  onChange={(event) => setLocationSearchTerm(event.target.value)}
-                  placeholder="Search branches..."
-                  className="h-9 w-full min-w-0 rounded-lg border-slate-200 pl-9 text-[12px]"
-                />
-              </label>
+              <PosSearchField
+                ariaLabel="Search branches"
+                value={locationSearchTerm}
+                onChange={(event) => setLocationSearchTerm(event.target.value)}
+                onClear={() => setLocationSearchTerm('')}
+                placeholder="Search branches..."
+                className="mt-3"
+                inputClassName="h-9 text-[12px]"
+              />
 
               <div className="business-admin-storefront-location-list-scroll mt-3 space-y-2 lg:max-h-[420px] lg:overflow-y-auto lg:pr-1">
                 {filteredStorefrontLocations.length > 0 ? filteredStorefrontLocations.map((location) => {
