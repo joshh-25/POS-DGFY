@@ -72,7 +72,7 @@ describe('Category delete dialog: secondary-membership warning (#1318)', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
 
     await screen.findByText('Legacy Folder');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete category Legacy Folder' }));
 
     expect(screen.getByText('Delete Legacy Folder? It has no assigned active items, so no reassignment is required.')).toBeTruthy();
     expect(screen.getByText(
@@ -100,7 +100,7 @@ describe('Category delete dialog: secondary-membership warning (#1318)', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
 
     await screen.findByText('Fresh Folder');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete category Fresh Folder' }));
 
     expect(screen.getByText('Delete Fresh Folder? It has no assigned active items, so no reassignment is required.')).toBeTruthy();
     expect(screen.queryByText(/also list this as a secondary category/)).toBeNull();
@@ -120,7 +120,7 @@ describe('Category delete dialog: secondary-membership warning (#1318)', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Categories' }));
 
     await screen.findByText('Mixed Folder');
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete category Mixed Folder' }));
 
     expect(screen.getByText('Delete Mixed Folder? Its 3 assigned item(s) must move to another active category first.')).toBeTruthy();
     expect(screen.getByText(

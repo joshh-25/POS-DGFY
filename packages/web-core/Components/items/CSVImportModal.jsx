@@ -37,6 +37,12 @@ const CSV_IMPORT_STEPS = Object.freeze([
     { id: 'result', number: 3, name: 'Result', description: 'Review import results.' }
 ]);
 
+const POS_ITEMS_CSV_IMPORT_STEP_DESCRIPTIONS = Object.freeze([
+    'Choose the CSV template file to validate.',
+    'Review parsed rows and validation errors before import.',
+    'Review created, updated, skipped, and failed rows.'
+]);
+
 // #1495 Part B. Append is the historical behaviour and stays the default; sync additionally
 // deactivates catalog items missing from the uploaded file, so it is opt-in and gated behind an
 // explicit acknowledgement of the deactivation list below.
@@ -61,7 +67,7 @@ const getPreviewActionTone = (action) => (
             : 'bg-blue-50 text-blue-700'
 );
 
-export default function CSVImportModal({ open, onClose, onSuccess }) {
+export default function CSVImportModal({ open, onClose, onSuccess, posItemsPresentation = false }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
     const [file, setFile] = useState(null);
     const [fileName, setFileName] = useState('');
@@ -96,7 +102,13 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
         return () => window.cancelAnimationFrame(frame);
     }, [mode, open, step]);
 
-    const navigatorSteps = CSV_IMPORT_STEPS.map((entry) => {
+    const importSteps = posItemsPresentation
+        ? CSV_IMPORT_STEPS.map((entry, index) => ({
+            ...entry,
+            description: POS_ITEMS_CSV_IMPORT_STEP_DESCRIPTIONS[index] || entry.description
+        }))
+        : CSV_IMPORT_STEPS;
+    const navigatorSteps = importSteps.map((entry) => {
         if (entry.number === 2) {
             return {
                 ...entry,
@@ -657,14 +669,47 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
     };
 
     return (
-        <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="catalog-editor-dialog-content flex sm:max-w-2xl flex-col overflow-hidden p-0">
-                <DialogHeader className="border-b border-slate-100 p-4 pb-3">
-                    <DialogTitle className="flex items-center gap-2">
-                        <Upload className="w-5 h-5 text-teal-600" />
-                        Import Items from CSV
-                    </DialogTitle>
-                </DialogHeader>
+        <Dialog
+            open={open}
+            onOpenChange={handleClose}
+            mobileSheet={posItemsPresentation}
+            overlayClassName={posItemsPresentation ? 'bg-slate-700/30 backdrop-blur-[2px]' : undefined}
+        >
+            <DialogContent className={cn(
+                posItemsPresentation
+                    ? 'csv-import-modal pos-items-modal-panel pos-items-mobile-sheet-panel pos-items-form-scale !w-full !max-w-none sm:!w-[32rem] sm:!max-w-[32rem] flex min-h-0 max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-900/20'
+                    : 'catalog-editor-dialog-content flex sm:max-w-2xl flex-col overflow-hidden p-0'
+            )}>
+                {posItemsPresentation ? (
+                    <DialogHeader className="-mx-px -mt-px flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 text-white sm:px-5">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+                                <Upload className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0">
+                                <DialogTitle className="truncate text-sm font-black text-white">
+                                    Import Items from CSV
+                                </DialogTitle>
+                                <p className="mt-0.5 truncate text-[9px] text-blue-100">{importSteps[step - 1]?.description || importSteps[0].description}</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            aria-label="Close CSV import"
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1A4E8D]"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </DialogHeader>
+                ) : (
+                    <DialogHeader className="border-b border-slate-100 p-4 pb-3">
+                        <DialogTitle className="flex items-center gap-2">
+                            <Upload className="w-5 h-5 text-teal-600" />
+                            Import Items from CSV
+                        </DialogTitle>
+                    </DialogHeader>
+                )}
 
                 <WizardStepNavigator
                     steps={navigatorSteps}
@@ -673,10 +718,18 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     onStepChange={setStep}
                     ariaLabel="CSV import steps"
                     showLabels
-                    className="csv-import-stepper wizard-step-navigator--dgfy shrink-0"
+                    className={posItemsPresentation ? 'csv-import-stepper wizard-step-navigator--dgfy shrink-0' : undefined}
                 />
 
-                <div className="flex-1 overflow-y-auto p-4 pt-3">
+                <div
+                    ref={modalBodyRef}
+                    className={posItemsPresentation
+                        ? cn(
+                            'csv-import-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto px-4 py-2 sm:px-5 sm:py-2.5',
+                            step === 3 && 'csv-import-result-modal-body'
+                        )
+                        : 'flex-1 overflow-y-auto p-4 pt-3'}
+                >
                     {error && (
                         <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] text-red-700">
                             {error}
@@ -688,7 +741,14 @@ export default function CSVImportModal({ open, onClose, onSuccess }) {
                     {step === 3 && renderResultStep()}
                 </div>
 
-                <DialogFooter className="gap-2 border-t border-slate-100 p-4 pt-3">
+                <DialogFooter className={posItemsPresentation
+                    ? cn(
+                        'csv-import-modal-footer pos-items-modal-footer shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5 sm:py-2.5',
+                        step === 2
+                            ? 'grid grid-cols-2 items-center'
+                            : 'grid grid-cols-2'
+                    )
+                    : 'gap-2 border-t border-slate-100 p-4 pt-3'}>
                     {step === 1 && (
                         <>
                             <Button

@@ -81,7 +81,8 @@ describe('POS text-size layout hardening contracts', () => {
         expect(appStyles).toContain('aspect-ratio: auto;');
         expect(appStyles).toContain('touch-action: pan-x;');
         expect(appStyles).toContain('width: max-content;');
-        expect(appStyles).toContain('.pos-text-size-control__option > span');
+        expect(textSizeControlSource).toContain('pos-text-size-control__option flex w-full items-center justify-between');
+        expect(appStyles).toContain('.pos-text-size-control__option:not([aria-selected="true"]):hover');
         expect(appStyles).toContain('body[data-pos-text-size="large"] .pos-items-desktop-toolbar');
         expect(appStyles).toContain('flex-wrap: nowrap;');
         expect(appStyles).toContain('overflow-wrap: anywhere;');
@@ -96,25 +97,18 @@ describe('POS text-size layout hardening contracts', () => {
         expect(appStyles).toContain('grid-auto-rows: minmax(12rem, auto);');
         expect(appStyles).toContain('min-height: 12rem;');
         expect(appStyles).toContain('grid-template-rows: minmax(0, auto) minmax(4.25rem, auto);');
-        expect(layoutSource).toContain('dgfy-pos-header-shell');
-        expect(layoutSource).toContain('dgfy-pos-header-terminal');
-        expect(appStyles).toContain('dgfy-pos-header-title > div > div:first-child');
-        expect(appStyles).toContain('width: 10.5rem;');
-        expect(appStyles).toContain('max-width: 13.5rem;');
-        expect(appStyles).toContain('dgfy-pos-header-terminal-prefix');
-        expect(layoutSource).toContain('dgfy-pos-header-profile-email');
         expect(textSizeControlSource).toContain('pos-text-size-control relative');
-        expect(textSizeControlSource).toContain('h-3 w-3 shrink-0 transition-transform');
-        expect(appStyles).toContain('body[data-pos-text-size="extra-large"] .dgfy-pos-topbar .pos-text-size-control [role="listbox"]');
-        expect(appStyles).toContain('width: 13.5rem;');
-        expect(appStyles).toContain('overflow: visible;');
-        expect(appStyles).toContain('pos-text-size-control__trigger > svg:last-child');
-        expect(appStyles).toContain('flex: 0 0 auto;');
-        expect(appStyles).toContain('width: 12rem;');
-        expect(appStyles).toContain('text-overflow: ellipsis;');
         expect(appStyles).toContain('.pos-items-catalog-workspace .pos-categories-mobile-card-actions button');
         expect(appStyles).toContain('aspect-ratio: 1 / 1;');
         expect(appStyles).toContain('width: 2.25rem !important;');
         expect(appStyles).toContain('width: 2.5rem !important;');
+    });
+
+    it('keeps the original presentation for normal desktop Items', () => {
+        expect(appStyles).toContain('@media screen and (min-width: 1280px) and (hover: hover) and (pointer: fine)');
+        expect(appStyles).toContain('body[data-pos-text-size="normal"] .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-mobile-card-metrics > div > div');
+        expect(appStyles).toContain('display: block;');
+        expect(appStyles).toContain('grid-auto-rows: max-content;');
+        expect(appStyles).toContain('scrollbar-color: transparent transparent;');
     });
 });

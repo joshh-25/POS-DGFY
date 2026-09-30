@@ -57,8 +57,10 @@ describe('POS edit-item "Generate Image (AI)" entry point', () => {
         const buttonStart = workspace.indexOf('onClick={() => handleGenerateEditImage(activeEditItem)}');
         expect(buttonStart).toBeGreaterThan(-1);
         const buttonEnd = workspace.indexOf('</Button>', buttonStart);
-        const surrounding = workspace.slice(buttonStart - 400, buttonEnd);
+        const permissionGateStart = workspace.lastIndexOf('{canEditItems && (', buttonStart);
+        const surrounding = workspace.slice(permissionGateStart, buttonEnd);
 
+        expect(permissionGateStart).toBeGreaterThan(-1);
         expect(surrounding).toContain('canEditItems &&');
         expect(surrounding).toContain('disabled={savingItem || persistingEditAssets || editImageUploadJob || pendingEditImageRefresh || generatingEditImage || pollingEditImage}');
         expect(surrounding).toContain("'Regenerate Image (AI)' : 'Generate Image (AI)'");

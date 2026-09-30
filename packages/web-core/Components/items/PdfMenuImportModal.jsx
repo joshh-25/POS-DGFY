@@ -18,7 +18,8 @@ import {
     Loader2,
     ArrowLeft,
     ArrowRight,
-    RefreshCw
+    RefreshCw,
+    X
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import { usePdfMenuImport } from '../../src/hooks/usePdfMenuImport.js';
@@ -176,13 +177,15 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     // Step 1: Upload
     const renderUploadStep = () => (
-        <div className="space-y-6">
-            <div className="min-w-0 max-w-full text-center p-6 sm:p-8 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:border-teal-400 hover:bg-teal-50/30 transition-all"
+        <div className="csv-import-step-content">
+            <div className="csv-import-upload-dropzone rounded-xl border border-dashed border-[#8DB4DE] bg-[#F5F8FC] p-2.5 text-center transition-colors hover:bg-[#EEF5FF]"
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
             >
-                <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
-                <p className="text-slate-600 mb-2">
+                <div className="mx-auto grid h-7 w-7 place-items-center rounded-lg bg-[#EEF5FF] text-[#1A4E8D]">
+                    <Upload className="h-4 w-4" />
+                </div>
+                <p className="mt-1.5 text-[10px] font-bold text-slate-700">
                     Drag and drop your menu PDF or image here, or
                 </p>
                 <label className="inline-block">
@@ -192,23 +195,24 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                         onChange={handleFileSelect}
                         className="hidden"
                     />
-                    <span className="text-teal-600 hover:text-teal-700 font-medium cursor-pointer underline">
+                    <span className="text-[10px] font-bold text-[#1A4E8D] underline decoration-[#8DB4DE] underline-offset-2 hover:text-[#143F73]">
                         browse to select
                     </span>
                 </label>
 
                 {fileName && (
-                    <div className="mt-4 inline-flex min-w-0 max-w-full items-center gap-2 rounded-lg border border-teal-200 bg-white p-3">
-                        <FileText className="w-4 h-4 text-teal-600" />
-                        <span className="min-w-0 truncate text-sm font-medium text-slate-700">{fileName}</span>
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    <div className="mx-auto mt-1.5 flex max-w-full items-center justify-center gap-1.5 rounded-lg border border-[#C7DCF3] bg-white px-2 py-1.5 text-left">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-[#1A4E8D]" />
+                        <span className="min-w-0 truncate text-[9px] font-bold text-slate-700">{fileName}</span>
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#1A4E8D]" />
                     </div>
                 )}
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
-                <p className="font-medium text-amber-800 mb-1">📋 Before you import</p>
-                <p className="text-amber-700">
+            <div className="csv-import-warning flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[9px]">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+                <p className="leading-3.5 text-amber-800">
+                    <span className="font-bold">Before you import: </span>
                     An AI model reads your PDF or photo and extracts item names and prices —
                     always review the results on the next step before confirming. Works best
                     with a clear, well-lit photo or a text-based PDF export of your menu.
@@ -219,37 +223,44 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     // Step 2: Review & edit
     const renderPreviewStep = () => (
-        <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-                <div className="bg-slate-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-slate-700">{previewData?.totalRows || 0}</p>
-                    <p className="text-xs text-slate-500">Extracted</p>
+        <div className="csv-import-step-content">
+            <div className="csv-import-summary-grid grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div className="rounded-lg bg-slate-50 p-2 text-center">
+                    <p className="text-xl font-bold text-slate-700">{previewData?.totalRows || 0}</p>
+                    <p className="text-[9px] leading-3 text-slate-500">Extracted</p>
                 </div>
-                <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-green-600">{includedCount}</p>
-                    <p className="text-xs text-green-600">Selected to import</p>
+                <div className="rounded-lg bg-[#EEF5FF] p-2 text-center">
+                    <p className="text-xl font-bold text-[#1A4E8D]">{includedCount}</p>
+                    <p className="text-[9px] leading-3 text-[#1A4E8D]">Selected to import</p>
                 </div>
-                <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-red-600">{previewData?.invalidRows || 0}</p>
-                    <p className="text-xs text-red-600">Need review</p>
+                <div className="rounded-lg bg-red-50 p-2 text-center">
+                    <p className="text-xl font-bold text-red-600">{previewData?.invalidRows || 0}</p>
+                    <p className="text-[9px] leading-3 text-red-600">Need review</p>
                 </div>
             </div>
 
-            <div className="min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-lg border max-h-96">
-                <table className="w-full min-w-[44rem] text-sm">
-                    <thead className="bg-slate-50 sticky top-0">
+            <div className="csv-import-preview-panel overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50/80 px-2.5 py-2">
+                    <span className="truncate text-[9px] font-black uppercase tracking-wide text-slate-500">Extracted Items</span>
+                    <span className="shrink-0 rounded bg-slate-200 px-1.5 py-0.5 text-[8px] font-bold text-slate-600">
+                        {editableRows.length} Records
+                    </span>
+                </div>
+                <div className="csv-import-preview-table-scroll max-h-[13rem] overflow-auto pos-items-modal-scrollbar" data-testid="menu-import-preview-table-scroll">
+                <table className="csv-import-preview-table w-full min-w-[44rem] table-fixed text-[10px]">
+                    <thead className="sticky top-0 bg-white">
                         <tr>
-                            <th className="text-left p-3 font-medium text-slate-600">Import</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Name</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Price (₱)</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Category</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Status</th>
+                            <th className="p-1.5 text-left text-[8px] font-black uppercase tracking-wide text-slate-500">Import</th>
+                            <th className="p-1.5 text-left text-[8px] font-black uppercase tracking-wide text-slate-500">Name</th>
+                            <th className="p-1.5 text-left text-[8px] font-black uppercase tracking-wide text-slate-500">Price (₱)</th>
+                            <th className="p-1.5 text-left text-[8px] font-black uppercase tracking-wide text-slate-500">Category</th>
+                            <th className="p-1.5 text-left text-[8px] font-black uppercase tracking-wide text-slate-500">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {editableRows.map((row) => (
                             <tr key={row.rowNumber} className={cn(!row.valid && !row.included && 'bg-red-50/60')}>
-                                <td className="p-3">
+                                <td className="p-1.5">
                                     <input
                                         type="checkbox"
                                         checked={row.included}
@@ -257,44 +268,44 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                                         aria-label={`Import ${row.data?.name || 'row ' + row.rowNumber}`}
                                     />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-1.5">
                                     <Input
                                         value={row.data?.name || ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'name', e.target.value)}
-                                        className="h-8 min-w-0 text-sm"
+                                        className="h-8 min-w-0 text-[10px]"
                                     />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-1.5">
                                     <Input
                                         type="number"
                                         step="0.01"
                                         min="0"
                                         value={row.data?.default_sale_price ?? ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'default_sale_price', e.target.value)}
-                                        className="h-8 w-28 min-w-0 text-sm"
+                                        className="h-8 w-28 min-w-0 text-[10px]"
                                     />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-1.5">
                                     <Input
                                         value={row.data?.product_folder || ''}
                                         onChange={(e) => updateRowField(row.rowNumber, 'product_folder', e.target.value)}
-                                        className="h-8 min-w-0 text-sm"
+                                        className="h-8 min-w-0 text-[10px]"
                                     />
                                 </td>
-                                <td className="p-3">
+                                <td className="p-1.5">
                                     {row.valid ? (
-                                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
-                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                        <Badge className="bg-[#EEF5FF] text-[#1A4E8D] hover:bg-[#EEF5FF]">
+                                            <CheckCircle2 className="mr-1 h-2.5 w-2.5" />
                                             Extracted
                                         </Badge>
                                     ) : (
                                         <div className="space-y-1">
                                             <Badge className="bg-red-100 text-red-700 hover:bg-red-100">
-                                                <XCircle className="w-3 h-3 mr-1" />
+                                                <XCircle className="mr-1 h-2.5 w-2.5" />
                                                 Check row
                                             </Badge>
                                             {row.errors?.map((err, i) => (
-                                                <p key={i} className="text-xs text-red-600">{err}</p>
+                                                <p key={i} className="text-[9px] leading-3 text-red-600">{err}</p>
                                             ))}
                                         </div>
                                     )}
@@ -303,10 +314,11 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                         ))}
                     </tbody>
                 </table>
+                </div>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                <AlertCircle className="w-4 h-4 inline mr-2" />
+            <div className="csv-import-warning flex gap-2 rounded-lg border border-[#C7DCF3] bg-[#EEF5FF] p-2.5 text-[9px] text-[#1A4E8D]">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 Edits are re-checked when you confirm — a row with an error is still safe to
                 fix here and import.
             </div>
@@ -315,31 +327,31 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     // Step 3: Result
     const renderResultStep = () => (
-        <div className="space-y-6 text-center py-4">
-            <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-green-600" />
+        <div className="csv-import-result-step py-3 text-center">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#EEF5FF]">
+                <CheckCircle2 className="h-6 w-6 text-[#1A4E8D]" />
             </div>
 
             <div>
-                <h3 className="text-xl font-semibold text-slate-800 mb-2">Import Complete!</h3>
-                <p className="text-slate-600">Your menu items have been added to inventory.</p>
+                <h3 className="text-lg font-black text-slate-800">Import Complete!</h3>
+                <p className="text-[10px] text-slate-600">Your menu items have been added to inventory.</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto">
-                <div className="bg-green-50 rounded-lg p-4">
-                    <p className="text-3xl font-bold text-green-600">{importResult?.createdCount || 0}</p>
-                    <p className="text-sm text-green-600">Created</p>
+            <div className="csv-import-result-stats grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-[#EEF5FF] p-2">
+                    <p className="text-xl font-bold text-[#1A4E8D]">{importResult?.createdCount || 0}</p>
+                    <p className="text-[9px] text-[#1A4E8D]">Created</p>
                 </div>
-                <div className="bg-red-50 rounded-lg p-4">
-                    <p className="text-3xl font-bold text-red-600">{importResult?.failedCount || 0}</p>
-                    <p className="text-sm text-red-600">Failed</p>
+                <div className="rounded-lg bg-red-50 p-2">
+                    <p className="text-xl font-bold text-red-600">{importResult?.failedCount || 0}</p>
+                    <p className="text-[9px] text-red-600">Failed</p>
                 </div>
             </div>
 
             {importResult?.failedCount > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left max-w-md mx-auto">
-                    <p className="font-medium text-red-800 mb-2">Failed Rows:</p>
-                    <div className="space-y-1 text-sm text-red-700 max-h-32 overflow-y-auto">
+                <div className="mx-auto max-w-[24rem] rounded-lg border border-red-200 bg-red-50 p-2.5 text-left">
+                    <p className="mb-1.5 text-[10px] font-black text-red-800">Failed Rows:</p>
+                    <div className="max-h-24 space-y-1 overflow-y-auto text-[9px] leading-3 text-red-700 pos-items-modal-scrollbar">
                         {importResult.results?.failed?.map((f, i) => (
                             <p key={i}>Row {f.rowNumber} ({f.sku_code}): {f.errors?.join(', ')}</p>
                         ))}
@@ -350,13 +362,35 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
     );
 
     return (
-        <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="w-[calc(100vw-1rem)] min-w-0 max-w-[calc(100vw-1rem)] overflow-x-hidden p-3 sm:w-full sm:max-w-2xl sm:p-5">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Upload className="w-5 h-5 text-teal-600" />
-                        Import Menu from PDF or Image
-                    </DialogTitle>
+        <Dialog
+            open={open}
+            onOpenChange={handleClose}
+            mobileSheet
+            overlayClassName="bg-slate-700/30 backdrop-blur-[2px]"
+        >
+            <DialogContent className={cn(
+                'csv-import-modal pos-items-import-modal pos-items-modal-panel pos-items-mobile-sheet-panel pos-items-form-scale !w-full !max-w-none sm:!w-[32rem] sm:!max-w-[32rem] flex min-h-0 max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-900/20'
+            )}>
+                <DialogHeader className="-mx-px -mt-px flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-[17px] border-b border-[#143F73] bg-[#1A4E8D] px-4 py-2.5 text-white sm:px-5">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
+                            <Upload className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                            <DialogTitle className="truncate text-sm font-black text-white">
+                                Import Menu from PDF or Image
+                            </DialogTitle>
+                            <p className="mt-0.5 truncate text-[9px] text-blue-100">{PDF_IMPORT_STEPS[step - 1]?.description || PDF_IMPORT_STEPS[0].description}</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleClose}
+                        aria-label="Close menu import"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1A4E8D]"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
                 </DialogHeader>
 
                 <WizardStepNavigator
@@ -365,11 +399,13 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                     completedStep={step - 1}
                     onStepChange={setStep}
                     ariaLabel="Menu import steps"
+                    showLabels
+                    className="csv-import-stepper wizard-step-navigator--dgfy shrink-0"
                 />
 
-                <div className="py-4">
+                <div className="csv-import-modal-body pos-items-modal-scroll-region min-h-0 flex-1 overflow-y-auto px-4 py-2 sm:px-5 sm:py-2.5">
                     {error && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
+                        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-[10px] text-red-700">
                             {error}
                         </div>
                     )}
@@ -379,16 +415,19 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                     {step === 3 && renderResultStep()}
                 </div>
 
-                <DialogFooter className="gap-2">
+                <DialogFooter className={cn(
+                    'csv-import-modal-footer pos-items-modal-footer shrink-0 gap-2 border-t border-slate-200 bg-white px-4 py-2.5 sm:px-5 sm:py-2.5',
+                    step === 2 ? 'grid grid-cols-2 items-center' : 'grid grid-cols-2'
+                )}>
                     {step === 1 && (
                         <>
-                            <Button variant="outline" onClick={handleClose}>
+                            <Button variant="outline" onClick={handleClose} className="h-10 w-full rounded-lg border-[#1A4E8D] px-3 text-[10px] font-bold text-[#1A4E8D] hover:bg-blue-50">
                                 Cancel
                             </Button>
                             <Button
                                 onClick={handlePreview}
                                 disabled={!file || loading}
-                                className="bg-teal-600 hover:bg-teal-700"
+                                className="h-10 w-full rounded-lg bg-[#1A4E8D] px-3 text-[10px] font-bold text-white hover:bg-[#143F73]"
                             >
                                 {loading ? (
                                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Extracting...</>
@@ -401,14 +440,14 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
                     {step === 2 && (
                         <>
-                            <Button variant="outline" onClick={handleStartOver}>
+                            <Button variant="outline" onClick={handleStartOver} className="h-10 w-full rounded-lg border-[#1A4E8D] px-3 text-[10px] font-bold text-[#1A4E8D] hover:bg-blue-50">
                                 <ArrowLeft className="w-4 h-4 mr-2" />
                                 Back
                             </Button>
                             <Button
                                 onClick={handleConfirm}
                                 disabled={loading || includedCount === 0}
-                                className="bg-teal-600 hover:bg-teal-700"
+                                className="h-10 w-full rounded-lg bg-[#1A4E8D] px-3 text-[10px] font-bold text-white hover:bg-[#143F73]"
                             >
                                 {loading ? (
                                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
@@ -421,11 +460,11 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
                     {step === 3 && (
                         <>
-                            <Button variant="outline" onClick={handleStartOver}>
+                            <Button variant="outline" onClick={handleStartOver} className="h-10 w-full rounded-lg border-[#1A4E8D] px-3 text-[10px] font-bold text-[#1A4E8D] hover:bg-blue-50">
                                 <RefreshCw className="w-4 h-4 mr-2" />
                                 Import More
                             </Button>
-                            <Button onClick={handleDone} className="bg-teal-600 hover:bg-teal-700">
+                            <Button onClick={handleDone} className="h-10 w-full rounded-lg bg-[#1A4E8D] px-3 text-[10px] font-bold text-white hover:bg-[#143F73]">
                                 Done
                             </Button>
                         </>

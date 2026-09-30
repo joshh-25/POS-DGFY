@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const terminalOperationsWorkspacePath = workspacePath;
 const itemOptionsWorkspacePath = path.resolve(__dirname, '../components/PosFnbModifiersWorkspace.jsx');
 const itemOptionsManagerPath = path.resolve(__dirname, '../components/PosFnbModifierManager.jsx');
 const itemOptionsSelectPath = path.resolve(__dirname, '../components/PosFnbSelect.jsx');
@@ -115,15 +116,22 @@ describe('POS category management contract', () => {
   it('uses styled listbox controls instead of browser-native select menus', () => {
     const workspaceSource = fs.readFileSync(itemOptionsWorkspacePath, 'utf8');
     const managerSource = fs.readFileSync(itemOptionsManagerPath, 'utf8');
+    const terminalOperationsSource = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
     const selectSource = fs.readFileSync(itemOptionsSelectPath, 'utf8');
 
     expect(workspaceSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(managerSource).toContain("import PosFnbSelect from './PosFnbSelect.jsx';");
     expect(workspaceSource).not.toContain('<select');
     expect(managerSource).not.toContain('<select');
+    expect(terminalOperationsSource).toContain("closest('.pos-items-modal-scroll-region')");
+    expect(terminalOperationsSource).toContain("overflowY: 'auto'");
+    expect(terminalOperationsSource).toContain('pos-items-dropdown-option flex min-h-8');
     expect(selectSource).toContain('role="combobox"');
     expect(selectSource).toContain('role="listbox"');
     expect(selectSource).toContain('shadow-xl shadow-slate-900/15');
+    expect(selectSource).toContain("closest('.pos-items-modal-scroll-region')");
+    expect(selectSource).toContain("overflowY: 'auto'");
+    expect(selectSource).toContain("overflowX: 'hidden'");
   });
 
   it('preserves category-only access and keeps category mutations online-only', () => {
