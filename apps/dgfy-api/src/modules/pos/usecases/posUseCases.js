@@ -7325,6 +7325,44 @@ export const buildCloseDayZReadingUseCase = ({
                 }, { transaction })
             );
 
+            let detailSource = null;
+            if (typeof posRepository.getZReadingSnapshotDetails === 'function') {
+                try {
+                    detailSource = await posRepository.getZReadingSnapshotDetails({
+                        businessDate,
+                        startAt: dateRange.startAt,
+                        endAt: dateRange.endAt,
+                        locationId: resolvedLocationId
+                    }, { transaction });
+                } catch (error) {
+                    logger.warn('[POS][ZReading] Optional cashier and shift detail capture failed', {
+                        business_date: businessDate,
+                        location_id: resolvedLocationId,
+                        error: error?.message || String(error)
+                    });
+                }
+            }
+            const snapshotDetails = {
+                version: 1,
+                captured: isPlainObject(detailSource),
+                ...(isPlainObject(detailSource) ? {} : {
+                    unavailable_reason: 'Cashier and shift details could not be captured when this reading was generated.'
+                }),
+                business_date: businessDate,
+                branch_name: isPlainObject(detailSource) ? detailSource.branch_name || null : null,
+                report_period: {
+                    starts_at: dateRange.startAt.toISOString(),
+                    ends_at_exclusive: dateRange.endAt.toISOString()
+                },
+                generated_by: {
+                    user_id: userId,
+                    display_name: String(operator?.username || operator?.email || `User #${userId}`).trim()
+                },
+                receipt_ranges: detailSource?.receipt_ranges || null,
+                refunds: detailSource?.refunds || null,
+                shifts: Array.isArray(detailSource?.shifts) ? detailSource.shifts : []
+            };
+
             const zCounterValue = await posRepository.incrementPersistentCounter(
                 Z_READING_COUNTER_KEY,
                 1,
@@ -7351,7 +7389,10 @@ export const buildCloseDayZReadingUseCase = ({
                 z_counter_value: zCounterValue,
                 reset_counter_value: resetCounterValue,
                 lifetime_grand_total_cents: lifetimeGrandTotalCents,
-                summary,
+                summary: {
+                    ...summary,
+                    z_reading_details: snapshotDetails
+                },
                 closed_by_user_id: userId,
                 closed_from_terminal_id: String(terminalId || '').trim().toUpperCase() || null,
                 day_close_pin_confirmed_at: new Date()
@@ -7414,6 +7455,129 @@ export const buildCloseDayZReadingUseCase = ({
             }
 
             return fail(mapPosUseCaseError(error, 'Failed to generate daily Z-reading'));
+        }
+    };
+};
+
+export const buildListPosZReadingsUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ query = {}, user = null }) => {
+        if (!isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Z-reading history query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view POS Z-reading history',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const dateFrom = query.date_from ? normalizeBusinessDateInput(query.date_from) : null;
+            const dateTo = query.date_to ? normalizeBusinessDateInput(query.date_to) : null;
+            if ((query.date_from && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom || ''))
+                || (query.date_to && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo || ''))) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Z-reading history dates must use YYYY-MM-DD format',
+                    { statusCode: 400 }
+                );
+            }
+            if (dateFrom && dateTo && dateFrom > dateTo) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'date_from must not be after date_to',
+                    { statusCode: 400 }
+                );
+            }
+
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: query.location_id ?? null,
+                userId,
+                operationLabel: 'POS Z-reading history'
+            });
+            const locationId = parsePositiveInt(locationScope?.location_id);
+            if (!locationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS Z-reading history requires a resolved branch scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const result = await posRepository.listZReadingSnapshots({
+                locationId,
+                dateFrom,
+                dateTo,
+                search: String(query.search || '').trim(),
+                terminalId: String(query.terminal_id || '').trim(),
+                closedBy: String(query.closed_by || '').trim(),
+                page: query.page,
+                limit: query.limit
+            });
+            const rows = (Array.isArray(result?.rows) ? result.rows : []).map((snapshot) => {
+                const summary = normalizeJsonObject(snapshot?.summary, {});
+                const amountValue = (key) => {
+                    const value = summary[key];
+                    return value === null || value === undefined || value === '' || !Number.isFinite(Number(value))
+                        ? null
+                        : round4(value);
+                };
+                const countValue = (key) => {
+                    const value = summary[key];
+                    if (value === null || value === undefined || value === '') return null;
+                    const parsed = Number.parseInt(value, 10);
+                    return Number.isFinite(parsed) ? parsed : null;
+                };
+                return {
+                    business_date: normalizeBusinessDateInput(snapshot?.business_date),
+                    location_id: locationId,
+                    reading_identifier: String(snapshot?.reading_identifier || '').trim() || null,
+                    generated_at: snapshot?.generated_at || snapshot?.created_at || null,
+                    closed_by_user_id: parsePositiveInt(snapshot?.closed_by_user_id),
+                    closed_by_display_name: String(snapshot?.closed_by_display_name || '').trim() || null,
+                    closed_from_terminal_id: String(snapshot?.closed_from_terminal_id || '').trim() || null,
+                    snapshot_persisted: true,
+                    summary: {
+                        transaction_count: countValue('transaction_count'),
+                        total_amount: amountValue('total_amount'),
+                        subtotal_amount: amountValue('subtotal_amount'),
+                        discount_amount: amountValue('discount_amount'),
+                        service_fee_total: amountValue('service_fee_total'),
+                        restaurant_service_charge_total: amountValue('restaurant_service_charge_total'),
+                        vatable_sales: amountValue('vatable_sales'),
+                        vat_amount: amountValue('vat_amount'),
+                        vat_exempt_sales: amountValue('vat_exempt_sales'),
+                        zero_rated_sales: amountValue('zero_rated_sales'),
+                        void_transaction_count: countValue('void_transaction_count'),
+                        void_amount: amountValue('void_amount'),
+                        refund_amount: amountValue('refund_amount'),
+                        item_count: amountValue('item_count')
+                    }
+                };
+            });
+
+            return ok({
+                rows,
+                pagination: result?.pagination || {
+                    page: Number(query.page) || 1,
+                    limit: Number(query.limit) || 20,
+                    total: rows.length,
+                    totalPages: 1
+                },
+                location_id: locationId
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list persisted POS Z-readings'));
         }
     };
 };
@@ -7504,6 +7668,72 @@ export const buildGetDailyZReadingUseCase = ({
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve daily Z-reading'));
+        }
+    };
+};
+
+export const buildGetDailyZReadingDetailsUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ businessDateInput, user = null, locationId = null }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view POS Z-reading details',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: locationId,
+                userId,
+                operationLabel: 'POS Z-reading details'
+            });
+            const resolvedLocationId = parsePositiveInt(locationScope?.location_id);
+            if (!resolvedLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS Z-reading details require a resolved branch scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const { businessDate } = buildBusinessDateRange(businessDateInput);
+            const snapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(
+                businessDate,
+                { locationId: resolvedLocationId }
+            );
+            if (!snapshot) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'A saved Z-reading was not found for this branch and business date.',
+                    { statusCode: 404 }
+                );
+            }
+
+            const summary = normalizeJsonObject(snapshot?.summary, {});
+            const savedDetails = normalizeJsonObject(summary.z_reading_details, null);
+            const data = buildPersistedZReadingData({
+                snapshot,
+                businessDate,
+                locationId: resolvedLocationId
+            });
+            return ok({
+                ...data,
+                details: isPlainObject(savedDetails)
+                    ? savedDetails
+                    : {
+                        version: 1,
+                        captured: false,
+                        business_date: businessDate,
+                        unavailable_reason: 'This Z-reading predates saved cashier and shift details.'
+                    }
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to retrieve saved Z-reading details'));
         }
     };
 };

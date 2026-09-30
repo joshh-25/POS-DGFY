@@ -4,6 +4,8 @@ import {
     buildGetDayCloseReadinessUseCase,
     buildGetCurrentXReadingUseCase,
     buildGetDailyZReadingUseCase,
+    buildGetDailyZReadingDetailsUseCase,
+    buildListPosZReadingsUseCase,
     buildIncrementGovernedResetCounterUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
 import dbStore from '../src/utils/dbStore.js';
@@ -14,6 +16,77 @@ describe('POS readings usecases', () => {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
         finished: false
+    });
+
+    it('buildListPosZReadingsUseCase returns only persisted snapshots for the resolved branch', async () => {
+        const posRepository = {
+            listZReadingSnapshots: jest.fn().mockResolvedValue({
+                rows: [{
+                    business_date: '2026-08-11',
+                    location_id: 18,
+                    reading_identifier: 'ZR-20260811-00000003',
+                    generated_at: '2026-08-11T16:00:00.000Z',
+                    closed_by_user_id: 11,
+                    closed_by_display_name: 'Len2',
+                    closed_from_terminal_id: 'COUNTER-02',
+                    summary: { transaction_count: 4, total_amount: 1200.5, vat_amount: 128.63 }
+                }],
+                pagination: { page: 2, limit: 10, total: 11, totalPages: 2 }
+            })
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 18 });
+        const useCase = buildListPosZReadingsUseCase({ posRepository, resolveLocationScope });
+
+        const result = await useCase({
+            query: {
+                location_id: 7,
+                date_from: '2026-08-01',
+                date_to: '2026-08-31',
+                search: 'Len2',
+                terminal_id: 'COUNTER-02',
+                closed_by: 'Len2',
+                page: 2,
+                limit: 10
+            },
+            user: { user_id: 11 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: 7,
+            userId: 11,
+            operationLabel: 'POS Z-reading history'
+        });
+        expect(posRepository.listZReadingSnapshots).toHaveBeenCalledWith({
+            locationId: 18,
+            dateFrom: '2026-08-01',
+            dateTo: '2026-08-31',
+            search: 'Len2',
+            terminalId: 'COUNTER-02',
+            closedBy: 'Len2',
+            page: 2,
+            limit: 10
+        });
+        expect(result.data).toEqual(expect.objectContaining({
+            location_id: 18,
+            pagination: { page: 2, limit: 10, total: 11, totalPages: 2 },
+            rows: [expect.objectContaining({
+                reading_identifier: 'ZR-20260811-00000003',
+                closed_by_display_name: 'Len2',
+                snapshot_persisted: true,
+                summary: expect.objectContaining({ transaction_count: 4, total_amount: 1200.5, vat_amount: 128.63 })
+            })]
+        }));
+    });
+
+    it('buildListPosZReadingsUseCase requires an authenticated user', async () => {
+        const posRepository = { listZReadingSnapshots: jest.fn() };
+        const useCase = buildListPosZReadingsUseCase({ posRepository });
+
+        const result = await useCase({ query: {}, user: null });
+
+        expect(result.success).toBe(false);
+        expect(posRepository.listZReadingSnapshots).not.toHaveBeenCalled();
     });
 
     it('buildGetDayCloseReadinessUseCase reports the remaining branch shifts without requiring a PIN', async () => {
@@ -94,6 +167,12 @@ describe('POS readings usecases', () => {
                 transaction_count: 2,
                 total_amount: 250
             }),
+            getZReadingSnapshotDetails: jest.fn().mockResolvedValue({
+                branch_name: 'Main Branch',
+                receipt_ranges: { sales: { beginning_invoice_number: 'INV-1', ending_invoice_number: 'INV-2' } },
+                refunds: { succeeded_count: 1, succeeded_amount: 25 },
+                shifts: [{ shift_id: 31, transaction_count: 2, sales_amount: 250 }]
+            }),
             getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({
                 status: 'matched',
                 comparison_basis: 'completed_recognized_transaction_total',
@@ -154,10 +233,24 @@ describe('POS readings usecases', () => {
             endAt: expect.any(Date),
             locationId: 7
         }, { transaction });
+        expect(posRepository.getZReadingSnapshotDetails).toHaveBeenCalledWith({
+            businessDate: '2026-08-07',
+            startAt: expect.any(Date),
+            endAt: expect.any(Date),
+            locationId: 7
+        }, { transaction });
         expect(posRepository.createZReadingSnapshot).toHaveBeenCalledWith(expect.objectContaining({
             business_date: '2026-08-07',
             location_id: 7,
-            summary: expect.objectContaining({ transaction_count: 2 })
+            summary: expect.objectContaining({
+                transaction_count: 2,
+                z_reading_details: expect.objectContaining({
+                    captured: true,
+                    branch_name: 'Main Branch',
+                    generated_by: expect.objectContaining({ display_name: 'Cashier One' }),
+                    shifts: [{ shift_id: 31, transaction_count: 2, sales_amount: 250 }]
+                })
+            })
         }), { transaction });
         expect(posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             user_id: 11,
@@ -353,6 +446,127 @@ describe('POS readings usecases', () => {
             }),
             replay_outcome: 'computed_on_demand'
         }));
+    });
+
+    it('buildGetDailyZReadingDetailsUseCase returns only saved details for the authorized branch', async () => {
+        const snapshot = {
+            business_date: '2026-08-07',
+            location_id: 7,
+            reading_identifier: 'ZR-20260807-00000012',
+            z_counter_value: 12,
+            reset_counter_value: 4,
+            lifetime_grand_total_cents: 98000,
+            generated_at: '2026-08-07T16:00:00.000Z',
+            summary: {
+                transaction_count: 2,
+                total_amount: 250,
+                payment_breakdown: [{ payment_type: 'cash', count: 2, amount: 250 }],
+                z_reading_details: {
+                    version: 1,
+                    captured: true,
+                    branch_name: 'Main Branch',
+                    shifts: [{ shift_id: 31, transaction_count: 2, sales_amount: 250 }]
+                }
+            }
+        };
+        const posRepository = {
+            getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue(snapshot),
+            getZReadingSummary: jest.fn(),
+            getZReadingReconciliationByBusinessDate: jest.fn()
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 7 });
+        const useCase = buildGetDailyZReadingDetailsUseCase({ posRepository, resolveLocationScope });
+
+        const result = await useCase({
+            businessDateInput: '2026-08-07',
+            user: { user_id: 11 },
+            locationId: 7
+        });
+
+        expect(result.success).toBe(true);
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: 7,
+            userId: 11,
+            operationLabel: 'POS Z-reading details'
+        });
+        expect(posRepository.getLatestZReadingSnapshotByBusinessDate).toHaveBeenCalledWith(
+            '2026-08-07',
+            { locationId: 7 }
+        );
+        expect(result.data).toEqual(expect.objectContaining({
+            snapshot_persisted: true,
+            reading_identifier: 'ZR-20260807-00000012',
+            summary: expect.objectContaining({
+                transaction_count: 2,
+                payment_breakdown: expect.arrayContaining([
+                    expect.objectContaining({ payment_type: 'cash', amount: 250 })
+                ])
+            }),
+            details: expect.objectContaining({
+                captured: true,
+                branch_name: 'Main Branch',
+                shifts: [{ shift_id: 31, transaction_count: 2, sales_amount: 250 }]
+            })
+        }));
+        expect(posRepository.getZReadingSummary).not.toHaveBeenCalled();
+        expect(posRepository.getZReadingReconciliationByBusinessDate).not.toHaveBeenCalled();
+    });
+
+    it('buildGetDailyZReadingDetailsUseCase marks legacy snapshots without reconstructing them', async () => {
+        const posRepository = {
+            getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue({
+                business_date: '2026-08-07',
+                location_id: 7,
+                reading_identifier: 'ZR-20260807-00000012',
+                summary: { transaction_count: 2, total_amount: 250 }
+            }),
+            getZReadingSummary: jest.fn()
+        };
+        const useCase = buildGetDailyZReadingDetailsUseCase({
+            posRepository,
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 7 })
+        });
+
+        const result = await useCase({ businessDateInput: '2026-08-07', user: { user_id: 11 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.details).toEqual(expect.objectContaining({
+            captured: false,
+            unavailable_reason: 'This Z-reading predates saved cashier and shift details.'
+        }));
+        expect(posRepository.getZReadingSummary).not.toHaveBeenCalled();
+    });
+
+    it('keeps cashier and shift details out of the general POS Z-reading response', async () => {
+        const posRepository = {
+            getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue({
+                business_date: '2026-08-07',
+                location_id: 7,
+                reading_identifier: 'ZR-20260807-00000012',
+                z_counter_value: 12,
+                reset_counter_value: 4,
+                lifetime_grand_total_cents: 98000,
+                summary: {
+                    transaction_count: 2,
+                    total_amount: 250,
+                    z_reading_details: {
+                        captured: true,
+                        shifts: [{ cashier_sales: [{ display_name: 'Private Detail' }] }]
+                    }
+                }
+            }),
+            getZReadingReconciliationByBusinessDate: jest.fn().mockResolvedValue({ status: 'matched' })
+        };
+        const useCase = buildGetDailyZReadingUseCase({
+            posRepository,
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 7 })
+        });
+
+        const result = await useCase({ businessDateInput: '2026-08-07', user: { user_id: 11 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.details).toBeUndefined();
+        expect(result.data.summary).not.toHaveProperty('z_reading_details');
     });
 
     it('buildGetCurrentXReadingUseCase returns on-demand summary with counters', async () => {
