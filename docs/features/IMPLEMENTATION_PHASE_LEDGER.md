@@ -23965,8 +23965,8 @@ the existing `inventory_issued_at` and `inventory_reversed_at` evidence columns 
 
 ### Status
 
-`in_progress` — implementation and focused regression validation are underway; full
-repository checks, authenticated order-flow acceptance, PR review, and deployed QA remain.
+`completed` — implementation, local validation, PR merge, and operator-confirmed
+all-mode staging QA are complete for the deployed candidate.
 
 ### Dependencies
 
@@ -23975,17 +23975,47 @@ existing online inventory reservation and stock-command contracts.
 
 ### Acceptance and validation evidence
 
-- [ ] Confirmation issues and converts inventory once for Retail and non-Retail online orders.
-- [ ] Completion does not re-issue an order with `inventory_issued_at`; legacy no-evidence
+- [x] Confirmation issues and converts inventory once for Retail and non-Retail online orders.
+- [x] Completion does not re-issue an order with `inventory_issued_at`; legacy no-evidence
       orders still use the completion fallback.
-- [ ] Eligible cancel/reject reverses once for every mode and remains atomic with reservation
+- [x] Eligible cancel/reject reverses once for every mode and remains atomic with reservation
       release and status update.
-- [ ] A soft-deleted item already present in an online order can complete; a hard-deleted or
+- [x] A soft-deleted item already present in an online order can complete; a hard-deleted or
       unrelated inactive item still fails safely.
-- [ ] Focused backend lifecycle, stock-service, and regression tests pass.
-- [ ] Architecture/docs checks and the relevant build pass; no migration is generated because
+- [x] Focused backend lifecycle, stock-service, and regression tests pass.
+- [x] Architecture/docs checks and the relevant build pass; no migration is generated because
       the required evidence columns already exist.
-- [ ] PR review, merge, and deployed QA are complete; this phase does not merge or deploy.
+- [x] The implementation is included in merged PR #2082 and is present on `dgfy-platform/staging`.
+- [x] Deployed QA has verified the exact all-mode Phase 347 candidate SHA.
+
+### Verification evidence (2026-09-28)
+
+- Focused lifecycle, cancellation/rejection, and stock-policy tests passed: 3 suites,
+  21 tests (`posOnlineInventoryReservationLifecycle.unit.test.js`,
+  `storeCancelInventoryReversal.unit.test.js`, and
+  `stockMovementService.serviceMode.test.js`).
+- Adjacent online-order regression tests passed: 4 suites, 22 tests. POS fulfillment UI
+  tests passed: 2 files, 23 tests.
+- `npm run check:architecture-guardrails`, `npm run check:controller-boundaries`,
+  `npm run lint:docs`, backend syntax checks, and `npm run build` for `apps/dgfy-pos`
+  passed. No migration was generated.
+- PR #2082 is merged and its implementation commit is present on `dgfy-platform/staging`.
+- Deployment evidence updated 2026-09-29: successful staging run
+  [#36428717589](https://github.com/Sieitzz/dgfy-platform/actions/runs/36428717589) built
+  `dgfy-api` and `frontend-pos` and completed its deploy job at source SHA
+  `4c7ef139aa3c4173c78735b1d204c07804327de8`. GitHub's commit comparison confirms that SHA
+  contains merged PR #2082 (`9c24acb97b5547eadf33558fe98815309e322f19`) as an ancestor
+  (100 commits ahead, zero behind). A later successful run, #36441017314, built only
+  Storefront; API and POS build jobs were skipped. This confirms successful API/POS deployment
+  of code containing the Phase 347 implementation.
+- Operator-confirmed deployed staging QA (2026-09-29): the operator confirmed that both Retail
+  and non-Retail online-order paths passed on staging for the deployed candidate SHA
+  `4c7ef139aa3c4173c78735b1d204c07804327de8`: confirmation issued stock once, completion did
+  not issue it again, and eligible cancel/reject reversed stock once. This confirmation was
+  provided in the Codex conversation; no machine-generated QA trace or screenshots were attached.
+- The local DB-backed `voidMovement` suite could not initialize its tenant database fixture and
+  failed before assertions. This remains a separate environment limitation; it is not recorded
+  as a passing test or as a Phase 347 acceptance failure.
 
 ### Links
 
@@ -24000,9 +24030,104 @@ existing online inventory reservation and stock-command contracts.
 
 ### Completion date
 
-Not complete; set only after required acceptance gates and deployed QA pass.
+2026-09-29 (operator-confirmed deployed staging QA).
 
 ### Next eligible phase
 
-348 after Phase 347's implementation, review, merge, and deployed QA evidence are
-complete (re-check the ledger before reserving it).
+Phase 348 is the next eligible sequence number; re-check the global ledger before reserving it.
+
+## Phase 348 - POS Register Reconciliation Integrity Fix
+
+### Initiative and release
+
+POS report register reconciliation integrity, current release.
+
+### Objective and scope
+
+Return one reconciliation row for each continuous register shift, derive each
+closed shift's variance from its counted and expected cash, keep cashier-level
+summaries separate and explicitly incomplete when any included shift lacks a
+closing count, and align API, CSV, and POS table identity on singular
+`shift_id`. Record stored-variance mismatches as bounded server diagnostics
+without changing historical shift or drawer data. No schema migration is in
+scope.
+
+### Status
+
+`in_progress` — the implementation and local focused verification are complete.
+Authenticated staging audit, admin UAT, and release evidence remain blocked
+because no QA/staging target is configured and the exact screenshot date filter
+is not recorded in the plan execution evidence. Local E2E login credentials do
+exist, but the POS Playwright configuration defaults to localhost and no QA
+target override is set.
+
+### Dependencies
+
+Phase 347 is complete. The POS Register Reconciliation Integrity Fix plan's
+RRF-01 staging baseline audit is required for staging acceptance; RRF-02 through
+RRF-04 are implemented locally, with RRF-05 and RRF-06 still awaiting their
+staging and release gates.
+
+### Acceptance and validation evidence
+
+- [x] Register reconciliation emits one row per shift with singular `shift_id`;
+      cashier-level aggregates remain separate and may retain `shift_ids`.
+- [x] Per-shift variance is rounded from closing cash minus expected cash;
+      open shifts return null variance, and stale stored variance never wins.
+- [x] Cashier aggregate variance is derived from summed amounts only when every
+      included shift is closed and counted; incomplete aggregates expose
+      `reconciliation_complete: false` and null variance.
+- [x] Stored-variance mismatches produce bounded server-side diagnostics and
+      are excluded from the API response; no historical data is written.
+- [x] CSV export and the register table use singular shift identity; the
+      existing no-Actions table behavior is preserved.
+- [x] Focused backend report tests passed: 3 suites, 47 tests, including the
+      screenshot arithmetic (`₱71,931.83 - ₱75,994.83 = -₱4,063.00`), two shifts
+      for one cashier, mixed open/closed aggregates, diagnostics privacy, and
+      singular CSV identity.
+- [x] Focused register-table tests passed: 1 file, 2 tests.
+- [x] `npm run check:architecture`, `npm run lint:docs`, and the POS production
+      build passed. The build emitted non-blocking chunking warnings in unrelated
+      modules but completed.
+- [x] Local POS security E2E suite passed: 7 tests covering unauthenticated
+      route/API access, security headers, masked login input, and malformed or
+      oversized login input. This is local security evidence only; it does not
+      satisfy the authenticated staging report-scope or no-write audit gates.
+- [ ] RRF-01: capture the authorized staging response and read-only audit for
+      the screenshot's exact date filter. **Blocked:** the date filter is not
+      present in the execution record, and no QA/staging URL or staging account
+      configuration is present in this checkout. The configured E2E account is
+      local-only (`apps/dgfy-pos/.env.e2e`; Playwright defaults to localhost).
+- [ ] RRF-05: authenticated staging Admin verification, no-write data audit,
+      browser/network evidence, and performance evidence. **Blocked** on RRF-01
+      staging access and filters.
+- [ ] RRF-06: frozen candidate SHA, rollout monitoring, and rollback evidence.
+      **Not started**; no candidate has been committed, reviewed, or deployed.
+- [ ] Final DOCX execution records and visual-render verification. **Blocked:**
+      the bundled document-rendering dependency is unavailable in this host.
+
+### Links
+
+- Plan: `docs/plans/pos-register-reconciliation-fix/00_Master_Plan_Index.docx`,
+  `03_Backend_Data_and_API_Plan.docx`,
+  `04_Frontend_Register_Reconciliation_UI.docx`, and
+  `05_Testing_Security_Data_Integrity_and_Evidence.docx`.
+- Architecture: `docs/architecture/adr/0073-pos-cashier-attendance-breaks-and-register-operator-sessions.md`.
+- API contract: `docs/api/specification.md`.
+- Implementation: `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`,
+  `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, and
+  `packages/web-core/src/features/pos/components/PosReportsRegistersTable.jsx`.
+- Tests: `apps/dgfy-api/tests/posReports.repository.test.js`,
+  `apps/dgfy-api/tests/posReports.usecase.test.js`,
+  `apps/dgfy-api/tests/posReports.breakdown.route.contract.test.js`, and
+  `packages/web-core/src/features/pos/__tests__/PosReportsRegistersTable.behavior.test.jsx`.
+
+### Completion date
+
+Not complete; set only after all required staging, release, rollback, and
+execution-evidence gates pass.
+
+### Next eligible phase
+
+Phase 349 only after Phase 348 is completed under its acceptance gates; it is
+not eligible while the staging and release blockers above remain.

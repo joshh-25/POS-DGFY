@@ -2666,6 +2666,94 @@ reason. A request does not itself void a transaction or restore stock. A
 completed-sale void does not refund money; paid transactions continue through
 the existing tender-specific refund workflow.
 
+#### Temporary POS inline void approval surface
+
+While the dedicated Back Office UI is unavailable, the standalone POS surface
+may expose a temporary manager-review popup for `pos_void` requests. This is a
+reviewer surface only; the backend approval use case remains the authority for
+permissions, self-review blocking, idempotency, transaction locking, and
+canonical void execution.
+
+| Method | Endpoint | Permission | Purpose |
+|--------|----------|------------|---------|
+| `GET` | `/pos/approvals?status=pending&limit=100` | `business_admin:access`, `business_admin:branches:view_all`, and `business_admin:high_risk:approve` | List bounded pending POS void requests with safe requester data. |
+| `POST` | `/pos/approvals/:id/approve` or `/pos/approvals/:id/reject` | Same three high-risk review permissions | Execute the existing POS approval decision path; approval voids through the canonical POS use case and rejection leaves the sale and stock unchanged. |
+
+The temporary UI is enabled only for the standalone POS build through its
+explicit feature flag. IMS does not render this surface, and no approval
+request or decision is accepted without the existing backend permission and
+tenant-scope checks.
+
+### POS register reconciliation
+
+`GET /pos/reports/overview` returns `cashier_lifecycle.registers` as one row per
+continuous terminal shift. Register rows use singular `shift_id`; their
+`variance_amount` is rounded from `closing_cash_amount - expected_cash_amount`,
+and remains `null` while the shift has no counted closing cash. The report does
+not write or repair historical shift data. A mismatch between stored and
+derived variance is logged server-side with a bounded sample of shift/location
+identifiers and numeric deltas; diagnostics are not included in the API
+response.
+
+`daily_report.cash_reconciliation` remains a cashier-level aggregate and may
+contain `shift_ids`. It includes `reconciliation_complete`; when any included
+shift is open or lacks a closing count, aggregate `cash_variance_amount` is
+`null`. A complete aggregate derives variance from the rounded aggregate
+closing cash minus aggregate expected cash. The `registers` CSV export follows
+the per-shift contract and emits one `Register Shift` value per row.
+
+### POS report analytics breakdowns
+
+The report analytics endpoints use the same tenant, permission, and location
+scope as the POS report overview. They read financially recognized completed or
+voided POS transactions and normalize line-level financial values once before
+building each breakdown. The report timezone is `Asia/Manila` and date ranges
+are inclusive by business date, with a maximum span of 366 days.
+
+**Permission**: `pos:view` or `pos:branch_view`
+**Plan Gate**: Premium (`requirePremium`)
+
+#### GET /pos/reports/breakdowns
+
+Required query parameters are `date_from`, `date_to`, and `breakdown`. The
+allowed breakdowns are `hourly`, `items`, and `categories`.
+
+| Name | Type | Description |
+| --- | --- | --- |
+| `date_from` | ISO date | Inclusive Manila business date. |
+| `date_to` | ISO date | Inclusive Manila business date. |
+| `breakdown` | enum | `hourly`, `items`, or `categories`. |
+| `cashier_id` | number | Optional cashier filter; a cashier is always forced to their own ID. |
+| `location_id` | number | Optional authorized location filter. Tenant-wide branch readers are scope-checked server-side. |
+| `terminal_id` | string | Optional terminal filter. |
+| `payment_type` | enum | Optional tender filter. |
+| `source` | enum | Optional `in_store`, `online_store`, `delivery`, or `pickup` filter. |
+| `category_id` / `category` | number/string | Optional category filter. Null or empty categories use `uncategorized`. |
+| `page` | number | Server page, default `1`. |
+| `limit` | number | Rows per page, default `50`, maximum `200`. |
+| `sort_by` | enum | Allowlisted row field such as `net_sales`, `quantity`, `profit`, or `bucket_start_local`. |
+| `sort_direction` | enum | `asc` or `desc`; hourly defaults to chronological ascending order. |
+
+Successful responses contain `breakdown`, the inclusive `range` and
+`Asia/Manila` timezone, `applied_filters`, a report-wide `summary`, paged
+`rows`, `pagination`, and `generated_at`. Item and category rows expose stable
+keys, quantities, orders, gross/discount/net/refund values, COGS, profit,
+margin, and report-level net-sales share. Hourly rows expose the local bucket
+start/end, transaction count, item quantity, and the same financial metrics.
+Item names and SKUs use the sale-time line snapshot; category names resolve
+from the current primary item folder, falling back to the legacy category or
+`Uncategorized`.
+
+#### GET /pos/reports/export
+
+The existing CSV export remains backward-compatible. Its `section` allowlist
+now also accepts `hourly`, `item_sales`, and `category_sales`. These sections
+reuse the breakdown endpoint's filters, authorization, sort semantics, and
+financial calculations, but export the complete filtered row set rather than
+silently truncating to the requested page. Each CSV starts with the report name,
+inclusive date range, timezone, and report-wide financial summary, followed by
+the fixed detail columns and escaped rows for the selected breakdown.
+
 ### POST /pos/terminal/pair
 Optionally enroll the current physical POS device against a selected registered terminal after DGFY master-admin authentication. This endpoint is retained for compatibility and hardware-specific flows; normal shift opening and checkout do not require a pairing cookie.
 
@@ -4578,7 +4666,7 @@ Authenticated premium POS routes:
 | Method | Path | Permission | Purpose |
 | --- | --- | --- | --- |
 | `POST` | `/api/v1/pos/transactions/:id/print-events` | `pos:reprint` | Records operator-confirmed fiscal original print or reprint evidence after the browser print dialog is opened; reprints require a reason. |
-| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Requires a reason and submits a pending Back Office approval request. Approval records fiscal/inventory/internal-void evidence through the canonical POS use case and returns the server-classified financial follow-up; it does not itself refund customer money. |
+| `POST` | `/api/v1/pos/transactions/:id/void` | `pos:void` | Requires a reason and submits a pending manager approval request. Approval records fiscal/inventory/internal-void evidence through the canonical POS use case and returns the server-classified financial follow-up; it does not itself refund customer money. |
 | `POST` | `/api/v1/pos/transactions/:id/cash-refund` | `pos:cash_drawer_adjust` | Records a paid-cash refund for an already-voided transaction and atomically creates the linked `cash_out` drawer event on the acting cashier's owned open shift. |
 | `POST` | `/api/v1/pos/transactions/:id/external-refund` | `pos:void` | Records merchant-owned digital reversal evidence. Initial evidence remains manual review; explicit confirmation with the same reference and a new idempotency key completes it. |
 | `POST` | `/api/v1/pos/transactions/:id/provider-refund` | `pos:void` | Submits a server-verified PayMongo refund for a supported provider-owned online transaction. Provider identity, payment ID, amount, currency, and session ownership are server-derived. |
