@@ -4106,15 +4106,10 @@ function ItemsWorkspace({
               className="pos-filter-surface pos-filter-surface--extended fixed z-40 hidden max-h-[min(90vh,48rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-900/20 sm:flex"
               style={desktopFilterPosition || undefined}
             >
-              <div className="pos-filter-surface-header pos-filter-surface-header--extended -mx-px -mt-px flex shrink-0 flex-row items-center justify-between gap-3 rounded-t-[17px] border-b px-4 py-2.5 text-white sm:px-5">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white text-[#1A4E8D] shadow-sm ring-1 ring-[#C7DCF3]">
-                    <Filter className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-sm font-black">Filter</p>
-                    <p className="mt-0.5 max-w-full break-words text-[10px] leading-3 text-blue-100">Refine your Item list</p>
-                  </div>
+              <div className="pos-filter-surface-header pos-filter-surface-header--extended flex shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+                <div className="min-w-0 flex-1">
+                  <p id="pos-items-filter-title" className="pos-filter-surface-title pos-filter-surface-title--extended truncate text-xl font-bold leading-6 tracking-tight">Filter</p>
+                  <p className="mt-1 max-w-full break-words text-sm leading-5 text-slate-500">Refine your item list</p>
                 </div>
                 <Button
                   type="button"
@@ -4122,9 +4117,9 @@ function ItemsWorkspace({
                   size="icon"
                   onClick={() => setShowDesktopFilters(false)}
                   aria-label="Close item filters"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-blue-100 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-[#1A4E8D]"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
               </div>
 
@@ -4302,18 +4297,18 @@ function ItemsWorkspace({
               id="pos-items-mobile-filter-dialog"
               className="pos-filter-surface flex max-h-[min(90vh,40rem)] max-w-none flex-col overflow-hidden rounded-t-2xl border border-slate-300 bg-white p-0 shadow-[0_12px_30px_rgba(15,23,42,0.2)] dgfy-pos-history-mobile-sheet"
             >
-              <DialogHeader className="pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                <div className="min-w-0">
-                  <DialogTitle className="pos-filter-surface-title truncate text-sm font-black text-[#0F172A]">Filter</DialogTitle>
-                  <DialogDescription className="mt-0.5 text-[12px] text-slate-500">Refine your Item list</DialogDescription>
+              <DialogHeader className="pos-filter-surface-header shrink-0 flex-row items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3.5 text-[#0F172A]">
+                <div className="min-w-0 flex-1">
+                  <DialogTitle className="pos-filter-surface-title truncate text-xl font-bold leading-6 tracking-tight">Filter</DialogTitle>
+                  <DialogDescription className="mt-1 text-sm leading-5 text-slate-500">Refine your item list</DialogDescription>
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
                   onClick={() => setShowMobileFilters(false)}
                   aria-label="Close item filters"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full border-[#1A4E8D] bg-white text-[#1A4E8D] shadow-none hover:bg-blue-50 hover:text-[#143F73]"
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-2"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
