@@ -40,13 +40,13 @@ describe('POS Reports responsive table', () => {
     expect(pagination.className).toContain('max-[767px]:sticky');
     expect(pagination.className).toContain('max-[767px]:bottom-0');
     expect(screen.getByText('Showing 1–20 of 21 entries')).toBeTruthy();
-    const pageSize = screen.getByRole('button', { name: 'entries per page' });
+    const pageSize = screen.getByRole('button', { name: 'Items per page' });
     expect(pageSize.getAttribute('aria-haspopup')).toBe('listbox');
     expect(screen.getByText('1 of 2')).toBeTruthy();
-    expect(screen.getByLabelText('Previous Report entries page').disabled).toBe(true);
+    expect(screen.getByLabelText('Previous page').disabled).toBe(true);
     expect(within(screen.getByTestId('pos-reports-table-mobile-view')).queryByText('Row 21')).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Next Report entries page' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
     expect(screen.getByText('Showing 21–21 of 21 entries')).toBeTruthy();
     expect(screen.getAllByText('Row 21').length).toBeGreaterThan(0);
     expect(screen.getByText('2 of 2')).toBeTruthy();
@@ -223,9 +223,16 @@ describe('POS Reports responsive table', () => {
     await user.click(within(table).getByRole('button', { name: 'View details for NFS-000003' }));
 
     const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Transaction Details')).toBeTruthy();
+    const title = within(dialog).getByText('Transaction Details');
+    expect(title.className).toContain('min-[768px]:text-[clamp(1.125rem,1.35vw,1.5rem)]');
     expect(within(dialog).getByText('NFS-000003')).toBeTruthy();
+    const detailsDialog = screen.getByTestId('pos-reports-table-details-dialog');
+    expect(detailsDialog.className).toContain('min-[768px]:max-w-4xl');
+    expect(detailsDialog.className).toContain('min-[768px]:bg-white');
     const desktopHiddenFieldLabel = within(dialog).getByText('Hidden field', { selector: 'dt' });
+    expect(desktopHiddenFieldLabel.className).toContain('min-[768px]:text-[clamp(0.75rem,0.8vw,0.8125rem)]');
+    expect(desktopHiddenFieldLabel.className).toContain('min-[768px]:text-[#334155]');
+    expect(desktopHiddenFieldLabel.nextElementSibling.className).toContain('min-[768px]:text-[clamp(0.8125rem,0.9vw,0.9375rem)]');
     expect(desktopHiddenFieldLabel.nextElementSibling.textContent).toBe('Hidden field');
   });
 
