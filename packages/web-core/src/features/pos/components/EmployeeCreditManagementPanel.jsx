@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Banknote, BadgeCheck, Check, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, RefreshCw, Save, Search, SlidersHorizontal } from 'lucide-react';
+import { Banknote, BadgeCheck, Check, ChevronLeft, ChevronRight, CreditCard, Eye, Filter, RefreshCw, Save, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import PosTableActionButton from './PosTableActionButton.jsx';
+import PosSearchField from './PosSearchField.jsx';
 import { POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
 import {
   adjustEmployeeCreditOutstanding,
@@ -604,10 +605,15 @@ export default function EmployeeCreditManagementPanel({
           </div>
 
           <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 min-[1200px]:flex min-[1200px]:items-center">
-            <div className="relative min-w-0 min-[1200px]:flex-1">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input type="search" aria-label="Search employee credit" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search employees by name, code, email, or account..." className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} pl-9`} />
-            </div>
+            <PosSearchField
+              ariaLabel="Search employee credit"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onClear={() => setSearchQuery('')}
+              placeholder="Search employees by name, code, email, or account..."
+              className="min-w-0 min-[1200px]:flex-1"
+              inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
+            />
             <div ref={filterContainerRef} className="relative min-w-0">
               <Button type="button" ref={filterButtonRef} variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersOpen ? 'employee-credit-filter-popover' : undefined} title="Filters" className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto`}><Filter aria-hidden="true" className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Filters</span></Button>
               {filterPopover}

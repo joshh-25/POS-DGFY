@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Info, KeyRound, ListChecks, Search, ShieldCheck, Trash2, UserRoundPlus, Users, X } from 'lucide-react';
+import { Check, Info, KeyRound, ListChecks, ShieldCheck, Trash2, UserRoundPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
-import { POS_TABLE_SURFACE_CLASS } from '../components/PosTableSurface.jsx';
+import { POS_TABLE_HEADER_STANDARD_CLASS, POS_TABLE_SURFACE_CLASS } from '../components/PosTableSurface.jsx';
+import PosSearchField from '../components/PosSearchField.jsx';
 
 const permissionSwitchClass = (enabled) => `relative inline-flex h-6 w-10 shrink-0 items-center rounded-full border transition-colors ${
   enabled ? 'border-[#2563EB] bg-[#2563EB]' : 'border-slate-300 bg-slate-200'
@@ -259,13 +259,13 @@ function MobileCashierTable({
             <col className="w-[190px]" />
             <col className="w-[100px]" />
           </colgroup>
-          <thead className="bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-[#334155]">
+          <thead className={`${POS_TABLE_HEADER_STANDARD_CLASS} bg-slate-50 text-[10px] font-extrabold uppercase tracking-wide text-[#334155]`}>
             <tr>
-              <th scope="col" className="px-2 py-2.5">Cashier</th>
-              <th scope="col" aria-label="POS Discount Authorization" title="POS Discount Authorization" className="px-2 py-2.5">Discount</th>
-              <th scope="col" aria-label="Day Close Access" title="Day Close Access" className="px-2 py-2.5">Day close</th>
-              <th scope="col" aria-label="Cashier Void and Cash Authorization" title="Cashier Void and Cash Authorization" className="px-2 py-2.5">Void / cash</th>
-              <th scope="col" aria-label="Assigned terminals" title="Assigned terminals" className="px-2 py-2.5 text-right">Terminals</th>
+              <th scope="col" className="px-2">Cashier</th>
+              <th scope="col" aria-label="POS Discount Authorization" title="POS Discount Authorization" className="px-2">Discount</th>
+              <th scope="col" aria-label="Day Close Access" title="Day Close Access" className="px-2">Day close</th>
+              <th scope="col" aria-label="Cashier Void and Cash Authorization" title="Cashier Void and Cash Authorization" className="px-2">Void / cash</th>
+              <th scope="col" aria-label="Assigned terminals" title="Assigned terminals" className="px-2 text-right">Terminals</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -577,17 +577,16 @@ export default function PosTerminalCashierAccessTable({
           </div>
         </div>
         <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto lg:gap-3">
-          <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search cashier name or email"
-              aria-label="Search cashier name or email"
-              className="h-9 rounded-lg border-slate-200 pl-9 text-[13px] sm:text-[14px]"
-              disabled={!locationAssigned || loading}
-            />
-          </div>
+          <PosSearchField
+            ariaLabel="Search cashier name or email"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onClear={() => setSearchQuery('')}
+            placeholder="Search cashier name or email"
+            disabled={!locationAssigned || loading}
+            className="min-w-0 flex-1 sm:w-64 sm:flex-none"
+            inputClassName="h-9 sm:text-[14px]"
+          />
           <Button
             type="button"
             className="h-9 w-10 shrink-0 justify-center gap-1.5 rounded-lg border border-[#1A4E8D] bg-[#1A4E8D] p-0 text-[13px] font-semibold text-white shadow-sm hover:bg-[#143F73] sm:w-auto sm:px-3 sm:text-[14px]"

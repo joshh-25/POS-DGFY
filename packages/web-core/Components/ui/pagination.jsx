@@ -73,8 +73,7 @@ const PageSizeDropdown = ({ controlId, options, selectedPageSize, disabled, onCh
         className="dgfy-global-pagination__page-size-trigger inline-flex h-10 min-w-[5.75rem] items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm outline-none transition hover:border-[#1A4E8D]/50 hover:bg-[#F8FBFF] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15 disabled:cursor-not-allowed disabled:opacity-50 lg:text-[13px]"
       >
         <span className="dgfy-global-pagination__page-size-value whitespace-nowrap">
-          {selectedPageSize}
-          <span className={`dgfy-global-pagination__page-size-suffix${hidePageSizeSuffixOnMobile ? ' dgfy-global-pagination__page-size-suffix--hide-on-mobile' : ''}`}> / page</span>
+          {selectedPageSize}<span className={`dgfy-global-pagination__page-size-suffix${hidePageSizeSuffixOnMobile ? ' dgfy-global-pagination__page-size-suffix--hide-on-mobile' : ''}`}> / page</span>
         </span>
         <ChevronDown aria-hidden="true" className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

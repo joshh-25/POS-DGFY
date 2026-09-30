@@ -28,10 +28,11 @@ describe('POS Items button consistency contract', () => {
     expect(css).toContain('font-size: 0.875rem;');
     expect(css).toContain('text-overflow: ellipsis;');
     expect(css).toContain('background: #1a4e8d;');
-    expect(css).toContain('.pos-items-mobile-search > svg');
+    expect(css).toContain('.pos-items-mobile-search > div > svg:first-child');
     expect(css).toContain('left: 0.75rem;');
     expect(workspace).toContain('<Filter className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />');
-    expect(workspace).toContain('<Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />');
+    expect(workspace).toContain('<PosSearchField');
+    expect(workspace).toContain('id="pos-items-search-mobile"');
     expect(workspace).toContain('<Filter aria-hidden="true" />');
   });
 });

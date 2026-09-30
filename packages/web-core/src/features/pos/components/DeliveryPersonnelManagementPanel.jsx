@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Bike, Check, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Power, RefreshCw, Search } from 'lucide-react';
+import { Bike, Check, ChevronLeft, ChevronRight, Filter, Pencil, Plus, Power, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import {
 } from '../services/deliveryPersonnelService.js';
 import PosTableSurface, { POS_TABLE_HEADER_CLASS, POS_TABLE_HEADER_CELL_CLASS, POS_TABLE_ROW_CLASS } from './PosTableSurface.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
+import PosSearchField from './PosSearchField.jsx';
 import { POS_TOOLBAR_CONTROL_HEIGHT_CLASS } from './posToolbarSizing.js';
 import { PosResponsiveFormDrawer, usePosFormFocusScroll, usePosVisualViewportMetrics, usePosViewportMode } from './PosResponsiveFormDrawer.jsx';
 
@@ -412,10 +413,15 @@ export default function DeliveryPersonnelManagementPanel({
           </div>
 
           <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 min-[1200px]:flex min-[1200px]:items-center">
-            <div className="relative min-w-0 min-[1200px]:flex-1">
-              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <Input type="search" aria-label="Search delivery personnel" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search delivery personnel by name, phone, or location..." className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} pl-9`} />
-            </div>
+            <PosSearchField
+              ariaLabel="Search delivery personnel"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onClear={() => setSearchQuery('')}
+              placeholder="Search delivery personnel by name, phone, or location..."
+              className="min-w-0 min-[1200px]:flex-1"
+              inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
+            />
             <div ref={filterContainerRef} className="relative min-w-0">
               <Button type="button" ref={filterButtonRef} variant="outline" size="sm" onClick={toggleFilters} aria-expanded={filtersOpen} aria-controls={filtersOpen ? 'delivery-personnel-filter-popover' : undefined} title="Filters" className={`${POS_TOOLBAR_CONTROL_HEIGHT_CLASS} w-11 shrink-0 p-0 sm:w-auto sm:px-4 min-[1200px]:w-auto`}>
                 <Filter aria-hidden="true" className="h-4 w-4 sm:mr-2" /> <span className="sr-only sm:not-sr-only">Filters</span>

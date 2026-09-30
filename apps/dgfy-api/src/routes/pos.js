@@ -50,6 +50,7 @@ import {
     validatePosTransactionIdParam,
     validateZReadingDateParam,
     validateZReadingQuery,
+    validateZReadingHistoryQuery,
     validateCloseDayBody,
     validateXReadingQuery,
     validateGovernedResetBody,
@@ -522,6 +523,8 @@ router.get('/z-reading/close-readiness', checkPermission(PERMISSIONS.POS.actions
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateCloseDayBody, posController.closeDayZReading);
 router.post('/z-reading/governed-reset', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateGovernedResetBody, posController.incrementGovernedResetCounter);
 router.get('/x-reading/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateXReadingQuery, posController.getCurrentXReading);
+router.get('/z-readings', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingHistoryQuery, posController.listPosZReadings);
+router.get('/z-reading/:date/details', checkPermission(PERMISSIONS.REPORTS.actions.VIEW_REPORTS), validateZReadingDateParam, validateZReadingQuery, posController.getDailyZReadingDetails);
 router.get('/z-reading/:date', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingDateParam, validateZReadingQuery, posController.getDailyZReading);
 
 export default router;

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Package, RefreshCcw, RotateCcw, Search, Store } from 'lucide-react';
+import { Package, RefreshCcw, RotateCcw, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +14,7 @@ import {
 import { fetchPosCatalog } from '../services/posService.js';
 import PosFnbModifierManager from './PosFnbModifierManager.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
+import PosSearchField from './PosSearchField.jsx';
 
 const byName = (left, right) => String(left?.name || '').localeCompare(String(right?.name || ''));
 
@@ -67,10 +68,7 @@ function AssignmentPanel({
 
       <div className="mt-3 space-y-1.5">
         <label htmlFor={`${selectorId}-search`} className="text-[10px] font-bold text-[#334155]">Applicable {selectorId.includes('category') ? 'Option Groups' : 'Options'}</label>
-        <div className="relative">
-          <Search className="pos-items-options-search-icon pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-          <input id={`${selectorId}-search`} aria-label={searchLabel} value={searchValue} onChange={(event) => onSearchChange(event.target.value)} placeholder={searchLabel} disabled={disabled} className="h-9 w-full rounded-lg border border-[#1A4E8D] bg-white px-3 pl-9 text-[13px] text-[#0F172A] outline-none placeholder:text-slate-300 focus:border-[#1A4E8D] focus:ring-2 focus:ring-[#1A4E8D]/20" />
-        </div>
+        <PosSearchField id={`${selectorId}-search`} ariaLabel={searchLabel} value={searchValue} onChange={(event) => onSearchChange(event.target.value)} onClear={() => onSearchChange('')} placeholder={searchLabel} disabled={disabled} inputClassName="h-9" />
       </div>
 
       <div data-testid={`${selectorId}-groups-list`} className="pos-items-options-list pos-items-options-assignment-list dgfy-pos-scroll-region mt-3 max-h-48 space-y-1 overflow-y-auto pr-1">

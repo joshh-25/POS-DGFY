@@ -1,6 +1,7 @@
 import SettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
 import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
+import PosSearchField from './PosSearchField.jsx';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
@@ -1899,7 +1900,7 @@ function ShiftControlsWorkspace({
           })}
         </div>
 
-        <div className="flex items-center gap-2 sm:hidden">
+        <div className="grid grid-cols-2 gap-2 sm:hidden">
           {visibleShiftTabs.map((tab) => {
             const TabIcon = tab.icon;
             const active = activeTab === tab.id;
@@ -1908,7 +1909,7 @@ function ShiftControlsWorkspace({
                 key={`mobile-${tab.id}`}
                 type="button"
                 onClick={() => handleTabChange(tab.id)}
-                className={`inline-flex min-h-14 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${
+                className={`inline-flex min-h-14 min-w-0 w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-black transition ${
                   active
                     ? 'bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
                     : 'bg-slate-50 text-[#0F172A] hover:bg-slate-100'
@@ -4030,17 +4031,16 @@ function ItemsWorkspace({
       <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-none max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 max-sm:shadow-none sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
         <div className="relative">
           <div className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex">
-            <div className="relative min-w-0 flex-1">
-              <Label htmlFor="pos-items-search" className="sr-only">Search items</Label>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-              <Input
-                id="pos-items-search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search item by Name, SKU, or Barcode"
-                className="h-9 rounded-lg border-[#1A4E8D] bg-white pl-9 pr-3 text-[13px] placeholder:text-slate-300"
-              />
-            </div>
+            <PosSearchField
+              id="pos-items-search"
+              ariaLabel="Search items"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onClear={() => setSearchQuery('')}
+              placeholder="Search item by Name, SKU, or Barcode"
+              className="min-w-0 flex-1"
+              inputClassName="h-9"
+            />
             <div className="pos-items-desktop-actions flex shrink-0 flex-wrap items-center justify-end gap-2">
               <Button
                 type="button"
@@ -4227,16 +4227,17 @@ function ItemsWorkspace({
 
         <div className="pos-items-mobile-controls sm:hidden">
           <div className="pos-items-mobile-toolbar">
-            <div className="pos-items-mobile-search">
-              <Label htmlFor="pos-items-search-mobile" className="sr-only">Search items</Label>
-              <Input
+            <div className="pos-items-mobile-search relative min-w-0">
+              <PosSearchField
                 id="pos-items-search-mobile"
+                ariaLabel="Search items"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
+                onClear={() => setSearchQuery('')}
                 placeholder="Search"
-                className="h-11 w-full rounded-2xl border-[#1A4E8D] bg-white pl-9 pr-3 text-base text-[#0F172A] placeholder:text-slate-300 shadow-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
+                className="w-full"
+                inputClassName="h-11 rounded-2xl border-[#1A4E8D] bg-white pl-9 pr-10 text-base text-[#0F172A] placeholder:text-slate-300 shadow-none focus:border-[#1A4E8D] focus:ring-2 focus:ring-blue-100"
               />
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
             </div>
             <button
               type="button"
@@ -5200,15 +5201,15 @@ function ItemsWorkspace({
                     </div>
                     {selectedCreateModifierGroupIds.length > 0 ? <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-[#1A4E8D]">{selectedCreateModifierGroupIds.length} group{selectedCreateModifierGroupIds.length === 1 ? '' : 's'}</span> : null}
                   </div>
-                  <div className="relative mt-2">
-                    <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-                    <Input
+                    <div className="relative mt-2">
+                    <PosSearchField
                       value={createOptionSearch}
+                      ariaLabel="Search item options"
                       onChange={(event) => setCreateOptionSearch(event.target.value)}
+                      onClear={() => setCreateOptionSearch('')}
                       placeholder="Search Options"
-                      aria-label="Search item options"
                       disabled={!canManageFnbModifiers || !isFnbMode || createModifierGroupsLoading || creatingItem || postCreateSaving}
-                      className="h-8 rounded-lg border-slate-300 pl-8 text-[10px] placeholder:text-slate-300"
+                      inputClassName="h-8 rounded-lg text-[10px] placeholder:text-slate-300"
                     />
                   </div>
                   <div data-testid="pos-items-create-options-list" className="pos-items-modal-option-list pos-items-modal-scrollbar mt-2 min-h-0 space-y-1.5 overflow-y-auto pr-1">
@@ -6313,9 +6314,15 @@ function CategoryManagementWorkspace() {
         <div className="relative">
           <div className="pos-categories-mobile-toolbar pos-items-mobile-toolbar flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
             <div className="pos-categories-mobile-search pos-items-mobile-search relative min-w-0 flex-1">
-              <Label htmlFor="pos-categories-search" className="sr-only">Search categories</Label>
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#1A4E8D]" aria-hidden="true" />
-              <Input id="pos-categories-search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-9 rounded-lg border-[#1A4E8D] bg-white pl-9 pr-3 text-[13px] placeholder:text-slate-300" placeholder="Search Categories" aria-label="Search Categories" />
+              <PosSearchField
+                id="pos-categories-search"
+                ariaLabel="Search Categories"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onClear={() => setQuery('')}
+                inputClassName="h-9"
+                placeholder="Search Categories"
+              />
             </div>
             <div className="pos-categories-mobile-actions flex shrink-0 flex-wrap items-center justify-end gap-2">
               <Button type="button" onClick={() => loadFolders()} disabled={loading || busy} aria-label="Refresh categories" title="Refresh categories" className="pos-items-category-refresh-button pos-items-mobile-icon-button pos-items-mobile-icon-button--active h-9 rounded-lg bg-[#1A4E8D] px-3 text-[13px] text-white hover:bg-[#143F73]">
@@ -6851,6 +6858,11 @@ export default function TerminalOperationsWorkspace({
   const isIncomingQueueView = effectiveViewMode === 'incoming_queue';
   const isSettingsView = SETTINGS_VIEW_MODES.has(effectiveViewMode);
   const usesOwnPageFrame = isSettingsView || effectiveViewMode === 'reports';
+  const workspaceShellClassName = usesOwnPageFrame
+    ? 'p-0'
+    : effectiveViewMode === 'items'
+      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2 pos-items-workspace-shell'
+      : 'p-5';
   const showTerminalOnlyControls = effectiveViewMode === 'terminal_setup';
   const showTerminalOnlyControlsPane = showTerminalOnlyControls;
   const canImportItems = IS_DGFY_POS_SURFACE && (
@@ -7330,9 +7342,7 @@ export default function TerminalOperationsWorkspace({
       locked={locked}
       bare={usesOwnPageFrame}
       borderless={effectiveViewMode === 'items'}
-      className={effectiveViewMode === 'items'
-      ? 'flex min-h-0 flex-1 flex-col px-5 pb-0 pt-2' + ' pos-items-workspace-shell'
-        : 'p-5'}
+      className={workspaceShellClassName}
     >
       <div
         key={effectiveViewMode}

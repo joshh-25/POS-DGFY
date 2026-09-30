@@ -181,7 +181,9 @@ export default function PosReportsResponsiveTable({
           fields: normalizedColumns.map((column) => ({
             key: column.key,
             label: column.label,
-            value: renderCell(row, column, index)
+            value: typeof column.renderDetailsValue === 'function'
+              ? column.renderDetailsValue(row, index)
+              : renderCell(row, column, index)
           }))
         }];
     if (!Array.isArray(sections)) return [];
@@ -404,6 +406,7 @@ export default function PosReportsResponsiveTable({
         sections={detailsSections}
         footer={detailsFooter}
         testId={`${idPrefix}-details-dialog`}
+        variant="reports"
       />
     </section>
   );

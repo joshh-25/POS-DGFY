@@ -102,7 +102,8 @@ describe('POS category management contract', () => {
     expect(workspaceSource).toContain('dgfy-pos-scroll-region min-h-0 min-w-0 space-y-3 overflow-y-auto overscroll-contain pr-1 touch-pan-y');
     expect(workspaceSource).toContain('dgfy-pos-scroll-region mt-3 max-h-48 space-y-1 overflow-y-auto pr-1');
     expect(workspaceSource).toContain('rounded-xl border border-slate-200 bg-white p-3');
-    expect(workspaceSource).toContain('h-9 w-full rounded-lg border border-[#1A4E8D]');
+    expect(workspaceSource).toContain('PosSearchField id={`${selectorId}-search`}');
+    expect(workspaceSource).toContain('inputClassName="h-9"');
     expect(workspaceSource).toContain('grid min-w-0 grid-cols-2 gap-2');
     expect(managerSource).toContain('flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-3 shadow-sm');
     expect(managerSource).toContain('dgfy-pos-scroll-region mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain');

@@ -2159,7 +2159,12 @@ export default function PosSettingsWorkspace({
   };
 
   return (
-    <PosPageFrame id={sectionId} page="settings" data-pos-settings-workspace="true" className="min-w-0 max-w-full overflow-x-hidden space-y-4 px-0 sm:space-y-6 sm:px-3 max-[767px]:overflow-x-clip">
+    <PosPageFrame
+      id={sectionId}
+      page="settings"
+      data-pos-settings-workspace="true"
+      className="max-[767px]:overflow-x-clip"
+    >
       {showSettingsTabNavigation ? (
         <div className="max-[767px]:overflow-x-clip">
           <PosSettingsTabNavigation

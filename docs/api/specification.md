@@ -3420,6 +3420,43 @@ Z-reading summary includes:
 - VAT buckets and `total_amount`
 - `payment_breakdown[]`
 
+### GET /pos/z-readings
+List persisted Z-reading snapshots for the authenticated user's authorized branch. This endpoint is read-only and returns saved `ZR-` snapshots only; governed reset events and on-demand readings are excluded. It does not create or modify a reading.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | integer | Optional authorized branch. If omitted, the server resolves the user's location scope; multi-branch users must provide it. |
+| `date_from` | ISO date | Optional inclusive business-date lower bound. |
+| `date_to` | ISO date | Optional inclusive business-date upper bound; must be on or after `date_from`. |
+| `search` | string | Optional text search across the reading reference, business date, terminal ID, cashier username/email, or numeric closer user ID. Maximum 120 characters. |
+| `terminal_id` | string | Optional substring filter for the terminal that closed the reading. Maximum 100 characters. |
+| `closed_by` | string | Optional substring filter for the closing cashier's username or email. Maximum 100 characters. |
+| `page` | integer | Page number, defaults to `1`. |
+| `limit` | integer | Page size from `1` to `100`, defaults to `20`. |
+
+Each row includes the business date, stable reading identifier, generated time, branch, closing user ID and display name when available, closing terminal, `snapshot_persisted=true`, and saved summary totals. Search and filters are applied before pagination. The POS Reports Z-Readings detail preview uses the report-authorized details endpoint below; this list endpoint remains a compact history response.
+
+The response is paginated and branch-scoped. A reading from another branch, a reset event, or a date with no persisted Z-reading is never included as a substitute.
+
+### GET /pos/z-reading/:date/details
+Retrieve the saved Z-reading and its immutable cashier, shift, payment, adjustment, and receipt-range details for a specific business date (`YYYY-MM-DD`). The detail payload is captured when the Z-reading snapshot is generated and is never reconstructed from mutable live transactions.
+
+**Permission**: `reports:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | integer | Optional authorized branch. If omitted, the server resolves the user's location scope; multi-branch users must provide it. |
+
+The response is read-only and is limited to a saved, branch-scoped `ZR-` snapshot. It returns the saved summary, counters, and `details` containing the captured branch name, report period, generator display name, invoice/void receipt ranges, recorded refunds, and a separate breakdown for each closed register shift. Expected, counted, and variance cash amounts remain attached to their individual shift. Refund amounts include succeeded adjustments; pending and manual-review amounts are reported separately. Return receipt ranges are marked unavailable because the current POS does not store a separate return receipt number range.
+
+Snapshots created before detailed capture was added return `details.captured=false` with an explanation; the server does not backfill their details from current transaction data. If the date has no saved reading for the authorized branch, the endpoint returns not found.
+
 ### GET /pos/x-reading/current
 Retrieve an in-progress (on-demand) X-reading snapshot for a business date and optional terminal.
 
