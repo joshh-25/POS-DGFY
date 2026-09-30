@@ -22,6 +22,7 @@ import {
   ShoppingBag,
   Sparkles,
   Store,
+  Ticket,
   Truck,
   UserRound,
   Users,
@@ -42,6 +43,7 @@ const HospitalityPage = lazy(() => import('../../../../../packages/web-core/src/
 const SalesPage = lazy(() => import('../../../../../packages/web-core/src/features/sales/pages/SalesPage.jsx'));
 const ReportsPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/ReportsPage.jsx'));
 const AiChatPage = lazy(() => import('../../../../../packages/web-core/src/features/merchantBackOffice/pages/AiChatPage.jsx'));
+const LegacyPromosPage = lazy(() => import('./LegacyPromosPage.jsx'));
 
 const BUSINESS_ADMIN_ACCESS_PERMISSION = 'business_admin:access';
 
@@ -66,6 +68,9 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   sales: module('Sales', 'sales', 'Sales timeline', '', ShoppingBag, SalesPage),
   orders: module('Sales', 'orders', 'Order center', 'Investigate completed, voided, and storefront orders with receipt-safe detail history.', ShoppingBag),
   payments: module('Sales', 'payments', 'Payments', 'Review this business’s online payments and provider refund status.', Wallet),
+  // #2159: transitional read/revoke surface for setting-backed legacy promos. Retires with the
+  // legacy settings path under #991; not a home for voucher-authoring UI (that stays in POS).
+  vouchers: module('Sales', 'vouchers', 'Vouchers', 'Inspect legacy storefront promo codes and revoke an individual code.', Ticket, LegacyPromosPage),
   customers: module('Customers', 'customers', 'Customers', 'Review customer links and related transactions from the canonical Order Center.', UserRound),
   catalog: module('Inventory', 'catalog', 'Catalog editor', 'Create, update, import, export, and organize the canonical catalog.', Package, CatalogPage),
   inventory: module('Inventory', 'inventory', 'Inventory insights', 'Read the canonical branch stock ledger and FIFO valuation where cost access is granted.', Database),

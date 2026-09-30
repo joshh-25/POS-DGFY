@@ -23,7 +23,11 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../modules/shared/utils/customerAccessPolicy.js';
-import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
+import {
+    parsePublicCommercialPromos,
+    projectPublicLegacyPromo,
+    resolveCommercialPromoTimezone
+} from '../modules/shared/utils/commercialPromoPolicy.js';
 import {
     DEFAULT_VOUCHER_TIMEZONE,
     evaluateVoucherEligibility
@@ -823,7 +827,12 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         .filter(Boolean)
         .slice(0, 8);
     const storefrontPromoRaw = parseJsonObject(settings.storefront_promo) || null;
-    const storefrontPromos = parsePublicCommercialPromos(parseJsonArray(settings.storefront_promos));
+    // #2159: a revoked/exhausted/expired legacy code must not be materialized into the public index
+    // row that Storefront discovery serves. The timezone comes from storefront_hours, same source
+    // (and default) the checkout evaluator uses.
+    const promoTimezone = resolveCommercialPromoTimezone(settings);
+    const storefrontPromoVisible = projectPublicLegacyPromo(storefrontPromoRaw, { timezone: promoTimezone });
+    const storefrontPromos = parsePublicCommercialPromos(parseJsonArray(settings.storefront_promos), { timezone: promoTimezone });
     // #713: a voucher-backed sibling of storefrontPromos above -- same "publicly advertised on the
     // storefront" concept, adapted to the voucher schema. Independent of `channels_mask`
     // (usability): a voucher must be BOTH `is_publicly_listed` AND storefront-channel-eligible to
@@ -833,13 +842,13 @@ const buildTenantSnapshotWithConnection = async (tenant, tenantConnection) => {
         Voucher,
         timezone: settings.storefront_hours?.value?.timezone || DEFAULT_VOUCHER_TIMEZONE
     });
-    const storefrontPromo = storefrontPromoRaw
+    const storefrontPromo = storefrontPromoVisible
         ? {
-            title: toTrimmedString(storefrontPromoRaw.title, 100),
-            subtitle: toTrimmedString(storefrontPromoRaw.subtitle, 160),
-            badge: toTrimmedString(storefrontPromoRaw.badge, 60),
-            validity_text: toTrimmedString(storefrontPromoRaw.validity_text, 120),
-            active: storefrontPromoRaw.active === true
+            title: toTrimmedString(storefrontPromoVisible.title, 100),
+            subtitle: toTrimmedString(storefrontPromoVisible.subtitle, 160),
+            badge: toTrimmedString(storefrontPromoVisible.badge, 60),
+            validity_text: toTrimmedString(storefrontPromoVisible.validity_text, 120),
+            active: storefrontPromoVisible.active === true
         }
         : null;
     const storefrontUiV2Enabled = parseBoolean(settings.storefront_ui_v2_enabled, false);
