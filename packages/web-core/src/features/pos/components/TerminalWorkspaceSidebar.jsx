@@ -102,7 +102,7 @@ export default function TerminalWorkspaceSidebar({
   onSelectViewMode = () => {},
   onPrefetchViewMode = () => {},
   onUnlock = () => {},
-  onLock = () => {}
+  onLock = () => {},
 }) {
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';

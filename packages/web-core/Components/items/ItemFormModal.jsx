@@ -212,6 +212,7 @@ export default function ItemFormModal({
   showStorefrontCatalogControls = true,
   onTogglePosVisibility,
   onTogglePosAlwaysAvailable,
+  onOpenBulkPosSetup,
   onTogglePosLocationAvailability,
   onResetPosLocationAvailability,
   onToggleStorefrontVisibility,
@@ -2000,6 +2001,16 @@ export default function ItemFormModal({
                       disabled={!onTogglePosAlwaysAvailable}
                     >
                       {posConfig?.pos_always_available === true ? 'Always Available: On' : 'Always Available: Off'}
+                    </Button>
+                  )}
+                  {item && !isFnbMode && onOpenBulkPosSetup && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onOpenBulkPosSetup}
+                    >
+                      Open Bulk POS Setup
                     </Button>
                   )}
                 </div>

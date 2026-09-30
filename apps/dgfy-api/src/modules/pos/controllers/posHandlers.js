@@ -694,7 +694,7 @@ export const loginCashier = async (req, res, next) => {
             setTenantSessionCookies(res, {
                 refreshToken: result.data?.refreshToken,
                 tenantToken: req.headers?.['x-company-token'] || req.tenant?.company_token || null
-            });
+            }, req);
             await persistPosSessionAudit(req, result, 'terminal_login');
         }
         return sendUseCaseResult(res, result, {

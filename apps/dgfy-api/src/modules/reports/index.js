@@ -16,6 +16,19 @@ import {
   buildGetSupplierPerformanceUseCase
 } from './usecases/reportUseCases.js';
 
+export {
+  BUSINESS_ADMIN_REPORT_DEFINITIONS,
+  LEGACY_BACK_OFFICE_REPORT_DEFINITIONS,
+  REPORT_REGISTRY,
+  TERMINAL_REPORT_DEFINITIONS,
+  getReportDefinition,
+  getReportSortColumnMap,
+  getReportSortFields,
+  listBusinessAdminReportDefinitions,
+  listReportDefinitions,
+  listTerminalReportDefinitions
+} from './domain/reportRegistry.js';
+
 export const getExpiryReportUseCase = buildGetExpiryReportUseCase({ reportService });
 export const getEnhancedStockAgingUseCase = buildGetEnhancedStockAgingUseCase({ reportService });
 export const getProductionReportUseCase = buildGetProductionReportUseCase({ reportService });

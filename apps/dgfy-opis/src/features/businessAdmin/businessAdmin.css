@@ -1,0 +1,2111 @@
+.business-admin-shell {
+  /* shared Business Admin shell */
+  min-height: 100vh;
+  display: flex;
+  background: #f3f5f8;
+  color: #0f172a;
+}
+
+.business-admin-mobile-bar,
+.business-admin-mobile-nav-backdrop,
+.business-admin-mobile-sidebar-close { display: none; }
+
+.business-admin-sidebar {
+  width: 272px;
+  flex: 0 0 272px;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  background: #fff;
+  color: #0f172a;
+  border-right: 1px solid #e2e8f0;
+  padding: 22px 14px;
+  overflow-y: auto;
+  max-height: 100vh;
+  transition: width .18s ease, flex-basis .18s ease, padding .18s ease, transform .2s ease;
+}
+
+.business-admin-sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.business-admin-sidebar-header .business-admin-brand { min-width: 0; flex: 1 1 auto; }
+
+.business-admin-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 4px 10px 22px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.business-admin-brand-logo {
+  display: block;
+  width: 146px;
+  height: auto;
+  max-height: 50px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.business-admin-brand-title { color: #0f172a; font-weight: 800; line-height: 1.15; }
+.business-admin-brand-subtitle { font-size: 11px; color: #64748b; margin-top: 3px; }
+
+.business-admin-nav-group { margin-top: 19px; }
+.business-admin-nav-group.is-standalone { margin-top: 10px; }
+.business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
+.business-admin-nav-label {
+  padding: 0 10px 7px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.business-admin-nav-item {
+  width: 100%;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 10px;
+  margin: 2px 0;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.business-admin-nav-item:hover { background: #eff7ff; color: #1a4e8d; }
+.business-admin-nav-item.active { background: #1a4e8d; color: #fff; font-weight: 800; box-shadow: 0 5px 12px rgba(26, 78, 141, .16); }
+.business-admin-nav-item:active { transform: translateY(1px); }
+.business-admin-nav-item:focus-visible { outline: 3px solid rgba(37, 99, 235, .28); outline-offset: 2px; }
+.business-admin-nav-item svg { flex: 0 0 auto; }
+.business-admin-nav-item-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-nav-item-badge { flex: 0 0 auto; }
+.business-admin-account-actions { margin-top: 10px; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+
+@media (min-width: 681px) {
+  .business-admin-sidebar.is-collapsed {
+    width: 72px;
+    flex-basis: 72px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-brand {
+    align-items: center;
+    gap: 0;
+    padding-right: 0;
+    padding-left: 0;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-brand-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    object-position: left center;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-brand > div,
+  .business-admin-sidebar.is-collapsed .business-admin-nav-label,
+  .business-admin-sidebar.is-collapsed .business-admin-nav-item-label {
+    display: none;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-nav-group { margin-top: 14px; }
+  .business-admin-sidebar.is-collapsed .business-admin-nav-item {
+    position: relative;
+    justify-content: center;
+    gap: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-nav-item-badge {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    margin: 0;
+    padding: 2px 4px;
+    font-size: 9px;
+    line-height: 1;
+  }
+  .business-admin-sidebar.is-collapsed .business-admin-sidebar-header { display: block; }
+  .business-admin-sidebar.is-collapsed .business-admin-sidebar-toggle { margin: 10px auto 0; }
+}
+
+.business-admin-main { min-width: 0; flex: 1; padding: 26px 30px 42px; }
+.business-admin-migrated-module { min-width: 0; }
+.business-admin-migrated-module > :last-child { min-width: 0; }
+.business-admin-fnb-workspace { display: grid; gap: 18px; min-width: 0; }
+.business-admin-fnb-overview { display: grid; gap: 14px; border: 1px solid #cfe5e1; border-radius: 18px; padding: 18px; background: linear-gradient(145deg, #effbf9 0%, #ffffff 74%); box-shadow: 0 8px 24px rgba(23, 50, 77, .055); }
+.business-admin-fnb-overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.business-admin-fnb-overview-kicker { display: block; color: #0b817b; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.business-admin-fnb-overview-heading h2 { margin: 3px 0 0; color: #123e57; font-size: 20px; font-weight: 900; letter-spacing: -.025em; line-height: 1.2; }
+.business-admin-fnb-live-badge { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; border: 1px solid #c5e7e2; border-radius: 99px; padding: 6px 10px; color: #0b7772; background: #f6fffd; font-size: 10px; font-weight: 900; white-space: nowrap; }
+.business-admin-fnb-live-badge > span { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: #18a47f; box-shadow: 0 0 0 3px rgba(24, 164, 127, .12); }
+.business-admin-fnb-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.business-admin-fnb-metric { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 76px; border: 1px solid #dce8ef; border-radius: 13px; padding: 12px; background: rgba(255, 255, 255, .84); transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease; }
+.business-admin-fnb-metric.has-activity { border-color: #f1d48c; background: #fffaf0; box-shadow: 0 4px 12px rgba(185, 126, 28, .08); }
+.business-admin-fnb-metric-icon { width: 32px; height: 32px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid #c7e9e4; border-radius: 10px; background: #f0fbf9; color: #0b817b; }
+.business-admin-fnb-metric.has-activity .business-admin-fnb-metric-icon { border-color: #f0d18a; background: #fff4d8; color: #a96800; }
+.business-admin-fnb-metric-copy { display: grid; min-width: 0; gap: 2px; }
+.business-admin-fnb-metric-copy span { overflow: hidden; color: #71879a; font-size: 9px; font-weight: 900; letter-spacing: .06em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.business-admin-fnb-metric-copy strong { color: #123e57; font-size: 21px; font-weight: 900; letter-spacing: -.035em; line-height: 1.15; }
+.business-admin-fnb-metric-copy small { overflow: hidden; color: #8da0af; font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-fnb-tabs { min-width: 0; overflow: hidden; border: 1px solid #dce8ef; border-radius: 14px; background: #fff; box-shadow: 0 5px 16px rgba(23, 50, 77, .035); }
+.business-admin-fnb-tabs-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 14px 8px; }
+.business-admin-fnb-tabs-heading span { color: #123e57; font-size: 12px; font-weight: 900; }
+.business-admin-fnb-tabs-heading small { color: #8da0af; font-size: 10px; }
+.business-admin-fnb-tabs-scroll { display: flex; gap: 4px; min-width: 0; overflow-x: auto; padding: 6px; scrollbar-color: #9fcac6 transparent; scrollbar-width: thin; }
+.business-admin-fnb-tabs-scroll::-webkit-scrollbar { height: 6px; }
+.business-admin-fnb-tabs-scroll::-webkit-scrollbar-track { background: transparent; }
+.business-admin-fnb-tabs-scroll::-webkit-scrollbar-thumb { border-radius: 99px; background: #9fcac6; }
+.business-admin-fnb-tab { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 0 0 auto; min-height: 36px; border: 1px solid transparent; border-radius: 9px; padding: 8px 11px; background: transparent; color: #60788b; font-size: 11px; font-weight: 900; cursor: pointer; white-space: nowrap; }
+.business-admin-fnb-tab:hover { border-color: #cfe3e7; background: #f7fcfc; color: #205b78; }
+.business-admin-fnb-tab.active { border-color: #bfe3df; background: #effbf9; color: #0b706c; box-shadow: 0 3px 8px rgba(21, 152, 145, .08); }
+.business-admin-fnb-tab:focus-visible { outline: 3px solid rgba(21, 152, 145, .24); outline-offset: 2px; }
+.business-admin-fnb-tabs-hint { display: none; }
+.business-admin-fnb-tab-panel { display: grid; gap: 16px; min-width: 0; }
+.business-admin-fnb-layout { min-width: 0; }
+.business-admin-fnb-panel { min-width: 0; padding: 18px; }
+.business-admin-fnb-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; min-width: 0; }
+.business-admin-fnb-panel-header > div { min-width: 0; }
+.business-admin-fnb-panel-kicker { display: block; color: #0b817b; font-size: 9px; font-weight: 900; letter-spacing: .1em; line-height: 1.2; text-transform: uppercase; }
+.business-admin-fnb-panel-header h2 { margin: 4px 0 0; color: #123e57; font-size: 18px; font-weight: 900; letter-spacing: -.02em; line-height: 1.2; }
+.business-admin-fnb-panel-description { margin: 6px 0 0; color: #71879a; font-size: 12px; line-height: 1.45; }
+.business-admin-fnb-panel-count { flex: 0 0 auto; border: 1px solid #dce8ef; border-radius: 99px; padding: 5px 9px; color: #60788b; background: #f8fbfd; font-size: 10px; font-weight: 900; white-space: nowrap; }
+.business-admin-fnb-setup-panel { background: linear-gradient(180deg, #fbfffe 0%, #ffffff 72%); }
+.business-admin-fnb-setup-panel .business-admin-fnb-panel-header { padding-bottom: 13px; border-bottom: 1px solid #e4eef1; }
+.business-admin-fnb-record-grid { min-width: 0; }
+.business-admin-fnb-empty-state { display: flex; align-items: center; grid-column: 1 / -1; gap: 12px; min-height: 136px; border: 1px dashed #c9e0e2; border-radius: 14px; padding: 18px; background: linear-gradient(135deg, #f8fdfc 0%, #fbfdff 100%); }
+.business-admin-fnb-empty-icon { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 1px solid #c7e9e4; border-radius: 12px; color: #0b817b; background: #effbf9; }
+.business-admin-fnb-empty-copy { min-width: 0; }
+.business-admin-fnb-empty-copy h3 { margin: 0; color: #123e57; font-size: 14px; font-weight: 900; }
+.business-admin-fnb-empty-copy p { margin: 4px 0 0; color: #71879a; font-size: 12px; line-height: 1.45; }
+.business-admin-fnb-empty-status { margin-left: auto; flex: 0 0 auto; border: 1px solid #c7e9e4; border-radius: 99px; padding: 5px 9px; color: #0b7772; background: #f4fffd; font-size: 10px; font-weight: 900; }
+.business-admin-fnb-inline-empty { display: flex; align-items: center; grid-column: 1 / -1; gap: 8px; min-height: 76px; border: 1px dashed #d3e2e7; border-radius: 12px; padding: 14px; color: #71879a; background: #fbfdfe; font-size: 12px; }
+.business-admin-fnb-tab-panel section { border-color: #dce8ef; border-radius: 16px; box-shadow: 0 6px 18px rgba(23, 50, 77, .04); }
+.business-admin-fnb-tab-panel article { border-color: #e1ebf0; border-radius: 12px; background: #fbfdfe; }
+.business-admin-fnb-boundary-note { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid #cfe3e7; border-radius: 12px; padding: 11px 13px; background: linear-gradient(90deg, #f1fbfa 0%, #f8fbfd 72%); color: #60788b; font-size: 11px; line-height: 1.45; }
+.business-admin-fnb-boundary-icon { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 1px solid #c7e9e4; border-radius: 9px; color: #0b817b; background: #fff; }
+.business-admin-fnb-boundary-note > div { display: grid; min-width: 0; gap: 2px; }
+.business-admin-fnb-boundary-note strong { color: #205b78; font-weight: 900; }
+.business-admin-fnb-read-only-pill { flex: 0 0 auto; border: 1px solid #dce8ef; border-radius: 99px; padding: 5px 9px; color: #60788b; background: #f8fbfd; font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.business-admin-fnb-loading { margin: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 16px; background: #fff; color: #71879a; font-size: 12px; }
+.business-admin-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+.business-admin-topbar-leading { min-width: 0; display: flex; align-items: flex-start; gap: 14px; }
+.business-admin-topbar-leading > div { min-width: 0; }
+.business-admin-sidebar-toggle {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfe0e8;
+  border-radius: 10px;
+  background: #fff;
+  color: #205b78;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease;
+}
+.business-admin-sidebar-toggle:hover { border-color: #2563eb; background: #eff7ff; color: #1a4e8d; }
+.business-admin-sidebar-toggle:active { transform: translateY(1px); }
+.business-admin-sidebar-toggle:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+.business-admin-eyebrow { color: #1a4e8d; font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.business-admin-heading { color: #0f172a; font-size: clamp(25px, 3vw, 34px); font-weight: 900; letter-spacing: -.03em; margin: 4px 0; }
+.business-admin-description { color: #64748b; font-size: 14px; max-width: 720px; }
+.business-admin-top-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.business-admin-button {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  padding: 8px 13px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+.business-admin-button:hover { border-color: #2563eb; color: #1a4e8d; background: #eff7ff; }
+.business-admin-button.primary { border-color: #1a4e8d; background: #1a4e8d; color: #fff; }
+.business-admin-button.primary:hover { border-color: #143f73; background: #143f73; color: #fff; }
+.business-admin-button.danger { border-color: #f2c5c1; color: #a83d35; }
+.business-admin-button:active { transform: translateY(1px); }
+.business-admin-button:disabled { opacity: .55; cursor: wait; }
+
+.business-admin-filter-card,
+.business-admin-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, .05);
+}
+.business-admin-filter-card { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding: 14px; margin-bottom: 18px; }
+.business-admin-branches-filter-card { border-color: #d3e4ec; background: linear-gradient(135deg, #fff 0%, #f7fbfd 100%); }
+.business-admin-branches-filter-card .business-admin-scope { margin-left: auto; }
+.business-admin-field { display: flex; flex-direction: column; gap: 5px; min-width: 150px; }
+.business-admin-field label { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.business-admin-field input,
+.business-admin-field select,
+.business-admin-search {
+  min-height: 36px;
+  border: 1px solid #cad9e5;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #1e425c;
+  font-size: 13px;
+}
+.business-admin-field input:focus,
+.business-admin-field select:focus,
+.business-admin-search:focus { outline: 2px solid rgba(37, 99, 235, .18); border-color: #2563eb; }
+.business-admin-filter-spacer { flex: 1; }
+.business-admin-scope { align-self: center; color: #64748b; font-size: 12px; }
+
+.business-admin-workspace {
+  min-width: 0;
+  animation: business-admin-workspace-enter .18s cubic-bezier(.2, .65, .3, 1) both;
+}
+.business-admin-workspace-loading {
+  min-height: 220px;
+  margin-bottom: 18px;
+  border: 1px solid #dce7ef;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff 0%, #f7fbfd 100%);
+  box-shadow: 0 7px 22px rgba(23, 50, 77, .05);
+}
+@keyframes business-admin-workspace-enter {
+  from { opacity: 1; transform: translate3d(12px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.business-admin-alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid #f0d39b;
+  border-radius: 10px;
+  background: #fffaf0;
+  color: #805d1f;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.business-admin-alert.error { border-color: #f0c8c5; background: #fff7f6; color: #9d4037; }
+.business-admin-alert.info { border-color: #bfdfed; background: #f1faff; color: #205b78; }
+
+.business-admin-metric-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.business-admin-metric { padding: 15px; min-height: 104px; }
+.business-admin-metric-label { color: #64748b; font-size: 11px; font-weight: 800; }
+.business-admin-metric-value { color: #0f172a; font-size: 24px; font-weight: 900; letter-spacing: -.035em; margin-top: 9px; }
+.business-admin-metric-hint { color: #94a3b8; font-size: 11px; margin-top: 2px; }
+.business-admin-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; min-width: 0; }
+.business-admin-grid > .business-admin-card { min-width: 0; max-width: 100%; }
+.business-admin-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 15px 16px 12px; border-bottom: 1px solid #e2e8f0; }
+.business-admin-card-title { color: #0f172a; font-size: 14px; font-weight: 900; }
+.business-admin-card-subtitle { color: #64748b; font-size: 11px; margin-top: 3px; }
+.business-admin-card-body { padding: 15px 16px; }
+.business-admin-card-body.flush { padding: 0; }
+.business-admin-overview-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; min-width: 0; }
+.business-admin-overview-chart-card { min-width: 0; overflow: hidden; }
+.business-admin-overview-sales-card { grid-column: 1 / -1; }
+.business-admin-overview-chart-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid #e2e8f0; }
+.business-admin-overview-chart-header h2 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 900; }
+.business-admin-overview-chart-header p { margin: 4px 0 0; color: #64748b; font-size: 11px; }
+.business-admin-overview-chart-control { flex: 0 0 auto; min-width: 142px; border: 0; border-bottom: 1px solid #cbd5e1; padding: 4px 22px 6px 2px; background: #fff; color: #64748b; font-family: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-overview-chart-body { min-width: 0; padding: 10px 12px 14px; }
+.business-admin-overview-chart-plot { width: 100%; height: 280px; min-width: 0; }
+.business-admin-overview-chart-empty { display: flex; align-items: center; justify-content: center; min-height: 240px; border: 1px dashed #d6e1e8; border-radius: 12px; color: #64748b; background: #fbfdfe; font-size: 12px; font-weight: 700; text-align: center; }
+
+.business-admin-table-wrap { width: 100%; overflow-x: auto; }
+.business-admin-table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 12px; }
+.business-admin-table th { color: #64748b; background: #f8fafc; font-size: 10px; font-weight: 900; letter-spacing: .06em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.business-admin-table th, .business-admin-table td { padding: 10px 13px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.business-admin-table tbody tr:hover { background: #f8fbff; }
+.business-admin-table tbody tr:last-child td { border-bottom: 0; }
+.business-admin-table td strong { color: #1e293b; }
+.business-admin-muted { color: #64748b; }
+.business-admin-empty { color: #7c92a2; font-size: 13px; text-align: center; padding: 28px 14px; }
+.business-admin-status { display: inline-flex; align-items: center; border-radius: 99px; padding: 3px 8px; background: #f1f5f9; color: #475569; font-size: 10px; font-weight: 900; text-transform: capitalize; }
+.business-admin-status.online, .business-admin-status.completed, .business-admin-status.closed, .business-admin-status.available { background: #e8f8f3; color: #1d7d64; }
+.business-admin-status.warning, .business-admin-status.open, .business-admin-status.preparing { background: #fff4dc; color: #926b22; }
+.business-admin-status.critical, .business-admin-status.failed, .business-admin-status.voided { background: #fff0ee; color: #a8453c; }
+.business-admin-locations-workspace { display: grid; gap: 16px; }
+.business-admin-locations-results { position: relative; min-width: 0; min-height: 220px; scroll-margin-top: 16px; }
+.business-admin-locations-results-content { min-height: 220px; transition: transform .2s cubic-bezier(.2, .65, .3, 1); will-change: transform; }
+.business-admin-locations-results.is-refreshing .business-admin-locations-results-content { transform: translate3d(8px, 0, 0); }
+.business-admin-locations-refreshing { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .76); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-locations-panel-error { margin-top: 12px; }
+.business-admin-locations-tabs { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px; border: 1px solid #dce8ef; border-radius: 14px; background: #f7fbfd; }
+.business-admin-locations-tab { display: inline-flex; min-height: 38px; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 10px; padding: 8px 14px; background: transparent; color: #5f7485; font-size: 12px; font-weight: 900; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease; }
+.business-admin-locations-tab:hover { border-color: #cce9e6; background: #fff; color: #1a4e8d; }
+.business-admin-locations-tab.active { border-color: #1a4e8d; background: #1a4e8d; color: #fff; box-shadow: 0 4px 10px rgba(26, 78, 141, .16); }
+.business-admin-locations-tab:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+.business-admin-branches-workspace { display: grid; gap: 16px; }
+.business-admin-branches-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-branches-metric { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px; }
+.business-admin-branches-metric-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #cce9e6;
+  border-radius: 12px;
+  background: #effcfb;
+  color: #0d8d87;
+}
+.business-admin-branches-metric-copy { min-width: 0; }
+.business-admin-branches-metric-label { color: #71879a; font-size: 11px; font-weight: 800; }
+.business-admin-branches-metric-value { margin-top: 5px; color: #123e57; font-size: 21px; font-weight: 900; letter-spacing: -.035em; white-space: nowrap; }
+.business-admin-branches-metric-detail { margin-top: 2px; color: #8da0af; font-size: 11px; line-height: 1.35; }
+.business-admin-branches-primary-card,
+.business-admin-branches-company-card { overflow: hidden; }
+.business-admin-branches-count,
+.business-admin-branches-section-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #cce9e6;
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: #effcfb;
+  color: #0d7773;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.business-admin-branch-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; }
+.business-admin-branch-card {
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 16px;
+  padding: 16px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.business-admin-branch-card:hover { border-color: #a9d9d5; box-shadow: 0 9px 24px rgba(23, 50, 77, .08); transform: translateY(-1px); }
+.business-admin-branch-card-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.business-admin-branch-icon { width: 38px; height: 38px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 11px; background: #eaf5ff; color: #1a4e8d; }
+.business-admin-branch-name-block { display: grid; min-width: 0; gap: 5px; }
+.business-admin-branch-name-block strong { overflow: hidden; color: #173e58; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-branch-status { display: inline-flex; align-items: center; gap: 5px; color: #638294; font-size: 10px; font-weight: 800; }
+.business-admin-branch-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #19a77c; box-shadow: 0 0 0 3px #def6ed; }
+.business-admin-branch-card-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 16px; padding-top: 14px; border-top: 1px solid #e7eff3; }
+.business-admin-branch-card-metrics div { min-width: 0; display: grid; gap: 4px; }
+.business-admin-branch-card-metrics span { color: #8398a7; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-branch-card-metrics strong { overflow: hidden; color: #173e58; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-branches-company-table .business-admin-table-wrap { scrollbar-color: #a9c0cc #f5f9fb; scrollbar-width: thin; }
+.business-admin-branches-company-table .business-admin-table-wrap::-webkit-scrollbar { height: 7px; }
+.business-admin-branches-company-table .business-admin-table-wrap::-webkit-scrollbar-track { background: #f5f9fb; }
+.business-admin-branches-company-table .business-admin-table-wrap::-webkit-scrollbar-thumb { border-radius: 99px; background: #a9c0cc; }
+.business-admin-branches-company-table .business-admin-table { min-width: 620px; }
+.business-admin-branches-company-table .business-admin-table th:not(:first-child),
+.business-admin-branches-company-table .business-admin-table td:not(:first-child) { text-align: right; }
+.business-admin-branches-company-cards { display: none; }
+.business-admin-branches-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.business-admin-team-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.business-admin-team-actions .business-admin-button { white-space: nowrap; }
+.business-admin-workforce-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.business-admin-workforce-header-actions .business-admin-button { white-space: nowrap; }
+.business-admin-workforce-workspace { display: grid; gap: 16px; }
+.business-admin-workforce-contract,
+.business-admin-customer-contract,
+.business-admin-customer-loyalty-contract { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #bfdfed; border-radius: 12px; padding: 11px 13px; background: #f1faff; color: #205b78; }
+.business-admin-workforce-contract > svg,
+.business-admin-customer-contract > svg,
+.business-admin-customer-loyalty-contract > svg { flex: 0 0 auto; margin-top: 1px; color: #0d8d87; }
+.business-admin-workforce-contract-copy,
+.business-admin-customer-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-workforce-contract-copy strong,
+.business-admin-customer-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-workforce-contract-copy span,
+.business-admin-customer-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-customer-loyalty-contract { border-color: #e6d5b0; background: #fffaf0; color: #8c6a2e; }
+.business-admin-customer-loyalty-contract > svg { color: #b27c1f; }
+.business-admin-customer-loyalty-contract .business-admin-customer-contract-copy strong { color: #8c651d; }
+.business-admin-customer-loyalty-contract .business-admin-customer-contract-copy span { color: #987a43; }
+.business-admin-customer-form-card { min-width: 0; }
+.business-admin-customer-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.business-admin-customer-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.business-admin-customer-form .business-admin-field { min-width: 0; }
+@media (max-width: 760px) {
+  .business-admin-customer-form { grid-template-columns: 1fr; }
+  .business-admin-customer-form-actions { justify-content: stretch; }
+  .business-admin-customer-form-actions .business-admin-button { width: 100%; }
+}
+.business-admin-company-card { border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: #fbfefe; }
+.business-admin-company-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.business-admin-company-card-heading strong { display: block; color: #173e58; font-size: 13px; }
+.business-admin-company-card-heading span:not(.business-admin-company-card-tag) { display: block; margin-top: 3px; color: #8398a7; font-size: 10px; }
+.business-admin-company-card-tag { display: inline-flex; border: 1px solid #d7e7ed; border-radius: 99px; padding: 4px 7px; color: #638294; background: #fff; font-size: 9px; font-weight: 900; letter-spacing: .06em; }
+.business-admin-company-card-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-company-card-metrics div { display: grid; gap: 3px; }
+.business-admin-company-card-metrics span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-company-card-metrics strong { color: #173e58; font-size: 13px; }
+.business-admin-attendance-workspace { display: grid; gap: 16px; }
+.business-admin-attendance-contract {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bfdfed;
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: #f1faff;
+  color: #205b78;
+}
+.business-admin-attendance-contract > svg { flex: 0 0 auto; color: #0d8d87; }
+.business-admin-attendance-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-attendance-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-attendance-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-attendance-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.business-admin-attendance-metric { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px; }
+.business-admin-attendance-metric-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #cce9e6;
+  border-radius: 12px;
+  background: #effcfb;
+  color: #0d8d87;
+}
+.business-admin-attendance-metric-copy { min-width: 0; }
+.business-admin-attendance-metric-label { color: #71879a; font-size: 11px; font-weight: 800; }
+.business-admin-attendance-metric-value { margin-top: 5px; color: #123e57; font-size: 21px; font-weight: 900; letter-spacing: -.035em; white-space: nowrap; }
+.business-admin-attendance-metric-detail { margin-top: 2px; color: #8da0af; font-size: 11px; line-height: 1.35; }
+.business-admin-attendance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; min-width: 0; }
+.business-admin-attendance-section-card { min-width: 0; overflow: hidden; }
+.business-admin-attendance-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #cce9e6;
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: #effcfb;
+  color: #0d7773;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.business-admin-attendance-record-list { display: grid; gap: 10px; padding: 16px; }
+.business-admin-attendance-record {
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+}
+.business-admin-attendance-record-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-attendance-record-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-attendance-record-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5ff; color: #1a4e8d; }
+.business-admin-attendance-record-icon.operator { background: #effcfb; color: #0d8d87; }
+.business-admin-attendance-record-copy { display: grid; gap: 4px; min-width: 0; }
+.business-admin-attendance-record-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-attendance-record-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-attendance-record-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-attendance-record-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-attendance-record-facts.operator { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-admin-attendance-record-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-attendance-record-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-attendance-record-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-shifts-workspace { display: grid; gap: 16px; }
+.business-admin-shifts-contract {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bfdfed;
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: #f1faff;
+  color: #205b78;
+}
+.business-admin-shifts-contract > svg { flex: 0 0 auto; color: #0d8d87; }
+.business-admin-shifts-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-shifts-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-shifts-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-shifts-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.business-admin-shifts-metric { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px; }
+.business-admin-shifts-metric-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #cce9e6;
+  border-radius: 12px;
+  background: #effcfb;
+  color: #0d8d87;
+}
+.business-admin-shifts-metric-copy { min-width: 0; }
+.business-admin-shifts-metric-label { color: #71879a; font-size: 11px; font-weight: 800; }
+.business-admin-shifts-metric-value { margin-top: 5px; color: #123e57; font-size: 21px; font-weight: 900; letter-spacing: -.035em; white-space: nowrap; }
+.business-admin-shifts-metric-detail { margin-top: 2px; color: #8da0af; font-size: 11px; line-height: 1.35; }
+.business-admin-shifts-section-card { min-width: 0; overflow: hidden; }
+.business-admin-shifts-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #cce9e6;
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: #effcfb;
+  color: #0d7773;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.business-admin-shifts-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid #edf2f6;
+  padding: 12px 14px;
+  background: #fbfefe;
+}
+.business-admin-shifts-pagination-summary { display: flex; align-items: baseline; gap: 5px; color: #7890a1; font-size: 11px; }
+.business-admin-shifts-pagination-summary strong { color: #234b64; font-size: 12px; }
+.business-admin-shifts-pagination-actions { grid-column: 2; display: flex; align-items: center; gap: 8px; }
+.business-admin-shifts-pagination-actions .business-admin-button { min-height: 34px; padding: 7px 10px; }
+.business-admin-shifts-pagination-actions .business-admin-button:disabled { cursor: not-allowed; }
+.business-admin-shifts-pagination-page { min-width: 92px; color: #5d7f91; font-size: 11px; font-weight: 800; text-align: center; }
+.business-admin-shifts-results { position: relative; min-height: 150px; scroll-margin-top: 16px; }
+.business-admin-shifts-results-content { min-height: 150px; }
+.business-admin-shifts-results.is-refreshing .business-admin-shifts-results-content { opacity: .48; transition: opacity .16s ease; }
+.business-admin-shifts-refreshing { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .76); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-shifts-panel-error { margin: 12px 14px 0; }
+.business-admin-shifts-table-view { display: block; }
+.business-admin-shifts-mobile-view { display: none; }
+.business-admin-shifts-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-cash-summary-section-card { min-width: 0; overflow: hidden; }
+.business-admin-cash-summary-table-wrap { width: 100%; overflow-x: auto; }
+.business-admin-cash-summary-table { min-width: 900px; table-layout: fixed; }
+.business-admin-cash-summary-table th,
+.business-admin-cash-summary-table td { overflow-wrap: anywhere; }
+.business-admin-cash-summary-table th:nth-child(1),
+.business-admin-cash-summary-table td:nth-child(1) { width: 11%; }
+.business-admin-cash-summary-table th:nth-child(2),
+.business-admin-cash-summary-table td:nth-child(2),
+.business-admin-cash-summary-table th:nth-child(3),
+.business-admin-cash-summary-table td:nth-child(3) { width: 16%; }
+.business-admin-cash-summary-table th:nth-child(4),
+.business-admin-cash-summary-table td:nth-child(4) { width: 16%; }
+.business-admin-cash-summary-table th:nth-child(5),
+.business-admin-cash-summary-table td:nth-child(5),
+.business-admin-cash-summary-table th:nth-child(6),
+.business-admin-cash-summary-table td:nth-child(6),
+.business-admin-cash-summary-table th:nth-child(7),
+.business-admin-cash-summary-table td:nth-child(7) { width: 14.33%; text-align: right; }
+.business-admin-cash-summary-table th:nth-child(2),
+.business-admin-cash-summary-table td:nth-child(2) { width: 14%; }
+.business-admin-cash-summary-table th:nth-child(3),
+.business-admin-cash-summary-table td:nth-child(3),
+.business-admin-cash-summary-table th:nth-child(4),
+.business-admin-cash-summary-table td:nth-child(4),
+.business-admin-cash-summary-table th:nth-child(5),
+.business-admin-cash-summary-table td:nth-child(5),
+.business-admin-cash-summary-table th:nth-child(6),
+.business-admin-cash-summary-table td:nth-child(6),
+.business-admin-cash-summary-table th:nth-child(7),
+.business-admin-cash-summary-table td:nth-child(7) { white-space: nowrap; }
+.business-admin-cash-summary-empty { display: flex; min-height: 260px; align-items: center; justify-content: center; flex-direction: column; gap: 8px; padding: 28px 16px; color: #5d7485; text-align: center; }
+.business-admin-cash-summary-empty-icon { display: grid; width: 80px; height: 80px; place-items: center; margin-bottom: 4px; border-radius: 50%; background: #f4f5f6; color: #a3a3a3; }
+.business-admin-cash-summary-empty strong { color: #5d7485; font-size: 24px; font-weight: 500; }
+.business-admin-cash-summary-empty span { color: #6e7f8d; font-size: 14px; }
+.business-admin-cash-summary-pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; border-top: 1px solid #edf2f6; padding: 12px 16px; background: #fff; color: #5d7485; font-size: 12px; }
+.business-admin-cash-summary-pagination-actions { display: flex; align-items: center; }
+.business-admin-cash-summary-pagination-button { display: inline-grid; width: 42px; height: 36px; place-items: center; border: 1px solid #dce5ea; background: #fff; color: #456273; cursor: pointer; }
+.business-admin-cash-summary-pagination-button:first-child { border-radius: 4px 0 0 4px; }
+.business-admin-cash-summary-pagination-button + .business-admin-cash-summary-pagination-button { margin-left: -1px; border-radius: 0 4px 4px 0; }
+.business-admin-cash-summary-pagination-button:hover:not(:disabled) { background: #f5fafb; color: #0d7773; }
+.business-admin-cash-summary-pagination-button:disabled { color: #b7c1c7; cursor: not-allowed; }
+.business-admin-cash-summary-pagination-page { justify-self: center; white-space: nowrap; }
+.business-admin-cash-summary-pagination-page strong,
+.business-admin-cash-summary-pagination-limit strong { color: #234b64; font-weight: 800; }
+.business-admin-cash-summary-pagination-limit { display: inline-flex; align-items: center; justify-self: end; gap: 4px; white-space: nowrap; }
+.business-admin-shift-card {
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+}
+.business-admin-shift-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-shift-card-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-shift-card-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5ff; color: #1a4e8d; }
+.business-admin-shift-card-copy { display: grid; gap: 4px; min-width: 0; }
+.business-admin-shift-card-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-shift-card-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-shift-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-shift-card-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-shift-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-shift-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-shift-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-orders-workspace { display: grid; gap: 16px; }
+.business-admin-orders-contract {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #bfdfed;
+  border-radius: 12px;
+  padding: 10px 13px;
+  background: #f1faff;
+  color: #205b78;
+}
+.business-admin-orders-contract > svg { flex: 0 0 auto; color: #0d8d87; }
+.business-admin-orders-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-orders-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-orders-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-orders-section-card { min-width: 0; overflow: hidden; }
+.business-admin-orders-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #cce9e6;
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: #effcfb;
+  color: #0d7773;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.business-admin-orders-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #edf2f6;
+  padding: 12px 14px;
+  background: #fbfefe;
+}
+.business-admin-orders-pagination-summary { display: flex; align-items: baseline; gap: 5px; color: #7890a1; font-size: 11px; }
+.business-admin-orders-pagination-summary strong { color: #234b64; font-size: 12px; }
+.business-admin-orders-pagination-actions { display: flex; align-items: center; gap: 8px; }
+.business-admin-orders-pagination-actions .business-admin-button { min-height: 34px; padding: 7px 10px; }
+.business-admin-orders-pagination-actions .business-admin-button:disabled { cursor: not-allowed; }
+.business-admin-orders-pagination-page { min-width: 92px; color: #5d7f91; font-size: 11px; font-weight: 800; text-align: center; }
+.business-admin-orders-results,
+.business-admin-expenses-results { position: relative; min-height: 150px; scroll-margin-top: 16px; }
+.business-admin-orders-results-content,
+.business-admin-expenses-results-content { min-height: 150px; }
+.business-admin-orders-results.is-refreshing .business-admin-orders-results-content,
+.business-admin-expenses-results.is-refreshing .business-admin-expenses-results-content { opacity: .48; transition: opacity .16s ease; }
+.business-admin-orders-refreshing,
+.business-admin-expenses-refreshing { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .76); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-orders-panel-error,
+.business-admin-expenses-panel-error { margin: 12px 14px 0; }
+.business-admin-orders-table-view { display: block; }
+.business-admin-orders-mobile-view { display: none; }
+.business-admin-orders-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-order-card {
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+  cursor: pointer;
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.business-admin-order-card:hover,
+.business-admin-order-card:focus-visible { border-color: #a9d9d5; box-shadow: 0 9px 24px rgba(23, 50, 77, .08); outline: none; transform: translateY(-1px); }
+.business-admin-order-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-order-card-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-order-card-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5ff; color: #1a4e8d; }
+.business-admin-order-card-copy { display: grid; gap: 4px; min-width: 0; }
+.business-admin-order-card-copy strong { overflow: hidden; color: #087f7b; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-order-card-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-order-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-order-card-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-order-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-order-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-payments-workspace { display: grid; gap: 16px; }
+.business-admin-payments-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-payment-metric {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 14px;
+  padding: 15px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+}
+.business-admin-payment-metric.warning { border-color: #f2d48d; background: linear-gradient(145deg, #fffdf7 0%, #fff8e8 100%); }
+.business-admin-payment-metric.positive { border-color: #cce9e6; background: linear-gradient(145deg, #fff 0%, #f1fcfa 100%); }
+.business-admin-payment-metric-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #eaf5ff; color: #1a4e8d; }
+.business-admin-payment-metric.warning .business-admin-payment-metric-icon { background: #fff0c9; color: #a76808; }
+.business-admin-payment-metric.positive .business-admin-payment-metric-icon { background: #e2f8f4; color: #0d7773; }
+.business-admin-payment-metric-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-payment-metric-label { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.business-admin-payment-metric-value { overflow: hidden; color: #173e58; font-size: 20px; font-weight: 950; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-payment-metric-detail { overflow: hidden; color: #7890a1; font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-payments-contract { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; }
+.business-admin-payments-contract > svg { flex: 0 0 auto; color: #0d8d87; }
+.business-admin-payments-contract-copy { display: grid; min-width: 0; gap: 2px; }
+.business-admin-payments-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-payments-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-payment-account-card,
+.business-admin-payment-exceptions-card,
+.business-admin-payments-section-card { min-width: 0; overflow: hidden; }
+.business-admin-payment-account-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; }
+.business-admin-payment-account-field { display: grid; min-width: 0; gap: 5px; border: 1px solid #e2edf1; border-radius: 11px; padding: 11px 12px; background: #fbfefe; }
+.business-admin-payment-account-field > span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-payment-account-field > strong { overflow-wrap: anywhere; color: #234b64; font-size: 12px; line-height: 1.35; }
+.business-admin-payment-account-field > .business-admin-status { justify-self: start; }
+.business-admin-payment-exception-list { display: grid; gap: 0; padding: 12px; }
+.business-admin-payment-exception { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 11px 0; border-bottom: 1px solid #edf2f6; }
+.business-admin-payment-exception:first-child { padding-top: 0; }
+.business-admin-payment-exception:last-child { padding-bottom: 0; border-bottom: 0; }
+.business-admin-payment-exception > div { display: grid; min-width: 0; gap: 3px; }
+.business-admin-payment-exception strong { color: #234b64; font-size: 12px; }
+.business-admin-payment-exception span { color: #7890a1; font-size: 10px; line-height: 1.35; }
+.business-admin-payment-exception b { flex: 0 0 auto; color: #173e58; font-size: 13px; text-align: right; }
+.business-admin-payments-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border: 1px solid #cce9e6;
+  border-radius: 99px;
+  padding: 4px 9px;
+  background: #effcfb;
+  color: #0d7773;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.business-admin-payments-table-view { display: block; }
+.business-admin-payments-mobile-view { display: none; }
+.business-admin-payment-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-payment-card {
+  min-width: 0;
+  border: 1px solid #dce8ef;
+  border-radius: 14px;
+  padding: 14px;
+  background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%);
+}
+.business-admin-payment-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-payment-card-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-payment-card-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #e2f8f4; color: #0d7773; }
+.business-admin-payment-card-copy { display: grid; gap: 4px; min-width: 0; }
+.business-admin-payment-card-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-payment-card-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-payment-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-payment-card-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-payment-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-payment-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-payment-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-expenses-workspace { display: grid; gap: 16px; }
+.business-admin-expenses-contract {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #bfdfed;
+  border-radius: 12px;
+  padding: 11px 13px;
+  background: #f1faff;
+  color: #205b78;
+}
+.business-admin-expenses-contract > svg { flex: 0 0 auto; color: #0d8d87; }
+.business-admin-expenses-contract-copy { display: grid; gap: 2px; min-width: 0; }
+.business-admin-expenses-contract-copy strong { color: #205b78; font-size: 12px; }
+.business-admin-expenses-contract-copy span { color: #5d7f91; font-size: 11px; line-height: 1.4; }
+.business-admin-expenses-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.business-admin-expenses-summary .business-admin-metric.positive { border-color: #cce9e6; background: linear-gradient(145deg, #fff 0%, #f1fcfa 100%); }
+.business-admin-expenses-summary .business-admin-metric.warning { border-color: #f2d48d; background: linear-gradient(145deg, #fffdf7 0%, #fff8e8 100%); }
+.business-admin-expense-entry-card,
+.business-admin-expenses-section-card { min-width: 0; overflow: hidden; }
+.business-admin-expense-entry-card { border: 1px solid #cfe3e5; border-radius: 14px; padding: 18px; background: linear-gradient(145deg, #fff 0%, #f7fcfc 100%); box-shadow: 0 7px 22px rgba(23, 50, 77, .05); }
+.business-admin-expense-entry-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.business-admin-expense-entry-heading h2 { margin: 4px 0 0; color: #173e58; font-size: 17px; font-weight: 900; }
+.business-admin-expense-form { margin-top: 16px; }
+.business-admin-expense-form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-expense-form-wide { grid-column: span 2; }
+.business-admin-field > span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.business-admin-field textarea { resize: vertical; min-height: 70px; border: 1px solid #cad9e5; border-radius: 8px; padding: 7px 9px; background: #fff; color: #1e425c; font: inherit; font-size: 13px; }
+.business-admin-field textarea:focus { outline: 2px solid rgba(21, 152, 145, .2); border-color: #159891; }
+.business-admin-expense-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid #e1edf2; }
+.business-admin-expense-form-actions > span { color: #7890a1; font-size: 11px; line-height: 1.4; }
+.business-admin-expenses-table-view { display: block; }
+.business-admin-expenses-mobile-view { display: none; }
+.business-admin-expense-void-button { border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-void-button:hover,
+.business-admin-expense-void-link:hover { text-decoration: underline; }
+.business-admin-expense-void-link { display: block; margin-top: 12px; border: 0; padding: 0; background: none; color: #a83d35; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-expense-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-expense-card { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
+.business-admin-expense-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-expense-card-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-expense-card-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #e2f8f4; color: #0d7773; }
+.business-admin-expense-card-copy { display: grid; gap: 4px; min-width: 0; }
+.business-admin-expense-card-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-expense-card-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-expense-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-expense-card-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-expense-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-expense-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-expense-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-expense-modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(13, 53, 73, .42); }
+.business-admin-expense-modal { width: min(520px, 100%); border: 1px solid #d5e5eb; border-radius: 16px; padding: 20px; background: #fff; box-shadow: 0 18px 55px rgba(11, 44, 63, .24); }
+.business-admin-expense-modal-copy { margin: 15px 0; color: #60788b; font-size: 12px; line-height: 1.5; }
+.business-admin-expense-modal-record { display: grid; gap: 3px; margin-bottom: 14px; border: 1px solid #e2edf1; border-radius: 10px; padding: 11px 12px; background: #f8fcfc; }
+.business-admin-expense-modal-record strong { color: #173e58; font-size: 13px; }
+.business-admin-expense-modal-record span { color: #7890a1; font-size: 11px; }
+.business-admin-link { border: 0; padding: 0; background: none; color: #087f7b; font-weight: 800; cursor: pointer; text-align: left; }
+.business-admin-link:hover { text-decoration: underline; }
+.business-admin-list { display: grid; gap: 9px; }
+.business-admin-list-item { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #edf2f6; }
+.business-admin-list-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.business-admin-list-item:first-child { padding-top: 0; }
+.business-admin-list-title { color: #234b64; font-size: 13px; font-weight: 800; }
+.business-admin-list-detail { color: #7890a1; font-size: 11px; margin-top: 3px; }
+.business-admin-notifications-workspace { display: grid; gap: 16px; }
+.business-admin-notifications-attention {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid #bfe3df;
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: linear-gradient(135deg, #effcfb 0%, #f8fcff 100%);
+  box-shadow: 0 8px 24px rgba(23, 50, 77, .06);
+}
+.business-admin-notifications-attention-copy { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.business-admin-notifications-attention-icon { width: 42px; height: 42px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 13px; background: #d6f3ee; color: #0b817b; }
+.business-admin-notifications-attention-kicker { display: block; color: #0b817b; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.business-admin-notifications-attention h2 { margin: 3px 0 0; color: #123e57; font-size: clamp(18px, 2vw, 24px); font-weight: 900; letter-spacing: -.025em; line-height: 1.2; }
+.business-admin-notifications-attention p { margin: 5px 0 0; color: #60788b; font-size: 12px; line-height: 1.4; }
+.business-admin-notifications-primary-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: 0 0 auto; min-height: 38px; border: 1px solid #0f918b; border-radius: 9px; padding: 9px 14px; background: #0f918b; color: #fff; font-size: 12px; font-weight: 900; cursor: pointer; }
+.business-admin-notifications-primary-action:hover { border-color: #0b756f; background: #0b756f; }
+.business-admin-notifications-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.business-admin-notification-metric { display: flex; align-items: flex-start; gap: 11px; min-width: 0; border: 1px solid #dce7ef; border-radius: 14px; padding: 15px; background: #fff; box-shadow: 0 7px 22px rgba(23, 50, 77, .05); }
+.business-admin-notification-metric-icon { width: 36px; height: 36px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid #d3e5ee; border-radius: 11px; background: #f4f9fb; color: #35657e; }
+.business-admin-notification-metric-copy { display: grid; min-width: 0; gap: 2px; }
+.business-admin-notification-metric-copy span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.business-admin-notification-metric-copy strong { color: #123e57; font-size: 23px; font-weight: 900; letter-spacing: -.035em; line-height: 1.15; }
+.business-admin-notification-metric-copy small { color: #8da0af; font-size: 10px; line-height: 1.35; }
+.business-admin-notification-metric.teal .business-admin-notification-metric-icon { border-color: #c8e9e5; background: #effbf9; color: #0b817b; }
+.business-admin-notification-metric.critical .business-admin-notification-metric-icon { border-color: #f0cbc7; background: #fff5f3; color: #b04a42; }
+.business-admin-notification-metric.warning .business-admin-notification-metric-icon { border-color: #f0dcae; background: #fffaf0; color: #a87822; }
+.business-admin-notifications-inbox .business-admin-card-body { padding: 0; }
+.business-admin-notifications-count { color: #71879a; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.business-admin-notifications-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 16px; border-bottom: 1px solid #edf2f6; background: #fbfdfe; }
+.business-admin-notifications-filter-label { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.business-admin-notification-filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.business-admin-notification-filter { display: inline-flex; align-items: center; gap: 7px; min-height: 32px; border: 1px solid #d5e2ea; border-radius: 8px; padding: 6px 9px; background: #fff; color: #527084; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-notification-filter span { display: inline-grid; min-width: 18px; height: 18px; place-items: center; border-radius: 99px; background: #edf4f7; color: #6b8492; font-size: 10px; }
+.business-admin-notification-filter:hover { border-color: #159891; color: #0b706c; }
+.business-admin-notification-filter.active { border-color: #159891; background: #effcfb; color: #0b706c; }
+.business-admin-notification-filter.active span { background: #d3f2ee; color: #0b706c; }
+.business-admin-notifications-list-panel { position: relative; min-height: 180px; }
+.business-admin-notifications-list-content { min-height: 180px; }
+.business-admin-notifications-list-panel.is-refreshing .business-admin-notifications-list-content { opacity: .48; transition: opacity .15s ease; }
+.business-admin-notifications-loading { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .78); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-notifications-panel-error { margin: 14px 16px 16px; }
+.business-admin-notifications-list { display: grid; gap: 10px; padding: 14px 16px 16px; }
+.business-admin-notification-card { display: grid; grid-template-columns: 4px minmax(0, 1fr); overflow: hidden; border: 1px solid #dfe9ef; border-radius: 13px; background: #fff; box-shadow: 0 4px 12px rgba(23, 50, 77, .035); }
+.business-admin-notification-card:hover { border-color: #c5dfe4; box-shadow: 0 8px 18px rgba(23, 50, 77, .07); }
+.business-admin-notification-card.is-read { background: #fbfdfe; }
+.business-admin-notification-card-rail { background: #92a9b5; }
+.business-admin-notification-card.severity-info .business-admin-notification-card-rail { background: #1e9d96; }
+.business-admin-notification-card.severity-warning .business-admin-notification-card-rail { background: #d39f32; }
+.business-admin-notification-card.severity-critical .business-admin-notification-card-rail { background: #d8665d; }
+.business-admin-notification-card-content { min-width: 0; padding: 13px 14px 12px; }
+.business-admin-notification-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.business-admin-notification-identity { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.business-admin-notification-source-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #edf5f7; color: #42687a; }
+.business-admin-notification-source-icon.inventory { background: #eef8f6; color: #187e71; }
+.business-admin-notification-source-icon.pos { background: #f1f5fb; color: #436a9d; }
+.business-admin-notification-source-icon.payments { background: #f5f2fb; color: #715a9d; }
+.business-admin-notification-source-icon.storefront { background: #fff7e9; color: #a87822; }
+.business-admin-notification-source-icon.governance { background: #fff1ef; color: #ad5148; }
+.business-admin-notification-copy { display: grid; min-width: 0; gap: 4px; }
+.business-admin-notification-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.business-admin-notification-type { color: #159891; font-size: 10px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.business-admin-notification-read,
+.business-admin-notification-unread { display: inline-flex; align-items: center; gap: 4px; color: #8296a2; font-size: 10px; font-weight: 800; }
+.business-admin-notification-unread::before { width: 6px; height: 6px; display: inline-block; border-radius: 99px; background: #159891; content: ''; }
+.business-admin-notification-copy h3 { overflow-wrap: anywhere; color: #234b64; font-size: 13px; font-weight: 850; line-height: 1.4; }
+.business-admin-notification-card.is-read .business-admin-notification-copy h3 { color: #557184; font-weight: 750; }
+.business-admin-notification-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-notification-details { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; color: #8094a3; font-size: 10px; }
+.business-admin-notification-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #edf2f6; }
+.business-admin-notification-state { display: inline-flex; align-items: center; gap: 5px; color: #8498a5; font-size: 10px; font-weight: 800; }
+.business-admin-notification-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.business-admin-notification-action { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 30px; border: 1px solid #d3e1e8; border-radius: 7px; padding: 6px 9px; background: #fff; color: #45687b; font-size: 10px; font-weight: 850; cursor: pointer; }
+.business-admin-notification-action:hover { border-color: #159891; color: #0b706c; background: #f7fffe; }
+.business-admin-notification-action.primary { border-color: #159891; background: #159891; color: #fff; }
+.business-admin-notification-action.primary:hover { border-color: #0b756f; background: #0b756f; color: #fff; }
+.business-admin-notification-action:disabled { opacity: .55; cursor: wait; }
+.business-admin-inventory-workspace { display: grid; gap: 16px; }
+.business-admin-inventory-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-inventory-metric { display: flex; align-items: flex-start; gap: 11px; min-width: 0; border-radius: 14px; padding: 15px; background: #fff; box-shadow: 0 7px 22px rgba(23, 50, 77, .05); }
+.business-admin-inventory-metric-icon { width: 36px; height: 36px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid #d3e5ee; border-radius: 11px; background: #f4f9fb; color: #35657e; }
+.business-admin-inventory-metric-copy { display: grid; min-width: 0; gap: 2px; }
+.business-admin-inventory-metric-copy span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.business-admin-inventory-metric-copy strong { color: #123e57; font-size: clamp(16px, 1.4vw, 21px); font-weight: 900; letter-spacing: -.035em; line-height: 1.15; white-space: nowrap; }
+.business-admin-inventory-metric-copy small { color: #8da0af; font-size: 10px; line-height: 1.35; }
+.business-admin-inventory-metric.teal .business-admin-inventory-metric-icon { border-color: #c8e9e5; background: #effbf9; color: #0b817b; }
+.business-admin-inventory-metric.warning .business-admin-inventory-metric-icon { border-color: #f0dcae; background: #fffaf0; color: #a87822; }
+.business-admin-inventory-metric.critical .business-admin-inventory-metric-icon { border-color: #f0cbc7; background: #fff5f3; color: #b04a42; }
+.business-admin-inventory-metric.muted .business-admin-inventory-metric-icon { border-color: #dce7ef; background: #f7fafb; color: #71879a; }
+.business-admin-inventory-context { display: flex; align-items: center; gap: 10px; border: 1px solid #cfe3ed; border-radius: 12px; padding: 11px 13px; background: #f3faff; color: #35657e; }
+.business-admin-inventory-context > svg { flex: 0 0 auto; color: #159891; }
+.business-admin-inventory-context div { display: grid; gap: 2px; min-width: 0; }
+.business-admin-inventory-context strong { color: #205b78; font-size: 12px; }
+.business-admin-inventory-context span { color: #66879a; font-size: 11px; line-height: 1.35; }
+.business-admin-inventory-workflows { min-width: 0; }
+.business-admin-inventory-workflows .business-admin-card-body { display: grid; gap: 13px; }
+.business-admin-inventory-workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.business-admin-inventory-workflow-link { display: flex; align-items: center; gap: 10px; min-width: 0; border: 1px solid #d9e7ed; border-radius: 12px; padding: 11px 12px; background: #fbfefe; color: #234b64; text-decoration: none; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.business-admin-inventory-workflow-link:hover { border-color: #78cfc9; background: #f4fffd; transform: translateY(-1px); }
+.business-admin-inventory-workflow-link:focus-visible { outline: 3px solid rgba(21, 152, 145, .22); outline-offset: 2px; }
+.business-admin-inventory-workflow-icon { display: grid; flex: 0 0 auto; place-items: center; width: 32px; height: 32px; border-radius: 9px; background: #e7f8f5; color: #0b817b; }
+.business-admin-inventory-workflow-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-inventory-workflow-copy strong { color: #234b64; font-size: 12px; line-height: 1.25; }
+.business-admin-inventory-workflow-copy span { color: #71879a; font-size: 10px; line-height: 1.35; }
+.business-admin-inventory-workflow-arrow { flex: 0 0 auto; margin-left: auto; color: #7391a1; }
+.business-admin-inventory-follow-up { display: flex; align-items: flex-start; gap: 9px; border: 1px solid #f0dfb4; border-radius: 11px; padding: 10px 12px; background: #fffaf0; color: #8c6a2e; }
+.business-admin-inventory-follow-up > svg { flex: 0 0 auto; margin-top: 1px; color: #b27c1f; }
+.business-admin-inventory-follow-up div { display: grid; gap: 2px; min-width: 0; }
+.business-admin-inventory-follow-up strong { color: #8c651d; font-size: 11px; }
+.business-admin-inventory-follow-up span { color: #987a43; font-size: 10px; line-height: 1.4; }
+.business-admin-inventory-grid { margin-bottom: 0; }
+.business-admin-inventory-section { min-width: 0; overflow: hidden; }
+.business-admin-inventory-section .business-admin-card-body { padding: 0; }
+.business-admin-inventory-count { color: #71879a; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.business-admin-inventory-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px 16px; border-top: 1px solid #e7eff3; padding: 12px; }
+.business-admin-inventory-pagination-summary { display: flex; align-items: baseline; gap: 5px; color: #7890a1; font-size: 11px; }
+.business-admin-inventory-pagination-summary strong { color: #234b64; font-size: 12px; }
+.business-admin-inventory-pagination-actions { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.business-admin-inventory-pagination-actions .business-admin-button { min-height: 34px; padding: 7px 10px; }
+.business-admin-inventory-pagination-actions .business-admin-button:disabled { cursor: not-allowed; }
+.business-admin-inventory-pagination-page { min-width: 92px; color: #5d7f91; font-size: 11px; font-weight: 800; text-align: center; }
+.business-admin-inventory-table-view .business-admin-table { min-width: 0; table-layout: fixed; }
+.business-admin-inventory-table-view .business-admin-table th,
+.business-admin-inventory-table-view .business-admin-table td { padding: 10px 11px; overflow-wrap: anywhere; }
+.business-admin-inventory-table-view .business-admin-table th { white-space: normal; }
+.business-admin-inventory-table-view .business-admin-table th:first-child,
+.business-admin-inventory-table-view .business-admin-table td:first-child { width: 38%; }
+.business-admin-inventory-table-view .business-admin-table td:not(:first-child) { white-space: nowrap; }
+.business-admin-inventory-mobile-view { display: none; }
+.business-admin-inventory-record-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-inventory-record { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
+.business-admin-inventory-record.low-stock { border-color: #f0dfb4; background: linear-gradient(145deg, #fff 0%, #fffaf0 100%); }
+.business-admin-inventory-record-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-inventory-record-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-inventory-record-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #e2f8f4; color: #0d7773; }
+.business-admin-inventory-record.low-stock .business-admin-inventory-record-icon { background: #fff0c9; color: #a87822; }
+.business-admin-inventory-record-copy { display: grid; min-width: 0; gap: 4px; }
+.business-admin-inventory-record-copy strong { overflow: hidden; color: #173e58; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-inventory-record-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-inventory-record-tag { flex: 0 0 auto; border: 1px solid #cce9e6; border-radius: 99px; padding: 4px 7px; color: #0b7772; background: #effbf9; font-size: 9px; font-weight: 900; white-space: nowrap; }
+.business-admin-inventory-record-tag.warning { border-color: #f0dcae; color: #9a6d1f; background: #fff8e8; }
+.business-admin-inventory-record-tag.critical { border-color: #f0b9b9; color: #a53d3d; background: #fff0f0; }
+.business-admin-inventory-record-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-inventory-record-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-inventory-record-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-inventory-record-facts strong { overflow: hidden; color: #234b64; font-size: 12px; line-height: 1.35; text-overflow: ellipsis; }
+.business-admin-purchase-orders-workspace { display: grid; gap: 16px; }
+.business-admin-purchase-orders-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.business-admin-purchase-orders-toolbar-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-purchase-orders-toolbar-copy > span { color: #71879a; font-size: 11px; line-height: 1.4; }
+.business-admin-purchase-orders-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.business-admin-purchase-orders-metric { display: flex; align-items: flex-start; gap: 11px; min-width: 0; border-radius: 14px; padding: 15px; }
+.business-admin-purchase-orders-metric-icon { width: 36px; height: 36px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid #d3e5ee; border-radius: 11px; background: #f4f9fb; color: #35657e; }
+.business-admin-purchase-orders-metric-copy { display: grid; min-width: 0; gap: 2px; }
+.business-admin-purchase-orders-metric-copy span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.business-admin-purchase-orders-metric-copy strong { overflow: hidden; color: #123e57; font-size: clamp(16px, 1.4vw, 21px); font-weight: 900; letter-spacing: -.035em; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-purchase-orders-metric-copy small { color: #8da0af; font-size: 10px; line-height: 1.35; }
+.business-admin-purchase-orders-metric.teal .business-admin-purchase-orders-metric-icon { border-color: #c8e9e5; background: #effbf9; color: #0b817b; }
+.business-admin-purchase-orders-metric.warning .business-admin-purchase-orders-metric-icon { border-color: #f0dcae; background: #fffaf0; color: #a87822; }
+.business-admin-purchase-orders-metric.critical .business-admin-purchase-orders-metric-icon { border-color: #f0cbc7; background: #fff5f3; color: #b04a42; }
+.business-admin-purchase-orders-context { display: flex; align-items: center; gap: 10px; border: 1px solid #cfe3ed; border-radius: 12px; padding: 11px 13px; background: #f3faff; color: #35657e; }
+.business-admin-purchase-orders-context > svg { flex: 0 0 auto; color: #159891; }
+.business-admin-purchase-orders-context div { display: grid; min-width: 0; gap: 2px; }
+.business-admin-purchase-orders-context strong { color: #205b78; font-size: 12px; }
+.business-admin-purchase-orders-context span { color: #66879a; font-size: 11px; line-height: 1.4; }
+.business-admin-purchase-orders-filter-card { display: grid; gap: 12px; padding: 13px 14px; }
+.business-admin-purchase-orders-filter-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.business-admin-purchase-orders-filter-heading > div:first-child { display: grid; min-width: 0; gap: 3px; }
+.business-admin-purchase-orders-filter-heading strong { color: #234b64; font-size: 13px; }
+.business-admin-purchase-orders-view-switch { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.business-admin-purchase-orders-view-button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #d4e2e9; border-radius: 9px; padding: 7px 10px; background: #fff; color: #527084; font-size: 11px; font-weight: 850; cursor: pointer; }
+.business-admin-purchase-orders-view-button:hover { border-color: #159891; color: #0b706c; background: #f7fffe; }
+.business-admin-purchase-orders-view-button.active { border-color: #159891; background: #effcfb; color: #0b706c; box-shadow: inset 3px 0 #159891; }
+.business-admin-purchase-orders-view-button.active.archived { border-color: #71879a; background: #f4f7fa; color: #456273; box-shadow: inset 3px 0 #71879a; }
+.business-admin-purchase-orders-filter-row { display: grid; grid-template-columns: minmax(0, 1fr) 200px; align-items: end; gap: 10px; }
+.business-admin-purchase-orders-field { display: grid; min-width: 0; gap: 5px; }
+.business-admin-purchase-orders-field > span { color: #71879a; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.business-admin-purchase-orders-input-wrap,
+.business-admin-purchase-orders-select-wrap { position: relative; display: flex; align-items: center; min-width: 0; }
+.business-admin-purchase-orders-input-wrap > svg,
+.business-admin-purchase-orders-select-wrap > svg { position: absolute; left: 11px; z-index: 1; flex: 0 0 auto; color: #8297a4; pointer-events: none; }
+.business-admin-purchase-orders-input-wrap input,
+.business-admin-purchase-orders-select-wrap select { width: 100%; min-height: 38px; border: 1px solid #cad9e5; border-radius: 8px; padding: 8px 10px 8px 34px; background: #fff; color: #1e425c; font-size: 13px; }
+.business-admin-purchase-orders-select-wrap select { padding-right: 28px; }
+.business-admin-purchase-orders-input-wrap input:focus,
+.business-admin-purchase-orders-select-wrap select:focus { outline: 2px solid rgba(21, 152, 145, .2); border-color: #159891; }
+.business-admin-purchase-orders-section { min-width: 0; overflow: hidden; }
+.business-admin-purchase-orders-section .business-admin-card-body { padding: 0; }
+.business-admin-purchase-orders-results { position: relative; min-height: 180px; }
+.business-admin-purchase-orders-results-content { min-height: 180px; }
+.business-admin-purchase-orders-results.is-refreshing .business-admin-purchase-orders-results-content { opacity: .48; transition: opacity .15s ease; }
+.business-admin-purchase-orders-loading { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 24px; background: rgba(255, 255, 255, .78); color: #35657e; font-size: 12px; font-weight: 800; pointer-events: none; }
+.business-admin-purchase-orders-panel-error { margin: 14px; }
+.business-admin-purchase-orders-count { display: inline-flex; align-items: center; min-height: 26px; border: 1px solid #cce9e6; border-radius: 99px; padding: 4px 9px; background: #effcfb; color: #0d7773; font-size: 10px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.business-admin-purchase-orders-table-view { display: block; }
+.business-admin-purchase-orders-table-view .business-admin-table { min-width: 0; table-layout: fixed; }
+.business-admin-purchase-orders-table-view .business-admin-table th,
+.business-admin-purchase-orders-table-view .business-admin-table td { padding: 10px 10px; overflow-wrap: anywhere; }
+.business-admin-purchase-orders-table-view .business-admin-table th { white-space: normal; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(1),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(1) { width: 14%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(2),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(2) { width: 16%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(3),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(3) { width: 9%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(4),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(4) { width: 12%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(5),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(5) { width: 12%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(6),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(6) { width: 13%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(7),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(7) { width: 11%; }
+.business-admin-purchase-orders-table-view .business-admin-table th:nth-child(8),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(8) { width: 13%; }
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(3),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(4),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(5),
+.business-admin-purchase-orders-table-view .business-admin-table td:nth-child(6) { white-space: nowrap; }
+.business-admin-purchase-orders-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; min-width: 0; }
+.business-admin-purchase-orders-action { min-height: 32px; padding: 6px 8px; }
+.business-admin-purchase-orders-table-view .business-admin-purchase-orders-action-label { display: none; }
+.business-admin-purchase-orders-mobile-view { display: none; }
+.business-admin-purchase-order-card-list { display: grid; gap: 10px; padding: 12px; }
+.business-admin-purchase-order-card { min-width: 0; border: 1px solid #dce8ef; border-radius: 14px; padding: 14px; background: linear-gradient(145deg, #fff 0%, #f8fcfc 100%); }
+.business-admin-purchase-order-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.business-admin-purchase-order-card-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.business-admin-purchase-order-card-icon { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 10px; background: #e2f8f4; color: #0d7773; }
+.business-admin-purchase-order-card-copy { display: grid; min-width: 0; gap: 4px; }
+.business-admin-purchase-order-card-copy strong { overflow-wrap: anywhere; color: #173e58; font-size: 13px; line-height: 1.3; }
+.business-admin-purchase-order-card-copy span { overflow: hidden; color: #71879a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-purchase-order-card-heading > .business-admin-status { flex: 0 0 auto; }
+.business-admin-purchase-order-card-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-purchase-order-card-facts div { display: grid; min-width: 0; gap: 4px; }
+.business-admin-purchase-order-card-facts span { color: #8398a7; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.business-admin-purchase-order-card-facts strong { overflow: hidden; color: #234b64; font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.business-admin-purchase-order-card .business-admin-purchase-orders-actions { margin-top: 13px; padding-top: 12px; border-top: 1px solid #e7eff3; }
+.business-admin-chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.business-admin-chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d4e4e9; border-radius: 99px; padding: 5px 9px; color: #3c6472; background: #f5fbfb; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.business-admin-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.business-admin-toolbar .business-admin-search { flex: 1; min-width: 180px; }
+.business-admin-detail-panel { border: 1px solid #cfe3e5; border-radius: 12px; background: #f6fffe; padding: 14px; margin-top: 13px; }
+.business-admin-customer-detail-contract { display: grid; gap: 3px; margin-top: 13px; border: 1px solid #e6d5b0; border-radius: 10px; padding: 9px 11px; background: #fffaf0; }
+.business-admin-customer-detail-contract strong { color: #8c651d; font-size: 11px; }
+.business-admin-customer-detail-contract span { color: #987a43; font-size: 10px; line-height: 1.4; }
+.business-admin-detail-panel pre { max-height: 280px; overflow: auto; white-space: pre-wrap; word-break: break-word; color: #416579; font-size: 11px; }
+.business-admin-kicker { color: #1a4e8d; font-size: 11px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.business-admin-feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.business-admin-feature { border: 1px solid #dce7ef; border-radius: 11px; padding: 14px; background: #fff; }
+.business-admin-feature h3 { margin: 8px 0 4px; color: #1b4661; font-size: 13px; font-weight: 900; }
+.business-admin-feature p { margin: 0; color: #71879a; font-size: 12px; line-height: 1.5; }
+.business-admin-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-bottom: 12px; align-items: start; }
+.business-admin-settings-nav { min-width: 0; }
+.business-admin-settings-nav-body { padding: 10px 12px; }
+.business-admin-settings-nav-strip { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.business-admin-settings-section-list {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 2px;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+}
+.business-admin-settings-section-list::-webkit-scrollbar { width: 8px; height: 8px; }
+.business-admin-settings-section-list::-webkit-scrollbar-track { background: transparent; }
+.business-admin-settings-section-list::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 999px; background: transparent; background-clip: padding-box; }
+.business-admin-settings-section-list:hover,
+.business-admin-settings-section-list:focus-within,
+.business-admin-settings-section-list:active { scrollbar-color: #94a3b8 transparent; }
+.business-admin-settings-section-list:hover::-webkit-scrollbar-thumb,
+.business-admin-settings-section-list:focus-within::-webkit-scrollbar-thumb,
+.business-admin-settings-section-list:active::-webkit-scrollbar-thumb { background: #94a3b8; background-clip: padding-box; }
+.business-admin-settings-nav-control {
+  width: 34px;
+  height: 34px;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+.business-admin-settings-nav-control:hover { border-color: #2563eb; color: #1a4e8d; background: #eff7ff; }
+.business-admin-settings-nav-control:disabled { opacity: .45; cursor: not-allowed; }
+.business-admin-settings-section {
+  width: auto;
+  min-width: 168px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  padding: 10px 11px;
+  background: #fff;
+  color: #1e293b;
+  text-align: left;
+  cursor: pointer;
+}
+.business-admin-settings-section:hover { border-color: #2563eb; background: #eff7ff; }
+.business-admin-settings-section.active { border-color: #1a4e8d; background: #eff7ff; box-shadow: inset 3px 0 #1a4e8d; }
+.business-admin-settings-section strong { display: block; font-size: 12px; font-weight: 900; }
+.business-admin-settings-section .business-admin-status { flex: 0 0 auto; }
+.business-admin-settings-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.business-admin-settings-context-grid > div { border: 1px solid #e2edf1; border-radius: 10px; padding: 12px; background: #fbfefe; }
+.business-admin-settings-context-grid strong { display: block; color: #234b64; font-size: 13px; margin-top: 4px; }
+.business-admin-settings-workspace { display: grid; gap: 12px; }
+.business-admin-settings-workspace .business-admin-card-subtitle { display: none; }
+.business-admin-settings-terminal-link { display: flex; justify-content: flex-end; margin-top: 14px; }
+.business-admin-settings-editor { min-width: 0; }
+.business-admin-settings-compact-copy h3 + p,
+.business-admin-settings-compact-copy h4 + p,
+.business-admin-settings-compact-copy .business-admin-settings-helper-copy { display: none; }
+.business-admin-settings-editor .business-admin-storefront-pane { row-gap: 18px; }
+.business-admin-settings-editor .business-admin-storefront-panel { border-color: #d7e7ed; border-radius: 18px; box-shadow: 0 8px 24px rgba(23, 50, 77, .06); padding: clamp(16px, 2vw, 24px); }
+.business-admin-settings-editor .business-admin-storefront-panel > p:first-child { color: #173e58; font-size: 14px; letter-spacing: -.01em; }
+.business-admin-settings-editor .business-admin-storefront-save-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding: 14px 0 0;
+  border-top: 1px solid #e1edf2;
+}
+.business-admin-settings-editor .business-admin-storefront-save-bar button { min-width: 148px; }
+.business-admin-settings-editor .business-admin-storefront-locations-panel { scroll-margin-top: 16px; }
+.business-admin-settings-editor .business-admin-storefront-locations-workspace { overflow: visible; }
+.business-admin-settings-editor .business-admin-storefront-locations-header { min-height: 64px; }
+.business-admin-settings-editor .business-admin-storefront-locations-grid { grid-template-columns: minmax(250px, .82fr) minmax(0, 1.8fr); }
+.business-admin-settings-editor .business-admin-storefront-location-list { position: sticky; top: 16px; min-width: 0; }
+.business-admin-settings-editor .business-admin-storefront-location-list-scroll { scrollbar-color: #b8cbd7 transparent; scrollbar-width: thin; }
+.business-admin-settings-editor .business-admin-storefront-location-name,
+.business-admin-settings-editor .business-admin-storefront-location-address { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.business-admin-settings-editor .business-admin-storefront-location-name { -webkit-line-clamp: 2; }
+.business-admin-settings-editor .business-admin-storefront-location-address { -webkit-line-clamp: 2; }
+.business-admin-settings-editor .business-admin-storefront-location-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.business-admin-settings-editor .business-admin-storefront-location-section-card { min-width: 0; border-color: #d9e6ed; box-shadow: 0 7px 20px rgba(23, 50, 77, .05); }
+.business-admin-settings-editor .business-admin-storefront-location-map-card { min-height: 100%; }
+.business-admin-settings-editor .business-admin-storefront-operational-options { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.business-admin-settings-editor .business-admin-storefront-lead-time { grid-column: 1 / -1; }
+.business-admin-settings-editor .business-admin-storefront-location-actions {
+  position: sticky;
+  bottom: 12px;
+  z-index: 7;
+  border-color: #bfdfed;
+  background: rgba(241, 250, 255, .94);
+  box-shadow: 0 10px 28px rgba(23, 50, 77, .12);
+  backdrop-filter: blur(10px);
+}
+html.dgfy-imin-performance .business-admin-settings-editor .business-admin-storefront-location-actions {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.business-admin-loading { display: flex; align-items: center; gap: 10px; color: #71879a; padding: 45px 12px; justify-content: center; }
+.business-admin-spinner { width: 17px; height: 17px; border: 2px solid #c9e5e3; border-top-color: #159891; border-radius: 50%; animation: business-admin-spin .8s linear infinite; }
+@keyframes business-admin-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 1280px) {
+  .business-admin-metric-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .business-admin-branches-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-notifications-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .business-admin-fnb-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-inventory-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-purchase-orders-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-shifts-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1023px) {
+  .business-admin-settings-editor .business-admin-storefront-locations-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-editor .business-admin-storefront-location-list { position: static; }
+}
+@media (max-width: 900px) {
+  .business-admin-sidebar { width: 220px; flex-basis: 220px; }
+  .business-admin-main { padding: 22px 18px 36px; }
+  .business-admin-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-overview-chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-overview-sales-card { grid-column: auto; }
+  .business-admin-settings-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .business-admin-settings-nav .business-admin-card-body { padding: 10px 12px 12px; }
+  .business-admin-settings-section-list {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding: 2px 2px 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .business-admin-settings-section {
+    width: auto;
+    min-width: 190px;
+    flex: 0 0 min(190px, 72vw);
+    scroll-margin-inline: 12px;
+    scroll-snap-align: start;
+  }
+  .business-admin-attendance-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-shifts-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .business-admin-feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-branch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .business-admin-shell { display: block; }
+  .business-admin-sidebar { width: min(88vw, 320px); max-height: 100vh; min-height: 100vh; position: fixed; inset: 0 auto 0 0; z-index: 30; padding: 22px 14px; overflow-y: auto; transform: translateX(-104%); visibility: hidden; pointer-events: none; transition: transform .2s ease, visibility 0s linear .2s; box-shadow: 12px 0 30px rgba(15, 23, 42, .18); }
+  .business-admin-sidebar.is-open { transform: translateX(0); visibility: visible; pointer-events: auto; transition-delay: 0s; }
+  .business-admin-mobile-bar { position: relative; z-index: 21; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .business-admin-mobile-nav-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; border: 1px solid #cfe0e8; border-radius: 9px; padding: 8px 11px; background: #fff; color: #205b78; font-size: 11px; font-weight: 900; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease; }
+  .business-admin-mobile-nav-toggle.is-open { visibility: hidden; pointer-events: none; }
+  .business-admin-mobile-nav-toggle:hover { border-color: #2563eb; color: #1a4e8d; background: #eff7ff; }
+  .business-admin-mobile-nav-toggle:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+  .business-admin-mobile-context { min-width: 0; display: flex; flex: 1 1 auto; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .business-admin-mobile-brand-subtitle { overflow: hidden; max-width: 100%; color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-overflow: ellipsis; white-space: nowrap; }
+  .business-admin-mobile-page-title { overflow: hidden; max-width: 100%; color: #0f172a; font-size: 14px; font-weight: 900; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+  .business-admin-mobile-nav-backdrop { position: fixed; inset: 0; z-index: 20; display: block; border: 0; background: rgba(15, 23, 42, .48); cursor: pointer; }
+  .business-admin-mobile-nav-backdrop:focus-visible { outline: 3px solid rgba(255, 255, 255, .75); outline-offset: -4px; }
+  .business-admin-mobile-sidebar-close { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; margin: 0 0 5px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 7px 10px; background: #f8fafc; color: #1a4e8d; font-size: 11px; font-weight: 900; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease; }
+  .business-admin-mobile-sidebar-close:hover { border-color: #2563eb; background: #eff7ff; }
+  .business-admin-mobile-sidebar-close:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+  .business-admin-brand { padding-bottom: 12px; }
+  .business-admin-nav-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; margin-top: 11px; }
+  .business-admin-nav-group .business-admin-nav-label { grid-column: 1 / -1; }
+  .business-admin-nav-group.is-standalone { display: block; margin-top: 8px; }
+  .business-admin-nav-group.is-standalone .business-admin-nav-item { width: 100%; }
+  .business-admin-main { padding: 18px 12px 30px; }
+  .business-admin-settings-nav-body { padding: 8px 10px; }
+  .business-admin-settings-nav-strip { gap: 5px; }
+  .business-admin-settings-nav-control { width: 31px; height: 32px; }
+  .business-admin-settings-section { min-width: 168px; flex-basis: min(168px, 72vw); padding: 9px 10px; }
+  .business-admin-settings-section strong { font-size: 11px; }
+  .business-admin-topbar { display: block; }
+  .business-admin-topbar-leading { display: block; }
+  .business-admin-sidebar-toggle { display: none; }
+  .business-admin-top-actions { justify-content: flex-start; margin-top: 12px; }
+  .business-admin-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-metric { min-height: 88px; padding: 12px; }
+  .business-admin-metric-value { font-size: 20px; }
+  .business-admin-overview-chart-header { display: block; }
+  .business-admin-overview-chart-header .business-admin-link,
+  .business-admin-overview-chart-control { display: inline-flex; margin-top: 8px; }
+  .business-admin-overview-chart-plot { height: 240px; }
+  .business-admin-notifications-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .business-admin-notifications-attention { align-items: flex-start; flex-direction: column; gap: 14px; padding: 15px; }
+  .business-admin-notifications-attention-copy { align-items: flex-start; }
+  .business-admin-notifications-attention h2 { font-size: 18px; }
+  .business-admin-notifications-primary-action { width: 100%; }
+  .business-admin-fnb-overview { padding: 13px; }
+  .business-admin-fnb-overview-heading h2 { font-size: 18px; }
+  .business-admin-fnb-summary { gap: 8px; }
+  .business-admin-fnb-metric { gap: 8px; padding: 10px; }
+  .business-admin-fnb-metric-icon { width: 30px; height: 30px; border-radius: 9px; }
+  .business-admin-fnb-metric-copy strong { font-size: 19px; }
+  .business-admin-fnb-metric-copy small { font-size: 9px; }
+  .business-admin-fnb-boundary-note { align-items: flex-start; gap: 9px; }
+  .business-admin-fnb-tabs-heading { align-items: flex-start; flex-direction: column; gap: 2px; padding: 11px 12px 7px; }
+  .business-admin-fnb-tabs-scroll { padding: 5px; }
+  .business-admin-fnb-tabs-hint { display: block; padding: 0 12px 7px; color: #8da0af; font-size: 9px; font-weight: 800; text-align: right; }
+  .business-admin-fnb-tab { min-height: 38px; padding: 8px 10px; }
+  .business-admin-fnb-panel { padding: 14px; }
+  .business-admin-fnb-panel-header { gap: 10px; }
+  .business-admin-fnb-panel-header h2 { font-size: 17px; }
+  .business-admin-fnb-panel-description { font-size: 11px; }
+  .business-admin-fnb-empty-state { align-items: flex-start; min-height: 122px; padding: 14px; }
+  .business-admin-fnb-empty-status { margin-left: auto; }
+  .business-admin-notification-metric { padding: 13px; }
+  .business-admin-notification-metric-copy strong { font-size: 20px; }
+  .business-admin-notifications-toolbar { align-items: flex-start; flex-direction: column; padding: 11px 12px; }
+  .business-admin-notification-filter-group { width: 100%; }
+  .business-admin-notification-filter { flex: 1 1 auto; justify-content: center; }
+  .business-admin-notifications-list { padding: 12px; }
+  .business-admin-notification-card-heading { align-items: flex-start; }
+  .business-admin-notification-footer { align-items: stretch; flex-direction: column; }
+  .business-admin-notification-actions { justify-content: stretch; }
+  .business-admin-notification-action { flex: 1 1 auto; }
+  .business-admin-inventory-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-inventory-workflow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-inventory-metric { gap: 9px; padding: 13px; }
+  .business-admin-inventory-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-inventory-metric-copy strong { font-size: 16px; }
+  .business-admin-inventory-context { align-items: flex-start; }
+  .business-admin-inventory-table-view { display: none; }
+  .business-admin-inventory-mobile-view { display: block; }
+  .business-admin-inventory-pagination { flex-direction: column; gap: 8px; }
+  .business-admin-inventory-pagination-actions { width: 100%; }
+  .business-admin-inventory-pagination-actions .business-admin-button { flex: 1 1 0; justify-content: center; }
+  .business-admin-inventory-pagination-page { flex: 1 1 0; }
+  .business-admin-inventory-record-list { padding: 12px; }
+  .business-admin-inventory-record { padding: 13px; }
+  .business-admin-inventory-record-heading { align-items: flex-start; }
+  .business-admin-inventory-record-facts { gap: 9px 12px; }
+  .business-admin-purchase-orders-toolbar { align-items: flex-start; }
+  .business-admin-purchase-orders-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-purchase-orders-metric { gap: 9px; padding: 13px; }
+  .business-admin-purchase-orders-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-purchase-orders-metric-copy strong { font-size: 16px; }
+  .business-admin-purchase-orders-context { align-items: flex-start; }
+  .business-admin-purchase-orders-filter-card { padding: 11px 12px; }
+  .business-admin-purchase-orders-filter-heading { align-items: flex-start; flex-direction: column; }
+  .business-admin-purchase-orders-view-switch { width: 100%; }
+  .business-admin-purchase-orders-view-button { flex: 1 1 0; }
+  .business-admin-purchase-orders-filter-row { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-purchase-orders-table-view { display: none; }
+  .business-admin-purchase-orders-mobile-view { display: block; }
+  .business-admin-purchase-order-card-list { padding: 12px; }
+  .business-admin-purchase-order-card { padding: 13px; }
+  .business-admin-purchase-order-card-heading { align-items: flex-start; }
+  .business-admin-purchase-order-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-purchase-order-card .business-admin-purchase-orders-actions { justify-content: stretch; }
+  .business-admin-purchase-order-card .business-admin-purchase-orders-action { flex: 1 1 120px; }
+  .business-admin-feature-grid { grid-template-columns: 1fr; }
+  .business-admin-settings-context-grid { grid-template-columns: 1fr; }
+  .business-admin-settings-editor .business-admin-storefront-location-sections { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-editor .business-admin-storefront-operational-options { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-editor .business-admin-storefront-lead-time { grid-column: auto; }
+  .business-admin-settings-editor .business-admin-storefront-location-actions { bottom: 8px; }
+  .business-admin-attendance-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .business-admin-attendance-metric { gap: 9px; padding: 13px; }
+  .business-admin-attendance-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-attendance-metric-value { font-size: 18px; }
+  .business-admin-attendance-contract { align-items: flex-start; padding: 10px 12px; }
+  .business-admin-attendance-record-list { padding: 12px; }
+  .business-admin-attendance-record { padding: 13px; }
+  .business-admin-attendance-record-heading { align-items: flex-start; }
+  .business-admin-attendance-record-facts,
+  .business-admin-attendance-record-facts.operator { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-shifts-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .business-admin-shifts-metric { gap: 9px; padding: 13px; }
+  .business-admin-shifts-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-shifts-metric-value { font-size: 18px; }
+  .business-admin-shifts-contract { align-items: flex-start; padding: 10px 12px; }
+  .business-admin-shifts-table-view { display: none; }
+  .business-admin-shifts-mobile-view { display: block; }
+  .business-admin-shift-card-list { padding: 12px; }
+  .business-admin-shift-card { padding: 13px; }
+  .business-admin-shift-card-heading { align-items: flex-start; }
+  .business-admin-shift-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-shifts-pagination { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .business-admin-shifts-pagination-summary { justify-content: center; }
+  .business-admin-shifts-pagination-actions { grid-column: 1; justify-content: center; }
+  .business-admin-shifts-pagination-actions .business-admin-button { flex: 1 1 0; justify-content: center; }
+  .business-admin-shifts-pagination-page { flex: 1 1 0; }
+  .business-admin-shifts-panel-error { margin: 12px; }
+  .business-admin-cash-summary-table { min-width: 680px; }
+  .business-admin-cash-summary-empty { min-height: 220px; padding: 24px 12px; }
+  .business-admin-cash-summary-empty strong { font-size: 20px; }
+  .business-admin-cash-summary-empty span { font-size: 12px; }
+  .business-admin-cash-summary-pagination { grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 10px; padding: 12px; }
+  .business-admin-cash-summary-pagination-page,
+  .business-admin-cash-summary-pagination-limit { justify-self: center; }
+  .business-admin-orders-contract { align-items: flex-start; padding: 10px 12px; }
+  .business-admin-orders-table-view { display: none; }
+  .business-admin-orders-mobile-view { display: block; }
+  .business-admin-orders-card-list { padding: 12px; }
+  .business-admin-order-card { padding: 13px; }
+  .business-admin-order-card-heading { align-items: flex-start; }
+  .business-admin-order-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-orders-pagination { align-items: stretch; flex-direction: column; padding: 12px; }
+  .business-admin-orders-pagination-summary { justify-content: center; }
+  .business-admin-orders-pagination-actions { justify-content: space-between; }
+  .business-admin-orders-pagination-actions .business-admin-button { flex: 1 1 0; justify-content: center; }
+  .business-admin-orders-pagination-page { flex: 1 1 0; }
+  .business-admin-orders-panel-error,
+  .business-admin-expenses-panel-error { margin: 12px; }
+  .business-admin-payments-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .business-admin-expenses-summary { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .business-admin-expenses-contract { align-items: flex-start; padding: 10px 12px; }
+  .business-admin-expense-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-admin-expense-form-wide { grid-column: 1 / -1; }
+  .business-admin-expense-form-actions { align-items: stretch; flex-direction: column; }
+  .business-admin-expense-form-actions .business-admin-button { width: 100%; }
+  .business-admin-expenses-table-view { display: none; }
+  .business-admin-expenses-mobile-view { display: block; }
+  .business-admin-expense-card-heading { align-items: flex-start; }
+  .business-admin-expense-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-payment-metric { min-height: 96px; gap: 9px; padding: 13px; }
+  .business-admin-payment-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-payment-metric-value { font-size: 18px; }
+  .business-admin-payments-contract { align-items: flex-start; padding: 10px 12px; }
+  .business-admin-payment-account-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+  .business-admin-payments-table-view { display: none; }
+  .business-admin-payments-mobile-view { display: block; }
+  .business-admin-payment-card-list { padding: 12px; }
+  .business-admin-payment-card { padding: 13px; }
+  .business-admin-payment-card-heading { align-items: flex-start; }
+  .business-admin-payment-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px; }
+  .business-admin-branches-summary { gap: 8px; }
+  .business-admin-branches-metric { gap: 9px; padding: 13px; }
+  .business-admin-branches-metric-icon { width: 32px; height: 32px; border-radius: 10px; }
+  .business-admin-branches-metric-value { font-size: 18px; }
+  .business-admin-branch-grid { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .business-admin-branch-card { padding: 14px; }
+  .business-admin-branches-header-actions { align-items: stretch; justify-content: stretch; width: 100%; }
+  .business-admin-branches-header-actions .business-admin-button { flex: 1 1 auto; justify-content: center; }
+  .business-admin-locations-tab { flex: 1 1 140px; }
+  .business-admin-team-actions { align-items: stretch; justify-content: stretch; width: 100%; }
+  .business-admin-team-actions .business-admin-button { flex: 1 1 auto; justify-content: center; }
+  .business-admin-workforce-header-actions { align-items: stretch; justify-content: stretch; width: 100%; }
+  .business-admin-workforce-header-actions .business-admin-button { width: 100%; justify-content: center; }
+  .business-admin-branches-company-table { display: none; }
+  .business-admin-branches-company-cards { display: grid; gap: 8px; padding: 12px; }
+  .business-admin-branches-filter-card .business-admin-scope { width: 100%; margin-left: 0; }
+  .business-admin-filter-card { align-items: stretch; }
+  .business-admin-field { flex: 1 1 140px; }
+  .business-admin-expense-entry-card { padding: 14px; }
+}
+
+@media (max-width: 767px) {
+  .business-admin-settings-editor .business-admin-storefront-location-sections { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-editor .business-admin-storefront-operational-options { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-settings-editor .business-admin-storefront-lead-time { grid-column: auto; }
+  .business-admin-settings-editor .business-admin-storefront-location-actions { bottom: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .business-admin-workspace,
+  .business-admin-locations-results-content,
+  .business-admin-nav-item,
+  .business-admin-button,
+  .business-admin-sidebar-toggle,
+  .business-admin-mobile-nav-toggle,
+  .business-admin-mobile-sidebar-close,
+  .business-admin-sidebar {
+    animation: none;
+    transition: none;
+  }
+  .business-admin-spinner { animation: none; }
+}
+
+/* Keep migrated Back Office panels on the same blue POS brand system. These
+   scoped utility bridges intentionally leave semantic green, amber, and red
+   status colors unchanged. */
+.business-admin-shell .bg-teal-50,
+.business-admin-shell .bg-teal-50\/35 { background-color: #eff7ff !important; }
+.business-admin-shell .bg-teal-100 { background-color: #dbeafe !important; }
+.business-admin-shell .bg-teal-600 { background-color: #1a4e8d !important; }
+.business-admin-shell .border-teal-100 { border-color: #dbeafe !important; }
+.business-admin-shell .border-teal-200 { border-color: #b9d8f4 !important; }
+.business-admin-shell .border-teal-300 { border-color: #93c5fd !important; }
+.business-admin-shell .text-teal-500,
+.business-admin-shell .text-teal-600 { color: #2563eb !important; }
+.business-admin-shell .text-teal-700 { color: #1a4e8d !important; }
+.business-admin-shell .text-teal-800,
+.business-admin-shell .text-teal-900 { color: #143f73 !important; }
+.business-admin-shell .ring-teal-100 { --tw-ring-color: #dbeafe !important; }
+.business-admin-shell .ring-teal-200 { --tw-ring-color: #b9d8f4 !important; }
+.business-admin-shell .hover\:bg-teal-700:hover { background-color: #143f73 !important; }
+.business-admin-shell .hover\:bg-teal-50:hover { background-color: #eff7ff !important; }
+.business-admin-shell .hover\:border-teal-300:hover { border-color: #93c5fd !important; }
+.business-admin-shell .hover\:text-teal-700:hover { color: #1a4e8d !important; }
+.business-admin-shell .focus\:border-teal-500:focus { border-color: #2563eb !important; }
+.business-admin-shell .focus\:ring-teal-100:focus { --tw-ring-color: rgb(37 99 235 / 0.18) !important; }
+
+/* Reconcile the older Back Office feature cards with the POS brand tokens.
+   State colors remain explicit below: green is operationally healthy, amber
+   is attention-needed, and red is critical. */
+.business-admin-shell .business-admin-fnb-overview {
+  border-color: #b9d8f4;
+  background: linear-gradient(145deg, #eff7ff 0%, #ffffff 74%);
+}
+.business-admin-shell .business-admin-fnb-overview-kicker,
+.business-admin-shell .business-admin-fnb-panel-kicker { color: #1a4e8d; }
+.business-admin-shell .business-admin-fnb-live-badge {
+  border-color: #b9d8f4;
+  color: #1a4e8d;
+  background: #eff7ff;
+}
+.business-admin-shell .business-admin-fnb-metric:not(.has-activity) .business-admin-fnb-metric-icon,
+.business-admin-shell .business-admin-fnb-empty-icon,
+.business-admin-shell .business-admin-fnb-boundary-icon {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-fnb-tabs-scroll {
+  scrollbar-color: #93c5fd transparent;
+}
+.business-admin-shell .business-admin-fnb-tabs-scroll::-webkit-scrollbar-thumb { background: #93c5fd; }
+.business-admin-shell .business-admin-fnb-tab:hover {
+  border-color: #93c5fd;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-fnb-tab.active {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+  box-shadow: 0 3px 8px rgba(26, 78, 141, .1);
+}
+.business-admin-shell .business-admin-fnb-tab:focus-visible { outline-color: rgba(37, 99, 235, .28); }
+.business-admin-shell .business-admin-fnb-setup-panel { background: linear-gradient(180deg, #f8fbff 0%, #ffffff 72%); }
+.business-admin-shell .business-admin-fnb-empty-state {
+  border-color: #b9d8f4;
+  background: linear-gradient(135deg, #f8fbff 0%, #fbfdff 100%);
+}
+.business-admin-shell .business-admin-fnb-empty-status {
+  border-color: #b9d8f4;
+  color: #1a4e8d;
+  background: #eff7ff;
+}
+.business-admin-shell .business-admin-fnb-boundary-note {
+  border-color: #b9d8f4;
+  background: linear-gradient(90deg, #eff7ff 0%, #f8fafc 72%);
+}
+.business-admin-shell .business-admin-fnb-boundary-note strong { color: #1a4e8d; }
+
+.business-admin-shell .business-admin-branches-metric-icon,
+.business-admin-shell .business-admin-attendance-metric-icon,
+.business-admin-shell .business-admin-shifts-metric-icon {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-branches-count,
+.business-admin-shell .business-admin-branches-section-tag,
+.business-admin-shell .business-admin-attendance-count,
+.business-admin-shell .business-admin-shifts-count,
+.business-admin-shell .business-admin-orders-count,
+.business-admin-shell .business-admin-payments-count {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-branch-card:hover,
+.business-admin-shell .business-admin-order-card:hover,
+.business-admin-shell .business-admin-order-card:focus-visible { border-color: #93c5fd; }
+.business-admin-shell .business-admin-attendance-contract > svg,
+.business-admin-shell .business-admin-shifts-contract > svg,
+.business-admin-shell .business-admin-orders-contract > svg,
+.business-admin-shell .business-admin-payments-contract > svg,
+.business-admin-shell .business-admin-expenses-contract > svg { color: #1a4e8d; }
+.business-admin-shell .business-admin-attendance-record-icon.operator {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-order-card-copy strong,
+.business-admin-shell .business-admin-link { color: #1a4e8d; }
+
+.business-admin-shell .business-admin-payment-metric:not(.warning):not(.positive) .business-admin-payment-metric-icon,
+.business-admin-shell .business-admin-payment-card-icon,
+.business-admin-shell .business-admin-expense-card-icon {
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-expense-entry-card,
+.business-admin-shell .business-admin-expense-card { border-color: #b9d8f4; }
+.business-admin-shell .business-admin-field textarea:focus {
+  outline-color: rgba(37, 99, 235, .18);
+  border-color: #2563eb;
+}
+
+.business-admin-shell .business-admin-notifications-attention-icon {
+  background: #dbeafe;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-notifications-attention-kicker { color: #1a4e8d; }
+.business-admin-shell .business-admin-notifications-primary-action,
+.business-admin-shell .business-admin-notification-action.primary {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+}
+.business-admin-shell .business-admin-notifications-primary-action:hover,
+.business-admin-shell .business-admin-notification-action.primary:hover {
+  border-color: #143f73;
+  background: #143f73;
+}
+.business-admin-shell .business-admin-notification-metric.teal .business-admin-notification-metric-icon,
+.business-admin-shell .business-admin-inventory-metric.teal .business-admin-inventory-metric-icon,
+.business-admin-shell .business-admin-purchase-orders-metric.teal .business-admin-purchase-orders-metric-icon {
+  border-color: #b9d8f4;
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-notification-filter:hover,
+.business-admin-shell .business-admin-notification-filter.active,
+.business-admin-shell .business-admin-notification-action:hover,
+.business-admin-shell .business-admin-purchase-orders-view-button:hover,
+.business-admin-shell .business-admin-purchase-orders-view-button.active:not(.archived) {
+  border-color: #2563eb;
+  color: #1a4e8d;
+  background: #eff7ff;
+}
+.business-admin-shell .business-admin-notification-filter.active span {
+  background: #dbeafe;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-notification-type,
+.business-admin-shell .business-admin-notification-unread::before,
+.business-admin-shell .business-admin-inventory-context > svg,
+.business-admin-shell .business-admin-purchase-orders-context > svg { color: #2563eb; }
+.business-admin-shell .business-admin-notification-unread::before { background: #2563eb; }
+
+.business-admin-shell .business-admin-inventory-record-icon,
+.business-admin-shell .business-admin-purchase-order-card-icon {
+  background: #eff7ff;
+  color: #1a4e8d;
+}
+.business-admin-shell .business-admin-inventory-record-tag,
+.business-admin-shell .business-admin-purchase-orders-count {
+  border-color: #b9d8f4;
+  color: #1a4e8d;
+  background: #eff7ff;
+}
+.business-admin-shell .business-admin-purchase-orders-view-button.active:not(.archived) {
+  box-shadow: inset 3px 0 #1a4e8d;
+}
+.business-admin-shell .business-admin-purchase-orders-input-wrap input:focus,
+.business-admin-shell .business-admin-purchase-orders-select-wrap select:focus {
+  outline-color: rgba(37, 99, 235, .18);
+  border-color: #2563eb;
+}
+.business-admin-shell .business-admin-spinner {
+  border-color: #b9d8f4;
+  border-top-color: #2563eb;
+}
+
+/* Reports & analytics: keep the first view scannable while preserving the
+   report-specific data tables and semantic risk colors below it. */
+.business-admin-reports-page {
+  min-width: 0;
+  color: #0f172a;
+}
+.business-admin-reports-hero {
+  border: 1px solid #dbe5ef;
+  border-radius: 18px;
+  padding: clamp(18px, 2.2vw, 26px);
+  background: linear-gradient(145deg, #ffffff 0%, #f4f8fd 100%);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+}
+.business-admin-reports-hero-heading,
+.business-admin-reports-title-group,
+.business-admin-reports-hero-status,
+.business-admin-reports-filter-heading,
+.business-admin-reports-actions,
+.business-admin-reports-tabs-heading {
+  display: flex;
+  align-items: center;
+}
+.business-admin-reports-hero-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+.business-admin-reports-title-group { min-width: 0; align-items: flex-start; gap: 13px; }
+.business-admin-reports-hero-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid #b9d8f4;
+  border-radius: 14px;
+  background: #eaf5ff;
+  color: #1a4e8d;
+}
+.business-admin-reports-title-copy { min-width: 0; }
+.business-admin-reports-kicker {
+  display: block;
+  color: #1a4e8d;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.business-admin-reports-title-copy h2 {
+  margin: 5px 0 0;
+  color: #0f172a;
+  font-size: clamp(22px, 2.5vw, 30px);
+  font-weight: 900;
+  letter-spacing: -.035em;
+  line-height: 1.1;
+}
+.business-admin-reports-title-copy p:not(.business-admin-reports-kicker) {
+  max-width: 620px;
+  margin: 7px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.business-admin-reports-hero-status { flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.business-admin-reports-chip,
+.business-admin-reports-read-only {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid #dbe5ef;
+  border-radius: 99px;
+  padding: 6px 10px;
+  background: #fff;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.business-admin-reports-chip-primary { border-color: #b9d8f4; background: #eff7ff; color: #1a4e8d; }
+.business-admin-reports-filter-panel {
+  margin-top: 22px;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(248, 250, 252, .86);
+}
+.business-admin-reports-filter-heading { justify-content: space-between; gap: 12px; }
+.business-admin-reports-filter-heading > div { display: grid; gap: 4px; }
+.business-admin-reports-filter-heading strong { color: #1e293b; font-size: 13px; }
+.business-admin-reports-filter-hint,
+.business-admin-reports-tabs-current { color: #64748b; font-size: 11px; font-weight: 750; }
+.business-admin-reports-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 9px;
+  background: #fff;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.business-admin-reports-reset:hover { border-color: #93c5fd; background: #eff7ff; color: #1a4e8d; }
+.business-admin-reports-reset:focus-visible,
+.business-admin-reports-action:focus-visible,
+.business-admin-reports-tab:focus-visible { outline: 3px solid rgba(37, 99, 235, .24); outline-offset: 2px; }
+.business-admin-reports-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 13px;
+}
+.business-admin-reports-field { display: grid; min-width: 0; gap: 5px; }
+.business-admin-reports-field-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.business-admin-reports-input,
+.business-admin-reports-scope-value {
+  min-height: 40px;
+  border-color: #cbd5e1 !important;
+  background: #fff !important;
+  color: #1e293b !important;
+}
+.business-admin-reports-input:focus,
+.business-admin-reports-input:focus-visible { border-color: #2563eb !important; box-shadow: 0 0 0 3px rgba(37, 99, 235, .12) !important; outline: none; }
+.business-admin-reports-scope-value {
+  display: flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 0 11px;
+  color: #64748b !important;
+  font-size: 12px;
+}
+.business-admin-reports-actions { justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.business-admin-reports-action { border-color: #cbd5e1 !important; color: #334155 !important; }
+.business-admin-reports-action:hover { border-color: #93c5fd !important; background: #eff7ff !important; color: #1a4e8d !important; }
+.business-admin-reports-investigation-handoff { display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid #cfe3ed; border-radius: 16px; padding: 14px 16px; background: #f7fcff; }
+.business-admin-reports-investigation-copy { display: grid; min-width: 0; gap: 3px; }
+.business-admin-reports-investigation-copy strong { color: #1e3a5f; font-size: 13px; }
+.business-admin-reports-investigation-copy p { margin: 1px 0 0; color: #647b8c; font-size: 11px; line-height: 1.45; }
+.business-admin-reports-investigation-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.business-admin-reports-action-primary,
+.business-admin-reports-action-primary:hover {
+  border-color: #1a4e8d !important;
+  background: #1a4e8d !important;
+  color: #fff !important;
+}
+.business-admin-reports-action-primary:hover { background: #143f73 !important; }
+.business-admin-reports-read-only { border-radius: 9px; background: #f8fafc; color: #64748b; }
+.business-admin-reports-tabs-shell {
+  overflow: hidden;
+  border: 1px solid #dbe5ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, .045);
+}
+.business-admin-reports-tabs-heading { justify-content: space-between; gap: 12px; padding: 13px 15px 8px; }
+.business-admin-reports-tabs-heading > div { display: grid; gap: 4px; }
+.business-admin-reports-tabs-heading strong { color: #1e293b; font-size: 13px; }
+.business-admin-reports-tabs-current { flex: 0 0 auto; }
+.business-admin-reports-tabs-scroll { min-width: 0; padding: 0 7px 7px; scrollbar-color: #93c5fd transparent; scrollbar-width: thin; }
+.business-admin-reports-tabs-scroll::-webkit-scrollbar { height: 6px; }
+.business-admin-reports-tabs-scroll::-webkit-scrollbar-thumb { border-radius: 99px; background: #93c5fd; }
+.business-admin-reports-tabs-list { width: max-content; }
+.business-admin-reports-tab {
+  min-height: 38px;
+  border: 1px solid transparent;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 850;
+}
+.business-admin-reports-tab:hover { border-color: #bfdbfe; background: #eff7ff; color: #1a4e8d; }
+.business-admin-reports-tab[data-state='active'] {
+  border-color: #1a4e8d;
+  background: #1a4e8d;
+  color: #fff;
+  box-shadow: 0 4px 10px rgba(26, 78, 141, .18);
+}
+.business-admin-reports-page .bg-white.rounded-2xl.border-slate-200 {
+  border-color: #dbe5ef;
+  box-shadow: 0 7px 22px rgba(15, 23, 42, .045);
+}
+.business-admin-reports-page .bg-white.rounded-2xl.border-slate-200 h3,
+.business-admin-reports-page .bg-white.rounded-2xl.border-slate-200 h4 { color: #1e293b; }
+.business-admin-reports-page .bg-white.rounded-2xl.border-slate-200 table tbody tr:hover { background: #f4f8fd; }
+.business-admin-reports-page .rounded-2xl.border-red-200,
+.business-admin-reports-page .rounded-2xl.border-amber-200,
+.business-admin-reports-page .rounded-2xl.border-yellow-200,
+.business-admin-reports-page .rounded-2xl.border-emerald-200 {
+  border-radius: 14px;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, .04);
+}
+.business-admin-reports-summary-hero {
+  border: 1px solid #1a4e8d;
+  border-radius: 16px;
+  padding: 22px;
+  background: linear-gradient(135deg, #1a4e8d 0%, #2563eb 100%);
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(26, 78, 141, .2);
+}
+.business-admin-reports-summary-hero-label {
+  color: #dbeafe;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.business-admin-reports-summary-hero-value {
+  margin-top: 8px;
+  color: #fff;
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 900;
+  letter-spacing: -.045em;
+  line-height: 1;
+}
+.business-admin-reports-summary-hero-meta,
+.business-admin-reports-summary-hero-detail {
+  color: #dbeafe;
+  font-size: 12px;
+}
+.business-admin-reports-summary-hero-meta { margin-top: 10px; font-weight: 800; }
+.business-admin-reports-summary-hero-detail { margin-top: 3px; opacity: .9; }
+.business-admin-reports-accent-icon { color: #2563eb; }
+.business-admin-reports-state { min-height: 360px; display: grid; place-items: center; }
+.business-admin-reports-spinner { color: #2563eb; }
+.business-admin-reports-error { width: min(620px, 100%); box-shadow: 0 7px 22px rgba(15, 23, 42, .045); }
+.business-admin-report-panel-state {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #64748b;
+  text-align: center;
+}
+.business-admin-report-panel-state svg,
+.business-admin-report-panel-refresh svg { color: #2563eb; }
+.business-admin-report-panel-refresh {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #64748b;
+  font-size: 13px;
+}
+.business-admin-report-panel-refresh-error {
+  color: #b45309;
+  font-weight: 600;
+}
+.business-admin-report-panel-error { margin: 0 auto 16px; }
+
+@media (max-width: 767px) {
+  .business-admin-inventory-workflow-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-reports-hero-heading { flex-direction: column; }
+  .business-admin-reports-hero-status { justify-content: flex-start; }
+  .business-admin-reports-investigation-handoff { align-items: stretch; flex-direction: column; }
+  .business-admin-reports-investigation-actions { justify-content: stretch; }
+  .business-admin-reports-investigation-actions .business-admin-reports-action { flex: 1 1 150px; justify-content: center; }
+  .business-admin-reports-filter-grid { grid-template-columns: minmax(0, 1fr); }
+  .business-admin-reports-actions { justify-content: stretch; }
+  .business-admin-reports-action,
+  .business-admin-reports-read-only { flex: 1 1 150px; justify-content: center; }
+  .business-admin-reports-tabs-heading { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .business-admin-reports-tabs-current { align-self: flex-start; }
+}
+
+/* Keep Back Office scrollbars quiet until the user interacts with the scroll surface. */
+html.business-admin-page {
+  /* Reserve the native scrollbar lane so the main panel never reflows. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+html.business-admin-page body {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+html.business-admin-page.business-admin-scrollbar-active,
+html.business-admin-page.business-admin-scrollbar-active body {
+  scrollbar-width: thin !important;
+  scrollbar-color: #94a3b8 transparent !important;
+}
+html.business-admin-page::-webkit-scrollbar,
+html.business-admin-page body::-webkit-scrollbar {
+  width: 9px !important;
+  height: 9px !important;
+}
+html.business-admin-page::-webkit-scrollbar-track,
+html.business-admin-page body::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+html.business-admin-page::-webkit-scrollbar-thumb,
+html.business-admin-page body::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: transparent;
+  background-clip: padding-box;
+}
+html.business-admin-page.business-admin-scrollbar-active::-webkit-scrollbar-thumb,
+html.business-admin-page.business-admin-scrollbar-active body::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+.business-admin-shell,
+.business-admin-shell * {
+  /* Keep the native lane stable; only the thumb changes visibility. */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+}
+.business-admin-shell:hover,
+.business-admin-shell *:hover,
+.business-admin-shell *:focus-within {
+  scrollbar-width: thin !important;
+  scrollbar-color: #94a3b8 transparent !important;
+}
+.business-admin-shell::-webkit-scrollbar,
+.business-admin-shell *::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+.business-admin-shell::-webkit-scrollbar-track,
+.business-admin-shell *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.business-admin-shell::-webkit-scrollbar-thumb,
+.business-admin-shell *::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: transparent;
+  background-clip: padding-box;
+}
+.business-admin-shell:hover::-webkit-scrollbar-thumb,
+.business-admin-shell *:hover::-webkit-scrollbar-thumb,
+.business-admin-shell *:focus-within::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  background-clip: padding-box;
+}
+
+/* A mouse click can leave a nav control focused after the pointer leaves.
+   Keep the sidebar scrollbar hover-driven while preserving keyboard focus visibility. */
+.business-admin-shell > .business-admin-sidebar,
+.business-admin-shell > .business-admin-sidebar * {
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+  scrollbar-gutter: stable;
+}
+.business-admin-shell > .business-admin-sidebar {
+  /* Keep the navigation content width stable while the scrollbar is revealed. */
+  scrollbar-width: thin !important;
+  scrollbar-color: transparent transparent !important;
+  scrollbar-gutter: stable;
+}
+.business-admin-shell > .business-admin-sidebar:hover,
+.business-admin-shell > .business-admin-sidebar *:hover,
+.business-admin-shell > .business-admin-sidebar:has(:focus-visible),
+.business-admin-shell > .business-admin-sidebar *:focus-visible {
+  scrollbar-width: thin !important;
+  scrollbar-color: #94a3b8 transparent !important;
+}
+.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+.business-admin-shell > .business-admin-sidebar *::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+}
+.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar-track,
+.business-admin-shell > .business-admin-sidebar *::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.business-admin-shell > .business-admin-sidebar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background: transparent;
+  background-clip: padding-box;
+}
+.business-admin-shell > .business-admin-sidebar:hover::-webkit-scrollbar-thumb,
+.business-admin-shell > .business-admin-sidebar *:hover::-webkit-scrollbar-thumb,
+.business-admin-shell > .business-admin-sidebar:has(:focus-visible)::-webkit-scrollbar-thumb,
+.business-admin-shell > .business-admin-sidebar *:focus-visible::-webkit-scrollbar-thumb {
+  border-radius: 99px;
+  background: #94a3b8;
+  background-clip: padding-box;
+}

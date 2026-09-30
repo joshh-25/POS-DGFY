@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FnbCheckoutSummaryContent } from '../modes/fnb/checkout/components/FnbCheckoutSummaryContent.jsx';
 import { FnbCheckoutMobileSummaryPanel } from '../modes/fnb/checkout/components/FnbCheckoutMobileSummaryPanel.jsx';
+import { FnbCheckoutCustomerStep } from '../modes/fnb/checkout/components/FnbCheckoutCustomerStep.jsx';
 import { VAT_DISCLOSURE_LABEL, VAT_DISCLOSURE_NOTE } from '../shared/model/storefrontFeesAndTaxesPresentation.js';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
@@ -169,12 +170,55 @@ describe('F&B checkout summary -- fee/VAT split (#1615)', () => {
       expect(totals.subtotal_amount - 10.5 + totals.delivery_fee).toBeCloseTo(totals.total_amount, 2);
 
       render(<FnbCheckoutSummaryContent {...desktopBaseProps} totals={totals} isDeliveryOrder variant="detailed" />);
-      expect(screen.getByText('Delivery Fee')).toBeTruthy();
+      expect(screen.getByText('Delivery fee')).toBeTruthy();
       expect(screen.getByText('PHP 50.00')).toBeTruthy();
       expect(screen.queryByText('Service Fee')).toBeNull();
       expect(screen.queryByText('PHP 1.05')).toBeNull();
       expect(screen.getByText(VAT_DISCLOSURE_LABEL)).toBeTruthy();
       expect(screen.getAllByText('PHP 144.50').length).toBeGreaterThan(0);
     });
+  });
+
+  describe('Step 1 delivery-fee expectation', () => {
+    const stepProps = {
+      brandColor: '#1a4e8d',
+      brandDark: '#153e70',
+      canContinue: true,
+      identityContent: <div>Customer fields</div>,
+      isMobileViewport: true,
+      isResponsive: true,
+      onBack: vi.fn(),
+      onContinue: vi.fn(),
+    };
+
+    it('shows the non-monetary note when delivery is available', () => {
+      render(<FnbCheckoutCustomerStep {...stepProps} showDeliveryFeeExpectationNote />);
+      expect(screen.getByText('Delivery fee is shown in Step 2 after you choose Delivery. Pickup has no delivery fee.')).toBeTruthy();
+      expect(screen.queryByText(/₱|PHP/)).toBeNull();
+    });
+
+    it('omits the delivery-fee note for pickup-only stores', () => {
+      render(<FnbCheckoutCustomerStep {...stepProps} showDeliveryFeeExpectationNote={false} />);
+      expect(screen.queryByText(/Delivery fee is shown in Step 2/)).toBeNull();
+    });
+
+    it('keeps the same expectation copy on the desktop Step 1 layout', () => {
+      render(<FnbCheckoutCustomerStep {...stepProps} isMobileViewport={false} isResponsive={false} showDeliveryFeeExpectationNote />);
+      expect(screen.getByText('Delivery fee is shown in Step 2 after you choose Delivery. Pickup has no delivery fee.')).toBeTruthy();
+    });
+  });
+
+  it('shows a recalculation status beside the safe pickup total', () => {
+    render(<FnbCheckoutSummaryContent
+      {...desktopBaseProps}
+      isTotalStale
+      orderMethod="pickup"
+      totals={{ ...baseTotals, subtotal_amount: 488, delivery_fee: 0, total_amount: 488 }}
+      variant="detailed"
+    />);
+
+    expect(screen.getByRole('status').textContent).toBe('Recalculating total…');
+    expect(screen.getAllByText('PHP 488.00').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Delivery Fee')).toBeNull();
   });
 });

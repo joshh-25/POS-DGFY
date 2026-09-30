@@ -55,6 +55,11 @@ on:
         required: false
         type: string
         default: '["sieitz-runner"]'  # #923: generic, either box
+      image_tag_override:
+        description: Optional immutable shared Compose IMAGE_TAG override for this deploy
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -105,7 +110,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKER_DIR: ${{ secrets.DOCKER_DIR }}
           SENTRY_RELEASE: ${{ github.sha }}
+          IMAGE_TAG_OVERRIDE: ${{ inputs.image_tag_override }}
         run: |
+          if [ -n "$IMAGE_TAG_OVERRIDE" ] && ! [[ "$IMAGE_TAG_OVERRIDE" =~ ^sha-[0-9a-f]{7}$ ]]; then
+            echo "::error::IMAGE_TAG_OVERRIDE must be empty or sha-<7 lowercase hex characters" >&2
+            exit 1
+          fi
+          if [ -n "$IMAGE_TAG_OVERRIDE" ] && [ "${{ inputs.environment }}" != "DEV" ]; then
+            echo "::error::IMAGE_TAG_OVERRIDE is restricted to DEV deployments." >&2
+            exit 1
+          fi
+          COMPOSE_TAG_PREFIX=""
+          if [ -n "$IMAGE_TAG_OVERRIDE" ]; then COMPOSE_TAG_PREFIX="IMAGE_TAG='$IMAGE_TAG_OVERRIDE' "; fi
           # Token is piped over the existing SSH stdin into `docker login
           # --password-stdin` on the remote -- never an argv or env var on
           # that host, so it can't leak via `ps aux` there.
@@ -161,8 +177,8 @@ jobs:
              if [ \"$PROD_SOPS_PATH\" = 1 ]; then \
                SENTRY_RELEASE=\"$SENTRY_RELEASE\" ./deploy-sops.sh && docker logout ghcr.io; \
              else \
-               ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
-               SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans && docker logout ghcr.io; \
+               ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if ${COMPOSE_TAG_PREFIX}docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
+               { ${COMPOSE_TAG_PREFIX}SENTRY_RELEASE=\"$SENTRY_RELEASE\" docker compose up -d --remove-orphans || { echo \"::error::docker compose up failed. Dumping runner logs:\" >&2; docker compose logs --tail=100 dgfy-migration-runner >&2; docker compose logs --tail=100 dgfy-api >&2; docker logout ghcr.io || true; exit 1; }; } && docker logout ghcr.io; \
              fi" \
             <<< "$GITHUB_TOKEN"
 

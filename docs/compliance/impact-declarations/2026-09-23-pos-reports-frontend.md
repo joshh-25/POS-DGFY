@@ -8,7 +8,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.23
-verification_evidence: npm run check:architecture,focused POS Reports Vitest behavior and contract suites,POS Reports API repository/use-case/validator suites,npm run build:pos,workspace integration contract tests,git diff --check
+verification_evidence: npm run check:architecture,focused POS Reports Vitest behavior and contract suites,POS Reports API repository/use-case/validator suites,npm run build:pos,workspace integration contract tests,git diff --check,apps/dgfy-ims lint for Z-reading print binding fix,web-core lint for Z-reading print binding fix
 rollback_note: Revert the POS Reports implementation commits and this declaration; existing POS transaction, shift, and authorization contracts remain unchanged.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -58,3 +58,7 @@ tenant access, or payment authorization behavior.
 - Workspace integration wiring preserves the existing report data sources, subtab state, shared
   pagination, and employee-credit report boundary.
 - `git diff --check` passed.
+- One-line print-only binding fix (`zReadingReconciliation` from
+  `reportData?.z_reading_reconciliation`) restores the existing optional Z-reading print section;
+  no new data source, query, export, or mutation. `npm run lint` in `apps/dgfy-ims` passed with
+  0 errors and the CI web-core lint command passed with 0 errors.

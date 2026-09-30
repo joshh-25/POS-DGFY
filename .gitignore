@@ -115,6 +115,7 @@ htdocs/.htaccess
 /apps/dgfy-storefront/dist/
 /apps/dgfy-pos/dist/
 /apps/dgfy-pos/desktop-dist/
+/apps/dgfy-opis/dist/
 
 nul
 

@@ -18,6 +18,7 @@ export default function TerminalLockDrawer({
   onIdentityChange,
   onUseDifferentAccount,
   onLegacySubmit,
+  terminalUser = null,
   posTextSize,
   onPosTextSizeChange
 }) {

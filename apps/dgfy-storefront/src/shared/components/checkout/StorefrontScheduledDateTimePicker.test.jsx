@@ -96,7 +96,9 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
   });
   it('accepts off-step manual minutes and rolls minute 60 into the next available hour', () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-23T08:00:00'));
+    // Absolute instant whose Asia/Manila branch wall is 08:00 on 2026-09-23, so the
+    // 10:00 wall-clock value below is in the future on any runner TZ (CI runs UTC).
+    vi.setSystemTime(new Date('2026-09-23T00:00:00.000Z'));
     render(
       <StorefrontScheduledDateTimePicker
         onApply={vi.fn()}
@@ -153,6 +155,9 @@ describe('StorefrontScheduledDateTimePicker responsive layout', () => {
     expect(openDate.getAttribute('aria-pressed')).toBe('true');
   });
   it('keeps the shortcuts compact while preserving mobile calendar touch targets', () => {
+    vi.useFakeTimers();
+    // Noon in Asia/Manila keeps the selected 14:30 time before closing at 22:00.
+    vi.setSystemTime(new Date('2026-09-28T04:00:00.000Z'));
     render(
       <StorefrontScheduledDateTimePicker
         isResponsive

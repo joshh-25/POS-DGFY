@@ -53,6 +53,7 @@ const APPS = Object.freeze([
     'dgfy-ims',
     'dgfy-pos',
     'dgfy-storefront',
+    'dgfy-opis',
 ]);
 
 // Same prefix-table shape as check-compliance-impact.js's PROMOTION_HEAD_BY_BASE /
@@ -450,13 +451,24 @@ async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedF
     const results = changedApps.map(({ app, appDir, reason }) => {
         const baseVersionRaw = readVersionAt(repoRoot, baseGitRef, appDir);
         const headVersionRaw = readVersionAt(repoRoot, headGitRef, appDir);
+        const basePackageExists = fileExistsAtRef(repoRoot, baseGitRef, `${appDir}/package.json`);
         const base = parseVersion(baseVersionRaw);
         const head = parseVersion(headVersionRaw);
+
+        // A package absent from the base ref is a newly introduced app, matching
+        // evaluateBump()'s PR-time behavior. It has no historical floor to compare
+        // against; its head version must still be present and parseable.
+        if (!basePackageExists && head) {
+            return {
+                app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
+                floorTarget: null, belowFloor: false, unparseable: false, newApp: true,
+            };
+        }
 
         if (!base || !head) {
             return {
                 app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
-                floorTarget: null, belowFloor: false, unparseable: true,
+                floorTarget: null, belowFloor: false, unparseable: true, newApp: false,
             };
         }
 
@@ -465,7 +477,7 @@ async function runFloor({ repoRoot = REPO_ROOT, baseGitRef, headGitRef, changedF
 
         return {
             app, appDir, reason, baseVersion: baseVersionRaw, headVersion: headVersionRaw,
-            floorTarget, belowFloor: !meetsFloor, unparseable: false,
+            floorTarget, belowFloor: !meetsFloor, unparseable: false, newApp: false,
         };
     });
 
@@ -548,6 +560,10 @@ function printFloorResult(result) {
     } else {
         const scoped = result.results.map((entry) => `${entry.app} (${entry.reason})`).join(', ');
         console.log(`[check:app-versions --floor] Apps in scope (changed between the given refs): ${scoped}`);
+    }
+    const newApps = result.results.filter((entry) => entry.newApp).map((entry) => entry.app);
+    if (newApps.length > 0) {
+        console.log(`[check:app-versions --floor] New apps with no base floor: ${newApps.join(', ')}`);
     }
     if (result.unchanged.length > 0) {
         console.log(`[check:app-versions --floor] Apps skipped (unchanged -- no floor obligation): ${result.unchanged.join(', ')}`);

@@ -391,11 +391,11 @@ export const switchDgfyCompany = async (req, res) => {
         const auditContext = result.auditContext || {};
         try {
             await revokePreviousTenantSession(req);
-            clearTenantSessionCookies(res);
+            clearTenantSessionCookies(res, req);
             setTenantSessionCookies(res, {
                 refreshToken: result.data?.payload?.data?.refreshToken,
                 tenantToken: result.data?.payload?.data?.company?.token || null
-            });
+            }, req);
         } catch (error) {
             await recordDgfyCompanySwitchOutcomeUseCase({
                 ...auditContext,
@@ -473,7 +473,7 @@ export const startDgfyPosSession = async (req, res) => {
         setTenantSessionCookies(res, {
             refreshToken: result.data?.payload?.data?.refreshToken,
             tenantToken: result.data?.payload?.data?.company?.token || null
-        });
+        }, req);
     }
 
     return sendUseCaseResult(res, result, {
@@ -492,7 +492,7 @@ export const startDgfyTenantSession = async (req, res) => {
         setTenantSessionCookies(res, {
             refreshToken: result.data?.payload?.data?.refreshToken,
             tenantToken: result.data?.payload?.data?.company?.token || req.body?.company_token || null
-        });
+        }, req);
     }
 
     return sendUseCaseResult(res, result, {

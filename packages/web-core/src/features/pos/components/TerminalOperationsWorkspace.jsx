@@ -2,7 +2,8 @@ import SettingsWorkspace from '../settings/PosSettingsWorkspace.jsx';
 import StorefrontSectionInfo from '../settings/StorefrontSectionInfo.jsx';
 import PosFnbSelect from './PosFnbSelect.jsx';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
 import { createPortal } from 'react-dom';
 import {
@@ -63,7 +64,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
-import CSVImportModal from '@/components/items/CSVImportModal.jsx';
+const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -100,8 +101,7 @@ import {
   normalizeBarcodeEntry,
   resolveProductBarcodeInput
 } from '@/src/utils/barcodePolicy.js';
-import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
-import {
+const ProductQrScannerModal = lazyWithChunkRetry(() => import('@/src/features/inventory/components/ProductQrScannerModal.jsx'));import {
   notifyPosCatalogUpdated,
   subscribeToPosCatalogUpdates,
   subscribeToRemotePosCatalogUpdates
@@ -133,32 +133,35 @@ import { POS_HISTORY_PAGE_SIZE_OPTIONS } from '../utils/posHistoryQuery.js';
 
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
-import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+import { resolvePosCatalogImageSources, resolvePosCatalogPreviewGallery } from '../utils/posCheckoutTerminalUtils.js';
 
-import PdfMenuImportModal from '@/components/items/PdfMenuImportModal.jsx';
-import MenuImportBatchModal from '@/components/items/MenuImportBatchModal.jsx';
+const PdfMenuImportModal = lazyWithChunkRetry(() => import('@/components/items/PdfMenuImportModal.jsx'));
+const MenuImportBatchModal = lazyWithChunkRetry(() => import('@/components/items/MenuImportBatchModal.jsx'));
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
 import { isMenuImportBatchEnabled } from '@/services/menuImportService.js';
-import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
-import PosServicesOperationsWorkspace from './PosServicesOperationsWorkspace.jsx';
-import PosFnbModifiersWorkspace from './PosFnbModifiersWorkspace.jsx';
+import { loadIncomingQueueWorkspace } from './terminalWorkspaceChunks.js';
+import WorkspaceShell from './TerminalWorkspaceShell.jsx';
+const IncomingQueueWorkspace = lazyWithChunkRetry(loadIncomingQueueWorkspace);
+const PosServicesOperationsWorkspace = lazyWithChunkRetry(() => import('./PosServicesOperationsWorkspace.jsx'));
+const PosFnbModifiersWorkspace = lazyWithChunkRetry(() => import('./PosFnbModifiersWorkspace.jsx'));
 import {
   fetchPosCatalogPage,
   fetchMerchantTenderReconciliation,
   reviewMerchantTenderReconciliation
 } from '../services/posService.js';
-import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
+const PosReportsAnalyticsWorkspace = lazyWithChunkRetry(() => import('./PosReportsAnalyticsWorkspace.jsx'));
 import CashierHistoryPanel from './CashierHistoryPanel.jsx';
 
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
-import VoucherManagementPanel from './VoucherManagementPanel.jsx';
-import PricelistManagementPanel from './PricelistManagementPanel.jsx';
+const VoucherManagementPanel = lazyWithChunkRetry(() => import('./VoucherManagementPanel.jsx'));
+const PricelistManagementPanel = lazyWithChunkRetry(() => import('./PricelistManagementPanel.jsx'));
 
-import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
-import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
-import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
+const PosServiceOptionsWorkspace = lazyWithChunkRetry(() => import('./PosServiceOptionsWorkspace.jsx'));
+const PosItemImageViewer = lazyWithChunkRetry(() => import('./PosItemImageViewer.jsx'));
+const PosServiceCatalogCreateModal = lazyWithChunkRetry(() => import('./PosServiceCatalogCreateModal.jsx'));
+const PosServiceCatalogEditModal = lazyWithChunkRetry(() => import('./PosServiceCatalogEditModal.jsx'));
 import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
-import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { isIminWrapperRuntime, posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const POS_ITEMS_PAGE_SIZE = 20;
 const POS_ITEMS_PAGE_SIZE_OPTIONS = POS_HISTORY_PAGE_SIZE_OPTIONS;
@@ -541,6 +544,7 @@ function ShiftControlsWorkspace({
   });
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
+  const isIminRuntime = isIminWrapperRuntime();
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
   const shiftLocationLabel = activeShift?.location?.name || activeShift?.location_name || activeShift?.location_id || 'Unassigned';
   const shiftCashierLabel = activeShift?.cashier?.username
@@ -659,6 +663,17 @@ function ShiftControlsWorkspace({
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
 
+    if (isIminRuntime) {
+      setActiveTab(nextTab);
+      setRenderedTab(nextTab);
+      setPaneInlineStyle({
+        transform: 'translateX(0)',
+        opacity: 1,
+        transition: 'none'
+      });
+      return;
+    }
+
     const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
     const enterOffset = movingForward ? 28 : -28;
@@ -690,7 +705,7 @@ function ShiftControlsWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers, isBranchReadOnlyView]);
+  }, [activeTab, clearAnimationTimers, isIminRuntime]);
 
   const summaryRows = activeShift ? [
     {
@@ -2402,6 +2417,7 @@ function ItemsWorkspace({
   const deferredItemsSearch = React.useDeferredValue(searchQuery);
   const [editingItemSnapshot, setEditingItemSnapshot] = useState(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [itemImagePreview, setItemImagePreview] = useState(null);
   const [showCreateServiceModal, setShowCreateServiceModal] = useState(false);
   const [editingServiceItem, setEditingServiceItem] = useState(null);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
@@ -3271,17 +3287,22 @@ function ItemsWorkspace({
     const releaseScrollLock = acquireModalScrollLock();
     const handleKeyDown = (event) => {
       if (event.key !== 'Escape' || (showCreateModal && externalQrScannerOpenRef.current)) return;
-      event.preventDefault();
-      if (showCreateModal) closeCreateRef.current();
-      else closeEditRef.current();
+      if (showCreateModal && !creatingItem && !postCreateSaving) {
+        event.preventDefault();
+        closeCreateRef.current();
+        return;
+      }
+      if (editItemModalOpen && !savingItem && !persistingEditAssets) {
+        event.preventDefault();
+        closeEditRef.current();
+      }
     };
-
     document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
       releaseScrollLock();
     };
-  }, [editItemModalOpen, showCreateModal]);
+  }, [creatingItem, editItemModalOpen, persistingEditAssets, postCreateSaving, savingItem, showCreateModal]);
 
   const parseMoneyValue = (rawValue) => Number(String(rawValue || '').trim());
 
@@ -4274,7 +4295,7 @@ function ItemsWorkspace({
             open={showMobileFilters}
             onOpenChange={(open) => !open && setShowMobileFilters(false)}
             mobileSheet
-            overlayClassName="bg-slate-950/60 backdrop-blur-sm"
+            overlayClassName="bg-black/30 backdrop-blur-none"
           >
             <DialogContent
               id="pos-items-mobile-filter-dialog"
@@ -4391,21 +4412,22 @@ function ItemsWorkspace({
         </div>
       </div>
 
-      {canCreateItems && menuImportBatchEnabled ? (
-        <MenuImportBatchModal
-          open={showPdfMenuImport}
-          onClose={() => setShowPdfMenuImport(false)}
-          onSuccess={() => { loadItems(); }}
-        />
-      ) : canCreateItems && pdfMenuImportEnabled ? (
-        <PdfMenuImportModal
-          open={showPdfMenuImport}
-          onClose={() => setShowPdfMenuImport(false)}
-          onSuccess={() => { loadItems(); }}
-        />
-      ) : null}
+      <Suspense fallback={null}>
+        {showPdfMenuImport && canCreateItems && menuImportBatchEnabled ? (
+          <MenuImportBatchModal
+            open={showPdfMenuImport}
+            onClose={() => setShowPdfMenuImport(false)}
+            onSuccess={() => { loadItems(); }}
+          />
+        ) : showPdfMenuImport && canCreateItems && pdfMenuImportEnabled ? (
+          <PdfMenuImportModal
+            open={showPdfMenuImport}
+            onClose={() => setShowPdfMenuImport(false)}
+            onSuccess={() => { loadItems(); }}
+          />
+        ) : null}
 
-      {canImportItems ? (
+        {showCsvImport && canImportItems ? (
         <CSVImportModal
           open={showCsvImport}
           posItemsPresentation
@@ -4415,34 +4437,39 @@ function ItemsWorkspace({
             notifyPosCatalogUpdated();
           }}
         />
-      ) : null}
+        ) : null}
 
-      <PosServiceCatalogCreateModal
-        open={showCreateServiceModal}
-        isOnline={isOnline}
-        onClose={() => setShowCreateServiceModal(false)}
-        onCreated={async () => {
-          await loadItems();
-          notifyPosCatalogUpdated();
-        }}
-      />
+        {showCreateServiceModal ? (
+          <PosServiceCatalogCreateModal
+            open={showCreateServiceModal}
+            isOnline={isOnline}
+            onClose={() => setShowCreateServiceModal(false)}
+            onCreated={async () => {
+              await loadItems();
+              notifyPosCatalogUpdated();
+            }}
+          />
+        ) : null}
 
-      <PosServiceCatalogEditModal
-        open={Boolean(editingServiceItem)}
-        serviceItem={editingServiceItem}
-        isOnline={isOnline}
-        onClose={() => setEditingServiceItem(null)}
-        onUpdated={async (updatedService) => {
-          setEditingServiceItem(null);
-          await loadItems();
-          notifyPosCatalogUpdated();
-          setSavedMessage({
-            name: updatedService?.service?.name || updatedService?.name || editingServiceItem?.name || 'Service',
-            barcode: '',
-            action: 'updated'
-          });
-        }}
-      />
+        {editingServiceItem ? (
+          <PosServiceCatalogEditModal
+            open={Boolean(editingServiceItem)}
+            serviceItem={editingServiceItem}
+            isOnline={isOnline}
+            onClose={() => setEditingServiceItem(null)}
+            onUpdated={async (updatedService) => {
+              setEditingServiceItem(null);
+              await loadItems();
+              notifyPosCatalogUpdated();
+              setSavedMessage({
+                name: updatedService?.service?.name || updatedService?.name || editingServiceItem?.name || 'Service',
+                barcode: '',
+                action: 'updated'
+              });
+            }}
+          />
+        ) : null}
+      </Suspense>
 
       {error ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -4481,6 +4508,7 @@ function ItemsWorkspace({
           {paginatedItems.map((item) => {
             const isServiceItem = isServiceCatalogItem(item);
             const imageSources = resolvePosCatalogImageSources(item);
+            const previewSources = resolvePosCatalogPreviewGallery(item);
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -4496,21 +4524,27 @@ function ItemsWorkspace({
             return (
               <React.Fragment key={item.item_id}>
                 <div className="pos-items-reference-mobile-card flex flex-col gap-5 rounded-[1.25rem] border-2 border-[#CBD5E1] bg-white p-4 shadow-none sm:hidden">
-                  <div className="pos-items-reference-mobile-card-top grid min-w-0 grid-cols-[clamp(4.75rem,24vw,5.75rem)_minmax(0,1fr)] items-start gap-4">
-                    <div className="pos-items-reference-mobile-card-image relative flex aspect-square min-w-0 items-center justify-center overflow-hidden bg-slate-100">
-                      <ImagePlus className="h-6 w-6 text-slate-300" />
-                      {imageSources.src ? (
-                        <ResponsiveImage
-                          sources={imageSources}
-                          alt={item?.name || 'Item image'}
-                          sizes="(max-width: 639px) 24vw, 150px"
-                          width={288}
-                          height={288}
-                          className="absolute h-full w-full object-cover"
-                          fallbackSrcs={[imageSources.configuredLargeSrc].filter(Boolean)}
-                        />
-                      ) : null}
-                    </div>
+                    <div className="pos-items-reference-mobile-card-top grid min-w-0 grid-cols-[clamp(4.75rem,24vw,5.75rem)_minmax(0,1fr)] items-start gap-4">
+                      <button
+                        type="button"
+                        disabled={previewSources.gallery.length === 0}
+                        aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
+                        onClick={() => setItemImagePreview({ itemName: item.name, sellingPrice: item.default_sale_price, gallery: previewSources.gallery })}
+                        className="pos-items-reference-mobile-card-image relative flex aspect-square min-w-0 items-center justify-center overflow-hidden bg-slate-100 enabled:cursor-zoom-in"
+                      >
+                        <ImagePlus className="h-6 w-6 text-slate-300" />
+                        {imageSources.src ? (
+                          <ResponsiveImage
+                            sources={imageSources}
+                            alt={item?.name || 'Item image'}
+                            sizes="(max-width: 639px) 24vw, 150px"
+                            width={288}
+                            height={288}
+                            className="absolute h-full w-full object-cover"
+                            fallbackSrcs={[imageSources.configuredLargeSrc].filter(Boolean)}
+                          />
+                        ) : null}
+                      </button>
                     <div className="pos-items-reference-mobile-card-summary min-w-0 self-stretch">
                       <p className="pos-items-reference-mobile-card-title break-words font-black tracking-tight text-[#0F172A]">
                         {item.name || 'Unnamed item'}
@@ -4596,7 +4630,13 @@ function ItemsWorkspace({
                 className="box-border h-full min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white p-2 shadow-[0_8px_20px_rgba(148,163,184,0.08)] transition-shadow hover:shadow-[0_12px_24px_rgba(148,163,184,0.12)] hidden sm:block pos-items-desktop-card"
               >
                 <div className="pos-items-desktop-card-grid pos-items-mobile-card-grid grid h-full min-w-0 items-stretch gap-2 sm:grid-cols-[4.5rem_minmax(0,1fr)] xl:grid-cols-[minmax(4rem,max-content)_minmax(13rem,1fr)_11.5rem_6rem] xl:gap-2">
-                  <div className="pos-items-mobile-card-image relative flex aspect-square h-16 w-16 min-h-16 min-w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 sm:h-16 sm:w-16 xl:h-auto xl:w-auto xl:self-stretch">
+                    <button
+                      type="button"
+                      disabled={previewSources.gallery.length === 0}
+                      aria-label={previewSources.gallery.length > 0 ? `View ${item.name || 'item'} image` : undefined}
+                      onClick={() => setItemImagePreview({ itemName: item.name, sellingPrice: item.default_sale_price, gallery: previewSources.gallery })}
+                      className="pos-items-mobile-card-image relative flex aspect-square h-16 w-16 min-h-16 min-w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 sm:h-16 sm:w-16 xl:h-auto xl:w-auto xl:self-stretch enabled:cursor-zoom-in"
+                    >
                       <ImagePlus className="h-5 w-5 text-slate-300" />
                       {imageSources.src ? (
                         <ResponsiveImage
@@ -4609,7 +4649,7 @@ function ItemsWorkspace({
                           fallbackSrcs={[imageSources.configuredLargeSrc].filter(Boolean)}
                         />
                       ) : null}
-                    </div>
+                      </button>
                   <div className="pos-items-mobile-card-summary min-w-0 self-stretch pl-4 pr-0 xl:flex xl:min-h-[4rem] xl:items-center">
                       <div className="pos-items-mobile-card-summary-inner flex min-h-full min-w-0 flex-1 flex-col justify-center xl:grid xl:grid-rows-2 xl:justify-normal">
                         <div className="min-h-[2.25rem] xl:flex xl:min-h-0 xl:items-center">
@@ -4850,7 +4890,21 @@ function ItemsWorkspace({
                       <div className="min-w-0 flex-1">
                         <p className="font-semibold text-slate-900">{externalProductLookup.product?.name || 'Unnamed registry product'}</p>
                         {externalProductLookup.product?.brand ? <p className="text-xs text-slate-600">Brand: {externalProductLookup.product.brand}</p> : null}
+                        {externalProductLookup.product?.category_suggestion ? <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p> : null}
                         <p className="mt-1 text-xs text-amber-700">Review before saving. Details are applied only after you select Use product details.</p>
+                        {externalProductLookup.suggested_price ? (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                            <p className="font-semibold">
+                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
+                            </p>
+                            <p>
+                              {externalProductLookup.suggested_price.label} from Open Prices
+                              {externalProductLookup.suggested_price.location ? ` at ${externalProductLookup.suggested_price.location}` : ''}
+                              {externalProductLookup.suggested_price.observed_at ? ` on ${externalProductLookup.suggested_price.observed_at}` : ''}.
+                            </p>
+                            <p className="mt-1 text-emerald-800">{externalProductLookup.suggested_price.disclaimer}</p>
+                          </div>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 flex-wrap gap-2">
                         <Button type="button" size="sm" onClick={applyExternalProductDetails} disabled={acceptedExternalProduct?.code === externalProductLookup.code}>
@@ -5215,11 +5269,21 @@ function ItemsWorkspace({
         </div>
       ), document.body)}
 
-      <ProductQrScannerModal
-        open={externalQrScannerOpen}
-        onOpenChange={setExternalQrScannerOpen}
-        onDetected={handleExternalQrDetected}
-      />
+      {externalQrScannerOpen ? (
+        <Suspense fallback={null}>
+          <ProductQrScannerModal
+            open={externalQrScannerOpen}
+            onOpenChange={setExternalQrScannerOpen}
+            onDetected={handleExternalQrDetected}
+          />
+        </Suspense>
+      ) : null}
+
+      {itemImagePreview ? (
+        <Suspense fallback={null}>
+          <PosItemImageViewer preview={itemImagePreview} onClose={() => setItemImagePreview(null)} />
+        </Suspense>
+      ) : null}
 
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
@@ -6453,6 +6517,7 @@ function ItemsCatalogWorkspace({
   const activeTab = availableTabs.some((tab) => tab.id === selectedTab)
     ? selectedTab
     : (availableTabs[0]?.id || '');
+  const isIminRuntime = isIminWrapperRuntime();
   const visibleTab = availableTabs.some((tab) => tab.id === renderedTab)
     ? renderedTab
     : activeTab;
@@ -6477,9 +6542,16 @@ function ItemsCatalogWorkspace({
     setPaneInlineStyle({ opacity: 1, transition: 'none' });
   }, [activeTab, availableTabs, clearAnimationTimers, renderedTab]);
 
-  const transitionToTab = useCallback((nextTab) => {
+  const handleTabChange = useCallback((nextTab) => {
     if (!nextTab || nextTab === activeTab) return;
     clearAnimationTimers();
+
+    if (isIminRuntime) {
+      setSelectedTab(nextTab);
+      setRenderedTab(nextTab);
+      setPaneInlineStyle({ opacity: 1, transition: 'none' });
+      return;
+    }
 
     const movingForward = resolveTabIndex(nextTab) > resolveTabIndex(activeTab);
     const exitOffset = movingForward ? -28 : 28;
@@ -6517,7 +6589,7 @@ function ItemsCatalogWorkspace({
     }, 150);
 
     animationTimersRef.current.push(swapTimer);
-  }, [activeTab, clearAnimationTimers, resolveTabIndex]);
+  }, [activeTab, clearAnimationTimers, isIminRuntime]);
 
   const handleTabKeyDown = useCallback((event, tabId) => {
     const navigationKeys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'];
@@ -6534,11 +6606,11 @@ function ItemsCatalogWorkspace({
         ? availableTabs.length - 1
         : (currentIndex + (isForwardKey ? 1 : -1) + availableTabs.length) % availableTabs.length);
     const nextTab = availableTabs[nextIndex];
-    transitionToTab(nextTab.id);
+    handleTabChange(nextTab.id);
     window.requestAnimationFrame(() => {
       document.getElementById(`pos-items-tab-${nextTab.id}`)?.focus();
     });
-  }, [availableTabs, transitionToTab]);
+  }, [availableTabs, handleTabChange]);
 
   if (availableTabs.length === 0) {
     return (
@@ -6569,7 +6641,7 @@ function ItemsCatalogWorkspace({
                   aria-selected={active}
                   aria-controls={active ? `pos-items-${tab.id}-panel` : undefined}
                   tabIndex={active ? 0 : -1}
-                  onClick={() => transitionToTab(tab.id)}
+                  onClick={() => handleTabChange(tab.id)}
                   onKeyDown={(event) => handleTabKeyDown(event, tab.id)}
                   className={`pos-items-mobile-tab relative inline-flex min-h-12 shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-[14px] font-bold whitespace-nowrap text-[#0F172A] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] focus-visible:ring-offset-[-2px] sm:px-3 min-[1200px]:flex-1 min-[1200px]:justify-center min-[1200px]:px-2 xl:px-3 ${
                     active ? 'border-[#1A4E8D]' : 'border-transparent hover:border-slate-300'
@@ -6603,26 +6675,32 @@ function ItemsCatalogWorkspace({
             </div>
           )
         ) : visibleTab === 'service-options' ? (
-          <PosServiceOptionsWorkspace
-            isOnline={isOnline}
-            canManageServiceOptions={canManageServiceOptions}
-            sectionId={`pos-items-${visibleTab}-panel`}
-          />
+          <Suspense fallback={null}>
+            <PosServiceOptionsWorkspace
+              isOnline={isOnline}
+              canManageServiceOptions={canManageServiceOptions}
+              sectionId={`pos-items-${visibleTab}-panel`}
+            />
+          </Suspense>
         ) : visibleTab === 'fnb-modifiers' ? (
-          <PosFnbModifiersWorkspace
-            isOnline={isOnline}
-            canManage={canManageFnbModifiers}
-            locations={locations}
-            operatingLocationId={operatingLocationId}
-            locationsLoading={locationsLoading}
-            sectionId={`pos-items-${visibleTab}-panel`}
-          />
+          <Suspense fallback={null}>
+            <PosFnbModifiersWorkspace
+              isOnline={isOnline}
+              canManage={canManageFnbModifiers}
+              locations={locations}
+              operatingLocationId={operatingLocationId}
+              locationsLoading={locationsLoading}
+              sectionId={`pos-items-${visibleTab}-panel`}
+            />
+          </Suspense>
         ) : visibleTab === 'service-operations' ? (
-          <PosServicesOperationsWorkspace
-            permissions={serviceOperationsPermissions}
-            isOnline={isOnline}
-            settlementContext={{ shiftId: shiftState?.shift?.pos_terminal_shift_id, terminalId: activeTerminalId, locationId: shiftState?.shift?.location_id || operatingLocationId }}
-          />
+          <Suspense fallback={null}>
+            <PosServicesOperationsWorkspace
+              permissions={serviceOperationsPermissions}
+              isOnline={isOnline}
+              settlementContext={{ shiftId: shiftState?.shift?.pos_terminal_shift_id, terminalId: activeTerminalId, locationId: shiftState?.shift?.location_id || operatingLocationId }}
+            />
+          </Suspense>
         ) : (
           <ItemsWorkspace
             {...itemsWorkspaceProps}
@@ -6827,7 +6905,8 @@ export default function TerminalOperationsWorkspace({
     switch (effectiveViewMode) {
     case 'incoming_queue':
       return (
-        <IncomingQueueWorkspace
+        <Suspense fallback={null}>
+          <IncomingQueueWorkspace
           canViewPos={canViewPos}
           canTransactPos={isBranchReadOnlyView ? false : canTransactPos}
           shiftState={shiftState}
@@ -6858,6 +6937,7 @@ export default function TerminalOperationsWorkspace({
           sectionId={sectionIds.incomingOrders}
           workflowMode={workflowMode}
         />
+        </Suspense>
       );
     case 'location_scope':
     case 'settings_profile':
@@ -7000,17 +7080,19 @@ export default function TerminalOperationsWorkspace({
       );
     case 'reports':
       return (
-        <PosReportsAnalyticsWorkspace
-          todayDashboard={todayDashboard}
-          terminalMeta={terminalMeta}
-          activeTerminalId={activeTerminalId}
-          operatingLocationId={workspaceLocationId}
-          reportRefreshKey={reportRefreshKey}
-          employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
-          isOnline={isOnline}
-          offlineSnapshotScope={offlineSnapshotScope}
-          sectionId={sectionIds.reports}
-        />
+        <Suspense fallback={null}>
+          <PosReportsAnalyticsWorkspace
+            todayDashboard={todayDashboard}
+            terminalMeta={terminalMeta}
+            activeTerminalId={activeTerminalId}
+            operatingLocationId={workspaceLocationId}
+            reportRefreshKey={reportRefreshKey}
+            employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
+            isOnline={isOnline}
+            offlineSnapshotScope={offlineSnapshotScope}
+            sectionId={sectionIds.reports}
+          />
+        </Suspense>
       );
     case 'settings_affiliates':
       return (
@@ -7035,20 +7117,24 @@ export default function TerminalOperationsWorkspace({
     // one prop -- that would silently take pricelist management away from every manager.
     case 'settings_vouchers':
       return (
-        <VoucherManagementPanel
-          disabled={locked}
-          canManage={canManageVouchers}
-          sectionId={sectionIds.vouchers}
-          onNavigateToPricelists={() => onSelectViewMode('settings_pricelists')}
-        />
+        <Suspense fallback={null}>
+          <VoucherManagementPanel
+            disabled={locked}
+            canManage={canManageVouchers}
+            sectionId={sectionIds.vouchers}
+            onNavigateToPricelists={() => onSelectViewMode('settings_pricelists')}
+          />
+        </Suspense>
       );
     case 'settings_pricelists':
       return (
-        <PricelistManagementPanel
-          disabled={locked}
-          canManage={canManagePricelists}
-          sectionId={sectionIds.pricelists}
-        />
+        <Suspense fallback={null}>
+          <PricelistManagementPanel
+            disabled={locked}
+            canManage={canManagePricelists}
+            sectionId={sectionIds.pricelists}
+          />
+        </Suspense>
       );
     case 'items':
       return (
@@ -7083,10 +7169,12 @@ export default function TerminalOperationsWorkspace({
     case 'services':
       return (
         <div id={sectionIds.services}>
-          <PosServicesOperationsWorkspace
-            permissions={serviceOperationsPermissions}
-            isOnline={isOnline}
-          />
+          <Suspense fallback={null}>
+            <PosServicesOperationsWorkspace
+              permissions={serviceOperationsPermissions}
+              isOnline={isOnline}
+            />
+          </Suspense>
         </div>
       );
     default:

@@ -7,7 +7,9 @@ description: "Build a repository-grounded implementation handoff for an existing
 
 The human is the coordinator. This skill creates the durable planning handoff used by a later
 `/implement` session; it never dispatches Orca workers and never runs a planner→builder→reviewer
-loop. Use it explicitly as `/planner <open issue-or-epic-number>`.
+loop. Use it explicitly as `/planner <open issue-or-epic-number>` (Claude) or
+`$planner <open issue-or-epic-number>` (Codex; both forms per the continuation table in
+`.agents/skills/handoff/SKILL.md`). Either form establishes handoff-only intent for that task.
 
 ## Boundaries
 
@@ -18,6 +20,12 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>`.
   → domain documents. Read only the relevant tail/entries of the phase ledger, not the whole file.
 - Do not edit tracked files, create branches, change labels/fields/status, file children, open PRs,
   merge, deploy, or invoke `orca`.
+- Explicit invocation establishes handoff-only intent that survives a host Plan-mode exit, plan
+  approval, or generic host-generated execution continuation: finishing the plan, switching modes,
+  or receiving an instruction to execute, build, or proceed does not convert Planner into
+  Implementer. Remain Planner — complete or refresh the artifact, print the handoff, and stop.
+  The plan artifact is never authorization to build it; only an explicit `/implement`
+  (`$implement` on Codex) invocation in a separate Worker session authorizes implementation.
 - A comment on the existing issue is allowed only for an implementation-blocking ambiguity that
   cannot be resolved from repository evidence. Do not post a routine “plan ready” comment. The
   comment must state the evidence, the exact decision needed, and the consequence of each option.
@@ -33,6 +41,10 @@ loop. Use it explicitly as `/planner <open issue-or-epic-number>`.
 Write or refresh `.tmp/plan-<issue>.md` in the current worktree. The path is deterministic so the
 operator can copy the handoff into another session. `.tmp` is ignored and must never be force-added
 to a commit. On refresh, read the existing artifact first and replace it with the current plan.
+If the host prohibits file writes while Plan mode is active, honor that restriction and do not
+substitute implementation of the engineering plan. Treat artifact generation as the remaining
+authorized work: on the first execution-capable continuation, write or refresh the artifact and
+stop without implementing its contents.
 
 Use the `dgfy-planner-handoff/v1` format in
 `references/plan-handoff-template.md`. The artifact must be concise but decision-complete: record
@@ -55,6 +67,9 @@ Handoff: /implement @.tmp/plan-<issue>.md
 
 When status is `needs-decision`, name the blocker and withhold the implement command. The next
 session must refresh the plan after the issue decision is resolved.
+
+Completing the Planner task (writing the artifact and printing the handoff above) is distinct
+from executing the engineering plan described inside the artifact — the latter is out of scope.
 
 This role is distinct from `/pm`: `/pm` files/shapes issues and manages project state; `/planner`
 turns an existing issue/epic into a local implementation contract.

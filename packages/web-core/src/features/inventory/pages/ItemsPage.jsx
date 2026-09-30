@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info, Sparkles } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -129,7 +129,7 @@ const parseStorefrontImageGallery = (value) => {
   }
 };
 
-export default function Items() {
+export default function Items({ embedded = false }) {
   const navigate = useNavigate();
   // #682: branch stock scope. Deliberately NOT persisted to localStorage like the other filters
   // below (categoryFilter etc.) -- always reopening on "All Locations" is what keeps this honest:
@@ -141,18 +141,13 @@ export default function Items() {
     () => (Array.isArray(allLocations) ? allLocations.filter((loc) => loc?.is_active !== false) : []),
     [allLocations]
   );
-  // #1495 Part A: NOT persisted to localStorage, same reasoning as selectedLocationId above --
-  // always reopening with inactive items hidden is the honest default; a stale remembered "show
-  // inactive" flag from a prior session is exactly the kind of silent misleading-context bug that
-  // pattern exists to avoid.
-  const [showInactiveItems, setShowInactiveItems] = useState(false);
   const {
     items,
     loading,
     error,
     refetch,
     locationScope
-  } = useInventoryItems(buildItemsListParams({ limit: 1000, selectedLocationId, includeInactive: showInactiveItems }));
+  } = useInventoryItems(buildItemsListParams({ limit: 1000, selectedLocationId }));
   const { items: skuSeedItems = [] } = useInventoryItems({ fields: 'dropdown', limit: 10000 });
   const { createItem } = useInventoryCreateItem();
   const { updateItem } = useInventoryUpdateItem();
@@ -208,36 +203,8 @@ export default function Items() {
     return saved !== null ? JSON.parse(saved) : defaultValue;
   };
 
-  // Helper to load initial state specifically for filters that might be overridden by URL params
-  const getInitialFilterState = (key, defaultValue, urlParamName = null, urlParamValue = null, mappedValue = null) => {
-    // Check URL params first
-    if (urlParamName) {
-      const params = new URLSearchParams(window.location.search);
-      const paramValue = params.get(urlParamName);
-      if (paramValue === urlParamValue) {
-        return mappedValue || paramValue;
-      }
-    }
-
-    // Then check local storage
-    const saved = localStorage.getItem(`items_${key}`);
-    return saved !== null ? JSON.parse(saved) : defaultValue;
-  };
-
   const [searchQuery, setSearchQuery] = useState(() => getInitialState('searchQuery', ''));
   const [categoryFilter, setCategoryFilter] = useState(() => getInitialState('categoryFilter', 'all'));
-
-  // Status filter can be set via URL ?filter=low
-  const [statusFilter, setStatusFilter] = useState(() =>
-    getInitialFilterState('statusFilter', 'all', 'filter', 'low', 'critical')
-  );
-
-  // FIFO filter can be set via URL ?filter=expiring
-  const [fifoFilter, setFifoFilter] = useState(() =>
-    getInitialFilterState('fifoFilter', 'all', 'filter', 'expiring', 'expiring')
-  );
-
-  const [sortBy, setSortBy] = useState(() => getInitialState('sortBy', 'name'));
   const [viewMode, setViewMode] = useState(() => getInitialState('viewMode', 'grid'));
   const [selectedItem, setSelectedItem] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
@@ -247,7 +214,6 @@ export default function Items() {
   const [showProductWizard, setShowProductWizard] = useState(false);
   const [msmeItemPreset, setMsmeItemPreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
   const [activeCreatePreset, setActiveCreatePreset] = useState(MSME_ITEM_PRESET.INVENTORY_ONLY);
-  const [folderFilter, setFolderFilter] = useState(() => getInitialState('folderFilter', 'all'));
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteErrors, setDeleteErrors] = useState(null);
@@ -1117,13 +1083,9 @@ export default function Items() {
   useEffect(() => {
     localStorage.setItem('items_searchQuery', JSON.stringify(searchQuery));
     localStorage.setItem('items_categoryFilter', JSON.stringify(categoryFilter));
-    localStorage.setItem('items_statusFilter', JSON.stringify(statusFilter));
-    localStorage.setItem('items_fifoFilter', JSON.stringify(fifoFilter));
-    localStorage.setItem('items_sortBy', JSON.stringify(sortBy));
     localStorage.setItem('items_viewMode', JSON.stringify(viewMode));
-    localStorage.setItem('items_folderFilter', JSON.stringify(folderFilter));
     localStorage.setItem('items_currentFolder', JSON.stringify(currentFolder));
-  }, [searchQuery, categoryFilter, statusFilter, fifoFilter, sortBy, viewMode, folderFilter, currentFolder]);
+  }, [searchQuery, categoryFilter, viewMode, currentFolder]);
 
 
 
@@ -1417,7 +1379,6 @@ export default function Items() {
   const openBulkPosSetupFromItemWizard = useCallback((item = null) => {
     setShowFormModal(false);
     setEditingItem(null);
-    setActiveCreatePreset(MSME_ITEM_PRESET.INVENTORY_ONLY);
 
     if (item) {
       launchPosReadinessFlow(item);
@@ -1451,10 +1412,6 @@ export default function Items() {
     setPosChecklistSelectedIds(new Set(checklistNeedsAttentionIds));
   }, [checklistNeedsAttentionIds]);
 
-  const handleToggleFolderFilter = (folderName) => {
-    setFolderFilter((prev) => (prev === folderName ? 'all' : folderName));
-  };
-
   const handleToggleFolderPosFilter = async (folder, nextValue) => {
     if (!folder?.folder_id) {
       toast.error('Only saved folders can update POS filter visibility.');
@@ -1484,39 +1441,9 @@ export default function Items() {
         let matchesFolder = true;
         if (currentFolder !== null) {
           matchesFolder = doesItemMatchFolder(item, currentFolder, { matchSecondary: true });
-        } else if (folderFilter !== 'all') {
-          matchesFolder = doesItemMatchFolder(item, folderFilter, { matchSecondary: true });
         }
 
-        if (statusFilter === 'draft') {
-          return matchesSearch && matchesCategory && matchesFolder && item.status === 'draft';
-        }
-
-        const status = getStockStatus(item);
-        const matchesStatus = statusFilter === 'all' ||
-          (statusFilter === 'critical' && (status === 'critical' || status === 'warning')) ||
-          status === statusFilter;
-
-        let matchesFifo = true;
-        if (fifoFilter === 'enabled') {
-          matchesFifo = item.fifo_enabled === true;
-        } else if (fifoFilter === 'disabled') {
-          matchesFifo = item.fifo_enabled === false;
-        } else if (fifoFilter === 'expiring') {
-          if (item.fifo_enabled && item.fifo_batches && item.fifo_batches.length > 0) {
-            const nextExpiry = getNextExpiryDate(item);
-            if (nextExpiry) {
-              const daysUntilExpiry = getDaysUntilExpiry(nextExpiry);
-              matchesFifo = daysUntilExpiry !== null && daysUntilExpiry <= 30;
-            } else {
-              matchesFifo = false;
-            }
-          } else {
-            matchesFifo = false;
-          }
-        }
-
-        return matchesSearch && matchesCategory && matchesStatus && matchesFolder && matchesFifo && item.status !== 'draft';
+        return matchesSearch && matchesCategory && matchesFolder && item.status !== 'draft';
       })
       .sort((a, b) => {
         // When a search is active, honour Fuse.js relevance order (best match first).
@@ -1525,21 +1452,10 @@ export default function Items() {
           const bIdx = fuzzySearchResults.findIndex((i) => i.item_id === b.item_id);
           return aIdx - bIdx;
         }
-        // No active search — apply the user's chosen sort.
-        switch (sortBy) {
-          case 'name':
-            return a.name.localeCompare(b.name);
-          case 'stock':
-            return a.current_stock - b.current_stock;
-          case 'stock_desc':
-            return b.current_stock - a.current_stock;
-          case 'updated':
-            return new Date(b.updated_at || b.last_updated) - new Date(a.updated_at || a.last_updated);
-          default:
-            return 0;
-        }
+        // No active search — keep the catalog in a stable alphabetical order.
+        return a.name.localeCompare(b.name);
       });
-  }, [items, fuzzyMatchIds, fuzzySearchResults, normalizedSearchQuery, categoryFilter, statusFilter, sortBy, folderFilter, fifoFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
+  }, [items, fuzzyMatchIds, fuzzySearchResults, normalizedSearchQuery, categoryFilter, currentFolder, doesItemMatchFolder, resolveCategoryFilterValue]);
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
@@ -1548,7 +1464,7 @@ export default function Items() {
   // Clear selection when filters or folder changes
   useEffect(() => {
     clearSelection();
-  }, [searchQuery, categoryFilter, statusFilter, folderFilter, currentFolder, clearSelection]);
+  }, [searchQuery, categoryFilter, currentFolder, clearSelection]);
 
   // Hide the selection bar and suppress Escape handler whenever any modal is open
   const isAnyModalOpen =
@@ -1719,6 +1635,8 @@ export default function Items() {
     try {
       const {
         pos_always_available: requestedPosAlwaysAvailable = false,
+        pos_visible: requestedPosVisible,
+        storefront_visible: requestedStorefrontVisible,
         supplier_links: supplierLinks = [],
         supplier_links_dirty: supplierLinksDirty = false,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
@@ -1730,12 +1648,24 @@ export default function Items() {
       const existingPosAlwaysAvailable = isEditingExistingItem
         ? resolvePosConfig(editingItem).pos_always_available === true
         : false;
+      const existingPosVisible = isEditingExistingItem
+        ? resolvePosConfig(editingItem).pos_visible !== false
+        : null;
+      const existingStorefrontVisible = isEditingExistingItem
+        ? resolveStorefrontConfig(editingItem).storefront_visible !== false
+        : null;
       const posAlwaysAvailableChanged = requestedPosAlwaysAvailable !== existingPosAlwaysAvailable;
+      const posVisibilityChanged = typeof requestedPosVisible === 'boolean'
+        && (!isEditingExistingItem || requestedPosVisible !== existingPosVisible);
+      const storefrontVisibilityChanged = typeof requestedStorefrontVisible === 'boolean'
+        && (!isEditingExistingItem || requestedStorefrontVisible !== existingStorefrontVisible);
       if (
         isEditingExistingItem
         && isMsmeMode
         && Object.keys(resolvedItemPayload).length === 0
         && !posAlwaysAvailableChanged
+        && !posVisibilityChanged
+        && !storefrontVisibilityChanged
         && !supplierLinksDirty
       ) {
         toast.message('No item changes detected.');
@@ -1766,6 +1696,9 @@ export default function Items() {
 
       if (requestedPosAlwaysAvailable !== existingPosAlwaysAvailable) {
         posOverridePatch.pos_always_available = requestedPosAlwaysAvailable === true;
+      }
+      if (posVisibilityChanged) {
+        posOverridePatch.pos_visible = requestedPosVisible === true;
       }
 
       await applyStorefrontLocationAvailabilityPatch(savedItem || editingItem, storefrontLocationAvailabilityPatch);
@@ -1813,6 +1746,25 @@ export default function Items() {
         }
       }
 
+      if (
+        Number.isInteger(targetItemId)
+        && targetItemId > 0
+        && storefrontVisibilityChanged
+        && canConfigureStorefrontCatalog
+      ) {
+        try {
+          const updatedOverride = await updateStorefrontCatalogOverride(targetItemId, {
+            storefront_visible: requestedStorefrontVisible === true
+          });
+          setStorefrontCatalogOverrides((prev) => ({
+            ...prev,
+            [targetItemId]: { ...(prev[targetItemId] || {}), ...updatedOverride }
+          }));
+        } catch (overrideError) {
+          toast.warning('Item was saved, but Storefront visibility settings did not update. Please retry from item edit.');
+        }
+      }
+
       refetch();
       setShowFormModal(false);
       const candidate = savedItem || editingItem || itemData;
@@ -1837,10 +1789,16 @@ export default function Items() {
         pos_always_available: requestedPosAlwaysAvailable = false,
         supplier_links: _supplierLinks = [],
         supplier_links_dirty: _supplierLinksDirty = false,
+        pos_visible: _requestedPosVisible = undefined,
+        storefront_visible: _requestedStorefrontVisible = undefined,
         storefront_location_availability: storefrontLocationAvailabilityPatch = [],
         storefront_image_files: storefrontImageFiles = [],
         ...draftPayload
       } = itemData || {};
+      // Channel visibility is applied when the item is saved as active; draft creation
+      // should keep these UI-only fields out of the item API payload.
+      void _requestedPosVisible;
+      void _requestedStorefrontVisible;
       const resolvedDraftPayload = await applyResolvedFolderAssignment(draftPayload);
       const savedDraft = await createItemDraft(resolvedDraftPayload);
       const draftItemId = Number(savedDraft?.item_id || savedDraft?.id || 0);
@@ -2021,7 +1979,7 @@ export default function Items() {
       ? Array.from(selectedIds)
       : (itemToMove ? [itemToMove.item_id || itemToMove.id] : []);
 
-    if (itemsToMoveIds.length === 0) return;
+    if (itemsToMoveIds.length === 0) return false;
 
     try {
       const payload = buildFolderAssignmentPayload(targetFolder);
@@ -2038,9 +1996,11 @@ export default function Items() {
       setShowMoveModal(false);
       setItemToMove(null);
       clearSelection();
+      return true;
     } catch (error) {
       console.error('Failed to move items:', error);
       toast.error('Failed to move items');
+      return false;
     }
   };
 
@@ -2120,10 +2080,10 @@ export default function Items() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-6">
+      <div className={cn('catalog-editor-page space-y-4', embedded && 'catalog-editor-page--embedded')}>
         {/* Breadcrumb Navigation - shown when inside a folder */}
         {currentFolder && (
-          <div className="flex items-center gap-3 bg-white rounded-xl border border-slate-200 px-4 py-3">
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
             <Button
               variant="outline"
               size="sm"
@@ -2145,23 +2105,35 @@ export default function Items() {
         )}
 
         {/* Header */}
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {currentFolder || 'Inventory Items'}
-            </h1>
-            <p className="text-slate-500 mt-1">
-              {currentFolder
-                ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
-                : `${filteredItems.length} items found`
-              }
-            </p>
-            {isMsmeMode && (
-              <p className="mt-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
-                MSME mode uses one simple item flow. Choose <span className="font-semibold">Sell in POS (auto-show)</span> to make items available in POS by default, or <span className="font-semibold">Inventory only</span> for stock tracking only.
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          {embedded ? (
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 sm:flex">
+                <Package className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-slate-900">{currentFolder || 'Catalog items'}</p>
+                <p className="text-sm text-slate-500">
+                  {currentFolder
+                    ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
+                    : `${filteredItems.length} items found`
+                  }
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                {currentFolder || 'Inventory Items'}
+              </h1>
+              <p className="mt-1 text-slate-500">
+                {currentFolder
+                  ? `${filteredItems.length} item${filteredItems.length !== 1 ? 's' : ''} in this folder`
+                  : `${filteredItems.length} items found`
+                }
               </p>
-            )}
-          </div>
+            </div>
+          )}
           <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
             {(canImportPermission('items') || canExportPermission('items')) && (
               <Button variant="outline" className="shrink-0" onClick={() => setShowImportExportModal(true)}>
@@ -2182,16 +2154,6 @@ export default function Items() {
                   <ListChecks className="w-4 h-4 mr-2" />
                   {isMsmeMode ? `POS Setup (${totalPosNeedsAttentionCount})` : `Fix POS Setup (${totalPosNeedsAttentionCount})`}
                 </Button>
-                {!isMsmeMode && (
-                  <button
-                    type="button"
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700"
-                    title="Checks POS sell-readiness requirements: POS visibility, menu image, folder assignment/filter visibility, sale price, active status, and stock validity."
-                    aria-label="What Fix POS Setup checks"
-                  >
-                    <Info className="h-4 w-4" />
-                  </button>
-                )}
               </div>
             )}
             {!isMsmeMode && (categoryFilter === 'finished_goods' || categoryFilter === 'work_in_progress' || categoryFilter === 'product') && canCreate('items') && (
@@ -2231,10 +2193,10 @@ export default function Items() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <div className="flex flex-col lg:flex-row gap-4 items-end">
-            <div className="relative flex-1 w-full">
-              <span className="text-xs font-medium text-slate-500 mb-1 block">Search</span>
+        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="relative w-full flex-1">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Search</span>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
@@ -2245,9 +2207,9 @@ export default function Items() {
                 />
               </div>
             </div>
-            <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex flex-wrap items-end gap-2">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Branch</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Branch</span>
                 <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
                   <SelectTrigger className="w-44">
                     <SelectValue placeholder="All Locations" />
@@ -2264,7 +2226,7 @@ export default function Items() {
               </div>
 
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Category</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Category</span>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-40">
                     <Filter className="w-4 h-4 mr-2 text-slate-400" />
@@ -2290,67 +2252,8 @@ export default function Items() {
                 </Select>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Status</span>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="draft">Drafts</SelectItem>
-                    <SelectItem value="critical">Low Stock</SelectItem>
-                    <SelectItem value="healthy">Healthy</SelectItem>
-                    <SelectItem value="surplus">Surplus</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {canDeletePermission('items') && (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-slate-500">Inactive Items</span>
-                  <label className="flex h-10 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm text-slate-600">
-                    <Checkbox
-                      checked={showInactiveItems}
-                      onCheckedChange={(checked) => setShowInactiveItems(checked === true)}
-                    />
-                    Show inactive
-                  </label>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">FIFO</span>
-                <Select value={fifoFilter} onValueChange={setFifoFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="FIFO Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Items</SelectItem>
-                    <SelectItem value="enabled">FIFO Enabled</SelectItem>
-                    <SelectItem value="disabled">FIFO Disabled</SelectItem>
-                    <SelectItem value="expiring">Expiring Soon</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-slate-500">Sort By</span>
-                <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name">Name A-Z</SelectItem>
-                    <SelectItem value="stock">Stock (Low to High)</SelectItem>
-                    <SelectItem value="stock_desc">Stock (High to Low)</SelectItem>
-                    <SelectItem value="updated">Last Updated</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
               <Tabs value={viewMode} onValueChange={setViewMode} className="hidden sm:block">
-                <TabsList>
+                <TabsList aria-label="Catalog view">
                   <TabsTrigger value="grid"><LayoutGrid className="w-4 h-4" /></TabsTrigger>
                   <TabsTrigger value="list"><List className="w-4 h-4" /></TabsTrigger>
                 </TabsList>
@@ -2358,50 +2261,13 @@ export default function Items() {
             </div>
           </div>
 
-          {currentFolder === null && productFolders.length > 0 && (
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-medium text-slate-500">Folder Filters</span>
-                {folderFilter !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => setFolderFilter('all')}
-                    className="text-xs text-slate-500 hover:text-slate-700"
-                  >
-                    Clear folder filter
-                  </button>
-                )}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {productFolders.map((folder) => {
-                  const active = folderFilter === folder;
-                  return (
-                    <button
-                      key={folder}
-                      type="button"
-                      onClick={() => handleToggleFolderFilter(folder)}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-all",
-                        active
-                          ? "border-teal-300 bg-teal-50 text-teal-700 shadow-sm"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                      )}
-                    >
-                      {folder}
-                      {active && <X className="h-3 w-3 opacity-70" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Items Grid/List */}
         {viewMode === 'grid' ? (
           currentFolder === null ? (
             /* Root view - show folders first, then uncategorized items */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {/* Create Folder Card */}
               <CreateFolderCard onCreateFolder={handleCreateFolder} />
 
@@ -2659,15 +2525,13 @@ export default function Items() {
             }
           }}
         >
-          <DialogContent className="sm:max-w-7xl">
-            <DialogHeader>
-              <DialogTitle className="text-xl">Catalog Setup</DialogTitle>
-              <DialogDescription>
-                Resolve POS and Storefront readiness, visibility, and SKU-named image setup from one workflow.
-              </DialogDescription>
+          <DialogContent className="catalog-editor-dialog-content sm:max-w-7xl p-0">
+            <DialogHeader className="border-b border-slate-100 p-4 pb-3">
+              <DialogTitle className="text-lg">Catalog Setup</DialogTitle>
+              <DialogDescription>Review POS and Storefront readiness in one workflow.</DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-4 p-6 pt-0">
+            <div className="space-y-4 p-4 pt-3">
               {guidedPosReadyItemId && (
                 <div className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm text-teal-800">
                   Guided mode: item #{guidedPosReadyItemId}. Complete missing readiness fields, then preview in terminal.
@@ -3206,6 +3070,8 @@ export default function Items() {
           variant="destructive"
           loading={deleting}
           errors={deleteErrors}
+          className="catalog-editor-dialog-content p-0"
+          compact
         />
         <DeleteConfirmDialog
           open={showFolderDeleteDialog}
@@ -3223,6 +3089,8 @@ export default function Items() {
           confirmText="Delete Folder"
           variant="destructive"
           loading={deletingFolder}
+          className="catalog-editor-dialog-content p-0"
+          compact
         />
         <CSVImportModal
           open={showImportModal}
@@ -3241,9 +3109,7 @@ export default function Items() {
           items={items}
           filters={{
             category: categoryFilter,
-            search: searchQuery,
-            fifo: fifoFilter,
-            folder: folderFilter
+            search: searchQuery
           }}
           filteredCount={filteredItems.length}
         />

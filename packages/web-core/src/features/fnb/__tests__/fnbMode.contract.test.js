@@ -62,7 +62,11 @@ describe('Food & Beverage frontend contract', () => {
     expect(fnbPage).not.toContain('PosFnbModifierManager');
     expect(fnbPage).not.toContain('FnbModifierManager');
     expect(posWorkspace).toContain('PosFnbModifiersWorkspace');
-    expect(posWorkspace).toContain("label: 'Menu modifiers'");
+    // The workspace tab was renamed from "Menu modifiers" to "Item Options"
+    // (the create-flow stage reads "Menu options"); both live in standalone
+    // POS, not the SKUpervisor F&B page.
+    expect(posWorkspace).toContain("label: 'Item Options'");
+    expect(posWorkspace).toContain("'Menu options'");
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {

@@ -75,7 +75,18 @@ const ROUTE_BUDGETS = [
   // accepted resolution paths (the other being splitting TerminalPage.jsx) -- this
   // is that path, not a decision that #392 is resolved. #392 stays open; the
   // recurring-rebase pattern on this chunk needs a real look soon.
-  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 152 },
+  // Raised 152 -> 160 on 2026-09-28 for staging repair 2026-09-28-01 (#2110,
+  // coordinator-authorized threshold relief, not a routine rebase): the frozen
+  // candidate measured 159.29KB and the repair's safe deferrals (background
+  // order-enrichment utils out of the route chunk) measured 154.78KB, a 4.5KB
+  // reduction with ~5KB headroom under the new ceiling. A sourcemap audit
+  // proved 85% of the chunk is TerminalPage.jsx's own 7564-line controller
+  // (12 modules, 357,128 bytes sourcesContent); every remaining deferral
+  // candidate touches auth/fiscal/mount-critical paths, so the durable
+  // TerminalPage.jsx split stays open under #392 and is explicitly NOT claimed
+  // here. Do not raise this again without either that split or a new
+  // coordinator decision citing fresh measurements.
+  { app: 'skupervisor', prefix: 'TerminalPage-', limitKb: 160 },
   // Rebased 2026-06-30 to the current sales route candidate.
   // Raised 49 -> 52 on 2026-09-01 during the develop->staging->main promotion's
   // gate:release:local run: measured 49.96KB. Small headroom restored, no
@@ -162,7 +173,7 @@ function resolveRequiredAssetDirs(projectRoot) {
   }));
 }
 
-const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront'];
+const FRONTEND_BUILD_APP_DIRS = ['apps/dgfy-ims', 'apps/dgfy-pos', 'apps/dgfy-storefront', 'apps/dgfy-opis'];
 
 function spawnFrontendBuild(projectRoot, appDir) {
   const buildCommand = `npm --prefix ${appDir} run build`;

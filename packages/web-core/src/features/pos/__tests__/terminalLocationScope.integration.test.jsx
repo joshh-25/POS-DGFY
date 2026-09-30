@@ -90,7 +90,7 @@ afterEach(() => {
 });
 
 describe('POS terminal location UX integration', () => {
-  it('renders the incoming queue scope without exposing the operating-location selector', () => {
+  it('renders the incoming queue scope without exposing the operating-location selector', async () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -101,14 +101,15 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Location scope:')).toBeTruthy();
+    // The incoming queue loads behind a lazy boundary; await its first paint.
+    expect(await screen.findByText('Location scope:')).toBeTruthy();
     expect(screen.getByText('East Branch')).toBeTruthy();
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
   });
 
-  it('hides incoming orders until the terminal has an active shift', () => {
+  it('hides incoming orders until the terminal has an active shift', async () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -125,11 +126,11 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
+    expect(await screen.findByText('Open a shift to view orders for this branch.')).toBeTruthy();
     expect(screen.queryByText('Main Branch Buyer')).toBeNull();
   });
 
-  it('renders no-shift admin Orders as read-only branch monitoring', () => {
+  it('renders no-shift admin Orders as read-only branch monitoring', async () => {
     const refreshAdminLocationMonitor = vi.fn();
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
@@ -155,7 +156,7 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByTestId('admin-branch-orders')).toBeTruthy();
+    expect(await screen.findByTestId('admin-branch-orders')).toBeTruthy();
     expect(screen.getByText('East Branch Buyer')).toBeTruthy();
     expect(screen.getByText(/Read-only admin view/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Accept|Reject|Process/i })).toBeNull();
@@ -447,7 +448,7 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByRole('button', { name: 'Change Shift Location' }).disabled).toBe(true);
   });
 
-  it('renders the MSME incoming queue and still requires an active shift', () => {
+  it('renders the MSME incoming queue and still requires an active shift', async () => {
     const props = buildBaseProps({
       isMsmeMode: true,
       viewMode: 'incoming_queue',
@@ -462,7 +463,7 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByRole('tab', { name: /Active Queue/ })).toBeTruthy();
+    expect(await screen.findByRole('tab', { name: /Active Queue/ })).toBeTruthy();
     expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
   });
 
@@ -489,7 +490,7 @@ describe('POS terminal location UX integration', () => {
     expect(screen.getByText('Loading shared tenant settings...')).toBeTruthy();
   });
 
-  it('shows the address and map link without exposing coordinates for incoming delivery orders with a saved pin', () => {
+  it('shows the address and map link without exposing coordinates for incoming delivery orders with a saved pin', async () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -511,7 +512,7 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Address')).toBeTruthy();
+    expect(await screen.findByText('Address')).toBeTruthy();
     expect(screen.getByText('123 Test Street')).toBeTruthy();
     expect(screen.getByText('09171234567')).toBeTruthy();
     expect(screen.getByText('10.72020000, 122.56210000')).toBeTruthy();
@@ -519,7 +520,7 @@ describe('POS terminal location UX integration', () => {
     expect(mapLink.getAttribute('href')).toBe('https://maps.google.com/?q=10.7202,122.5621');
   });
 
-  it('keeps incoming text-only delivery orders link-free when no coordinates are present', () => {
+  it('keeps incoming text-only delivery orders link-free when no coordinates are present', async () => {
     const props = buildBaseProps({
       viewMode: 'incoming_queue',
       incomingOrdersState: {
@@ -540,7 +541,7 @@ describe('POS terminal location UX integration', () => {
 
     render(<TerminalOperationsWorkspace {...props} />);
 
-    expect(screen.getByText('Text-only landmark address')).toBeTruthy();
+    expect(await screen.findByText('Text-only landmark address')).toBeTruthy();
     expect(screen.getByText('Pin coordinates')).toBeTruthy();
     expect(screen.getAllByText('Not provided')).toHaveLength(2);
     expect(screen.queryByRole('link', { name: 'Open pin in map' })).toBeNull();

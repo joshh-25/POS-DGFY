@@ -8,18 +8,18 @@ const repositoryRoot = path.resolve(posRoot, '../..');
 
 const readRepositoryFile = (relativePath) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
-describe('POS Back Office removal contract', () => {
-  it('removes the merchant Back Office runtime surface and entry points', () => {
-    expect(fs.existsSync(path.join(posRoot, 'src/features/businessAdmin'))).toBe(false);
-    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/merchantBackOffice'))).toBe(false);
+describe('production POS surface boundary contract', () => {
+  it('does not register Back Office routes or expose OPIS handoffs', () => {
+    expect(fs.existsSync(path.join(repositoryRoot, 'packages/web-core/src/features/merchantBackOffice'))).toBe(true);
 
     const posEntry = readRepositoryFile('apps/dgfy-pos/src/main.jsx');
     const posSidebar = readRepositoryFile('packages/web-core/src/features/pos/components/TerminalWorkspaceSidebar.jsx');
-    const apiEntry = readRepositoryFile('apps/dgfy-api/src/server.js');
+    const opisEntry = readRepositoryFile('apps/dgfy-opis/src/main.jsx');
 
-    expect(posEntry).not.toMatch(/BusinessAdminPage|BackOfficeLoginPage|\/backoffice/);
-    expect(posSidebar).not.toMatch(/BusinessAdmin|BackOffice|\/backoffice/);
-    expect(apiEntry).not.toMatch(/businessAdmin|BusinessAdmin/);
+    expect(posEntry).not.toMatch(/BusinessAdminPage|BackOfficeLoginPage|backoffice|business-admin|opis/i);
+    expect(posEntry).toContain('<Route path="/sales" element={<SkupervisorSalesRedirect />} />');
+    expect(posSidebar).not.toMatch(/Back Office|OPIS|pos-nav-backoffice/i);
+    expect(opisEntry).toContain("const BusinessAdminPage = lazy(() => import('./features/businessAdmin/BusinessAdminPage.jsx'));");
   });
 
   it('keeps the standalone terminal, checkout, and reports routes wired', () => {
@@ -30,6 +30,6 @@ describe('POS Back Office removal contract', () => {
     expect(posEntry).toContain('import TerminalPage from');
     expect(posEntry).toContain('<Route path="/terminal" element={<TerminalPage />} />');
     expect(terminalLayout).toContain("import('./POSCheckoutTerminal.jsx')");
-    expect(terminalOperations).toContain("import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';");
+    expect(terminalOperations).toContain("const PosReportsAnalyticsWorkspace = lazyWithChunkRetry(() => import('./PosReportsAnalyticsWorkspace.jsx'));");
   });
 });

@@ -15,11 +15,11 @@ const buildDeps = (overrides = {}) => ({
   handleLoadAccountPanel: vi.fn(),
   requestJson: vi.fn(),
   readDgfyAuthToken: vi.fn(() => 'dgfy-token'),
-  buildSkupervisorHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
-    `https://skupervisor.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
+  buildBusinessBackOfficeHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
+    `https://opis.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
   )),
   buildPosDgfyHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
-    `https://pos.dgfy.ph/#/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
+    `https://pos.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
   )),
   createDgfyHandoff: vi.fn(),
   startDgfyTenantSession: vi.fn(),
@@ -46,12 +46,11 @@ afterEach(() => {
 
 // Locks in the fix for the "Open business inventory" dead end: starting a
 // tenant session on dgfy.ph's own origin (the old code) set cookies that the
-// cross-origin jump to SKUpervisor then discarded, landing the user on
-// SKUpervisor's staff login instead of their business. The fix mints a
-// single-use handoff token instead and lets SKUpervisor start its own
-// tenant session on its own origin.
+// cross-origin jump then discarded, landing the user outside their business.
+// The fix mints a single-use handoff token and lets OPIS start its tenant
+// session on its own origin.
 describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () => {
-  it('mints a handoff token and redirects through SKUpervisor with it, without starting a tenant session on this origin', async () => {
+  it('mints a handoff token and redirects through OPIS with it, without starting a tenant session on this origin', async () => {
     const deps = buildDeps();
     deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-abc' });
     const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
@@ -62,12 +61,12 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () =>
     });
 
     await waitFor(() => expect(deps.createDgfyHandoff).toHaveBeenCalledWith('dgfy-token'));
-    expect(deps.buildSkupervisorHandoffUrl).toHaveBeenCalledWith({
+    expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      next: '/items',
+      next: '/catalog',
       handoffToken: 'handoff-abc'
     });
-    expect(window.location.href).toBe('https://skupervisor.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fitems&handoff_token=handoff-abc');
+    expect(window.location.href).toBe('https://opis.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fcatalog&handoff_token=handoff-abc');
   });
 
   it('degrades to a tokenless redirect (does not dead-end) when minting the handoff fails', async () => {
@@ -80,12 +79,12 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () =>
       company: { id: 'tenant-1' }
     });
 
-    await waitFor(() => expect(deps.buildSkupervisorHandoffUrl).toHaveBeenCalledWith({
+    await waitFor(() => expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-1',
-      next: '/items',
+      next: '/catalog',
       handoffToken: ''
     }));
-    expect(window.location.href).toBe('https://skupervisor.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fitems');
+    expect(window.location.href).toBe('https://opis.dgfy.ph/dgfy/companies?tenant_id=tenant-1&next=%2Fcatalog');
     expect(toast.error).not.toHaveBeenCalled();
   });
 
@@ -118,7 +117,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
       next: '/terminal',
       handoffToken: 'handoff-pos'
     });
-    expect(window.location.href).toBe('https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-pos');
+    expect(window.location.href).toBe('https://pos.dgfy.ph/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-pos');
   });
 
   it('does not route Day Close PIN setup through POS', async () => {
@@ -149,7 +148,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
 
     await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' });
 
-    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+    expect(deps.buildBusinessBackOfficeHandoffUrl).not.toHaveBeenCalled();
     expect(window.location.href).toBe('');
     expect(toast.error).toHaveBeenCalledWith('Unable to open the business POS right now.');
   });
@@ -161,7 +160,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
 
     await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' });
 
-    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+    expect(deps.buildBusinessBackOfficeHandoffUrl).not.toHaveBeenCalled();
     expect(window.location.href).toBe('');
     expect(toast.error).toHaveBeenCalledWith('Unable to open the business POS right now.');
   });
@@ -183,7 +182,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
     expect(window.open).toHaveBeenCalledWith('', '_blank');
     expect(targetWindow.opener).toBeNull();
     expect(targetWindow.location.replace).toHaveBeenCalledWith(
-      'https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-new-tab'
+      'https://pos.dgfy.ph/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-new-tab'
     );
     expect(window.location.href).toBe('');
   });
@@ -221,7 +220,7 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
 });
 
 describe('useCustomerDashboardBusinessAccess switchDgfyCompanyFromStorefront', () => {
-  it('calls the OTP-gated switch endpoint, then redirects through SKUpervisor with a handoff token', async () => {
+  it('calls the OTP-gated switch endpoint, then redirects through OPIS with a handoff token', async () => {
     const deps = buildDeps();
     deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-xyz' });
     const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
@@ -232,9 +231,9 @@ describe('useCustomerDashboardBusinessAccess switchDgfyCompanyFromStorefront', (
       '/api/v1/dgfy/account/companies/tenant-2/switch',
       expect.objectContaining({ method: 'POST', authToken: 'dgfy-token', body: { email_otp_code: '123456' } })
     );
-    expect(deps.buildSkupervisorHandoffUrl).toHaveBeenCalledWith({
+    expect(deps.buildBusinessBackOfficeHandoffUrl).toHaveBeenCalledWith({
       tenantId: 'tenant-2',
-      next: '/items',
+      next: '/',
       handoffToken: 'handoff-xyz'
     });
     expect(window.location.href).toContain('tenant_id=tenant-2');

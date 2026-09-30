@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED,IMPACT_DECLARATION_REQUIRED
 policy_version: 2026.09.25
-verification_evidence: focused POS Items suite (23 files, 136 tests passed), POS/IMS/Storefront production builds passed, app-version check passed against develop, git diff --check passed
+verification_evidence: focused POS Items suite (25 files, 144 tests passed), POS/IMS/Storefront production builds passed, app-version check passed against develop, git diff --check passed
 rollback_note: Revert the POS Items frontend commits and this declaration together. No backend, API, database, or migration rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -36,7 +36,7 @@ Major, following the repository's minimum classification for the `pos` and `term
 
 ## Verification Evidence
 
-- Focused POS Items suite passed: 23 test files, 136 tests.
+- Focused POS Items suite passed after syncing with develop: 25 test files, 144 tests.
 - POS, IMS, and Storefront production builds passed. The builds emitted existing chunk-size and mixed static/dynamic import warnings, but no build errors.
 - App-version check passed against the ordinary `develop` branch mode; `dgfy-ims` and `dgfy-pos` version floors remain unchanged, and Storefront does not reach the changed modules.
 - `git diff --check` passed for the staged Items-only changes.

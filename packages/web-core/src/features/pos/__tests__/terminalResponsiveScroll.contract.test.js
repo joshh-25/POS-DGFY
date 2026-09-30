@@ -9,6 +9,8 @@ const __dirname = path.dirname(__filename);
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+// Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+const posCheckoutHookPath = path.resolve(__dirname, '../hooks/usePosTerminalViewModel.js');
 const posCheckoutViewPath = path.resolve(__dirname, '../components/POSCheckoutTerminalView.jsx');
 const posCheckoutDialogPath = path.resolve(__dirname, '../components/POSCheckoutConfirmDialog.jsx');
 const fnbWorkflowPanelPath = path.resolve(__dirname, '../components/FnbWorkflowPanel.jsx');
@@ -39,7 +41,7 @@ describe('POS terminal responsive scroll contracts', () => {
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
-    posCheckoutContent = [posCheckoutPath, posCheckoutViewPath, posCheckoutDialogPath]
+    posCheckoutContent = [posCheckoutPath, posCheckoutHookPath, posCheckoutViewPath, posCheckoutDialogPath]
       .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
       .join('\n');
     workflowPanelContent = [fnbWorkflowPanelPath, counterWorkflowPanelPath]
@@ -74,6 +76,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).not.toContain('canAccessBusinessAdmin');
     expect(terminalLayoutContent).toContain("data-pos-sidebar-state={effectiveSidebarCollapsed ? 'collapsed' : 'expanded'}");
     expect(appStylesContent).toContain('.dgfy-pos-shell[data-pos-sidebar-state="expanded"] .dgfy-pos-history-table--single-view');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden min-w-0');
+    expect(terminalLayoutContent).toContain('lg:min-w-0 lg:w-full lg:overflow-hidden');
+    expect(terminalLayoutContent).toContain('w-full flex-col overflow-hidden');
   });
 
   it('locks only the outer POS document scroll while preserving inner scroll regions', () => {
@@ -111,7 +116,10 @@ describe('POS terminal responsive scroll contracts', () => {
   it('locks the checkout workspace while preserving scrolling for other modes', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
     expect(terminalLayoutContent).toContain(": 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y'");
-    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2');
+    expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
+    expect(terminalLayoutContent).toContain("'grid-rows-[auto_minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain("'grid-rows-[minmax(0,1fr)]'");
+    expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden p-2');
     expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
@@ -121,6 +129,12 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain("'flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden catalog-slide-enter'");
     expect(terminalLayoutContent).toContain('data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter"');
     expect(terminalLayoutContent).not.toContain('workspaceDesktopOverflowClassName');
+  });
+
+  it('keeps the branch-view banner intrinsic so History retains the flexible workspace row', () => {
+    expect(terminalLayoutContent).toContain('data-testid="pos-branch-view-banner"');
+    expect(terminalLayoutContent).toContain("const checkoutWorkspaceRowsClassName = isBranchReadOnlyView");
+    expect(terminalLayoutContent).toContain("? 'grid-rows-[auto_minmax(0,1fr)]'");
   });
 
   it('keeps checkout split into catalog and current-sale panes', () => {

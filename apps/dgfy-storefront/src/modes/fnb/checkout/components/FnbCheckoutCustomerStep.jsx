@@ -11,13 +11,19 @@ export function FnbCheckoutCustomerStep({
   isMobileViewport,
   isResponsive,
   onBack,
-  onContinue
+  onContinue,
+  showDeliveryFeeExpectationNote = false
 }) {
   const typography = getGuestCheckoutTypography(isMobileViewport);
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: isResponsive ? 20 : 16, background: '#fff', padding: isResponsive ? 16 : isMobileViewport ? 16 : 24, display: 'grid', gap: isMobileViewport ? 16 : 24, fontFamily: GUEST_CHECKOUT_FONT_FAMILY }}>
       <div style={{ ...typography.accountTitle, color: '#1e293b' }}>Step 1: Customer Details</div>
+      {showDeliveryFeeExpectationNote ? (
+        <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5 }}>
+          Delivery fee is shown in Step 2 after you choose Delivery. Pickup has no delivery fee.
+        </p>
+      ) : null}
       {identityContent}
       {guestEmailVerificationContent}
       {!isResponsive ? (

@@ -188,11 +188,11 @@ describe('checkout summary phase presentation', () => {
     const modeProps = { accentColor: '#1a4e8d', accentSoft: '#aee8f4', accentTint: '#eef6fd', bodyFont: 'sans-serif', displayFont: 'sans-serif', checkoutAllowed: true, variant: 'customer' };
 
     render(<FnbCheckoutSummaryContent {...sharedProps} {...modeProps} orderMethod="dine_in" isDeliveryOrder={false} />);
-    expect(screen.queryByText('Delivery Fee')).toBeNull();
+    expect(screen.queryByText('Delivery fee')).toBeNull();
 
     cleanup();
     render(<FnbCheckoutSummaryContent {...sharedProps} {...modeProps} orderMethod="delivery" isDeliveryOrder />);
-    expect(screen.getByText('Delivery Fee')).toBeTruthy();
+    expect(screen.getByText('Delivery fee')).toBeTruthy();
   });
 
   it('shows the delivery fee only for delivery orders in the mobile F&B summary', () => {
@@ -227,10 +227,10 @@ describe('checkout summary phase presentation', () => {
     };
 
     render(<FnbCheckoutMobileSummaryPanel {...mobileProps} orderMethod="dine_in" isDeliveryOrder={false} />);
-    expect(screen.queryByText('Delivery Fee')).toBeNull();
+    expect(screen.queryByText('Delivery fee')).toBeNull();
 
     cleanup();
     render(<FnbCheckoutMobileSummaryPanel {...mobileProps} orderMethod="delivery" isDeliveryOrder />);
-    expect(screen.getByText('Delivery Fee')).toBeTruthy();
+    expect(screen.getByText('Delivery fee')).toBeTruthy();
   });
 });

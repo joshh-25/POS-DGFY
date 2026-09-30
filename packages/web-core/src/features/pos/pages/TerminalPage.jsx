@@ -1,11 +1,8 @@
 import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { isManualDeliveryJob } from '../components/orderFulfillmentUi.js';
-import {
-  appendDineInScheduleAlertQueue,
-  getDineInScheduleAlertCandidates,
-  isDineInScheduleAlertsEnabled
-} from '../utils/dineInScheduleAlerts.js';
+// orderFulfillmentUi + dineInScheduleAlerts load on demand (background order
+// enrichment only): they are never on the mount/render path, so the route
+// chunk stays lean. Both chunks load once and are cached for later effects.
 import { isDineInOrder } from '../utils/dineInSchedule.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -803,8 +800,12 @@ export default function TerminalPage() {
   useEffect(() => {
     const orders = incomingOrdersState.orders;
     if (!Array.isArray(orders) || orders.length === 0) return;
-    const hasManualDeliveryJob = orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}));
-    if (hasManualDeliveryJob) ensureDeliveryPersonnelLoaded();
+    let cancelled = false;
+    void import('../components/orderFulfillmentUi.js').then(({ isManualDeliveryJob }) => {
+      if (cancelled) return;
+      if (orders.some((order) => isManualDeliveryJob(order?.deliveryJob || {}))) ensureDeliveryPersonnelLoaded();
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [incomingOrdersState.orders, ensureDeliveryPersonnelLoaded]);
   const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
     loading: false,
@@ -1554,12 +1555,23 @@ export default function TerminalPage() {
     allowWhileLocked = false,
     canViewPosOverride = null
   } = {}) => {
-    const requestSequence = operationalContextRequestSequenceRef.current + 1;
-    operationalContextRequestSequenceRef.current = requestSequence;
     const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
       ? Number(operatingLocationIdOverride || operatingLocationId)
       : null;
+    const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
+    if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
+      // A stale locked/permission snapshot must not cancel or hide a valid refresh
+      // that is already in flight.
+      return { shift: null, cashSummary: null, salesSummary: null };
+    }
+    if (!terminalId) {
+      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
+      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
+      return { shift: null, cashSummary: null, salesSummary: null };
+    }
+    const requestSequence = operationalContextRequestSequenceRef.current + 1;
+    operationalContextRequestSequenceRef.current = requestSequence;
     const requestScopeKey = buildPosOperationalScopeKey({
       terminalId,
       locationId: scopedOperatingLocationId
@@ -1571,17 +1583,6 @@ export default function TerminalPage() {
       requestScopeKey,
       currentScopeKey: operationalContextScopeRef.current
     });
-    const canViewOperationalContext = canViewPosOverride == null ? canViewPos : canViewPosOverride;
-    if ((!allowWhileLocked && locked) || !canViewOperationalContext) {
-      setShiftState((prev) => ({ ...prev, loading: false }));
-      setTodayDashboard((prev) => ({ ...prev, loading: false }));
-      return { shift: null, cashSummary: null, salesSummary: null };
-    }
-    if (!terminalId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
-      setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
-      return { shift: null, cashSummary: null, salesSummary: null };
-    }
     const preservedTakeoverContext = takeoverShiftContextRef.current;
     const preservedTakeoverLocationId = Number(
       preservedTakeoverContext?.locationId || preservedTakeoverContext?.shift?.location_id || 0
@@ -3245,29 +3246,41 @@ export default function TerminalPage() {
       closed_at: shiftState?.shift?.closed_at,
       closedAt: shiftState?.shift?.closedAt
     });
-    const alertsEnabled = isDineInScheduleAlertsEnabled({
+    const alertsEnabledPayload = {
       workflowMode,
       onlineOrderQueueEnabled,
       incomingOrdersAccessState: incomingOrdersState?.accessState,
       hasActiveShift,
       canTransactPos,
       locked
-    });
-
-    if (!alertsEnabled) {
-      setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
-      return;
-    }
-
-    const newAlerts = getDineInScheduleAlertCandidates(incomingOrdersState?.orders, {
-      now: scheduledDineInNow,
-      scopeKey,
-      alertedKeys: scheduledDineInAlertKeysRef.current
-    });
-
-    if (newAlerts.length === 0) return;
-    newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
-    setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+    };
+    const alertOrders = incomingOrdersState?.orders;
+    const alertScopeKey = scopeKey;
+    const alertNow = scheduledDineInNow;
+    let cancelled = false;
+    // Deferred with the module above: alert computation is background-only
+    // (1s polling context); a chunk-load failure simply skips one cycle.
+    void import('../utils/dineInScheduleAlerts.js').then(({
+      isDineInScheduleAlertsEnabled,
+      getDineInScheduleAlertCandidates,
+      appendDineInScheduleAlertQueue
+    }) => {
+      if (cancelled) return;
+      const alertsEnabled = isDineInScheduleAlertsEnabled(alertsEnabledPayload);
+      if (!alertsEnabled) {
+        setScheduledDineInAlertQueue((currentQueue) => (currentQueue.length > 0 ? [] : currentQueue));
+        return;
+      }
+      const newAlerts = getDineInScheduleAlertCandidates(alertOrders, {
+        now: alertNow,
+        scopeKey: alertScopeKey,
+        alertedKeys: scheduledDineInAlertKeysRef.current
+      });
+      if (newAlerts.length === 0) return;
+      newAlerts.forEach(({ alertKey }) => scheduledDineInAlertKeysRef.current.add(alertKey));
+      setScheduledDineInAlertQueue((currentQueue) => appendDineInScheduleAlertQueue(currentQueue, newAlerts));
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [canTransactPos, incomingOrdersState?.accessState, incomingOrdersState?.orders, locked, onlineOrderQueueEnabled, scheduledDineInNow, shiftState?.shift?.closedAt, shiftState?.shift?.closed_at, shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id, shiftState?.shift?.status, workflowMode]);
 
   const handleScheduledDineInAlertOpenChange = useCallback((open) => {
@@ -3844,28 +3857,38 @@ export default function TerminalPage() {
         todayDashboard: preserveShiftContext.todayDashboard || {}
       }
       : null;
+    let operationalContext = null;
     if (normalizedPreservedShiftContext) {
       takeoverShiftContextRef.current = normalizedPreservedShiftContext;
       setLocked(false);
       setDrawerOpen(false);
+      const preservedCashSummary = normalizedPreservedShiftContext.shiftState.cashSummary || null;
+      const preservedSalesSummary = normalizedPreservedShiftContext.shiftState.salesSummary || null;
       setShiftState({
         loading: false,
         shift: normalizedPreservedShiftContext.shift,
-        cashSummary: normalizedPreservedShiftContext.shiftState.cashSummary || null,
-        salesSummary: normalizedPreservedShiftContext.shiftState.salesSummary || null
+        cashSummary: preservedCashSummary,
+        salesSummary: preservedSalesSummary
       });
+      const preservedBusinessDate = normalizedPreservedShiftContext.todayDashboard.businessDate || null;
+      const preservedDashboardSalesSummary = normalizedPreservedShiftContext.todayDashboard.salesSummary || null;
       setTodayDashboard({
         loading: false,
-        businessDate: normalizedPreservedShiftContext.todayDashboard.businessDate || null,
-        salesSummary: normalizedPreservedShiftContext.todayDashboard.salesSummary || null
+        businessDate: preservedBusinessDate,
+        salesSummary: preservedDashboardSalesSummary
       });
       await Promise.all([
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         refreshTenantLocations({ suppressGlobalErrors: true })
       ]);
+      operationalContext = {
+        shift: normalizedPreservedShiftContext.shift,
+        cashSummary: preservedCashSummary,
+        salesSummary: preservedSalesSummary
+      };
     } else {
       await hydrateUser({ suppressGlobalErrors: true });
-      await Promise.all([
+      const [, , refreshedOperationalContext] = await Promise.all([
         hydrateTerminalMeta({ suppressGlobalErrors: true }),
         refreshTenantLocations({ suppressGlobalErrors: true }),
         refreshOperationalContext({
@@ -3874,6 +3897,7 @@ export default function TerminalPage() {
           suppressGlobalErrors: true
         })
       ]);
+      operationalContext = refreshedOperationalContext;
     }
     setFormData((prev) => ({ ...prev, password: '', terminalId: selectedTerminalId }));
     setCashierUnlockSession(null);
@@ -3896,6 +3920,7 @@ export default function TerminalPage() {
     setTerminalUnlockModalOpen(false);
     setUnlockFailure(null);
     await notifyStockAlertsAfterUnlock();
+    return operationalContext;
   };
 
   const handleSelectAdminTerminal = async (selectedTerminalId) => {
@@ -4896,6 +4921,62 @@ export default function TerminalPage() {
         return;
       }
 
+      const restoreResumePrompt = ({ terminalId, locationId, activeShift }) => {
+        const priorCashierSession = cashierUnlockSession || {};
+        setStoredTerminalLock(true);
+        setStoredTerminalLockReason('shift_start_required');
+        setLocked(true);
+        setDrawerOpen(false);
+        setActiveTerminalId(terminalId);
+        setOperatingLocationId(locationId);
+        setTerminalUnlockForm((prev) => ({
+          ...prev,
+          terminalId,
+          terminalPassword: '',
+          cashierPassword: '',
+          openingFloatAmount: '',
+          openingNote: ''
+        }));
+        setCashierUnlockSession({
+          ...priorCashierSession,
+          source: priorCashierSession.source || 'dgfy_pos',
+          email: priorCashierSession.email || String(terminalUser?.email || terminalUser?.username || terminalUnlockForm.cashierEmail || '').trim(),
+          userId: priorCashierSession.userId || terminalUser?.user_id || activeShift?.cashier_id || null,
+          role: priorCashierSession.role || terminalUser?.role || 'cashier',
+          permissions: Array.isArray(priorCashierSession.permissions)
+            ? priorCashierSession.permissions
+            : parseUserPermissions(terminalUser),
+          tenantId: priorCashierSession.tenantId || selectedTenantId,
+          companyToken: priorCashierSession.companyToken || resolvedCompanyToken,
+          terminalId,
+          activeShift: activeShift || priorCashierSession.activeShift || null
+        });
+        setTerminalUnlockMode('resume_shift');
+        setTerminalUnlockRequired(true);
+        setTerminalUnlockModalOpen(true);
+        toast.error("We couldn't confirm your existing shift. No new shift or opening cash is needed — try unlocking again.");
+      };
+
+      const completeConfirmedShiftResume = async ({ terminalId, locationId, activeShift }) => {
+        let operationalContext = await completeTerminalUnlock(terminalId, {
+          operatingLocationIdOverride: locationId
+        });
+        if (!operationalContext?.shift) {
+          operationalContext = await refreshOperationalContext({
+            terminalIdOverride: terminalId,
+            operatingLocationIdOverride: locationId,
+            suppressGlobalErrors: true,
+            allowWhileLocked: true
+          });
+        }
+        if (operationalContext?.shift) {
+          toast.success('Existing cashier shift resumed.');
+          return true;
+        }
+        restoreResumePrompt({ terminalId, locationId, activeShift });
+        return false;
+      };
+
       if (requiresOpeningCash || resumeExistingShift) {
         if (!cashierSessionActive && !resolvedCompanyToken) {
           toast.error('Unable to resolve the selected company session for cashier sign-in.');
@@ -4953,10 +5034,11 @@ export default function TerminalPage() {
         if (currentShiftDecision.mode === 'resume') {
           const currentShiftTerminalId = currentShiftDecision.terminalId;
           const currentShiftLocationId = currentShiftDecision.locationId;
-          await completeTerminalUnlock(currentShiftTerminalId, {
-            operatingLocationIdOverride: currentShiftLocationId
+          await completeConfirmedShiftResume({
+            terminalId: currentShiftTerminalId,
+            locationId: currentShiftLocationId,
+            activeShift: currentShift
           });
-          toast.success('Existing cashier shift resumed.');
           return;
         }
 
@@ -4972,6 +5054,15 @@ export default function TerminalPage() {
         if (selectedTerminalDecision.mode === 'blocked') {
           throw new Error(selectedTerminalDecision.message);
         }
+      }
+
+      if (resumeExistingShift) {
+        await completeConfirmedShiftResume({
+          terminalId: selectedTerminalId,
+          locationId: resolvedLocationId,
+          activeShift: null
+        });
+        return;
       }
 
       if (requiresOpeningCash) {
@@ -4996,11 +5087,9 @@ export default function TerminalPage() {
         operatingLocationIdOverride: resolvedLocationId
       });
       toast.success(
-        resumeExistingShift
-          ? 'Existing cashier shift resumed.'
-          : requiresOpeningCash
-            ? 'POS unlocked and cashier shift opened successfully.'
-            : 'Terminal unlocked successfully.'
+        requiresOpeningCash
+          ? 'POS unlocked and cashier shift opened successfully.'
+          : 'Terminal unlocked successfully.'
       );
     } catch (error) {
       reportTerminalFailure(error, 'terminal_unlock');

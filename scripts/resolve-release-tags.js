@@ -45,7 +45,7 @@
  *   require a release floor and per-app revision and fail closed without them.
  */
 
-const FRONTEND_APPS = Object.freeze(['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
+const FRONTEND_APPS = Object.freeze(['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis']);
 const BACKEND_APPS = Object.freeze(['dgfy-api', 'dgfy-migration-runner']);
 const RELEASE_APPS = Object.freeze([...BACKEND_APPS, ...FRONTEND_APPS]);
 

@@ -24,10 +24,11 @@ const receiptDialogsContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminalReceiptDialogs.jsx'),
     'utf8'
 );
-const terminalContent = fs.readFileSync(
-    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
-    'utf8'
-);
+const terminalContent = [
+    'src/features/pos/components/POSCheckoutTerminal.jsx',
+    // Staging repair 2026-09-28-01 (#2110) extracted the shell body here.
+    'src/features/pos/hooks/usePosTerminalViewModel.js',
+].map((relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativePath), 'utf8')).join('\n');
 const historyWorkflowContent = fs.readFileSync(
     path.resolve(webCoreRoot, 'src/features/pos/hooks/usePosHistoryVoidWorkflow.js'),
     'utf8'
@@ -324,11 +325,15 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).not.toContain('>Void</');
     });
 
-    it('allocates a compact discount column and keeps total amounts on one line', () => {
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] px-2 py-4 text-left');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right text-[13px]');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] break-words px-2 py-4 text-[#334155]');
-        expect(panelContent).toContain('w-[8rem] min-w-[8rem] max-w-[8rem] whitespace-nowrap px-3 py-4 text-right font-black tabular-nums');
+    it('keeps discount visible on mobile cards and total amounts on one line', () => {
+        // The desktop table dropped its fixed 8rem Discount column; discount
+        // now renders in the mobile detail rows while the table keeps
+        // single-line rows. Both surfaces below prove the rendered contract.
+        expect(panelContent).toContain("{ key: 'discount', label: 'Discount', value: getHistoryDiscountLabel(row) }");
+        expect(panelContent).toContain('label="Discount"');
+        expect(panelContent).toContain('discount_label_snapshot');
+        expect(panelContent).toContain('whitespace-nowrap');
+        expect(panelContent).toContain('>Total</th>');
     });
 
     it('renders a visible void status and audit details for voided transactions', () => {
