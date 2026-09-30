@@ -1361,7 +1361,10 @@ export default function PosStorefrontSettingsPane({
   storefrontTenantId = '',
   editingLocationId = null,
   readOnly = false,
+  settingsSurface = 'pos',
   editorSection = 'storefront',
+  startWithNewLocation = false,
+  locationEditorOnly = false,
   activeSubtab: controlledActiveSubtab, onActiveSubtabChange, selectedLocationId: controlledSelectedLocationId, onSelectedLocationChange,
   hasActivePrimaryStorefrontLocation, requestedCustomerAccessMode, effectiveCustomerAccessMode, platformMaxCustomerAccessMode,
   customerAccessRollbackActive, customerAccessLimitation, locked, loading, savingTab, canEditSettings,
@@ -1387,7 +1390,9 @@ export default function PosStorefrontSettingsPane({
     setLocationForm((current) => ({ ...current, [field]: value !== false }));
   }, [lastFulfillmentMethodLocked, setLocationForm]);
   const [editSnapshot, setEditSnapshot] = useState(null);
-  const [locationEditSnapshot, setLocationEditSnapshot] = useState(null);
+  const [locationEditSnapshot, setLocationEditSnapshot] = useState(() => (
+    startWithNewLocation ? cloneStorefrontForm(createDefaultLocationForm()) : null
+  ));
   const [localSelectedLocationId, setLocalSelectedLocationId] = useState(null);
   const [locationSearchTerm, setLocationSearchTerm] = useState('');
   const coverAdjustmentRef = useRef(null);
@@ -1397,10 +1402,13 @@ export default function PosStorefrontSettingsPane({
   const selectedLocationId = controlledSelectedLocationId ?? localSelectedLocationId;
   const setSelectedLocationId = onSelectedLocationChange || setLocalSelectedLocationId;
   const canEdit = canEditSettings && !readOnly && !locked && !loading;
-  const setupActive = activeSubtab === 'setup';
-  const contentActive = activeSubtab === 'content';
-  const locationsActive = activeSubtab === 'locations';
-  const reviewsActive = activeSubtab === 'reviews';
+  const autoStartLocationEditor = startWithNewLocation && !readOnly && !loading;
+  const viewActiveSubtab = autoStartLocationEditor ? 'locations' : activeSubtab;
+  const viewIsEditing = autoStartLocationEditor || isEditing;
+  const setupActive = viewActiveSubtab === 'setup';
+  const contentActive = viewActiveSubtab === 'content';
+  const locationsActive = viewActiveSubtab === 'locations';
+  const reviewsActive = viewActiveSubtab === 'reviews';
   const categoryCount = normalizeStoreContentStringList(storefrontForm?.storefrontCategories).length;
   const categoriesFitBesideWhy = categoryCount >= 1 && categoryCount <= 5;
   const normalizedLocationSearchTerm = locationSearchTerm.trim().toLowerCase();
@@ -1410,13 +1418,15 @@ export default function PosStorefrontSettingsPane({
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(normalizedLocationSearchTerm));
   });
+  const locationEditorOnlySurface = settingsSurface !== 'business-admin' || readOnly || startWithNewLocation;
+  const showLocationEditorOnly = locationEditorOnly && locationEditorOnlySurface;
   const locationPluralLabel = editorSection === 'branches' ? 'Branches' : 'Storefront Locations';
   const locationEditorTitle = editingLocationId
     ? STOREFRONT_LOCATION_LABELS.editBranch
     : STOREFRONT_LOCATION_LABELS.addBranch;
   const locationDirty = Boolean(
     locationsActive
-    && isEditing
+    && viewIsEditing
     && locationEditSnapshot
     && JSON.stringify(locationForm) !== JSON.stringify(locationEditSnapshot)
   );
@@ -1520,16 +1530,16 @@ export default function PosStorefrontSettingsPane({
   );
 
     return (
-    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
-      <PosSubtabNavigation
-        tabs={STOREFRONT_SUBTABS}
-        activeTab={activeSubtab}
-        onTabChange={handleSubtabChange}
-        ariaLabel="Storefront settings sections"
-        idPrefix="pos-storefront-tab"
-        panelId="pos-storefront-panel"
-        disabled={isEditing}
-      />
+    <div className={`business-admin-storefront-pane grid min-w-0 gap-6 sm:gap-6 ${showLocationEditorOnly ? 'business-admin-location-editor-only' : ''} ${contentActive && storefrontContentDirty ? 'pb-[calc(10rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-6 sm:pb-8'}`}>
+       {!showLocationEditorOnly ? <PosSubtabNavigation
+         tabs={STOREFRONT_SUBTABS}
+         activeTab={viewActiveSubtab}
+         onTabChange={handleSubtabChange}
+         ariaLabel="Storefront settings sections"
+         idPrefix="pos-storefront-tab"
+         panelId="pos-storefront-panel"
+         disabled={viewIsEditing}
+       /> : null}
       <p className="sr-only" aria-live="polite">
         {Object.values(storefrontBooleanState).some((status) => status === 'saving')
           ? 'Saving Storefront setting.'
@@ -1540,8 +1550,8 @@ export default function PosStorefrontSettingsPane({
               : ''}
       </p>
 
-      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${activeSubtab}`} className="min-w-0">
-      {!isEditing && setupActive ? (
+      <div id="pos-storefront-panel" role="tabpanel" aria-labelledby={`pos-storefront-tab-${viewActiveSubtab}`} className="min-w-0">
+      {!viewIsEditing && setupActive ? (
         <StoreSetupSummary
           storefrontForm={storefrontForm}
           storefrontPublicUrl={storefrontPublicUrl}
@@ -1562,12 +1572,12 @@ export default function PosStorefrontSettingsPane({
           savingTab={savingTab}
         />
       ) : null}
-      {!isEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
-      {!isEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
+      {!viewIsEditing && contentActive ? <StoreContentSummary storefrontForm={storefrontForm} setStorefrontForm={setStorefrontForm} storefrontAssets={storefrontAssets} storefrontLocations={storefrontLocations} canEditSettings={canEditSettings} locked={locked} loading={loading} assetUploadingType={assetUploadingType} assetDeletingType={assetDeletingType} onGroupSave={handleStorefrontGroupSave} onUploadGalleryImage={handleGalleryAssetUpload} onUploadAsset={handleUploadAsset} onDeleteAsset={handleDeleteAsset} /> : null}
+      {!viewIsEditing && locationsActive ? <StoreLocationsSummary storefrontForm={storefrontForm} storefrontLocations={storefrontLocations} canEditSettings={canEdit} selectedLocationId={selectedLocationId} onSelectLocation={setSelectedLocationId} onAddLocation={handleAddLocation} onEditLocation={handleLocationEdit} onSaveBusinessHours={(nextHours) => {
         if (typeof handleStorefrontGroupSave !== 'function') return false;
         return handleStorefrontGroupSave('basic', { ...storefrontForm, storefrontHours: nextHours });
       }} /> : null}
-      {!isEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
+      {!viewIsEditing && reviewsActive ? <StorefrontReviewsSettings tenantId={storefrontTenantId} /> : null}
 
       <StorefrontGroupEditor
         group={contentActive && editingGroup && editingGroup !== 'all' ? editingGroup : null}
@@ -1586,10 +1596,10 @@ export default function PosStorefrontSettingsPane({
         onSave={saveContentGroup}
         onCancel={cancelEditing}
         savingTab={savingTab}
-        hidden={!isEditing}
+        hidden={!viewIsEditing}
       />
 
-      <div className={`${setupActive && isEditing ? '' : 'hidden'} space-y-8`}>
+      <div className={`${setupActive && viewIsEditing ? '' : 'hidden'} space-y-8`}>
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="grid gap-3 md:grid-cols-2">
           <StorefrontToggle
@@ -1742,7 +1752,7 @@ export default function PosStorefrontSettingsPane({
       </div>
       {renderEditFooter('Save Store Setup')}
       </div>
-      {contentActive && isEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
+      {contentActive && viewIsEditing && editingGroup === 'all' ? <div className="space-y-8" aria-label="Store Content editor">
       <div className="border-b border-slate-200 pb-8 last:border-b-0">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="relative min-w-0">
@@ -1899,7 +1909,7 @@ export default function PosStorefrontSettingsPane({
       </div>
 
       </div> : null}
-      {locationsActive && isEditing ? (
+      {locationsActive && viewIsEditing && !showLocationEditorOnly ? (
         <StorefrontBusinessHoursSection
           hours={storefrontForm?.storefrontHours}
           canEditSettings={canEdit}
@@ -1910,7 +1920,7 @@ export default function PosStorefrontSettingsPane({
           }}
         />
       ) : null}
-      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && isEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
+      <div ref={storefrontLocationsBoundaryRef} className={`business-admin-storefront-locations-panel ${locationsActive && viewIsEditing ? 'mt-5 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] sm:pb-0 lg:mt-8' : 'hidden'} space-y-3`}>
           <div>
             <h2 className="business-admin-storefront-locations-header text-[14px] font-extrabold text-[#0F172A]">
               {locationPluralLabel}{storefrontLocationRequired ? <RequiredMark /> : null}

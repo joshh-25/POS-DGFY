@@ -639,14 +639,19 @@ incompatible with pre-candidate DEV builds) are recorded on the issue, not repea
 **Resolution — per-app revision counter, spanning DEV → STAGING → PROD:**
 
 1. **DEV eligibility.** `develop` dispatches publish promotion-eligible DEV artifacts;
-   feature-branch dispatches publish ad-hoc DEV artifacts under a distinct,
+   ordinary feature-branch dispatches publish ad-hoc DEV artifacts under a distinct,
    non-promotion-eligible shape (`X.Y.Z-pr<PR#>-dev`, branch-slug fallback with no PR
    context) that a candidate can never select. Ad-hoc dispatches publish the sha tag only,
-   never the moving `develop` tag, so a feature-branch build can never redirect the shared
-   DEV target at unreviewed code. Already-published bare `X.Y.Z-dev` tags are historical:
-   never retroactively revisioned, never overwritten, never candidate-selectable.
-2. **Allocation and source of truth.** At publish time (an eligible DEV build on `develop`,
-   or a staging repair touching app X): query GHCR for the highest existing
+   never the moving `develop` tag. A temporary DEV integration branch may opt into the same
+   per-app `X.Y.Z-rN-dev` history through `deploy.yml`'s explicit `revisioned_dev_dispatch`
+   input; that opt-in is promotion-eligible and must only be used when the operator intends
+   that ref to stand in for the DEV integration line. Its DEV deploy consumes the immutable
+   `sha-<7>` tag for that workflow SHA through the shared Compose `IMAGE_TAG` override, without
+   moving the `develop` alias. Already-published bare `X.Y.Z-dev` tags are historical: never
+   retroactively revisioned, never overwritten, never candidate-selectable.
+2. **Allocation and source of truth.** At publish time (an eligible DEV build on `develop` or an
+   explicitly revisioned temporary DEV integration ref, or a staging repair touching app X):
+   query GHCR for the highest existing
    `<app>:X.Y.Z-r<N>*` tag across all channels for that app+floor (`docker buildx
    imagetools inspect`, the same primitive `scripts/check-tag-immutability.js` already
    uses — `scripts/allocate-artifact-revision.js`) → allocate `N = max + 1` → push. GHCR

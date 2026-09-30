@@ -139,7 +139,7 @@ describe('POS branch directory and read-only branch view', () => {
                 location_id: 1,
                 status: 'open',
                 cashier_id: 12,
-                opened_at: '2026-09-27T09:00:00.000Z',
+                opened_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
                 cashier: { user_id: 12, username: 'main-cashier' }
             }],
             operators: [{

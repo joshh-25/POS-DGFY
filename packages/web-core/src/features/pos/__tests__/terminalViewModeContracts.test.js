@@ -246,31 +246,10 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
-  it('refreshes shared settings while the authenticated terminal is locked without refreshing operations', () => {
-    expect(terminalPageContent).toContain("if ((!allowWhileLocked && locked) || terminalUser?.is_master_admin !== true)");
-    expect(terminalPageContent).toContain('if (locked && !allowWhileLocked) return;');
-    expect(terminalPageContent).toContain("if (!activeTenantId || typeof window === 'undefined') return undefined;");
-    expect(terminalPageContent).toContain('|| formData.dgfyTenantId');
-    expect(terminalPageContent).toContain('terminalRegistryLookup.get(sanitizeTerminalId(activeTerminalId))?.location_id');
-    expect(terminalPageContent).toContain(
-      'hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
-    );
-    expect(terminalPageContent).toContain(
-      'refreshTenantLocations({ suppressGlobalErrors: true, silent: true, allowWhileLocked: true })'
-    );
-    expect(terminalPageContent).toContain('if (!locked && canViewPos) {');
-  });
-
-  it('refreshes the mounted settings editor after a scoped Business Admin update', () => {
-    expect(terminalPageContent).toContain('setSettingsRefreshKey((previous) => previous + 1);');
-    expect(terminalPageContent).toContain('settingsRefreshKey={settingsRefreshKey}');
-    expect(terminalPageLayoutContent).toContain('settingsRefreshKey={settingsRefreshKey}');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey = 0');
-    expect(terminalOperationsWorkspaceContent).toContain('settingsRefreshKey,');
-    expect(posSettingsWorkspaceContent).toContain('previousSettingsRefreshKeyRef.current === settingsRefreshKey');
-    expect(posSettingsWorkspaceContent).toContain('hasUnsavedSettingsChanges');
-    expect(posSettingsWorkspaceContent).toContain('void hydrateSettingsWorkspace({ silent: true });');
-    expect(posSettingsWorkspaceContent).toContain('data-testid="pos-settings-external-refresh-pending"');
+  it('keeps Back Office routes and direct OPIS handoffs out of the POS terminal', () => {
+    expect(terminalPageContent).not.toMatch(/backoffice|business-admin|opis/i);
+    expect(terminalPageLayoutContent).not.toMatch(/onOpenBackOffice|canLaunchBackOffice/i);
+    expect(terminalWorkspaceSidebarContent).not.toMatch(/Back Office|OPIS|canLaunchBackOffice|onOpenBackOffice/i);
   });
 
   it('keeps terminal setup printer actions compact and aligned with terminal selection', () => {
@@ -558,7 +537,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-reports"');
     expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-settings"');
     expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('reports')}");
-    expect(terminalWorkspaceSidebarContent).toContain('{onboardingRestricted && (');
+    expect(terminalWorkspaceSidebarContent).toContain('onboardingRestricted = false');
     expect(terminalWorkspaceSidebarContent).toContain('label="Settings"');
     expect(terminalOperationsWorkspaceContent).toContain('Reports & Analytics');
     expect(posReportsAnalyticsWorkspaceContent).toContain("label: 'Overview'");
@@ -676,7 +655,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('opens active queue orders in TerminalPage without routing them through receipt history', () => {
-    expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId);');
+    expect(terminalPageContent).toContain('const detail = await fetchPosTransactionById(normalizedId, {');
     expect(terminalPageContent).toContain('<OnlineOrderDetailsModal');
     expect(terminalPageContent).toContain('<OnlineOrderReceiptModal');
     expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');

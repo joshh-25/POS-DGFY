@@ -291,9 +291,9 @@ import {
   startDgfyTenantSession
 } from '../../../packages/web-core/src/services/dgfyAuthService.js';
 import {
-  buildPosDgfyHandoffUrl,
-  buildSkupervisorHandoffUrl
-} from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
+  buildBusinessBackOfficeHandoffUrl,
+  buildPosDgfyHandoffUrl
+} from '../../../packages/web-core/src/features/pos/utils/businessBackOfficeHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -1174,7 +1174,7 @@ export default function StorefrontApp() {
     rememberDgfySignedOutEmail,
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
-    buildSkupervisorHandoffUrl,
+    buildBusinessBackOfficeHandoffUrl,
     buildPosDgfyHandoffUrl,
     createDgfyHandoff,
     buildPosAppUrl,

@@ -959,7 +959,7 @@ SCRIPTS_CHANGED_FILES="0"
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
     TOTAL_CHANGED_FILES="$(wc -l < "$MANIFEST_FILE" | tr -d '[:space:]')"
     BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-api/' | wc -l | tr -d '[:space:]')"
-    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|packages/web-core/)' | wc -l | tr -d '[:space:]')"
+    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|apps/dgfy-opis/|packages/web-core/)' | wc -l | tr -d '[:space:]')"
     DOCS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^docs/' | wc -l | tr -d '[:space:]')"
     SCRIPTS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^scripts/' | wc -l | tr -d '[:space:]')"
 fi

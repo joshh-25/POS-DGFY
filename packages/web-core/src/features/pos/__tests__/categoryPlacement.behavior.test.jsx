@@ -333,7 +333,7 @@ describe('Items category placement', () => {
     expect(screen.queryByRole('tab', { name: 'Item Options' })).toBeNull();
   });
 
-  it('shows the online-only explanation without queueing an item draft', () => {
+  it('shows the online-only explanation without queueing an item draft', async () => {
     const onQueueOfflineItemDraft = vi.fn();
     render(<TerminalOperationsWorkspace {...buildProps({
       workflowMode: 'services',
@@ -344,8 +344,8 @@ describe('Items category placement', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Add Service' })[0]);
 
-    expect(screen.getByText('Service creation is available online only.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Create Service' }).hasAttribute('disabled')).toBe(true);
+    expect(await screen.findByText('Service creation is available online only.')).toBeTruthy();
+    expect((await screen.findByRole('button', { name: 'Create Service' })).hasAttribute('disabled')).toBe(true);
     expect(onQueueOfflineItemDraft).not.toHaveBeenCalled();
   });
 

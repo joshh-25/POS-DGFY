@@ -12,7 +12,7 @@ rollback_note: Revert the POS shift-resume sequencing and recovery changes, thei
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-09-29T09:46:21.396Z
-preflight_request_ref: PREFLIGHT-local-2026-09-29-POS-SHIFT-RESUME-RACE
+preflight_request_ref: PREFLIGHT-LOCAL-2026-09-29-POS-SHIFT-RESUME-RACE
 ---
 
 # POS Shift Resume Race Recovery
@@ -33,7 +33,7 @@ shift ownership, or stored shift history.
 
 - A live request-time preflight was executed locally on 2026-09-29 against the isolated fixture
   environment. It returned `no_breach` (`ALLOWED`) and was reconciled as
-  `PREFLIGHT-local-2026-09-29-POS-SHIFT-RESUME-RACE`.
+  `PREFLIGHT-LOCAL-2026-09-29-POS-SHIFT-RESUME-RACE`.
 - The resume path continues to use the authenticated tenant, location, terminal, and cashier
   context. It does not create or close shifts, change ownership, replace opening cash, or mutate
   production data.

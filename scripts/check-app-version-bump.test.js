@@ -45,9 +45,9 @@ function pkgJson(version, deps = {}) {
     return `${JSON.stringify({ name: 'fixture', version, dependencies: deps }, null, 2)}\n`;
 }
 
-// Mirrors the real repo's five apps and their file: fan-out (apps/*/package.json,
-// confirmed live): shared-constants -> all five, web-core -> ims/pos/storefront,
-// pos-receipt -> ims/pos.
+// Mirrors the real repo's six apps and their file: fan-out (apps/*/package.json,
+// confirmed live): shared-constants -> all six, web-core -> ims/pos/storefront/opis,
+// pos-receipt -> ims/pos/opis.
 function baseFixture(overrides = {}) {
     const versions = {
         'dgfy-api': '1.0.0',
@@ -55,6 +55,7 @@ function baseFixture(overrides = {}) {
         'dgfy-ims': '1.0.0',
         'dgfy-pos': '1.0.0',
         'dgfy-storefront': '1.0.0',
+        'dgfy-opis': '1.0.0',
         ...overrides,
     };
 
@@ -84,6 +85,12 @@ function baseFixture(overrides = {}) {
             '@sieitzz/web-core': 'file:../../packages/web-core',
         }),
         'apps/dgfy-storefront/src/index.js': 'module.exports = {};\n',
+        'apps/dgfy-opis/package.json': pkgJson(versions['dgfy-opis'], {
+            '@sieitzz/pos-receipt': 'file:../../packages/pos-receipt',
+            '@sieitzz/shared-constants': 'file:../../packages/shared-constants',
+            '@sieitzz/web-core': 'file:../../packages/web-core',
+        }),
+        'apps/dgfy-opis/src/index.js': 'module.exports = {};\n',
         'packages/shared-constants/package.json': pkgJson('1.0.0'),
         'packages/shared-constants/index.js': 'module.exports = {};\n',
         'packages/pos-receipt/package.json': pkgJson('1.0.0'),
@@ -172,8 +179,13 @@ test('develop: an app floor bump before promotion fails', async () => {
     }
 });
 
-test('develop: shared package change fans out without requiring floor bumps', async () => {
-    // Shared package fan-out remains visible, but package floors change only at promotion.
+test('develop: shared package change fans out to all six apps without requiring floor bumps', async () => {
+    // Only the shared package changes -- no app bumps its own version here -- so this
+    // isolates fan-out *detection* (all 6 apps flagged as changed via the dependency
+    // map read from their own package.json, not a hardcoded list) from the separate
+    // question of whether any given app's bump then satisfies the mode. Shared package
+    // fan-out remains visible, but package floors change only at promotion, so every
+    // app passes here even though none actually bumped.
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: { 'packages/shared-constants/index.js': 'module.exports = { changed: true };\n' },
     });
@@ -182,9 +194,9 @@ test('develop: shared package change fans out without requiring floor bumps', as
             repoRoot: root, baseGitRef, headGitRef, baseBranchName: 'develop', headBranchName: 'feature/x',
         });
         assert.equal(result.ok, true);
-        assert.equal(result.appResults.length, 5);
+        assert.equal(result.appResults.length, 6);
         const appNames = result.appResults.map((entry) => entry.app).sort();
-        assert.deepEqual(appNames, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(appNames, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         for (const entry of result.appResults) {
             assert.equal(entry.reason, 'fan-out:packages/shared-constants');
             assert.equal(entry.ok, true);
@@ -503,8 +515,8 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
         const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
         assert.equal(result.diffError, null);
 
-        // Every app changed in this scenario -- nothing lands in `unchanged`.
-        assert.deepEqual(result.unchanged, []);
+        // Every app changed in this scenario except dgfy-opis -- only it lands in `unchanged`.
+        assert.deepEqual(result.unchanged, ['dgfy-opis']);
 
         const belowFloorApps = result.belowFloor.map((entry) => entry.app).sort();
         assert.deepEqual(belowFloorApps, ['dgfy-api', 'dgfy-ims', 'dgfy-storefront']);
@@ -528,10 +540,10 @@ test('--floor: only apps with real changed files are evaluated; the rest land in
 });
 
 // The #1740 regression itself: a candidate where exactly one app (dgfy-storefront) has a
-// real code change and the other four have none. Before the fix, all five were flagged
+// real code change and the other five have none. Before the fix, all six were flagged
 // below floor regardless; after the fix, only dgfy-storefront is evaluated, and the other
-// four are reported as unchanged with no floor obligation.
-test('--floor (#1740 regression): a single-app change bumps only that app, not all five', async () => {
+// five are reported as unchanged with no floor obligation.
+test('--floor (#1740 regression): a single-app change bumps only that app, not all six', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: {
             'dgfy-api': '1.2.0',
@@ -558,7 +570,7 @@ test('--floor (#1740 regression): a single-app change bumps only that app, not a
         assert.equal(result.invalid.length, 0);
         assert.deepEqual(
             result.unchanged.slice().sort(),
-            ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos'],
+            ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos'],
         );
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
@@ -566,15 +578,16 @@ test('--floor (#1740 regression): a single-app change bumps only that app, not a
 });
 
 // `file:` fan-out is preserved exactly as detectChangedApps() already computes it -- a
-// packages/web-core change must still put every app that depends on it (ims/pos/storefront
+// packages/web-core change must still put every app that depends on it (ims/pos/storefront/opis
 // per baseFixture()'s own dependency shape) in scope, while dgfy-api/dgfy-migration-runner
 // (which don't depend on web-core) land in `unchanged`.
-test('--floor: a packages/web-core change fans out to ims/pos/storefront only', async () => {
+test('--floor: a packages/web-core change fans out to ims/pos/storefront/opis only', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         baseVersions: {
             'dgfy-ims': '1.2.0',
             'dgfy-pos': '1.2.0',
             'dgfy-storefront': '1.2.0',
+            'dgfy-opis': '1.2.0',
         },
         headFiles: {
             'packages/web-core/index.js': 'module.exports = { changed: true };\n',
@@ -585,7 +598,7 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront only', 
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
-        assert.deepEqual(inScope, ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(inScope, ['dgfy-ims', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         for (const entry of result.results) {
             assert.equal(entry.reason, 'fan-out:packages/web-core');
             assert.equal(entry.belowFloor, true);
@@ -597,10 +610,10 @@ test('--floor: a packages/web-core change fans out to ims/pos/storefront only', 
     }
 });
 
-// A packages/shared-constants change fans out to all five apps (mirrors the equivalent
+// A packages/shared-constants change fans out to all six apps (mirrors the equivalent
 // runCheck() test above) -- confirms runFloor() reaches the same fan-out breadth, not a
 // narrower one.
-test('--floor: a packages/shared-constants change fans out to all five apps', async () => {
+test('--floor: a packages/shared-constants change fans out to all six apps', async () => {
     const { root, baseGitRef, headGitRef } = setupScenario({
         headFiles: {
             'packages/shared-constants/index.js': 'module.exports = { changed: true };\n',
@@ -611,7 +624,7 @@ test('--floor: a packages/shared-constants change fans out to all five apps', as
         assert.equal(result.diffError, null);
 
         const inScope = result.results.map((entry) => entry.app).sort();
-        assert.deepEqual(inScope, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-pos', 'dgfy-storefront']);
+        assert.deepEqual(inScope, ['dgfy-api', 'dgfy-ims', 'dgfy-migration-runner', 'dgfy-opis', 'dgfy-pos', 'dgfy-storefront']);
         assert.deepEqual(result.unchanged, []);
         for (const entry of result.results) {
             assert.equal(entry.reason, 'fan-out:packages/shared-constants');
@@ -648,22 +661,49 @@ test('--floor: an unparseable version is surfaced as invalid, never silently tre
     }
 });
 
-test('--floor: a missing version (no package.json at one ref) is also surfaced as invalid', async () => {
+test('--floor: a newly introduced app with a valid initial version has no historical floor', async () => {
     const root = makeGitRepo();
-    // dgfy-api doesn't exist yet at this "base" commit at all.
-    const fixtureWithoutApi = baseFixture();
-    delete fixtureWithoutApi['apps/dgfy-api/package.json'];
-    delete fixtureWithoutApi['apps/dgfy-api/src/index.js'];
-    writeFiles(root, fixtureWithoutApi);
-    const baseGitRef = commitAll(root, 'pre-dgfy-api snapshot');
+    const fixtureWithoutOpis = baseFixture();
+    delete fixtureWithoutOpis['apps/dgfy-opis/package.json'];
+    delete fixtureWithoutOpis['apps/dgfy-opis/src/index.js'];
+    writeFiles(root, fixtureWithoutOpis);
+    const baseGitRef = commitAll(root, 'pre-opis snapshot');
 
-    writeFiles(root, baseFixture());
-    const headGitRef = commitAll(root, 'dgfy-api added');
+    writeFiles(root, {
+        'apps/dgfy-opis/package.json': pkgJson('1.0.0', { '@sieitzz/shared-constants': 'file:../../packages/shared-constants' }),
+        'apps/dgfy-opis/src/index.js': 'module.exports = {};\n',
+    });
+    const headGitRef = commitAll(root, 'dgfy-opis added');
 
     try {
         const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
-        assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-api'));
-        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-api'), false);
+        const opis = result.results.find((entry) => entry.app === 'dgfy-opis');
+        assert.ok(opis);
+        assert.equal(opis.newApp, true);
+        assert.equal(opis.floorTarget, null);
+        assert.equal(opis.unparseable, false);
+        assert.equal(result.invalid.some((entry) => entry.app === 'dgfy-opis'), false);
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-opis'), false);
+    } finally {
+        fs.rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('--floor: a missing head package.json remains invalid even for a new app', async () => {
+    const root = makeGitRepo();
+    const fixtureWithoutOpis = baseFixture();
+    delete fixtureWithoutOpis['apps/dgfy-opis/package.json'];
+    delete fixtureWithoutOpis['apps/dgfy-opis/src/index.js'];
+    writeFiles(root, fixtureWithoutOpis);
+    const baseGitRef = commitAll(root, 'pre-opis snapshot');
+
+    writeFiles(root, { 'apps/dgfy-opis/src/index.js': 'module.exports = {};\n' });
+    const headGitRef = commitAll(root, 'opis source without package metadata');
+
+    try {
+        const result = await runFloor({ repoRoot: root, baseGitRef, headGitRef });
+        assert.ok(result.invalid.some((entry) => entry.app === 'dgfy-opis'));
+        assert.equal(result.belowFloor.some((entry) => entry.app === 'dgfy-opis'), false);
     } finally {
         fs.rmSync(root, { recursive: true, force: true });
     }
@@ -1007,15 +1047,15 @@ test("runCheck(): return shape is unchanged once resolved (now genuinely async),
         assert.equal(typeof resultPromise.then, 'function'); // genuinely async now, not a plain object
         const result = await resultPromise;
         assert.equal(result.ok, true);
-        assert.equal(result.appResults.length, 5);
+        assert.equal(result.appResults.length, 6);
         assert.equal(result.repoRoot, root);
         assert.deepEqual(result.changedFiles, ['packages/shared-constants/index.js']);
 
-        // The three frontend apps' fan-out entries were genuinely narrowing-attempted (each carries
+        // The four frontend apps' fan-out entries were genuinely narrowing-attempted (each carries
         // a `verdict`) but fail closed, since baseFixture() never gives them a real main.jsx --
         // confirms this is "narrowing tried and safely degraded", not "narrowing silently skipped".
-        const frontendEntries = result.narrowedEntries.filter((entry) => ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront'].includes(entry.app));
-        assert.equal(frontendEntries.length, 3);
+        const frontendEntries = result.narrowedEntries.filter((entry) => ['dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis'].includes(entry.app));
+        assert.equal(frontendEntries.length, 4);
         assert.ok(frontendEntries.every((entry) => entry.verdict && entry.verdict.code === 'reachability-error-fail-closed'));
     } finally {
         fs.rmSync(root, { recursive: true, force: true });

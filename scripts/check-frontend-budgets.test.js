@@ -39,10 +39,6 @@ function writeAsset(projectRoot, app, name, sizeBytes, mtime = new Date()) {
 
 function writePassingAssets(projectRoot, mtime = new Date()) {
   writeAsset(projectRoot, 'skupervisor', 'Login-test.js', 9 * 1024, mtime);
-  writeAsset(projectRoot, 'skupervisor', 'SkupervisorPOSCheckoutTerminal-test.js', 60 * 1024, mtime);
-  writeAsset(projectRoot, 'skupervisor', 'SkupervisorPOSPage-test.js', 50 * 1024, mtime);
-  writeAsset(projectRoot, 'skupervisor', 'TerminalPage-test.js', 30 * 1024, mtime);
-  writeAsset(projectRoot, 'skupervisor', 'SalesPage-test.js', 10 * 1024, mtime);
   writeAsset(projectRoot, 'pos', 'POSCheckoutTerminal-test.js', 60 * 1024, mtime);
   writeAsset(projectRoot, 'store', 'vendor-maplibre-test.js', 100 * 1024, mtime);
 }
@@ -111,7 +107,7 @@ test('passes fresh prebuilt assets and writes a reusable budget report', async (
     assert.equal(report.status, 'pass');
     assert.equal(persisted.status, 'pass');
     assert.equal(persisted.mode, 'prebuilt');
-    assert.equal(persisted.budgets.length, 6);
+    assert.equal(persisted.budgets.length, 2);
     assert.equal(persisted.required_asset_dirs.length, 3);
   } finally {
     fs.rmSync(projectRoot, { recursive: true, force: true });

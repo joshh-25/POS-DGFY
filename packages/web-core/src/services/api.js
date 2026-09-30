@@ -73,6 +73,9 @@ const formatApiValidationError = (data) => {
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const RUNTIME_CONFIG = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const IS_POS_SURFACE = RUNTIME_CONFIG.appSurface === 'pos';
+// OPIS (issue #2052) carries x-dgfy-app-surface: opis as a cookie-namespace selector only;
+// it grants no authorization. Every other surface sends no surface header (unchanged shape).
+const IS_OPIS_SURFACE = RUNTIME_CONFIG.appSurface === 'opis';
 // Matches TerminalPage.jsx/posService.js's TERMINAL_ID_STORAGE_KEY. Not a
 // shared export -- like those two, this is a plain localStorage key string
 // contract, not a module dependency (api.js must not import the POS feature).
@@ -159,6 +162,9 @@ const getSessionExpiredRedirect = () => {
   }
   if (appSurface === 'pos') {
     return '/?reason=session_expired';
+  }
+  if (appSurface === 'opis') {
+    return '/dgfy/auth?reason=session_expired';
   }
 
   const pathname =
@@ -440,6 +446,10 @@ api.interceptors.request.use(
         : '';
       if (terminalId) setRequestHeader(config.headers, 'x-pos-terminal-id', terminalId);
       if (activePosErrorRef) setRequestHeader(config.headers, 'x-pos-error-ref', activePosErrorRef);
+    }
+    // OPIS cookie-namespace selector (issue #2052): namespace only, never authorization.
+    if (IS_OPIS_SURFACE) {
+      setRequestHeader(config.headers, 'x-dgfy-app-surface', 'opis');
     }
     config._outcomeStartedAt = Date.now();
 

@@ -122,13 +122,14 @@ const madge = require('madge');
 // file can only reach a web-core file by first reaching other app files).
 const REACHABILITY_SCOPE_DIRS = Object.freeze(['packages/web-core', 'packages/shared-constants']);
 
-// The three frontend apps' real Vite entry points (confirmed live against each app's own
+// The four frontend apps' real Vite entry points (confirmed live against each app's own
 // index.html <script type="module" src="..."> tag). dgfy-api/dgfy-migration-runner intentionally
 // have no entry here -- see the file header.
 const ENTRY_FILE_BY_APP = Object.freeze({
   'dgfy-ims': 'apps/dgfy-ims/src/main.jsx',
   'dgfy-pos': 'apps/dgfy-pos/src/main.jsx',
   'dgfy-storefront': 'apps/dgfy-storefront/src/main.jsx',
+  'dgfy-opis': 'apps/dgfy-opis/src/main.jsx',
 });
 
 const SCAN_EXTENSIONS = new Set(['.js', '.jsx', '.mjs', '.cjs']);

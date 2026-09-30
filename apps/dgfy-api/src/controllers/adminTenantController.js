@@ -47,7 +47,6 @@ import {
     registerCompanyRequest,
     listTenants,
     approveTenant,
-    retryTenantProvisioning,
     rejectTenant,
     provisionNewTenant,
     createAdminProvisionedTenant,

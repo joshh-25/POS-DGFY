@@ -8,6 +8,19 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 describe('Hospitality frontend contract', () => {
+  it('keeps Hospitality in OPIS and retires the IMS merchant route without POS Back Office routes', () => {
+    const main = read('apps/dgfy-ims/src/main.jsx');
+    const posMain = read('apps/dgfy-pos/src/main.jsx');
+    const opisMain = read('apps/dgfy-opis/src/main.jsx');
+    const businessAdminManifest = read('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
+
+    expect(main).toContain('<Route path="/hospitality" element={<LegacyMerchantRoute target="/backoffice/hospitality" title="Hospitality workspace moved" />} />');
+    expect(posMain).not.toMatch(/backoffice|business-admin|opis/i);
+    expect(opisMain).toContain('<Route path="/backoffice/*" element={<OpisCompatRedirect />} />');
+    expect(businessAdminManifest).toContain("hospitality: module('Operations', 'hospitality', 'Hospitality'");
+    expect(businessAdminManifest).toContain("Hotel, HospitalityPage");
+  });
+
   it('keeps manufacturing production modules out of Hospitality by capability, not by a hardcoded mode list', () => {
     // Previously asserted as the literal source text `blockInHospitality
     // moduleLabel="Job Orders"`. Both surfaces now derive from
