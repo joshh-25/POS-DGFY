@@ -9,6 +9,50 @@ import { getPendingGalleryEntryKey, getSavedGalleryEntryKey } from '../../../src
 afterEach(cleanup);
 
 describe('SelectedItemImageCarousel combined POS gallery', () => {
+  it('shows four thumbnails and a +1 tile for a five-image gallery', () => {
+    const savedGallery = Array.from({ length: 5 }, (_, index) => ({
+      url: `/uploads/items/gallery-${index + 1}.webp`
+    }));
+
+    render(
+      <SelectedItemImageCarousel
+        savedGallery={savedGallery}
+        itemName="Blue Drink"
+        maxVisibleThumbnails={4}
+      />
+    );
+
+    expect(screen.getAllByRole('button', { name: /Focus item image/ })).toHaveLength(4);
+    const overflowThumbnail = screen.getByRole('button', { name: 'Focus item image 4; 1 more image' });
+    expect(overflowThumbnail.textContent).toContain('+1');
+  });
+
+  it('uses the Edit Item gallery presentation and primary guidance for Add Item previews', () => {
+    const files = Array.from({ length: 5 }, (_, index) => (
+      new File([`image-${index + 1}`], `image-${index + 1}.png`, {
+        type: 'image/png',
+        lastModified: index + 1
+      })
+    ));
+
+    render(
+      <SelectedItemImageCarousel
+        files={files}
+        itemName="Blue Drink"
+        showPrimaryToggle
+        editItemPresentation
+        maxVisibleThumbnails={4}
+        onRemove={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('region', { name: 'Blue Drink selected image carousel' })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /Focus selected item image/ })).toHaveLength(4);
+    expect(screen.getByRole('button', { name: 'Focus selected item image 4; 1 more image' }).textContent).toContain('+1');
+    expect(screen.getByText('Choose Primary on any image. The selected image will be used first in POS and Storefront.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Make item image 1 primary' })).toBeTruthy();
+  });
+
   it('shows saved and pending images together and promotes a pending image', async () => {
     const user = userEvent.setup();
     const onSetPendingPrimary = vi.fn();

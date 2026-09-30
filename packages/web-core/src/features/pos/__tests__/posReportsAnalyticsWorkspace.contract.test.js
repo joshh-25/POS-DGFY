@@ -12,6 +12,7 @@ const dateFilterSource = fs.readFileSync(path.resolve(__dirname, '../components/
 const kpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsKpiCards.jsx'), 'utf8');
 const adjustmentKpiSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsAdjustmentKpiCards.jsx'), 'utf8');
 const overviewTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsOverviewTable.jsx'), 'utf8');
+const zReadingHistorySource = fs.readFileSync(path.resolve(__dirname, '../components/PosZReadingHistoryTable.jsx'), 'utf8');
 const salesTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsSalesTable.jsx'), 'utf8');
 const responsiveTableSource = fs.readFileSync(path.resolve(__dirname, '../components/PosReportsResponsiveTable.jsx'), 'utf8');
 const filterPartsSource = fs.readFileSync(path.resolve(__dirname, '../components/PosFilterDialogParts.jsx'), 'utf8');
@@ -72,11 +73,18 @@ describe('POS report category filter contract', () => {
 
   it('exposes the requested report tabs and keeps the overview business-date table', () => {
     expect(workspaceSource).toContain("{ id: 'overview', label: 'Overview', icon: LayoutDashboard, granularity: 'daily', exportSection: 'daily' }");
+    expect(workspaceSource).toContain("{ id: 'z_readings', label: 'Z-Readings', icon: Calendar, granularity: 'daily', exportSection: 'daily' }");
+    expect(workspaceSource.indexOf("id: 'z_readings'")).toBeGreaterThan(workspaceSource.indexOf("id: 'overview'"));
+    expect(workspaceSource.indexOf("id: 'z_readings'")).toBeLessThan(workspaceSource.indexOf("id: 'sales'"));
+    expect(workspaceSource).toContain("{ id: 'daily_check', label: 'Daily Sales Check'");
+    expect(workspaceSource).toContain("{ id: 'history', label: 'History'");
     expect(workspaceSource).toContain("{ id: 'sales', label: 'Sales', icon: Receipt, granularity: 'daily', exportSection: 'sales' }");
     expect(workspaceSource).toContain("{ id: 'comparison', label: 'Comparison', icon: ArrowLeftRight, granularity: 'daily', exportSection: 'comparison' }");
     expect(workspaceSource).toContain("{ id: 'top_items', label: 'Top Selling Items', icon: ShoppingBag, granularity: 'daily', exportSection: 'daily' }");
     expect(workspaceSource).toContain("{ id: 'profit_loss', label: 'Profit/Loss', icon: Scale, granularity: 'monthly', exportSection: 'profit_loss' }");
     expect(workspaceSource).toContain('<PosReportsOverviewTable');
+    expect(workspaceSource).toContain('<PosZReadingHistoryTable');
+    expect(zReadingHistorySource).toContain('variant="reports"');
     expect(overviewTableSource).toContain('Business Date');
     expect(overviewTableSource).toContain('Transactions');
     expect(overviewTableSource).toContain('label: `Gross Sales (${symbol})`');
@@ -88,15 +96,17 @@ describe('POS report category filter contract', () => {
     expect(salesTableSource).toContain('Transaction/Invoice');
     expect(salesTableSource).toContain('label: `POS Profit/Loss (${symbol})`');
     expect(workspaceSource).toContain('ariaLabel="POS reports"');
-    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0">');
+    expect(workspaceSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
     expect(workspaceSource).toContain('data-testid="pos-reports-sticky-tabs"');
     expect(workspaceSource).toContain('POS_MOBILE_STICKY_TAB_ROW_CLASS');
     expect(pageSpacingSource).toContain('max-[767px]:sticky max-[767px]:top-0 max-[767px]:z-30 max-[767px]:-mt-4 max-[767px]:w-full max-[767px]:bg-white max-[767px]:pt-4');
     expect(workspaceSource).toContain('POS_PAGE_CONTENT_STACK_CLASS');
     expect(workspaceSource).not.toContain('showIcons={false}');
-    expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('<PosLineTabNavigation'));
+    expect(workspaceSource).toContain('className="flex min-w-0 flex-col gap-2"');
     expect(workspaceSource.indexOf('<PosLineTabNavigation')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
-    expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('{renderReportToolbar()}'));
+    expect(workspaceSource.indexOf('<PosLineTabNavigation')).toBeLessThan(workspaceSource.indexOf('<PosReportsKpiCards'));
+    expect(workspaceSource.indexOf('<PosReportsKpiCards')).toBeLessThan(workspaceSource.indexOf('<PosSubtabNavigation'));
+    expect(workspaceSource.indexOf('<PosSubtabNavigation')).toBeLessThan(workspaceSource.indexOf('renderReportToolbar()'));
     expect(workspaceSource).toContain("const shouldShowOperationsSubtabs = activeTab === 'operations'");
     expect(lineTabSource).toContain('role="tablist" aria-orientation="horizontal"');
   });
@@ -104,13 +114,16 @@ describe('POS report category filter contract', () => {
   it('keeps mobile report tabs sticky through the full report content scroll range', () => {
     const contentStart = workspaceSource.indexOf('data-testid="pos-reports-sticky-content"');
     const stickyTabs = workspaceSource.indexOf('data-testid="pos-reports-sticky-tabs"');
+    const stickyTabsEnd = workspaceSource.indexOf('</div>', stickyTabs);
     const reportPanel = workspaceSource.indexOf('role="tabpanel"');
     const contentEnd = workspaceSource.lastIndexOf('</div>', workspaceSource.indexOf('</PosPageFrame>'));
 
     expect(contentStart).toBeGreaterThanOrEqual(0);
     expect(contentStart).toBeLessThan(stickyTabs);
+    expect(stickyTabsEnd).toBeGreaterThan(stickyTabs);
     expect(stickyTabs).toBeLessThan(reportPanel);
     expect(reportPanel).toBeLessThan(contentEnd);
+    expect(workspaceSource.slice(stickyTabs, stickyTabsEnd)).not.toContain('<PosSubtabNavigation');
     expect(workspaceSource.slice(contentStart, contentEnd)).toContain('POS_PAGE_CONTENT_STACK_CLASS} sm:gap-6');
     expect(workspaceSource.slice(contentStart, contentEnd)).toContain('data-testid="pos-reports-sticky-tabs"');
   });
@@ -214,6 +227,8 @@ describe('POS report category filter contract', () => {
     expect(subtabNavigationSource).toContain('min-[1024px]:grid min-[1024px]:min-w-0');
     expect(subtabNavigationSource).toContain('min-[1024px]:grid-cols-5');
     expect(subtabNavigationSource).toContain('min-w-36 w-max shrink-0');
+    expect(subtabNavigationSource).toContain("compactMobile ? 'pt-2' : ''");
+    expect(subtabNavigationSource).not.toContain('max-[767px]:pt-2');
     expect(subtabNavigationSource).toContain('role="tab"');
     expect(subtabNavigationSource).toContain('aria-selected={active}');
     expect(subtabNavigationSource).toContain("['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End']");
@@ -299,12 +314,31 @@ describe('POS report category filter contract', () => {
   it('discloses the immutable Z-reading reconciliation without mixing net sales metrics', () => {
     expect(workspaceSource).toContain('z_reading_reconciliation');
     expect(workspaceSource).toContain('Z-reading reconciliation');
+    expect(workspaceSource).toContain('Daily Sales Check');
+    expect(workspaceSource).toContain('date_from: dailySalesCheckDate');
+    expect(workspaceSource).toContain('date_to: dailySalesCheckDate');
+    expect(workspaceSource).toContain('<PosSingleDatePicker');
+    expect(workspaceSource).toContain('todayDate={normalizeReportDateInput(reportData?.date_bounds?.today)}');
+    expect(workspaceSource).not.toContain('id="pos-z-reading-business-date"\n        type="date"');
+    expect(workspaceSource).toContain('fetchPosZReadingDetails(row.business_date');
     expect(workspaceSource).toContain('Report recognized sales');
     expect(workspaceSource).toContain('Z-reading total');
     expect(workspaceSource).toContain('Report net sales');
     expect(workspaceSource).toContain('Report refunds/voids');
     expect(workspaceSource).toContain('Generated:');
     expect(workspaceSource).toContain("timeZone: 'Asia/Manila'");
+    expect(zReadingHistorySource).toContain('This history contains completed, saved branch readings only.');
+    expect(zReadingHistorySource).toContain("title: 'Reading summary'");
+    expect(zReadingHistorySource).toContain("title: 'Sales summary'");
+    expect(zReadingHistorySource).toContain("title: 'Payment breakdown'");
+    expect(zReadingHistorySource).toContain("title: 'Adjustments'");
+    expect(zReadingHistorySource).toContain('Cashier and shift ·');
+    expect(zReadingHistorySource).toContain('Over / short for this shift');
+    expect(zReadingHistorySource).toContain('Show additional audit details');
+    expect(zReadingHistorySource).not.toContain('detailSummary.refund_amount');
+    expect(workspaceSource).toContain('data?.snapshot_persisted !== true');
+    expect(workspaceSource).toContain('<PosZReadingHistoryToolbar');
+    expect(workspaceSource).toContain('fetchAllMatchingZReadingHistory');
   });
 
   it('keeps the report toolbar focused on the primary print and CSV exports', () => {
@@ -312,6 +346,7 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).not.toContain('exportProcurementCsv');
     expect(workspaceSource).not.toContain('handleExportProcurementCsv');
     expect(workspaceSource).not.toContain('Procurement CSV');
-    expect(workspaceSource).toContain('{renderReportToolbar()}');
+    expect(workspaceSource).toContain('{renderZReadingToolbar()}');
+    expect(workspaceSource).toContain('renderReportToolbar()');
   });
 });

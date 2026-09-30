@@ -63,11 +63,24 @@ describe('POS reports active filter toolbar', () => {
     expect(filterButton.querySelector('.dgfy-pos-filter-count-badge')?.className).toContain('ml-2');
     expect(filterButton.textContent).toContain('3');
 
-    const appliedFilters = within(screen.getByRole('group', { name: 'Applied report filters' }));
+    const filterGroup = screen.getByRole('group', { name: 'Applied report filters' });
+    const appliedFilters = within(filterGroup);
     expect(appliedFilters.getAllByRole('button')).toHaveLength(4);
+    const chipRail = filterGroup.querySelector('.dgfy-pos-applied-filter-scroll');
+    const clearAllButton = appliedFilters.getByRole('button', { name: 'Clear all report filters' });
+    expect(chipRail?.className).toContain('flex-nowrap');
+    expect(chipRail?.className).toContain('overflow-x-auto');
+    expect(chipRail?.className).toContain('min-[768px]:contents');
+    expect(chipRail?.contains(clearAllButton)).toBe(false);
+    expect(clearAllButton.parentElement).toBe(filterGroup);
+    expect(clearAllButton.className).toContain('min-h-11');
+    expect(clearAllButton.className).toContain('min-w-11');
+    expect(clearAllButton.className).toContain('shrink-0');
+    expect(clearAllButton.querySelector('span')?.className).toContain('hidden');
+    expect(clearAllButton.querySelector('span')?.className).toContain('min-[768px]:inline');
     fireEvent.click(appliedFilters.getByRole('button', { name: 'Remove filter: Payment: Cash' }));
     expect(onRemoveFilter).toHaveBeenCalledWith('payment');
-    fireEvent.click(appliedFilters.getByRole('button', { name: 'Clear all report filters' }));
+    fireEvent.click(clearAllButton);
     expect(onClearAllFilters).toHaveBeenCalledTimes(1);
   });
 
@@ -87,12 +100,12 @@ describe('POS reports active filter toolbar', () => {
     const filterButton = screen.getByRole('button', { name: 'Filter' });
     const dateFilterButton = screen.getByRole('button', { name: 'Filter by Date' });
 
-    expect(search.className).toContain('h-10');
-    expect(search.className).toContain('pl-9');
-    expect(search.className).toContain('text-sm');
-    expect(search.className).toContain('placeholder:text-slate-500');
-    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('h-4 w-4');
-    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('text-slate-400');
+    expect(search.className).toContain('h-11');
+    expect(search.className).toContain('pl-11');
+    expect(search.className).toContain('text-[13px]');
+    expect(search.className).toContain('placeholder:text-[#64748B]');
+    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('h-5 w-5');
+    expect(search.parentElement.querySelector('svg')?.getAttribute('class')).toContain('text-[#1A4E8D]');
     expect(filterButton.parentElement.parentElement).toBe(searchRow);
     expect(dateFilterButton.parentElement.parentElement).toBe(searchRow);
     expect(filterButton.className).toContain('h-11');

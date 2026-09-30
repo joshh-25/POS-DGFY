@@ -23,7 +23,7 @@ import { POS_HISTORY_PAGE_SIZE_OPTIONS } from '../utils/posHistoryQuery.js';
 import { ORDER_METHOD_LABELS, resolveAppliedVouchers } from './orderFulfillmentUi.js';
 import POSRefundWorkflowDialog from './POSRefundWorkflowDialog.jsx';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
-import PosTableSurface from './PosTableSurface.jsx';
+import PosTableSurface, { POS_TABLE_HEADER_STANDARD_CLASS } from './PosTableSurface.jsx';
 import PosTableActionButton from './PosTableActionButton.jsx';
 import PosTableDetailsDialog from './PosTableDetailsDialog.jsx';
 import PosCashierFilterControl from './PosCashierFilterControl.jsx';
@@ -914,6 +914,7 @@ export default function POSTransactionHistoryPanel({
                         ariaLabel="Search all transaction fields"
                         value={historySearch}
                         onChange={(event) => setHistorySearch(event.target.value)}
+                        onClear={() => setHistorySearch('')}
                         placeholder="Search all transaction fields..."
                         inputClassName={POS_TOOLBAR_CONTROL_HEIGHT_CLASS}
                         className={`flex-1 ${isMobileViewport ? 'basis-0' : 'basis-[18rem]'}`}
@@ -979,7 +980,7 @@ export default function POSTransactionHistoryPanel({
                     groupLabel="Applied history filters"
                     clearAllAriaLabel="Clear all history filters"
                     className={isMobileViewport
-                        ? 'dgfy-pos-history-horizontal-scroll flex-nowrap overflow-x-auto overscroll-x-contain touch-pan-x px-3 py-0'
+                        ? 'flex-nowrap px-3 py-0'
                         : 'flex-wrap px-3 py-3 lg:px-4'}
                 />
 
@@ -1198,16 +1199,16 @@ export default function POSTransactionHistoryPanel({
                                     </>
                                 )}
                             </colgroup>
-                            <thead>
+                            <thead className={POS_TABLE_HEADER_STANDARD_CLASS}>
                                 <tr className="border-b border-slate-200 bg-white text-[#0F172A] whitespace-nowrap">
-                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Invoice</th>
-                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Date &amp; Time</th>
-                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Source</th>
-                                    {(!isTabletTableViewport || isTabletLandscapeTableViewport) && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Payment</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Cashier</th>}
-                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black">Vatable</th>}
-                                    {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 py-4 text-left text-[13px] font-black text-[#1A4E8D]">Total</th>}
-                                    {!isMobileViewport && <th scope="col" className={`${historyActionColumnClassName} dgfy-pos-history-header-cell px-2.5 py-4 text-center text-[13px] font-black`}>Action</th>}
+                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Invoice</th>
+                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Date &amp; Time</th>
+                                    <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Source</th>
+                                    {(!isTabletTableViewport || isTabletLandscapeTableViewport) && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Payment</th>}
+                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Cashier</th>}
+                                    {isDesktopHistoryViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black">Vatable</th>}
+                                    {!isMobileViewport && <th scope="col" className="dgfy-pos-history-header-cell px-2.5 text-left text-[13px] font-black text-[#1A4E8D]">Total</th>}
+                                    {!isMobileViewport && <th scope="col" className={`${historyActionColumnClassName} dgfy-pos-history-header-cell px-2.5 text-center text-[13px] font-black`}>Action</th>}
                                 </tr>
                             </thead>
                             <tbody>
@@ -1300,7 +1301,7 @@ export default function POSTransactionHistoryPanel({
                                                 {isDesktopHistoryViewport && <td className="px-2.5 py-4 text-left text-[#334155]"><div className="pos-history-row-content">₱{money(row.vatable_sales)}</div></td>}
                                                 {!isMobileViewport && <td className="px-2.5 py-4 text-left font-black text-[#1A4E8D]"><div className="pos-history-row-content">₱{money(row.total_amount)}</div></td>}
                                                 {!isMobileViewport && <td className={`${historyActionColumnClassName} px-2.5 py-4 text-center`}>
-                                                    <div className={`pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? 'gap-1' : 'gap-2'}`}>
+                                                    <div className={`pos-history-action-cell pos-history-action-group flex w-full flex-nowrap items-center justify-center ${isMobileViewport ? 'gap-1' : 'gap-2'}`}>
                                                         <PosTableActionButton
                                                             icon={ClipboardList}
                                                             onClick={(event) => {

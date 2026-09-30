@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
+import PosSearchField from './PosSearchField.jsx';
 import { getItems } from '@/services/itemService.js';
 import {
   archivePricelist,
@@ -492,9 +493,12 @@ export default function PricelistManagementPanel({ disabled = false, canManage =
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Input
+            <PosSearchField
+              ariaLabel="Search items in pricelist"
+              onClear={() => { setSearch(''); setMobileIndex(0); setDesktopPage(0); }}
               placeholder="Search items..."
-              className="h-8 w-48 text-xs"
+              className="w-48"
+              inputClassName="h-9 text-xs"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setMobileIndex(0); setDesktopPage(0); }}
             />
