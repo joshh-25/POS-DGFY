@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ClipboardCheck, RefreshCcw, Search, ShieldAlert } from 'lucide-react';
+import { ClipboardCheck, RefreshCcw, ShieldAlert } from 'lucide-react';
 import { fetchAuditLogs } from '../services/auditService.js';
 import { GlobalPagination } from '@/components/ui/pagination';
+import PosSearchField from './PosSearchField.jsx';
 
 const HUMAN_EVENT_LABELS = Object.freeze({
     shift_opened: 'Shift opened',
@@ -668,11 +669,15 @@ export default function AuditWorkspacePanel({ locked = false, isOnline = true, c
                         setAppliedFilters(filters);
                     }}
                 >
-                    <label className="relative block">
-                        <span className="sr-only">Search audit history</span>
-                        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                        <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Search all audit events, orders, images, users..." className="h-9 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-xs outline-none focus:border-[#1A4E8D]" />
-                    </label>
+                    <PosSearchField
+                        ariaLabel="Search audit history"
+                        value={filters.search}
+                        onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+                        onClear={() => setFilters((current) => ({ ...current, search: '' }))}
+                        placeholder="Search all audit events, orders, images, users..."
+                        className="min-w-0 flex-1"
+                        inputClassName="h-9 text-xs"
+                    />
                     <button type="submit" className="h-9 shrink-0 rounded-lg bg-[#1A4E8D] px-4 text-xs font-extrabold text-white hover:bg-[#143F73]">Search</button>
                 </form>
 

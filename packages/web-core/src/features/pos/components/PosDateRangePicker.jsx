@@ -90,7 +90,9 @@ export default function PosDateRangePicker({
   testIdPrefix = 'pos-history-calendar',
   enableRangeDrag = false,
   timeZone,
-  dateLabelStyle = 'full'
+  dateLabelStyle = 'full',
+  selectionMode = 'range',
+  todayDate = ''
 }) {
   const initialMonth = parseDateInput(from) || parseDateInput(to) || new Date();
   const [monthDate, setMonthDate] = useState(() => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1));
@@ -102,7 +104,8 @@ export default function PosDateRangePicker({
   const toDate = parseDateInput(to);
   const fromKey = dateToInput(fromDate);
   const toKey = dateToInput(toDate);
-  const todayKey = getCurrentDateInput(timeZone);
+  const todayKey = todayDate || getCurrentDateInput(timeZone);
+  const isSingleDateMode = selectionMode === 'single';
   const hasCompleteRange = Boolean(fromKey && toKey);
   const hasMultiDayRange = hasCompleteRange && fromKey !== toKey;
   const activePreset = CALENDAR_PRESETS.find((preset) => dateRangesEqual(
@@ -126,6 +129,10 @@ export default function PosDateRangePicker({
 
   const selectDate = (date) => {
     const selectedKey = dateToInput(date);
+    if (isSingleDateMode) {
+      onChange(selectedKey, selectedKey);
+      return;
+    }
     setCustomRangeActive(true);
     if (date.getMonth() !== monthDate.getMonth() || date.getFullYear() !== monthDate.getFullYear()) {
       setMonthDate(new Date(date.getFullYear(), date.getMonth(), 1));
@@ -169,39 +176,41 @@ export default function PosDateRangePicker({
 
   return (
     <div className={`grid ${mobile ? 'gap-3' : 'gap-2'}`} data-testid={`${testIdPrefix}-picker`}>
-      <div className={`grid grid-cols-2 ${mobile ? 'gap-2.5' : 'gap-1.5'}`} role="group" aria-label="Date presets">
-        {CALENDAR_PRESETS.map((preset) => {
-          const selected = activePreset === preset.value;
-          return (
-            <button
-              key={preset.value}
-              type="button"
-              data-testid={`${testIdPrefix}-preset-${preset.value}`}
-              aria-pressed={selected}
-              onClick={() => applyPreset(preset.value)}
-              className={`${mobile ? 'h-9 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
-                ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
-                : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
-                }`}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          data-testid={`${testIdPrefix}-preset-custom`}
-          aria-pressed={isCustomRange}
-          onClick={() => applyPreset('custom')}
-          className={`inline-flex ${mobile ? 'h-9 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 items-center justify-center gap-1 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isCustomRange
-            ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
-            : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
-            }`}
-        >
-          Custom Range
-          <CalendarDays className={`${mobile ? 'h-5 w-5' : 'h-3.5 w-3.5'} shrink-0`} aria-hidden="true" />
-        </button>
-      </div>
+      {!isSingleDateMode ? (
+        <div className={`grid grid-cols-2 ${mobile ? 'gap-2.5' : 'gap-1.5'}`} role="group" aria-label="Date presets">
+          {CALENDAR_PRESETS.map((preset) => {
+            const selected = activePreset === preset.value;
+            return (
+              <button
+                key={preset.value}
+                type="button"
+                data-testid={`${testIdPrefix}-preset-${preset.value}`}
+                aria-pressed={selected}
+                onClick={() => applyPreset(preset.value)}
+                className={`${mobile ? 'h-9 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${selected
+                  ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
+                  : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
+                  }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            data-testid={`${testIdPrefix}-preset-custom`}
+            aria-pressed={isCustomRange}
+            onClick={() => applyPreset('custom')}
+            className={`inline-flex ${mobile ? 'h-9 rounded-lg px-2 text-[11px]' : 'h-8 rounded-lg px-2 text-[11px]'} min-w-0 items-center justify-center gap-1 border font-extrabold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100 ${isCustomRange
+              ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/15'
+              : 'border-[#8AA8CD] bg-white text-[#1A4E8D] hover:bg-blue-50'
+              }`}
+          >
+            Custom Range
+            <CalendarDays className={`${mobile ? 'h-5 w-5' : 'h-3.5 w-3.5'} shrink-0`} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
 
       <div className={`${mobile ? 'rounded-xl border-0 bg-transparent px-0 py-1' : 'rounded-lg border border-slate-100 bg-slate-50/40 px-2 py-1.5'}`}>
         <div className={`flex items-center justify-between gap-2 ${mobile ? 'px-0' : 'px-1'}`}>
@@ -279,30 +288,32 @@ export default function PosDateRangePicker({
         </div>
       </div>
 
-      <div className="sr-only" aria-hidden="false">
-        <label htmlFor={`${testIdPrefix}-from`}>Date from</label>
-        <input
-          id={`${testIdPrefix}-from`}
-          data-testid={`${testIdPrefix}-from`}
-          type="date"
-          value={from}
-          onChange={(event) => {
-            setCustomRangeActive(true);
-            onChange(event.target.value, to);
-          }}
-        />
-        <label htmlFor={`${testIdPrefix}-to`}>Date to</label>
-        <input
-          id={`${testIdPrefix}-to`}
-          data-testid={`${testIdPrefix}-to`}
-          type="date"
-          value={to}
-          onChange={(event) => {
-            setCustomRangeActive(true);
-            onChange(from, event.target.value);
-          }}
-        />
-      </div>
+      {!isSingleDateMode ? (
+        <div className="sr-only" aria-hidden="false">
+          <label htmlFor={`${testIdPrefix}-from`}>Date from</label>
+          <input
+            id={`${testIdPrefix}-from`}
+            data-testid={`${testIdPrefix}-from`}
+            type="date"
+            value={from}
+            onChange={(event) => {
+              setCustomRangeActive(true);
+              onChange(event.target.value, to);
+            }}
+          />
+          <label htmlFor={`${testIdPrefix}-to`}>Date to</label>
+          <input
+            id={`${testIdPrefix}-to`}
+            data-testid={`${testIdPrefix}-to`}
+            type="date"
+            value={to}
+            onChange={(event) => {
+              setCustomRangeActive(true);
+              onChange(from, event.target.value);
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

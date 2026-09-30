@@ -68,7 +68,9 @@ import {
     buildListFiscalTerminalRegistrationsUseCase,
     buildGetDayCloseReadinessUseCase,
     buildCloseDayZReadingUseCase,
+    buildListPosZReadingsUseCase,
     buildGetDailyZReadingUseCase,
+    buildGetDailyZReadingDetailsUseCase,
     buildGetCurrentXReadingUseCase,
     buildIncrementGovernedResetCounterUseCase,
     buildListPosCatalogOverridesUseCase,
@@ -407,7 +409,9 @@ export const upsertFiscalTerminalRegistrationUseCase = buildUpsertFiscalTerminal
 export const listFiscalTerminalRegistrationsUseCase = buildListFiscalTerminalRegistrationsUseCase({ posRepository });
 export const getDayCloseReadinessUseCase = buildGetDayCloseReadinessUseCase({ posRepository });
 export const closeDayZReadingUseCase = buildCloseDayZReadingUseCase({ posRepository });
+export const listPosZReadingsUseCase = buildListPosZReadingsUseCase({ posRepository });
 export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posRepository });
+export const getDailyZReadingDetailsUseCase = buildGetDailyZReadingDetailsUseCase({ posRepository });
 export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });
 export const incrementGovernedResetCounterUseCase = buildIncrementGovernedResetCounterUseCase({ posRepository });
 export const listPosCatalogOverridesUseCase = buildListPosCatalogOverridesUseCase({ posRepository });

@@ -1,8 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* Shared POS pagination follows the mobile wireframe: the range and Go to
-   label share the first row, while page size and navigation share the second. */
+/* Shared POS pagination keeps the page-size label compact on mobile while
+   preserving room for navigation and the direct page-jump control. */
 .dgfy-global-pagination__mobile-go-to-label {
   display: none;
 }
@@ -26,11 +26,12 @@
 @media (max-width: 767.98px) {
   .dgfy-global-pagination {
     display: grid !important;
-    grid-template-columns: minmax(5.75rem, 1fr) 2.5rem minmax(4rem, 1fr) 2.5rem 3.75rem;
+    grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);
     grid-template-rows: auto auto;
-    column-gap: 0.25rem;
+    column-gap: 0.2rem;
     row-gap: 0.25rem;
     align-items: center;
+    min-width: 0;
     padding: 0.25rem 0.5rem !important;
   }
 
@@ -51,15 +52,23 @@
   .dgfy-global-pagination__page-size {
     grid-column: 1;
     grid-row: 2;
-    min-width: 5.75rem;
+    min-width: 0;
     max-width: 100%;
   }
 
   .dgfy-global-pagination__page-size-trigger {
     width: 100%;
-    min-width: 5.75rem;
+    min-width: 3.25rem;
     padding-inline: 0.5rem;
     font-size: 0.75rem;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+
+  .dgfy-global-pagination__page-size-suffix,
+  .dgfy-global-pagination__go-to-label,
+  .dgfy-global-pagination__go-to-suffix {
+    display: none !important;
   }
 
   .dgfy-global-pagination__previous {
@@ -82,7 +91,7 @@
 
   .dgfy-global-pagination__mobile-go-to-label {
     display: block;
-    grid-column: 5;
+    grid-column: 4 / -1;
     grid-row: 1;
     justify-self: end;
     white-space: nowrap;
@@ -102,13 +111,6 @@
   }
 }
 
-@media (max-width: 360px) {
-  .dgfy-global-pagination {
-    grid-template-columns: minmax(5.75rem, 1fr) 2.25rem minmax(3.75rem, 1fr) 2.25rem 3.5rem;
-    column-gap: 0.2rem;
-  }
-}
-
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -122,10 +124,14 @@ body {
   box-sizing: border-box;
 }
 
-/* Reports keep the sortable header's 36px hit area, centered in the same
-   51px title row used by History. Body rows retain their existing spacing. */
-.pos-reports-responsive-table > thead > tr > th {
-  height: 51px;
+/* Standard POS data tables use one shared title-row height. The 36px report
+   sort target remains vertically centered inside this row. */
+:root {
+  --pos-table-header-height: 3.1875rem;
+}
+
+.pos-table-header--standard > tr > th {
+  height: var(--pos-table-header-height);
   padding-top: 0;
   padding-bottom: 0;
   vertical-align: middle;
@@ -461,6 +467,32 @@ body {
   background: #94a3b8;
 }
 
+/* Active-filter chips scroll independently so Clear all stays in reach on phones. */
+.dgfy-pos-applied-filter-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dgfy-pos-applied-filter-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+@media (max-width: 767px) {
+  .dgfy-pos-applied-filter-scroll {
+    touch-action: pan-x;
+  }
+}
+
 /* Active filter counts use the same compact badge on History and Reports.
    Phone and portrait-tablet controls keep the count outside the icon button so
    the button remains a consistent square target. */
@@ -473,112 +505,34 @@ body {
   }
 }
 
-/* Shared POS pagination keeps the mobile state compact while retaining the
-   direct page-jump form beside the sequential navigation controls. */
-.dgfy-global-pagination__mobile-go-to-label {
-  display: none;
-}
-
-.dgfy-global-pagination__page-size-suffix {
-  display: inline;
-}
-
-.dgfy-global-pagination__page-size-trigger {
-  border-color: #dbe4f0;
-  background: #ffffff;
-  color: #334155;
-  letter-spacing: -0.01em;
-}
-
-.dgfy-global-pagination__page-size-trigger:hover:not(:disabled) {
-  border-color: rgba(26, 78, 141, 0.5);
-  background: #f8fbff;
-}
-
-.dgfy-global-pagination__page-size-menu {
-  min-width: 100%;
-}
-
-@media (max-width: 767.98px) {
+/* The POS shell leaves less room than the viewport on narrow phones. Reflow
+   the page jump below navigation instead of clipping either control. */
+@media (max-width: 360px) {
   .dgfy-global-pagination {
-    display: grid !important;
-    grid-template-columns: minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr) 2.5rem minmax(3.5rem, 1fr);
-    grid-template-rows: auto auto;
-    column-gap: 0.2rem;
-    row-gap: 0.25rem;
-    align-items: center;
-    min-width: 0;
-    padding: 0.25rem 0.5rem !important;
-  }
-
-  .dgfy-global-pagination__summary,
-  .dgfy-global-pagination__controls,
-  .dgfy-global-pagination__go-to {
-    display: contents !important;
+    grid-template-columns: minmax(0, 1fr) 2.25rem minmax(0, 1fr) 2.25rem;
+    grid-template-rows: auto auto auto;
   }
 
   .dgfy-global-pagination__summary-text {
-    grid-column: 1 / 4;
+    grid-column: 1 / -1;
     grid-row: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
   }
 
   .dgfy-global-pagination__page-size {
     grid-column: 1;
     grid-row: 2;
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .dgfy-global-pagination__page-size-trigger {
-    width: 100%;
-    min-width: 3.25rem;
-    padding-inline: 0.5rem;
-    font-size: 0.75rem;
-    justify-content: center;
-    gap: 0.25rem;
-  }
-
-  .dgfy-global-pagination__page-size-suffix,
-  .dgfy-global-pagination__go-to-label,
-  .dgfy-global-pagination__go-to-suffix {
-    display: none !important;
-  }
-
-  .dgfy-global-pagination__previous {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .dgfy-global-pagination__status {
-    grid-column: 3;
-    grid-row: 2;
-    width: 100%;
-    min-width: 0;
-    padding-inline: 0.25rem;
-  }
-
-  .dgfy-global-pagination__next {
-    grid-column: 4;
-    grid-row: 2;
   }
 
   .dgfy-global-pagination__mobile-go-to-label {
-    display: block;
-    grid-column: 4 / -1;
-    grid-row: 1;
-    justify-self: end;
-    white-space: nowrap;
-    font-weight: 500;
+    grid-column: 1;
+    grid-row: 3;
+    justify-self: start;
   }
 
   .dgfy-global-pagination__go-to-input {
-    grid-column: 5;
-    grid-row: 2;
-    width: 100%;
-    min-width: 0;
+    grid-column: 2 / -1;
+    grid-row: 3;
   }
 }
 
@@ -1396,6 +1350,27 @@ body.dgfy-pos-document-scroll-lock {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
+.dgfy-pos-header-terminal-row {
+  display: contents;
+}
+
+/* Small tablets use the mobile header hierarchy: title above an unboxed
+   terminal and status line. Wider tablets keep the title and badge together. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .dgfy-pos-header-page-subtitle,
+  .dgfy-pos-header-terminal-row {
+    display: none !important;
+  }
+
+  .dgfy-pos-header-title > div {
+    flex-wrap: nowrap;
+  }
+
+  .dgfy-pos-header-mobile-terminal {
+    display: flex !important;
+  }
+}
+
 /* The parked-sales shortcut is portaled into this host only for workflows
  * that support it. Keep the empty host out of the header layout so unsupported
  * workflows do not show a blank button-sized gap. */
@@ -1669,6 +1644,12 @@ body[data-pos-text-size="extra-large"] {
   body[data-pos-text-size] [aria-label="POS transaction history table"] :where(th, td) {
     vertical-align: top;
     overflow-wrap: anywhere;
+  }
+
+  /* Keep the tablet History title row centered while data cells retain the
+     top alignment needed for readable wrapping at larger text sizes. */
+  body[data-pos-text-size] .dgfy-pos-history-table--tablet > thead > tr > th {
+    vertical-align: middle;
   }
 
   body[data-pos-text-size] [aria-label="POS transaction history table"] button:not(.pos-table-action-button) {
@@ -2451,6 +2432,15 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   justify-content: center;
 }
 
+.dgfy-pos-history-table--single-view > tbody > tr > td.pos-history-action-column > .pos-history-action-cell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 4.25rem;
+  align-items: center;
+  justify-content: center;
+}
+
 .dgfy-pos-history-table--single-view .pos-history-action-column {
   min-width: 0;
   position: static;
@@ -2477,13 +2467,11 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
-  padding-left: 0.375rem;
-  padding-right: 0.375rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .dgfy-pos-history-table--tablet > thead > tr > :is(th, td) {
-  padding-top: 0.625rem;
-  padding-bottom: 0.625rem;
   font-size: 0.6875rem;
   line-height: 1.15;
 }
@@ -2511,6 +2499,15 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
   justify-content: center;
 }
 
+.dgfy-pos-history-table--tablet > tbody > tr > td.pos-history-action-column > .pos-history-action-cell {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 4rem;
+  align-items: center;
+  justify-content: center;
+}
+
 .dgfy-pos-history-table--tablet .pos-history-action-column {
   min-width: 0;
   position: static;
@@ -2532,23 +2529,38 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col {
+  width: 14%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(2) {
+  width: 15%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(3),
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(4) {
+  width: 15%;
+}
+
+.dgfy-pos-history-table--tablet-landscape > colgroup > col:nth-child(5) {
   width: 15%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > colgroup > col:last-child {
-  width: 22%;
+  width: 26%;
 }
 
 .dgfy-pos-history-table--tablet-landscape > :is(thead, tbody) > tr > :is(th, td) {
-  padding-left: 0.25rem;
-  padding-right: 0.25rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
-.dgfy-pos-history-table--tablet-landscape .pos-history-action-column {
+.dgfy-pos-history-table--tablet .pos-history-action-column {
   text-align: center;
 }
 
-.dgfy-pos-history-table--tablet-landscape .pos-history-action-column > .pos-history-row-content {
+.dgfy-pos-history-table--tablet .pos-history-action-column > .pos-history-action-cell,
+.dgfy-pos-history-table--single-view .pos-history-action-column > .pos-history-action-cell {
+  max-width: 100%;
   justify-content: center;
 }
 

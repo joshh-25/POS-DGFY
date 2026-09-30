@@ -20,6 +20,7 @@ const REQUIRED_SHELL_ASSETS = [
   `${BASE_PATH}dgfy-horizontal_logo-removebg-preview.png`,
   `${BASE_PATH}dgfy-logo.png`,
   `${BASE_PATH}dgfy-wordmark_logo.ico`,
+  `${BASE_PATH}favicon.png`,
   `${BASE_PATH}favicon.ico`,
   `${BASE_PATH}favicon.svg`
 ];

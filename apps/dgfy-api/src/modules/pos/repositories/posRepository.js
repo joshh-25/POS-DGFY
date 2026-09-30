@@ -5078,6 +5078,242 @@ export const posRepository = {
         return toPlain(created);
     },
 
+    async getZReadingSnapshotDetails({ startAt, endAt, businessDate, locationId } = {}, options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        const PosTerminalOperatorSession = dbStore.get('PosTerminalOperatorSession');
+        const PosTransaction = dbStore.get('PosTransaction');
+        const PosTransactionAdjustment = dbStore.get('PosTransactionAdjustment');
+        const User = dbStore.get('User');
+        const TenantLocation = dbStore.get('TenantLocation');
+
+        const location = TenantLocation?.findByPk
+            ? toPlain(await TenantLocation.findByPk(locationId, {
+                attributes: ['location_id', 'name'],
+                transaction: options.transaction
+            }))
+            : null;
+        const shiftRows = await PosTerminalShift.findAll({
+            where: {
+                location_id: locationId,
+                business_date: normalizeBusinessDateValue(businessDate)
+            },
+            attributes: [
+                'pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id',
+                'opening_float_amount', 'opened_at', 'closed_at',
+                'expected_cash_amount', 'closing_cash_amount', 'cash_variance_amount'
+            ],
+            include: [
+                ...(User ? [{
+                    model: User,
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
+                }] : []),
+                ...(PosTerminalOperatorSession ? [{
+                    model: PosTerminalOperatorSession,
+                    as: 'operatorSessions',
+                    attributes: [
+                        'pos_terminal_operator_session_id', 'user_id', 'started_at', 'ended_at', 'status'
+                    ],
+                    required: false,
+                    include: User ? [{
+                        model: User,
+                        as: 'operator',
+                        attributes: ['user_id', 'username', 'email'],
+                        required: false
+                    }] : []
+                }] : [])
+            ],
+            order: [['opened_at', 'ASC'], ['pos_terminal_shift_id', 'ASC']],
+            transaction: options.transaction
+        });
+
+        const saleRows = await PosTransaction.findAll({
+            where: buildTerminalScopedSalesWhere({ startAt, endAt, locationId }),
+            attributes: [
+                'pos_transaction_id', 'invoice_number', 'total_amount', 'payment_type',
+                'payment_breakdown', 'cashier_id', 'shift_id', 'operator_session_id', 'created_at'
+            ],
+            include: User ? [{
+                model: User,
+                as: 'cashier',
+                attributes: ['user_id', 'username', 'email'],
+                required: false
+            }] : [],
+            order: [['created_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            transaction: options.transaction
+        });
+        const voidRows = await PosTransaction.findAll({
+            where: buildTerminalScopedVoidWhere({ startAt, endAt, locationId }),
+            attributes: ['pos_transaction_id', 'invoice_number', 'total_amount', 'shift_id', 'voided_at'],
+            order: [['voided_at', 'ASC'], ['pos_transaction_id', 'ASC']],
+            transaction: options.transaction
+        });
+        const adjustmentRows = PosTransactionAdjustment?.findAll
+            ? await PosTransactionAdjustment.findAll({
+                where: {
+                    original_location_id: locationId,
+                    created_at: { [Op.gte]: startAt, [Op.lt]: endAt },
+                    adjustment_type: { [Op.in]: ['cash_refund', 'external_refund', 'provider_refund'] },
+                    status: { [Op.in]: ['succeeded', 'pending', 'manual_review_required'] }
+                },
+                attributes: [
+                    'pos_transaction_adjustment_id', 'original_shift_id', 'adjustment_type', 'status', 'amount'
+                ],
+                transaction: options.transaction
+            })
+            : [];
+
+        const normalizedShifts = (Array.isArray(shiftRows) ? shiftRows : []).map((row) => toPlain(row));
+        const sessionById = new Map();
+        normalizedShifts.forEach((shift) => {
+            (Array.isArray(shift.operatorSessions) ? shift.operatorSessions : []).forEach((session) => {
+                sessionById.set(toPositiveInt(session.pos_terminal_operator_session_id), session);
+            });
+        });
+
+        const toInvoiceRange = (rows = []) => {
+            const invoiceNumbers = rows
+                .map((row) => String(toPlain(row)?.invoice_number || '').trim())
+                .filter(Boolean);
+            return {
+                beginning_invoice_number: invoiceNumbers[0] || null,
+                ending_invoice_number: invoiceNumbers[invoiceNumbers.length - 1] || null
+            };
+        };
+        const createShiftAccumulator = () => ({
+            transaction_count: 0,
+            sales_amount: 0,
+            sale_rows: [],
+            payment_rows: [],
+            cashier_sales: new Map(),
+            void_transaction_count: 0,
+            void_amount: 0,
+            void_rows: [],
+                refunds: { succeeded_count: 0, succeeded_amount: 0, pending_count: 0, pending_amount: 0, review_count: 0, review_amount: 0 }
+        });
+        const activityByShift = new Map(normalizedShifts.map((shift) => [
+            toPositiveInt(shift.pos_terminal_shift_id),
+            createShiftAccumulator()
+        ]));
+
+        (Array.isArray(saleRows) ? saleRows : []).forEach((model) => {
+            const row = toPlain(model);
+            const shiftId = toPositiveInt(row.shift_id);
+            const activity = activityByShift.get(shiftId);
+            if (!activity) return;
+
+            activity.transaction_count += 1;
+            activity.sales_amount = round4(activity.sales_amount + round4(row.total_amount));
+            activity.sale_rows.push(row);
+            activity.payment_rows.push(row);
+
+            const sessionId = toPositiveInt(row.operator_session_id);
+            const session = sessionId ? sessionById.get(sessionId) : null;
+            const cashierId = toPositiveInt(session?.user_id || row.cashier_id);
+            const cashier = session?.operator || row.cashier || null;
+            const displayName = String(cashier?.username || cashier?.email || (cashierId ? `Staff #${cashierId}` : 'Unattributed')).trim();
+            const attributionType = session ? 'operator_session' : 'recorded_cashier';
+            const key = session
+                ? `session:${sessionId}`
+                : cashierId ? `cashier:${cashierId}` : 'unattributed';
+            const cashierSummary = activity.cashier_sales.get(key) || {
+                cashier_id: cashierId,
+                display_name: displayName,
+                attribution_type: attributionType,
+                operator_session_id: sessionId,
+                started_at: session?.started_at || null,
+                ended_at: session?.ended_at || null,
+                transaction_count: 0,
+                sales_amount: 0
+            };
+            cashierSummary.transaction_count += 1;
+            cashierSummary.sales_amount = round4(cashierSummary.sales_amount + round4(row.total_amount));
+            activity.cashier_sales.set(key, cashierSummary);
+        });
+
+        (Array.isArray(voidRows) ? voidRows : []).forEach((model) => {
+            const row = toPlain(model);
+            const activity = activityByShift.get(toPositiveInt(row.shift_id));
+            if (!activity) return;
+            activity.void_transaction_count += 1;
+            activity.void_amount = round4(activity.void_amount + round4(row.total_amount));
+            activity.void_rows.push(row);
+        });
+
+        const refundTotals = { succeeded_count: 0, succeeded_amount: 0, pending_count: 0, pending_amount: 0, review_count: 0, review_amount: 0 };
+        (Array.isArray(adjustmentRows) ? adjustmentRows : []).forEach((model) => {
+            const row = toPlain(model);
+            const amount = round4(row.amount);
+            const bucket = row.status === 'succeeded'
+                ? ['succeeded_count', 'succeeded_amount']
+                : row.status === 'manual_review_required'
+                    ? ['review_count', 'review_amount']
+                    : ['pending_count', 'pending_amount'];
+            [refundTotals, activityByShift.get(toPositiveInt(row.original_shift_id))?.refunds]
+                .filter(Boolean)
+                .forEach((target) => {
+                    target[bucket[0]] += 1;
+                    target[bucket[1]] = round4(target[bucket[1]] + amount);
+                });
+        });
+
+        const shifts = normalizedShifts.map((shift) => {
+            const shiftId = toPositiveInt(shift.pos_terminal_shift_id);
+            const activity = activityByShift.get(shiftId) || createShiftAccumulator();
+            const openingCashier = shift.cashier || null;
+            const openingCashierId = toPositiveInt(shift.cashier_id);
+            return {
+                shift_id: shiftId,
+                terminal_id: String(shift.terminal_id || '').trim() || null,
+                opening_cashier: {
+                    user_id: openingCashierId,
+                    display_name: String(openingCashier?.username || openingCashier?.email || (openingCashierId ? `Staff #${openingCashierId}` : '')).trim() || null
+                },
+                opened_at: shift.opened_at || null,
+                closed_at: shift.closed_at || null,
+                transaction_count: activity.transaction_count,
+                sales_amount: round4(activity.sales_amount),
+                payment_breakdown: buildZReadingPaymentBreakdown(activity.payment_rows),
+                cashier_sales: Array.from(activity.cashier_sales.values()),
+                cash: {
+                    opening_float_amount: shift.opening_float_amount == null ? null : round4(shift.opening_float_amount),
+                    expected_cash_amount: shift.expected_cash_amount == null ? null : round4(shift.expected_cash_amount),
+                    counted_cash_amount: shift.closing_cash_amount == null ? null : round4(shift.closing_cash_amount),
+                    variance_amount: shift.cash_variance_amount == null ? null : round4(shift.cash_variance_amount)
+                },
+                adjustments: {
+                    void_transaction_count: activity.void_transaction_count,
+                    void_amount: round4(activity.void_amount),
+                    refunds: {
+                        ...activity.refunds,
+                        succeeded_amount: round4(activity.refunds.succeeded_amount),
+                        pending_amount: round4(activity.refunds.pending_amount),
+                        review_amount: round4(activity.refunds.review_amount)
+                    }
+                },
+                receipt_ranges: {
+                    sales: toInvoiceRange(activity.sale_rows),
+                    voids: toInvoiceRange(activity.void_rows)
+                }
+            };
+        });
+
+        return {
+            branch_name: String(location?.name || '').trim() || null,
+            receipt_ranges: {
+                sales: toInvoiceRange(saleRows),
+                voids: toInvoiceRange(voidRows),
+                returns: {
+                    tracked: false,
+                    reason: 'The current POS does not store a separate return receipt number range.'
+                }
+            },
+            refunds: refundTotals,
+            shifts
+        };
+    },
+
     async getLatestZReadingSnapshotByBusinessDate(businessDate, options = {}) {
         const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
         const where = {
@@ -5094,6 +5330,125 @@ export const posRepository = {
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return toPlain(row);
+    },
+
+    async listZReadingSnapshots({
+        locationId,
+        dateFrom = null,
+        dateTo = null,
+        search = '',
+        terminalId = '',
+        closedBy = '',
+        page = 1,
+        limit = 20
+    } = {}, options = {}) {
+        const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
+        const User = dbStore.get('User');
+        const normalizedLocationId = toPositiveInt(locationId);
+        if (!normalizedLocationId) {
+            throw new Error('A branch location is required to list Z-reading snapshots');
+        }
+
+        const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+        const normalizedLimit = Math.min(100, Math.max(1, Number.parseInt(limit, 10) || 20));
+        const normalizeLikeTerm = (value) => String(value || '').trim().slice(0, 120).replace(/[\\%_]/g, '\\$&');
+        const searchTerm = normalizeLikeTerm(search);
+        const terminalTerm = normalizeLikeTerm(terminalId);
+        const closerTerm = normalizeLikeTerm(closedBy);
+        const where = {
+            location_id: normalizedLocationId,
+            reading_identifier: { [Op.like]: 'ZR-%' }
+        };
+        const normalizedDateFrom = normalizeBusinessDateValue(dateFrom);
+        const normalizedDateTo = normalizeBusinessDateValue(dateTo);
+        if (normalizedDateFrom || normalizedDateTo) {
+            where.business_date = {};
+            if (normalizedDateFrom) where.business_date[Op.gte] = normalizedDateFrom;
+            if (normalizedDateTo) where.business_date[Op.lte] = normalizedDateTo;
+        }
+
+        const findMatchingClosers = async (term) => {
+            if (!term || typeof User?.findAll !== 'function') return [];
+            const matchedUsers = await User.findAll({
+                where: {
+                    [Op.or]: [
+                        { username: { [Op.like]: `%${term}%` } },
+                        { email: { [Op.like]: `%${term}%` } }
+                    ]
+                },
+                attributes: ['user_id', 'username', 'email'],
+                raw: true,
+                transaction: options.transaction
+            });
+            return (Array.isArray(matchedUsers) ? matchedUsers : []).map(toPlain);
+        };
+
+        if (terminalTerm) {
+            where.closed_from_terminal_id = { [Op.like]: `%${terminalTerm}%` };
+        }
+
+        if (closerTerm) {
+            const matchingClosers = await findMatchingClosers(closerTerm);
+            const matchingCloserIds = matchingClosers.map((user) => toPositiveInt(user.user_id)).filter(Boolean);
+            where.closed_by_user_id = { [Op.in]: matchingCloserIds };
+        }
+
+        if (searchTerm) {
+            const matchingClosers = await findMatchingClosers(searchTerm);
+            const matchingCloserIds = matchingClosers.map((user) => toPositiveInt(user.user_id)).filter(Boolean);
+            const searchConditions = [
+                { reading_identifier: { [Op.like]: `%${searchTerm}%` } },
+                { business_date: { [Op.like]: `%${searchTerm}%` } },
+                { closed_from_terminal_id: { [Op.like]: `%${searchTerm}%` } }
+            ];
+            if (/^\d+$/.test(searchTerm)) {
+                searchConditions.push({ closed_by_user_id: Number(searchTerm) });
+            }
+            if (matchingCloserIds.length) {
+                searchConditions.push({ closed_by_user_id: { [Op.in]: matchingCloserIds } });
+            }
+            where[Op.or] = searchConditions;
+        }
+
+        const { rows, count } = await PosZReadingSnapshot.findAndCountAll({
+            where,
+            order: [
+                ['business_date', 'DESC'],
+                ['generated_at', 'DESC'],
+                ['pos_z_reading_snapshot_id', 'DESC']
+            ],
+            limit: normalizedLimit,
+            offset: (normalizedPage - 1) * normalizedLimit,
+            transaction: options.transaction
+        });
+
+        const snapshots = (Array.isArray(rows) ? rows : []).map(toPlain);
+        const closerIds = [...new Set(snapshots.map((row) => toPositiveInt(row?.closed_by_user_id)).filter(Boolean))];
+        const closers = closerIds.length && typeof User?.findAll === 'function'
+            ? await User.findAll({
+                where: { user_id: { [Op.in]: closerIds } },
+                attributes: ['user_id', 'username', 'email'],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const closerNamesById = new Map((Array.isArray(closers) ? closers : []).map((model) => {
+            const user = toPlain(model);
+            return [toPositiveInt(user.user_id), String(user.username || user.email || '').trim() || null];
+        }));
+
+        return {
+            rows: snapshots.map((row) => ({
+                ...row,
+                closed_by_display_name: closerNamesById.get(toPositiveInt(row?.closed_by_user_id)) || null
+            })),
+            pagination: {
+                page: normalizedPage,
+                limit: normalizedLimit,
+                total: count,
+                totalPages: Math.max(1, Math.ceil(count / normalizedLimit))
+            }
+        };
     },
 
     async getTerminalIdentityPolicySettings(options = {}) {

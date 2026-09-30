@@ -68,7 +68,7 @@ export default function PosSubtabNavigation({
   };
 
   return (
-    <div ref={tabsViewportRef} role="tablist" aria-label={ariaLabel} className={`-mx-1 overflow-x-auto ${compactMobile ? 'max-[767px]:pt-2' : ''}`}>
+    <div ref={tabsViewportRef} role="tablist" aria-label={ariaLabel} className={`-mx-1 overflow-x-auto ${compactMobile ? 'pt-2' : ''}`}>
       <div className={`flex min-w-max gap-2 px-1 min-[1024px]:grid min-[1024px]:min-w-0 ${desktopGridClass} min-[1024px]:px-0`}>
         {availableTabs.map((tab) => {
           const Icon = tab.icon;
