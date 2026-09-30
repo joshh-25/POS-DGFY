@@ -1,4 +1,8 @@
 import { round4, toArray } from './posCheckoutTerminalUtils.js';
+import {
+    isAvailableFnbModifierGroup,
+    isAvailableFnbModifierOption
+} from './fnbModifierValidation.js';
 
 export const getFnbModifierGroups = (item = {}) => (
     Array.isArray(item?.fnbModifierGroups) ? item.fnbModifierGroups : []
@@ -15,17 +19,20 @@ export const getModifierGroupMin = (group = {}) => {
     return required ? Math.max(1, min) : 0;
 };
 
-export const buildDefaultLineModifiers = (item = {}) => getFnbModifierGroups(item).flatMap((group) => {
-    const minSelect = getModifierGroupMin(group);
-    if (minSelect <= 0) return [];
-    const activeOptions = getActiveModifierOptions(group);
-    const defaultOptions = activeOptions.filter((option) => option?.is_default === true);
-    const selected = (defaultOptions.length > 0 ? defaultOptions : activeOptions).slice(0, minSelect);
-    return selected.map((option) => ({
-        modifier_group_id: Number(group.modifier_group_id),
-        modifier_option_id: Number(option.modifier_option_id)
-    }));
-});
+export const buildDefaultLineModifiers = (item = {}, locationId = null) => getFnbModifierGroups(item)
+    .filter((group) => isAvailableFnbModifierGroup(group, locationId))
+    .flatMap((group) => {
+        const minSelect = getModifierGroupMin(group);
+        if (minSelect <= 0) return [];
+        const activeOptions = getActiveModifierOptions(group)
+            .filter((option) => isAvailableFnbModifierOption(option, locationId));
+        const defaultOptions = activeOptions.filter((option) => option?.is_default === true);
+        const selected = (defaultOptions.length > 0 ? defaultOptions : activeOptions).slice(0, minSelect);
+        return selected.map((option) => ({
+            modifier_group_id: Number(group.modifier_group_id),
+            modifier_option_id: Number(option.modifier_option_id)
+        }));
+    });
 
 export const resolveModifierSnapshot = (line = {}, modifiers = line.line_modifiers || []) => {
     const groups = toArray(line?.modifier_groups);

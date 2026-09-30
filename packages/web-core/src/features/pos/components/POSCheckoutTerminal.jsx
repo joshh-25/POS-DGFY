@@ -47,6 +47,7 @@ import {
 } from '../utils/posDiscountOptions.js';
 import { buildDiscountItemSelection, getDiscountLineRef, isStatutoryBeneficiaryIdentityValid, MAX_STATUTORY_BENEFICIARIES } from '../utils/posDiscountSelection.js';
 import { isParkedSaleOriginalLine } from '../utils/posParkedSaleResume.js';
+import { isInlineVoidApprovalPopupEnabled, POS_VOID_APPROVAL_REVIEW_PERMISSIONS } from '../utils/posVoidApprovalFeature.js';
 import { buildIncomingDineInCheckoutCartLines } from '../utils/incomingDineInCheckoutCart.js';
 import { resolveFnbCheckoutContext, usePosFnbCheckoutState } from '../hooks/usePosFnbCheckoutState.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
@@ -364,6 +365,7 @@ export default function POSCheckoutTerminal({
         receiptSettings,
         posWorkflow,
         isFnbWorkflow: checkoutUsesFnbContract,
+        locationId: selectedLocationId,
         normalizedFnbContext,
         setOrderMethod,
         onCartBecameEmpty: handleCartBecameEmpty,
@@ -486,6 +488,11 @@ export default function POSCheckoutTerminal({
     );
     const canUseEmployeeCredit = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:employee_credit:use');
     const isAdminOperator = terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
+    const inlineVoidApprovalEnabled = IS_DGFY_POS_SURFACE && isInlineVoidApprovalPopupEnabled();
+    const canReviewVoidApprovals = IS_DGFY_POS_SURFACE && (
+        terminalUser?.is_master_admin === true
+        || POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => terminalPermissionList.includes(permission))
+    );
     const safeAppliedDiscount = useMemo(() => normalizeAppliedDiscount(appliedDiscount), [appliedDiscount]);
     const {
         cartSubtotal,
@@ -724,6 +731,16 @@ export default function POSCheckoutTerminal({
         historyDetailLoading, voidingTransactionId,
         refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow,
         openHistoryDetail, handleVoidHistoryTransaction,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        loadVoidApprovalQueue,
+        decideVoidApproval,
         loadHistory
     } = usePosHistoryVoidWorkflow({
         sessionLocked,
@@ -745,7 +762,10 @@ export default function POSCheckoutTerminal({
         externalReceiptTransactionId,
         onExternalReceiptHydrated,
         externalHistoryQuery,
-        onExternalHistoryHydrated, onFinancialMutationCompleted: onCheckoutCompleted
+        onExternalHistoryHydrated,
+        onFinancialMutationCompleted: onCheckoutCompleted,
+        inlineVoidApprovalEnabled,
+        canReviewVoidApprovals
     });
 
     usePosCartDraft({
@@ -1499,6 +1519,7 @@ export default function POSCheckoutTerminal({
         canViewHistory,
         canUseEmployeeCredit,
         canVoidTransactions,
+        canReviewVoidApprovals,
         cartSubtotal,
         cartTotal,
         cartTotalQuantity,
@@ -1614,6 +1635,7 @@ export default function POSCheckoutTerminal({
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
+        inlineVoidApprovalEnabled,
         historyRefundWorkflow: { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow },
         hasSplitPaymentSummary,
         headerParkedSalesHistorySlot,
@@ -1665,6 +1687,10 @@ export default function POSCheckoutTerminal({
         openClearCurrentSale,
         openDiscountModal,
         openHistoryDetail,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        loadVoidApprovalQueue,
+        decideVoidApproval,
         openParkSaleNameDialog,
         openParkedSalesHistory,
         openSplitPaymentModal,
@@ -1797,6 +1823,12 @@ export default function POSCheckoutTerminal({
         visibleCatalogRange,
         visibleHistoryPagination,
         visibleHistoryRows,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         voidingTransactionId
     };
 

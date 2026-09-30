@@ -17,6 +17,7 @@ import {
   Receipt,
   Scale,
   ShoppingBag,
+  Tags,
   Users
 } from 'lucide-react';
 import {
@@ -33,6 +34,7 @@ import {
 } from 'recharts';
 import {
   exportPosReportCsv,
+  fetchPosReportsBreakdown,
   fetchPosReportsOverview
 } from '../services/posService.js';
 import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
@@ -50,6 +52,7 @@ import PosReportsHandoffTable from './PosReportsHandoffTable.jsx';
 import PosReportsProfitLossTable from './PosReportsProfitLossTable.jsx';
 import PosReportsSalesTable from './PosReportsSalesTable.jsx';
 import PosReportsTopItemsTable from './PosReportsTopItemsTable.jsx';
+import PosReportsBreakdownTable, { PosReportsBreakdownSummary } from './PosReportsBreakdownTable.jsx';
 import PosReportsComparisonPanel from './PosReportsComparisonPanel.jsx';
 import PosReportsToolbar from './PosReportsToolbar.jsx';
 import PosReportsResponsiveTable from './PosReportsResponsiveTable.jsx';
@@ -57,6 +60,7 @@ import PosSubtabNavigation from './PosSubtabNavigation.jsx';
 import PosPageFrame from './PosPageFrame.jsx';
 import { POS_MOBILE_STICKY_TAB_ROW_CLASS, POS_PAGE_CONTENT_STACK_CLASS } from './PosPageSpacing.js';
 import { buildPosReportsActiveFilters } from './posReportsActiveFilters.js';
+import { getPosReportRefundsVoidsDisplayValue } from './posReportFormatting.js';
 import { formatPosTransactionPaymentMethods } from '../utils/posPaymentMethods.js';
 import { resolveUserPermissionList } from '../utils/terminalWorkspaceUtils.js';
 import {
@@ -69,11 +73,20 @@ import {
 const REPORT_TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard, granularity: 'daily', exportSection: 'daily' },
   { id: 'sales', label: 'Sales', icon: Receipt, granularity: 'daily', exportSection: 'sales' },
+  { id: 'hourly', label: 'Hourly Sales', icon: Clock3, granularity: 'daily', breakdown: 'hourly', exportSection: 'hourly' },
+  { id: 'item_sales', label: 'Item Sales', icon: ShoppingBag, granularity: 'daily', breakdown: 'items', exportSection: 'item_sales' },
+  { id: 'category_sales', label: 'Sales by Category', icon: Tags, granularity: 'daily', breakdown: 'categories', exportSection: 'category_sales' },
   { id: 'comparison', label: 'Comparison', icon: ArrowLeftRight, granularity: 'daily', exportSection: 'comparison' },
   { id: 'top_items', label: 'Top Selling Items', icon: ShoppingBag, granularity: 'daily', exportSection: 'daily' },
   { id: 'profit_loss', label: 'Profit/Loss', icon: Scale, granularity: 'monthly', exportSection: 'profit_loss' },
   { id: 'operations', label: 'Operations', icon: BarChart3, granularity: 'daily', exportSection: 'cashiers' }
 ];
+
+const getDefaultBreakdownSort = (breakdown) => (
+  breakdown === 'hourly'
+    ? { sort_by: 'bucket_start_local', sort_direction: 'asc' }
+    : { sort_by: 'net_sales', sort_direction: 'desc' }
+);
 
 const REPORT_OPERATION_SECTIONS = [
   { id: 'cashiers', label: 'Cashiers', icon: Users },
@@ -263,6 +276,13 @@ function PosReportsAnalyticsWorkspace({
   const [reportFiltersOpen, setReportFiltersOpen] = useState(false);
   const [reportDateFilterOpen, setReportDateFilterOpen] = useState(false);
   const [reportData, setReportData] = useState(null);
+  const [breakdownData, setBreakdownData] = useState(null);
+  const [breakdownLoading, setBreakdownLoading] = useState(false);
+  const [breakdownError, setBreakdownError] = useState('');
+  const [breakdownOffline, setBreakdownOffline] = useState(false);
+  const [breakdownPage, setBreakdownPage] = useState(1);
+  const [breakdownLimit, setBreakdownLimit] = useState(50);
+  const [breakdownSort, setBreakdownSort] = useState(() => getDefaultBreakdownSort('hourly'));
   const [employeeCreditReportData, setEmployeeCreditReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -271,6 +291,9 @@ function PosReportsAnalyticsWorkspace({
     !section.permission || terminalUser?.is_master_admin === true || resolveUserPermissionList(terminalUser).includes(section.permission)
   )), [terminalUser]);
   const selectedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0], [activeTab]);
+  const renderedReportTab = useMemo(() => REPORT_TABS.find((tab) => tab.id === renderedTab) || REPORT_TABS[0], [renderedTab]);
+  const activeBreakdown = selectedReportTab.breakdown || null;
+  const isBreakdownTab = Boolean(activeBreakdown);
   const displayGranularity = activeTab === 'comparison' ? granularity : selectedReportTab.granularity;
   const clearReportPanelAnimationTimers = useCallback(() => {
     reportPanelAnimationTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -345,8 +368,10 @@ function PosReportsAnalyticsWorkspace({
     dateTo: normalizeReportDateInput(dateRange.dateTo)
   }), [dateRange.dateFrom, dateRange.dateTo]);
   const offlineReportKey = useMemo(() => JSON.stringify({
-    locationId: operatingLocationId || null,
     granularity: displayGranularity,
+    breakdown: activeBreakdown,
+    reportTab: activeTab,
+    locationId: operatingLocationId || null,
     dateFrom: normalizedDateRange.dateFrom,
     dateTo: normalizedDateRange.dateTo,
     cashierId,
@@ -361,7 +386,9 @@ function PosReportsAnalyticsWorkspace({
     normalizedDateRange.dateFrom,
     normalizedDateRange.dateTo,
     paymentType,
-    source
+    source,
+    activeBreakdown,
+    activeTab
   ]);
 
   const handleTabChange = (tabId) => {
@@ -462,13 +489,67 @@ function PosReportsAnalyticsWorkspace({
   }, [reportData?.date_bounds?.first_transaction_date, reportData?.date_bounds?.today, reportDateFilterApplied]);
 
   useEffect(() => {
+    setBreakdownPage(1);
+    setBreakdownSort(getDefaultBreakdownSort(activeBreakdown));
+  }, [activeBreakdown, cashierId, categoryId, normalizedDateRange.dateFrom, normalizedDateRange.dateTo, operatingLocationId, paymentType, source]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const loadReports = async () => {
+      if (isBreakdownTab) {
+        setBreakdownLoading(true);
+        setBreakdownError('');
+        setBreakdownOffline(false);
+        setBreakdownData(null);
+        if (!isOnline) {
+          const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, `breakdown:${activeBreakdown}`);
+          if (!cancelled) {
+            setBreakdownData(snapshot?.payload || null);
+            setBreakdownOffline(Boolean(snapshot));
+            setBreakdownError(snapshot
+              ? 'Offline snapshot loaded. Report values are display-only until the connection is restored.'
+              : 'No cached breakdown exists for these filters. Reconnect once to load it.');
+            setBreakdownLoading(false);
+          }
+          return;
+        }
+        try {
+          const payload = await fetchPosReportsBreakdown({
+            breakdown: activeBreakdown,
+            date_from: normalizedDateRange.dateFrom,
+            date_to: normalizedDateRange.dateTo,
+            cashier_id: cashierId || undefined,
+            payment_type: paymentType || undefined,
+            source: source || undefined,
+            category_id: categoryId || undefined,
+            location_id: operatingLocationId || undefined,
+            page: breakdownPage,
+            limit: breakdownLimit,
+            sort_by: breakdownSort.sort_by,
+            sort_direction: breakdownSort.sort_direction
+          });
+          if (!cancelled) {
+            setBreakdownData(payload);
+            saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload, `breakdown:${activeBreakdown}`);
+          }
+        } catch (loadError) {
+          if (!cancelled) {
+            setBreakdownError(loadError?.response?.data?.message || 'Failed to load the selected POS report breakdown.');
+          }
+        } finally {
+          if (!cancelled) setBreakdownLoading(false);
+        }
+        return;
+      }
+
+      setBreakdownLoading(false);
+      setBreakdownOffline(false);
+      setBreakdownError('');
       setLoading(true);
       setError('');
       if (!isOnline) {
-        const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey);
+        const snapshot = loadOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, 'overview');
         if (!cancelled) {
           setReportData(snapshot?.payload || null);
           setError(snapshot ? 'Offline estimate from the last synced report. Pending local sales are not final until Sync completes.' : 'No cached report exists for this filter. Reconnect once to load it.');
@@ -489,7 +570,7 @@ function PosReportsAnalyticsWorkspace({
         });
         if (!cancelled) {
           setReportData(payload);
-          saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload);
+          saveOfflinePosReportSnapshot(offlineSnapshotScope, offlineReportKey, payload, 'overview');
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -508,10 +589,16 @@ function PosReportsAnalyticsWorkspace({
       cancelled = true;
     };
   }, [
+    activeBreakdown,
     categoryId,
     cashierId,
+    breakdownLimit,
+    breakdownPage,
+    breakdownSort.sort_by,
+    breakdownSort.sort_direction,
     displayGranularity,
     isOnline,
+    isBreakdownTab,
     normalizedDateRange.dateFrom,
     normalizedDateRange.dateTo,
     offlineReportKey,
@@ -546,20 +633,28 @@ function PosReportsAnalyticsWorkspace({
     ...entry,
     fill: CHART_COLORS[index % CHART_COLORS.length]
   }));
-  const isInitialLoading = loading && !reportData;
-  const isRefreshing = loading && Boolean(reportData);
-  const showBlockingError = Boolean(error) && !reportData;
-  const showInlineError = Boolean(error) && Boolean(reportData);
+  const activeReportData = isBreakdownTab ? breakdownData : reportData;
+  const activeLoading = isBreakdownTab ? breakdownLoading : loading;
+  const activeError = isBreakdownTab ? breakdownError : error;
+  const isInitialLoading = activeLoading && !activeReportData;
+  const isRefreshing = activeLoading && Boolean(activeReportData);
+  const showBlockingError = Boolean(activeError) && !activeReportData;
+  const showInlineError = Boolean(activeError) && Boolean(activeReportData);
 
-  const hasData = Boolean(reportData) && (
+  const hasData = isBreakdownTab
+    ? Boolean(breakdownData)
+    : Boolean(reportData) && (
     Number(summaryCards.total_transactions || 0) > 0
     || Number(summaryCards.total_sales || 0) > 0
     || Number(dailyReport.adjustment_summary?.adjustment_count || 0) > 0
     || (trendSeries || []).length > 0
     || (activeTab === 'operations' && Object.keys(cashierLifecycle || {}).length > 0)
   );
-  const shouldRenderReportPanel = Boolean(reportData) && (hasData || activeTab === 'overview');
+  const shouldRenderReportPanel = isBreakdownTab
+    ? Boolean(breakdownData)
+    : Boolean(reportData) && (hasData || activeTab === 'overview');
   const shouldShowOperationsSubtabs = activeTab === 'operations'
+    && !isBreakdownTab
     && !isInitialLoading
     && !showBlockingError
     && shouldRenderReportPanel;
@@ -608,25 +703,127 @@ function PosReportsAnalyticsWorkspace({
 
   const handleExportCsv = async () => {
     const selectedTab = REPORT_TABS.find((tab) => tab.id === activeTab) || REPORT_TABS[0];
-    const { blob, filename } = await exportPosReportCsv({
+    const reportParams = {
       location_id: operatingLocationId || undefined,
       section: activeTab === 'operations' ? operationSection : selectedTab.exportSection,
-      granularity: displayGranularity,
       date_from: normalizedDateRange.dateFrom,
       date_to: normalizedDateRange.dateTo,
       cashier_id: cashierId || undefined,
       payment_type: paymentType || undefined,
       source: source || undefined,
       category_id: categoryId || undefined
+    };
+    if (selectedTab.breakdown) {
+      reportParams.page = breakdownPage;
+      reportParams.limit = breakdownLimit;
+      reportParams.sort_by = breakdownSort.sort_by;
+      reportParams.sort_direction = breakdownSort.sort_direction;
+    } else {
+      reportParams.granularity = displayGranularity;
+    }
+    const { blob, filename } = await exportPosReportCsv({
+      ...reportParams
     });
     downloadBlob(blob, filename);
   };
 
   const handlePrint = () => {
     const isEmployeeCreditReport = activeTab === 'operations' && operationSection === 'employee_credit';
-    if (typeof window === 'undefined' || !reportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
+    if (typeof window === 'undefined' || !activeReportData || (isEmployeeCreditReport && !employeeCreditReportData)) return;
     const printWindow = window.open('', '_blank', 'width=1120,height=900');
     if (!printWindow) return;
+
+    if (isBreakdownTab) {
+      const breakdownRows = Array.isArray(breakdownData?.rows) ? breakdownData.rows : [];
+      const breakdownSummary = breakdownData?.summary || {};
+      const title = selectedReportTab.label;
+      const rowCells = (row) => {
+        if (activeBreakdown === 'hourly') {
+          return [
+            row.bucket_start_local,
+            row.transaction_count,
+            row.item_quantity,
+            money(row.gross_sales, currencySymbol),
+            money(row.net_sales, currencySymbol),
+            money(getPosReportRefundsVoidsDisplayValue(row.refunds_voids), currencySymbol),
+            money(row.profit, currencySymbol)
+          ];
+        }
+        if (activeBreakdown === 'items') {
+          return [
+            row.item_name,
+            row.sku || '—',
+            row.category_name || 'Uncategorized',
+            row.quantity,
+            row.orders,
+            money(row.net_sales, currencySymbol),
+            `${Number(row.sales_share || 0).toFixed(2)}%`,
+            money(row.profit, currencySymbol)
+          ];
+        }
+        return [
+          row.category_name || 'Uncategorized',
+          row.item_count,
+          row.quantity,
+          row.orders,
+          money(row.net_sales, currencySymbol),
+          `${Number(row.sales_share || 0).toFixed(2)}%`,
+          money(row.profit, currencySymbol)
+        ];
+      };
+      const headers = activeBreakdown === 'hourly'
+        ? ['Hour', 'Transactions', 'Items Sold', 'Gross Sales', 'Net Sales', 'Refunds/Voids', 'Profit']
+        : activeBreakdown === 'items'
+          ? ['Item', 'SKU', 'Category', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit']
+          : ['Category', 'Items', 'Quantity', 'Orders', 'Net Sales', 'Sales Share', 'Profit'];
+      const printableRows = breakdownRows.map((row) => `<tr>${rowCells(row).map((value) => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('');
+      const filterText = [
+        `Cashier: ${cashierId ? reportCashierLabel : 'All cashiers'}`,
+        `Payment: ${selectedPaymentLabel || 'All payments'}`,
+        `Source: ${selectedSourceLabel || 'All sources'}`,
+        `Category: ${categoryId ? (selectedCategory?.name || `Category #${categoryId}`) : 'All categories'}`
+      ].join(' · ');
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>${escapeHtml(title)}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+              h1 { margin: 0 0 8px; font-size: 28px; }
+              p { margin: 0 0 10px; color: #475569; }
+              .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0; }
+              .card { border: 1px solid #cbd5e1; border-radius: 14px; padding: 14px; }
+              .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; }
+              .value { font-size: 20px; font-weight: 800; margin-top: 8px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 18px; }
+              th, td { border: 1px solid #e2e8f0; padding: 9px; font-size: 12px; text-align: left; }
+              th { background: #f8fafc; text-transform: uppercase; letter-spacing: 0.06em; }
+              @media print { .grid { grid-template-columns: repeat(5, 1fr); } }
+            </style>
+          </head>
+          <body>
+            <h1>${escapeHtml(title)}</h1>
+            <p>Range: ${escapeHtml(breakdownData?.range?.date_from || normalizedDateRange.dateFrom)} to ${escapeHtml(breakdownData?.range?.date_to || normalizedDateRange.dateTo)} · Timezone: ${escapeHtml(breakdownData?.timezone || 'Asia/Manila')}</p>
+            <p>Applied filters: ${escapeHtml(filterText)} · Generated: ${escapeHtml(printDateTime(breakdownData?.generated_at))}</p>
+            <div class="grid">
+              <div class="card"><div class="label">Net Sales</div><div class="value">${escapeHtml(money(breakdownSummary.net_sales, currencySymbol))}</div></div>
+              <div class="card"><div class="label">Gross Sales</div><div class="value">${escapeHtml(money(breakdownSummary.gross_sales, currencySymbol))}</div></div>
+              <div class="card"><div class="label">Transactions</div><div class="value">${Number(breakdownSummary.total_transactions || 0)}</div></div>
+              <div class="card"><div class="label">Items Sold</div><div class="value">${Number(breakdownSummary.total_items_sold || 0)}</div></div>
+              <div class="card"><div class="label">Profit</div><div class="value">${escapeHtml(money(breakdownSummary.profit ?? breakdownSummary.pos_profit_loss, currencySymbol))}</div></div>
+            </div>
+            <table>
+              <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+              <tbody>${printableRows || `<tr><td colspan="${headers.length}">No rows found.</td></tr>`}</tbody>
+            </table>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      return;
+    }
 
     if (activeTab === 'operations' && operationSection === 'employee_credit') {
       const employeeCreditEntries = employeeCreditReportData?.entries || [];
@@ -839,8 +1036,8 @@ function PosReportsAnalyticsWorkspace({
       onClearAllFilters={handleClearAllFilters}
       onPrint={handlePrint}
       onExport={handleExportCsv}
-      exportDisabled={!reportData}
-      printDisabled={!reportData || (activeTab === 'operations' && operationSection === 'employee_credit' && !employeeCreditReportData)}
+      exportDisabled={!activeReportData}
+      printDisabled={!activeReportData || (activeTab === 'operations' && operationSection === 'employee_credit' && !employeeCreditReportData)}
       filtersOpen={reportFiltersOpen}
       dateFilterOpen={reportDateFilterOpen}
       filterButtonRef={reportFilterButtonRef}
@@ -914,6 +1111,7 @@ function PosReportsAnalyticsWorkspace({
           activeTab={activeTab}
           onTabChange={handleTabChange}
           ariaLabel="POS reports"
+          hideScrollbar
           idPrefix={(tabId) => `${sectionId || 'pos-reports'}-${tabId}-tab`}
           panelId={`${sectionId || 'pos-reports'}-panel`}
         />
@@ -934,14 +1132,14 @@ function PosReportsAnalyticsWorkspace({
 
       {showInlineError ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
-          {error}
+          {activeError}
         </div>
       ) : null}
 
       {isInitialLoading ? (
         <EmptyState message="Loading POS reports..." />
       ) : showBlockingError ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{error}</div>
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-10 text-center text-sm font-semibold text-rose-700">{activeError}</div>
       ) : !shouldRenderReportPanel ? (
         <EmptyState message="No POS report data found for the selected filters." />
       ) : (
@@ -965,6 +1163,35 @@ function PosReportsAnalyticsWorkspace({
           ) : null}
 
           <div className={isRefreshing ? 'opacity-80 transition-opacity' : 'transition-opacity'}>
+
+          {renderedReportTab.breakdown && isBreakdownTab ? (
+            <div className="space-y-4">
+              <PosReportsBreakdownSummary
+                breakdown={renderedReportTab.breakdown}
+                data={breakdownData}
+                currencySymbol={currencySymbol}
+                stale={breakdownOffline}
+              />
+              <PosReportsBreakdownTable
+                breakdown={renderedReportTab.breakdown}
+                data={breakdownData}
+                currencySymbol={currencySymbol}
+                searchQuery={overviewSearchQuery}
+                sort={breakdownSort}
+                onSortChange={(nextSort) => {
+                  setBreakdownSort(nextSort);
+                  setBreakdownPage(1);
+                }}
+                onPageChange={setBreakdownPage}
+                onPageSizeChange={(nextLimit) => {
+                  setBreakdownLimit(nextLimit);
+                  setBreakdownPage(1);
+                }}
+                loading={breakdownLoading}
+                disabled={breakdownOffline}
+              />
+            </div>
+          ) : null}
 
           {renderedTab === 'overview' ? (
             <div className="space-y-4">
@@ -1053,6 +1280,7 @@ function PosReportsAnalyticsWorkspace({
                 emptyMessage="No shared-access or counted handoffs were recorded for these filters."
                 searchEmptyMessage="No handoff timeline rows match your search."
                 resultLabel="handoff events"
+                showActions={false}
               />
             </div>
           ) : null}

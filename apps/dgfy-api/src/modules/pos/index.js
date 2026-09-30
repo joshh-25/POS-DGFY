@@ -55,6 +55,7 @@ import {
     buildVerifyPosDiscountApprovalUseCase,
     buildListPosTransactionsUseCase,
     buildGetPosReportsOverviewUseCase,
+    buildGetPosReportBreakdownUseCase,
     buildExportPosReportsUseCase,
     buildExportProcurementCsvUseCase,
     buildGetPosTransactionByIdUseCase,
@@ -163,7 +164,10 @@ import {
     buildCancelPosParkedSaleUseCase
 } from './usecases/parkedSaleUseCases.js';
 import { markRetainedParkedSaleLines } from './domain/parkedSaleLinePolicy.js';
-import { buildDecidePosExceptionApprovalUseCase } from './usecases/posExceptionApprovalUseCases.js';
+import {
+    buildDecidePosExceptionApprovalUseCase,
+    buildListPosExceptionApprovalsUseCase
+} from './usecases/posExceptionApprovalUseCases.js';
 import {
     buildCreatePosPaymentSessionUseCase,
     buildGetPosPaymentSessionUseCase,
@@ -339,7 +343,11 @@ export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({
     resolveInventoryEffects: resolveParkedSaleInventoryEffects,
     publishCatalogChange
 });
-export const cancelPosParkedSaleUseCase = buildCancelPosParkedSaleUseCase({ posRepository });
+export const cancelPosParkedSaleUseCase = buildCancelPosParkedSaleUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    publishCatalogChange
+});
 export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCase({
     posRepository,
     quotePosCheckoutUseCase: checkoutPosUseCase
@@ -367,8 +375,10 @@ export const completePosPaymentSessionUseCase = buildCompletePosPaymentSessionUs
 export const getMerchantTenderReconciliationUseCase = buildGetMerchantTenderReconciliationUseCase({ posRepository });
 export const reviewMerchantTenderReconciliationUseCase = buildReviewMerchantTenderReconciliationUseCase({ posRepository });
 export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
+export const getPosReportBreakdownUseCase = buildGetPosReportBreakdownUseCase({ posRepository });
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({
     posRepository,
+    getReportBreakdownUseCase: getPosReportBreakdownUseCase,
     employeeCreditReportUseCase: getEmployeeCreditReportUseCase
 });
 export const exportProcurementCsvUseCase = buildExportProcurementCsvUseCase({ posRepository });
@@ -386,6 +396,7 @@ export const decidePosExceptionApprovalUseCase = buildDecidePosExceptionApproval
     voidPosTransactionUseCase,
     publishCatalogChange
 });
+export const listPosExceptionApprovalsUseCase = buildListPosExceptionApprovalsUseCase({ posRepository });
 export const cashRefundPosTransactionUseCase = buildCashRefundPosTransactionUseCase({ posRepository });
 export const overrideDeliveryFeeUseCase = buildOverrideDeliveryFeeUseCase({ posRepository });
 export const externalRefundPosTransactionUseCase = buildExternalRefundPosTransactionUseCase({ posRepository });
@@ -459,7 +470,10 @@ export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocati
     onShiftOpened: posCashierLifecycleUseCases.onShiftOpened
 });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
-export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
+export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({
+    posRepository,
+    listActiveLocations: (options) => posBranchDirectoryRepository.listActiveLocations(options)
+});
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({
     posRepository,
