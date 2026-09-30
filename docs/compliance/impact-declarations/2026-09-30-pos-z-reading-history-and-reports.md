@@ -10,9 +10,9 @@ policy_version: 2026.04.07
 verification_evidence: npm run check:compliance against sieitzz/develop...HEAD plus staged declaration (55 sensitive files checked); git diff --cached --check; PR #2156 functional test and build evidence
 rollback_note: Revert the Z-reading history and Reports UI/API changes together with this declaration; no schema migration or transaction writes are introduced.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-30T09:14:29Z
-preflight_request_ref: NOT-EXECUTED-2026-09-30-POS-Z-READING-HISTORY-AND-REPORTS
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-30T12:59:30.161Z
+preflight_request_ref: PREFLIGHT-36717925034-2026-09-30-POS-Z-READING-HISTORY-AND-REPORTS
 ---
 
 # POS Z-reading history and Reports UI changes

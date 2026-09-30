@@ -11,9 +11,9 @@ policy_version: 2026.04.07
 verification_evidence: Focused POS contract tests and production build; architecture and compliance checks
 rollback_note: Revert the shared POS shell change and this declaration together; no persisted data or API behavior changes.
 preflight_result: no_breach
-preflight_reason_code: NOT_EXECUTED_LOCAL_ONLY
-preflight_run_at: 2026-09-30T12:00:00Z
-preflight_request_ref: NOT-EXECUTED-2026-09-30-POS-REPORTS-SETTINGS-PAGE-FRAME
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-09-30T12:59:30.161Z
+preflight_request_ref: PREFLIGHT-36717925034-2026-09-30-POS-REPORTS-SETTINGS-PAGE-FRAME
 ---
 
 # POS Reports and Settings page frame
