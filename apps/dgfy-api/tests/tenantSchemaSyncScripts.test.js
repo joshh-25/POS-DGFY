@@ -121,6 +121,57 @@ describe('tenant schema sync script contracts', () => {
     expect(indexRepairs[0].sql).toContain('UNIQUE INDEX `uq_business_admin_approval_action_idempotency`');
   });
 
+  it('repairs Business Admin report and notification tables, lifecycle columns, and indexes', () => {
+    const tableNames = [
+      'business_admin_saved_report_views',
+      'business_admin_alert_snapshots',
+      'business_admin_notification_states'
+    ];
+    for (const tableName of tableNames) {
+      expect(REQUIRED_TENANT_SCHEMA_TABLES[tableName].sql).toContain(`CREATE TABLE \`${tableName}\``);
+    }
+    expect(REQUIRED_TENANT_SCHEMA_TABLES.business_admin_notification_states.sql)
+      .toContain('FOREIGN KEY (`business_admin_alert_snapshot_id`) REFERENCES `business_admin_alert_snapshots`');
+    expect(Object.keys(REQUIRED_TENANT_SCHEMA_TABLES).indexOf('business_admin_alert_snapshots'))
+      .toBeLessThan(Object.keys(REQUIRED_TENANT_SCHEMA_TABLES).indexOf('business_admin_notification_states'));
+
+    const lifecycleColumns = [
+      'source_domain', 'source_entity_type', 'source_entity_id', 'branch_id',
+      'target_route', 'acknowledged_at', 'acknowledged_by', 'acknowledgement_note'
+    ];
+    for (const columnName of lifecycleColumns) {
+      expect(REQUIRED_TENANT_SCHEMA_COLUMNS.business_admin_alert_snapshots[columnName].sql)
+        .toContain(`ADD COLUMN \`${columnName}\``);
+    }
+
+    const reportIndexes = REQUIRED_TENANT_SCHEMA_INDEXES.pos_transactions;
+    expect(reportIndexes.idx_pos_transactions_report_status_created_at.sql)
+      .toContain('(`status`,`created_at`)');
+    expect(reportIndexes.idx_pos_transactions_report_location_status_created_at.sql)
+      .toContain('(`location_id`,`status`,`created_at`)');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_transaction_adjustments.idx_pos_transaction_adjustments_business_admin_report.sql)
+      .toContain('(`pos_transaction_id`,`status`,`adjustment_type`,`created_at`)');
+
+    const businessAdminIndexes = [
+      { table: 'business_admin_saved_report_views', indexName: 'uq_business_admin_saved_report_view_name' },
+      { table: 'business_admin_saved_report_views', indexName: 'idx_business_admin_saved_report_view_user_updated' },
+      { table: 'business_admin_alert_snapshots', indexName: 'idx_business_admin_alert_status_seen' },
+      { table: 'business_admin_alert_snapshots', indexName: 'idx_business_admin_alert_type_status' },
+      { table: 'business_admin_alert_snapshots', indexName: 'idx_business_admin_alert_branch_status_seen' },
+      { table: 'business_admin_notification_states', indexName: 'uq_business_admin_notification_state_alert_user' },
+      { table: 'business_admin_notification_states', indexName: 'idx_business_admin_notification_state_user_unread' },
+      { table: 'pos_transactions', indexName: 'idx_pos_transactions_report_status_created_at' },
+      { table: 'pos_transactions', indexName: 'idx_pos_transactions_report_location_status_created_at' },
+      { table: 'pos_transaction_adjustments', indexName: 'idx_pos_transaction_adjustments_business_admin_report' }
+    ];
+    const indexRepairs = buildTenantSchemaIndexRepairSql(businessAdminIndexes);
+    expect(indexRepairs).toHaveLength(businessAdminIndexes.length);
+    expect(indexRepairs.find((repair) => repair.index === 'uq_business_admin_saved_report_view_name')?.sql)
+      .toContain('UNIQUE INDEX `uq_business_admin_saved_report_view_name`');
+    expect(indexRepairs.find((repair) => repair.index === 'uq_business_admin_notification_state_alert_user')?.sql)
+      .toContain('UNIQUE INDEX `uq_business_admin_notification_state_alert_user`');
+  });
+
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
     const signature = normalizeErrorSignature('Too many keys specified; max 64 keys allowed');
 

@@ -416,6 +416,19 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `pos_transaction_adjustments` ADD COLUMN `pos_payment_allocation_id` INTEGER NULL COMMENT 'Allocation-level reversal attribution for split-tender refunds'"
         })
     }),
+    // #2053: later Business Admin notification lifecycle fields. Tables created
+    // before this lifecycle migration need these additive fields before notifications
+    // can be acknowledged or routed from the dashboard.
+    business_admin_alert_snapshots: Object.freeze({
+        source_domain: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `source_domain` VARCHAR(80) NOT NULL DEFAULT 'operations'" }),
+        source_entity_type: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `source_entity_type` VARCHAR(80) NULL" }),
+        source_entity_id: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `source_entity_id` VARCHAR(120) NULL" }),
+        branch_id: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `branch_id` INTEGER NULL" }),
+        target_route: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `target_route` VARCHAR(500) NULL" }),
+        acknowledged_at: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `acknowledged_at` DATETIME NULL" }),
+        acknowledged_by: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `acknowledged_by` INTEGER NULL" }),
+        acknowledgement_note: Object.freeze({ sql: "ALTER TABLE `business_admin_alert_snapshots` ADD COLUMN `acknowledgement_note` VARCHAR(500) NULL" })
+    }),
     pos_terminal_shifts: Object.freeze({
         active_terminal_id: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
@@ -720,6 +733,57 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + " CONSTRAINT `business_admin_approval_requests_ibfk_2` FOREIGN KEY (`approved_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL,"
             + " CONSTRAINT `business_admin_approval_requests_ibfk_3` FOREIGN KEY (`rejected_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
+    // #2053: report views belong to each tenant's users. Existing tenant schemas
+    // need this table repaired independently of the landlord migration runner.
+    business_admin_saved_report_views: Object.freeze({
+        sql: "CREATE TABLE `business_admin_saved_report_views` ("
+            + " `business_admin_saved_report_view_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `user_id` INT NOT NULL, `report_key` VARCHAR(60) NOT NULL DEFAULT 'pos_operations',"
+            + " `name` VARCHAR(100) NOT NULL, `filters` JSON NOT NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`business_admin_saved_report_view_id`),"
+            + " UNIQUE KEY `uq_business_admin_saved_report_view_name` (`user_id`,`report_key`,`name`),"
+            + " KEY `idx_business_admin_saved_report_view_user_updated` (`user_id`,`report_key`,`updated_at`),"
+            + " CONSTRAINT `business_admin_saved_report_views_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // #2053: alert snapshots are tenant-local operational notifications. Keep
+    // the lifecycle columns here at their current migrated shape for whole-table repair.
+    business_admin_alert_snapshots: Object.freeze({
+        sql: "CREATE TABLE `business_admin_alert_snapshots` ("
+            + " `business_admin_alert_snapshot_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `alert_key` VARCHAR(128) NOT NULL, `alert_type` VARCHAR(80) NOT NULL,"
+            + " `severity` VARCHAR(20) NOT NULL, `message` VARCHAR(500) NOT NULL,"
+            + " `source_domain` VARCHAR(80) NOT NULL DEFAULT 'operations',"
+            + " `source_entity_type` VARCHAR(80) NULL, `source_entity_id` VARCHAR(120) NULL,"
+            + " `branch_id` INT NULL, `target_route` VARCHAR(500) NULL, `payload` JSON NOT NULL,"
+            + " `status` ENUM('open','resolved') NOT NULL DEFAULT 'open',"
+            + " `acknowledged_at` DATETIME NULL, `acknowledged_by` INT NULL, `acknowledgement_note` VARCHAR(500) NULL,"
+            + " `first_detected_at` DATETIME NOT NULL, `last_seen_at` DATETIME NOT NULL, `resolved_at` DATETIME NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`business_admin_alert_snapshot_id`), UNIQUE KEY `alert_key` (`alert_key`),"
+            + " KEY `idx_business_admin_alert_status_seen` (`status`,`severity`,`last_seen_at`),"
+            + " KEY `idx_business_admin_alert_type_status` (`alert_type`,`status`),"
+            + " KEY `idx_business_admin_alert_branch_status_seen` (`branch_id`,`status`,`last_seen_at`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+    }),
+    // Declared after alert snapshots because notification state rows reference it.
+    business_admin_notification_states: Object.freeze({
+        sql: "CREATE TABLE `business_admin_notification_states` ("
+            + " `business_admin_notification_state_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `business_admin_alert_snapshot_id` INT NOT NULL, `user_id` INT NOT NULL,"
+            + " `read_at` DATETIME NULL, `dismissed_at` DATETIME NULL,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`business_admin_notification_state_id`),"
+            + " UNIQUE KEY `uq_business_admin_notification_state_alert_user` (`business_admin_alert_snapshot_id`,`user_id`),"
+            + " KEY `idx_business_admin_notification_state_user_unread` (`user_id`,`read_at`,`dismissed_at`),"
+            + " CONSTRAINT `business_admin_notification_states_ibfk_1` FOREIGN KEY (`business_admin_alert_snapshot_id`) REFERENCES `business_admin_alert_snapshots` (`business_admin_alert_snapshot_id`) ON DELETE CASCADE ON UPDATE CASCADE,"
+            + " CONSTRAINT `business_admin_notification_states_ibfk_2` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE CASCADE ON UPDATE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
     }),
     // Phase 388: operational Business Admin expense ledger. This is intentionally
     // value-linked to users and locations instead of using cross-database FKs so
@@ -2497,6 +2561,33 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
 // REQUIRED_TENANT_SCHEMA_COLUMNS because MySQL enforces this one as UNIQUE and a plain
 // column-presence check can't tell "column added, index still missing" apart from "both present".
 export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
+    business_admin_saved_report_views: Object.freeze({
+        uq_business_admin_saved_report_view_name: Object.freeze({
+            sql: "ALTER TABLE `business_admin_saved_report_views` ADD UNIQUE INDEX `uq_business_admin_saved_report_view_name` (`user_id`,`report_key`,`name`)"
+        }),
+        idx_business_admin_saved_report_view_user_updated: Object.freeze({
+            sql: "ALTER TABLE `business_admin_saved_report_views` ADD INDEX `idx_business_admin_saved_report_view_user_updated` (`user_id`,`report_key`,`updated_at`)"
+        })
+    }),
+    business_admin_alert_snapshots: Object.freeze({
+        idx_business_admin_alert_status_seen: Object.freeze({
+            sql: "ALTER TABLE `business_admin_alert_snapshots` ADD INDEX `idx_business_admin_alert_status_seen` (`status`,`severity`,`last_seen_at`)"
+        }),
+        idx_business_admin_alert_type_status: Object.freeze({
+            sql: "ALTER TABLE `business_admin_alert_snapshots` ADD INDEX `idx_business_admin_alert_type_status` (`alert_type`,`status`)"
+        }),
+        idx_business_admin_alert_branch_status_seen: Object.freeze({
+            sql: "ALTER TABLE `business_admin_alert_snapshots` ADD INDEX `idx_business_admin_alert_branch_status_seen` (`branch_id`,`status`,`last_seen_at`)"
+        })
+    }),
+    business_admin_notification_states: Object.freeze({
+        uq_business_admin_notification_state_alert_user: Object.freeze({
+            sql: "ALTER TABLE `business_admin_notification_states` ADD UNIQUE INDEX `uq_business_admin_notification_state_alert_user` (`business_admin_alert_snapshot_id`,`user_id`)"
+        }),
+        idx_business_admin_notification_state_user_unread: Object.freeze({
+            sql: "ALTER TABLE `business_admin_notification_states` ADD INDEX `idx_business_admin_notification_state_user_unread` (`user_id`,`read_at`,`dismissed_at`)"
+        })
+    }),
     // Phase 388: repair indexes for tenants whose approval table was created by
     // sequelize.sync() before the approval model indexes were available.
     business_admin_approval_requests: Object.freeze({
@@ -2543,6 +2634,12 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         })
     }),
     pos_transactions: Object.freeze({
+        idx_pos_transactions_report_status_created_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_report_status_created_at` (`status`,`created_at`)"
+        }),
+        idx_pos_transactions_report_location_status_created_at: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_report_location_status_created_at` (`location_id`,`status`,`created_at`)"
+        }),
         idx_pos_transactions_operator_session_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD INDEX `idx_pos_transactions_operator_session_id` (`operator_session_id`)"
         })
@@ -2697,6 +2794,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
         })
     }),
     pos_transaction_adjustments: Object.freeze({
+        idx_pos_transaction_adjustments_business_admin_report: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_adjustments` ADD INDEX `idx_pos_transaction_adjustments_business_admin_report` (`pos_transaction_id`,`status`,`adjustment_type`,`created_at`)"
+        }),
         idx_pos_transaction_adjustments_allocation_created: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_adjustments` ADD INDEX `idx_pos_transaction_adjustments_allocation_created` (`pos_payment_allocation_id`,`created_at`)"
         })
@@ -3090,7 +3190,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
 
 // Bumped past both parent versions because the merged manifest contains requirements
 // unique to each branch and is distinct from either parent alone.
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-09-29.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-10-01.1';
 export const TENANT_SCHEMA_REPAIR_COLLATION_POLICY = 'server-supported-utf8mb4';
 
 export function getTenantSchemaCapabilityChecksum() {
