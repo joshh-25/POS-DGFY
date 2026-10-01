@@ -558,6 +558,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             idempotency_key: `idem-multi-beneficiary-${crypto.randomUUID()}`,
             payment_type: 'cash',
             order_method: 'dine_in',
+            customer_name: 'Senior beneficiaries',
             discount_approval: {
                 approver_user_id: approver.user_id,
                 manager_pin: '2468',

@@ -105,7 +105,7 @@ describe('tenant schema sync script contracts', () => {
   it('repairs the tenant-local Business Admin approval table and indexes', () => {
     const table = REQUIRED_TENANT_SCHEMA_TABLES.business_admin_approval_requests;
     expect(table.sql).toContain('business_admin_approval_requests');
-    expect(table.sql).toContain("ENUM('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
+    expect(table.sql.toLowerCase()).toContain("enum('pos_refund','force_close_shift','pos_void','pos_parked_sale_cancel')");
     expect(table.sql).toContain('FOREIGN KEY (`requested_by`) REFERENCES `users` (`user_id`)');
 
     const tableRepairs = buildTenantSchemaTableRepairSql(['business_admin_approval_requests']);

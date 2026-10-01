@@ -233,6 +233,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         })
     },
     {
+        key: 'businessAdminExpenses',
+        label: 'Business Admin expenses',
+        modelName: 'BusinessAdminExpense',
+        association: 'BusinessAdminExpense.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'userLocationGrants',
         label: 'user location grants',
         modelName: 'UserLocationGrant',
