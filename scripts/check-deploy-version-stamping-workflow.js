@@ -204,11 +204,12 @@ function checkOrchestratorVersionTagMapping(orchestratorText) {
   return problems;
 }
 
-// #1588 (epic #1548 Wave 4, Phase 279): the five builder jobs deployment-orchestrator.yml calls,
+// #1588 (epic #1548 Wave 4, Phase 279): the six builder jobs deployment-orchestrator.yml calls,
 // each must forward candidate_source_sha straight through -- the `publish` job (calling
 // publish-platform.yml, which has no such input) is deliberately excluded here.
 const ORCHESTRATOR_BUILDER_JOBS = Object.freeze([
   'dgfy-api', 'dgfy-migration-runner', 'frontend-ims', 'frontend-pos', 'frontend-storefront',
+  'frontend-opis',
 ]);
 
 /**
@@ -251,6 +252,7 @@ const ORCHESTRATOR_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_frontend_ims',
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
+  'release_revision_frontend_opis',
 ]);
 
 const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
@@ -259,6 +261,7 @@ const ORCHESTRATOR_JOB_REVISION_KEYS = Object.freeze([
   ['frontend-ims', 'dgfy-ims'],
   ['frontend-pos', 'dgfy-pos'],
   ['frontend-storefront', 'dgfy-storefront'],
+  ['frontend-opis', 'dgfy-opis'],
 ]);
 
 function checkOrchestratorReleaseRevisionWiring(orchestratorText) {
@@ -332,8 +335,8 @@ const DEPLOY_MAIN_JOB_INPUT_NAMES = Object.freeze([
 ]);
 
 /**
- * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all four per-app-group
- * `candidate_source_sha_*` workflow_dispatch inputs, and each of its five builder jobs (not
+ * ADR 0081 Decision 8 amendment (#1610): deploy-main.yml must declare all six per-app-group
+ * `candidate_source_sha_*` workflow_dispatch inputs, and each of its six builder jobs (not
  * `publish`) must forward its own correctly-grouped one -- checked per-job, same shape as
  * checkOrchestratorCandidateSourceShaWiring above, so one job silently missing or misrouting its
  * input isn't masked by another job having the right one.
@@ -374,6 +377,7 @@ const DEPLOY_MAIN_RELEASE_REVISION_INPUTS = Object.freeze([
   'release_revision_frontend_ims',
   'release_revision_frontend_pos',
   'release_revision_frontend_storefront',
+  'release_revision_frontend_opis',
 ]);
 
 const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
@@ -382,6 +386,7 @@ const DEPLOY_MAIN_JOB_RELEASE_REVISION_INPUT_NAMES = Object.freeze([
   ['frontend-ims-prod', 'release_revision_frontend_ims'],
   ['frontend-pos-prod', 'release_revision_frontend_pos'],
   ['frontend-storefront-prod', 'release_revision_frontend_storefront'],
+  ['frontend-opis-prod', 'release_revision_frontend_opis'],
 ]);
 
 function checkDeployMainReleaseRevisionWiring(deployMainText) {
@@ -500,7 +505,7 @@ function checkMetaStepStampsCandidateLabel(workflowText, { label }) {
   return problems;
 }
 
-// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's five builder jobs must gate its
+// #1610 (ADR 0081 Decision 7 residue): each of deploy-main.yml's six builder jobs must gate its
 // `if:` on its OWN `should_build_<app>` output from the new `resolve-build-plan` job -- keyed by
 // job name here (not app name) since `frontend-ims-prod` etc. don't share their job name with the
 // app-keyed output name the way `dgfy-api`/`dgfy-migration-runner` do.
@@ -510,11 +515,12 @@ const DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES = Object.freeze([
   ['frontend-ims-prod', 'should_build_dgfy_ims'],
   ['frontend-pos-prod', 'should_build_dgfy_pos'],
   ['frontend-storefront-prod', 'should_build_dgfy_storefront'],
+  ['frontend-opis-prod', 'should_build_dgfy_opis'],
 ]);
 
 /**
  * ADR 0081 Decision 7 residue (#1610): deploy-main.yml must declare a `resolve-build-plan` job
- * (`needs: guard-branch`), and each of its five builder jobs must both list "resolve-build-plan" in
+ * (`needs: guard-branch`), and each of its six builder jobs must both list "resolve-build-plan" in
  * its own `needs:` array AND reference its own `should_build_<app>` output in its `if:` --
  * referencing `needs.resolve-build-plan` in a job's `if:` without also listing it in that job's own
  * `needs:` silently evaluates to empty in GitHub Actions (a parse-time gap, not a runtime failure),
