@@ -131,6 +131,7 @@ export default function TerminalPageLayout({
     canOperateAttendance = false,
     canViewAudit = false,
     canReviewVoidApprovals = false,
+    inlineVoidApprovalEnabled = false,
     onboardingRestricted = false,
     canCreateItems = false,
     canManageServiceCatalog = false,
@@ -1106,6 +1107,8 @@ export default function TerminalPageLayout({
                   isMsmeMode={isMsmeMode}
                   sidebarCollapsed={effectiveSidebarCollapsed}
                   canViewHistory={workspaceCanViewPos}
+                  canReviewVoidApprovals={canReviewVoidApprovals}
+                  inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
                   terminalUser={terminalUser}
                   selectedLocationId={workspaceLocationId}
                   activeShiftId={activeShiftId}

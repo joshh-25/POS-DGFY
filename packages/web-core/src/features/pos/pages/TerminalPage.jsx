@@ -169,7 +169,10 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';
-import { POS_VOID_APPROVAL_REVIEW_PERMISSIONS } from '../utils/posVoidApprovalFeature.js';
+import {
+  isInlineVoidApprovalPopupEnabled,
+  POS_VOID_APPROVAL_REVIEW_PERMISSIONS
+} from '../utils/posVoidApprovalFeature.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -1034,6 +1037,9 @@ export default function TerminalPage() {
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
   const canReviewVoidApprovals = POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => hasPermission(permission));
+  const inlineVoidApprovalEnabled = isInlineVoidApprovalPopupEnabled()
+    && canReviewVoidApprovals
+    && !isCashierRole;
   const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
   const canTransactPos = hasPermission('pos:transact');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
@@ -7547,6 +7553,7 @@ function PosRestorationLoadingScreen() {
           canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
           canReviewVoidApprovals={canReviewVoidApprovals}
+          inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}

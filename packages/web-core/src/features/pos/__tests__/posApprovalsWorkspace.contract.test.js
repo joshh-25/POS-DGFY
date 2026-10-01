@@ -10,6 +10,7 @@ describe('POS approval administration contract', () => {
     it('registers an authorized POS Admin approval view and keeps it online-only', () => {
         const page = read('src/features/pos/pages/TerminalPage.jsx');
         const layout = read('src/features/pos/components/TerminalPageLayout.jsx');
+        const terminalViewModel = read('src/features/pos/hooks/usePosTerminalViewModel.js');
         const sidebar = read('src/features/pos/components/TerminalWorkspaceSidebar.jsx');
 
         expect(page).toContain("'approvals'");
@@ -17,6 +18,10 @@ describe('POS approval administration contract', () => {
         expect(page).toContain("nextMode === 'approvals'");
         expect(layout).toContain("posViewMode === 'approvals'");
         expect(layout).toContain('<PosApprovalsWorkspace');
+        expect(layout).toContain('inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}');
+        expect(terminalViewModel).toContain('voidApprovalQueue');
+        expect(terminalViewModel).toContain('openVoidApprovalQueue');
+        expect(terminalViewModel).toContain('canReviewVoidApprovals');
         expect(sidebar).toContain('testId="pos-nav-approvals"');
         expect(sidebar).toContain('canReviewVoidApprovals && !isCashierRole');
     });
