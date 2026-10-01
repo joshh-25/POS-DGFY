@@ -493,13 +493,15 @@ test('runParityCheck (v2): each app is verified against its own allocated revisi
   // (Keyed per app rather than parsed off the ref because the bare floor alias carries no
   // rN fragment itself -- its revision label is what the gate compares.)
   const inspectFn = (ref) => {
-    const revision = ref.includes('dgfy-api') ? 'r8' : 'r4';
-    const expectedSha = ref.includes('dgfy-api') ? headSha : initialSha;
-    const appFloor = '9.9.9';
+    const app = ref.includes('dgfy-api') ? 'dgfy-api' : 'dgfy-ims';
+    const revision = app === 'dgfy-api' ? 'r8' : 'r4';
+    const expectedSha = app === 'dgfy-api' ? headSha : initialSha;
+    const appFloor = JSON.parse(require('node:child_process').execSync(`git show ${expectedSha}:apps/${app}/package.json`, { cwd: __dirname + '/..', encoding: 'utf8' })).version;
+    const digest = app === 'dgfy-api' ? `sha256:${'1'.repeat(64)}` : `sha256:${'2'.repeat(64)}`;
     return {
       status: 0,
       stdout: JSON.stringify({
-        digest: 'sha256:v2-per-app-fixture',
+        digest,
         Image: { Config: { Labels: {
           [CANDIDATE_SOURCE_LABEL]: expectedSha,
           'org.opencontainers.image.version': `${appFloor}-${revision}`,
@@ -540,7 +542,13 @@ test('runParityCheck (v2): an app absent from the per-app map is skipped, not fa
     manifest,
     repoRoot: __dirname + '/..',
     apps: ['dgfy-api', 'dgfy-pos'],
-    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r8' }) }),
+    inspectFn: (ref) => ({
+      status: 0, stderr: '', stdout: JSON.stringify({ digest: `sha256:${'1'.repeat(64)}`, Image: { Config: { Labels: {
+        [CANDIDATE_SOURCE_LABEL]: headSha,
+        [RELEASE_REVISION_LABEL]: 'r8',
+        'org.dgfy-platform.release-floor': '1.32.0',
+      } } } }),
+    }),
   });
 
   const posEntry = result.results.find((entry) => entry.app === 'dgfy-pos');
@@ -568,12 +576,140 @@ test('runParityCheck (v2): a revision-label mismatch against the app\u2019s own 
     manifest,
     repoRoot: __dirname + '/..',
     apps: ['dgfy-api'],
-    inspectFn: inspectFixture({ stdout: revisionFixture({ sourceSha: headSha, revision: 'r7' }) }),
+    inspectFn: (ref) => ({
+      status: 0, stderr: '', stdout: JSON.stringify({ digest: `sha256:${'1'.repeat(64)}`, Image: { Config: { Labels: {
+        [CANDIDATE_SOURCE_LABEL]: headSha,
+        [RELEASE_REVISION_LABEL]: 'r7',
+        'org.dgfy-platform.release-floor': '1.32.0',
+      } } } }),
+    }),
   });
 
   assert.equal(result.ok, false);
   assert.equal(result.results[0].verdict, 'fail');
   assert.equal(result.results[0].code, 'revision-label-mismatch');
+});
+
+test('runParityCheck (v3): API r1 and migration-runner r5 pass with per-app source, floor, revision, and digest checks', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const floors = { 'dgfy-api': '1.32.0', 'dgfy-migration-runner': '1.21.0' };
+  const digests = { 'dgfy-api': `sha256:${'a'.repeat(64)}`, 'dgfy-migration-runner': `sha256:${'b'.repeat(64)}` };
+  const revisions = { 'dgfy-api': 1, 'dgfy-migration-runner': 5 };
+  const manifest = {
+    schema: 'sku-release-candidate/v3', candidate_id: '2026-10-01-02', status: 'qualified',
+    source_develop_sha: headSha, current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-10-01-02', pr: 2001, apps_touched: Object.keys(floors) }],
+    release_revision: {
+      source_staging_sha: headSha, branch: 'release/2026-10-01-02', pr: 2002,
+      apps: Object.fromEntries(Object.keys(floors).map((app) => [app, {
+        revision: revisions[app], source_sha: headSha, digest: digests[app], origin: 'promotion',
+      }])),
+    },
+  };
+  const inspectFn = (ref) => {
+    const app = ref.includes('dgfy-migration-runner') ? 'dgfy-migration-runner' : 'dgfy-api';
+    const revision = `r${revisions[app]}`;
+    const floor = floors[app];
+    return { status: 0, stderr: '', stdout: JSON.stringify({ digest: digests[app], Image: { Config: { Labels: {
+      [CANDIDATE_SOURCE_LABEL]: headSha,
+      'org.dgfy-platform.release-revision': revision,
+      'org.dgfy-platform.release-floor': floor,
+      'org.opencontainers.image.version': `${floor}-${revision}`,
+    } } } }) };
+  };
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: Object.keys(floors), inspectFn });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.results.map(({ revision, candidate_source_sha, verdict }) => ({ revision, candidate_source_sha, verdict })), [
+    { revision: 1, candidate_source_sha: headSha, verdict: 'pass' },
+    { revision: 5, candidate_source_sha: headSha, verdict: 'pass' },
+  ]);
+});
+
+test('runParityCheck (v3): wrong per-app source, floor, or recorded digest fails closed', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const floor = '1.21.0';
+  const expectedDigest = `sha256:${'b'.repeat(64)}`;
+  const manifest = {
+    schema: 'sku-release-candidate/v3', candidate_id: '2026-10-01-02', status: 'qualified',
+    source_develop_sha: headSha, current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-10-01-02', pr: 2001, apps_touched: ['dgfy-api', 'dgfy-migration-runner'] }],
+    release_revision: { source_staging_sha: headSha, branch: 'release/2026-10-01-02', pr: 2002, apps: {
+      'dgfy-api': { revision: 1, source_sha: headSha, digest: `sha256:${'a'.repeat(64)}`, origin: 'promotion' },
+      'dgfy-migration-runner': { revision: 5, source_sha: headSha, digest: expectedDigest, origin: 'promotion' },
+    } },
+  };
+  const fixture = ({ sourceSha = headSha, digest = expectedDigest, floorLabel = floor } = {}) => () => ({
+    status: 0, stderr: '', stdout: JSON.stringify({ digest, Image: { Config: { Labels: {
+      [CANDIDATE_SOURCE_LABEL]: sourceSha,
+      'org.dgfy-platform.release-revision': 'r5',
+      'org.dgfy-platform.release-floor': floorLabel,
+    } } } }),
+  });
+  const wrongSource = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-migration-runner'], inspectFn: fixture({ sourceSha: SHA('f') }) });
+  assert.equal(wrongSource.results[0].code, 'source-label-mismatch');
+  const wrongDigest = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-migration-runner'], inspectFn: fixture({ digest: `sha256:${'c'.repeat(64)}` }) });
+  assert.equal(wrongDigest.results[0].code, 'staging-digest-mismatch');
+  const wrongFloor = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-migration-runner'], inspectFn: fixture({ floorLabel: '1.20.0' }) });
+  assert.equal(wrongFloor.results[0].code, 'staging-floor-mismatch');
+});
+
+test('runParityCheck (v3): backend bare alias on a different digest fails closed', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const floor = '1.21.0';
+  const stagingDigest = `sha256:${'b'.repeat(64)}`;
+  const manifest = {
+    schema: 'sku-release-candidate/v3', candidate_id: '2026-10-01-02', status: 'qualified',
+    source_develop_sha: headSha, current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-10-01-02', pr: 2001, apps_touched: ['dgfy-migration-runner', 'dgfy-api'] }],
+    release_revision: { source_staging_sha: headSha, branch: 'release/2026-10-01-02', pr: 2002, apps: {
+      'dgfy-api': { revision: 1, source_sha: headSha, digest: `sha256:${'a'.repeat(64)}`, origin: 'promotion' },
+      'dgfy-migration-runner': { revision: 5, source_sha: headSha, digest: stagingDigest, origin: 'promotion' },
+    } },
+  };
+  const inspectFn = (ref) => {
+    const isAlias = ref.endsWith(`:${floor}`);
+    const digest = isAlias ? `sha256:${'c'.repeat(64)}` : stagingDigest;
+    return { status: 0, stderr: '', stdout: JSON.stringify({ digest, Image: { Config: { Labels: {
+      [CANDIDATE_SOURCE_LABEL]: headSha,
+      'org.dgfy-platform.release-revision': 'r5',
+      'org.dgfy-platform.release-floor': floor,
+    } } } }) };
+  };
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-migration-runner'], inspectFn });
+  assert.equal(result.ok, false);
+  assert.equal(result.results[0].code, 'alias-digest-mismatch');
+});
+
+test('runParityCheck (v3): frontend PROD digest may differ from its recorded STAGING digest', () => {
+  const { execSync } = require('node:child_process');
+  const headSha = execSync('git rev-parse HEAD', { cwd: __dirname + '/..', encoding: 'utf8' }).trim();
+  const floor = '1.30.0';
+  const stagingDigest = `sha256:${'d'.repeat(64)}`;
+  const productionDigest = `sha256:${'e'.repeat(64)}`;
+  const manifest = {
+    schema: 'sku-release-candidate/v3', candidate_id: '2026-10-01-02', status: 'qualified',
+    source_develop_sha: headSha, current_staging_sha: headSha, staging_head_sha: headSha,
+    revisions: [{ kind: 'initial', sha: headSha, parent_sha: null, branch: 'to-staging/2026-10-01-02', pr: 2001, apps_touched: ['dgfy-ims'] }],
+    release_revision: { source_staging_sha: headSha, branch: 'release/2026-10-01-02', pr: 2002, apps: {
+      'dgfy-ims': { revision: 3, source_sha: headSha, digest: stagingDigest, origin: 'promotion' },
+    } },
+  };
+  const inspectFn = (ref) => {
+    const isProduction = ref.endsWith(':1.30.0-r3');
+    const isAlias = ref.endsWith(':1.30.0');
+    const digest = (isProduction || isAlias) ? productionDigest : stagingDigest;
+    return { status: 0, stderr: '', stdout: JSON.stringify({ digest, Image: { Config: { Labels: {
+      [CANDIDATE_SOURCE_LABEL]: headSha,
+      'org.dgfy-platform.release-revision': 'r3',
+      'org.dgfy-platform.release-floor': floor,
+    } } } }) };
+  };
+  const result = runParityCheck({ manifest, repoRoot: __dirname + '/..', apps: ['dgfy-ims'], inspectFn });
+  assert.equal(result.ok, true);
+  assert.equal(result.results[0].verdict, 'pass');
 });
 
 // runDirectParityCheck (--source-sha mode, RF-2) -- the #1007/hotfix entrypoint that never needs a

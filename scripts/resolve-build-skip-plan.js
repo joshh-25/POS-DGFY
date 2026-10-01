@@ -327,6 +327,16 @@ async function resolveBuildSkipPlan({
         plan[app] = { skip: false, code: 'dev-moving-tag', detail: 'DEV always rebuilds selected apps so the shared dev tag moves to this dispatch SHA' };
         continue;
       }
+      const hasAppRevision = revisionsByApp && Object.hasOwn(revisionsByApp, app)
+        && revisionsByApp[app] !== undefined && revisionsByApp[app] !== null
+        && String(revisionsByApp[app]).trim() !== '';
+      // A supplied modern per-app map is the selection contract: absent apps were not
+      // published for this candidate and must keep their existing image. Only callers that
+      // explicitly use the legacy --release-revision option retain shared-revision fallback.
+      if (revisionsByApp && !hasAppRevision && !revision) {
+        plan[app] = { skip: true, code: 'app-not-selected', detail: `${app} has no entry in the per-app release revision map; it is not selected for this candidate dispatch` };
+        continue;
+      }
       const image = IMAGE_NAME_BY_APP(app);
       const rawVersion = readVersionAt(repoRoot, currentRevision, `apps/${app}`);
       if (!rawVersion) {
@@ -339,7 +349,7 @@ async function resolveBuildSkipPlan({
       }
       // #2055: an explicit per-app entry wins; otherwise the shared candidate-wide
       // revision (v1-style dispatch), if any, still applies to every app.
-      const appRevision = (revisionsByApp && revisionsByApp[app] !== undefined && revisionsByApp[app] !== null && String(revisionsByApp[app]).trim() !== '')
+      const appRevision = hasAppRevision
         ? revisionsByApp[app]
         : revision;
       const versionTag = deriveVersionTag({ version: rawVersion, environment, app, revision: appRevision, prRef });
@@ -409,6 +419,16 @@ function parseArgs(argv) {
     }
     if (!revisionsByApp || typeof revisionsByApp !== 'object' || Array.isArray(revisionsByApp)) {
       throw new Error('--release-revisions-json must be a JSON object mapping app name to revision (e.g. \'{"dgfy-api":"r16"}\')');
+    }
+    for (const [app, appRevision] of Object.entries(revisionsByApp)) {
+      if (appRevision !== undefined && appRevision !== null && String(appRevision).trim() !== '' && !/^r?[1-9]\d*$/.test(String(appRevision).trim())) {
+        throw new Error(`--release-revisions-json entry for ${app} must be a positive artifact revision (rN or N)`);
+      }
+    }
+    const hasApiRevision = revisionsByApp['dgfy-api'] !== undefined && revisionsByApp['dgfy-api'] !== null && String(revisionsByApp['dgfy-api']).trim() !== '';
+    const hasMigrationRevision = revisionsByApp['dgfy-migration-runner'] !== undefined && revisionsByApp['dgfy-migration-runner'] !== null && String(revisionsByApp['dgfy-migration-runner']).trim() !== '';
+    if (hasApiRevision !== hasMigrationRevision) {
+      throw new Error('--release-revisions-json must select dgfy-api and dgfy-migration-runner together or omit both');
     }
   }
   return { ...options, revisionsByApp };
