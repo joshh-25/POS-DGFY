@@ -36,7 +36,7 @@
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
     "@sieitzz/web-core": "file:../../packages/web-core",
     "@zxing/browser": "^0.2.1",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "clsx": "^2.1.1",
     "date-fns": "^2.30.0",
     "fuse.js": "^7.4.2",
