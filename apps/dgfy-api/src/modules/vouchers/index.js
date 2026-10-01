@@ -1,5 +1,6 @@
 import { voucherRepository } from './repositories/voucherRepository.js';
 import { pricelistRepository } from './repositories/pricelistRepository.js';
+import { legacyPromoRepository } from './repositories/legacyPromoRepository.js';
 import { VoucherReasonCode } from './domain/voucherErrors.js';
 import {
     buildActivateVoucherUseCase,
@@ -26,6 +27,11 @@ import {
     buildReplacePricelistItemsUseCase,
     buildUpdatePricelistUseCase
 } from './usecases/pricelistUseCases.js';
+import {
+    buildListLegacyPromosUseCase,
+    buildRevokeLegacyPromoUseCase
+} from './usecases/legacyPromoUseCases.js';
+import { syncStorefrontDiscoveryWithReliability } from '../../services/storefrontDiscoverySyncReliabilityService.js';
 
 export const listVouchersUseCase = buildListVouchersUseCase({ repository: voucherRepository });
 export const getVoucherUseCase = buildGetVoucherUseCase({ repository: voucherRepository });
@@ -57,6 +63,16 @@ export const updatePricelistUseCase = buildUpdatePricelistUseCase({ repository: 
 export const replacePricelistItemsUseCase = buildReplacePricelistItemsUseCase({ repository: pricelistRepository });
 export const publishPricelistUseCase = buildPublishPricelistUseCase({ repository: pricelistRepository });
 export const archivePricelistUseCase = buildArchivePricelistUseCase({ repository: pricelistRepository });
+
+// #2159: the transitional Legacy Promos surface (OPIS) -- read/revoke only, gated at the route
+// layer by `vouchers:view` (list) and `vouchers:manage` (revoke). The post-commit discovery sync is
+// injected here rather than imported by the use case, keeping the use case free of service imports
+// (architecture guardrail) and unit-testable with a fake.
+export const listLegacyPromosUseCase = buildListLegacyPromosUseCase({ repository: legacyPromoRepository });
+export const revokeLegacyPromoUseCase = buildRevokeLegacyPromoUseCase({
+    repository: legacyPromoRepository,
+    syncStorefrontDiscovery: syncStorefrontDiscoveryWithReliability
+});
 
 // #667 -- the voucher domain's single reason-code registry, re-exported so a caller outside this
 // module (storeUseCases.js's storefront/promo stacking check) can reference a voucher reason code

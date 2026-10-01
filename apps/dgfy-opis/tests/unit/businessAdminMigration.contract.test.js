@@ -20,7 +20,7 @@ describe('OPIS Back Office migration contract', () => {
     const source = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/MigratedBackOfficeModule.jsx');
     const businessAdmin = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/BusinessAdminPage.jsx');
     const manifest = readRepoFile('apps/dgfy-opis/src/features/businessAdmin/businessAdminManifest.js');
-    for (const key of ['catalog', 'suppliers', 'purchase-orders', 'job-orders', 'stock-movements', 'dispatch-orders', 'services', 'fnb', 'hospitality', 'sales', 'reports', 'ai-chat']) {
+    for (const key of ['catalog', 'suppliers', 'purchase-orders', 'job-orders', 'stock-movements', 'dispatch-orders', 'services', 'fnb', 'hospitality', 'sales', 'reports', 'ai-chat', 'vouchers']) {
       expect(manifest).toContain(key);
       const manifestKey = key.includes('-') ? `'${key}'` : key;
       expect(manifest).toContain(`${manifestKey}: module(`);

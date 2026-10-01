@@ -116,11 +116,13 @@ describe('POS terminal responsive scroll contracts', () => {
   it('locks the checkout workspace while preserving scrolling for other modes', () => {
     expect(terminalLayoutContent).toContain("? 'flex min-h-0 flex-1 flex-col overflow-hidden'");
     expect(terminalLayoutContent).toContain('dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
+    expect(terminalLayoutContent).toContain("hidesWorkspaceScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''");
     expect(terminalLayoutContent).toContain('const checkoutWorkspaceRowsClassName = isBranchReadOnlyView');
     expect(terminalLayoutContent).toContain("'grid-rows-[auto_minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain("'grid-rows-[minmax(0,1fr)]'");
     expect(terminalLayoutContent).toContain('grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 ${checkoutWorkspaceRowsClassName} gap-2 overflow-hidden');
     expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0'");
+    expect(terminalLayoutContent).toContain("usesStandardPosPageFrame ? 'p-0' : `p-2 ${IS_DGFY_POS_SURFACE ? 'max-sm:gap-0 max-sm:p-0' : ''}`");
     expect(terminalLayoutContent).toContain('flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden transition');
     expect(terminalLayoutContent).toContain('data-testid="pos-workspace-scroll-container"');
     expect(terminalLayoutContent).toContain("'min-w-0 max-w-full catalog-slide-enter'");
@@ -204,6 +206,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(paginationContent).toContain('dgfy-global-pagination__next h-10 w-10 rounded-lg');
     expect(paginationContent).toContain('dgfy-global-pagination__page-size-value whitespace-nowrap');
     expect(paginationContent).toContain('{selectedPageSize}<span');
+    expect(paginationContent).toMatch(/\{selectedPageSize\}\s*<span[^>]*dgfy-global-pagination__page-size-suffix[^>]*>\s*\/ page<\/span>/);
     expect(paginationContent).toContain('focus-visible:ring-2 focus-visible:ring-[#1A4E8D]/15');
     expect(paginationContent).toContain('max-md:flex-col max-md:items-stretch');
     expect(posCheckoutContent).not.toContain('border-t border-slate-100 pt-1 sm:w-auto sm:border-t-0');

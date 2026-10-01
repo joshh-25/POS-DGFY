@@ -11,8 +11,8 @@ verification_evidence: focused POS Items suite (25 files, 144 tests passed), POS
 rollback_note: Revert the POS Items frontend commits and this declaration together. No backend, API, database, or migration rollback is required.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-29T19:27:51+08:00
-preflight_request_ref: NOT-EXECUTED-POS-ITEMS-FRONTEND-2026-09-29
+preflight_run_at: 2026-09-30T12:59:30.159Z
+preflight_request_ref: PREFLIGHT-36717925034-2026-09-29-POS-ITEMS-FRONTEND-CHANGE-BATCH
 ---
 
 # POS Items Frontend Change Batch
