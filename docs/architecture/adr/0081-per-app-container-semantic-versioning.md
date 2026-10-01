@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: release
 date: 2026-09-04
-last_reviewed: 2026-09-24
+last_reviewed: 2026-10-01
 review_by: 2027-03-23
 applies_to: dgfy-api, dgfy-migration-runner, dgfy-ims, dgfy-pos, dgfy-storefront, release_process
 topic: per_app_container_semantic_versioning
@@ -793,3 +793,45 @@ already-created candidates. ADR 0081 Decisions 1, 3, 4, 6, and 8 are amended in 
 `[default]` tier. Decision 7's `[binding]` immutability rule is unchanged.
 
 PR: (this PR). Closes #2071. Refs #2055.
+
+### 2026-10-01 — Separate backend artifact revisions with paired build and deploy (#2186)
+
+The 2026-09-23 amendment's `release_revision_api` group incorrectly carried one revision into
+both backend images. Artifact revision numbers are scoped to an image repository and package
+floor, so `dgfy-api` and `dgfy-migration-runner` may have independent immutable histories even
+when their builds are coordinated. A candidate may therefore use (for example) API `r1` and
+migration-runner `r5`; allocation and same-source retry reuse are performed independently against
+each app's own repository and floor. No existing immutable tag may be overwritten.
+
+`build_api` remains one paired user selection. Candidate `apps_touched` and `release_revision.apps`
+include both backend apps or neither, while each map entry carries that app's own revision, source
+SHA, staging digest, and origin. Staging/PROD dispatches, build-skip planning, builder forwarding,
+alias creation, and parity use each app's own revision. A modern per-app map omitting both backends
+means they were not selected; a malformed or one-sided pair is rejected. Explicit legacy
+candidate-wide script inputs and v1 manifests retain their existing compatibility behavior.
+PROD publish requires neither backend job to fail or be cancelled; a verified content-equivalent
+skip remains valid. Registry pushes are not transactional, so a failed paired dispatch may leave
+one immutable artifact published; retries re-resolve each app independently and never overwrite it.
+
+Parity resolves each app's package floor at its candidate source SHA and checks the image's source
+label, floor label, revision, and staging digest against that app's manifest lineage. Backend PROD
+reuses the neutral revision digest. Frontend PROD builds contain environment-specific configuration,
+so the manifest digest check applies to STAGING; frontend PROD is still checked against its own
+source, floor, revision, and alias digest contract.
+
+**Package-floor policy conclusion.** Keep the existing per-app floor management unchanged: floors
+are already maintained independently by Decision 6, and the API `1.32.0` / migration-runner
+`1.21.0` floors demonstrate that they need not be numerically aligned. This repair changes artifact
+revision routing only. A further split or redesign of semantic-version-floor policy is outside this
+incident's compatibility scope and can be scheduled separately if a future product or release
+requirement justifies it.
+
+`[default]` tier — this amends the dispatch, manifest, build-skip, alias, and parity procedures
+recorded in Decisions 1 and 8 / the 2026-09-23 amendment. Decision 7's `[binding]` immutable-tag
+guard and the package-floor rules in Decision 6 are unchanged. Full detail: #2186,
+`scripts/check-promotion-candidate.js`, `scripts/check-image-version-parity.js`,
+`scripts/resolve-build-skip-plan.js`, `scripts/check-deploy-version-stamping-workflow.js`,
+`.github/workflows/deploy.yml`, `deployment-orchestrator.yml`, `deploy-main.yml`,
+`docs/ops/RELEASE_CANDIDATE_POLICY.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.

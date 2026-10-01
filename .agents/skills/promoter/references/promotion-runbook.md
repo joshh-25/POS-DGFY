@@ -662,26 +662,29 @@ CANDIDATE_SOURCE_SHA=$(node -p "require('./.tmp/release-candidates/$CANDIDATE_ID
 #     --floor "$(node -p "require('./apps/<app>/package.json').version")" --revision <repair-sha>
 # (Same-source retry reuses its own N -- idempotent, not a new allocation. Docker login is
 # required to inspect GHCR revision tags.)
-REV_API=<rN-for-dgfy-api-and-dgfy-migration-runner>
+REV_API=<rN-for-dgfy-api>
+REV_MIGRATION_RUNNER=<independent-rN-for-dgfy-migration-runner>
 REV_IMS=<rN-for-dgfy-ims>
 REV_POS=<rN-for-dgfy-pos>
 REV_STOREFRONT=<rN-for-dgfy-storefront>
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" \
-  -f release_revision_api="$REV_API" -f release_revision_frontend_ims="$REV_IMS" \
+  -f release_revision_api="$REV_API" -f release_revision_migration_runner="$REV_MIGRATION_RUNNER" \
+  -f release_revision_frontend_ims="$REV_IMS" \
   -f release_revision_frontend_pos="$REV_POS" -f release_revision_frontend_storefront="$REV_STOREFRONT" \
   --ref staging
 ```
 
 Frontends publish `X.Y.Z-rN-staging` on this dispatch (baked `VITE_*` differ per environment),
-each under its OWN allocated `rN`; `dgfy-api`/`dgfy-migration-runner` publish the
-environment-neutral `X.Y.Z-rN` under the shared api-group value (same digest promotes to PROD
-later -- never rebuilt environment-specific). Builders fail closed here when their app-group's
+each under its OWN allocated `rN`; `dgfy-api` and `dgfy-migration-runner` publish independent
+environment-neutral `X.Y.Z-rN` tags (each digest promotes to PROD later -- neither is rebuilt
+environment-specific). Their revision inputs must be supplied together when the paired backend
+unit is selected, but their values need not match. Builders fail closed when a selected app's
 revision is missing; an ad-hoc STAGING rebuild outside a tracked candidate has no revision to
 publish under and is refused.
 
 **PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
 source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
-(covers both `dgfy-api` and `dgfy-migration-runner`), `candidate_source_sha_frontend_ims`, `_pos`,
+(covers both `dgfy-api` and `dgfy-migration-runner`, whose `apps_touched` lineage remains paired), `candidate_source_sha_frontend_ims`, `_pos`,
 `_storefront` — not one shared value, since PROD rebuilds every app unconditionally and a single
 shared value would mislabel any app a staging repair never touched.
 
@@ -713,6 +716,7 @@ console.log('CANDIDATE_SOURCE_SHA_STOREFRONT=' + byApp['dgfy-storefront']);
 const apps = manifest.release_revision.apps;
 const rev = (a) => (apps[a] ? apps[a].revision : '');
 console.log('REV_API=' + rev('dgfy-api'));
+console.log('REV_MIGRATION_RUNNER=' + rev('dgfy-migration-runner'));
 console.log('REV_IMS=' + rev('dgfy-ims'));
 console.log('REV_POS=' + rev('dgfy-pos'));
 console.log('REV_STOREFRONT=' + rev('dgfy-storefront'));
@@ -724,6 +728,7 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
   -f release_revision_api="${REV_API:+r$REV_API}" \
+  -f release_revision_migration_runner="${REV_MIGRATION_RUNNER:+r$REV_MIGRATION_RUNNER}" \
   -f release_revision_frontend_ims="${REV_IMS:+r$REV_IMS}" \
   -f release_revision_frontend_pos="${REV_POS:+r$REV_POS}" \
   -f release_revision_frontend_storefront="${REV_STOREFRONT:+r$REV_STOREFRONT}" \
@@ -731,7 +736,8 @@ gh workflow run deploy-main.yml -f deploy=true \
 ```
 (An app the candidate never rebuilt is absent from the map — its input stays empty and its
 build is skipped by the build-skip plan, keeping its last-published artifact. `dgfy-api` and
-`dgfy-migration-runner` are always present together — the paired-unit rule.)
+`dgfy-migration-runner` are both present or both absent because `build_api` remains the paired
+selection; when present, each entry and revision is independently validated.)
 
 `deploy-main.yml`'s `promote-aliases` job then creates each app's bare `X.Y.Z` floor alias from
 its `X.Y.Z-rN` revision-tag digest (refusing a different digest or revision) and gates `publish`
@@ -741,7 +747,8 @@ values and alias the fresh digest.
 
 **#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
 `$CANDIDATE_SOURCE_SHA` captured in that section (set equal to `$TARGET_SHA`, the compliance-scanned
-commit `release/<label>` was actually cut from) is the correct value for all four inputs:
+commit `release/<label>` was actually cut from) is the correct value for all source SHA inputs.
+Allocate the backend artifact revisions separately from each image's repository and floor:
 
 ```bash
 gh workflow run deploy-main.yml -f deploy=true \
@@ -750,6 +757,7 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
   -f release_revision_api="$REV_API" \
+  -f release_revision_migration_runner="$REV_MIGRATION_RUNNER" \
   -f release_revision_frontend_ims="$REV_IMS" \
   -f release_revision_frontend_pos="$REV_POS" \
   -f release_revision_frontend_storefront="$REV_STOREFRONT" \
@@ -768,7 +776,7 @@ REV_POS="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dg
   --floor "$(node -p "require('./apps/dgfy-pos/package.json').version")" \
   --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
 REV_POS="r$REV_POS"
-# ... repeat per touched app-group into REV_API / REV_IMS / REV_POS / REV_STOREFRONT,
+# ... repeat per touched app into REV_API / REV_MIGRATION_RUNNER / REV_IMS / REV_POS / REV_STOREFRONT,
 # leaving untouched groups empty.
 ```
 
