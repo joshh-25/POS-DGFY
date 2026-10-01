@@ -6672,6 +6672,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
                     superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
+                    approved_by: approvalAuthorized ? actorUserId : null,
                     terminal_id: activeTerminalId || existing.terminal_id || null,
                     location_id: existing.location_id || null,
                         stock_reversals: stockReversals,

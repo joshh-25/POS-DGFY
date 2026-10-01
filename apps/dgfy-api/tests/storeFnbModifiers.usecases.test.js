@@ -165,7 +165,7 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
-  it('waives the convenience fee only for enabled dine-in pay-at-store quotes', async () => {
+  it('does not add a convenience fee to dine-in pay-at-store or online quotes', async () => {
     const repository = buildRepository([burgerItem], {
       findLocationById: jest.fn().mockResolvedValue({
         location_id: 4,
@@ -196,8 +196,8 @@ describe('storefront F&B modifier checkout contract', () => {
 
     const onlineResult = await useCase({ payload: { ...basePayload, payment_type: 'gcash' } });
     expect(onlineResult.success).toBe(true);
-    expect(onlineResult.data.service_fee_amount).toBe(1);
-    expect(onlineResult.data.total_amount).toBe(101);
+    expect(onlineResult.data.service_fee_amount).toBe(0);
+    expect(onlineResult.data.total_amount).toBe(100);
   });
 
   it('preflights linked modifier stock using the selected location and line quantity', async () => {
