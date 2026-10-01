@@ -6,6 +6,8 @@ import { buildGetBusinessAdminBootstrapUseCase } from './usecases/businessAdminB
 import { buildListBusinessAdminAuditUseCase } from './usecases/businessAdminAuditUseCase.js';
 import { buildCancelBusinessAdminApprovalUseCase, buildDecideBusinessAdminApprovalUseCase, buildListBusinessAdminApprovalsUseCase } from './usecases/businessAdminApprovalUseCase.js';
 import { buildExportBusinessAdminReportUseCase, buildGetBusinessAdminReportDatasetUseCase, buildGetBusinessAdminReportsUseCase, buildListBusinessAdminReportDefinitionsUseCase } from './usecases/businessAdminReportsUseCase.js';
+import { buildGetBusinessAdminPosActivityAnalyticsUseCase } from './usecases/businessAdminPosActivityUseCase.js';
+import { businessAdminPosActivityRepository } from './repositories/businessAdminPosActivityRepository.js';
 import { buildGetBusinessAdminInventoryValuationUseCase } from './usecases/businessAdminInventoryValuationUseCase.js';
 import { buildListBusinessAdminInventoryStockUseCase } from './usecases/businessAdminInventoryStockUseCase.js';
 import { buildCreateBusinessAdminSavedReportViewUseCase, buildDeleteBusinessAdminSavedReportViewUseCase, buildListBusinessAdminSavedReportViewsUseCase } from './usecases/businessAdminSavedReportViewUseCase.js';
@@ -98,6 +100,11 @@ const businessAdminReportDependencies = {
     businessAdminInventoryReportRepository,
     getBusinessAdminInventoryValuationUseCase: null
 };
+export const getBusinessAdminPosActivityAnalyticsUseCase = buildGetBusinessAdminPosActivityAnalyticsUseCase({
+    businessAdminOverviewRepository,
+    businessAdminPosActivityRepository
+});
+
 export const listBusinessAdminReportDefinitionsUseCase = buildListBusinessAdminReportDefinitionsUseCase();
 export const getBusinessAdminReportDatasetUseCase = buildGetBusinessAdminReportDatasetUseCase(businessAdminReportDependencies);
 export const exportBusinessAdminReportUseCase = buildExportBusinessAdminReportUseCase(businessAdminReportDependencies);
