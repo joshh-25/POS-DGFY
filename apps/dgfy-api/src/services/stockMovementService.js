@@ -45,11 +45,22 @@ const isHistoricalOnlineGoodsIssue = (movementData = {}, { allowInactiveHistoric
   && /^ONLINE:\d+:/.test(String(movementData.reference_id || ''))
 );
 
-const findItemForMovement = async (Item, movementData, options = {}, policy = {}) => (
-  isHistoricalOnlineGoodsIssue(movementData, policy)
-    ? findHistoricalItemById(Item, movementData.item_id, options)
-    : findVisibleItemById(Item, movementData.item_id, options)
+const isArchivedPosVoidReturn = (movementData = {}, { allowArchivedItem = false } = {}) => (
+  allowArchivedItem === true
+  && movementData.movement_type === 'return'
+  && movementData.reference_type === 'POS'
+  && /^[1-9]\d*$/.test(String(movementData.reference_id || ''))
 );
+
+const findItemForMovement = async (Item, movementData, options = {}, policy = {}) => {
+  if (isArchivedPosVoidReturn(movementData, policy)) {
+    return findArchivedItemById(Item, movementData.item_id, options);
+  }
+  if (isHistoricalOnlineGoodsIssue(movementData, policy)) {
+    return findHistoricalItemById(Item, movementData.item_id, options);
+  }
+  return findVisibleItemById(Item, movementData.item_id, options);
+};
 
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
@@ -511,7 +522,7 @@ const createStockMovementInternal = async (
   movementData,
   userId,
   transaction,
-  { allowInactiveHistoricalItem = false } = {}
+  { allowInactiveHistoricalItem = false, allowArchivedItem = false } = {}
 ) => {
   const Item = dbStore.get('Item');
   const FIFOBatch = dbStore.get('FIFOBatch');
@@ -538,7 +549,10 @@ const createStockMovementInternal = async (
     lock: transaction.LOCK.UPDATE
   };
 
-  const item = await findItemForMovement(Item, movementData, options, { allowInactiveHistoricalItem });
+  const item = await findItemForMovement(Item, movementData, options, {
+    allowInactiveHistoricalItem,
+    allowArchivedItem
+  });
   if (!item) {
     const error = new Error('Item not found');
     error.statusCode = 404;
@@ -1074,7 +1088,7 @@ export const voidMovement = async (
   userId,
   reason,
   transaction = null,
-  { allowInactiveHistoricalItem = false } = {}
+  { allowInactiveHistoricalItem = false, allowArchivedItem = false, allowMissingItem = false } = {}
 ) => {
   const StockMovement = dbStore.get('StockMovement');
   const Item = dbStore.get('Item');
@@ -1145,17 +1159,19 @@ export const voidMovement = async (
     }
     // ────────────────────────────────────────────────────────────────────────
 
-    // Update item stock / location stock. Online fulfillment reversals are allowed to use the
-    // immutable historical item row when the catalog row was soft-deleted after checkout. All
-    // other void operations retain the active-item guard.
+    // Update item stock / location stock. Online fulfillment reversals may use an inactive
+    // historical item; parked-sale reversals may use archived or missing historical items.
+    // Other void operations retain the active-item guard.
     const itemLookup = {
       item_id,
       movement_type,
       reference_type: originalMovement.reference_type,
       reference_id: originalMovement.reference_id
     };
-    const item = await findItemForMovement(Item, itemLookup, { transaction }, { allowInactiveHistoricalItem });
-    if (!item) {
+    const item = allowArchivedItem
+      ? await findArchivedItemById(Item, item_id, { transaction, lock: transaction.LOCK.UPDATE })
+      : await findItemForMovement(Item, itemLookup, { transaction }, { allowInactiveHistoricalItem });
+    if (!item && !allowMissingItem) {
       const error = new Error('Item not found');
       error.statusCode = 404;
       throw error;
@@ -1163,7 +1179,10 @@ export const voidMovement = async (
 
     const stockItemId = item?.item_id || item_id;
     const options = { transaction, lock: transaction.LOCK.UPDATE };
-    if (movement_type === 'transfer') {
+    if (!item && allowMissingItem) {
+      // A hard-deleted item has no aggregate stock row to update. Keep the
+      // historical movement auditable without fabricating an inventory row.
+    } else if (movement_type === 'transfer') {
       const sourceLocationId = parsePositiveInt(originalMovement.source_location_id);
       const destinationLocationId = parsePositiveInt(originalMovement.destination_location_id);
       if (!sourceLocationId || !destinationLocationId) {

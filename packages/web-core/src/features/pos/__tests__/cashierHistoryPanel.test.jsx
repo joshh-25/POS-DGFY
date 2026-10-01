@@ -9,6 +9,93 @@ afterEach(() => {
 });
 
 describe('CashierHistoryPanel', () => {
+    it('labels company scope and shows branch plus cashier/register owner identity', () => {
+        render(
+            <CashierHistoryPanel
+                state={{
+                    loading: false,
+                    historyScope: {
+                        mode: 'company',
+                        location_count: 2,
+                        label: 'All authorized company branches'
+                    },
+                    records: [{
+                        shift: {
+                            pos_terminal_shift_id: 90,
+                            business_date: '2026-09-28',
+                            terminal_id: 'COUNTER-02',
+                            status: 'closed',
+                            opened_at: '2026-09-28T03:07:29.000Z',
+                            location: { location_id: 12, name: 'Second Branch' },
+                            cashier: { user_id: 17, username: 'Maya Cashier' }
+                        },
+                        cash_summary: {},
+                        sales_summary: {}
+                    }],
+                    pagination: { total: 1, totalPages: 1 },
+                    errorMessage: ''
+                }}
+                onRefresh={vi.fn().mockResolvedValue(null)}
+                isOnline
+            />
+        );
+
+        expect(screen.getByText('Cashier History — All Branches')).toBeTruthy();
+        expect(screen.getByText(/across all authorized company branches \(2 branches\)/i)).toBeTruthy();
+        expect(screen.getByText(/All authorized company branches/)).toBeTruthy();
+        expect(screen.getByText(/Branch:/)).toBeTruthy();
+        expect(screen.getByText('Second Branch')).toBeTruthy();
+        expect(screen.getByText('Maya Cashier')).toBeTruthy();
+    });
+
+    it('uses scope-aware loading copy for company history', () => {
+        render(
+            <CashierHistoryPanel
+                state={{
+                    loading: true,
+                    historyScope: { mode: 'company', location_count: 2 },
+                    records: [],
+                    pagination: null,
+                    errorMessage: ''
+                }}
+                onRefresh={vi.fn().mockResolvedValue(null)}
+                isOnline
+            />
+        );
+
+        expect(screen.getByText('Loading company cashier summaries...')).toBeTruthy();
+        expect(screen.queryByText('Loading your cashier summaries...')).toBeNull();
+    });
+
+    it('shows explicit fallback identities when historical associations are missing', () => {
+        render(
+            <CashierHistoryPanel
+                state={{
+                    loading: false,
+                    historyScope: { mode: 'company', location_count: 1 },
+                    records: [{
+                        shift: {
+                            pos_terminal_shift_id: 91,
+                            business_date: '2026-09-28',
+                            terminal_id: 'COUNTER-03',
+                            status: 'closed',
+                            opened_at: '2026-09-28T03:07:29.000Z'
+                        },
+                        cash_summary: {},
+                        sales_summary: {}
+                    }],
+                    pagination: { total: 1, totalPages: 1 },
+                    errorMessage: ''
+                }}
+                onRefresh={vi.fn().mockResolvedValue(null)}
+                isOnline
+            />
+        );
+
+        expect(screen.getByText('Unknown branch')).toBeTruthy();
+        expect(screen.getByText('Unknown cashier')).toBeTruthy();
+    });
+
     it('explains when the active shift is outside Today and offers All records', async () => {
         const onRefresh = vi.fn().mockResolvedValue(null);
 

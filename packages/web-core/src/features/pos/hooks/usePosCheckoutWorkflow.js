@@ -1549,7 +1549,11 @@ export const usePosCheckoutWorkflow = ({
                 return;
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
-            const { buildFnbRecipeBlockerMessage, buildValidationDetailMessage } = await import('../utils/posCheckoutErrorMessages.js');
+            const {
+                buildFnbRecipeBlockerMessage,
+                buildTerminalLocationMismatchMessage,
+                buildValidationDetailMessage
+            } = await import('../utils/posCheckoutErrorMessages.js');
             const rawMessage = String(error?.response?.data?.message || '').trim();
             const friendlyPriceOverrideMessage = /^Price override reason is required for item\b/i.test(rawMessage)
                 ? 'Enter a price override reason of at least 3 characters before checkout.'
@@ -1557,6 +1561,7 @@ export const usePosCheckoutWorkflow = ({
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
+                || buildTerminalLocationMismatchMessage(error)
                 || buildFnbRecipeBlockerMessage(error)
                 || friendlyPriceOverrideMessage
                 || buildValidationDetailMessage(error)

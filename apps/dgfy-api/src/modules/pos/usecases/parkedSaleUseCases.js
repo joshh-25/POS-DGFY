@@ -18,6 +18,13 @@ const toPositiveInt = (value) => {
     return Number.isInteger(normalized) && normalized > 0 ? normalized : null;
 };
 
+const isPosAdminOperator = (user = {}) => (
+    user?.is_master_admin === true
+    || user?.is_master_admin === 1
+    || user?.is_master_admin === '1'
+    || String(user?.role || '').trim().toLowerCase() === 'admin'
+);
+
 const toFiniteNonNegative = (value, fallback = 0) => {
     const normalized = Number(value);
     return Number.isFinite(normalized) && normalized >= 0 ? normalized : fallback;
@@ -820,7 +827,11 @@ export const buildClaimPosParkedSaleUseCase = ({ posRepository }) => async ({ pa
     }
 };
 
-export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ parkedSaleId, payload = {}, user }) => {
+export const buildCancelPosParkedSaleUseCase = ({
+    posRepository,
+    inventoryCommandService = null,
+    publishCatalogChange = null
+}) => async ({ parkedSaleId, payload = {}, user }) => {
     let transaction = null;
     try {
         const normalizedId = toPositiveInt(parkedSaleId);
@@ -852,30 +863,126 @@ export const buildCancelPosParkedSaleUseCase = ({ posRepository }) => async ({ p
             entityType: 'pos_parked_sale',
             entityId: normalizedId
         }, { transaction, lock: true });
+        const adminApprovalBypass = isPosAdminOperator(user);
         if (row.status === 'cancel_pending') {
             if (!existingRequest) {
                 throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Cancellation is pending but its approval request is unavailable.', 409, {
                     reason_code: 'PARKED_SALE_CANCEL_APPROVAL_MISSING'
                 });
             }
-            await finishTransaction(transaction, 'commit');
-            return ok({
-                parked_sale: toPublicParkedSale(row, { idempotent_replay: true }),
-                approval_request: existingRequest,
-                pending: true
-            }, 'Parked POS sale cancellation is awaiting Back Office approval');
+            if (!adminApprovalBypass) {
+                await finishTransaction(transaction, 'commit');
+                return ok({
+                    parked_sale: toPublicParkedSale(row, { idempotent_replay: true }),
+                    approval_request: existingRequest,
+                    pending: true
+                }, 'Parked POS sale cancellation is awaiting Back Office approval');
+            }
         }
-        if (!['parked', 'claimed'].includes(String(row.status || '').toLowerCase())) {
+        if (!['parked', 'claimed'].includes(String(row.status || '').toLowerCase())
+            && !(adminApprovalBypass && String(row.status || '').toLowerCase() === 'cancel_pending')) {
             throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Only an active parked POS sale can request cancellation.', 409, {
                 reason_code: 'PARKED_SALE_NOT_CANCELLABLE',
                 status: row.status
             });
         }
-        if (existingRequest) {
+        if (existingRequest && !adminApprovalBypass) {
             throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'A cancellation approval request is already pending for this parked sale.', 409, {
                 reason_code: 'PARKED_SALE_CANCEL_APPROVAL_ALREADY_PENDING',
                 approval_request_id: existingRequest.business_admin_approval_request_id
             });
+        }
+
+        if (adminApprovalBypass) {
+            const supersededApprovalRequestId = toPositiveInt(existingRequest?.business_admin_approval_request_id);
+            if (existingRequest) {
+                if (typeof posRepository.updateBusinessAdminApprovalRequest !== 'function') {
+                    throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'The existing parked-sale approval request cannot be closed before administrator execution.', 503, {
+                        reason_code: 'PARKED_SALE_CANCEL_APPROVAL_UPDATE_UNAVAILABLE'
+                    });
+                }
+                const cancelledApprovalRequest = await posRepository.updateBusinessAdminApprovalRequest(
+                    supersededApprovalRequestId,
+                    {
+                        status: 'cancelled',
+                        approval_note: 'Cancelled because an administrator executed the parked-sale cancellation directly.'
+                    },
+                    { transaction, lock: true }
+                );
+                if (!cancelledApprovalRequest) {
+                    throw buildParkedSaleError(DomainErrorCode.RESOURCE_NOT_FOUND, 'The existing parked-sale approval request was not found during administrator execution.', 404);
+                }
+            }
+            const reversals = [];
+            if (row.inventory_deducted_at) {
+                const reverseParkedSaleGoodsIssue = inventoryCommandService?.reverseParkedSaleGoodsIssue;
+                if (typeof reverseParkedSaleGoodsIssue !== 'function') {
+                    throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Inventory reversal command is unavailable for this parked sale.', 503, {
+                        reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_UNAVAILABLE'
+                    });
+                }
+                const inventoryReversals = await reverseParkedSaleGoodsIssue({
+                    parked_sale_id: normalizedId,
+                    reason: `Administrator parked-sale cancellation: ${reason}`
+                }, scope.userId, transaction);
+                if (!Array.isArray(inventoryReversals)) {
+                    throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Inventory reversal returned an invalid result.', 503, {
+                        reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_INVALID'
+                    });
+                }
+                for (const reversal of inventoryReversals) {
+                    if (reversal?.preserved !== true && !toPositiveInt(reversal?.reversal_movement_id)) {
+                        throw buildParkedSaleError(DomainErrorCode.CONFLICT, 'Inventory reversal was not persisted for this parked sale.', 503, {
+                            reason_code: 'PARKED_SALE_INVENTORY_REVERSAL_NOT_PERSISTED',
+                            original_movement_id: toPositiveInt(reversal?.original_movement_id)
+                        });
+                    }
+                }
+                reversals.push(...inventoryReversals);
+            }
+
+            const cancelled = await posRepository.updateParkedSale(normalizedId, {
+                status: 'cancelled',
+                cancelled_by: scope.userId,
+                cancelled_at: new Date(),
+                cancel_reason: reason
+            }, { transaction, lock: true });
+            if (!cancelled) {
+                throw buildParkedSaleError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Parked sale was not found during cancellation.', 404);
+            }
+            await posRepository.createAuditLog({
+                user_id: scope.userId,
+                entity_type: 'pos_parked_sale',
+                entity_id: normalizedId,
+                action: 'UPDATE',
+                event_type: 'pos_parked_sale_cancelled',
+                terminal_id: scope.terminalId,
+                shift_id: scope.shiftId,
+                location_id: scope.locationId,
+                reason,
+                changes: {
+                    event: 'pos_parked_sale_cancelled',
+                    operator_session_id: scope.operatorSessionId,
+                    requested_by: scope.userId,
+                    approved_by: null,
+                    approval_request_id: null,
+                    superseded_approval_request_id: supersededApprovalRequestId,
+                    authorization_mode: 'admin_bypass',
+                    reason,
+                    terminal_id: scope.terminalId,
+                    shift_id: scope.shiftId,
+                    location_id: scope.locationId,
+                    restored_inventory_movement_count: reversals.length
+                }
+            }, { transaction });
+            await finishTransaction(transaction, 'commit');
+            await publishParkedSaleStockChange({ publishCatalogChange, effects: reversals });
+            return ok({
+                parked_sale: toPublicParkedSale(cancelled, { idempotent_replay: false }),
+                stock_reversals: reversals,
+                pending: false,
+                authorization_mode: 'admin_bypass'
+            }, 'Parked POS sale cancelled');
         }
 
         const approvalPayload = {

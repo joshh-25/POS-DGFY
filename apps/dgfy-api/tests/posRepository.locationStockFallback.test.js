@@ -145,6 +145,13 @@ describe('posRepository location-stock schema fallback', () => {
             'fifo_enabled'
         ]));
         });
+
+    it('fails closed when the stock movement model is unavailable for a POS void lookup', async () => {
+        await expect(posRepository.listStockMovementsForPosTransaction(1001)).rejects.toMatchObject({
+            statusCode: 503,
+            code: 'POS_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE'
+        });
+    });
     });
 
     it('falls back when MySQL qualifies the missing location column with the model name', async () => {

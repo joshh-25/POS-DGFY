@@ -219,7 +219,6 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     'FISCAL COUNTERS',
     buildKeyValueLine('Z counter', String(reading.z_counter_value || 0), normalizedWidth),
     buildKeyValueLine('Reset counter', String(reading.reset_counter_value || 0), normalizedWidth),
-    buildKeyValueLine('Lifetime total', money(Number(reading.lifetime_grand_total_cents || 0) / 100), normalizedWidth),
     divider,
     'Provider refunds are reconciled separately.',
     'Keep this report with the day-end close evidence.'

@@ -21,6 +21,18 @@ const MARKER_PREFIX = 'PERF_TEST_BATCH:';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const CATEGORY_NAMES = ['Meals', 'Drinks', 'Desserts', 'Snacks', 'Breakfast'];
 
+export const resolvePerformanceSeedInventoryPolicy = (index) => {
+  const normalizedIndex = Number.parseInt(index, 10);
+  const posAlwaysAvailable = Number.isInteger(normalizedIndex)
+    && normalizedIndex > 0
+    && normalizedIndex % 17 === 0;
+
+  return {
+    posAlwaysAvailable,
+    trackingMode: posAlwaysAvailable ? 'untracked' : 'count_ledger'
+  };
+};
+
 export const parseArgs = (argv = process.argv.slice(2)) => {
   const values = new Map();
   for (const argument of argv) {
@@ -145,6 +157,7 @@ const seedItems = async ({ connection, tenant, batchId }) => {
       const name = `Performance Item ${String(index).padStart(3, '0')}`;
       const description = `${markerFor(batchId)} Generated local-only catalog performance fixture.`;
       const folderId = folderIds[(index - 1) % folderIds.length];
+      const inventoryPolicy = resolvePerformanceSeedInventoryPolicy(index);
 
       const [insertResult] = await connection.query(
         `INSERT INTO ${db}.items
@@ -152,15 +165,15 @@ const seedItems = async ({ connection, tenant, batchId }) => {
            current_stock, unit_of_measure, cost_per_unit, default_sale_price, vat_type,
            fifo_enabled, status, tracking_mode, created_at, updated_at)
          VALUES (?, ?, 'product', 'finished_goods', 'menu_item', ?, ?, ?, 'serving', ?, ?,
-                 'vatable', 0, 'active', 'count_ledger', NOW(), NOW())`,
-        [sku, name, folderId, description, stock, cost, price]
+                 'vatable', 0, 'active', ?, NOW(), NOW())`,
+        [sku, name, folderId, description, stock, cost, price, inventoryPolicy.trackingMode]
       );
       const itemId = Number(insertResult.insertId);
       await connection.query(
         `INSERT INTO ${db}.pos_catalog_overrides
           (item_id, pos_visible, pos_always_available, pos_best_seller_mode, pos_image_path, pos_image_url, created_at, updated_at)
          VALUES (?, 1, ?, ?, ?, ?, NOW(), NOW())`,
-        [itemId, index % 17 === 0 ? 1 : 0, index % 9 === 0 ? 'force' : 'auto', asset.path, asset.url]
+        [itemId, inventoryPolicy.posAlwaysAvailable ? 1 : 0, index % 9 === 0 ? 'force' : 'auto', asset.path, asset.url]
       );
       await connection.query(
         `INSERT INTO ${db}.storefront_catalog_overrides

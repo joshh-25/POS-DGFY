@@ -108,7 +108,6 @@ export default function ZReadingPrintView({
                     <p className="font-black uppercase">Fiscal counters</p>
                     <Row name="Z counter" value={Number(counters.z_counter || 0).toLocaleString('en-US')} />
                     <Row name="Reset counter" value={Number(counters.reset_counter || 0).toLocaleString('en-US')} />
-                    <Row name="Lifetime total" value={`${displayCurrency}${money(Number(counters.lifetime_grand_total_cents || 0) / 100)}`} strong />
                 </section>
 
                 {printFailed ? (

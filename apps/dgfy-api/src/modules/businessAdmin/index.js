@@ -35,6 +35,7 @@ import { buildCreateBusinessAdminExpenseUseCase, buildListBusinessAdminExpensesU
 import { buildAcknowledgeBusinessAdminNotificationUseCase, buildDismissBusinessAdminNotificationUseCase, buildListBusinessAdminNotificationsUseCase, buildMarkBusinessAdminNotificationReadUseCase } from './usecases/businessAdminNotificationUseCase.js';
 import { resolveWorkflowCapabilitySettings } from '../shared/utils/workflowCapabilitySettingsCache.js';
 import { modeHasCapability } from '@sieitzz/shared-constants/workflowModes';
+import { decidePosExceptionApprovalUseCase } from '../pos/index.js';
 
 export const reconcileBusinessAdminAlerts = () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository });
 import { posRepository } from '../pos/repositories/posRepository.js';
@@ -76,10 +77,9 @@ export const listBusinessAdminApprovalsUseCase = buildListBusinessAdminApprovals
 });
 
 export const decideBusinessAdminApprovalUseCase = buildDecideBusinessAdminApprovalUseCase({
-    // The current POS branch has no generic exception-approval command. Keep
-    // the Business Admin queue read-only until a canonical owner contract is
-    // approved; never invent a second refund/shift mutation path here.
-    decidePosExceptionApprovalUseCase: null
+    // Back Office decides; POS remains the canonical owner of the atomic
+    // transaction and inventory mutation.
+    decidePosExceptionApprovalUseCase
 });
 
 export const cancelBusinessAdminApprovalUseCase = buildCancelBusinessAdminApprovalUseCase({

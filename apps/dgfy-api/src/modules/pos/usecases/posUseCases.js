@@ -763,6 +763,26 @@ const scopePosReportQueryToActor = ({ query = {}, user = {} } = {}) => {
     };
 };
 
+const normalizePosReportDateRange = (query = {}) => {
+    const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
+    const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
+    }
+    if (dateFrom > dateTo) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
+    }
+    const rangeDays = Math.round((new Date(`${dateTo}T00:00:00.000Z`) - new Date(`${dateFrom}T00:00:00.000Z`)) / 86400000) + 1;
+    if (rangeDays > 366) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'POS report range cannot exceed 366 days', { statusCode: 422 });
+    }
+    return {
+        ...query,
+        date_from: dateFrom,
+        date_to: dateTo
+    };
+};
+
 export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
     const baseUseCase = buildReadScopedPosReportUseCase({
         posRepository,
@@ -778,30 +798,241 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
                     { statusCode: 400 }
                 );
             }
-            const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
-            const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Report dates must use YYYY-MM-DD format', { statusCode: 400 });
-            }
-            if (dateFrom > dateTo) {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date_from must not be after date_to', { statusCode: 400 });
-            }
-            const rangeDays = Math.round((new Date(`${dateTo}T00:00:00.000Z`) - new Date(`${dateFrom}T00:00:00.000Z`)) / 86400000) + 1;
-            if (rangeDays > 366) {
-                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'POS report range cannot exceed 366 days', { statusCode: 422 });
-            }
-            return baseUseCase({
+            const normalizedQuery = normalizePosReportDateRange(query);
+            const result = await baseUseCase({
                 query: {
-                    ...scopePosReportQueryToActor({ query, user }),
-                    date_from: dateFrom,
-                    date_to: dateTo
+                    ...scopePosReportQueryToActor({ query: normalizedQuery, user })
                 },
                 user
             });
+            if (!result?.success || !result.data) return result;
+
+            const diagnostics = result.data._internal_register_variance_diagnostics;
+            if (Number(diagnostics?.variance_mismatch_count || 0) > 0) {
+                logger.warn('[POS][RegisterReconciliationVarianceMismatch]', {
+                    mismatch_count: diagnostics.variance_mismatch_count,
+                    samples: Array.isArray(diagnostics.variance_mismatch_samples)
+                        ? diagnostics.variance_mismatch_samples.slice(0, 10)
+                        : []
+                });
+            }
+
+            // Repository-only diagnostics are logged server-side, never returned in the API payload.
+            return { ...result, data: { ...result.data } };
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS reports'));
         }
     };
+};
+
+export const buildGetPosReportBreakdownUseCase = ({ posRepository }) => {
+    const baseUseCase = buildReadScopedPosReportUseCase({
+        posRepository,
+        repositoryMethod: posRepository.getReportBreakdown,
+        failureMessage: 'Failed to load POS report breakdown'
+    });
+
+    return async ({ query = {}, user, requestId = null } = {}) => {
+        const startedAt = Date.now();
+        let breakdown = String(query?.breakdown || '').trim().toLowerCase() || null;
+        const correlationId = String(requestId || '').trim().slice(0, 128) || null;
+        try {
+            if (!isPlainObject(query)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Report query must be an object',
+                    { statusCode: 400 }
+                );
+            }
+            breakdown = String(query.breakdown || '').trim().toLowerCase();
+            if (!POS_REPORT_BREAKDOWNS.has(breakdown)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'breakdown must be hourly, items, or categories',
+                    { statusCode: 422 }
+                );
+            }
+
+            const sortBy = String(query.sort_by || '').trim().toLowerCase();
+            if (sortBy && !POS_REPORT_SORT_FIELDS.has(sortBy)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'sort_by is not supported for POS report breakdowns',
+                    { statusCode: 422 }
+                );
+            }
+            const sortDirection = String(query.sort_direction || 'desc').trim().toLowerCase();
+            if (!['asc', 'desc'].includes(sortDirection)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'sort_direction must be asc or desc',
+                    { statusCode: 422 }
+                );
+            }
+            if (query.page !== undefined && !parsePositiveInt(query.page)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'page must be a positive integer', { statusCode: 422 });
+            }
+            if (query.limit !== undefined && (!parsePositiveInt(query.limit) || Number(query.limit) > 200)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'limit must be between 1 and 200', { statusCode: 422 });
+            }
+
+            const normalizedQuery = normalizePosReportDateRange({
+                ...query,
+                breakdown,
+                ...(sortBy ? { sort_by: sortBy } : {}),
+                sort_direction: sortDirection
+            });
+            const scopedQuery = scopePosReportQueryToActor({ query: normalizedQuery, user });
+            const result = await baseUseCase({ query: scopedQuery, user });
+            logger.info('[POS][ReportBreakdown]', {
+                correlation_id: correlationId,
+                breakdown,
+                location_id: result.data?.applied_filters?.location_id || null,
+                row_count: Array.isArray(result.data?.rows) ? result.data.rows.length : 0,
+                duration_ms: Date.now() - startedAt,
+                outcome: result.success ? 'success' : 'failure',
+                error_code: result.success ? null : result.error?.code || null
+            });
+            return result;
+        } catch (error) {
+            logger.warn('[POS][ReportBreakdown]', {
+                correlation_id: correlationId,
+                breakdown,
+                row_count: 0,
+                duration_ms: Date.now() - startedAt,
+                outcome: 'failure',
+                error_code: error?.code || null
+            });
+            return fail(mapPosUseCaseError(error, 'Failed to retrieve POS report breakdown'));
+        }
+    };
+};
+
+const POS_REPORT_BREAKDOWNS = new Set(['hourly', 'items', 'categories']);
+const POS_REPORT_SORT_FIELDS = new Set([
+    'bucket_start_local',
+    'item_name',
+    'sku',
+    'category_name',
+    'item_count',
+    'quantity',
+    'orders',
+    'gross_sales',
+    'discounts',
+    'net_sales',
+    'refunds_voids',
+    'cogs',
+    'profit',
+    'profit_margin',
+    'average_unit_price',
+    'sales_share'
+]);
+
+const REPORT_BREAKDOWN_EXPORTS = Object.freeze({
+    hourly: 'hourly',
+    item_sales: 'items',
+    category_sales: 'categories'
+});
+
+const getReportRefundsVoidsExportValue = (value) => {
+    const numericValue = Number(value ?? 0);
+    if (!Number.isFinite(numericValue) || numericValue === 0) return 0;
+    return -Math.abs(numericValue);
+};
+
+const buildReportBreakdownExportRows = (section, data = {}) => {
+    const rows = Array.isArray(data.rows) ? data.rows : [];
+    const summary = data.summary || {};
+    const range = data.range || {};
+    const reportLabels = {
+        hourly: 'Hourly Sales',
+        item_sales: 'Item Sales',
+        category_sales: 'Sales by Category'
+    };
+    const summaryRows = [
+        ['Report', reportLabels[section] || section],
+        ['Date From', range.date_from || ''],
+        ['Date To', range.date_to || ''],
+        ['Timezone', range.timezone || data.timezone || 'Asia/Manila'],
+        [],
+        ['Metric', 'Value'],
+        ['Gross Sales', summary.gross_sales ?? 0],
+        ['Discounts', summary.discounts ?? 0],
+        ['Net Sales', summary.net_sales ?? 0],
+        ['Refunds/Voids', getReportRefundsVoidsExportValue(summary.refunds_voids)],
+        ['VATable Sales', summary.vatable_sales ?? 0],
+        ['VAT', summary.vat ?? 0],
+        ['Service Fees', summary.service_fees ?? 0],
+        ['COGS', summary.cogs ?? 0],
+        ['Profit', summary.profit ?? summary.pos_profit_loss ?? 0],
+        ['Transactions', summary.total_transactions ?? 0],
+        ['Items Sold', summary.total_items_sold ?? 0],
+        []
+    ];
+    if (section === 'hourly') {
+        return [
+            ...summaryRows,
+            ['Bucket Start (Asia/Manila)', 'Bucket End (Asia/Manila)', 'Transactions', 'Items Sold', 'Gross Sales', 'Discounts', 'Net Sales', 'Refunds/Voids', 'VAT', 'Service Fees', 'COGS', 'Profit', 'Profit Margin %'],
+            ...rows.map((row) => [
+                row.bucket_start_local,
+                row.bucket_end_local,
+                row.transaction_count,
+                row.item_quantity,
+                row.gross_sales,
+                row.discounts,
+                row.net_sales,
+                getReportRefundsVoidsExportValue(row.refunds_voids),
+                row.vat,
+                row.service_fees,
+                row.cogs,
+                row.profit,
+                row.profit_margin
+            ])
+        ];
+    }
+    if (section === 'item_sales') {
+        return [
+            ...summaryRows,
+            ['Item Key', 'Item ID', 'Item Name', 'SKU', 'Category', 'Quantity', 'Orders', 'Gross Sales', 'Discounts', 'Net Sales', 'Refunds/Voids', 'COGS', 'Profit', 'Profit Margin %', 'Average Unit Price', 'Sales Share %'],
+            ...rows.map((row) => [
+                row.item_key,
+                row.item_id,
+                row.item_name,
+                row.sku,
+                row.category_name,
+                row.quantity,
+                row.orders,
+                row.gross_sales,
+                row.discounts,
+                row.net_sales,
+                getReportRefundsVoidsExportValue(row.refunds_voids),
+                row.cogs,
+                row.profit,
+                row.profit_margin,
+                row.average_unit_price,
+                row.sales_share
+            ])
+        ];
+    }
+    return [
+        ...summaryRows,
+        ['Category Key', 'Category Name', 'Item Count', 'Quantity', 'Orders', 'Gross Sales', 'Discounts', 'Net Sales', 'Refunds/Voids', 'COGS', 'Profit', 'Profit Margin %', 'Sales Share %'],
+        ...rows.map((row) => [
+            row.category_key,
+            row.category_name,
+            row.item_count,
+            row.quantity,
+            row.orders,
+            row.gross_sales,
+            row.discounts,
+            row.net_sales,
+            getReportRefundsVoidsExportValue(row.refunds_voids),
+            row.cogs,
+            row.profit,
+            row.profit_margin,
+            row.sales_share
+        ])
+    ];
 };
 
 const escapeCsvValue = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -827,8 +1058,38 @@ const formatReportPaymentMethods = (row = {}) => {
     return row.payment_type || paymentMethods[0] || '';
 };
 
-export const buildExportPosReportsUseCase = ({ posRepository, getReportsOverviewUseCase = null }) => async ({ query = {}, user } = {}) => {
+export const buildExportPosReportsUseCase = ({
+    posRepository,
+    getReportsOverviewUseCase = null,
+    getReportBreakdownUseCase = null
+}) => async ({ query = {}, user } = {}) => {
     try {
+        const section = String(isPlainObject(query) ? query.section || 'daily' : 'daily')
+            .replace(/[^a-z0-9_-]/gi, '')
+            .toLowerCase() || 'daily';
+        const breakdown = REPORT_BREAKDOWN_EXPORTS[section];
+        if (breakdown) {
+            const breakdownUseCase = getReportBreakdownUseCase || buildGetPosReportBreakdownUseCase({ posRepository });
+            const breakdownResult = await breakdownUseCase({
+                query: {
+                    ...(isPlainObject(query) ? query : {}),
+                    breakdown,
+                    export_all: true,
+                    page: 1
+                },
+                user
+            });
+            if (!breakdownResult.success) return breakdownResult;
+            const data = breakdownResult.data || {};
+            const range = data.range || {};
+            const rows = buildReportBreakdownExportRows(section, data);
+            return ok({
+                filename: `pos-${section}-report-${range.date_from || nowInManilaBusinessDate()}_to_${range.date_to || nowInManilaBusinessDate()}.csv`,
+                content_type: 'text/csv; charset=utf-8',
+                content: rows.map((row) => row.map(escapeCsvValue).join(',')).join('\n')
+            });
+        }
+
         const overviewUseCase = getReportsOverviewUseCase || buildGetPosReportsOverviewUseCase({ posRepository });
         const overviewResult = await overviewUseCase({ query, user });
         if (!overviewResult.success) return overviewResult;
@@ -837,7 +1098,6 @@ export const buildExportPosReportsUseCase = ({ posRepository, getReportsOverview
         const cashierRows = overviewResult.data?.daily_report?.cashier_summary || [];
         const transactionRows = overviewResult.data?.daily_report?.transaction_rows || [];
         const lifecycle = overviewResult.data?.cashier_lifecycle || {};
-        const section = String(query.section || 'daily').replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'daily';
         const lifecycleRows = section === 'attendance'
             ? [
                 ['Cashier', 'Duty Type', 'Status', 'Started At (Asia/Manila)', 'Ended At (Asia/Manila)', 'Break Minutes', 'Worked Minutes', 'Location'],
@@ -850,8 +1110,8 @@ export const buildExportPosReportsUseCase = ({ posRepository, getReportsOverview
                 ]
                 : section === 'registers'
                     ? [
-                        ['Opening Cashier', 'Shift IDs', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance', 'Notice'],
-                        ...(lifecycle.registers || []).map((row) => [row.opening_cashier_name, (row.shift_ids || []).join('|'), row.opening_float_amount, row.cash_sales_amount, row.cash_in_total, row.cash_out_total, row.expected_cash_amount, row.closing_cash_amount, row.variance_amount, row.attribution_notice])
+                        ['Register Shift', 'Opening Cashier', 'Opening Float', 'Cash Sales', 'Cash In', 'Cash Out', 'Expected Cash', 'Closing Cash', 'Variance', 'Notice'],
+                        ...(lifecycle.registers || []).map((row) => [`RS-${row.shift_id}`, row.opening_cashier_name, row.opening_float_amount, row.cash_sales_amount, row.cash_in_total, row.cash_out_total, row.expected_cash_amount, row.closing_cash_amount, row.variance_amount, row.attribution_notice])
                     ]
                     : section === 'handoffs'
                         ? [
@@ -5876,7 +6136,8 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         const requestedVoidIdempotencyKey = String(payload.idempotency_key || '').trim();
         const expectedStatus = String(payload.expected_status || '').trim().toLowerCase() || null;
         const expectedServerVersion = String(payload.expected_server_version || '').trim() || null;
-        const adminShiftBypass = isPosAdminOperator(user) && !activeShiftId;
+        const adminApprovalBypass = isPosAdminOperator(user);
+        const adminShiftBypass = adminApprovalBypass && !activeShiftId;
         const approvalAuthorized = Boolean(
             approvalExecution
             && approvalExecution.action_type === 'pos_void'
@@ -5888,7 +6149,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
         if (approvalExecution && !approvalAuthorized) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'A valid Back Office approval is required to execute this POS void.',
+                'A valid manager approval is required to execute this POS void.',
                 { statusCode: 403, details: { reason_code: 'POS_VOID_APPROVAL_INVALID' } }
             ));
         }
@@ -5969,12 +6230,50 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     }
                 });
             }
+            const supersededApprovalRequest = !approvalAuthorized
+                && adminApprovalBypass
+                && typeof posRepository.findPendingBusinessAdminApprovalRequest === 'function'
+                ? await posRepository.findPendingBusinessAdminApprovalRequest({
+                    actionType: 'pos_void',
+                    entityType: 'pos_transaction',
+                    entityId: normalizedTransactionId
+                }, { transaction, lock: true })
+                : null;
+            const supersededApprovalRequestId = parsePositiveInt(supersededApprovalRequest?.business_admin_approval_request_id);
+            if (supersededApprovalRequest) {
+                if (typeof posRepository.updateBusinessAdminApprovalRequest !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'The existing POS void approval request cannot be closed before administrator execution.',
+                        { statusCode: 503, details: { reason_code: 'POS_VOID_APPROVAL_UPDATE_UNAVAILABLE' } }
+                    );
+                }
+                const cancelledApprovalRequest = await posRepository.updateBusinessAdminApprovalRequest(
+                    supersededApprovalRequestId,
+                    {
+                        status: 'cancelled',
+                        approval_note: 'Cancelled because an administrator executed the POS void directly.'
+                    },
+                    { transaction, lock: true }
+                );
+                if (!cancelledApprovalRequest) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'The existing POS void approval request was not found during administrator execution.',
+                        { statusCode: 404 }
+                    );
+                }
+            }
             const auditShiftId = transactionShiftId || activeShiftId || null;
             const authorizationMode = approvalAuthorized
                 ? 'back_office_approval'
-                : (trustedMobileReplay ? 'mobile_offline_replay' : (adminShiftBypass ? 'admin_shift_bypass' : 'cashier_shift'));
+                : (trustedMobileReplay
+                    ? 'mobile_offline_replay'
+                    : (adminApprovalBypass
+                        ? (adminShiftBypass ? 'admin_shift_bypass' : 'admin_bypass')
+                        : 'cashier_shift'));
 
-            if (!approvalAuthorized) {
+            if (!approvalAuthorized && !adminApprovalBypass) {
                 if (String(existing.status || '').trim().toLowerCase() === 'voided') {
                     throw new DomainError(
                         DomainErrorCode.CONFLICT,
@@ -6017,7 +6316,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                         approval_request: existingRequest,
                         pending: true,
                         idempotent_replay: true
-                    }, 'POS void request is awaiting Back Office approval');
+                    }, 'POS void request is awaiting manager approval');
                 }
                 const approvalRequest = await posRepository.createBusinessAdminApprovalRequest({
                     action_type: 'pos_void',
@@ -6055,7 +6354,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     approval_request: approvalRequest,
                     pending: true,
                     idempotent_replay: false
-                }, 'POS void request submitted for Back Office approval');
+                }, 'POS void request submitted for manager approval');
             }
             const originalCashierId = parsePositiveInt(existing.cashier_id);
             const tenderType = String(existing.payment_type || 'unknown').trim().toLowerCase() || 'unknown';
@@ -6129,41 +6428,95 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                 );
             }
 
-            const stockMovements = typeof posRepository.listStockMovementsForPosTransaction === 'function'
-                ? await posRepository.listStockMovementsForPosTransaction(normalizedTransactionId, { transaction })
-                : [];
+            if (typeof posRepository.listStockMovementsForPosTransaction !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Stock movement lookup is unavailable for this POS void.',
+                    { statusCode: 503, details: { reason_code: 'POS_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE' } }
+                );
+            }
+            const stockMovements = await posRepository.listStockMovementsForPosTransaction(
+                normalizedTransactionId,
+                { transaction }
+            );
+            if (!Array.isArray(stockMovements)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Stock movement lookup returned an invalid result for this POS void.',
+                    { statusCode: 503, details: { reason_code: 'POS_VOID_STOCK_MOVEMENT_LOOKUP_INVALID' } }
+                );
+            }
             const stockReversals = [];
             // #1952: IDs actually reversed, for the post-commit invalidation below.
             const voidStockChangedItemIds = new Set();
             for (const movement of stockMovements || []) {
-                const quantity = Math.abs(Number(movement.quantity || 0));
-                if (quantity <= 0) continue;
-                const reversal = await executeInventoryStockCommand({
-                    inventoryCommandService: stockCommands,
-                    command: 'returnStockForVoidedSale',
-                    movementData: {
-                        item_id: movement.item_id,
-                        quantity,
-                        movement_type: 'return',
-                        location_id: movement.location_id || existing.location_id || null,
-                        reference_type: 'POS',
-                        reference_id: String(normalizedTransactionId),
-                        notes: `POS void reversal for ${existing.invoice_number}`
-                    },
-                    userId: actorUserId,
-                    transaction
-                });
-                const reversedItemId = parsePositiveInt(movement.item_id);
+                const movementId = parsePositiveInt(movement?.movement_id);
+                const itemId = parsePositiveInt(movement?.item_id);
+                const issuedQuantity = Number(movement?.quantity);
+                if (!movementId || !itemId || !Number.isFinite(issuedQuantity) || issuedQuantity >= 0) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'A POS stock movement is invalid and cannot be safely reversed.',
+                        {
+                            statusCode: 409,
+                            details: {
+                                reason_code: 'POS_VOID_STOCK_MOVEMENT_INVALID',
+                                movement_id: movementId || null
+                            }
+                        }
+                    );
+                }
+                const returnStockForVoidedSale = stockCommands?.returnStockForVoidedSale;
+                if (typeof returnStockForVoidedSale !== 'function') {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Inventory return command is unavailable for this POS void.',
+                        { statusCode: 503, details: { reason_code: 'POS_VOID_STOCK_REVERSAL_UNAVAILABLE' } }
+                    );
+                }
+                const quantity = Math.abs(issuedQuantity);
+                const reversal = await returnStockForVoidedSale({
+                    item_id: itemId,
+                    quantity,
+                    movement_type: 'return',
+                    location_id: parsePositiveInt(movement.location_id) || transactionLocationId || null,
+                    reference_type: 'POS',
+                    reference_id: String(normalizedTransactionId),
+                    notes: `POS void reversal for ${existing.invoice_number}`
+                }, actorUserId, transaction);
+                const reversalMovementId = parsePositiveInt(reversal?.movement_id);
+                if (!reversalMovementId) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Inventory did not confirm the POS stock reversal.',
+                        {
+                            statusCode: 503,
+                            details: {
+                                reason_code: 'POS_VOID_STOCK_REVERSAL_NOT_PERSISTED',
+                                original_movement_id: movementId
+                            }
+                        }
+                    );
+                }
+                const reversedItemId = itemId;
                 if (reversedItemId) voidStockChangedItemIds.add(reversedItemId);
                 stockReversals.push({
-                    original_movement_id: movement.movement_id || null,
-                    reversal_movement_id: reversal?.movement_id || null
+                    original_movement_id: movementId,
+                    reversal_movement_id: reversalMovementId
                 });
             }
 
-            const linkedParkedSale = typeof posRepository.findParkedSaleByCompletedTransactionId === 'function'
-                ? await posRepository.findParkedSaleByCompletedTransactionId(normalizedTransactionId, { transaction, lock: true })
-                : null;
+            if (typeof posRepository.findParkedSaleByCompletedTransactionId !== 'function') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Parked-sale linkage lookup is unavailable for this POS void.',
+                    { statusCode: 503, details: { reason_code: 'POS_VOID_PARKED_SALE_LOOKUP_UNAVAILABLE' } }
+                );
+            }
+            const linkedParkedSale = await posRepository.findParkedSaleByCompletedTransactionId(
+                normalizedTransactionId,
+                { transaction, lock: true }
+            );
             if (linkedParkedSale?.inventory_deducted_at) {
                 const reverseParkedSaleGoodsIssue = stockCommands?.reverseParkedSaleGoodsIssue;
                 if (typeof reverseParkedSaleGoodsIssue !== 'function') {
@@ -6177,13 +6530,36 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     parked_sale_id: linkedParkedSale.pos_parked_sale_id,
                     reason: `POS void reversal for ${existing.invoice_number || `transaction ${normalizedTransactionId}`}`
                 }, actorUserId, transaction);
-                for (const reversal of Array.isArray(parkedReversals) ? parkedReversals : []) {
+                if (!Array.isArray(parkedReversals)) {
+                    throw new DomainError(
+                        DomainErrorCode.CONFLICT,
+                        'Parked-sale inventory reversal returned an invalid result.',
+                        { statusCode: 503, details: { reason_code: 'POS_VOID_PARKED_SALE_REVERSAL_INVALID' } }
+                    );
+                }
+                for (const reversal of parkedReversals) {
+                    const reversalMovementId = reversal?.preserved === true
+                        ? null
+                        : parsePositiveInt(reversal?.reversal_movement_id);
+                    if (reversal?.preserved !== true && !reversalMovementId) {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Parked-sale inventory reversal was not persisted.',
+                            {
+                                statusCode: 503,
+                                details: {
+                                    reason_code: 'POS_VOID_PARKED_SALE_REVERSAL_NOT_PERSISTED',
+                                    original_movement_id: parsePositiveInt(reversal?.original_movement_id)
+                                }
+                            }
+                        );
+                    }
                     const reversedItemId = parsePositiveInt(reversal.item_id);
                     if (reversedItemId) voidStockChangedItemIds.add(reversedItemId);
                     stockReversals.push({
                         source: 'parked_sale',
                         original_movement_id: reversal.original_movement_id || null,
-                        reversal_movement_id: reversal.reversal_movement_id || null
+                        reversal_movement_id: reversalMovementId
                     });
                 }
             }
@@ -6253,6 +6629,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     operator_session_id: operatorSessionId,
                     authorization_mode: authorizationMode,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                    superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
                     approved_by: approvalAuthorized ? actorUserId : null,
                     payment_status_before_void: paymentStatusBeforeVoid,
@@ -6293,6 +6670,7 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     voided_by: actorUserId,
                     authorization_mode: authorizationMode,
                     approval_request_id: approvalAuthorized ? parsePositiveInt(approvalExecution.approval_request_id) : null,
+                    superseded_approval_request_id: supersededApprovalRequestId,
                     approval_requested_by: approvalAuthorized ? parsePositiveInt(approvalExecution.requested_by) : null,
                     terminal_id: activeTerminalId || existing.terminal_id || null,
                     location_id: existing.location_id || null,
@@ -6731,6 +7109,11 @@ const serializeAppliedVouchers = (row) => (
         : []
 );
 
+export const shouldExcludeTrainingTestTransactionsFromPosHistory = (user = {}) => (
+    String(user?.role || '').trim().toLowerCase() === 'cashier'
+    && user?.is_master_admin !== true
+);
+
 export const buildListPosTransactionsUseCase = ({ posRepository }) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
@@ -6760,7 +7143,8 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
             });
             const data = await posRepository.listTransactions({
                 ...(query || {}),
-                location_id: locationScope.location_id
+                location_id: locationScope.location_id,
+                exclude_training_test: shouldExcludeTrainingTestTransactionsFromPosHistory(user)
             });
             const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
                 ? await posRepository.getReceiptPrintStatuses((data?.transactions || []).map((row) => row?.pos_transaction_id))
@@ -9763,9 +10147,98 @@ export const buildGetCurrentTerminalShiftUseCase = ({
     };
 };
 
+const CASHIER_HISTORY_SCOPE_MODE = Object.freeze({
+    OWN: 'own',
+    COMPANY: 'company'
+});
+
+const hasCompanyCashierHistoryAccess = (user) => (
+    user?.is_master_admin === true
+    || hasEffectivePermission(user, PERMISSIONS.BUSINESS_ADMIN.actions.VIEW_ALL_BRANCHES)
+);
+
+const resolveCashierHistoryScope = async ({
+    user,
+    userId,
+    requestedLocationId,
+    resolveLocationScope,
+    listActiveLocations
+}) => {
+    const hasRequestedLocation = requestedLocationId != null;
+    const normalizedRequestedLocationId = hasRequestedLocation
+        ? parsePositiveInt(requestedLocationId)
+        : null;
+
+    if (hasRequestedLocation && !normalizedRequestedLocationId) {
+        throw buildLocationScopeDeniedError({
+            message: 'location_id must be a positive integer',
+            reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_CONTEXT_REQUIRED,
+            statusCode: 422
+        });
+    }
+
+    if (!hasCompanyCashierHistoryAccess(user)) {
+        const locationScope = await resolveLocationScope({
+            requestedLocationId,
+            userId,
+            operationLabel: 'POS cashier history read'
+        });
+        return {
+            mode: CASHIER_HISTORY_SCOPE_MODE.OWN,
+            cashierId: userId,
+            locationId: locationScope.location_id,
+            locationIds: [locationScope.location_id],
+            locationCount: 1,
+            label: 'Current cashier and location'
+        };
+    }
+
+    if (typeof listActiveLocations !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'Company branch scope is unavailable for cashier history',
+            { statusCode: 503, details: { reason_code: 'POS_CASHIER_HISTORY_SCOPE_UNAVAILABLE' } }
+        );
+    }
+
+    const activeLocations = await listActiveLocations({
+        locationIds: normalizedRequestedLocationId ? [normalizedRequestedLocationId] : []
+    });
+    const locationIds = Array.from(new Set(
+        (Array.isArray(activeLocations) ? activeLocations : [])
+            .map((location) => parsePositiveInt(location?.location_id))
+            .filter(Boolean)
+    ));
+
+    if (locationIds.length === 0) {
+        throw buildLocationScopeDeniedError({
+            message: normalizedRequestedLocationId
+                ? 'Access denied for the requested cashier history branch.'
+                : 'No active company branches are available for cashier history.',
+            reasonCode: normalizedRequestedLocationId
+                ? LOCATION_SCOPE_REASON_CODES.LOCATION_ACCESS_DENIED
+                : 'POS_CASHIER_HISTORY_SCOPE_EMPTY',
+            statusCode: 403,
+            details: { location_id: normalizedRequestedLocationId }
+        });
+    }
+
+    return {
+        mode: CASHIER_HISTORY_SCOPE_MODE.COMPANY,
+        cashierId: null,
+        locationId: normalizedRequestedLocationId,
+        locationIds,
+        locationCount: locationIds.length,
+        label: normalizedRequestedLocationId
+            ? 'Selected authorized company branch'
+            : 'All authorized company branches'
+    };
+};
+
 export const buildGetCashierShiftHistoryUseCase = ({
     posRepository,
-    resolveLocationScope = resolvePosReadLocationScope
+    resolveLocationScope = resolvePosReadLocationScope,
+    listActiveLocations
 }) => {
     return async ({ query = {}, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -9778,20 +10251,29 @@ export const buildGetCashierShiftHistoryUseCase = ({
         }
 
         try {
-            const locationScope = await resolveLocationScope({
-                requestedLocationId: query?.location_id,
+            const historyScope = await resolveCashierHistoryScope({
+                user,
                 userId: normalizedUserId,
-                operationLabel: 'POS cashier history read'
+                requestedLocationId: query?.location_id,
+                resolveLocationScope,
+                listActiveLocations
             });
-            const result = await posRepository.listCashierShiftHistory({
-                cashierId: normalizedUserId,
-                locationId: locationScope.location_id,
+            const historyQuery = {
                 dateFrom: query?.date_from,
                 dateTo: query?.date_to,
                 status: query?.status || 'all',
                 page: query?.page || 1,
                 limit: query?.limit || 20
-            });
+            };
+            if (historyScope.mode === CASHIER_HISTORY_SCOPE_MODE.COMPANY) {
+                historyQuery.locationId = historyScope.locationId;
+                historyQuery.locationIds = historyScope.locationIds;
+            } else {
+                historyQuery.cashierId = historyScope.cashierId;
+                historyQuery.locationId = historyScope.locationId;
+            }
+
+            const result = await posRepository.listCashierShiftHistory(historyQuery);
             const rows = Array.isArray(result?.rows) ? result.rows : [];
             const records = await Promise.all(rows.map(async (row) => {
                 const shift = toSerializable(row);
@@ -9815,9 +10297,16 @@ export const buildGetCashierShiftHistoryUseCase = ({
             }));
 
             return ok({
-                cashier: {
-                    cashier_id: normalizedUserId,
-                    cashier_name: String(user?.username || user?.email || '').trim() || null
+                cashier: historyScope.mode === CASHIER_HISTORY_SCOPE_MODE.OWN
+                    ? {
+                        cashier_id: normalizedUserId,
+                        cashier_name: String(user?.username || user?.email || '').trim() || null
+                    }
+                    : null,
+                history_scope: {
+                    mode: historyScope.mode,
+                    location_count: historyScope.locationCount,
+                    label: historyScope.label
                 },
                 records,
                 pagination: result?.pagination || {
@@ -9827,7 +10316,7 @@ export const buildGetCashierShiftHistoryUseCase = ({
                     totalPages: 1
                 },
                 applied_filters: {
-                    location_id: locationScope.location_id,
+                    location_id: historyScope.locationId,
                     date_from: normalizeBusinessDateInput(query?.date_from) || null,
                     date_to: normalizeBusinessDateInput(query?.date_to) || null,
                     status: query?.status || 'all'

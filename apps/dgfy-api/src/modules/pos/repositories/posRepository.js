@@ -65,6 +65,7 @@ const toPositiveIntArray = (value) => Array.from(new Set(
 const TERMINAL_REGISTRY_MODE_VALUES = new Set(['warn', 'enforce']);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const POS_BEST_SELLER_SETTINGS_KEY = 'pos_best_seller_settings';
+const TRAINING_TEST_DOCUMENT_CONTEXT = 'training_test';
 const DEFAULT_BEST_SELLER_SETTINGS = Object.freeze({ enabled: true, lookback_days: 30, top_limit: 3 });
 const DAILY_BEST_SELLER_SETTINGS = Object.freeze({ lookback_days: 1, top_limit: 1 });
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
@@ -1352,6 +1353,28 @@ const sumBy = (rows = [], selector = () => 0) => round4((Array.isArray(rows) ? r
     sum + Number(selector(row) || 0)
 ), 0));
 
+// Discount reports and Z-readings must use the same sale-time snapshot. Prefer
+// the persisted per-line allocation when it exists, then the persisted
+// transaction discount snapshot, and finally the legacy transaction header.
+// The line allocation is the most complete evidence for older rows where the
+// header or transaction-level snapshot was not populated correctly.
+export const resolveCanonicalTransactionDiscountAmount = (transaction = {}) => {
+    const plainTransaction = toPlain(transaction) || {};
+    const discountAllocations = Array.isArray(plainTransaction?.discount?.lines)
+        ? plainTransaction.discount.lines.filter((allocation) => allocation?.beneficiary_id == null)
+        : [];
+
+    if (discountAllocations.length > 0) {
+        return sumBy(discountAllocations, (allocation) => allocation?.discount_amount);
+    }
+
+    if (plainTransaction?.discount && plainTransaction.discount.discount_amount != null) {
+        return round4(plainTransaction.discount.discount_amount);
+    }
+
+    return round4(plainTransaction.discount_amount);
+};
+
 const uniqueCountBy = (rows = [], selector = () => null) => {
     const values = new Set();
     (Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -1375,6 +1398,48 @@ const getManilaDateParts = (value = new Date()) => {
     const month = parts.find((part) => part.type === 'month')?.value || '01';
     const day = parts.find((part) => part.type === 'day')?.value || '01';
     return { year, month, day, date: `${year}-${month}-${day}` };
+};
+
+const getManilaHourParts = (value = new Date()) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        hourCycle: 'h23'
+    });
+    const parts = formatter.formatToParts(date);
+    const year = parts.find((part) => part.type === 'year')?.value || '1970';
+    const month = parts.find((part) => part.type === 'month')?.value || '01';
+    const day = parts.find((part) => part.type === 'day')?.value || '01';
+    const hour = parts.find((part) => part.type === 'hour')?.value || '00';
+    return {
+        year,
+        month,
+        day,
+        hour,
+        date: `${year}-${month}-${day}`,
+        key: `${year}-${month}-${day}T${hour}:00:00+08:00`
+    };
+};
+
+const formatManilaHourBoundary = (value) => {
+    const parts = getManilaHourParts(value);
+    return parts?.key || null;
+};
+
+const buildManilaHourBucket = (value) => {
+    const parts = getManilaHourParts(value);
+    if (!parts) return null;
+    const start = new Date(parts.key);
+    return {
+        key: parts.key,
+        bucket_start_local: formatManilaHourBoundary(start),
+        bucket_end_local: formatManilaHourBoundary(new Date(start.getTime() + (60 * 60 * 1000)))
+    };
 };
 
 const addDays = (value, days) => {
@@ -2109,9 +2174,9 @@ const buildReportShiftMoney = ({ shift = {}, transactions = [] } = {}) => {
     const closingCashAmount = shift.closing_cash_amount == null
         ? null
         : round4(shift.closing_cash_amount);
-    const cashVarianceAmount = shift.cash_variance_amount == null
-        ? (closingCashAmount == null ? null : round4(closingCashAmount - expectedCashAmount))
-        : round4(shift.cash_variance_amount);
+    const cashVarianceAmount = closingCashAmount == null
+        ? null
+        : round4(closingCashAmount - expectedCashAmount);
 
     return {
         shift_count: 1,
@@ -2168,7 +2233,9 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
             discount_amount: 0,
             refund_amount: 0,
             vatable_sales: 0,
-            vat_amount: 0
+            vat_amount: 0,
+            cogs: 0,
+            pos_profit_loss: 0
         };
         current.gross_sales = round4(current.gross_sales + Number(row.gross_sales || 0));
         current.net_sales = round4(current.net_sales + Number(row.net_sales || 0));
@@ -2176,6 +2243,8 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
         current.refund_amount = round4(current.refund_amount + Number(row.refund_amount || 0));
         current.vatable_sales = round4(current.vatable_sales + Number(row.vatable_sales || 0));
         current.vat_amount = round4(current.vat_amount + Number(row.vat_amount || 0));
+        current.cogs = round4(current.cogs + Number(row.cogs || 0));
+        current.pos_profit_loss = round4(current.pos_profit_loss + Number(row.pos_profit_loss || 0));
         lineSummaryByTransaction.set(key, current);
     });
 
@@ -2203,7 +2272,9 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 discount_amount: round4(summary.discount_amount),
                 vatable_sales: round4(summary.vatable_sales),
                 vat_amount: round4(summary.vat_amount),
-                refund_amount: round4(summary.refund_amount)
+                refund_amount: round4(summary.refund_amount),
+                cogs: round4(summary.cogs),
+                pos_profit_loss: round4(summary.pos_profit_loss)
             };
         });
 };
@@ -2230,7 +2301,7 @@ const reportPage = (rows = [], filters = {}) => {
     };
 };
 
-const loadCashierLifecycleReport = async ({ filters = {}, options = {}, registerReconciliation = new Map() } = {}) => {
+const loadCashierLifecycleReport = async ({ filters = {}, options = {}, registerRows = [] } = {}) => {
     const Attendance = dbStore.get('EmployeeAttendanceSession');
     const Break = dbStore.get('EmployeeBreakSegment');
     const Operator = dbStore.get('PosTerminalOperatorSession');
@@ -2242,7 +2313,7 @@ const loadCashierLifecycleReport = async ({ filters = {}, options = {}, register
             attendance: empty,
             operators: empty,
             handoffs: empty,
-            registers: [],
+            registers: Array.isArray(registerRows) ? registerRows : [],
             reconciliation: { cashier_net_sales: 0, register_net_sales: 0, difference: 0 }
         };
     }
@@ -2372,27 +2443,11 @@ const loadCashierLifecycleReport = async ({ filters = {}, options = {}, register
         note: event.note || null,
         variance_attribution: event.custody_mode === 'shared_access' ? 'shared_drawer_no_individual_variance' : 'counted_transfer'
     }));
-    const registerRows = Array.from(registerReconciliation.values()).map((entry) => ({
-        opening_cashier_id: entry.cashier_id,
-        opening_cashier_name: entry.cashier_name,
-        shift_ids: entry.shift_ids,
-        shift_count: entry.shift_count,
-        closed_shift_count: entry.closed_shift_count,
-        opening_float_amount: entry.opening_float_amount,
-        cash_sales_amount: entry.cash_sales_amount,
-        cash_in_total: entry.cash_in_total,
-        cash_out_total: entry.cash_out_total,
-        expected_cash_amount: entry.expected_cash_amount,
-        closing_cash_amount: entry.closing_cash_amount,
-        variance_amount: entry.cash_variance_amount,
-        attribution_notice: 'Register totals belong to the drawer lifecycle, not an individual relief cashier.'
-    }));
-
     return {
         attendance: reportPage(attendanceRows, filters),
         operators: reportPage(operatorRows, filters),
         handoffs: reportPage(handoffRows, filters),
-        registers: registerRows
+        registers: Array.isArray(registerRows) ? registerRows : []
     };
 };
 
@@ -2400,7 +2455,7 @@ const loadReportCashierReconciliation = async ({ transactions = [], filters = {}
     const PosTerminalShift = dbStore.get('PosTerminalShift');
     const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
     if (!PosTerminalShift || typeof PosTerminalShift.findAll !== 'function' || !PosCashDrawerEvent) {
-        return new Map();
+        return { cashierReconciliation: new Map(), registerRows: [], diagnostics: { variance_mismatch_count: 0, variance_mismatch_samples: [] } };
     }
 
     const where = {};
@@ -2453,23 +2508,62 @@ const loadReportCashierReconciliation = async ({ transactions = [], filters = {}
     });
 
     const grouped = new Map();
+    const registerRows = [];
+    const diagnostics = { variance_mismatch_count: 0, variance_mismatch_samples: [] };
     (Array.isArray(shifts) ? shifts : []).forEach((row) => {
         const shift = toPlain(row);
         const shiftId = toPositiveInt(shift.pos_terminal_shift_id);
         const cashierIdValue = toPositiveInt(shift.cashier_id || shift.cashier?.user_id);
-        if (!shiftId || !cashierIdValue) return;
+        if (!shiftId) return;
 
         const shiftMoney = buildReportShiftMoney({
             shift,
             transactions: transactionsByShift.get(shiftId) || []
         });
-        const key = String(cashierIdValue);
+        const storedVarianceAmount = shift.cash_variance_amount == null
+            ? null
+            : round4(shift.cash_variance_amount);
+        const derivedVarianceAmount = shiftMoney.cash_variance_amount;
+        if (storedVarianceAmount != null
+            && derivedVarianceAmount != null
+            && storedVarianceAmount !== derivedVarianceAmount) {
+            diagnostics.variance_mismatch_count += 1;
+            if (diagnostics.variance_mismatch_samples.length < 10) {
+                diagnostics.variance_mismatch_samples.push({
+                    shift_id: shiftId,
+                    location_id: toPositiveInt(shift.location_id),
+                    stored_variance_amount: storedVarianceAmount,
+                    derived_variance_amount: derivedVarianceAmount,
+                    delta: round4(storedVarianceAmount - derivedVarianceAmount)
+                });
+            }
+        }
+
+        registerRows.push({
+            shift_id: shiftId,
+            opening_cashier_id: cashierIdValue,
+            opening_cashier_name: shift.cashier?.username || (cashierIdValue ? `Cashier #${cashierIdValue}` : 'Unassigned'),
+            shift_count: 1,
+            closed_shift_count: shiftMoney.closed_shift_count,
+            status: String(shift.status || '').trim().toLowerCase() || null,
+            opening_float_amount: shiftMoney.opening_float_amount,
+            cash_sales_amount: shiftMoney.cash_sales_amount,
+            cash_in_total: shiftMoney.cash_in_total,
+            cash_out_total: shiftMoney.cash_out_total,
+            expected_cash_amount: shiftMoney.expected_cash_amount,
+            closing_cash_amount: shiftMoney.closing_cash_amount,
+            variance_amount: derivedVarianceAmount,
+            attribution_notice: 'Register totals belong to the drawer lifecycle, not an individual relief cashier.'
+        });
+
+        const key = cashierIdValue ? String(cashierIdValue) : 'unassigned';
         const current = grouped.get(key) || {
             cashier_id: cashierIdValue,
-            cashier_name: shift.cashier?.username || `Cashier #${cashierIdValue}`,
+            cashier_name: shift.cashier?.username || (cashierIdValue ? `Cashier #${cashierIdValue}` : 'Unassigned'),
             shift_ids: [],
             shift_count: 0,
             closed_shift_count: 0,
+            closing_cash_count: 0,
             opening_float_amount: 0,
             cash_sales_amount: 0,
             cash_in_total: 0,
@@ -2479,9 +2573,7 @@ const loadReportCashierReconciliation = async ({ transactions = [], filters = {}
             net_events_total: 0,
             expected_cash_amount: 0,
             closing_cash_amount: 0,
-            cash_variance_amount: 0,
-            has_closing_cash: false,
-            has_cash_variance: false
+            has_closing_cash: false
         };
 
         current.shift_ids.push(shiftId);
@@ -2497,32 +2589,39 @@ const loadReportCashierReconciliation = async ({ transactions = [], filters = {}
         current.expected_cash_amount = round4(current.expected_cash_amount + shiftMoney.expected_cash_amount);
         if (shiftMoney.closing_cash_amount != null) {
             current.has_closing_cash = true;
+            current.closing_cash_count += 1;
             current.closing_cash_amount = round4(current.closing_cash_amount + shiftMoney.closing_cash_amount);
-        }
-        if (shiftMoney.cash_variance_amount != null) {
-            current.has_cash_variance = true;
-            current.cash_variance_amount = round4(current.cash_variance_amount + shiftMoney.cash_variance_amount);
         }
         grouped.set(key, current);
     });
 
-    return new Map(Array.from(grouped.entries()).map(([key, value]) => [key, {
-        cashier_id: value.cashier_id,
-        cashier_name: value.cashier_name,
-        shift_ids: value.shift_ids,
-        shift_count: value.shift_count,
-        closed_shift_count: value.closed_shift_count,
-        opening_float_amount: value.opening_float_amount,
-        cash_sales_amount: value.cash_sales_amount,
-        cash_in_total: value.cash_in_total,
-        cash_out_total: value.cash_out_total,
-        opening_adjustment_total: value.opening_adjustment_total,
-        closing_adjustment_total: value.closing_adjustment_total,
-        net_events_total: value.net_events_total,
-        expected_cash_amount: value.expected_cash_amount,
-        closing_cash_amount: value.has_closing_cash ? value.closing_cash_amount : null,
-        cash_variance_amount: value.has_cash_variance ? value.cash_variance_amount : null
-    }]));
+    const cashierReconciliation = new Map(Array.from(grouped.entries()).map(([key, value]) => {
+        const reconciliationComplete = value.closed_shift_count === value.shift_count
+            && value.closing_cash_count === value.shift_count;
+        const closingCashAmount = value.has_closing_cash ? value.closing_cash_amount : null;
+        return [key, {
+            cashier_id: value.cashier_id,
+            cashier_name: value.cashier_name,
+            shift_ids: value.shift_ids,
+            shift_count: value.shift_count,
+            closed_shift_count: value.closed_shift_count,
+            opening_float_amount: value.opening_float_amount,
+            cash_sales_amount: value.cash_sales_amount,
+            cash_in_total: value.cash_in_total,
+            cash_out_total: value.cash_out_total,
+            opening_adjustment_total: value.opening_adjustment_total,
+            closing_adjustment_total: value.closing_adjustment_total,
+            net_events_total: value.net_events_total,
+            expected_cash_amount: value.expected_cash_amount,
+            closing_cash_amount: closingCashAmount,
+            reconciliation_complete: reconciliationComplete,
+            cash_variance_amount: reconciliationComplete && closingCashAmount != null
+                ? round4(closingCashAmount - value.expected_cash_amount)
+                : null
+        }];
+    }));
+
+    return { cashierReconciliation, registerRows, diagnostics };
 };
 
 const buildShiftSummary = (rows = []) => {
@@ -2638,10 +2737,9 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
 
     (Array.isArray(transactions) ? transactions : []).forEach((transaction) => {
         const isVoidedOrRefunded = transaction?.status === 'voided' || REFUND_PAYMENT_STATUSES.has(String(transaction?.payment_status || '').trim().toLowerCase());
-        const subtotalAmount = Number(transaction?.subtotal_amount || 0);
         const totalServiceFeeAmount = Number(transaction?.service_fee_amount || 0) + Number(transaction?.restaurant_service_charge_amount || 0);
         const vatAmount = Number(transaction?.vat_amount || 0);
-        const discountAmount = Number(transaction?.discount_amount || 0);
+        const discountAmount = resolveCanonicalTransactionDiscountAmount(transaction);
         const discountAllocations = Array.isArray(transaction?.discount?.lines)
             ? transaction.discount.lines.filter((allocation) => allocation.beneficiary_id == null)
             : [];
@@ -2649,7 +2747,20 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
         const sourceLabel = resolveReportSourceLabel(transaction);
         const transactionLines = Array.isArray(transaction?.lines) ? transaction.lines : [];
         const reportLineContexts = transactionLines.map((line) => {
-            const grossSales = round4(line?.line_subtotal || 0);
+            // Governed discounts persist line_subtotal as the final amount paid.
+            // Use the immutable sale-time price/quantity snapshot for gross sales;
+            // otherwise a report would subtract the same discount twice.
+            const quantity = Number(line?.quantity || 0);
+            const salePrice = Number(line?.sale_price);
+            const hasSaleTimePrice = line?.sale_price !== null
+                && line?.sale_price !== undefined
+                && String(line.sale_price).trim() !== ''
+                && Number.isFinite(quantity)
+                && quantity > 0
+                && Number.isFinite(salePrice);
+            const grossSales = hasSaleTimePrice
+                ? round4(quantity * salePrice)
+                : round4(line?.line_subtotal || 0);
             const persistedDiscountAllocation = discountAllocationByLineId.get(Number(line?.line_id));
             const vatType = String(line?.vat_type_snapshot || 'vatable').trim().toLowerCase();
             const hasDiscountVatExemption = Number(persistedDiscountAllocation?.vat_exempt_amount || 0) > 0;
@@ -2671,18 +2782,34 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
         // allocating the taxable service-charge-only case across the invoice lines.
         const taxAllocationBase = vatableLineGross > 0 ? vatableLineGross : totalLineGross;
 
-        reportLineContexts.forEach(({ line, item, grossSales, persistedDiscountAllocation, isVatableLine }) => {
+        reportLineContexts.forEach(({ line, item, grossSales, persistedDiscountAllocation, isVatableLine }, lineIndex) => {
             const reportCategory = resolveReportItemCategory(item);
             const category = reportCategory.toLowerCase();
-            if (normalizedFolderId && Number(item?.folder_id) !== normalizedFolderId) {
+            const folderId = toPositiveInt(item?.folder_id || item?.folder?.folder_id || line?.folder_id_snapshot);
+            const categoryKey = folderId
+                ? `folder:${folderId}`
+                : category
+                    ? `legacy:${category}`
+                    : 'uncategorized';
+            const itemId = toPositiveInt(line?.item_id || item?.item_id);
+            const itemName = line?.item_name_snapshot || item?.name || (itemId ? `Item #${itemId}` : 'Unnamed item');
+            const skuCode = line?.sku_snapshot || item?.sku_code || null;
+            const itemKey = itemId
+                ? `item:${itemId}`
+                : skuCode
+                    ? `snapshot-sku:${String(skuCode).trim().toLowerCase()}`
+                    : `snapshot-line:${transaction?.pos_transaction_id || 'unknown'}:${line?.line_id || lineIndex}`;
+            if (normalizedFolderId && folderId !== normalizedFolderId) {
                 return;
             }
-            if (normalizedCategory && category !== normalizedCategory) {
+            if (normalizedCategory && (normalizedCategory === 'uncategorized'
+                ? categoryKey !== 'uncategorized'
+                : category !== normalizedCategory)) {
                 return;
             }
 
             const quantity = Number(line?.quantity || 0);
-            const share = subtotalAmount > 0 ? grossSales / subtotalAmount : 0;
+            const share = totalLineGross > 0 ? Math.max(0, grossSales) / totalLineGross : 0;
             const taxShare = taxAllocationBase > 0
                 ? (vatableLineGross > 0
                     ? (isVatableLine ? Math.max(0, grossSales) / vatableLineGross : 0)
@@ -2691,16 +2818,21 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             const recordedLineDiscount = persistedDiscountAllocation
                 ? round4(persistedDiscountAllocation.discount_amount)
                 : round4(discountAmount * share);
+            const recordedLineVatRemoved = persistedDiscountAllocation
+                ? round4(persistedDiscountAllocation.vat_removed)
+                : round4(Number(transaction?.discount?.vat_removed || 0) * share);
             // Preserve the recorded discount on the transaction for audit, but do not
             // count it as an active discount after the sale is voided or refunded.
             const lineDiscount = isVoidedOrRefunded ? 0 : recordedLineDiscount;
+            const lineVatRemoved = isVoidedOrRefunded ? 0 : recordedLineVatRemoved;
             const lineRefund = isVoidedOrRefunded ? grossSales : 0;
-            const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineRefund));
+            const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineVatRemoved - lineRefund));
             const lineCostPerUnit = line?.cost_snapshot != null ? Number(line.cost_snapshot || 0) : Number(item?.cost_per_unit || 0);
             const cogs = round4(quantity * lineCostPerUnit);
 
             rows.push({
                 transaction_id: transaction?.pos_transaction_id,
+                line_id: line?.line_id || null,
                 created_at: transaction?.created_at,
                 cashier_id: transaction?.cashier?.user_id || transaction?.cashier_id || null,
                 cashier_name: transaction?.cashier?.username || null,
@@ -2716,12 +2848,15 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 source_label: sourceLabel,
                 order_source: transaction?.order_source || 'in_store',
                 order_method: transaction?.order_method || 'dine_in',
-                item_id: line?.item_id,
+                item_id: itemId,
                 // Prefer the sale-time snapshot so a later item rename/delete
                 // never retro-changes a historical report row. Category still
                 // reads live: recategorization is meant to reclassify history.
-                item_name: line?.item_name_snapshot || item?.name || `Item #${line?.item_id}`,
-                sku_code: line?.sku_snapshot || item?.sku_code || null,
+                item_key: itemKey,
+                item_name: itemName,
+                sku_code: skuCode,
+                category_key: categoryKey,
+                category_name: reportCategory || 'Uncategorized',
                 category: reportCategory || null,
                 quantity,
                 gross_sales: grossSales,
@@ -2732,9 +2867,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 promo_code: transaction?.discount?.promo_code || null,
                 vat_removed: isVoidedOrRefunded
                     ? 0
-                    : persistedDiscountAllocation
-                        ? round4(persistedDiscountAllocation.vat_removed)
-                        : round4(Number(transaction?.discount?.vat_removed || 0) * share),
+                    : lineVatRemoved,
                 refund_amount: lineRefund,
                 vatable_sales: isVoidedOrRefunded ? 0 : round4(Number(transaction?.vatable_sales || 0) * taxShare),
                 vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * taxShare),
@@ -2746,6 +2879,192 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
     });
 
     return rows;
+};
+
+const REPORT_BREAKDOWN_TYPES = new Set(['hourly', 'items', 'categories']);
+const REPORT_BREAKDOWN_SORT_FIELDS = new Set([
+    'bucket_start_local',
+    'item_name',
+    'sku',
+    'category_name',
+    'item_count',
+    'quantity',
+    'orders',
+    'gross_sales',
+    'discounts',
+    'net_sales',
+    'refunds_voids',
+    'cogs',
+    'profit',
+    'profit_margin',
+    'average_unit_price',
+    'sales_share'
+]);
+
+const buildReportBreakdownMetrics = (entries = []) => {
+    const summary = serializeReportSummary(entries);
+    return {
+        quantity: round4(summary.total_items_sold),
+        orders: summary.total_transactions,
+        gross_sales: summary.gross_sales,
+        discounts: summary.discounts,
+        net_sales: summary.net_sales,
+        refunds_voids: summary.refunds_voids,
+        vat: summary.vat,
+        service_fees: summary.service_fees,
+        cogs: summary.cogs,
+        profit: summary.pos_profit_loss,
+        profit_margin: summary.profit_margin
+    };
+};
+
+const addBreakdownSalesShares = (rows = [], reportSummary = {}) => {
+    const denominator = Number(reportSummary.net_sales || 0);
+    return rows.map((row) => ({
+        ...row,
+        sales_share: denominator > 0 ? round4((Number(row.net_sales || 0) / denominator) * 100) : 0
+    }));
+};
+
+const buildHourlyReportRows = (normalizedLines = []) => {
+    const groups = new Map();
+    normalizedLines.forEach((row) => {
+        const bucket = buildManilaHourBucket(row.created_at);
+        if (!bucket) return;
+        if (!groups.has(bucket.key)) groups.set(bucket.key, { bucket, entries: [] });
+        groups.get(bucket.key).entries.push(row);
+    });
+
+    return Array.from(groups.values())
+        .sort((left, right) => left.bucket.key.localeCompare(right.bucket.key))
+        .map(({ bucket, entries }) => ({
+            bucket_start_local: bucket.bucket_start_local,
+            bucket_end_local: bucket.bucket_end_local,
+            ...buildReportBreakdownMetrics(entries),
+            transaction_count: uniqueCountBy(entries, (row) => row.transaction_id),
+            item_quantity: round4(sumBy(entries, (row) => row.quantity))
+        }));
+};
+
+const buildItemReportRows = (normalizedLines = []) => {
+    const groups = groupRowsBy(normalizedLines, (row) => row.item_key);
+    return Array.from(groups.entries()).map(([itemKey, entries]) => {
+        const metrics = buildReportBreakdownMetrics(entries);
+        return {
+            item_key: itemKey,
+            item_id: toPositiveInt(entries[0]?.item_id),
+            item_name: entries[0]?.item_name || 'Unnamed item',
+            sku: entries[0]?.sku_code || null,
+            category_key: entries[0]?.category_key || 'uncategorized',
+            category_name: entries[0]?.category_name || 'Uncategorized',
+            quantity: metrics.quantity,
+            orders: metrics.orders,
+            gross_sales: metrics.gross_sales,
+            discounts: metrics.discounts,
+            net_sales: metrics.net_sales,
+            refunds_voids: metrics.refunds_voids,
+            cogs: metrics.cogs,
+            profit: metrics.profit,
+            profit_margin: metrics.profit_margin,
+            average_unit_price: metrics.quantity > 0 ? round4(metrics.net_sales / metrics.quantity) : 0
+        };
+    });
+};
+
+const buildCategoryReportRows = (normalizedLines = []) => {
+    const groups = groupRowsBy(normalizedLines, (row) => row.category_key || 'uncategorized');
+    return Array.from(groups.entries()).map(([categoryKey, entries]) => ({
+        category_key: categoryKey,
+        category_name: entries[0]?.category_name || 'Uncategorized',
+        item_count: uniqueCountBy(entries, (row) => row.item_key),
+        ...buildReportBreakdownMetrics(entries)
+    }));
+};
+
+const compareReportBreakdownValues = (left, right) => {
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
+        && (typeof left === 'number' || typeof right === 'number' || left !== '' || right !== '')) {
+        return leftNumber - rightNumber;
+    }
+    return String(left ?? '').localeCompare(String(right ?? ''), 'en', { numeric: true, sensitivity: 'base' });
+};
+
+const sortReportBreakdownRows = (rows = [], breakdown = 'hourly', filters = {}) => {
+    const requestedField = String(filters.sort_by || '').trim().toLowerCase();
+    const sortField = REPORT_BREAKDOWN_SORT_FIELDS.has(requestedField)
+        ? requestedField
+        : breakdown === 'hourly'
+            ? 'bucket_start_local'
+            : 'net_sales';
+    const sortDirection = requestedField
+        ? (String(filters.sort_direction || 'desc').toLowerCase() === 'asc' ? 1 : -1)
+        : breakdown === 'hourly' ? 1 : -1;
+    const stableField = breakdown === 'hourly'
+        ? 'bucket_start_local'
+        : breakdown === 'items'
+            ? 'item_key'
+            : 'category_key';
+
+    return [...rows].sort((left, right) => {
+        const primary = compareReportBreakdownValues(left?.[sortField], right?.[sortField]);
+        if (primary !== 0) return primary * sortDirection;
+        if (sortField === stableField) return 0;
+        return compareReportBreakdownValues(left?.[stableField], right?.[stableField]);
+    });
+};
+
+const reportBreakdownPage = (rows = [], filters = {}) => {
+    const exportAll = filters.export_all === true;
+    const page = exportAll ? 1 : Math.max(1, Number.parseInt(filters.page, 10) || 1);
+    const limit = exportAll
+        ? Math.max(1, rows.length)
+        : Math.min(200, Math.max(1, Number.parseInt(filters.limit, 10) || 50));
+    const totalRows = rows.length;
+    const totalPages = exportAll ? 1 : Math.max(1, Math.ceil(totalRows / limit));
+    const offset = (page - 1) * limit;
+    return {
+        rows: exportAll ? rows : rows.slice(offset, offset + limit),
+        pagination: {
+            page,
+            limit,
+            total: totalRows,
+            total_rows: totalRows,
+            total_pages: totalPages,
+            has_next: page < totalPages
+        }
+    };
+};
+
+const buildReportBreakdownAppliedFilters = (filters = {}, range = {}) => {
+    const applied = {
+        date_from: range.dateFrom || normalizeBusinessDateValue(filters.date_from) || null,
+        date_to: range.dateTo || normalizeBusinessDateValue(filters.date_to) || null,
+        cashier_id: toPositiveInt(filters.cashier_id),
+        location_id: toPositiveInt(filters.location_id),
+        terminal_id: String(filters.terminal_id || '').trim() || null,
+        payment_type: String(filters.payment_type || '').trim().toLowerCase() || null,
+        source: String(filters.source || '').trim().toLowerCase() || null,
+        category_id: toPositiveInt(filters.category_id),
+        category: String(filters.category || '').trim() || null,
+        sort_by: String(filters.sort_by || '').trim().toLowerCase() || null,
+        sort_direction: String(filters.sort_direction || '').trim().toLowerCase() || null
+    };
+    return Object.fromEntries(Object.entries(applied).filter(([, value]) => value !== null));
+};
+
+const buildReportBreakdownRows = (normalizedLines = [], breakdown = 'hourly', reportSummary = {}, filters = {}) => {
+    const rows = breakdown === 'hourly'
+        ? buildHourlyReportRows(normalizedLines)
+        : breakdown === 'items'
+            ? buildItemReportRows(normalizedLines)
+            : buildCategoryReportRows(normalizedLines);
+    return sortReportBreakdownRows(
+        breakdown === 'hourly' ? rows : addBreakdownSalesShares(rows, reportSummary),
+        breakdown,
+        filters
+    );
 };
 
 const resolveAdjustmentEventAt = (adjustment = {}) => (
@@ -3645,7 +3964,12 @@ export const posRepository = {
 
     async listStockMovementsForPosTransaction(posTransactionId, options = {}) {
         const StockMovement = safeGetModel('StockMovement');
-        if (!StockMovement) return [];
+        if (!StockMovement) {
+            const error = new Error('Stock movement ledger is unavailable for POS void processing.');
+            error.statusCode = 503;
+            error.code = 'POS_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE';
+            throw error;
+        }
 
         const rows = await StockMovement.findAll({
             where: {
@@ -4218,6 +4542,14 @@ export const posRepository = {
         }
         const paymentTypeWhere = buildTransactionPaymentTypeWhere(PosTransaction.sequelize, filters.payment_type);
         if (paymentTypeWhere) whereAnd.push(paymentTypeWhere);
+        if (filters.exclude_training_test === true) {
+            whereAnd.push({
+                [Op.or]: [
+                    { document_context: { [Op.ne]: TRAINING_TEST_DOCUMENT_CONTEXT } },
+                    { document_context: null }
+                ]
+            });
+        }
         if (filters.payment_status) where.payment_status = filters.payment_status;
         if (filters.order_method) where.order_method = filters.order_method;
         if (filters.order_source) where.order_source = filters.order_source;
@@ -4505,7 +4837,7 @@ export const posRepository = {
                 })
                 : null
         ]);
-        const cashierReconciliation = await loadReportCashierReconciliation({
+        const reconciliation = await loadReportCashierReconciliation({
             transactions,
             filters,
             options
@@ -4513,13 +4845,13 @@ export const posRepository = {
         const cashierLifecycle = await loadCashierLifecycleReport({
             filters,
             options,
-            registerReconciliation: cashierReconciliation
+            registerRows: reconciliation.registerRows
         });
         const payload = buildReportPayloadFromTransactions(
             transactions,
             filters,
             categoryOptions,
-            cashierReconciliation,
+            reconciliation.cashierReconciliation,
             adjustments,
             cashierLifecycle,
             previousTransactions
@@ -4547,7 +4879,44 @@ export const posRepository = {
             reconciled: round4(cashierNetSales - registerNetSales) === 0,
             exclusions: ['cash drawer movements are register ledger entries, not sales']
         };
+        Object.defineProperty(payload, '_internal_register_variance_diagnostics', {
+            value: reconciliation.diagnostics,
+            enumerable: false
+        });
         return payload;
+    },
+
+    async getReportBreakdown(filters = {}, options = {}) {
+        const reportDateRange = resolveReportDateRange(filters);
+        const transactions = await this.listReportTransactions(filters, options);
+        const normalizedLines = normalizeReportLineRows(transactions, filters);
+        const breakdown = String(filters.breakdown || '').trim().toLowerCase();
+        if (!REPORT_BREAKDOWN_TYPES.has(breakdown)) {
+            throw new Error('Unsupported POS report breakdown');
+        }
+
+        const summary = serializeReportSummary(normalizedLines);
+        const rows = buildReportBreakdownRows(normalizedLines, breakdown, summary, filters);
+        const paged = reportBreakdownPage(rows, filters);
+        return {
+            breakdown,
+            timezone: 'Asia/Manila',
+            range: {
+                date_from: reportDateRange.dateFrom,
+                date_to: reportDateRange.dateTo,
+                timezone: 'Asia/Manila',
+                start_at: reportDateRange.startAt.toISOString(),
+                end_at_exclusive: reportDateRange.endAtExclusive.toISOString()
+            },
+            applied_filters: buildReportBreakdownAppliedFilters(filters, reportDateRange),
+            summary: {
+                ...summary,
+                profit: summary.pos_profit_loss
+            },
+            rows: paged.rows,
+            pagination: paged.pagination,
+            generated_at: new Date().toISOString()
+        };
     },
 
     async getZReadingReconciliationByBusinessDate(businessDate, options = {}) {
@@ -4622,6 +4991,8 @@ export const posRepository = {
     }, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const PosTransactionDiscount = dbStore.get('PosTransactionDiscount');
+        const PosTransactionDiscountLine = dbStore.get('PosTransactionDiscountLine');
         const Item = dbStore.get('Item');
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
@@ -4661,6 +5032,29 @@ export const posRepository = {
             raw: true,
             transaction: options.transaction
         });
+
+        const canonicalDiscountRows = PosTransactionDiscount && PosTransactionDiscountLine
+            ? await PosTransaction.findAll({
+                where,
+                attributes: ['pos_transaction_id', 'discount_amount'],
+                include: [{
+                    model: PosTransactionDiscount,
+                    as: 'discount',
+                    required: false,
+                    attributes: ['discount_amount'],
+                    include: [{
+                        model: PosTransactionDiscountLine,
+                        as: 'lines',
+                        required: false,
+                        attributes: ['discount_amount', 'beneficiary_id']
+                    }]
+                }],
+                transaction: options.transaction
+            })
+            : null;
+        const canonicalDiscountAmount = Array.isArray(canonicalDiscountRows)
+            ? sumBy(canonicalDiscountRows, (row) => resolveCanonicalTransactionDiscountAmount(row))
+            : round4(summaryRow?.discount_amount);
 
         const paymentBreakdownRows = await PosTransaction.findAll({
             where,
@@ -4892,7 +5286,7 @@ export const posRepository = {
         return {
             transaction_count: Number.parseInt(summaryRow?.transaction_count || 0, 10),
             subtotal_amount: round4(summaryRow?.subtotal_amount),
-            discount_amount: round4(summaryRow?.discount_amount),
+            discount_amount: canonicalDiscountAmount,
             service_fee_total: round4(summaryRow?.service_fee_total),
             restaurant_service_charge_total: round4(summaryRow?.restaurant_service_charge_total),
             vatable_sales: round4(summaryRow?.vatable_sales),
@@ -6408,6 +6802,63 @@ export const posRepository = {
         return row ? toPlain(row) : null;
     },
 
+    async listBusinessAdminApprovalRequests({ actionType = 'pos_void', actionTypes = null, status = 'pending', limit = 100 } = {}, options = {}) {
+        const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
+        if (!ApprovalRequest || typeof ApprovalRequest.findAll !== 'function') return [];
+
+        const normalizedLimit = Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 100);
+        const requestedActionTypes = actionTypes ?? actionType;
+        const normalizedActionTypes = [...new Set(
+            (Array.isArray(requestedActionTypes) ? requestedActionTypes : [requestedActionTypes])
+                .map((value) => String(value || '').trim())
+                .filter(Boolean)
+        )];
+        const actionTypeFilter = normalizedActionTypes.length > 0 ? normalizedActionTypes : ['pos_void'];
+        const where = {
+            action_type: actionTypeFilter.length === 1
+                ? actionTypeFilter[0]
+                : { [Op.in]: actionTypeFilter }
+        };
+        const normalizedStatus = String(status || '').trim().toLowerCase();
+        if (normalizedStatus) where.status = normalizedStatus;
+
+        const User = dbStore.get('User');
+        const query = {
+            where,
+            order: [['created_at', 'DESC'], ['business_admin_approval_request_id', 'DESC']],
+            limit: normalizedLimit,
+            transaction: options.transaction
+        };
+        if (User) {
+            query.include = [{
+                model: User,
+                as: 'requestedByUser',
+                required: false,
+                attributes: ['user_id', 'username', 'email', 'role', 'is_active', 'is_master_admin']
+            }];
+        }
+
+        const rows = await ApprovalRequest.findAll(query);
+        return rows.map((row) => {
+            const plain = toPlain(row) || {};
+            const requestedByUser = toPlain(plain.requestedByUser || plain.requested_by_user);
+            const { requestedByUser: _requestedByUser, ...approval } = plain;
+            return {
+                ...approval,
+                requested_by_user: requestedByUser
+                    ? {
+                        user_id: requestedByUser.user_id ?? null,
+                        username: requestedByUser.username ?? null,
+                        email: requestedByUser.email ?? null,
+                        role: requestedByUser.role ?? null,
+                        is_active: requestedByUser.is_active ?? null,
+                        is_master_admin: requestedByUser.is_master_admin === true
+                    }
+                    : null
+            };
+        });
+    },
+
     async findPendingBusinessAdminApprovalRequest({ actionType, entityType, entityId } = {}, options = {}) {
         const ApprovalRequest = dbStore.get('BusinessAdminApprovalRequest');
         const normalizedEntityId = toPositiveInt(entityId);
@@ -6893,8 +7344,9 @@ export const posRepository = {
     },
 
     async listCashierShiftHistory({
-        cashierId,
+        cashierId = null,
         locationId = null,
+        locationIds = [],
         dateFrom = null,
         dateTo = null,
         status = 'all',
@@ -6904,12 +7356,21 @@ export const posRepository = {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         const normalizedPage = Math.max(1, Number.parseInt(page, 10) || 1);
         const normalizedLimit = Math.min(50, Math.max(1, Number.parseInt(limit, 10) || 20));
-        const where = {
-            cashier_id: toPositiveInt(cashierId)
-        };
+        const normalizedCashierId = toPositiveInt(cashierId);
+        const normalizedLocationIds = toPositiveIntArray(locationIds);
+        if (!normalizedCashierId && normalizedLocationIds.length === 0 && !toPositiveInt(locationId)) {
+            throw new Error('Cashier shift history requires an authenticated cashier or an authorized location scope');
+        }
+
+        const where = {};
+        if (normalizedCashierId) where.cashier_id = normalizedCashierId;
 
         const normalizedLocationId = toPositiveInt(locationId);
-        if (normalizedLocationId) where.location_id = normalizedLocationId;
+        if (normalizedLocationIds.length > 0) {
+            where.location_id = { [Op.in]: normalizedLocationIds };
+        } else if (normalizedLocationId) {
+            where.location_id = normalizedLocationId;
+        }
 
         const normalizedStatus = String(status || 'all').trim().toLowerCase();
         if (normalizedStatus !== 'all') where.status = normalizedStatus;

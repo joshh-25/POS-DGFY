@@ -54,7 +54,7 @@ const fallbackValue = (row, column, index) => {
 const resolveTextAlignment = (align) => align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
 const resolveJustifyAlignment = (align) => align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
 const getRowLabel = (row, primaryColumn) => {
-  const knownLabel = row?.invoice_number || row?.item_name || row?.cashier_name || row?.id;
+  const knownLabel = row?.invoice_number || row?.item_name || row?.category_name || row?.bucket_start_local || row?.cashier_name || row?.id;
   if (knownLabel) return String(knownLabel);
   if (!primaryColumn) return 'record';
   const renderedValue = typeof primaryColumn.render === 'function'
@@ -89,10 +89,14 @@ export default function PosReportsResponsiveTable({
   idPrefix = 'pos-reports-table',
   resultLabel = 'rows',
   maxDesktopColumns = MAX_POS_TABLE_DATA_COLUMNS,
+  serverPagination = null,
+  controlledSort = null,
+  onSortChange,
   detailsDialogTitle,
   getDetailsSubtitle,
   renderDetailsSections,
-  renderDetailsFooter
+  renderDetailsFooter,
+  showActions = true
 }) {
   const sourceRows = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
   const normalizedColumns = useMemo(() => (Array.isArray(columns) ? columns : []), [columns]);
@@ -121,6 +125,7 @@ export default function PosReportsResponsiveTable({
     return visibleColumns.length > 0 ? visibleColumns : normalizedColumns.slice(0, 1);
   }, [normalizedColumns]);
   const [sort, setSort] = useState(() => initialSort || { key: mobileColumns[0]?.key, direction: 'desc' });
+  const activeSort = controlledSort || sort;
   const [detailsRow, setDetailsRow] = useState(null);
   const [expandedMobileRow, setExpandedMobileRow] = useState(null);
   const [selectedPageSize, setSelectedPageSize] = useState(() => {
@@ -142,18 +147,25 @@ export default function PosReportsResponsiveTable({
   }, [getSearchValue, normalizedColumns, queryKey, sourceRows]);
 
   const sortedRows = useMemo(() => {
-    const definition = normalizedColumns.find((column) => column.key === sort.key) || normalizedColumns[0];
+    if (controlledSort) return filteredRows;
+    const definition = normalizedColumns.find((column) => column.key === activeSort.key) || normalizedColumns[0];
     if (!definition) return filteredRows;
     return [...filteredRows].sort((left, right) => compareValues(
       typeof definition.getSortValue === 'function' ? definition.getSortValue(left) : fallbackValue(left, definition),
       typeof definition.getSortValue === 'function' ? definition.getSortValue(right) : fallbackValue(right, definition),
-      sort.direction
+      activeSort.direction
     ));
-  }, [filteredRows, normalizedColumns, sort]);
+  }, [activeSort, controlledSort, filteredRows, normalizedColumns]);
 
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / selectedPageSize));
-  const currentPage = Math.min(page, pageCount);
-  const paginatedRows = sortedRows.slice((currentPage - 1) * selectedPageSize, currentPage * selectedPageSize);
+  const pageCount = serverPagination
+    ? Math.max(1, Number(serverPagination.totalPages) || 1)
+    : Math.max(1, Math.ceil(sortedRows.length / selectedPageSize));
+  const currentPage = serverPagination
+    ? Math.min(pageCount, Math.max(1, Number(serverPagination.currentPage) || 1))
+    : Math.min(page, pageCount);
+  const paginatedRows = serverPagination
+    ? sortedRows
+    : sortedRows.slice((currentPage - 1) * selectedPageSize, currentPage * selectedPageSize);
   const renderCell = (row, column, index) => (
     typeof column.render === 'function' ? column.render(row, index) : fallbackValue(row, column, index)
   );
@@ -213,29 +225,44 @@ export default function PosReportsResponsiveTable({
     : null;
 
   const handleSort = (key) => {
-    setSort((current) => ({
+    const nextSort = ((current) => ({
       key,
       direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
-    }));
-    setPageState({ queryKey, page: 1 });
+    }))(activeSort);
+    if (controlledSort) {
+      onSortChange?.(nextSort);
+    } else {
+      setSort(nextSort);
+      setPageState({ queryKey, page: 1 });
+    }
   };
 
-  const setPage = (nextPage) => setPageState({
-    queryKey,
-    page: Math.max(1, Math.min(pageCount, nextPage))
-  });
+  const setPage = (nextPage) => {
+    if (serverPagination) {
+      serverPagination.onPageChange?.(Math.max(1, Math.min(pageCount, nextPage)));
+      return;
+    }
+    setPageState({
+      queryKey,
+      page: Math.max(1, Math.min(pageCount, nextPage))
+    });
+  };
 
   const handlePageSizeChange = (nextPageSize) => {
     const normalizedPageSize = Number(nextPageSize);
     if (!Number.isInteger(normalizedPageSize) || normalizedPageSize <= 0) return;
+    if (serverPagination) {
+      serverPagination.onPageSizeChange?.(normalizedPageSize);
+      return;
+    }
     setSelectedPageSize(normalizedPageSize);
     setPageState({ queryKey, page: 1 });
   };
 
   const renderSortIcon = (key) => {
-    const iconClassName = `h-3.5 w-3.5 ${sort.key === key ? 'text-[#1A4E8D]' : 'text-[#2D6CDF] opacity-50'}`;
-    if (sort.key !== key) return <ChevronDown className={iconClassName} aria-hidden="true" />;
-    return sort.direction === 'asc'
+    const iconClassName = `h-3.5 w-3.5 ${activeSort.key === key ? 'text-[#1A4E8D]' : 'text-[#2D6CDF] opacity-50'}`;
+    if (activeSort.key !== key) return <ChevronDown className={iconClassName} aria-hidden="true" />;
+    return activeSort.direction === 'asc'
       ? <ChevronUp className={iconClassName} aria-hidden="true" />
       : <ChevronDown className={iconClassName} aria-hidden="true" />;
   };
@@ -344,7 +371,7 @@ export default function PosReportsResponsiveTable({
                 {responsiveTableColumns.map((column) => {
                   const cellVisibility = resolveColumnVisibilityClasses(column);
                   return (
-                    <th key={column.key} scope="col" aria-sort={sort.key === column.key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`${cellVisibility} pos-reports-table-column ${column.widthClass || ''} ${POS_TABLE_HEADER_CELL_CLASS} whitespace-nowrap ${resolveTextAlignment(column.align)}`}>
+                    <th key={column.key} scope="col" aria-sort={activeSort.key === column.key ? (activeSort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`${cellVisibility} pos-reports-table-column ${column.widthClass || ''} ${POS_TABLE_HEADER_CELL_CLASS} whitespace-nowrap ${resolveTextAlignment(column.align)}`}>
                       <button type="button" onClick={() => handleSort(column.key)} className={`inline-flex min-h-9 w-full items-center gap-1.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1A4E8D] ${resolveJustifyAlignment(column.align)}`} aria-label={`Sort by ${column.label}`}>
                         <span>{column.label}</span>
                         {renderSortIcon(column.key)}
@@ -352,27 +379,31 @@ export default function PosReportsResponsiveTable({
                     </th>
                   );
                 })}
-                <th scope="col" className={`table-cell w-[4.5rem] ${POS_TABLE_HEADER_CELL_CLASS} text-center whitespace-nowrap`}>
-                  Actions
-                </th>
+                {showActions ? (
+                  <th scope="col" className={`table-cell w-[4.5rem] ${POS_TABLE_HEADER_CELL_CLASS} text-center whitespace-nowrap`}>
+                    Actions
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedRows.length > 0 ? paginatedRows.map((row, index) => (
                 <tr key={`${idPrefix}-row-${index}`} className={POS_TABLE_ROW_CLASS}>
                 {responsiveTableColumns.map((column) => <td key={column.key} className={cn(resolveColumnVisibilityClasses(column), 'pos-reports-table-column', column.widthClass, POS_TABLE_CELL_CLASS, getPosReportColumnValueToneClass(column, row), resolveTextAlignment(column.valueAlign || column.align), (column.numeric || column.align === 'right' || column.align === 'center') ? 'font-semibold tabular-nums' : 'font-medium')}>{renderCell(row, column, index)}</td>)}
-                  <td className={`table-cell pos-reports-table-action-column w-[4.5rem] ${POS_TABLE_CELL_CLASS} text-center`}>
-                    <PosTableActionButton
-                      icon={Eye}
-                      className="mx-auto"
-                      onClick={() => setDetailsRow(row)}
-                      aria-label={`View details for ${getRowLabel(row)}`}
-                      title="View details"
-                    />
-                  </td>
+                  {showActions ? (
+                    <td className={`table-cell pos-reports-table-action-column w-[4.5rem] ${POS_TABLE_CELL_CLASS} text-center`}>
+                      <PosTableActionButton
+                        icon={Eye}
+                        className="mx-auto"
+                        onClick={() => setDetailsRow(row)}
+                        aria-label={`View details for ${getRowLabel(row)}`}
+                        title="View details"
+                      />
+                    </td>
+                  ) : null}
                 </tr>
               )) : (
-                <tr><td colSpan={(responsiveTableColumns.length || 0) + 1} className="px-2.5 py-12 text-center text-sm font-semibold text-slate-500">{searchQuery ? (searchEmptyMessage || emptyMessage) : emptyMessage}</td></tr>
+                <tr><td colSpan={(responsiveTableColumns.length || 0) + (showActions ? 1 : 0)} className="px-2.5 py-12 text-center text-sm font-semibold text-slate-500">{searchQuery ? (searchEmptyMessage || emptyMessage) : emptyMessage}</td></tr>
               )}
             </tbody>
           </table>
@@ -385,12 +416,14 @@ export default function PosReportsResponsiveTable({
         ariaLabel={`${resultLabel} pagination`}
         currentPage={currentPage}
         totalPages={pageCount}
-        totalItems={sortedRows.length}
-        pageSize={selectedPageSize}
+        totalItems={serverPagination ? Number(serverPagination.totalItems) || 0 : sortedRows.length}
+        pageSize={serverPagination ? Number(serverPagination.pageSize) || selectedPageSize : selectedPageSize}
         itemLabel={resultLabel}
-        pageSizeOptions={[5, 10, 20, 50]}
+        pageSizeOptions={serverPagination?.pageSizeOptions || [5, 10, 20, 50]}
         onPageChange={setPage}
         onPageSizeChange={handlePageSizeChange}
+        disabled={Boolean(serverPagination?.disabled)}
+        loading={Boolean(serverPagination?.loading)}
         pageSizeLabel={`${resultLabel} per page`}
         pageInputLabel={`Go to ${title} page`}
         previousLabel={`Previous ${title} page`}

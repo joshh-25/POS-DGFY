@@ -845,4 +845,93 @@ describe('POSTransactionHistoryPanel filter and tablet action behavior', () => {
         expect(syncButton.getAttribute('title')).toBe('Sync 1 pending POS record');
         expect(syncButton.className).toContain('w-10');
     });
+
+    it('shows the temporary POS void approval popup only for an authorized reviewer', async () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 501,
+            action_type: 'pos_void',
+            entity_id: 7,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Correct duplicate sale',
+            created_at: '2026-09-10T09:05:00.000Z',
+            payload: { transaction_id: 7, invoice_number: 'NFS-000007', amount: 75 }
+        };
+        const decideVoidApproval = vi.fn().mockResolvedValue({});
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            decideVoidApproval,
+            currentUserId: 99
+        })} />);
+
+        expect(screen.getByTestId('pos-history-void-approval-button')).toBeTruthy();
+        expect(screen.getByTestId('pos-inline-void-approval-dialog')).toBeTruthy();
+        expect(screen.getAllByText('NFS-000007').length).toBeGreaterThanOrEqual(2);
+
+        fireEvent.click(screen.getByTestId('pos-inline-void-approval-approve-501'));
+
+        await waitFor(() => {
+            expect(decideVoidApproval).toHaveBeenCalledWith(approvalRequest, 'approve', '');
+        });
+    });
+
+    it('disables self-review in the inline POS void approval popup', () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 502,
+            action_type: 'pos_void',
+            entity_id: 8,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Duplicate sale',
+            payload: { transaction_id: 8, invoice_number: 'NFS-000008', amount: 80 }
+        };
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            currentUserId: 10
+        })} />);
+
+        expect(screen.queryByTestId('pos-inline-void-approval-approve-502')).toBeNull();
+        expect(screen.getByText('Waiting for an authorized manager.')).toBeTruthy();
+    });
+
+    it('shows parked-sale cancellation approvals with the parked-sale reference and action', () => {
+        const approvalRequest = {
+            business_admin_approval_request_id: 503,
+            action_type: 'pos_parked_sale_cancel',
+            entity_type: 'pos_parked_sale',
+            entity_id: 33,
+            requested_by: 10,
+            status: 'pending',
+            reason: 'Test parked-sale cancellation',
+            payload: {
+                parked_sale_id: 33,
+                park_reference: 'PARK-00033',
+                reason: 'Test parked-sale cancellation'
+            }
+        };
+
+        render(<POSTransactionHistoryPanel {...buildPanelProps({
+            inlineVoidApprovalEnabled: true,
+            canReviewVoidApprovals: true,
+            voidApprovalQueue: [approvalRequest],
+            voidApprovalDialogOpen: true,
+            voidApprovalSelectedRequest: approvalRequest,
+            currentUserId: 99
+        })} />);
+
+        expect(screen.getAllByText('Parked sale PARK-00033').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('Cancel parked sale').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getAllByText('No payment captured').length).toBeGreaterThanOrEqual(2);
+        expect(screen.getByTestId('pos-inline-void-approval-approve-503').textContent).toContain('Approve cancellation');
+    });
 });

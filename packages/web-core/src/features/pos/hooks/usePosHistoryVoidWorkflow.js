@@ -3,6 +3,8 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     fetchPosTransactionById,
     fetchPosTransactions,
+    fetchPosVoidApprovals,
+    decidePosVoidApproval,
     recordExternalPosTransactionRefund,
     refundCashPosTransaction,
     refundProviderPosTransaction,
@@ -22,6 +24,10 @@ import {
     normalizePosHistoryPageSize
 } from '../utils/posHistoryQuery.js';
 import { isCheckoutQueueEntry } from '../utils/posCheckoutTerminalQueue.js';
+
+const isParkedSaleCancellationApproval = (approvalRequest) => (
+    approvalRequest?.action_type === 'pos_parked_sale_cancel'
+);
 
 /**
  * Owns POS transaction-history reads, filters, offline-history projection,
@@ -49,7 +55,9 @@ export const usePosHistoryVoidWorkflow = ({
     onExternalReceiptHydrated = null,
     externalHistoryQuery = '',
     onExternalHistoryHydrated = null,
-    onFinancialMutationCompleted = null
+    onFinancialMutationCompleted = null,
+    inlineVoidApprovalEnabled = false,
+    canReviewVoidApprovals = false
 } = {}) => {
     const [historyRows, setHistoryRows] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
@@ -69,6 +77,12 @@ export const usePosHistoryVoidWorkflow = ({
     const historyPageSizeRef = useRef(DEFAULT_POS_HISTORY_PAGE_SIZE);
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [voidingTransactionId, setVoidingTransactionId] = useState(null);
+    const [voidApprovalQueue, setVoidApprovalQueue] = useState([]);
+    const [voidApprovalQueueLoading, setVoidApprovalQueueLoading] = useState(false);
+    const [voidApprovalQueueError, setVoidApprovalQueueError] = useState('');
+    const [voidApprovalDialogOpen, setVoidApprovalDialogOpen] = useState(false);
+    const [voidApprovalSelectedRequest, setVoidApprovalSelectedRequest] = useState(null);
+    const [voidApprovalDecisionLoading, setVoidApprovalDecisionLoading] = useState(false);
     const [refundWorkflowTransaction, setRefundWorkflowTransaction] = useState(null);
     const [refundWorkflowLoading, setRefundWorkflowLoading] = useState(false);
     const [refundWorkflowSubmitting, setRefundWorkflowSubmitting] = useState(false);
@@ -251,6 +265,46 @@ export const usePosHistoryVoidWorkflow = ({
         }
     }, [selectedLocationId, setCurrentViewMode, setExternalReceiptModalActive, setLastReceipt, setLastReceiptContract, setReceiptPreviewModalOpen, setReceiptPreviewSource]);
 
+    const loadVoidApprovalQueue = useCallback(async () => {
+        if (!inlineVoidApprovalEnabled || sessionLocked || !canReviewVoidApprovals) {
+            setVoidApprovalQueue([]);
+            setVoidApprovalQueueLoading(false);
+            return [];
+        }
+
+        setVoidApprovalQueueLoading(true);
+        setVoidApprovalQueueError('');
+        try {
+            const result = await fetchPosVoidApprovals({ status: 'pending', limit: 100 });
+            const approvals = Array.isArray(result?.approvals) ? result.approvals : [];
+            setVoidApprovalQueue(approvals);
+            return approvals;
+        } catch (error) {
+            const status = error?.response?.status;
+            const message = status === 401 || status === 403
+                ? 'You are not authorized to review POS approval requests.'
+                : (error?.response?.data?.message || 'Failed to load pending POS approval requests.');
+            setVoidApprovalQueueError(message);
+            setVoidApprovalQueue([]);
+            return [];
+        } finally {
+            setVoidApprovalQueueLoading(false);
+        }
+    }, [canReviewVoidApprovals, inlineVoidApprovalEnabled, sessionLocked]);
+
+    const openVoidApprovalQueue = useCallback(async () => {
+        if (!inlineVoidApprovalEnabled) return;
+        setVoidApprovalDialogOpen(true);
+        await loadVoidApprovalQueue();
+    }, [inlineVoidApprovalEnabled, loadVoidApprovalQueue]);
+
+    const closeVoidApprovalQueue = useCallback(() => {
+        if (voidApprovalDecisionLoading) return;
+        setVoidApprovalDialogOpen(false);
+        setVoidApprovalSelectedRequest(null);
+        setVoidApprovalQueueError('');
+    }, [voidApprovalDecisionLoading]);
+
     const handleVoidHistoryTransaction = useCallback(async (historyRow, reason) => {
         const posTransactionId = Number(historyRow?.pos_transaction_id);
         if (!Number.isInteger(posTransactionId) || posTransactionId <= 0) {
@@ -276,9 +330,14 @@ export const usePosHistoryVoidWorkflow = ({
             const voidResult = await voidPosTransaction(posTransactionId, voidPayload);
             const approvalPending = voidResult?.pending === true;
             toast.success(approvalPending
-                ? 'Void request sent to Back Office. The sale and stock stay unchanged until approval.'
+                ? 'Void request submitted. The sale and stock stay unchanged until manager approval.'
                 : 'POS transaction voided.');
             await loadHistory(historyPage);
+            if (approvalPending && inlineVoidApprovalEnabled) {
+                setVoidApprovalSelectedRequest(voidResult?.approval_request || null);
+                setVoidApprovalDialogOpen(true);
+                if (canReviewVoidApprovals) void loadVoidApprovalQueue();
+            }
             if (!approvalPending && typeof onFinancialMutationCompleted === 'function') {
                 try {
                     await onFinancialMutationCompleted({ ...historyRow, ...(voidResult?.transaction || {}) });
@@ -292,7 +351,64 @@ export const usePosHistoryVoidWorkflow = ({
         } finally {
             setVoidingTransactionId(null);
         }
-    }, [activeShiftId, canVoidTransactions, historyPage, isAdminOperator, loadHistory, normalizedTerminalId, onFinancialMutationCompleted]);
+    }, [activeShiftId, canReviewVoidApprovals, canVoidTransactions, historyPage, inlineVoidApprovalEnabled, isAdminOperator, loadHistory, loadVoidApprovalQueue, normalizedTerminalId, onFinancialMutationCompleted]);
+
+    const decideVoidApproval = useCallback(async (approvalRequest, decision, note = '') => {
+        const approvalRequestId = Number(approvalRequest?.business_admin_approval_request_id || approvalRequest?.id);
+        const normalizedDecision = String(decision || '').trim().toLowerCase();
+        if (!Number.isInteger(approvalRequestId) || approvalRequestId <= 0 || !['approve', 'reject'].includes(normalizedDecision)) {
+            const error = new Error('A valid POS approval request and decision are required.');
+            setVoidApprovalQueueError(error.message);
+            throw error;
+        }
+
+        setVoidApprovalDecisionLoading(true);
+        setVoidApprovalQueueError('');
+        try {
+            const parkedSaleCancellation = isParkedSaleCancellationApproval(approvalRequest);
+            const result = await decidePosVoidApproval(approvalRequestId, normalizedDecision, {
+                note: String(note || '').trim().slice(0, 500) || undefined
+            });
+            const resolvedRequest = result?.approval_request || {
+                ...approvalRequest,
+                status: normalizedDecision === 'approve' ? 'executed' : 'rejected'
+            };
+            setVoidApprovalSelectedRequest(resolvedRequest);
+            await loadHistory(historyPage);
+
+            if (normalizedDecision === 'approve'
+                && !parkedSaleCancellation
+                && typeof onFinancialMutationCompleted === 'function') {
+                try {
+                    const refreshed = await fetchPosTransactionById(approvalRequest.entity_id || approvalRequest.payload?.transaction_id, {
+                        location_id: selectedLocationId || undefined
+                    });
+                    await onFinancialMutationCompleted({
+                        ...(approvalRequest.payload || {}),
+                        ...(refreshed || {})
+                    });
+                } catch {
+                    toast.warning('The void was approved, but POS totals could not refresh automatically.');
+                }
+            }
+
+            await loadVoidApprovalQueue();
+            toast.success(normalizedDecision === 'approve'
+                ? parkedSaleCancellation ? 'Parked sale cancellation approved and executed.' : 'POS void approved and executed.'
+                : parkedSaleCancellation ? 'Parked sale cancellation request rejected.' : 'POS void request rejected.');
+            return result;
+        } catch (error) {
+            const status = error?.response?.status;
+            const message = status === 401 || status === 403
+                ? 'You are not authorized to decide this POS approval request.'
+                : (error?.response?.data?.message || error?.message || 'Failed to record the POS approval decision.');
+            setVoidApprovalQueueError(message);
+            toast.error(message);
+            throw error;
+        } finally {
+            setVoidApprovalDecisionLoading(false);
+        }
+    }, [historyPage, loadHistory, loadVoidApprovalQueue, onFinancialMutationCompleted, selectedLocationId]);
 
     const openHistoryRefundWorkflow = useCallback(async (historyRow) => {
         const posTransactionId = Number(historyRow?.pos_transaction_id);
@@ -452,6 +568,11 @@ export const usePosHistoryVoidWorkflow = ({
         if (!canViewHistory && currentViewMode === 'history') setCurrentViewMode('checkout');
     }, [canViewHistory, currentViewMode, setCurrentViewMode]);
 
+    useEffect(() => {
+        if (!inlineVoidApprovalEnabled || !canReviewVoidApprovals || sessionLocked || currentViewMode !== 'history') return;
+        void loadVoidApprovalQueue();
+    }, [canReviewVoidApprovals, currentViewMode, inlineVoidApprovalEnabled, loadVoidApprovalQueue, sessionLocked]);
+
     return {
         historyRows: visibleHistoryRows,
         historyLoading,
@@ -477,11 +598,21 @@ export const usePosHistoryVoidWorkflow = ({
         setHistoryDateTo,
         historyDetailLoading,
         voidingTransactionId,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         refundWorkflowTransaction,
         refundWorkflowLoading,
         refundWorkflowSubmitting,
         openHistoryDetail,
         handleVoidHistoryTransaction,
+        loadVoidApprovalQueue,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        decideVoidApproval,
         openHistoryRefundWorkflow,
         closeHistoryRefundWorkflow,
         submitHistoryRefundWorkflow,

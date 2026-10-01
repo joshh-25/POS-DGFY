@@ -35,7 +35,7 @@ describe('POS reports handoff table', () => {
       expect(screen.getByRole('button', { name: `Sort by ${label}` })).toBeTruthy();
     });
     expect(screen.queryByRole('button', { name: 'Sort by End Time' })).toBeNull();
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.getAllByText('SES-000701').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Register #1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('12h 00m').length).toBeGreaterThan(0);

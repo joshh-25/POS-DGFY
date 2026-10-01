@@ -9,6 +9,7 @@ const mockListPosDiscountApproversUseCase = jest.fn();
 const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosReportsOverviewUseCase = jest.fn();
+const mockGetPosReportBreakdownUseCase = jest.fn();
 const mockExportPosReportsUseCase = jest.fn();
 const mockExportProcurementCsvUseCase = jest.fn();
 const mockGetPosTransactionByIdUseCase = jest.fn();
@@ -105,6 +106,7 @@ const posHandlersBarrelOverrides = {
     verifyPosDiscountApprovalUseCase: mockVerifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosReportsOverviewUseCase: mockGetPosReportsOverviewUseCase,
+    getPosReportBreakdownUseCase: mockGetPosReportBreakdownUseCase,
     exportPosReportsUseCase: mockExportPosReportsUseCase,
     exportProcurementCsvUseCase: mockExportProcurementCsvUseCase,
     getPosTransactionByIdUseCase: mockGetPosTransactionByIdUseCase,
@@ -223,6 +225,7 @@ let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
 let uploadCatalogImage;
+let requireRegisteredTerminal;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/pos/controllers/posHandlers.js');
@@ -251,6 +254,7 @@ beforeAll(async () => {
     assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
+    requireRegisteredTerminal = mod.requireRegisteredTerminal;
 });
 
 const createRes = () => {
@@ -410,6 +414,33 @@ describe('posHandlers transport contracts', () => {
             surface: 'pos',
             action: 'checkout'
         }));
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('rejects a checkout location that differs from the registered terminal location', async () => {
+        mockGetPairedPosTerminalUseCase.mockResolvedValue({
+            success: true,
+            data: { terminal_id: 'POS-01', location_id: 2 }
+        });
+
+        const req = {
+            body: { terminal_id: 'POS-01', location_id: 1 },
+            headers: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await requireRegisteredTerminal(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith({
+            success: false,
+            data: null,
+            message: 'Requested location does not match the registered terminal location.',
+            error_code: 'POS_REGISTERED_TERMINAL_LOCATION_MISMATCH',
+            timestamp: expect.any(String)
+        });
         expect(next).not.toHaveBeenCalled();
     });
 

@@ -44,6 +44,7 @@ export const usePosCartWorkflow = ({
     receiptSettings = {},
     posWorkflow = { allowedMethods: [] },
     isFnbWorkflow = false,
+    locationId = null,
     normalizedFnbContext = null,
     setOrderMethod = () => {},
     onCartBecameEmpty = () => {},
@@ -196,7 +197,7 @@ export const usePosCartWorkflow = ({
                 duration_adjustment_minutes: Number(option.duration_adjustment_minutes) || 0
             }));
         const modifierGroups = getFnbModifierGroups(item);
-        const defaultModifiers = buildDefaultLineModifiers(item);
+        const defaultModifiers = buildDefaultLineModifiers(item, locationId);
         const routed = buildKitchenStationSnapshot(item);
         const modifierLineSeed = {
             modifier_groups: modifierGroups,

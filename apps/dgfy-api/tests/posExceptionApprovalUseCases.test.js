@@ -1,7 +1,10 @@
 import crypto from 'crypto';
 import { describe, expect, it, jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
-import { buildDecidePosExceptionApprovalUseCase } from '../src/modules/pos/usecases/posExceptionApprovalUseCases.js';
+import {
+    buildDecidePosExceptionApprovalUseCase,
+    buildListPosExceptionApprovalsUseCase
+} from '../src/modules/pos/usecases/posExceptionApprovalUseCases.js';
 
 const stableStringify = (value) => {
     if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -65,6 +68,30 @@ const buildHarness = (approval) => {
 };
 
 describe('POS Back Office high-risk approval execution', () => {
+    it('lists bounded pending POS approvals, including parked-sale cancellations', async () => {
+        const listBusinessAdminApprovalRequests = jest.fn().mockResolvedValue([
+            approvalFixture({ entityId: 91 }),
+            approvalFixture({ actionType: 'pos_parked_sale_cancel', entityId: 92 })
+        ]);
+        const useCase = buildListPosExceptionApprovalsUseCase({
+            posRepository: { listBusinessAdminApprovalRequests }
+        });
+
+        const result = await useCase({ query: { status: 'pending', limit: 999 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({ status: 'pending', count: 2 });
+        expect(result.data.approvals.map((approval) => approval.action_type)).toEqual([
+            'pos_void',
+            'pos_parked_sale_cancel'
+        ]);
+        expect(listBusinessAdminApprovalRequests).toHaveBeenCalledWith({
+            actionTypes: ['pos_void', 'pos_parked_sale_cancel'],
+            status: 'pending',
+            limit: 100
+        });
+    });
+
     it('executes an approved void through the canonical POS use case in the approval transaction', async () => {
         const approval = approvalFixture();
         const harness = buildHarness(approval);
@@ -91,6 +118,37 @@ describe('POS Back Office high-risk approval execution', () => {
                 status: 'approved',
                 requested_by: approval.requested_by,
                 approved_by: 99
+            })
+        }));
+        expect(harness.transaction.commit).toHaveBeenCalledTimes(1);
+        expect(harness.transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('verifies approval payloads returned as JSON strings by the tenant database', async () => {
+        const approval = approvalFixture();
+        const storedPayload = approval.payload;
+        const harness = buildHarness({
+            ...approval,
+            payload: JSON.stringify(storedPayload)
+        });
+        const voidPosTransactionUseCase = jest.fn().mockResolvedValue({ success: true, data: { transaction: { status: 'voided' } } });
+        const useCase = buildDecidePosExceptionApprovalUseCase({
+            posRepository: harness.posRepository,
+            voidPosTransactionUseCase
+        });
+
+        const result = await runInTenant(harness.sequelize, () => useCase({
+            approvalRequestId: approval.business_admin_approval_request_id,
+            decision: 'approve',
+            user: { user_id: 99 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(voidPosTransactionUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            posTransactionId: approval.entity_id,
+            payload: expect.objectContaining({
+                reason: storedPayload.reason,
+                terminal_location_id: storedPayload.location_id
             })
         }));
         expect(harness.transaction.commit).toHaveBeenCalledTimes(1);

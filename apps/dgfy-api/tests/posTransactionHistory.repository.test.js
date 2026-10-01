@@ -106,6 +106,22 @@ describe('POS transaction history repository query', () => {
         ]));
     });
 
+    it('excludes training-test transactions when the cashier history scope requests operational records', async () => {
+        await posRepository.listTransactions({ exclude_training_test: true });
+
+        const [options] = findAndCountAll.mock.calls[0];
+        const trainingContextClause = options.where[Op.and].find((clause) => (
+            clause[Op.or]?.some((entry) => entry.document_context?.[Op.ne] === 'training_test')
+        ));
+
+        expect(trainingContextClause).toEqual({
+            [Op.or]: [
+                { document_context: { [Op.ne]: 'training_test' } },
+                { document_context: null }
+            ]
+        });
+    });
+
     it('generates a valid MariaDB positive-allocation expression for split-payment filters', async () => {
         const realSequelize = new Sequelize('dgfy_sql_generation', 'root', '', {
             dialect: 'mysql',
