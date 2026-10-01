@@ -74,6 +74,7 @@ import {
     BackOfficeStatusPill as StatusPill
 } from '../../../../../packages/web-core/src/components/backOffice/BackOfficePrimitives.jsx';
 import MigratedBackOfficeModule from './MigratedBackOfficeModule.jsx';
+import PosActivityAnalyticsPage from './PosActivityAnalyticsPage.jsx';
 import BusinessAdminReceiptModal from './BusinessAdminReceiptModal.jsx';
 import BusinessAdminAccountActions from './BusinessAdminAccountActions.jsx';
 import {
@@ -1668,7 +1669,7 @@ function NotificationsWorkspace({ data, onAction, actionLoading, refreshing = fa
     );
 }
 function ApprovalsWorkspace({ data, onDecision, actionLoading }) {
-    return <SectionCard title="Approval queue" subtitle="High-risk requests are visible here; mutation remains with POS"><DataTable rows={data?.approvals || []} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={[{ key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) }, { key: 'entity_id', label: 'Entity' }, { key: 'requested_by', label: 'Requested by' }, { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'actions', label: 'Decision', render: (row) => row.status === 'pending' ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div> : <span className="business-admin-muted">No action</span> }]} /></SectionCard>;
+    return <SectionCard title="Approval queue" subtitle="Review high-risk POS requests here; POS remains the canonical execution owner"><DataTable rows={data?.approvals || []} rowKey={(row) => row.approval_request_id} emptyMessage="No approval requests are pending." columns={[{ key: 'action_type', label: 'Action', render: (row) => humanize(row.action_type) }, { key: 'entity_id', label: 'Entity' }, { key: 'requested_by', label: 'Requested by' }, { key: 'requested_at', label: 'Requested', render: (row) => dateTime(row.requested_at) }, { key: 'reason', label: 'Reason', render: (row) => row.reason || '—' }, { key: 'status', label: 'Status', render: (row) => <StatusPill value={row.status} /> }, { key: 'actions', label: 'Decision', render: (row) => row.status === 'pending' ? <div className="flex flex-wrap gap-1"><button type="button" className="business-admin-button primary" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'approve'); }}>Approve</button><button type="button" className="business-admin-button danger" disabled={actionLoading === row.approval_request_id} onClick={(event) => { event.stopPropagation(); onDecision(row.approval_request_id, 'reject'); }}>Reject</button></div> : <span className="business-admin-muted">No action</span> }]} /></SectionCard>;
 }
 
 function AuditWorkspace({ data, dateFrom, dateTo }) {
@@ -2867,6 +2868,7 @@ export default function BusinessAdminPage() {
             else if (activeSection === 'audit') payload = await businessAdminApi.audit({ ...params, limit: 100, page: 1 });
             else if (activeSection === 'approvals') payload = { approvals: (await businessAdminApi.approvals({ status: 'pending', limit: 100 })).approvals || [] };
             else if (activeSection === 'payments') payload = await businessAdminApi.payments(params);
+            else if (activeSection === 'pos-activity') payload = await businessAdminApi.posActivityAnalytics(params);
             else payload = { bootstrap };
             if (requestRef.current === requestId) {
                 setSectionData(payload);
@@ -3024,7 +3026,8 @@ export default function BusinessAdminPage() {
 
     const showDateFilters = [
         'overview', 'locations', 'orders', 'customers', 'team',
-        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit'
+        'attendance', 'shifts', 'expenses', 'inventory', 'recipes', 'fiscal', 'audit',
+        'pos-activity'
     ].includes(activeSection);
     const showHistoricalRangePreset = isHistoricalBusinessAdminSection(activeSection);
     const showBranchFilter = activeSection !== 'audit';
@@ -3173,6 +3176,7 @@ export default function BusinessAdminPage() {
         if (activeSection === 'approvals') return <ApprovalsWorkspace data={sectionData} onDecision={handleApprovalDecision} actionLoading={actionLoading} />;
         if (activeSection === 'audit') return <AuditWorkspace data={sectionData} dateFrom={activeDateRange.dateFrom} dateTo={activeDateRange.dateTo} />;
         if (activeSection === 'payments') return <PaymentsWorkspace data={sectionData} />;
+        if (activeSection === 'pos-activity') return <PosActivityAnalyticsPage data={sectionData} />;
         return <SimpleWorkspace section={activeSection} bootstrap={bootstrap} />;
     };
 

@@ -56,6 +56,8 @@ export function usePosTerminalViewModel({
     isMsmeMode = false,
     sidebarCollapsed = false,
     canViewHistory = true,
+    canReviewVoidApprovals = false,
+    inlineVoidApprovalEnabled = false,
     terminalUser = null,
     selectedLocationId = null,
     activeShiftId = null,
@@ -721,8 +723,14 @@ export function usePosTerminalViewModel({
         setHistoryDateTo,
         setHistoryPageSize,
         historyDetailLoading, voidingTransactionId,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow,
-        openHistoryDetail, handleVoidHistoryTransaction,
+        openHistoryDetail, handleVoidHistoryTransaction, loadVoidApprovalQueue, openVoidApprovalQueue, closeVoidApprovalQueue, decideVoidApproval,
         loadHistory
     } = usePosHistoryVoidWorkflow({
         sessionLocked,
@@ -744,7 +752,10 @@ export function usePosTerminalViewModel({
         externalReceiptTransactionId,
         onExternalReceiptHydrated,
         externalHistoryQuery,
-        onExternalHistoryHydrated, onFinancialMutationCompleted: onCheckoutCompleted
+        onExternalHistoryHydrated,
+        onFinancialMutationCompleted: onCheckoutCompleted,
+        inlineVoidApprovalEnabled,
+        canReviewVoidApprovals
     });
 
     usePosCartDraft({
@@ -1496,6 +1507,8 @@ export function usePosTerminalViewModel({
         bindingReadinessLabel,
         calculatedDiscountAmount,
         canViewHistory,
+        canReviewVoidApprovals,
+        inlineVoidApprovalEnabled,
         canUseEmployeeCredit,
         canVoidTransactions,
         cartSubtotal,
@@ -1613,6 +1626,16 @@ export function usePosTerminalViewModel({
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
+        loadVoidApprovalQueue,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        decideVoidApproval,
         historyRefundWorkflow: { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow },
         hasSplitPaymentSummary,
         headerParkedSalesHistorySlot,

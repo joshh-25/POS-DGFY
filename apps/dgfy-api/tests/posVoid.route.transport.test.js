@@ -190,6 +190,40 @@ beforeEach(() => {
 });
 
 describe('POS transaction void route transport contract', () => {
+    it('protects the temporary POS inline approval queue and decision endpoints with review permissions', async () => {
+        permissionSet = new Set([
+            'business_admin:access',
+            'business_admin:branches:view_all',
+            'business_admin:high_risk:approve'
+        ]);
+
+        const queueResponse = await request(app)
+            .get('/api/v1/pos/approvals')
+            .query({ status: 'pending', limit: 100 });
+
+        expect(queueResponse.status).toBe(200);
+        expect(posControllerMock.listPosExceptionApprovals).toHaveBeenCalledTimes(1);
+
+        const decisionResponse = await request(app)
+            .post('/api/v1/pos/approvals/501/approve')
+            .send({ note: 'Reviewed in POS' });
+
+        expect(decisionResponse.status).toBe(200);
+        expect(posControllerMock.decidePosExceptionApproval).toHaveBeenCalledTimes(1);
+
+        permissionSet = new Set(['pos:void']);
+        const unauthorizedQueue = await request(app)
+            .get('/api/v1/pos/approvals');
+        const unauthorizedDecision = await request(app)
+            .post('/api/v1/pos/approvals/501/reject')
+            .send({ note: 'Not authorized' });
+
+        expect(unauthorizedQueue.status).toBe(403);
+        expect(unauthorizedDecision.status).toBe(403);
+        expect(posControllerMock.listPosExceptionApprovals).toHaveBeenCalledTimes(1);
+        expect(posControllerMock.decidePosExceptionApproval).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps transaction-detail adjustment evidence behind pos:view', async () => {
         permissionSet = new Set(['pos:view']);
 

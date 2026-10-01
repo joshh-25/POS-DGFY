@@ -6,6 +6,8 @@ import { buildGetBusinessAdminBootstrapUseCase } from './usecases/businessAdminB
 import { buildListBusinessAdminAuditUseCase } from './usecases/businessAdminAuditUseCase.js';
 import { buildCancelBusinessAdminApprovalUseCase, buildDecideBusinessAdminApprovalUseCase, buildListBusinessAdminApprovalsUseCase } from './usecases/businessAdminApprovalUseCase.js';
 import { buildExportBusinessAdminReportUseCase, buildGetBusinessAdminReportDatasetUseCase, buildGetBusinessAdminReportsUseCase, buildListBusinessAdminReportDefinitionsUseCase } from './usecases/businessAdminReportsUseCase.js';
+import { buildGetBusinessAdminPosActivityAnalyticsUseCase } from './usecases/businessAdminPosActivityUseCase.js';
+import { businessAdminPosActivityRepository } from './repositories/businessAdminPosActivityRepository.js';
 import { buildGetBusinessAdminInventoryValuationUseCase } from './usecases/businessAdminInventoryValuationUseCase.js';
 import { buildListBusinessAdminInventoryStockUseCase } from './usecases/businessAdminInventoryStockUseCase.js';
 import { buildCreateBusinessAdminSavedReportViewUseCase, buildDeleteBusinessAdminSavedReportViewUseCase, buildListBusinessAdminSavedReportViewsUseCase } from './usecases/businessAdminSavedReportViewUseCase.js';
@@ -35,6 +37,7 @@ import { buildCreateBusinessAdminExpenseUseCase, buildListBusinessAdminExpensesU
 import { buildAcknowledgeBusinessAdminNotificationUseCase, buildDismissBusinessAdminNotificationUseCase, buildListBusinessAdminNotificationsUseCase, buildMarkBusinessAdminNotificationReadUseCase } from './usecases/businessAdminNotificationUseCase.js';
 import { resolveWorkflowCapabilitySettings } from '../shared/utils/workflowCapabilitySettingsCache.js';
 import { modeHasCapability } from '@sieitzz/shared-constants/workflowModes';
+import { decidePosExceptionApprovalUseCase } from '../pos/index.js';
 
 export const reconcileBusinessAdminAlerts = () => reconcileBusinessAdminAlertSnapshots({ repository: businessAdminAlertSnapshotRepository });
 import { posRepository } from '../pos/repositories/posRepository.js';
@@ -76,10 +79,9 @@ export const listBusinessAdminApprovalsUseCase = buildListBusinessAdminApprovals
 });
 
 export const decideBusinessAdminApprovalUseCase = buildDecideBusinessAdminApprovalUseCase({
-    // The current POS branch has no generic exception-approval command. Keep
-    // the Business Admin queue read-only until a canonical owner contract is
-    // approved; never invent a second refund/shift mutation path here.
-    decidePosExceptionApprovalUseCase: null
+    // Back Office decides; POS remains the canonical owner of the atomic
+    // transaction and inventory mutation.
+    decidePosExceptionApprovalUseCase
 });
 
 export const cancelBusinessAdminApprovalUseCase = buildCancelBusinessAdminApprovalUseCase({
@@ -98,6 +100,11 @@ const businessAdminReportDependencies = {
     businessAdminInventoryReportRepository,
     getBusinessAdminInventoryValuationUseCase: null
 };
+export const getBusinessAdminPosActivityAnalyticsUseCase = buildGetBusinessAdminPosActivityAnalyticsUseCase({
+    businessAdminOverviewRepository,
+    businessAdminPosActivityRepository
+});
+
 export const listBusinessAdminReportDefinitionsUseCase = buildListBusinessAdminReportDefinitionsUseCase();
 export const getBusinessAdminReportDatasetUseCase = buildGetBusinessAdminReportDatasetUseCase(businessAdminReportDependencies);
 export const exportBusinessAdminReportUseCase = buildExportBusinessAdminReportUseCase(businessAdminReportDependencies);

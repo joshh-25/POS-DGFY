@@ -862,7 +862,6 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         center('FISCAL COUNTERS'),
         pair('Z counter', reading.z_counter_value || 0),
         pair('Reset counter', reading.reset_counter_value || 0),
-        pair('Lifetime total', formatZReadingValue(Number(reading.lifetime_grand_total_cents || 0) / 100)),
         line(),
         center('Provider refunds reconciled separately.'),
         center('Keep with day-end close evidence.')

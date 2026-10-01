@@ -20,7 +20,7 @@ describe('POS item list pagination', () => {
     expect(workspace).toContain('hidePageSizeSuffixOnMobile');
     const pagination = fs.readFileSync(paginationPath, 'utf8');
     expect(pagination).toContain('hidePageSizeSuffixOnMobile = false');
-    expect(workspace).toContain('className="dgfy-pos-history-pagination-footer mt-auto shrink-0 rounded-none border-0 border-t border-slate-200 px-6 py-2.5 shadow-none"');
+    expect(workspace).toContain('className={`${POS_PAGINATION_FOOTER_CLASS} mt-auto`}');
     expect(workspace).toContain('itemLabel="entries"');
     expect(workspace).toContain('pageSizeOptions={POS_ITEMS_PAGE_SIZE_OPTIONS}');
     expect(workspace).toContain('onPageChange={setItemsPage}');

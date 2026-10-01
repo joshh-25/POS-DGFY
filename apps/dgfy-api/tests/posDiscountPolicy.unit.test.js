@@ -7,7 +7,7 @@ const preparedLines = [
 ];
 
 const rules = {
-    senior: { id: 10, name: 'Senior Citizen', type: 'senior', method: 'percentage', rate: 20, is_active: true },
+    senior: { id: 10, name: 'Senior Citizen', type: 'senior', method: 'percentage', rate: 20, is_active: true, requires_customer_id: true },
     pwd: { id: 11, name: 'PWD', type: 'pwd', method: 'percentage', rate: 20, is_active: true },
     employee: { id: 12, name: 'Employee Discount', type: 'employee', method: 'percentage', rate: 15, is_active: true },
     manual: { id: 13, name: 'Manual Discount', type: 'manual', method: 'percentage', rate: null, is_active: true },

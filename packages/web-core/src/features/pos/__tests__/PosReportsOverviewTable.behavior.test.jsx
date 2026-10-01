@@ -29,7 +29,7 @@ describe('POS reports overview table', () => {
     expect(screen.getByRole('columnheader', { name: 'Business Date' }).className).toContain('table-cell');
     expect(screen.getByRole('columnheader', { name: 'Discounts (₱)' }).className).toContain('hidden min-[1024px]:table-cell');
     expect(screen.getByRole('columnheader', { name: 'Refunds/Voids (₱)' }).className).toContain('hidden min-[1024px]:table-cell');
-    expect(screen.getByRole('columnheader', { name: 'Actions' }).className).toContain('table-cell');
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
     expect(screen.getAllByText('₱978.50').length).toBeGreaterThan(0);
     expect(screen.getAllByText('₱23.25').length).toBeGreaterThan(0);
@@ -61,6 +61,7 @@ describe('POS reports overview table', () => {
     expect(cells[4].className).toContain('text-[#475569]');
     expect(cells[5].className).toContain('text-[#DC2626]');
     expect(cells[2].className).not.toContain('text-[#059669]');
+    expect(screen.getAllByText('₱-12.50').length).toBeGreaterThan(0);
   });
 
   it('uses the date as the card title and aligns the collapsed mobile values as label-value rows', () => {

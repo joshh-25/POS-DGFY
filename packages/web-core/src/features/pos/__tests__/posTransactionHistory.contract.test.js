@@ -293,7 +293,7 @@ describe('POS transaction history search and filter contract', () => {
         expect(panelContent).toContain('pos-history-void-dialog sm:max-w-md');
         expect(panelContent).toContain('className="space-y-2 px-6"');
         expect(panelContent).toContain('pos-history-void-footer');
-        expect(panelContent).toContain("import { Ban, CalendarDays, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';");
+        expect(panelContent).toContain("import { Ban, CalendarDays, ClipboardCheck, ClipboardList, Eye, Filter, Globe, List, ListFilter, RefreshCcw, RotateCcw, Store, Undo2 } from 'lucide-react';");
         expect(panelContent).toContain("import PosSearchField from './PosSearchField.jsx';");
         expect(panelContent).toContain('<Filter className={`${isMobileViewport ? \'\' : \'mr-2\'} h-4 w-4`} aria-hidden="true" />');
         expect(panelContent).toContain('icon={ClipboardList}');

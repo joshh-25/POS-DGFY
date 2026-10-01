@@ -62,6 +62,20 @@ export const buildFnbRecipeBlockerMessage = (error) => {
   return null;
 };
 
+export const buildTerminalLocationMismatchMessage = (error) => {
+  const responseData = error?.response?.data || {};
+  const errorCode = String(
+    responseData.error_code
+    || responseData.errors?.error_code
+    || responseData.details?.error_code
+    || ''
+  ).trim().toUpperCase();
+
+  return errorCode === 'POS_REGISTERED_TERMINAL_LOCATION_MISMATCH'
+    ? 'Checkout is blocked because the selected terminal is registered to a different branch. Refresh the terminal context and try again.'
+    : null;
+};
+
 export const buildValidationDetailMessage = (error) => {
   const fnbRecipeBlocker = buildFnbRecipeBlockerMessage(error);
   if (fnbRecipeBlocker) return fnbRecipeBlocker;

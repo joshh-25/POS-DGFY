@@ -21,6 +21,7 @@ const mockHandlers = {
     requestGuestCheckoutOtp: jest.fn((req, res) => res.status(200).json({ success: true })),
     verifyGuestCheckoutOtp: jest.fn((req, res) => res.status(200).json({ success: true })),
     confirmCheckoutSandboxPayment: jest.fn((req, res) => res.status(200).json({ success: true })),
+    reconcileCheckoutPaymentSession: jest.fn((req, res) => res.status(200).json({ success: true })),
     checkout: jest.fn((req, res) => res.status(200).json({ success: true })),
     trackOrder: jest.fn((req, res) => res.status(200).json({
         success: true,

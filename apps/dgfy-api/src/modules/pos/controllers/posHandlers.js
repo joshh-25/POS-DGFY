@@ -14,6 +14,7 @@ import {
     verifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase,
     getPosReportsOverviewUseCase,
+    getPosReportBreakdownUseCase,
     exportPosReportsUseCase,
     exportProcurementCsvUseCase,
     getPosTransactionByIdUseCase,
@@ -92,6 +93,7 @@ import {
     claimPosParkedSaleUseCase,
     reparkPosParkedSaleUseCase,
     cancelPosParkedSaleUseCase,
+    listPosExceptionApprovalsUseCase,
     decidePosExceptionApprovalUseCase,
     createPosPaymentSessionUseCase,
     getPosPaymentSessionUseCase,
@@ -609,6 +611,24 @@ export const getReportsOverview = async (req, res, next) => {
     }
 };
 
+export const getReportBreakdown = async (req, res, next) => {
+    try {
+        const query = req.validatedQuery || req.query || {};
+        const result = await getPosReportBreakdownUseCase({
+            query,
+            user: req.user,
+            requestId: req.id || req.headers?.['x-request-id'] || null
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const exportReports = async (req, res, next) => {
     try {
         const query = req.validatedQuery || req.query || {};
@@ -1093,6 +1113,27 @@ export const decidePosExceptionApproval = async (req, res, next) => {
     }
 };
 
+export const listPosExceptionApprovals = async (req, res, next) => {
+    try {
+        const result = await listPosExceptionApprovalsUseCase({
+            query: req.validatedQuery || req.query || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS approval requests loaded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const createPaymentSession = async (req, res, next) => {
     try {
         const result = await createPosPaymentSessionUseCase({
@@ -1339,7 +1380,7 @@ export const voidTransaction = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: result.data?.pending
-                    ? 'POS void request submitted for Back Office approval'
+                    ? 'POS void request submitted for manager approval'
                     : 'POS transaction voided',
                 timestamp: timestamp()
             }),
@@ -3264,6 +3305,7 @@ export default {
     checkout,
     listTransactions,
     getReportsOverview,
+    getReportBreakdown,
     exportReports,
     exportProcurementCsv,
     getTransactionById,

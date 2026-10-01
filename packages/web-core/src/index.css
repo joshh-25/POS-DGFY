@@ -5404,9 +5404,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     width: clamp(1.25rem, 5.33vw, 1.75rem);
   }
 
-  .pos-items-workspace-shell .dgfy-pos-history-pagination-footer {
-    margin-top: 0 !important;
-  }
 }
 
 /* Tablet portrait Items uses the mobile card composition in a two-column
@@ -5677,11 +5674,6 @@ body[data-pos-text-size="normal"] [aria-label="POS transaction history table"].d
     min-height: 0;
     overflow-y: auto;
     grid-auto-rows: minmax(11rem, auto);
-  }
-
-  .dgfy-pos-shell[data-pos-items-view="true"] .dgfy-pos-history-pagination-footer {
-    margin-top: 0;
-    padding-inline: 1rem;
   }
 
   .dgfy-pos-shell[data-pos-items-view="true"] .pos-items-desktop-card-grid {

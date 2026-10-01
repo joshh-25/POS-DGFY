@@ -15,6 +15,8 @@ describe('Business Admin historical date-range model', () => {
         expect(getDefaultDateRangePreset('shifts')).toBe('last_30_days');
         expect(getDefaultDateRangePreset('expenses')).toBe('last_30_days');
         expect(getDefaultDateRangePreset('audit')).toBe('last_30_days');
+        expect(getDefaultDateRangePreset('pos-activity')).toBe('last_30_days');
+        expect(isHistoricalBusinessAdminSection('pos-activity')).toBe(true);
         expect(getDefaultDateRangePreset('overview')).toBe('today');
         expect(getDefaultDateRangeForSection('orders', '2026-09-16')).toEqual({
             dateFrom: '2026-08-18',

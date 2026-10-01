@@ -123,5 +123,6 @@ describe('POS close-report payment breakdown', () => {
         expect(zReadingLines).toContainEqual(expect.stringContaining('Difference'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Checked'));
         expect(zReadingLines).toContain('Provider refunds are reconciled separately.');
+        expect(zReadingLines).not.toContainEqual(expect.stringContaining('Lifetime total'));
     });
 });

@@ -363,6 +363,14 @@ describe('buildPrintPosZReadingUseCase', () => {
                         variance: 0,
                         evaluated_at: '2026-08-07T12:01:00.000Z'
                     }),
+                    summary: expect.objectContaining({
+                        transaction_count: 2,
+                        total_amount: 300,
+                        payment_breakdown: expect.arrayContaining([
+                            expect.objectContaining({ payment_type: 'cash', count: 2, amount: 300 })
+                        ])
+                    }),
+                    lifetime_grand_total_cents: 1234500,
                     z_counter_value: 7
                 })
             })

@@ -19,6 +19,17 @@ const stableStringify = (value) => {
 
 const hashPayload = (value) => crypto.createHash('sha256').update(stableStringify(value)).digest('hex');
 
+const normalizeApprovalPayload = (value) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+    if (typeof value !== 'string') return null;
+    try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
 const beginTransaction = async () => {
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
     if (!sequelize || typeof sequelize.transaction !== 'function') throw new Error('Tenant sequelize transaction is unavailable');
@@ -26,8 +37,8 @@ const beginTransaction = async () => {
 };
 
 const assertApprovalPayloadIntegrity = (approval) => {
-    const payload = approval?.payload || {};
-    if (!approval?.payload_hash || hashPayload(payload) !== String(approval.payload_hash)) {
+    const payload = normalizeApprovalPayload(approval?.payload);
+    if (!payload || !approval?.payload_hash || hashPayload(payload) !== String(approval.payload_hash)) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
             'Approval request evidence does not match its recorded payload hash.',
@@ -57,6 +68,46 @@ const assertApprovalTargetIntegrity = (approval, payload) => {
             'Approval target does not match its immutable request evidence.',
             { statusCode: 409, details: { reason_code: 'BUSINESS_ADMIN_APPROVAL_TARGET_MISMATCH' } }
         );
+    }
+};
+
+const POS_APPROVAL_STATUS_VALUES = new Set([
+    'pending',
+    'approved',
+    'rejected',
+    'executed',
+    'expired',
+    'cancelled'
+]);
+
+const POS_APPROVAL_ACTION_TYPES = Object.freeze([
+    'pos_void',
+    'pos_parked_sale_cancel'
+]);
+
+const normalizeApprovalListLimit = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) return 100;
+    return Math.min(parsed, 100);
+};
+
+export const buildListPosExceptionApprovalsUseCase = ({ posRepository }) => async ({ query = {} } = {}) => {
+    try {
+        const requestedStatus = String(query?.status || 'pending').trim().toLowerCase();
+        const status = POS_APPROVAL_STATUS_VALUES.has(requestedStatus) ? requestedStatus : 'pending';
+        const approvals = await posRepository.listBusinessAdminApprovalRequests({
+            actionTypes: POS_APPROVAL_ACTION_TYPES,
+            status,
+            limit: normalizeApprovalListLimit(query?.limit)
+        });
+
+        return ok({
+            approvals: Array.isArray(approvals) ? approvals : [],
+            count: Array.isArray(approvals) ? approvals.length : 0,
+            status
+        });
+    } catch (error) {
+        return fail(mapPosUseCaseError(error, 'Failed to list POS approval requests'));
     }
 };
 

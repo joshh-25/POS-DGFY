@@ -63,7 +63,7 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { GlobalPagination } from '@/components/ui/pagination';
+import { GlobalPagination, POS_PAGINATION_FOOTER_CLASS } from '@/components/ui/pagination';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
 const CSVImportModal = lazyWithChunkRetry(() => import('@/components/items/CSVImportModal.jsx'));
 import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
@@ -4765,7 +4765,7 @@ function ItemsWorkspace({
               setItemsPage(1);
             }}
             accentColor="#1A4E8D"
-            className="dgfy-pos-history-pagination-footer mt-auto shrink-0 rounded-none border-0 border-t border-slate-200 px-6 py-2.5 shadow-none"
+            className={`${POS_PAGINATION_FOOTER_CLASS} mt-auto`}
           />
         </div>
       )}
