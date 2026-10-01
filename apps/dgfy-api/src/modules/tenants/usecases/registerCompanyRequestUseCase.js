@@ -21,6 +21,7 @@ import {
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
+import { normalizeCompanyRegistrationSnapshot } from '../entities/companyRegistrationPayload.js';
 
 const buildRuntimeOwnershipSettings = (workflowMode) => (
     isLaundryWorkflowMode(workflowMode)
@@ -80,7 +81,9 @@ export const buildRegisterCompanyRequestUseCase = ({
             subscriptionId,
             workflowMode: rawWorkflowMode,
             industryTag,
-            industryKey
+            industryKey,
+            business_type: businessType,
+            businessType: businessTypeAlias
         } = body || {};
         const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
         const adminPhone = String(dgfyAccount?.phone || '').trim();
@@ -302,6 +305,15 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
+            const registrationSnapshot = normalizeCompanyRegistrationSnapshot({
+                body: { ...body, business_type: businessType ?? businessTypeAlias },
+                companyName: name,
+                workflowMode: normalizedWorkflowMode,
+                industryTag: normalizedIndustryTag,
+                registrationIndustry: resolvedIndustry ? normalizedIndustryKey : null,
+                storeTemplateKey
+            });
+
             if (!isValidTenantPlan(requestedPlan)) {
                 await tracker.failed({
                     failureCode: 'validation_failed',
@@ -449,6 +461,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         industryTag: normalizedIndustryTag,
                         registrationIndustry: resolvedIndustry ? normalizedIndustryKey : null,
                         storeTemplateKey,
+                        registrationSnapshot,
                         transaction
                     });
 

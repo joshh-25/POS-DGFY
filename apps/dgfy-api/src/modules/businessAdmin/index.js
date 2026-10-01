@@ -41,11 +41,13 @@ export const reconcileBusinessAdminAlerts = () => reconcileBusinessAdminAlertSna
 import { posRepository } from '../pos/repositories/posRepository.js';
 import { getWeightedInventoryValueByLocation } from '../inventory/services/costValuationService.js';
 import { commercePaymentRepository } from '../commercePayments/index.js';
+import { buildGetBusinessAdminCompanyUseCase } from './usecases/businessAdminCompanyUseCase.js';
 
 export const getBusinessAdminOverviewUseCase = buildGetBusinessAdminOverviewUseCase({
     businessAdminOverviewRepository,
     businessAdminAlertSnapshotRepository
 });
+export const getBusinessAdminCompanyUseCase = buildGetBusinessAdminCompanyUseCase({ businessAdminOverviewRepository });
 
 export const getBusinessAdminMultiCompanyOverviewUseCase = buildGetBusinessAdminMultiCompanyOverviewUseCase({
     businessAdminMultiCompanyRepository,

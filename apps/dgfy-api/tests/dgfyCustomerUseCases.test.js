@@ -592,6 +592,43 @@ describe('dgfyCustomerUseCases', () => {
         }));
     });
 
+    it('ensures historical company rejection notifications before listing notifications', async () => {
+        const registrationApplicationReader = jest.fn().mockResolvedValue([{
+            id: 'application-rejected',
+            dgfy_account_id: account.id,
+            review_status: 'rejected',
+            tenant_id: 'tenant-rejected',
+            tenant: {
+                id: 'tenant-rejected',
+                name: 'Rejected Foods',
+                rejection_reason: 'Missing business documents'
+            }
+        }]);
+        const ensureRejectedCompanyRegistrationNotifications = jest.fn().mockResolvedValue([]);
+        const repository = {
+            listNotificationsForAccount: jest.fn().mockResolvedValue({ rows: [], unread_count: 0 })
+        };
+        const useCase = buildListDgfyCustomerNotificationsUseCase({
+            repository,
+            registrationApplicationReader,
+            ensureRejectedCompanyRegistrationNotifications
+        });
+
+        const result = await useCase({ account, query: {} });
+
+        expect(result.success).toBe(true);
+        expect(ensureRejectedCompanyRegistrationNotifications).toHaveBeenCalledWith({
+            accountId: account.id,
+            applications: expect.arrayContaining([
+                expect.objectContaining({ id: 'application-rejected', review_status: 'rejected' })
+            ])
+        });
+        expect(repository.listNotificationsForAccount).toHaveBeenCalledWith(account.id, {
+            limit: undefined,
+            unreadOnly: false
+        });
+    });
+
     it('marks one account notification as read and rejects missing notifications', async () => {
         const repository = {
             markNotificationRead: jest.fn()

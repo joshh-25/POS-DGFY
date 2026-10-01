@@ -41,6 +41,7 @@ import {
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
+import { getAdminCompanyRegistration, downloadAdminCompanyRegistrationUpload, revokeAdminCompanyRegistrationUpload } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
 import { tenantRegistrationLimiter } from '../middleware/rateLimiter.js';
 import {
     validateComplianceArtifactIdParam,
@@ -98,6 +99,10 @@ router.post('/:id/retry-provisioning', authenticateAdmin, retryTenantProvisionin
 
 // ADMIN: Reject a pending tenant
 router.post('/:id/reject', authenticateAdmin, rejectTenant);
+router.get('/:id/registration', authenticateAdmin, getAdminCompanyRegistration);
+router.get('/:id/registration/uploads', authenticateAdmin, getAdminCompanyRegistration);
+router.get('/:id/registration/uploads/:uploadId/download', authenticateAdmin, downloadAdminCompanyRegistrationUpload);
+router.post('/:id/registration/uploads/:uploadId/revoke', authenticateAdmin, revokeAdminCompanyRegistrationUpload);
 
 // ADMIN: Setup PayPal recurring billing for a manual tenant
 router.post('/:id/setup-paypal-recurring', authenticateAdmin, setupPayPalRecurring);
