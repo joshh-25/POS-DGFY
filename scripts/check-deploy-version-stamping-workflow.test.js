@@ -23,6 +23,7 @@ const {
   checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
+  checkDeployMainOpisPublishGates,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
   DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
@@ -445,6 +446,53 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
     publishIf: "inputs.deploy && !cancelled() &&\n      needs.guard-branch.result == 'success' &&\n      needs.resolve-build-plan.result == 'success' &&\n      needs.dgfy-api.result != 'failure'",
   }));
   assert.equal(problems.filter((p) => /promote-aliases/.test(p)).length, 1);
+});
+
+function deployMainOpisPublishGateFixture({
+  aliasNeedsOpis = true,
+  aliasFailureGuard = true,
+  aliasCancelledGuard = true,
+  aliasOpisRevision = true,
+  publishNeedsOpis = true,
+  publishFailureGuard = true,
+  publishCancelledGuard = true,
+} = {}) {
+  const aliasNeeds = aliasNeedsOpis ? 'frontend-opis-prod' : 'frontend-storefront-prod';
+  const publishNeeds = publishNeedsOpis ? 'frontend-opis-prod' : 'frontend-storefront-prod';
+  return `jobs:\n  promote-aliases:\n    needs: [ guard-branch, ${aliasNeeds} ]\n    if: >-\n      needs.frontend-opis-prod.result != 'failure' &&\n      ${aliasCancelledGuard ? "needs.frontend-opis-prod.result != 'cancelled' &&" : ''}\n      (inputs.release_revision_api != '' ${aliasOpisRevision ? "|| inputs.release_revision_frontend_opis != ''" : ''})\n\n  publish:\n    needs: [ guard-branch, ${publishNeeds}, promote-aliases ]\n    if: >-\n      ${publishFailureGuard ? "needs.frontend-opis-prod.result != 'failure' &&" : ''}\n      ${publishCancelledGuard ? "needs.frontend-opis-prod.result != 'cancelled' &&" : ''}\n      needs.promote-aliases.result != 'failure'\n`;
+}
+
+test('checkDeployMainOpisPublishGates: valid OPIS dependency and result gates pass', () => {
+  assert.deepEqual(checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture()), []);
+});
+
+test('checkDeployMainOpisPublishGates: missing alias dependency, cancellation guard, and OPIS revision trigger are caught', () => {
+  const problems = checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture({
+    aliasNeedsOpis: false,
+    aliasCancelledGuard: false,
+    aliasOpisRevision: false,
+  }));
+  assert.equal(problems.filter((p) => /promote-aliases.*frontend-opis-prod.*needs/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /promote-aliases.*cancelled/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /release_revision_frontend_opis/.test(p)).length, 1);
+});
+
+test('checkDeployMainOpisPublishGates: publish missing OPIS dependency and failure guards are caught', () => {
+  const problems = checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture({
+    publishNeedsOpis: false,
+    publishFailureGuard: false,
+    publishCancelledGuard: false,
+  }));
+  assert.equal(problems.filter((p) => /publish.*frontend-opis-prod.*needs/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /publish.*failure/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /publish.*cancelled/.test(p)).length, 1);
+});
+
+test('checkDeployMainOpisPublishGates: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainOpisPublishGates(text), []);
 });
 
 // checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #2055

@@ -597,6 +597,38 @@ function checkDeployMainPublishGate(deployMainText) {
   return problems;
 }
 
+/** OPIS must participate in both production gates: aliases must wait for its image and
+ * refuse failures/cancellations, and publish must do the same before updating the server. */
+function checkDeployMainOpisPublishGates(deployMainText) {
+  const problems = [];
+  const jobBlocks = deployMainText.split(/\n  (?=[a-z][a-z-]*:\n)/);
+
+  for (const jobName of ['promote-aliases', 'publish']) {
+    const block = jobBlocks.find((chunk) => chunk.startsWith(`${jobName}:\n`));
+    if (!block) {
+      problems.push(`deploy-main.yml: no "${jobName}" job found for OPIS production gating.`);
+      continue;
+    }
+
+    const needs = /needs:\s*\[([^\]]*)\]/.exec(block)?.[1] ?? '';
+    if (!/(^|,)\s*frontend-opis-prod\s*(,|$)/.test(needs)) {
+      problems.push(`deploy-main.yml: "${jobName}" job must list "frontend-opis-prod" in needs: so OPIS build results gate production.`);
+    }
+    for (const result of ['failure', 'cancelled']) {
+      if (!new RegExp(`needs\\.frontend-opis-prod\\.result != '${result}'`).test(block)) {
+        problems.push(`deploy-main.yml: "${jobName}" job must require "needs.frontend-opis-prod.result != '${result}'" to fail closed.`);
+      }
+    }
+  }
+
+  const aliasBlock = jobBlocks.find((chunk) => chunk.startsWith('promote-aliases:\n'));
+  if (aliasBlock && !/inputs\.release_revision_frontend_opis\s*!=\s*''/.test(aliasBlock)) {
+    problems.push('deploy-main.yml: promote-aliases must run when "inputs.release_revision_frontend_opis" is supplied, including an OPIS-only revision dispatch.');
+  }
+
+  return problems;
+}
+
 /**
  * A paired backend operation may accept `skipped` for an explicitly unselected or
  * content-equivalent image, but must reject either backend's failed or cancelled result.
@@ -748,6 +780,7 @@ function runAllChecks({ readFile = read } = {}) {
   problems.push(...checkDeployMainReleaseRevisionWiring(deployMainText));
   problems.push(...checkDeployMainBuildSkipPlanJob(deployMainText));
   problems.push(...checkDeployMainPublishGate(deployMainText));
+  problems.push(...checkDeployMainOpisPublishGates(deployMainText));
 
   return problems;
 }
@@ -793,6 +826,7 @@ module.exports = {
   checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
+  checkDeployMainOpisPublishGates,
   checkDeployDispatchReleaseRevisionWiring,
   checkPairedBackendPublishGate,
   checkOrchestratorPairedPublishGate,
