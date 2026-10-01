@@ -54,6 +54,7 @@ const DEFAULT_VERSIONS = {
   'dgfy-ims': '1.1.2',
   'dgfy-pos': '1.1.2',
   'dgfy-storefront': '1.2.1',
+  'dgfy-opis': '1.1.0',
 };
 
 function appFixtures(versions = DEFAULT_VERSIONS) {
