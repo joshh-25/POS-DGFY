@@ -9,6 +9,7 @@ export const businessAdminApi = {
     overview: (params) => get('/business-admin/overview', params),
     notifications: (params) => get('/business-admin/notifications', params),
     reportDataset: (reportKey, params) => get(`/business-admin/reports/datasets/${encodeURIComponent(reportKey)}`, params),
+    posActivityAnalytics: (params) => get('/business-admin/pos-activity-analytics', params),
     inventoryValuation: (params) => get('/business-admin/inventory/valuation', params),
     workforce: (params) => get('/business-admin/workforce', params),
     attendance: (params) => get('/business-admin/attendance', params),

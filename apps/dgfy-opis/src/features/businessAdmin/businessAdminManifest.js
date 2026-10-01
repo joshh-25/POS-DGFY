@@ -89,6 +89,7 @@ export const BACKOFFICE_MANIFEST = Object.freeze({
   'dispatch-orders': module('Operations', 'dispatch-orders', 'Dispatch orders', 'Create, dispatch, and track fulfillment orders.', Send, DispatchOrdersPage, { visibility: { workflowPage: 'DispatchOrders' } }),
   team: module('Team & Access', 'team', 'Team & access', 'Review workforce activity and branch assignments without duplicating the User owner.', Users),
   reports: module('Reports', 'reports', 'Reports & analytics', 'See sales, stock left, inventory, production, procurement, expiry, aging, and executive reports.', BarChart3, ReportsPage),
+  'pos-activity': module('Reports', 'pos-activity', 'POS activity', 'Inspect completed paid POS sales, payment volume, linked-customer counts, and historically quiet weekday/hour periods as planning guidance.', Clock3, undefined),
   notifications: module('Settings', 'notifications', 'Notifications', 'Triage inventory, terminal, payment, fulfillment, and governance conditions.', Bell),
   fiscal: module('Settings', 'fiscal', 'Fiscal & BIR', 'Inspect immutable Z-reading and eSales evidence. Accreditation remains an external gate.', Receipt),
   audit: module('Settings', 'audit', 'Audit logs', 'Review activity across this business with sensitive values protected.', ScrollText),
