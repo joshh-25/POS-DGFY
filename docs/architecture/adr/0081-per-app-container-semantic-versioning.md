@@ -835,3 +835,26 @@ guard and the package-floor rules in Decision 6 are unchanged. Full detail: #218
 `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and `.agents/skills/promoter/references/promotion-runbook.md`.
 
 PR: (this PR). Refs #2186.
+
+### 2026-10-01 follow-up — OPIS production gating and six-app revision wiring (#2186)
+
+The amendment above split the backend revisions but predates OPIS joining the production
+path: `deploy-main.yml`'s `promote-aliases` and `publish` jobs now list `frontend-opis-prod`
+in `needs:` and fail closed on its `failure`/`cancelled` results, and `promote-aliases` runs
+whenever `release_revision_frontend_opis` is supplied (including an OPIS-only dispatch). The
+revision checker (`scripts/check-deploy-version-stamping-workflow.js`) now enforces all six app
+groups — the `release_revision_frontend_opis` declaration, `frontend-opis-prod` job forwarding,
+`frontend-opis` orchestrator wiring, and the `should_build_dgfy_opis` skip gate — the same
+contract the other five groups already carried.
+
+Package floors remain independently managed and unchanged by this follow-up (currently API
+`1.32.0`, migration-runner `1.21.1`); only revision routing and production gating change.
+
+`[default]` tier — amends the dispatch, alias, and gate procedures recorded in Decisions 1
+and 8 / the amendments above. Decision 7's `[binding]` immutable-tag guard and Decision 6's
+package-floor rules are unchanged. Full detail: #2186,
+`scripts/check-deploy-version-stamping-workflow.js`, `.github/workflows/deploy-main.yml`,
+`deployment-orchestrator.yml`, `docs/ops/RELEASE_CANDIDATE_POLICY.md`, and
+`.agents/skills/promoter/references/promotion-runbook.md`.
+
+PR: (this PR). Refs #2186.

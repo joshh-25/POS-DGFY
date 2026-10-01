@@ -667,10 +667,12 @@ REV_MIGRATION_RUNNER=<independent-rN-for-dgfy-migration-runner>
 REV_IMS=<rN-for-dgfy-ims>
 REV_POS=<rN-for-dgfy-pos>
 REV_STOREFRONT=<rN-for-dgfy-storefront>
+REV_OPIS=<rN-for-dgfy-opis>
 gh workflow run deploy.yml -f deploy=true -f candidate_source_sha="$CANDIDATE_SOURCE_SHA" \
   -f release_revision_api="$REV_API" -f release_revision_migration_runner="$REV_MIGRATION_RUNNER" \
   -f release_revision_frontend_ims="$REV_IMS" \
   -f release_revision_frontend_pos="$REV_POS" -f release_revision_frontend_storefront="$REV_STOREFRONT" \
+  -f release_revision_frontend_opis="$REV_OPIS" \
   --ref staging
 ```
 
@@ -685,16 +687,16 @@ publish under and is refused.
 **PROD dispatch — ask Pat first, every time, on either flow.** `deploy-main.yml` takes candidate
 source identity **per app group** (ADR 0081 Decision 8 amendment, #1610) — `candidate_source_sha_api`
 (covers both `dgfy-api` and `dgfy-migration-runner`, whose `apps_touched` lineage remains paired), `candidate_source_sha_frontend_ims`, `_pos`,
-`_storefront` — not one shared value, since PROD rebuilds every app unconditionally and a single
+`_storefront`, `_opis` — not one shared value, since PROD rebuilds every app unconditionally and a single
 shared value would mislabel any app a staging repair never touched.
 
 **Neither dispatch command below needs any manual `build_*` unchecking any more (#1610, ADR 0081
-Decision 7 residue).** Both canonical commands leave all four `build_*` inputs at their `default:
+Decision 7 residue).** Both canonical commands leave all five `build_*` inputs at their `default:
 true` — they always have, since this runbook never documented a manual-uncheck step in the first
-place. That used to mean every real PROD dispatch rebuilt all five apps regardless of what actually
+place. That used to mean every real PROD dispatch rebuilt all six apps regardless of what actually
 changed, and a retry after one app's Decision 7 refusal re-tripped the same guard for every app that
 had already succeeded. `deploy-main.yml` now resolves a per-app build-skip verdict automatically (a
-new `resolve-build-plan` job, ahead of the five build jobs) — an app whose version tag is already
+new `resolve-build-plan` job, ahead of the six build jobs) — an app whose version tag is already
 published and whose tracked build inputs are content-unchanged is skipped without any dispatch input
 needing to change. Nothing below needs editing for this; it's automatic and safe. Full mechanism:
 `scripts/resolve-build-skip-plan.js`'s own header comment, ADR 0081's 2026-09-05 Amendment.
@@ -713,6 +715,7 @@ console.log('CANDIDATE_SOURCE_SHA_API=' + byApp['dgfy-api']);
 console.log('CANDIDATE_SOURCE_SHA_IMS=' + byApp['dgfy-ims']);
 console.log('CANDIDATE_SOURCE_SHA_POS=' + byApp['dgfy-pos']);
 console.log('CANDIDATE_SOURCE_SHA_STOREFRONT=' + byApp['dgfy-storefront']);
+console.log('CANDIDATE_SOURCE_SHA_OPIS=' + byApp['dgfy-opis']);
 const apps = manifest.release_revision.apps;
 const rev = (a) => (apps[a] ? apps[a].revision : '');
 console.log('REV_API=' + rev('dgfy-api'));
@@ -720,6 +723,7 @@ console.log('REV_MIGRATION_RUNNER=' + rev('dgfy-migration-runner'));
 console.log('REV_IMS=' + rev('dgfy-ims'));
 console.log('REV_POS=' + rev('dgfy-pos'));
 console.log('REV_STOREFRONT=' + rev('dgfy-storefront'));
+console.log('REV_OPIS=' + rev('dgfy-opis'));
 ")"
 
 gh workflow run deploy-main.yml -f deploy=true \
@@ -727,11 +731,13 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA_IMS" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA_POS" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA_STOREFRONT" \
+  -f candidate_source_sha_frontend_opis="$CANDIDATE_SOURCE_SHA_OPIS" \
   -f release_revision_api="${REV_API:+r$REV_API}" \
   -f release_revision_migration_runner="${REV_MIGRATION_RUNNER:+r$REV_MIGRATION_RUNNER}" \
   -f release_revision_frontend_ims="${REV_IMS:+r$REV_IMS}" \
   -f release_revision_frontend_pos="${REV_POS:+r$REV_POS}" \
   -f release_revision_frontend_storefront="${REV_STOREFRONT:+r$REV_STOREFRONT}" \
+  -f release_revision_frontend_opis="${REV_OPIS:+r$REV_OPIS}" \
   --ref main
 ```
 (An app the candidate never rebuilt is absent from the map — its input stays empty and its
@@ -743,7 +749,8 @@ selection; when present, each entry and revision is independently validated.)
 its `X.Y.Z-rN` revision-tag digest (refusing a different digest or revision) and gates `publish`
 -- backend PROD is alias-only (the revision tag already exists from the STAGING dispatch above
 and the build-skip plan skips rebuilding it), frontends build first with production `VITE_*`
-values and alias the fresh digest.
+values and alias the fresh digest. Both `promote-aliases` and `publish` list
+`frontend-opis-prod` in `needs:` and fail closed when it fails or is cancelled (#2186).
 
 **#1007-gated exception** (no manifest, no repair concept, nothing has diverged per app): the single
 `$CANDIDATE_SOURCE_SHA` captured in that section (set equal to `$TARGET_SHA`, the compliance-scanned
@@ -756,11 +763,13 @@ gh workflow run deploy-main.yml -f deploy=true \
   -f candidate_source_sha_frontend_ims="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_pos="$CANDIDATE_SOURCE_SHA" \
   -f candidate_source_sha_frontend_storefront="$CANDIDATE_SOURCE_SHA" \
+  -f candidate_source_sha_frontend_opis="$CANDIDATE_SOURCE_SHA" \
   -f release_revision_api="$REV_API" \
   -f release_revision_migration_runner="$REV_MIGRATION_RUNNER" \
   -f release_revision_frontend_ims="$REV_IMS" \
   -f release_revision_frontend_pos="$REV_POS" \
   -f release_revision_frontend_storefront="$REV_STOREFRONT" \
+  -f release_revision_frontend_opis="$REV_OPIS" \
   --ref main
 ```
 
@@ -776,7 +785,7 @@ REV_POS="$(node scripts/allocate-artifact-revision.js --image ghcr.io/sieitzz/dg
   --floor "$(node -p "require('./apps/dgfy-pos/package.json').version")" \
   --revision "$TARGET_SHA" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).revision")"
 REV_POS="r$REV_POS"
-# ... repeat per touched app into REV_API / REV_MIGRATION_RUNNER / REV_IMS / REV_POS / REV_STOREFRONT,
+# ... repeat per touched app into REV_API / REV_MIGRATION_RUNNER / REV_IMS / REV_POS / REV_STOREFRONT / REV_OPIS,
 # leaving untouched groups empty.
 ```
 
