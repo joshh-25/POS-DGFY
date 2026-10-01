@@ -33,6 +33,46 @@ describe('POS checkout terminal modifier utilities', () => {
         expect(getModifierGroupMin({ required: true, min_select: 3, FnbItemModifierGroup: { is_required_override: false } })).toBe(0);
     });
 
+    it('does not default unavailable groups or options for the active location', () => {
+        const locationAwareItem = {
+            fnbModifierGroups: [{
+                modifier_group_id: 11,
+                name: 'Extras',
+                required: true,
+                min_select: 1,
+                locationAvailability: [{ location_id: 3, is_available: false }],
+                options: [{
+                    modifier_option_id: 110,
+                    name: 'Unavailable extra',
+                    price_delta: 10,
+                    is_default: true
+                }]
+            }]
+        };
+        expect(buildDefaultLineModifiers(locationAwareItem, 3)).toEqual([]);
+
+        const optionLocationAwareItem = {
+            fnbModifierGroups: [{
+                modifier_group_id: 12,
+                name: 'Extras',
+                required: true,
+                min_select: 1,
+                options: [
+                    {
+                        modifier_option_id: 120,
+                        name: 'Unavailable extra',
+                        is_default: true,
+                        locationAvailability: [{ location_id: 3, is_available: false }]
+                    },
+                    { modifier_option_id: 121, name: 'Available extra' }
+                ]
+            }]
+        };
+        expect(buildDefaultLineModifiers(optionLocationAwareItem, 3)).toEqual([
+            { modifier_group_id: 12, modifier_option_id: 121 }
+        ]);
+    });
+
     it('creates validated snapshots, computes deltas, and ignores missing groups', () => {
         const line = {
             modifier_groups: item.fnbModifierGroups,

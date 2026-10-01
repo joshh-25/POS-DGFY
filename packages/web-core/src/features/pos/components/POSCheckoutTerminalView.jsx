@@ -137,6 +137,8 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         canViewHistory,
         canUseEmployeeCredit,
         canVoidTransactions,
+        canReviewVoidApprovals,
+        inlineVoidApprovalEnabled,
         cartSubtotal,
         cartTotal,
         cartTotalQuantity,
@@ -220,6 +222,10 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         handleSplitPaymentOpenChange,
         handleSplitPaymentSessionStateChange,
         handleVoidHistoryTransaction,
+        openVoidApprovalQueue,
+        closeVoidApprovalQueue,
+        loadVoidApprovalQueue,
+        decideVoidApproval,
         historyRefundWorkflow,
         headerParkedSalesHistorySlot,
         historyCashierName,
@@ -362,6 +368,12 @@ export default function POSCheckoutTerminalView({ viewModel = {} }) {
         visibleCatalogRange,
         visibleHistoryPagination,
         visibleHistoryRows,
+        voidApprovalQueue,
+        voidApprovalQueueLoading,
+        voidApprovalQueueError,
+        voidApprovalDialogOpen,
+        voidApprovalSelectedRequest,
+        voidApprovalDecisionLoading,
         voidingTransactionId
     } = viewModel;
     const { refundWorkflowTransaction, refundWorkflowLoading, refundWorkflowSubmitting, openHistoryRefundWorkflow, closeHistoryRefundWorkflow, submitHistoryRefundWorkflow } = historyRefundWorkflow || {};
@@ -470,6 +482,19 @@ return (
                          sidebarCollapsed={sidebarCollapsed}
                          posWorkflow={posWorkflow}
                          isMobileViewport={isMobileViewport}
+                         inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
+                         canReviewVoidApprovals={canReviewVoidApprovals}
+                         voidApprovalQueue={voidApprovalQueue}
+                         voidApprovalQueueLoading={voidApprovalQueueLoading}
+                         voidApprovalQueueError={voidApprovalQueueError}
+                         voidApprovalDialogOpen={voidApprovalDialogOpen}
+                         voidApprovalDecisionLoading={voidApprovalDecisionLoading}
+                         voidApprovalSelectedRequest={voidApprovalSelectedRequest}
+                         currentUserId={terminalUser?.user_id || terminalUser?.id || null}
+                         openVoidApprovalQueue={openVoidApprovalQueue}
+                         closeVoidApprovalQueue={closeVoidApprovalQueue}
+                         loadVoidApprovalQueue={loadVoidApprovalQueue}
+                         decideVoidApproval={decideVoidApproval}
                      />
                 </Suspense>
                 </div>

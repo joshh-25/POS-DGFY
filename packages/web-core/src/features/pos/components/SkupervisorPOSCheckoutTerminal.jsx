@@ -44,6 +44,10 @@ import {
 } from '@/src/utils/assetUrl.js';
 import { ResponsiveImage } from '@/src/components/media/ResponsiveImage.jsx';
 import { resolvePosCatalogImageSources } from '../utils/posCheckoutTerminalUtils.js';
+import {
+    isAvailableFnbModifierGroup,
+    isAvailableFnbModifierOption
+} from '../utils/fnbModifierValidation.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
@@ -198,17 +202,20 @@ const getModifierGroupMin = (group = {}) => {
     return required ? Math.max(1, min) : 0;
 };
 const getModifierGroupMax = (group = {}) => Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
-const buildDefaultLineModifiers = (item = {}) => getFnbModifierGroups(item).flatMap((group) => {
-    const minSelect = getModifierGroupMin(group);
-    if (minSelect <= 0) return [];
-    const activeOptions = getActiveModifierOptions(group);
-    const defaultOptions = activeOptions.filter((option) => option?.is_default === true);
-    const selected = (defaultOptions.length > 0 ? defaultOptions : activeOptions).slice(0, minSelect);
-    return selected.map((option) => ({
-        modifier_group_id: Number(group.modifier_group_id),
-        modifier_option_id: Number(option.modifier_option_id)
-    }));
-});
+const buildDefaultLineModifiers = (item = {}, locationId = null) => getFnbModifierGroups(item)
+    .filter((group) => isAvailableFnbModifierGroup(group, locationId))
+    .flatMap((group) => {
+        const minSelect = getModifierGroupMin(group);
+        if (minSelect <= 0) return [];
+        const activeOptions = getActiveModifierOptions(group)
+            .filter((option) => isAvailableFnbModifierOption(option, locationId));
+        const defaultOptions = activeOptions.filter((option) => option?.is_default === true);
+        const selected = (defaultOptions.length > 0 ? defaultOptions : activeOptions).slice(0, minSelect);
+        return selected.map((option) => ({
+            modifier_group_id: Number(group.modifier_group_id),
+            modifier_option_id: Number(option.modifier_option_id)
+        }));
+    });
 const resolveModifierSnapshot = (line = {}, modifiers = line.line_modifiers || []) => {
     const groups = Array.isArray(line.modifier_groups) ? line.modifier_groups : [];
     return (Array.isArray(modifiers) ? modifiers : []).map((modifier) => {
@@ -1250,7 +1257,7 @@ export default function POSCheckoutTerminal({
             return;
         }
         const modifierGroups = getFnbModifierGroups(item);
-        const defaultModifiers = buildDefaultLineModifiers(item);
+        const defaultModifiers = buildDefaultLineModifiers(item, selectedLocationId);
         const routed = buildKitchenStationSnapshot(item);
         const modifierLineSeed = {
             modifier_groups: modifierGroups,

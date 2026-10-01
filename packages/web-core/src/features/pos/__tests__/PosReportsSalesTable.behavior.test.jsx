@@ -34,7 +34,7 @@ const rows = [
 describe('POS reports sales table', () => {
   afterEach(() => cleanup());
 
-  it('renders prioritized sales columns plus the shared details action', () => {
+  it('renders prioritized sales columns without an actions column', () => {
     render(<PosReportsSalesTable rows={rows} />);
 
     const tableRegion = screen.getByRole('region', { name: 'Sales transactions table' });
@@ -45,7 +45,7 @@ describe('POS reports sales table', () => {
     ['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Net Sales (₱)', 'POS Profit/Loss (₱)'].forEach((label) => {
       expect(screen.getByRole('columnheader', { name: new RegExp(label.replace(/[()₱/]/g, '\\$&')) })).toBeTruthy();
     });
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
     expect(screen.getAllByText('NFS-000125').length).toBeGreaterThan(0);
     expect(screen.getAllByText('John D.').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Cash').length).toBeGreaterThan(0);
@@ -56,13 +56,6 @@ describe('POS reports sales table', () => {
     expect(screen.getAllByText('₱30.00').length).toBeGreaterThan(0);
     expect(screen.getByText('Showing 1–2 of 2 sales transactions')).toBeTruthy();
 
-    const tableDetailAction = tableRegion.querySelector('button[aria-label="View details for NFS-000125"]');
-    expect(tableDetailAction).toBeTruthy();
-    fireEvent.click(tableDetailAction);
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Transaction Information')).toBeTruthy();
-    expect(within(dialog).getByText('Sales Summary')).toBeTruthy();
-    expect(within(dialog).getByText('Discount (₱)')).toBeTruthy();
   });
 
   it('supports search-compatible filtering and sortable numeric columns', () => {

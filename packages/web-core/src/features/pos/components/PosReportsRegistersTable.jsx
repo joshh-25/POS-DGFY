@@ -5,7 +5,8 @@ import { getPosReportSignedValueTone } from './posReportValueTones.js';
 const resolveCurrencySymbol = (currencySymbol = '₱') => String(currencySymbol).toUpperCase() === 'PHP' ? '₱' : currencySymbol || '₱';
 const money = (value, currencySymbol = '₱') => `${resolveCurrencySymbol(currencySymbol)}${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const amount = (value) => value == null || value === '' || !Number.isFinite(Number(value)) ? null : Number(value);
-const getShiftLabel = (row) => { const ids = Array.isArray(row?.shift_ids) ? row.shift_ids : row?.shift_id == null ? [] : [row.shift_id]; return ids.length > 0 ? ids.map((shiftId) => `RS-${shiftId}`).join(', ') : '—'; };
+const getShiftId = (row) => amount(row?.shift_id);
+const getShiftLabel = (row) => getShiftId(row) == null ? '—' : `RS-${getShiftId(row)}`;
 const getOpeningCashier = (row) => row?.opening_cashier_name || 'Unassigned';
 const getOpeningFloat = (row) => amount(row?.opening_float_amount) ?? 0;
 const getCashSales = (row) => amount(row?.cash_sales_amount) ?? 0;
@@ -20,7 +21,7 @@ const getSearchValue = (row) => [getShiftLabel(row), getOpeningCashier(row), get
 export default function PosReportsRegistersTable({ rows = [], currencySymbol = '₱', searchQuery = '' }) {
   const symbol = resolveCurrencySymbol(currencySymbol);
   const columns = useMemo(() => [
-    { key: 'shift_ids', label: 'Register Shift', align: 'center', widthClass: 'w-[150px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getShiftLabel },
+    { key: 'shift_id', label: 'Register Shift', align: 'center', widthClass: 'w-[150px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getShiftId, render: getShiftLabel },
     { key: 'opening_cashier_name', label: 'Opening Cashier', align: 'left', widthClass: 'w-[170px]', required: true, visibility: { mobile: false, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getOpeningCashier },
     { key: 'opening_float_amount', label: `Opening Float (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getOpeningFloat(row)), align: 'left', widthClass: 'w-[140px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, defaultVisible: false, getValue: getOpeningFloat, render: (row) => money(getOpeningFloat(row), currencySymbol) },
     { key: 'cash_sales_amount', label: `Cash Sales (${symbol})`, valueTone: (row) => getPosReportSignedValueTone(getCashSales(row)), align: 'left', widthClass: 'w-[140px]', visibility: { mobile: false, tabletPortrait: false, tabletLandscape: false, desktop: true }, defaultVisible: false, getValue: getCashSales, render: (row) => money(getCashSales(row), currencySymbol) },
@@ -31,5 +32,5 @@ export default function PosReportsRegistersTable({ rows = [], currencySymbol = '
     { key: 'status', label: 'Status', valueTone: (row) => getStatusTone(getStatus(row)), align: 'center', widthClass: 'w-[120px]', required: true, visibility: { mobile: true, tabletPortrait: true, tabletLandscape: true, desktop: true }, getValue: getStatus, render: (row) => <span className="font-black">{getStatus(row)}</span> }
   ], [currencySymbol, symbol]);
 
-  return <PosReportsResponsiveTable rows={rows} columns={columns} searchQuery={searchQuery} getSearchValue={getSearchValue} initialSort={{ key: 'shift_ids', direction: 'asc' }} ariaLabel="Register reconciliation table" title="Register reconciliation" idPrefix="pos-reports-registers" caption="Register reconciliation showing expected and counted amounts, variance, and status." emptyMessage="No register shifts were recorded for these filters." searchEmptyMessage="No register rows match your search." resultLabel="register rows" />;
+  return <PosReportsResponsiveTable rows={rows} columns={columns} searchQuery={searchQuery} getSearchValue={getSearchValue} initialSort={{ key: 'shift_id', direction: 'asc' }} ariaLabel="Register reconciliation table" title="Register reconciliation" idPrefix="pos-reports-registers" caption="Register reconciliation showing expected and counted amounts, variance, and status." emptyMessage="No register shifts were recorded for these filters." searchEmptyMessage="No register rows match your search." resultLabel="register rows" showActions={false} />;
 }

@@ -46,7 +46,7 @@ describe('POS shift operator invariant rollout scripts', () => {
 
         // Must run before the generic column-repair loop that adds active_operator_user_id,
         // or the repair loop's own ADD COLUMN fails with the same errno 1215.
-        const relaxCallIndex = script.indexOf('await relaxPosShiftCashierForeignKey(connection, tenant.db_name);');
+        const relaxCallIndex = script.indexOf('await relaxPosShiftCashierForeignKey(connection, tenantDb);');
         const columnRepairLoopIndex = script.indexOf('for (const repair of columnRepairSql)');
         expect(relaxCallIndex).toBeGreaterThan(-1);
         expect(columnRepairLoopIndex).toBeGreaterThan(-1);

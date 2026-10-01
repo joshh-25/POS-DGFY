@@ -23,6 +23,7 @@ const {
   checkDeployMainReleaseRevisionWiring,
   checkDeployMainBuildSkipPlanJob,
   checkDeployMainPublishGate,
+  checkDeployMainOpisPublishGates,
   ORCHESTRATOR_VERSION_TAG_OUTPUTS,
   ORCHESTRATOR_BUILDER_JOBS,
   DEPLOY_MAIN_CANDIDATE_SOURCE_SHA_INPUTS,
@@ -447,6 +448,53 @@ test('checkDeployMainPublishGate: publish ignoring promote-aliases is caught (a 
   assert.equal(problems.filter((p) => /promote-aliases/.test(p)).length, 1);
 });
 
+function deployMainOpisPublishGateFixture({
+  aliasNeedsOpis = true,
+  aliasFailureGuard = true,
+  aliasCancelledGuard = true,
+  aliasOpisRevision = true,
+  publishNeedsOpis = true,
+  publishFailureGuard = true,
+  publishCancelledGuard = true,
+} = {}) {
+  const aliasNeeds = aliasNeedsOpis ? 'frontend-opis-prod' : 'frontend-storefront-prod';
+  const publishNeeds = publishNeedsOpis ? 'frontend-opis-prod' : 'frontend-storefront-prod';
+  return `jobs:\n  promote-aliases:\n    needs: [ guard-branch, ${aliasNeeds} ]\n    if: >-\n      needs.frontend-opis-prod.result != 'failure' &&\n      ${aliasCancelledGuard ? "needs.frontend-opis-prod.result != 'cancelled' &&" : ''}\n      (inputs.release_revision_api != '' ${aliasOpisRevision ? "|| inputs.release_revision_frontend_opis != ''" : ''})\n\n  publish:\n    needs: [ guard-branch, ${publishNeeds}, promote-aliases ]\n    if: >-\n      ${publishFailureGuard ? "needs.frontend-opis-prod.result != 'failure' &&" : ''}\n      ${publishCancelledGuard ? "needs.frontend-opis-prod.result != 'cancelled' &&" : ''}\n      needs.promote-aliases.result != 'failure'\n`;
+}
+
+test('checkDeployMainOpisPublishGates: valid OPIS dependency and result gates pass', () => {
+  assert.deepEqual(checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture()), []);
+});
+
+test('checkDeployMainOpisPublishGates: missing alias dependency, cancellation guard, and OPIS revision trigger are caught', () => {
+  const problems = checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture({
+    aliasNeedsOpis: false,
+    aliasCancelledGuard: false,
+    aliasOpisRevision: false,
+  }));
+  assert.equal(problems.filter((p) => /promote-aliases.*frontend-opis-prod.*needs/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /promote-aliases.*cancelled/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /release_revision_frontend_opis/.test(p)).length, 1);
+});
+
+test('checkDeployMainOpisPublishGates: publish missing OPIS dependency and failure guards are caught', () => {
+  const problems = checkDeployMainOpisPublishGates(deployMainOpisPublishGateFixture({
+    publishNeedsOpis: false,
+    publishFailureGuard: false,
+    publishCancelledGuard: false,
+  }));
+  assert.equal(problems.filter((p) => /publish.*frontend-opis-prod.*needs/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /publish.*failure/.test(p)).length, 1);
+  assert.equal(problems.filter((p) => /publish.*cancelled/.test(p)).length, 1);
+});
+
+test('checkDeployMainOpisPublishGates: real deploy-main.yml passes', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/deploy-main.yml'), 'utf8');
+  assert.deepEqual(checkDeployMainOpisPublishGates(text), []);
+});
+
 // checkOrchestratorReleaseRevisionWiring / checkDeployMainReleaseRevisionWiring -- #2055
 // (Phase 346): per-app-group release_revision_* inputs are threaded deploy.yml ->
 // deployment-orchestrator.yml -> builders (each job forwards its own app's entry out of
@@ -460,11 +508,12 @@ const ORCHESTRATOR_REVISION_JOB_KEYS = Object.freeze({
   'frontend-ims': 'dgfy-ims',
   'frontend-pos': 'dgfy-pos',
   'frontend-storefront': 'dgfy-storefront',
+  'frontend-opis': 'dgfy-opis',
 });
 
 function orchestratorRevisionFixture({ withInput = true, jobs = ORCHESTRATOR_BUILDER_JOBS, skipPlanRevision = true, withRevisionsStep = true } = {}) {
   const inputBlock = withInput
-    ? "on:\n  workflow_call:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_migration_runner:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n\n"
+    ? "on:\n  workflow_call:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_migration_runner:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_opis:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
   const jobBlocks = jobs.map((name) => `  ${name}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ fromJSON(needs.resolve-build-plan.outputs.revisions_json).${ORCHESTRATOR_REVISION_JOB_KEYS[name]} }}\n    secrets: inherit\n`).join('\n');
   const revisionsStep = withRevisionsStep
@@ -531,11 +580,12 @@ const DEPLOY_MAIN_REVISION_JOB_INPUTS = Object.freeze({
   'frontend-ims-prod': 'release_revision_frontend_ims',
   'frontend-pos-prod': 'release_revision_frontend_pos',
   'frontend-storefront-prod': 'release_revision_frontend_storefront',
+  'frontend-opis-prod': 'release_revision_frontend_opis',
 });
 
 function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, skipPlanEnvironment = true, withAliasJob = true } = {}) {
   const inputBlock = withInput
-    ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_migration_runner:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n\n"
+    ? "on:\n  workflow_dispatch:\n    inputs:\n      release_revision_api:\n        required: false\n        type: string\n        default: ''\n      release_revision_migration_runner:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_ims:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_pos:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_storefront:\n        required: false\n        type: string\n        default: ''\n      release_revision_frontend_opis:\n        required: false\n        type: string\n        default: ''\n\n"
     : '';
   const jobBlocks = DEPLOY_MAIN_BUILD_SKIP_OUTPUT_NAMES
     .map(([jobName]) => `  ${jobName}:\n    uses: ./.github/workflows/some-workflow.yml\n    with:\n      environment: PROD\n      release_revision: \${{ inputs.${DEPLOY_MAIN_REVISION_JOB_INPUTS[jobName]} }}\n    secrets: inherit\n`)
@@ -544,7 +594,7 @@ function deployMainRevisionFixture({ withInput = true, skipPlanRevision = true, 
   if (skipPlanEnvironment) skipArgs.push('--environment PROD');
   if (skipPlanRevision) skipArgs.push('--release-revisions-json {"a":"r1"}');
   const skipStep = `      - name: Resolve build-skip plan\n        run: node scripts/resolve-build-skip-plan.js ${skipArgs.join(' ')}\n`;
-  const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n      - run: echo ${{ inputs.release_revision_api }} ${{ inputs.release_revision_migration_runner }} ${{ inputs.release_revision_frontend_ims }} ${{ inputs.release_revision_frontend_pos }} ${{ inputs.release_revision_frontend_storefront }}\n      - run: MIGRATION_R: ${{ inputs.release_revision_migration_runner }} put(\'dgfy-migration-runner\',process.env.MIGRATION_R) must select dgfy-api and dgfy-migration-runner artifact revisions together\n      - run: dgfy-migration-runner) APP_REVISION=\"${{ inputs.release_revision_migration_runner }}\"\n' : '';
+  const aliasJob = withAliasJob ? '  promote-aliases:\n    needs: [ guard-branch ]\n    steps:\n      - run: node scripts/resolve-release-tags.js --app dgfy-api --version 1.0.0 --environment PROD --revision r16\n      - run: node scripts/promote-image-alias.js --source img:t --target img:a\n      - run: echo ${{ inputs.release_revision_api }} ${{ inputs.release_revision_migration_runner }} ${{ inputs.release_revision_frontend_ims }} ${{ inputs.release_revision_frontend_pos }} ${{ inputs.release_revision_frontend_storefront }} ${{ inputs.release_revision_frontend_opis }}\n      - run: MIGRATION_R: ${{ inputs.release_revision_migration_runner }} put(\'dgfy-migration-runner\',process.env.MIGRATION_R) must select dgfy-api and dgfy-migration-runner artifact revisions together\n      - run: dgfy-migration-runner) APP_REVISION=\"${{ inputs.release_revision_migration_runner }}\"\n' : '';
   return `${inputBlock}jobs:\n${jobBlocks}\n${skipStep}${aliasJob}`;
 }
 
@@ -574,6 +624,29 @@ test('checkDeployMainReleaseRevisionWiring: missing migration-runner mapping or 
   const fixture = deployMainRevisionFixture();
   assert.equal(checkDeployMainReleaseRevisionWiring(fixture.replace('release_revision_migration_runner:', 'missing_migration_runner:')).filter((p) => /missing a "release_revision_migration_runner"/.test(p)).length, 1);
   assert.equal(checkDeployMainReleaseRevisionWiring(fixture.replace('dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_migration_runner }}"', 'dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_api }}"')).filter((p) => /promote-aliases must route dgfy-migration-runner/.test(p)).length, 1);
+});
+
+// #2186 PROD candidate (API r2, migration-runner r5, OPIS r1, storefront r1; IMS/POS absent):
+// each selected app must be wired to its OWN revision input at the job, skip-plan, and alias
+// layers, and a crossed mapping (one app reading another app's input) must be caught rather
+// than silently aliasing the wrong revision.
+test('checkDeployMainReleaseRevisionWiring: crossed per-app revision mapping is caught', () => {
+  const crossedJob = deployMainRevisionFixture().replace(
+    'release_revision: ${{ inputs.release_revision_migration_runner }}',
+    'release_revision: ${{ inputs.release_revision_api }}',
+  );
+  assert.equal(checkDeployMainReleaseRevisionWiring(crossedJob).filter((p) => /job "dgfy-migration-runner" does not forward/.test(p)).length, 1);
+  const crossedAlias = deployMainRevisionFixture().replace(
+    'dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_migration_runner }}"',
+    'dgfy-migration-runner) APP_REVISION="${{ inputs.release_revision_frontend_opis }}"',
+  );
+  assert.equal(checkDeployMainReleaseRevisionWiring(crossedAlias).filter((p) => /promote-aliases must route dgfy-migration-runner/.test(p)).length, 1);
+});
+
+test('checkDeployMainReleaseRevisionWiring: missing OPIS input, job forwarding, or alias routing is caught', () => {
+  const fixture = deployMainRevisionFixture();
+  assert.equal(checkDeployMainReleaseRevisionWiring(fixture.replace('release_revision_frontend_opis:', 'missing_opis:')).filter((p) => /missing a "release_revision_frontend_opis"/.test(p)).length, 1);
+  assert.equal(checkDeployMainReleaseRevisionWiring(fixture.replace('release_revision: ${{ inputs.release_revision_frontend_opis }}', 'release_revision: ${{ inputs.release_revision_frontend_storefront }}')).filter((p) => /job "frontend-opis-prod" does not forward/.test(p)).length, 1);
 });
 
 // #1588 (epic #1548 Wave 4, Phase 279): labels moved from a literal `|` block inline in the

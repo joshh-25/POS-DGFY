@@ -39,17 +39,17 @@ export const resolveEffectivePermissions = (user) => {
 
   if (role === 'cashier') {
     // #1901: an assigned but inactive staff role must not restore the broad cashier preset,
-    // including pos:transact. Keep the cashier item floor/ceiling on the view-only fallback.
+    // including pos:transact. Preserve the view-only catalog defaults on this fallback.
     if (explicitPermissions.length === 0 && hasAssignedStaffRole && !staffRoleActive) {
       const viewOnlyDefaults = DEFAULT_ROLE_PERMISSIONS.staff || [];
-      return Array.from(new Set([...viewOnlyDefaults, 'items:edit']))
+      return Array.from(new Set(viewOnlyDefaults))
         .filter((permission) => permission !== 'items:delete');
     }
 
     const cashierPermissions = explicitPermissions.length > 0
       ? explicitPermissions
       : (DEFAULT_ROLE_PERMISSIONS.cashier || []);
-    return Array.from(new Set([...cashierPermissions, 'items:edit']))
+    return Array.from(new Set(cashierPermissions))
       .filter((permission) => permission !== 'items:delete');
   }
 

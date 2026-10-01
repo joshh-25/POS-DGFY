@@ -7,7 +7,8 @@ export default function PosLineTabNavigation({
   ariaLabel = 'Sections',
   idPrefix = 'pos-tab',
   panelId,
-  showIcons = true
+  showIcons = true,
+  hideScrollbar = false
 }) {
   const availableTabs = Array.isArray(tabs) ? tabs : [];
   const tabsViewportRef = useRef(null);
@@ -62,7 +63,11 @@ export default function PosLineTabNavigation({
   };
 
   return (
-    <nav ref={tabsViewportRef} aria-label={ariaLabel} className="-mx-1 overflow-x-auto min-[1024px]:mx-0">
+    <nav
+      ref={tabsViewportRef}
+      aria-label={ariaLabel}
+      className={`-mx-1 overflow-x-auto min-[1024px]:mx-0 ${hideScrollbar ? 'dgfy-pos-scrollbar-hidden' : ''}`}
+    >
       <div role="tablist" aria-orientation="horizontal" className="flex min-w-max items-end gap-3 px-1 min-[1024px]:min-w-0 min-[1024px]:w-full min-[1024px]:gap-0 min-[1024px]:px-0">
         {availableTabs.map((tab) => {
           const Icon = tab.icon;

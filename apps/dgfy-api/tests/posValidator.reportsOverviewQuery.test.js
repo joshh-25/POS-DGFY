@@ -1,5 +1,9 @@
 import { jest } from '@jest/globals';
-import { validatePosReportsQuery, validatePosReportsExportQuery } from '../src/validators/posValidator.js';
+import {
+    validatePosReportsQuery,
+    validatePosReportsBreakdownQuery,
+    validatePosReportsExportQuery
+} from '../src/validators/posValidator.js';
 
 const mockRes = () => {
     const res = {};
@@ -193,6 +197,52 @@ describe('POS reports export query validator', () => {
         const next = jest.fn();
 
         validatePosReportsExportQuery(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+});
+
+describe('POS report breakdown query validator', () => {
+    it('accepts a breakdown with filters and normalizes numeric pagination', () => {
+        const req = {
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                breakdown: 'items',
+                location_id: '12',
+                page: '2',
+                limit: '100',
+                sort_by: 'sku',
+                sort_direction: 'desc'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosReportsBreakdownQuery(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery.breakdown).toBe('items');
+        expect(req.validatedQuery.location_id).toBe(12);
+        expect(req.validatedQuery.page).toBe(2);
+        expect(req.validatedQuery.limit).toBe(100);
+        expect(req.validatedQuery.sort_by).toBe('sku');
+    });
+
+    it('rejects unsupported breakdown and sort values', () => {
+        const req = {
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                breakdown: 'daily',
+                sort_by: 'customer_email'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosReportsBreakdownQuery(req, res, next);
 
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(422);

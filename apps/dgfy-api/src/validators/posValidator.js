@@ -9,7 +9,27 @@ const PAYMENT_TYPE_FILTERS = [...PAYMENT_TYPES, 'other'];
 const PAYMENT_STATUSES = ['unpaid', 'payment_pending', 'paid', 'failed', 'refund_pending', 'partial_refunded', 'refunded'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
-const REPORT_SECTIONS = ['daily', 'sales', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs', 'employee_credit'];
+const REPORT_BREAKDOWNS = ['hourly', 'items', 'categories'];
+const REPORT_BREAKDOWN_SORT_FIELDS = [
+    'bucket_start_local',
+    'item_name',
+    'sku',
+    'category_name',
+    'item_count',
+    'quantity',
+    'orders',
+    'gross_sales',
+    'discounts',
+    'net_sales',
+    'refunds_voids',
+    'cogs',
+    'profit',
+    'profit_margin',
+    'average_unit_price',
+    'sales_share'
+];
+const REPORT_SORT_DIRECTIONS = ['asc', 'desc'];
+const REPORT_SECTIONS = ['daily', 'sales', 'monthly', 'yearly', 'comparison', 'profit_loss', 'attendance', 'cashiers', 'registers', 'handoffs', 'employee_credit', 'hourly', 'item_sales', 'category_sales'];
 const PAYMENT_HANDOFF_MODES = ['external', 'internal'];
 // 'cheque' added by ADR 0077 (scoped supersession of ADR 0063 clause 4) -- Phase 202 (#1085).
 const SPLIT_PAYMENT_METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'cheque', 'employee_credit'];
@@ -492,6 +512,11 @@ const posExceptionApprovalBodySchema = Joi.object({
     note: Joi.string().trim().max(500).allow('', null).optional()
 }).unknown(false);
 
+const listPosExceptionApprovalsQuerySchema = Joi.object({
+    status: Joi.string().valid('pending', 'approved', 'rejected', 'executed', 'expired', 'cancelled').default('pending'),
+    limit: Joi.number().integer().min(1).max(100).default(100)
+});
+
 const posCatalogQuerySchema = Joi.object({
     search: Joi.string().allow('', null).default(''),
     limit: Joi.number().integer().min(1).max(500).default(100),
@@ -753,9 +778,18 @@ const posReportsQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(200).default(50)
 });
 
+const posReportsBreakdownQuerySchema = posReportsQuerySchema.keys({
+    granularity: Joi.forbidden(),
+    breakdown: Joi.string().valid(...REPORT_BREAKDOWNS).required(),
+    sort_by: Joi.string().valid(...REPORT_BREAKDOWN_SORT_FIELDS).optional(),
+    sort_direction: Joi.string().valid(...REPORT_SORT_DIRECTIONS).default('desc')
+});
+
 const posReportsExportQuerySchema = posReportsQuerySchema.keys({
     section: Joi.string().valid(...REPORT_SECTIONS).default('daily'),
-    format: Joi.string().valid('csv').default('csv')
+    format: Joi.string().valid('csv').default('csv'),
+    sort_by: Joi.string().valid(...REPORT_BREAKDOWN_SORT_FIELDS).optional(),
+    sort_direction: Joi.string().valid(...REPORT_SORT_DIRECTIONS).default('desc')
 });
 
 const incomingOnlineOrdersQuerySchema = Joi.object({
@@ -1592,6 +1626,7 @@ export const validateReparkPosParkedSale = validateSchema(reparkPosParkedSaleSch
 export const validateParkedSaleIdParam = validateSchema(parkedSaleIdParamSchema, 'params', 'validatedParams');
 export const validatePosExceptionApprovalParam = validateSchema(posExceptionApprovalParamSchema, 'params', 'validatedParams');
 export const validatePosExceptionApprovalBody = validateSchema(posExceptionApprovalBodySchema, 'body', 'validatedData');
+export const validateListPosExceptionApprovals = validateSchema(listPosExceptionApprovalsQuerySchema, 'query', 'validatedQuery');
 export const validateCreatePosPaymentSession = validateSchema(createPosPaymentSessionSchema, 'body', 'validatedData');
 export const validateAddPosPaymentAllocation = validateSchema(addPosPaymentAllocationSchema, 'body', 'validatedData');
 export const validateCancelPosPayment = validateSchema(cancelPosPaymentSchema, 'body', 'validatedData');
@@ -1606,6 +1641,7 @@ export const validatePosDiscountApproval = validateSchema(posDiscountApprovalSch
 export const validatePosTransactionsQuery = validateSchema(listTransactionsQuerySchema, 'query', 'validatedQuery');
 export const validatePosCatalogQuery = validateSchema(posCatalogQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsQuery = validateSchema(posReportsQuerySchema, 'query', 'validatedQuery');
+export const validatePosReportsBreakdownQuery = validateSchema(posReportsBreakdownQuerySchema, 'query', 'validatedQuery');
 export const validateMobilePosCatalogBootstrapQuery = validateSchema(mobilePosCatalogBootstrapQuerySchema, 'query', 'validatedQuery');
 export const validatePosScan = validateSchema(posScanSchema, 'body', 'validatedData');
 export const validateVerifyTerminal = validateSchema(verifyTerminalSchema, 'body', 'validatedData');

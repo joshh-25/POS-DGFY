@@ -89,6 +89,19 @@ export const normalizeTerminalRegistry = (rawRegistry) => {
   return normalized;
 };
 
+export const resolveRegisteredTerminalLocationId = (registryEntries = [], terminalId = '') => {
+  const normalizedTerminalId = sanitizeTerminalId(terminalId);
+  if (!normalizedTerminalId || !Array.isArray(registryEntries)) return null;
+
+  const registryEntry = registryEntries.find((entry) => (
+    entry?.is_active !== false
+    && sanitizeTerminalId(entry?.terminal_id) === normalizedTerminalId
+  ));
+  const locationId = Number(registryEntry?.location_id || 0);
+
+  return Number.isInteger(locationId) && locationId > 0 ? locationId : null;
+};
+
 export const resolvePreferredTerminalId = (
   registryEntries = [],
   preferredTerminalId = '',

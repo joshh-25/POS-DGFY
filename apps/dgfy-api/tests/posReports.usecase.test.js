@@ -1,12 +1,58 @@
 import { jest } from '@jest/globals';
 import {
     buildGetPosReportsOverviewUseCase,
+    buildGetPosReportBreakdownUseCase,
     buildExportPosReportsUseCase,
     buildExportProcurementCsvUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import logger from '../src/config/logger.js';
+import dbStore from '../src/utils/dbStore.js';
 
 describe('POS reports usecases', () => {
+    it('rejects an unsupported report breakdown before reaching the repository', async () => {
+        const getReportBreakdown = jest.fn();
+        const useCase = buildGetPosReportBreakdownUseCase({
+            posRepository: { getReportBreakdown }
+        });
+
+        const result = await useCase({
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                breakdown: 'daily'
+            },
+            user: { user_id: 4 }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.statusCode).toBe(422);
+        expect(getReportBreakdown).not.toHaveBeenCalled();
+    });
+
+    it('prevents a cashier from selecting another cashier in a breakdown request', async () => {
+        const getReportBreakdown = jest.fn();
+        const useCase = buildGetPosReportBreakdownUseCase({
+            posRepository: { getReportBreakdown }
+        });
+
+        const result = await useCase({
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                breakdown: 'items',
+                cashier_id: 99
+            },
+            user: { user_id: 42, role: 'cashier' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+        expect(result.error.statusCode).toBe(403);
+        expect(getReportBreakdown).not.toHaveBeenCalled();
+    });
+
     it('buildGetPosReportsOverviewUseCase rejects a non-object query', async () => {
         const useCase = buildGetPosReportsOverviewUseCase({
             posRepository: { getReportsOverview: jest.fn() }
@@ -55,6 +101,57 @@ describe('POS reports usecases', () => {
         expect(getReportsOverview).not.toHaveBeenCalled();
     });
 
+    it('logs bounded register variance diagnostics without returning them to the report client', async () => {
+        const data = { daily_report: {}, cashier_lifecycle: {} };
+        Object.defineProperty(data, '_internal_register_variance_diagnostics', {
+            value: {
+                variance_mismatch_count: 1,
+                variance_mismatch_samples: [{
+                    shift_id: 147,
+                    location_id: 12,
+                    stored_variance_amount: 150,
+                    derived_variance_amount: -4063,
+                    delta: 4213
+                }],
+                private_payload: 'must not be logged'
+            },
+            enumerable: false
+        });
+        const getReportsOverview = jest.fn().mockResolvedValue(data);
+        const useCase = buildGetPosReportsOverviewUseCase({ posRepository: { getReportsOverview } });
+        const originalGet = dbStore.get.bind(dbStore);
+        const dbStoreGet = jest.spyOn(dbStore, 'get').mockImplementation((name) => (
+            name === 'TenantLocation'
+                ? { findByPk: jest.fn().mockResolvedValue({ location_id: 12, is_active: true }) }
+                : originalGet(name)
+        ));
+        const warn = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+
+        try {
+            const result = await useCase({
+                query: { date_from: '2026-09-18', date_to: '2026-09-18', location_id: 12 },
+                user: { user_id: 4, is_master_admin: true }
+            });
+
+            expect(result.success).toBe(true);
+            expect(warn).toHaveBeenCalledWith('[POS][RegisterReconciliationVarianceMismatch]', {
+                mismatch_count: 1,
+                samples: [{
+                    shift_id: 147,
+                    location_id: 12,
+                    stored_variance_amount: 150,
+                    derived_variance_amount: -4063,
+                    delta: 4213
+                }]
+            });
+            expect(result.data).not.toHaveProperty('_internal_register_variance_diagnostics');
+            expect(JSON.stringify(result.data)).not.toContain('must not be logged');
+        } finally {
+            dbStoreGet.mockRestore();
+            warn.mockRestore();
+        }
+    });
+
     it('buildExportPosReportsUseCase rejects a non-object query', async () => {
         const useCase = buildExportPosReportsUseCase({
             posRepository: { exportReports: jest.fn() }
@@ -80,6 +177,169 @@ describe('POS reports usecases', () => {
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.AUTHENTICATION_FAILED);
         expect(result.error.statusCode).toBe(401);
+    });
+
+    it('exports complete item-sales breakdown rows through the breakdown use case', async () => {
+        const getReportBreakdownUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                range: { date_from: '2026-09-01', date_to: '2026-09-30', timezone: 'Asia/Manila' },
+                summary: {
+                    gross_sales: 150,
+                    discounts: 0,
+                    net_sales: 150,
+                    refunds_voids: 0,
+                    vatable_sales: 150,
+                    vat: 18,
+                    service_fees: 0,
+                    cogs: 30,
+                    profit: 120,
+                    total_transactions: 2,
+                    total_items_sold: 3
+                },
+                rows: [{
+                    item_key: 'item:21',
+                    item_id: 21,
+                    item_name: 'Coffee, "Large"',
+                    sku: 'COF-21',
+                    category_name: 'Drinks',
+                    quantity: 3,
+                    orders: 2,
+                    gross_sales: 150,
+                    discounts: 0,
+                    net_sales: 150,
+                    refunds_voids: 0,
+                    cogs: 30,
+                    profit: 120,
+                    profit_margin: 80,
+                    average_unit_price: 50,
+                    sales_share: 100
+                }]
+            }
+        });
+
+        const useCase = buildExportPosReportsUseCase({
+            posRepository: {},
+            getReportBreakdownUseCase
+        });
+        const result = await useCase({
+            query: {
+                section: 'item_sales',
+                date_from: '2026-09-01',
+                date_to: '2026-09-30',
+                page: 4,
+                limit: 1,
+                location_id: 12,
+                cashier_id: 9,
+                payment_type: 'cash',
+                source: 'in_store',
+                category_id: 4,
+                sort_by: 'sku',
+                sort_direction: 'asc'
+            },
+            user: { user_id: 4 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(getReportBreakdownUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            query: expect.objectContaining({
+                breakdown: 'items',
+                export_all: true,
+                page: 1,
+                limit: 1,
+                location_id: 12,
+                cashier_id: 9,
+                payment_type: 'cash',
+                source: 'in_store',
+                category_id: 4,
+                sort_by: 'sku',
+                sort_direction: 'asc'
+            }),
+            user: { user_id: 4 }
+        }));
+        expect(result.data.filename).toBe('pos-item_sales-report-2026-09-01_to_2026-09-30.csv');
+        expect(result.data.content).toContain('"Report","Item Sales"');
+        expect(result.data.content).toContain('"Date From","2026-09-01"');
+        expect(result.data.content).toContain('"Timezone","Asia/Manila"');
+        expect(result.data.content).toContain('"Metric","Value"');
+        expect(result.data.content).toContain('"Gross Sales","150"');
+        expect(result.data.content).toContain('"Profit","120"');
+        expect(result.data.content).toContain('Item Key');
+        expect(result.data.content).toContain('"Coffee, ""Large"""');
+    });
+
+    it.each([
+        ['hourly', 'hourly', 'Bucket Start (Asia/Manila)'],
+        ['category_sales', 'categories', 'Category Key']
+    ])('exports the %s section with its fixed detail header', async (section, breakdown, header) => {
+        const getReportBreakdownUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                range: { date_from: '2026-09-01', date_to: '2026-09-01', timezone: 'Asia/Manila' },
+                summary: { net_sales: 0 },
+                rows: []
+            }
+        });
+        const useCase = buildExportPosReportsUseCase({ posRepository: {}, getReportBreakdownUseCase });
+
+        const result = await useCase({
+            query: { section, date_from: '2026-09-01', date_to: '2026-09-01' },
+            user: { user_id: 4 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.content).toContain(`"Report","${section === 'hourly' ? 'Hourly Sales' : 'Sales by Category'}"`);
+        expect(result.data.content).toContain(`"${header}"`);
+        expect(getReportBreakdownUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            query: expect.objectContaining({ breakdown, export_all: true, page: 1 })
+        }));
+    });
+
+    it('exports refunds and voids as signed negative adjustments in breakdown CSVs', async () => {
+        const getReportBreakdownUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                range: { date_from: '2026-09-01', date_to: '2026-09-01', timezone: 'Asia/Manila' },
+                summary: {
+                    gross_sales: 80,
+                    discounts: 0,
+                    net_sales: 0,
+                    refunds_voids: 80,
+                    vatable_sales: 0,
+                    vat: 0,
+                    service_fees: 0,
+                    cogs: 67,
+                    profit: -67,
+                    total_transactions: 1,
+                    total_items_sold: 1
+                },
+                rows: [{
+                    bucket_start_local: '2026-09-01 16:00:00',
+                    bucket_end_local: '2026-09-01 16:59:59',
+                    transaction_count: 1,
+                    item_quantity: 1,
+                    gross_sales: 80,
+                    discounts: 0,
+                    net_sales: 0,
+                    refunds_voids: 80,
+                    vat: 0,
+                    service_fees: 0,
+                    cogs: 67,
+                    profit: -67,
+                    profit_margin: -83.75
+                }]
+            }
+        });
+        const useCase = buildExportPosReportsUseCase({ posRepository: {}, getReportBreakdownUseCase });
+
+        const result = await useCase({
+            query: { section: 'hourly', date_from: '2026-09-01', date_to: '2026-09-01' },
+            user: { user_id: 4 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.content).toContain('"Refunds/Voids","-80"');
+        expect(result.data.content).toContain('"2026-09-01 16:00:00","2026-09-01 16:59:59","1","1","80","0","0","-80"');
     });
 
     it('exports invoice VAT fields and all split payment methods', async () => {
@@ -133,6 +393,40 @@ describe('POS reports usecases', () => {
             query: { section: 'daily' },
             user: { user_id: 4 }
         });
+    });
+
+    it('exports register reconciliation as one row with a singular shift identifier', async () => {
+        const getReportsOverviewUseCase = jest.fn().mockResolvedValue({
+            success: true,
+            data: {
+                daily_report: { summary: {}, discount_breakdown: [], cashier_summary: [], transaction_rows: [] },
+                cashier_lifecycle: {
+                    registers: [{
+                        shift_id: 147,
+                        opening_cashier_name: 'Admin',
+                        opening_float_amount: 0,
+                        cash_sales_amount: 0,
+                        cash_in_total: 0,
+                        cash_out_total: 0,
+                        expected_cash_amount: 75994.83,
+                        closing_cash_amount: 71931.83,
+                        variance_amount: -4063,
+                        attribution_notice: 'Register totals belong to the drawer lifecycle.'
+                    }]
+                }
+            }
+        });
+        const useCase = buildExportPosReportsUseCase({ posRepository: {}, getReportsOverviewUseCase });
+
+        const result = await useCase({ query: { section: 'registers' }, user: { user_id: 4 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.content).toContain(
+            '"Register Shift","Opening Cashier","Opening Float","Cash Sales","Cash In","Cash Out","Expected Cash","Closing Cash","Variance","Notice"'
+        );
+        expect(result.data.content).toContain('"RS-147","Admin","0","0","0","0","75994.83","71931.83","-4063"');
+        expect(result.data.content).not.toContain('Shift IDs');
+        expect(result.data.content).not.toContain('147|');
     });
 
     describe('buildExportProcurementCsvUseCase', () => {

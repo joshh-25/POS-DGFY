@@ -83,6 +83,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingMarkup).toContain('MATCHED');
         expect(zReadingMarkup).toContain('Report recognized sales');
         expect(zReadingMarkup).toContain('Checked');
+        expect(zReadingMarkup).not.toContain('Lifetime total');
     });
 
     it('uses the same method labels for iMin shift-summary and Z-reading text', () => {
@@ -137,6 +138,7 @@ describe('close-report payment breakdown rendering', () => {
         expect(zReadingText).toContain('Difference');
         expect(zReadingText).toContain('Checked');
         expect(zReadingText).toContain('Provider refunds reconciled separately.');
+        expect(zReadingText).not.toContain('Lifetime total');
     });
 
     it('keeps missing or invalid generation times readable without breaking the report', () => {

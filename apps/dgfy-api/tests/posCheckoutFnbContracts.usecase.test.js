@@ -2651,6 +2651,7 @@ describe('POS checkout F&B contracts', () => {
                 quantity: -2,
                 location_id: 3
             }]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
             createFiscalEvent: jest.fn().mockResolvedValue({ event_hash: 'void-event-hash' }),
             createAuditLog: jest.fn().mockResolvedValue(null),
             findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
@@ -2729,6 +2730,7 @@ describe('POS checkout F&B contracts', () => {
             getTransactionById: jest.fn().mockResolvedValue(transactionRow),
             getTerminalShiftById,
             listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
             createAuditLog,
             findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
             createPosTransactionAdjustment: jest.fn(async (payload) => ({
@@ -2784,6 +2786,89 @@ describe('POS checkout F&B contracts', () => {
         }), expect.objectContaining({ transaction: expect.any(Object) }));
     });
 
+    it('allows an administrator to execute a void directly without creating an approval request', async () => {
+        const transactionRow = {
+            pos_transaction_id: 1790,
+            invoice_number: 'INV-ADMIN-BYPASS-001',
+            document_type: 'non_fiscal_slip',
+            status: 'completed',
+            terminal_id: 'TERM-01',
+            location_id: 3,
+            cashier_id: 12,
+            shift_id: 901,
+            total_amount: 125,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const createBusinessAdminApprovalRequest = jest.fn();
+        const pendingApprovalRequest = {
+            business_admin_approval_request_id: 7790,
+            status: 'pending',
+            requested_by: 99
+        };
+        const updateBusinessAdminApprovalRequest = jest.fn(async (id, payload) => ({
+            ...pendingApprovalRequest,
+            business_admin_approval_request_id: id,
+            ...payload
+        }));
+        const createAuditLog = jest.fn().mockResolvedValue(null);
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            getTerminalShiftById: jest.fn().mockResolvedValue(createOpenShift({ shiftId: 901, cashierId: 99 })),
+            findPendingBusinessAdminApprovalRequest: jest.fn().mockResolvedValue(pendingApprovalRequest),
+            createBusinessAdminApprovalRequest,
+            updateBusinessAdminApprovalRequest,
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle: jest.fn(async (id, payload) => ({ ...transactionRow, ...payload })),
+            createPosTransactionAdjustment: jest.fn(async (payload) => ({
+                ...payload,
+                adjustment_reference: payload.adjustment_reference
+            })),
+            createAuditLog
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            posTransactionId: 1790,
+            payload: {
+                reason: 'Administrator correction',
+                shift_id: 901,
+                terminal_id: 'TERM-01',
+                terminal_location_id: 3
+            },
+            user: { user_id: 99, role: 'admin' }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            authorization_mode: 'admin_bypass',
+            transaction: expect.objectContaining({ status: 'voided' })
+        }));
+        expect(createBusinessAdminApprovalRequest).not.toHaveBeenCalled();
+        expect(posRepository.findPendingBusinessAdminApprovalRequest).toHaveBeenCalledWith({
+            actionType: 'pos_void',
+            entityType: 'pos_transaction',
+            entityId: 1790
+        }, expect.objectContaining({ transaction: expect.any(Object), lock: true }));
+        expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            event_type: 'pos_transaction_voided',
+            changes: expect.objectContaining({
+                authorization_mode: 'admin_bypass',
+                approval_request_id: null,
+                superseded_approval_request_id: 7790,
+                approved_by: null
+            })
+        }), expect.objectContaining({ transaction: expect.any(Object) }));
+        expect(updateBusinessAdminApprovalRequest).toHaveBeenCalledWith(7790, expect.objectContaining({
+            status: 'cancelled'
+        }), expect.objectContaining({ transaction: expect.any(Object), lock: true }));
+    });
+
     it('rejects an administrator void when the transaction is outside the registered terminal location', async () => {
         const updateTransactionLifecycle = jest.fn();
         const transactionRow = {
@@ -2801,7 +2886,8 @@ describe('POS checkout F&B contracts', () => {
             getTransactionById: jest.fn().mockResolvedValue(transactionRow),
             updateTransactionLifecycle,
             createAuditLog: jest.fn(),
-            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([])
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null)
         };
         const useCase = buildVoidPosTransactionUseCase({
             posRepository,
@@ -2853,6 +2939,7 @@ describe('POS checkout F&B contracts', () => {
                 status: 'succeeded'
             }),
             listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
             updateTransactionLifecycle,
             createPosTransactionAdjustment,
             createAuditLog: jest.fn()
@@ -2902,6 +2989,7 @@ describe('POS checkout F&B contracts', () => {
             getTransactionById: jest.fn().mockResolvedValue(transactionRow),
             findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
             listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
             updateTransactionLifecycle,
             createPosTransactionAdjustment: jest.fn().mockRejectedValue(new Error('adjustment insert failed')),
             createAuditLog
@@ -2943,6 +3031,181 @@ describe('POS checkout F&B contracts', () => {
 
         expect(result.success).toBe(false);
         expect(result.error.message).toBe('An active shift is required to request a POS void');
+    });
+
+    it('rolls back an approved void when stock-ledger lookup is unavailable', async () => {
+        const transactionRow = {
+            pos_transaction_id: 183,
+            invoice_number: 'INV-VOID-LOOKUP-GAP',
+            status: 'completed',
+            location_id: 3,
+            total_amount: 50,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const updateTransactionLifecycle = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle
+        };
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale: jest.fn() }
+        });
+        let tenantTransaction;
+
+        const result = await runInTenantContext((context) => {
+            tenantTransaction = context.transaction;
+            return useCase({
+                posTransactionId: 183,
+                payload: { reason: 'Ledger capability unavailable' },
+                user: { user_id: 99, role: 'admin' },
+                approvalExecution: approvedVoidExecution(183, 99)
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details.reason_code).toBe('POS_VOID_STOCK_MOVEMENT_LOOKUP_UNAVAILABLE');
+        expect(tenantTransaction.rollback).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.commit).not.toHaveBeenCalled();
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('rolls back an approved void when completed parked-sale linkage cannot be checked', async () => {
+        const transactionRow = {
+            pos_transaction_id: 185,
+            invoice_number: 'INV-VOID-PARKED-LOOKUP-GAP',
+            status: 'completed',
+            location_id: 3,
+            total_amount: 50,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const updateTransactionLifecycle = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([]),
+            updateTransactionLifecycle
+        };
+        const useCase = buildVoidPosTransactionUseCase({ posRepository });
+        let tenantTransaction;
+
+        const result = await runInTenantContext((context) => {
+            tenantTransaction = context.transaction;
+            return useCase({
+                posTransactionId: 185,
+                payload: { reason: 'Cannot inspect parked sale linkage' },
+                user: { user_id: 99, role: 'admin' },
+                approvalExecution: approvedVoidExecution(185, 99)
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details.reason_code).toBe('POS_VOID_PARKED_SALE_LOOKUP_UNAVAILABLE');
+        expect(tenantTransaction.rollback).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.commit).not.toHaveBeenCalled();
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed goods-issue ledger row instead of skipping its stock restoration', async () => {
+        const transactionRow = {
+            pos_transaction_id: 186,
+            invoice_number: 'INV-VOID-BAD-LEDGER-ROW',
+            status: 'completed',
+            location_id: 3,
+            total_amount: 50,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const updateTransactionLifecycle = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                movement_id: 2601,
+                item_id: 52,
+                quantity: 0,
+                location_id: 3
+            }]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle
+        };
+        const returnStockForVoidedSale = jest.fn();
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale }
+        });
+        let tenantTransaction;
+
+        const result = await runInTenantContext((context) => {
+            tenantTransaction = context.transaction;
+            return useCase({
+                posTransactionId: 186,
+                payload: { reason: 'Invalid issue ledger row' },
+                user: { user_id: 99, role: 'admin' },
+                approvalExecution: approvedVoidExecution(186, 99)
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('POS_VOID_STOCK_MOVEMENT_INVALID');
+        expect(returnStockForVoidedSale).not.toHaveBeenCalled();
+        expect(tenantTransaction.rollback).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.commit).not.toHaveBeenCalled();
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
+    });
+
+    it('rolls back an approved void when inventory does not confirm the return movement', async () => {
+        const transactionRow = {
+            pos_transaction_id: 184,
+            invoice_number: 'INV-VOID-RETURN-GAP',
+            status: 'completed',
+            location_id: 3,
+            total_amount: 50,
+            payment_type: 'cash',
+            payment_status: 'paid'
+        };
+        const updateTransactionLifecycle = jest.fn();
+        const posRepository = {
+            getTransactionById: jest.fn().mockResolvedValue(transactionRow),
+            findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            listStockMovementsForPosTransaction: jest.fn().mockResolvedValue([{
+                movement_id: 2401,
+                item_id: 51,
+                quantity: -1,
+                location_id: 3
+            }]),
+            findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
+            updateTransactionLifecycle
+        };
+        const returnStockForVoidedSale = jest.fn().mockResolvedValue(null);
+        const useCase = buildVoidPosTransactionUseCase({
+            posRepository,
+            inventoryCommandService: { returnStockForVoidedSale }
+        });
+        let tenantTransaction;
+
+        const result = await runInTenantContext((context) => {
+            tenantTransaction = context.transaction;
+            return useCase({
+                posTransactionId: 184,
+                payload: { reason: 'Inventory return was not persisted' },
+                user: { user_id: 99, role: 'admin' },
+                approvalExecution: approvedVoidExecution(184, 99)
+            });
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(503);
+        expect(result.error.details.reason_code).toBe('POS_VOID_STOCK_REVERSAL_NOT_PERSISTED');
+        expect(returnStockForVoidedSale).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.rollback).toHaveBeenCalledTimes(1);
+        expect(tenantTransaction.commit).not.toHaveBeenCalled();
+        expect(updateTransactionLifecycle).not.toHaveBeenCalled();
     });
 
     it('projects sanitized void adjustment evidence and the latest financial outcome on transaction reads', async () => {
@@ -3629,6 +3892,7 @@ describe('POS checkout F&B contracts', () => {
                     quantity: -1,
                     location_id: 3
                 }]),
+                findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
                 createAuditLog: jest.fn().mockResolvedValue(null),
                 findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
                 createPosTransactionAdjustment: jest.fn(async (adjustment) => ({ ...adjustment })),
@@ -3689,6 +3953,7 @@ describe('POS checkout F&B contracts', () => {
                     quantity: -1,
                     location_id: 3
                 }]),
+                findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
                 createAuditLog: jest.fn().mockResolvedValue(null),
                 findPosTransactionAdjustmentByIdempotencyKey: jest.fn(async () => persistedAdjustment),
                 createPosTransactionAdjustment: jest.fn(async (adjustment) => {
@@ -3746,6 +4011,7 @@ describe('POS checkout F&B contracts', () => {
                     quantity: -1,
                     location_id: 3
                 }]),
+                findParkedSaleByCompletedTransactionId: jest.fn().mockResolvedValue(null),
                 createAuditLog: jest.fn().mockResolvedValue(null),
                 findPosTransactionAdjustmentByIdempotencyKey: jest.fn().mockResolvedValue(null),
                 createPosTransactionAdjustment: jest.fn(async (adjustment) => ({ ...adjustment })),

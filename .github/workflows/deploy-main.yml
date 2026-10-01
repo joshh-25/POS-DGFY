@@ -671,7 +671,7 @@ jobs:
   # builders themselves fail closed on PROD without it, so any build actually attempted
   # already required it; a builds-unchecked dispatch keeps its historical no-alias behavior).
   promote-aliases:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod ]
     if: >-
       !cancelled() &&
       needs.guard-branch.result == 'success' &&
@@ -681,9 +681,14 @@ jobs:
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'cancelled' &&
       needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'cancelled' &&
       needs.frontend-storefront-prod.result != 'failure' &&
-      (inputs.release_revision_api != '' || inputs.release_revision_migration_runner != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '')
+      needs.frontend-storefront-prod.result != 'cancelled' &&
+      needs.frontend-opis-prod.result != 'failure' &&
+      needs.frontend-opis-prod.result != 'cancelled' &&
+      (inputs.release_revision_api != '' || inputs.release_revision_migration_runner != '' || inputs.release_revision_frontend_ims != '' || inputs.release_revision_frontend_pos != '' || inputs.release_revision_frontend_storefront != '' || inputs.release_revision_frontend_opis != '')
     # runs-on: ${{ fromJSON(inputs.runner_labels_json || '["ubuntu-latest"]') }}
     runs-on: ${{ fromJSON(inputs.runner_labels_json || '["sieitz-lg"]') }}
     timeout-minutes: 10
@@ -791,7 +796,7 @@ jobs:
           echo "[promote-aliases] floor aliases verified (${SKIPPED} unchecked app(s) skipped)."
 
   publish:
-    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, promote-aliases ]
+    needs: [ guard-branch, resolve-build-plan, dgfy-api, dgfy-migration-runner, frontend-ims-prod, frontend-pos-prod, frontend-storefront-prod, frontend-opis-prod, promote-aliases ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.guard-branch.result == 'success' &&
@@ -801,8 +806,13 @@ jobs:
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'cancelled' &&
       needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'cancelled' &&
       needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'cancelled' &&
       needs.frontend-storefront-prod.result != 'failure' &&
+      needs.frontend-storefront-prod.result != 'cancelled' &&
+      needs.frontend-opis-prod.result != 'failure' &&
+      needs.frontend-opis-prod.result != 'cancelled' &&
       needs.promote-aliases.result != 'failure' &&
       needs.promote-aliases.result != 'cancelled'
     uses: ./.github/workflows/publish-platform.yml

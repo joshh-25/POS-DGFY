@@ -88,9 +88,10 @@ jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
 }));
 
 let posRepository;
+let resolveCanonicalTransactionDiscountAmount;
 
 beforeAll(async () => {
-    ({ posRepository } = await import('../src/modules/pos/repositories/posRepository.js'));
+    ({ posRepository, resolveCanonicalTransactionDiscountAmount } = await import('../src/modules/pos/repositories/posRepository.js'));
 });
 
 describe('posRepository reports analytics', () => {
@@ -107,6 +108,61 @@ describe('posRepository reports analytics', () => {
         mockZReadingSnapshotFindOne.mockResolvedValue(null);
         mockZReadingSnapshotFindAndCountAll.mockResolvedValue({ rows: [], count: 0 });
         mockUserFindAll.mockResolvedValue([]);
+    });
+
+    it('uses one canonical discount source with safe legacy fallbacks', () => {
+        expect(resolveCanonicalTransactionDiscountAmount({
+            discount_amount: 99,
+            discount: {
+                discount_amount: 12,
+                lines: [
+                    { beneficiary_id: null, discount_amount: 5 },
+                    { beneficiary_id: null, discount_amount: 7 },
+                    { beneficiary_id: 4, discount_amount: 12 }
+                ]
+            }
+        })).toBe(12);
+
+        expect(resolveCanonicalTransactionDiscountAmount({
+            discount_amount: 99,
+            discount: { discount_amount: 12, lines: [] }
+        })).toBe(12);
+
+        expect(resolveCanonicalTransactionDiscountAmount({ discount_amount: 99 })).toBe(99);
+    });
+
+    it('uses the canonical persisted discount source for Z-reading totals', async () => {
+        mockFindAll.mockImplementation(async (options = {}) => {
+            const includes = Array.isArray(options.include) ? options.include : [];
+            if (includes.some((include) => include?.as === 'discount')) {
+                return [{
+                    pos_transaction_id: 501,
+                    discount_amount: 0,
+                    discount: {
+                        discount_amount: 12,
+                        lines: [
+                            { beneficiary_id: null, discount_amount: 5 },
+                            { beneficiary_id: null, discount_amount: 7 }
+                        ]
+                    }
+                }];
+            }
+            return [];
+        });
+        mockLineFindAll.mockResolvedValue([]);
+
+        const result = await posRepository.getZReadingSummary({
+            startAt: new Date('2026-09-05T00:00:00.000Z'),
+            endAt: new Date('2026-09-06T00:00:00.000Z'),
+            locationId: 12
+        });
+
+        expect(result.discount_amount).toBe(12);
+        expect(mockFindAll).toHaveBeenCalledWith(expect.objectContaining({
+            include: expect.arrayContaining([
+                expect.objectContaining({ as: 'discount' })
+            ])
+        }));
     });
 
     it('exposes the first transaction date and Manila today as report display bounds', async () => {
@@ -555,6 +611,140 @@ describe('posRepository reports analytics', () => {
         expect(result.cashier_lifecycle.reconciliation).toEqual(expect.objectContaining({ difference: 0, reconciled: true }));
     });
 
+    it('returns one register row per shift and derives screenshot variance instead of trusting stored variance', async () => {
+        mockFindAll.mockResolvedValue([]);
+        mockShiftFindAll.mockResolvedValue([
+            {
+                pos_terminal_shift_id: 147,
+                business_date: '2026-09-18',
+                terminal_id: 'POS-01',
+                location_id: 12,
+                cashier_id: 9,
+                status: 'closed',
+                opening_float_amount: 0,
+                expected_cash_amount: 75994.83,
+                closing_cash_amount: 71931.83,
+                cash_variance_amount: 150,
+                cashier: { user_id: 9, username: 'Admin' },
+                cashEvents: []
+            },
+            {
+                pos_terminal_shift_id: 148,
+                business_date: '2026-09-18',
+                terminal_id: 'POS-01',
+                location_id: 12,
+                cashier_id: 9,
+                status: 'closed',
+                opening_float_amount: 0,
+                expected_cash_amount: 100,
+                closing_cash_amount: 120,
+                cash_variance_amount: 20,
+                cashier: { user_id: 9, username: 'Admin' },
+                cashEvents: []
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-18',
+            date_to: '2026-09-18',
+            location_id: 12
+        });
+
+        expect(result.cashier_lifecycle.registers).toEqual([
+            expect.objectContaining({
+                shift_id: 147,
+                opening_cashier_name: 'Admin',
+                expected_cash_amount: 75994.83,
+                closing_cash_amount: 71931.83,
+                variance_amount: -4063
+            }),
+            expect.objectContaining({
+                shift_id: 148,
+                expected_cash_amount: 100,
+                closing_cash_amount: 120,
+                variance_amount: 20
+            })
+        ]);
+        expect(result.cashier_lifecycle.registers.every((row) => !Object.hasOwn(row, 'shift_ids'))).toBe(true);
+
+        const cashierAggregate = result.daily_report.cash_reconciliation[0];
+        expect(cashierAggregate).toEqual(expect.objectContaining({
+            shift_ids: [147, 148],
+            shift_count: 2,
+            closed_shift_count: 2,
+            expected_cash_amount: 76094.83,
+            closing_cash_amount: 72051.83,
+            reconciliation_complete: true,
+            cash_variance_amount: -4043
+        }));
+
+        const diagnostics = result._internal_register_variance_diagnostics;
+        expect(diagnostics).toEqual({
+            variance_mismatch_count: 1,
+            variance_mismatch_samples: [{
+                shift_id: 147,
+                location_id: 12,
+                stored_variance_amount: 150,
+                derived_variance_amount: -4063,
+                delta: 4213
+            }]
+        });
+        expect(Object.keys(result)).not.toContain('_internal_register_variance_diagnostics');
+        expect(JSON.stringify(result)).not.toContain('_internal_register_variance_diagnostics');
+    });
+
+    it('keeps mixed open and closed cashier aggregates incomplete and leaves open variance null', async () => {
+        mockFindAll.mockResolvedValue([]);
+        mockShiftFindAll.mockResolvedValue([
+            {
+                pos_terminal_shift_id: 201,
+                business_date: '2026-09-19',
+                terminal_id: 'POS-01',
+                location_id: 12,
+                cashier_id: 10,
+                status: 'closed',
+                opening_float_amount: 0,
+                expected_cash_amount: 100,
+                closing_cash_amount: 90,
+                cash_variance_amount: -10,
+                cashier: { user_id: 10, username: 'Cashier A' },
+                cashEvents: []
+            },
+            {
+                pos_terminal_shift_id: 202,
+                business_date: '2026-09-19',
+                terminal_id: 'POS-01',
+                location_id: 12,
+                cashier_id: 10,
+                status: 'open',
+                opening_float_amount: 0,
+                expected_cash_amount: 200,
+                closing_cash_amount: null,
+                cash_variance_amount: 55,
+                cashier: { user_id: 10, username: 'Cashier A' },
+                cashEvents: []
+            }
+        ]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-09-19',
+            date_to: '2026-09-19',
+            location_id: 12
+        });
+
+        expect(result.cashier_lifecycle.registers).toEqual([
+            expect.objectContaining({ shift_id: 201, variance_amount: -10 }),
+            expect.objectContaining({ shift_id: 202, closing_cash_amount: null, variance_amount: null })
+        ]);
+        expect(result.daily_report.cash_reconciliation[0]).toEqual(expect.objectContaining({
+            shift_count: 2,
+            closed_shift_count: 1,
+            closing_cash_amount: 90,
+            reconciliation_complete: false,
+            cash_variance_amount: null
+        }));
+    });
+
     it('applies an authorized multi-branch location filter to every lifecycle stream', async () => {
         const result = await posRepository.getCashierLifecycleReport({
             date_from: '2026-08-24',
@@ -863,6 +1053,77 @@ describe('posRepository reports analytics', () => {
         }));
     });
 
+    it('uses sale-time gross for governed discounts and subtracts VAT removal once', async () => {
+        mockFindAll.mockResolvedValue([{
+            pos_transaction_id: 261,
+            created_at: '2026-06-22T10:45:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 90,
+            discount_amount: 16.0714,
+            vat_removed: 9.6429,
+            vatable_sales: 0,
+            vat_exempt_sales: 64.2857,
+            vat_amount: 0,
+            total_amount: 64.2857,
+            payment_type: 'cash',
+            order_source: 'in_store',
+            order_method: 'dine_in',
+            discount_label_snapshot: 'PWD',
+            cashier_id: 9,
+            cashier: { user_id: 9, username: 'cashier-1' },
+            discount: {
+                discount_type: 'pwd',
+                discount_amount: 16.0714,
+                vat_removed: 9.6429,
+                lines: [{
+                    transaction_line_id: 2611,
+                    beneficiary_id: null,
+                    gross_eligible_amount: 90,
+                    discount_amount: 16.0714,
+                    vat_removed: 9.6429,
+                    vat_exempt_amount: 80.3571,
+                    final_line_amount: 64.2857
+                }]
+            },
+            lines: [{
+                line_id: 2611,
+                item_id: 26,
+                quantity: 1,
+                sale_price: 90,
+                line_subtotal: 64.2857,
+                vat_type_snapshot: 'vatable',
+                item: { item_id: 26, name: 'Meal', category: 'food' }
+            }]
+        }]);
+
+        const result = await posRepository.getReportsOverview({
+            date_from: '2026-06-22',
+            date_to: '2026-06-22'
+        });
+
+        expect(result.daily_report.summary).toEqual(expect.objectContaining({
+            gross_sales: 90,
+            net_sales: 64.2857,
+            discounts: 16.0714,
+            refunds_voids: 0,
+            vatable_sales: 0,
+            vat: 0
+        }));
+        expect(result.daily_report.discount_breakdown).toEqual([
+            expect.objectContaining({
+                discount_type: 'pwd',
+                discount_amount: 16.0714,
+                vat_removed: 9.6429
+            })
+        ]);
+        expect(result.daily_report.transaction_rows[0]).toEqual(expect.objectContaining({
+            gross_sales: 90,
+            net_sales: 64.2857,
+            discount_amount: 16.0714
+        }));
+    });
+
     it('includes voided transactions in refunds/voids and gross sales', async () => {
         mockFindAll.mockResolvedValue([
             {
@@ -1168,6 +1429,280 @@ describe('posRepository reports analytics', () => {
             status: 'not_comparable',
             business_date: null,
             variance: null
+        }));
+    });
+
+    it('builds hourly, item, and category breakdowns from the normalized POS line pipeline', async () => {
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 501,
+                created_at: '2026-09-01T00:15:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 100,
+                total_amount: 112,
+                discount_amount: 0,
+                vatable_sales: 100,
+                vat_amount: 12,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                payment_type: 'cash',
+                cashier: { user_id: 9, username: 'cashier-1' },
+                lines: [{
+                    line_id: 1,
+                    item_id: 21,
+                    item_name_snapshot: 'Coffee',
+                    sku_snapshot: 'COF-21',
+                    quantity: 2,
+                    cost_snapshot: 10,
+                    line_subtotal: 100,
+                    item: {
+                        item_id: 21,
+                        name: 'Coffee',
+                        sku_code: 'COF-21',
+                        folder_id: 4,
+                        folder: { folder_id: 4, name: 'Drinks' }
+                    }
+                }]
+            },
+            {
+                pos_transaction_id: 502,
+                created_at: '2026-09-01T01:20:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 50,
+                total_amount: 56,
+                discount_amount: 0,
+                vatable_sales: 50,
+                vat_amount: 6,
+                service_fee_amount: 0,
+                restaurant_service_charge_amount: 0,
+                payment_type: 'cash',
+                cashier: { user_id: 9, username: 'cashier-1' },
+                lines: [{
+                    line_id: 2,
+                    item_id: 21,
+                    item_name_snapshot: 'Coffee',
+                    sku_snapshot: 'COF-21',
+                    quantity: 1,
+                    cost_snapshot: 10,
+                    line_subtotal: 50,
+                    item: {
+                        item_id: 21,
+                        name: 'Coffee',
+                        sku_code: 'COF-21',
+                        folder_id: 4,
+                        folder: { folder_id: 4, name: 'Drinks' }
+                    }
+                }]
+            }
+        ]);
+
+        const itemResult = await posRepository.getReportBreakdown({
+            date_from: '2026-09-01',
+            date_to: '2026-09-01',
+            breakdown: 'items',
+            page: 1,
+            limit: 50
+        });
+        const hourlyResult = await posRepository.getReportBreakdown({
+            date_from: '2026-09-01',
+            date_to: '2026-09-01',
+            breakdown: 'hourly'
+        });
+        const categoryResult = await posRepository.getReportBreakdown({
+            date_from: '2026-09-01',
+            date_to: '2026-09-01',
+            breakdown: 'categories'
+        });
+
+        expect(itemResult.summary).toEqual(expect.objectContaining({
+            total_transactions: 2,
+            total_items_sold: 3,
+            net_sales: 150,
+            cogs: 30,
+            profit: 120
+        }));
+        expect(itemResult.rows).toHaveLength(1);
+        expect(itemResult.rows[0]).toEqual(expect.objectContaining({
+            item_key: 'item:21',
+            item_name: 'Coffee',
+            category_key: 'folder:4',
+            category_name: 'Drinks',
+            quantity: 3,
+            orders: 2,
+            net_sales: 150,
+            profit: 120,
+            sales_share: 100
+        }));
+        expect(hourlyResult.rows.map((row) => row.bucket_start_local)).toEqual([
+            '2026-09-01T08:00:00+08:00',
+            '2026-09-01T09:00:00+08:00'
+        ]);
+        expect(hourlyResult.rows[0]).toEqual(expect.objectContaining({
+            transaction_count: 1,
+            item_quantity: 2,
+            net_sales: 100,
+            vat: 12
+        }));
+        expect(categoryResult.rows[0]).toEqual(expect.objectContaining({
+            category_key: 'folder:4',
+            category_name: 'Drinks',
+            item_count: 1,
+            quantity: 3,
+            orders: 2,
+            sales_share: 100
+        }));
+        expect(categoryResult.rows[0]).toHaveProperty('item_count', 1);
+        expect(itemResult.pagination).toEqual(expect.objectContaining({
+            total_rows: 1,
+            total_pages: 1,
+            has_next: false
+        }));
+    });
+
+    it('counts split-tender lines once and preserves sale-time item snapshots and void totals', async () => {
+        mockFindAll.mockResolvedValue([
+            {
+                pos_transaction_id: 601,
+                created_at: '2026-09-03T00:15:00.000Z',
+                status: 'completed',
+                payment_status: 'paid',
+                subtotal_amount: 100,
+                total_amount: 112,
+                discount_amount: 0,
+                vatable_sales: 100,
+                vat_amount: 12,
+                payment_type: 'cash',
+                payment_breakdown: [
+                    { payment_type: 'cash', amount: 40 },
+                    { payment_type: 'gcash', amount: 72 }
+                ],
+                lines: [{
+                    line_id: 1,
+                    item_id: 11,
+                    item_name_snapshot: 'Sale-time Coffee',
+                    sku_snapshot: 'OLD-COF',
+                    quantity: 2,
+                    cost_snapshot: 10,
+                    line_subtotal: 100,
+                    item: { item_id: 11, name: 'Renamed Coffee', sku_code: 'NEW-COF' }
+                }]
+            },
+            {
+                pos_transaction_id: 602,
+                created_at: '2026-09-03T01:15:00.000Z',
+                status: 'voided',
+                payment_status: 'paid',
+                subtotal_amount: 50,
+                total_amount: 56,
+                discount_amount: 0,
+                vatable_sales: 50,
+                vat_amount: 6,
+                payment_type: 'cash',
+                lines: [{
+                    line_id: 2,
+                    item_id: 12,
+                    item_name_snapshot: 'Voided Tea',
+                    sku_snapshot: 'TEA-12',
+                    quantity: 1,
+                    cost_snapshot: 5,
+                    line_subtotal: 50,
+                    item: { item_id: 12, name: 'Voided Tea', folder_id: 8, folder: { folder_id: 8, name: 'Tea' } }
+                }]
+            }
+        ]);
+
+        const result = await posRepository.getReportBreakdown({
+            date_from: '2026-09-03',
+            date_to: '2026-09-03',
+            breakdown: 'items'
+        });
+
+        expect(result.summary).toEqual(expect.objectContaining({
+            total_transactions: 2,
+            total_items_sold: 3,
+            gross_sales: 150,
+            net_sales: 100,
+            refunds_voids: 50,
+            cogs: 25,
+            profit: 75
+        }));
+        expect(result.rows).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                item_key: 'item:11',
+                item_name: 'Sale-time Coffee',
+                sku: 'OLD-COF',
+                category_key: 'uncategorized',
+                category_name: 'Uncategorized',
+                quantity: 2,
+                orders: 1,
+                net_sales: 100,
+                refunds_voids: 0
+            }),
+            expect.objectContaining({
+                item_key: 'item:12',
+                category_key: 'folder:8',
+                category_name: 'Tea',
+                quantity: 1,
+                orders: 1,
+                net_sales: 0,
+                refunds_voids: 50
+            })
+        ]));
+    });
+
+    it('sorts aggregated items before server pagination and returns the inclusive Manila range', async () => {
+        const makeTransaction = (id, itemId, itemName, sku) => ({
+            pos_transaction_id: id,
+            created_at: '2026-09-03T00:15:00.000Z',
+            status: 'completed',
+            payment_status: 'paid',
+            subtotal_amount: 10,
+            discount_amount: 0,
+            payment_type: 'cash',
+            lines: [{
+                line_id: id,
+                item_id: itemId,
+                item_name_snapshot: itemName,
+                sku_snapshot: sku,
+                quantity: 1,
+                cost_snapshot: 1,
+                line_subtotal: 10,
+                item: { item_id: itemId, name: itemName, sku_code: sku }
+            }]
+        });
+        mockFindAll.mockResolvedValue([
+            makeTransaction(611, 11, 'Coffee', 'C-01'),
+            makeTransaction(612, 12, 'Tea', 'T-02'),
+            makeTransaction(613, 13, 'Water', 'W-03')
+        ]);
+
+        const result = await posRepository.getReportBreakdown({
+            date_from: '2026-09-03',
+            date_to: '2026-09-04',
+            breakdown: 'items',
+            page: 2,
+            limit: 1,
+            sort_by: 'sku',
+            sort_direction: 'asc'
+        });
+
+        expect(result.rows).toHaveLength(1);
+        expect(result.rows[0]).toEqual(expect.objectContaining({ item_name: 'Tea', sku: 'T-02' }));
+        expect(result.pagination).toEqual(expect.objectContaining({
+            page: 2,
+            limit: 1,
+            total_rows: 3,
+            total_pages: 3,
+            has_next: true
+        }));
+        expect(result.range).toEqual(expect.objectContaining({
+            date_from: '2026-09-03',
+            date_to: '2026-09-04',
+            timezone: 'Asia/Manila',
+            start_at: '2026-09-02T16:00:00.000Z',
+            end_at_exclusive: '2026-09-04T16:00:00.000Z'
         }));
     });
 

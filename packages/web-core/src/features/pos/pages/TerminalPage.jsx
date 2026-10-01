@@ -103,6 +103,7 @@ import {
   TERMINAL_REGISTRY_MODES,
   normalizeTerminalRegistry,
   resolveLoginTerminalId,
+  resolveRegisteredTerminalLocationId,
   resolvePreferredTerminalId,
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
@@ -156,9 +157,11 @@ import {
   writePosTextSizePreference
 } from '../utils/posTextSizePreference.js';
 import {
+  readStoredCashierResumeContext,
   safeLocalStorageGet,
   safeLocalStorageRemove,
-  safeLocalStorageSet
+  safeLocalStorageSet,
+  writeStoredCashierResumeContext
 } from '../utils/posTerminalStorage.js';
 import { isPosTabletPortraitViewport } from '../utils/posTabletViewport.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
@@ -166,6 +169,10 @@ import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import { POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { publishPosUpdateTransition } from '../utils/posUpdateTransition.js';
+import {
+  isInlineVoidApprovalPopupEnabled,
+  POS_VOID_APPROVAL_REVIEW_PERMISSIONS
+} from '../utils/posVoidApprovalFeature.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
@@ -246,11 +253,12 @@ const OPERATIONS_VIEW_MODES = [
   'audit',
   'items',
   'services',
-  'terminal_setup'
+  'terminal_setup',
+  'approvals'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup'];
+const MSME_OPERATIONS_VIEW_MODES = ['incoming_queue', 'shift_controls', 'close_shift', 'items', 'reports', 'audit', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup', 'approvals'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'settings_vouchers', 'settings_pricelists', 'terminal_setup']);
-const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'audit', 'items', 'services', 'history', 'approvals']);
 // RF-2 (PR #762 review): settings_vouchers/settings_pricelists are gated on their own
 // canViewVouchers permission check (the sidebar NavButton visibility and the
 // activeOperationsViewModes filter both already use it), not the settings:view PIN wall every
@@ -289,7 +297,8 @@ const TERMINAL_SECTION_IDS = {
   // while every other top-level mode gets one.
   vouchers: 'pos-section-vouchers',
   pricelists: 'pos-section-pricelists',
-  audit: 'pos-section-audit'
+  audit: 'pos-section-audit',
+  approvals: 'pos-section-approvals'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 
@@ -621,7 +630,11 @@ export default function TerminalPage() {
     openingFloatAmount: '',
     openingNote: ''
   });
-  const [cashierResumeContext, setCashierResumeContext] = useState(null);
+  const [cashierResumeContext, setCashierResumeContext] = useState(() => (
+    IS_DGFY_POS_SURFACE && readStoredTerminalLockReason() === 'terminal_reunlock'
+      ? readStoredCashierResumeContext()
+      : null
+  ));
   const [cashierResumeForm, setCashierResumeForm] = useState({
     identifier: '',
     password: ''
@@ -683,6 +696,7 @@ export default function TerminalPage() {
   const [cashierHistoryState, setCashierHistoryState] = useState({
     loading: false,
     cashier: null,
+    historyScope: null,
     records: [],
     pagination: null,
     errorMessage: ''
@@ -1022,6 +1036,11 @@ export default function TerminalPage() {
   const canViewAudit = isMasterAdminOperator || normalizedTerminalRole === 'admin';
   const isCashierRole = normalizedTerminalRole === 'cashier';
   const canViewPos = hasPermission('pos:view');
+  const canReviewVoidApprovals = POS_VOID_APPROVAL_REVIEW_PERMISSIONS.every((permission) => hasPermission(permission));
+  const inlineVoidApprovalEnabled = isInlineVoidApprovalPopupEnabled()
+    && canReviewVoidApprovals
+    && !isCashierRole;
+  const canViewAllCashierHistory = hasPermission('business_admin:branches:view_all');
   const canTransactPos = hasPermission('pos:transact');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAccessPosOnlySetup = canViewPos;
@@ -1060,6 +1079,7 @@ export default function TerminalPage() {
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
     const roleScopedModes = queueScopedModes
       .filter((mode) => mode !== 'audit' || canViewAudit)
+      .filter((mode) => mode !== 'approvals' || (canReviewVoidApprovals && !isCashierRole))
       .filter((mode) => (mode !== 'settings_vouchers' && mode !== 'settings_pricelists') || canViewVouchers)
       .filter((mode) => mode !== 'fnb_service' || canAccessFnbService)
       .filter((mode) => mode !== 'terminal_setup' || canAccessPosOnlySetup || canAccessSettingsDirectly);
@@ -1067,7 +1087,7 @@ export default function TerminalPage() {
       return roleScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return roleScopedModes;
-  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canViewAudit, canViewVouchers, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
+  }, [canAccessFnbService, canAccessPosOnlySetup, canAccessSettingsDirectly, canReviewVoidApprovals, canViewAudit, canViewVouchers, isCashierRole, isMsmeMode, onlineOrderQueueEnabled, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -1095,6 +1115,23 @@ export default function TerminalPage() {
     });
     return lookup;
   }, [activeTerminalRegistry]);
+  const activeTerminalLocationId = useMemo(
+    () => resolveRegisteredTerminalLocationId(activeTerminalRegistry, activeTerminalId),
+    [activeTerminalId, activeTerminalRegistry]
+  );
+
+  useEffect(() => {
+    // The registered terminal location is the authoritative default when no shift is open.
+    // Keep the branch used by checkout and operational requests aligned as soon as terminal
+    // settings hydrate, while leaving an active shift's server-confirmed location untouched.
+    if (Number(shiftState?.shift?.pos_terminal_shift_id || 0) > 0 || !activeTerminalLocationId) return;
+    setOperatingLocationId((currentLocationId) => (
+      Number(currentLocationId) === activeTerminalLocationId
+        ? currentLocationId
+        : activeTerminalLocationId
+    ));
+  }, [activeTerminalLocationId, shiftState?.shift?.pos_terminal_shift_id]);
+
   const registryEnforced = terminalRegistryMode === 'enforce';
   const settingsAccessPinEnabled = terminalMeta.settingsAccessPinEnabled === true;
   const terminalIdOptions = useMemo(() => {
@@ -1647,8 +1684,15 @@ export default function TerminalPage() {
         salesSummary: shiftSalesSummary
       });
       const activeShiftLocationId = Number(activeShift?.location_id);
-      if (Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 && activeShiftLocationId !== scopedOperatingLocationId) {
-        setOperatingLocationId(activeShiftLocationId);
+      const resolvedOperationalLocationId = Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0
+        ? activeShiftLocationId
+        : effectiveLocationId;
+      if (
+        Number.isInteger(resolvedOperationalLocationId)
+        && resolvedOperationalLocationId > 0
+        && resolvedOperationalLocationId !== Number(operatingLocationId || 0)
+      ) {
+        setOperatingLocationId(resolvedOperationalLocationId);
       }
       setTodayDashboard({
         loading: false,
@@ -1680,15 +1724,18 @@ export default function TerminalPage() {
     }));
 
     try {
-      const payload = await fetchCashierShiftHistory({
-        ...filters,
-        ...(filters?.location_id || operatingLocationId
-          ? { location_id: filters?.location_id || operatingLocationId }
-          : {})
-      }, SUPPRESS_GLOBAL_ERROR_TOAST);
+      const explicitlyRequestedLocationId = filters?.location_id || null;
+      const scopedLocationId = explicitlyRequestedLocationId
+        || (!canViewAllCashierHistory ? operatingLocationId : null);
+      const historyFilters = { ...filters };
+      if (scopedLocationId) historyFilters.location_id = scopedLocationId;
+      else delete historyFilters.location_id;
+
+      const payload = await fetchCashierShiftHistory(historyFilters, SUPPRESS_GLOBAL_ERROR_TOAST);
       setCashierHistoryState({
         loading: false,
         cashier: payload?.cashier || null,
+        historyScope: payload?.history_scope || null,
         records: Array.isArray(payload?.records) ? payload.records : [],
         pagination: payload?.pagination || null,
         errorMessage: ''
@@ -1704,7 +1751,7 @@ export default function TerminalPage() {
       if (error?.response?.status !== 403) toast.error(message);
       return null;
     }
-  }, [locked, operatingLocationId]);
+  }, [canViewAllCashierHistory, locked, operatingLocationId]);
 
   const refreshTenantLocations = useCallback(async ({
     suppressGlobalErrors = false,
@@ -3023,10 +3070,13 @@ export default function TerminalPage() {
   }, [hydrateTenantSetupState]);
 
   useEffect(() => {
-    if (!locked) {
-      refreshOperationalContext();
-    }
-  }, [locked, refreshOperationalContext]);
+    // Session hydration restores the saved terminal and open shift after the
+    // user has been validated. Do not let the generic refresh run concurrently
+    // and overwrite that server-confirmed shift with an intermediate empty
+    // response while hydration is still in progress.
+    if (locked || loadingUser) return;
+    refreshOperationalContext();
+  }, [loadingUser, locked, refreshOperationalContext]);
 
   useLayoutEffect(() => {
     if (setupFlowState.loading || locked || terminalUser?.is_master_admin !== true) return;
@@ -3149,6 +3199,13 @@ export default function TerminalPage() {
   }, [locked, refreshTenantLocations]);
 
   useEffect(() => {
+    if (!IS_DGFY_POS_SURFACE) return;
+    const hasResumableLock = readStoredTerminalLockReason() === 'terminal_reunlock'
+      && Boolean(cashierResumeContext?.shiftId);
+    writeStoredCashierResumeContext(hasResumableLock ? cashierResumeContext : null);
+  }, [cashierResumeContext]);
+
+  useEffect(() => {
     if (!locked || !readStoredTerminalLock()) return;
     const storedLockReason = readStoredTerminalLockReason();
     if (storedLockReason === 'full_auth' || storedLockReason === 'shift_closed') {
@@ -3178,8 +3235,8 @@ export default function TerminalPage() {
       && Boolean(cashierResumeContext?.shiftId)
     );
 
-    // Browser refresh loses the in-memory resume context. Never restore a
-    // privileged unlock step without either a token or same-tab shift context.
+    // A restored tab-local shift pointer only opens the reauthentication form;
+    // it never grants authority. Resume remains server-validated below.
     if (!getAccessToken() && !canResumeLockedShiftInThisTab) {
       setStoredTerminalLockReason('full_auth');
       setCashierUnlockSession(null);
@@ -3485,11 +3542,37 @@ export default function TerminalPage() {
     || shiftState?.shift?.cashier_name
     || 'the current cashier'
   ).trim();
+  const currentOperatingLocationId = Number(operatingLocationId || 0);
+  const activeShiftLocationId = Number(shiftState?.shift?.location_id || 0);
+  const checkoutLocationUnavailable = !Number.isInteger(currentOperatingLocationId)
+    || currentOperatingLocationId <= 0;
+  const checkoutTerminalLocationMismatch = Number.isInteger(activeTerminalLocationId)
+    && activeTerminalLocationId > 0
+    && (
+      (
+        Number.isInteger(currentOperatingLocationId)
+        && currentOperatingLocationId > 0
+        && currentOperatingLocationId !== activeTerminalLocationId
+      )
+      || (
+        Number.isInteger(activeShiftLocationId)
+        && activeShiftLocationId > 0
+        && activeShiftLocationId !== activeTerminalLocationId
+      )
+    );
+  const checkoutShiftLocationMismatch = Number.isInteger(activeShiftLocationId)
+    && activeShiftLocationId > 0
+    && Number.isInteger(currentOperatingLocationId)
+    && currentOperatingLocationId > 0
+    && activeShiftLocationId !== currentOperatingLocationId;
 
   const checkoutBlockedReason = useMemo(() => {
     if (locked) return 'Terminal locked. Login from the right panel.';
     if (!canTransactPos) return 'Your account does not have POS transact permission.';
     if (!shiftState.shift) return 'Open a shift before checkout.';
+    if (checkoutLocationUnavailable) return 'Checkout is blocked because the terminal location is not synchronized. Refresh the terminal context before trying again.';
+    if (checkoutTerminalLocationMismatch) return 'Checkout is blocked because the selected terminal and active shift belong to different branches. Refresh the terminal context before trying again.';
+    if (checkoutShiftLocationMismatch) return 'Checkout is blocked because the active shift and selected branch do not match. Refresh the terminal context before trying again.';
     if (checkoutOperatorLocked) {
       if (operatorAuthorityPending) return 'Verifying the active cashier for this register.';
       // #1045: a known, specific failure reason (e.g. a missing attendance
@@ -3500,7 +3583,18 @@ export default function TerminalPage() {
       return `Register is assigned to ${activeShiftOwnerLabel}. Sign in as a cashier to sell.`;
     }
     return '';
-  }, [activeShiftOwnerLabel, canTransactPos, checkoutOperatorLocked, locked, operatorAuthorityPending, operatorAuthorityState.errorMessage, shiftState.shift]);
+  }, [
+    activeShiftOwnerLabel,
+    canTransactPos,
+    checkoutLocationUnavailable,
+    checkoutOperatorLocked,
+    checkoutShiftLocationMismatch,
+    checkoutTerminalLocationMismatch,
+    locked,
+    operatorAuthorityPending,
+    operatorAuthorityState.errorMessage,
+    shiftState.shift
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -5468,6 +5562,7 @@ export default function TerminalPage() {
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
+      setOperatingLocationId(scopedOperatingLocationId);
       await refreshOperationalContext({
         terminalIdOverride: terminalId,
         operatingLocationIdOverride: scopedOperatingLocationId
@@ -6749,8 +6844,13 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    if (nextMode === 'approvals' && (!canReviewVoidApprovals || isCashierRole)) {
+      toast.error('Approval administration requires an authorized POS administrator.');
+      setMobileNavOpen(false);
+      return;
+    }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
-    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services' || nextMode === 'audit';
+    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services' || nextMode === 'audit' || nextMode === 'approvals';
     if (!isOnline && isOfflineOnlineOnlyMode) {
       toast.error('This POS area is available online only. Offline mode supports local sales, pending receipts, and history.');
       setMobileNavOpen(false);
@@ -6835,6 +6935,7 @@ export default function TerminalPage() {
     canAdminBypassShiftPrompt,
     canAccessServiceOperations,
     canManageCategories,
+    canReviewVoidApprovals,
     canViewAudit,
     canViewPos,
     commitViewModeSelection,
@@ -7451,6 +7552,8 @@ function PosRestorationLoadingScreen() {
           canViewAttendance={canViewAttendance}
           canOperateAttendance={canOperateAttendance}
           canViewAudit={canViewAudit}
+          canReviewVoidApprovals={canReviewVoidApprovals}
+          inlineVoidApprovalEnabled={inlineVoidApprovalEnabled}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
           canManageServiceCatalog={canManageServiceCatalog}

@@ -320,6 +320,30 @@ describe('usePosCheckoutWorkflow', () => {
         expect(posToast.error).not.toHaveBeenCalledWith('Price override reason is required for item 7');
     });
 
+    it('maps a registered-terminal location mismatch to actionable checkout copy', async () => {
+        createPosCheckout.mockRejectedValueOnce({
+            response: {
+                status: 403,
+                data: {
+                    error_code: 'POS_REGISTERED_TERMINAL_LOCATION_MISMATCH',
+                    message: 'Requested location does not match the registered terminal location.'
+                }
+            }
+        });
+        const { result } = renderCheckout();
+
+        await act(async () => {
+            await result.current.handleCheckout();
+        });
+
+        expect(posToast.error).toHaveBeenCalledWith(
+            'Checkout is blocked because the selected terminal is registered to a different branch. Refresh the terminal context and try again.'
+        );
+        expect(posToast.error).not.toHaveBeenCalledWith(
+            'Requested location does not match the registered terminal location.'
+        );
+    });
+
     it('keeps the checkout draft open and requests reauthentication when authority expires', async () => {
         const onCheckoutAuthorityInvalid = vi.fn();
         createPosCheckout.mockRejectedValueOnce({

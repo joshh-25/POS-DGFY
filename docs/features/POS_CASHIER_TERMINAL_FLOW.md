@@ -1,7 +1,7 @@
 # POS Cashier Terminal Flow
 
 Status: authoritative
-Last reviewed: 2026-09-14
+Last reviewed: 2026-09-29
 
 ## Phase 354 policy and runtime status
 
@@ -204,14 +204,25 @@ Expected POS behavior:
 
 ## Lock and resume behavior
 
-The following is the Phase 171 target contract. It does not claim that the
-current runtime already implements the complete flow.
+The following is the Phase 171 target contract for operator switching. The
+standalone POS runtime supports shift-preserving Break & Lock and same-cashier
+resume; the complete PIN-only operator-switch target below is not implied by
+that narrower behavior.
 
 - The DGFY account initially signs in and selects the company and terminal. That
   cookie-backed browser identity remains unchanged during routine operator
   switches.
 - Locking an open register preserves its shift, opening float, drawer ledger,
   and resume context.
+- After a standalone POS page refresh during Break & Lock, the same tab may
+  restore a minimal, non-authoritative resume pointer (shift, cashier, tenant,
+  terminal, and location IDs). The cashier must still reauthenticate, and the
+  API must revalidate the authenticated user, open shift, attendance/break, and
+  terminal/location scope before restoring operator authority. The pointer
+  excludes passwords, PINs, access/company tokens, email addresses, and shift
+  financial snapshots. Missing or invalid context falls back to full sign-in;
+  a rejected resume never opens a replacement shift or creates another opening
+  float.
 - The standalone POS shows eligible operators for the active tenant, location,
   terminal, and shift. The selected operator enters only their personal POS PIN;
   the switch does not ask for that operator's DGFY email and password again.
