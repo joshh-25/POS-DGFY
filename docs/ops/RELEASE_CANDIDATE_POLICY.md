@@ -1844,3 +1844,12 @@ separately. Decision 7's immutable-tag guard remains unchanged.
 
 Full workflow and commands: `.agents/skills/promoter/references/promotion-runbook.md`'s
 "Deploy dispatch" section. PR: (this PR). Refs #2186.
+
+#### 2026-10-01 follow-up: OPIS production gating (#2186)
+
+`deploy-main.yml`'s `promote-aliases` and `publish` jobs depend on `frontend-opis-prod` and
+fail closed when it fails or is cancelled; `promote-aliases` also runs on an OPIS-only
+revision dispatch. Per-app revision inputs, skip planning, aliasing, and parity now cover all
+six app groups including `dgfy-opis`. Package floors stay independently managed and unchanged.
+
+PR: (this PR). Refs #2186.

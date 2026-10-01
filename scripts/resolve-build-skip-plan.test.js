@@ -309,13 +309,40 @@ test('resolveBuildSkipPlan: modern revision map uses independent backend tags an
     inspectFn: (ref) => { inspectedRefs.push(ref); return inspectNotFound(); },
     diffFn: neverCalled('diffFn'),
   });
+  const apiFloor = JSON.parse(fs.readFileSync(path.join(__dirname, '../apps/dgfy-api/package.json'), 'utf8')).version;
+  const migrationFloor = JSON.parse(fs.readFileSync(path.join(__dirname, '../apps/dgfy-migration-runner/package.json'), 'utf8')).version;
   assert.equal(plan['dgfy-api'].code, 'not-published');
   assert.equal(plan['dgfy-migration-runner'].code, 'not-published');
   assert.equal(plan['dgfy-ims'].skip, true);
   assert.equal(plan['dgfy-ims'].code, 'app-not-selected');
-  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-api')), /1\.32\.0-r1$/);
-  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-migration-runner')), /1\.21\.0-r5$/);
+  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-api')), new RegExp(`${apiFloor.replace(/\./g, '\\.')}-r1$`));
+  assert.match(inspectedRefs.find((ref) => ref.includes('dgfy-migration-runner')), new RegExp(`${migrationFloor.replace(/\./g, '\\.')}-r5$`));
   assert.equal(inspectedRefs.length, 2);
+});
+
+// #2186 PROD candidate (API r2, migration-runner r5, OPIS r1, storefront r1; IMS/POS absent):
+// each selected app resolves its OWN revision tag from its OWN floor, omitted apps skip as
+// unselected without any registry inspection, and a failed required build blocks the plan.
+test('resolveBuildSkipPlan: PROD candidate maps API r2, migration-runner r5, OPIS r1, and storefront r1 independently while IMS/POS skip unselected', async () => {
+  const inspectedRefs = [];
+  const plan = await resolveBuildSkipPlan({
+    apps: ['dgfy-api', 'dgfy-migration-runner', 'dgfy-ims', 'dgfy-pos', 'dgfy-storefront', 'dgfy-opis'],
+    currentRevision: 'HEAD',
+    environment: 'PROD',
+    revisionsByApp: { 'dgfy-api': 'r2', 'dgfy-migration-runner': 'r5', 'dgfy-storefront': 'r1', 'dgfy-opis': 'r1' },
+    inspectFn: (ref) => { inspectedRefs.push(ref); return inspectNotFound(); },
+    diffFn: neverCalled('diffFn'),
+  });
+  const floorOf = (app) => JSON.parse(fs.readFileSync(path.join(__dirname, `../apps/${app}/package.json`), 'utf8')).version;
+  for (const [app, revision] of [['dgfy-api', 'r2'], ['dgfy-migration-runner', 'r5'], ['dgfy-storefront', 'r1'], ['dgfy-opis', 'r1']]) {
+    assert.equal(plan[app].code, 'not-published');
+    assert.match(inspectedRefs.find((ref) => ref.includes(`${app}:`)), new RegExp(`${floorOf(app).replace(/\./g, '\\.')}-${revision}$`));
+  }
+  for (const app of ['dgfy-ims', 'dgfy-pos']) {
+    assert.equal(plan[app].skip, true);
+    assert.equal(plan[app].code, 'app-not-selected');
+  }
+  assert.equal(inspectedRefs.length, 4);
 });
 
 test('resolveBuildSkipPlan: explicit legacy shared revision still applies when app map omits the app', async () => {
