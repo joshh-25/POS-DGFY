@@ -433,7 +433,7 @@ function inspectImageRevision({ image, tag, inspectFn }) {
  *   - alias revision missing/disagreeing with prod's                                    -> fail ("alias-revision-mismatch")
  *   - prod revision label naming a different rN than the candidate released             -> fail ("revision-label-mismatch")
  */
-function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision }) {
+function decideRevisionParity({ prod, staging, prodFloor, stagingFloor, prodDigest, stagingDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision, expectedSourceSha, expectedFloor, expectedStagingDigest, expectedProdDigest }) {
   if (prod.state === 'not-found') {
     return { verdict: 'skip', code: 'prod-not-found', detail: `${prod.ref} has not been published yet -- nothing to verify.` };
   }
@@ -478,11 +478,47 @@ function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevi
       detail: `${staging.ref} carries candidate-source-sha ${staging.value}, but ${prod.ref} carries ${prod.value} -- these should be the same frozen candidate (ADR 0081 Decision 8).`,
     };
   }
+  if (expectedSourceSha && (staging.value !== expectedSourceSha || prod.value !== expectedSourceSha)) {
+    return {
+      verdict: 'fail',
+      code: 'source-label-mismatch',
+      detail: `${staging.ref} / ${prod.ref} carry candidate-source-sha ${staging.value}, but this app's manifest lineage expects ${expectedSourceSha}.`,
+    };
+  }
+  if (expectedFloor) {
+    for (const [name, floorLabel] of [['STAGING', stagingFloor], ['PROD', prodFloor]]) {
+      if (floorLabel.state === 'error') return { verdict: 'error', code: `${name.toLowerCase()}-floor-inspect-error`, detail: floorLabel.reason };
+      if (floorLabel.state !== 'ok' || floorLabel.value !== expectedFloor) {
+        return {
+          verdict: 'fail',
+          code: `${name.toLowerCase()}-floor-mismatch`,
+          detail: `${floorLabel.ref} carries release-floor "${floorLabel.value || floorLabel.state}", expected ${expectedFloor}.`,
+        };
+      }
+    }
+  }
   if (prodDigest.state === 'error') {
     return { verdict: 'error', code: 'prod-digest-error', detail: prodDigest.reason };
   }
   if (prodDigest.state === 'not-found') {
     return { verdict: 'error', code: 'prod-digest-error', detail: `production revision tag vanished between label and digest reads (${prodDigest.reason}) -- refusing to guess.` };
+  }
+  if (stagingDigest && (stagingDigest.state === 'error' || stagingDigest.state === 'not-found')) {
+    return { verdict: 'error', code: 'staging-digest-error', detail: stagingDigest.reason || `staging digest for ${stagingDigest.ref} could not be read.` };
+  }
+  if (expectedStagingDigest && (!stagingDigest || stagingDigest.digest !== expectedStagingDigest)) {
+    return {
+      verdict: 'fail',
+      code: 'staging-digest-mismatch',
+      detail: `staging revision tag ${stagingDigest.ref} references ${stagingDigest.digest}, but the candidate manifest records ${expectedStagingDigest}.`,
+    };
+  }
+  if (expectedProdDigest && prodDigest.digest !== expectedProdDigest) {
+    return {
+      verdict: 'fail',
+      code: 'production-digest-mismatch',
+      detail: `production revision tag ${prodDigest.ref} references ${prodDigest.digest}, but the environment-neutral backend candidate digest is ${expectedProdDigest}.`,
+    };
   }
   if (aliasDigest.state === 'not-found') {
     return {
@@ -525,7 +561,8 @@ function decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevi
       detail: `bare production alias ${aliasRevision.ref} carries revision "${aliasRevision.value || aliasRevision.state}", but revision tag carries "${prodRevision.value}" -- alias and revision tag must agree (#1977).`,
     };
   }
-  return { verdict: 'pass', code: 'match', detail: `${staging.ref} and ${prod.ref} share candidate-source-sha ${prod.value}; alias ${aliasDigest.ref} references the same digest ${prodDigest.digest} (${prodRevision.value}).` };
+  const lineageDetail = expectedFloor ? `; STAGING floor ${expectedFloor}, recorded digest ${expectedStagingDigest}` : '';
+  return { verdict: 'pass', code: 'match', detail: `${staging.ref} and ${prod.ref} share candidate-source-sha ${prod.value}${lineageDetail}; alias ${aliasDigest.ref} references the same digest ${prodDigest.digest} (${prodRevision.value}).` };
 }
 
 /** Orchestrates one app's version read + both inspects + the verdict (manifest mode). */
@@ -558,7 +595,7 @@ function checkApp({ repoRoot, app, candidateSha, inspectFn }) {
  * verdict above. Returns { app, version, revision, candidate_source_sha, verdict, code,
  * detail }.
  */
-function checkAppRevision({ repoRoot, app, revision, candidateSha, inspectFn }) {
+function checkAppRevision({ repoRoot, app, revision, candidateSha, expectedDigest, enforceManifestLineage = true, inspectFn }) {
   const versionRaw = readVersionAt(repoRoot, candidateSha, `apps/${app}`);
   if (!versionRaw) {
     return {
@@ -583,11 +620,21 @@ function checkAppRevision({ repoRoot, app, revision, candidateSha, inspectFn }) 
   const image = IMAGE_NAME_BY_APP(app);
   const prod = inspectImageLabel({ image, tag: tags.productionTag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
   const staging = inspectImageLabel({ image, tag: tags.stagingTag, labelKey: CANDIDATE_SOURCE_LABEL, inspectFn });
+  const prodFloor = enforceManifestLineage ? inspectImageLabel({ image, tag: tags.productionTag, labelKey: 'org.dgfy-platform.release-floor', inspectFn }) : undefined;
+  const stagingFloor = enforceManifestLineage ? inspectImageLabel({ image, tag: tags.stagingTag, labelKey: 'org.dgfy-platform.release-floor', inspectFn }) : undefined;
   const prodDigest = inspectImageDigest({ image, tag: tags.productionTag, inspectFn });
+  const stagingDigest = expectedDigest
+    ? inspectImageDigest({ image, tag: tags.stagingTag, inspectFn })
+    : { ref: `${image}:${tags.stagingTag}`, state: 'ok' };
   const aliasDigest = inspectImageDigest({ image, tag: tags.canonicalAlias, inspectFn });
   const prodRevision = inspectImageRevision({ image, tag: tags.productionTag, inspectFn });
   const aliasRevision = inspectImageRevision({ image, tag: tags.canonicalAlias, inspectFn });
-  const result = decideRevisionParity({ prod, staging, prodDigest, aliasDigest, prodRevision, aliasRevision, expectedRevision: `r${revision}` });
+  const isBackend = app === 'dgfy-api' || app === 'dgfy-migration-runner';
+  const result = decideRevisionParity({
+    prod, staging, prodFloor, stagingFloor, prodDigest, stagingDigest, aliasDigest, prodRevision, aliasRevision,
+    expectedRevision: `r${revision}`, expectedSourceSha: enforceManifestLineage ? candidateSha : undefined, expectedFloor: enforceManifestLineage ? versionRaw : undefined,
+    expectedStagingDigest: expectedDigest, expectedProdDigest: isBackend ? expectedDigest : null,
+  });
 
   return { app, version: versionRaw, revision, candidate_source_sha: candidateSha, ...result };
 }
@@ -630,11 +677,11 @@ function runParityCheck({ manifest, repoRoot = REPO_ROOT, apps = APPS, inspectFn
           detail: `${app} is absent from this candidate's per-app release_revision map -- the candidate never rebuilt it, so its last-published artifact stands and there is nothing new to verify (#2055).`,
         };
       }
-      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], inspectFn });
+      return checkAppRevision({ repoRoot, app, revision: entry.revision, candidateSha: candidateShaByApp[app], expectedDigest: entry.digest, enforceManifestLineage: manifest.schema === 'sku-release-candidate/v2' || manifest.schema === 'sku-release-candidate/v3', inspectFn });
     }
     return releaseRevision === null
       ? checkApp({ repoRoot, app, candidateSha: candidateShaByApp[app], inspectFn })
-      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], inspectFn });
+      : checkAppRevision({ repoRoot, app, revision: releaseRevision, candidateSha: candidateShaByApp[app], enforceManifestLineage: false, inspectFn });
   });
 
   return {
