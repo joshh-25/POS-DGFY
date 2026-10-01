@@ -318,9 +318,16 @@ export const resolvePosGovernedDiscount = async ({
         application.id_number = beneficiaries.length === 1 ? beneficiaries[0].id_number : null;
     }
 
+    const hasStatutoryBeneficiaryIdentity = STATUTORY_TYPES.has(type)
+        && Array.isArray(application.beneficiaries)
+        && application.beneficiaries.length > 0
+        && application.beneficiaries.every((beneficiary) => (
+            Boolean(text(beneficiary?.name)) && Boolean(text(beneficiary?.id_number))
+        ));
     if (requireCustomerName
         && (application.requires_customer_id === true || legacyCustomerNameRequired)
-        && !text(application.customer_name)) {
+        && !text(application.customer_name)
+        && !hasStatutoryBeneficiaryIdentity) {
         validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
     }
 
