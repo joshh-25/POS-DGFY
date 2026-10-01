@@ -9,6 +9,7 @@ const readPosFile = (relativePath) => fs.readFileSync(path.resolve(__dirname, '.
 const spacingSource = readPosFile('components/PosPageSpacing.js');
 const pageFrameSource = readPosFile('components/PosPageFrame.jsx');
 const terminalLayoutSource = readPosFile('components/TerminalPageLayout.jsx');
+const operationsWorkspaceSource = readPosFile('components/TerminalOperationsWorkspace.jsx');
 const historySource = readPosFile('components/POSTransactionHistoryPanel.jsx');
 const reportsSource = readPosFile('components/PosReportsAnalyticsWorkspace.jsx');
 const settingsSource = readPosFile('settings/PosSettingsWorkspace.jsx');
@@ -20,14 +21,19 @@ describe('POS mobile page spacing contract', () => {
     expect(spacingSource).not.toContain('POS_PAGE_COMPACT_FRAME_CLASS');
     expect(reportsSource).toContain('page="reports"');
     expect(settingsSource).not.toContain('spacing="compact"');
+    expect(settingsSource).toContain('className="max-[767px]:overflow-x-clip"');
+    expect(settingsSource).not.toContain('sm:px-3');
     expect(spacingSource).not.toContain('POS_PAGE_MOBILE_GUTTER_CLASS');
     expect(spacingSource).not.toContain('POS_PAGE_CLASS');
     expect(pageFrameSource).toContain('data-pos-page-frame={page || undefined}');
     expect(historySource).toContain('<PosPageFrame page="history"');
-    expect(reportsSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip p-0"');
-    expect(settingsSource).toContain('<PosPageFrame id={sectionId} page="settings"');
+    expect(reportsSource).toContain('<PosPageFrame id={sectionId} page="reports" className="max-[767px]:overflow-x-clip">');
+    expect(settingsSource).toMatch(/<PosPageFrame\s+id=\{sectionId\}\s+page="settings"/);
     expect(terminalLayoutSource).toContain('const STANDARD_POS_PAGE_FRAME_MODES = new Set([');
     expect(terminalLayoutSource).toContain("usesStandardPosPageFrame ? 'p-0' : 'p-2'");
+    expect(operationsWorkspaceSource).toContain('const usesOwnPageFrame = isSettingsView || effectiveViewMode === \'reports\';');
+    expect(operationsWorkspaceSource).toContain("const workspaceShellClassName = usesOwnPageFrame\n    ? 'p-0'");
+    expect(operationsWorkspaceSource).toContain('className={workspaceShellClassName}');
   });
 
   it('uses the same major-section gap in History without changing row density', () => {
@@ -35,7 +41,7 @@ describe('POS mobile page spacing contract', () => {
     expect(historySource).toContain('POS_MOBILE_PAGE_STACK_CLASS');
     expect(historySource).not.toContain('POS_PAGE_MOBILE_GUTTER_CLASS');
     expect(historySource).toContain('flex-row w-full px-0 py-0');
-    expect(historySource).toContain('touch-pan-x px-3 py-0');
+    expect(historySource).toContain('overscroll-contain touch-pan-y');
     expect(settingsSource).toContain('className="min-w-0"');
   });
 

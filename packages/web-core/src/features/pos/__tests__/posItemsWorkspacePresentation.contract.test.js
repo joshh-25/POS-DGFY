@@ -12,22 +12,25 @@ describe('standalone POS Items workspace presentation', () => {
 
     expect(source).toContain("case 'items':");
     expect(source).toContain('<ItemsCatalogWorkspace');
-    // The reference-column table became a responsive card grid: the results
-    // grid, toolbar, and search placeholder below are its semantic successors.
+    expect(source).toContain('className="pos-items-desktop-toolbar hidden items-center gap-2 sm:flex"');
+    expect(source).toContain('className="pos-items-desktop-actions flex shrink-0 flex-wrap items-center justify-end gap-2"');
     expect(source).toContain('data-testid="pos-items-results"');
+    // The result area is a responsive card grid, with the same test hook retained.
     expect(source).toContain('xl:grid-cols-2');
     expect(source).toContain('pos-items-desktop-toolbar');
     expect(source).toContain('placeholder="Search item by Name, SKU, or Barcode"');
-    // Prices render the peso sign directly with tabular numerals (the
-    // currencySymbol/itemDisplayCurrency abstraction is gone).
-    expect(source).toContain('₱${money(item.cost_per_unit)}');
+    expect(source).toContain('pos-items-desktop-card-grid');
+    expect(source).toContain('pos-items-desktop-card"');
+    expect(source).toContain('Cost (₱):');
+    expect(source).toContain('Price (₱):');
     expect(source).toContain('₱{money(item.default_sale_price)}');
+    expect(source).toContain('`₱${money(item.cost_per_unit)}`');
+    expect(source).toContain('₱${money(item.cost_per_unit)}');
     expect(source).toContain('tabular-nums');
   });
 
   it('keeps the reference card metrics and item management actions', () => {
     const source = readWorkspace();
-
     // Card metrics carry the old table columns' content: cost, stock, price,
     // SKU, and category — without the isMoneyColumn heading machinery.
     expect(source).toContain('Cost (₱):');
@@ -37,9 +40,10 @@ describe('standalone POS Items workspace presentation', () => {
     expect(source).toContain('Search item by Name, SKU, or Barcode');
     expect(source).toContain('Add Items');
     expect(source).toContain('Import Items');
+    expect(source).toContain("const menuImportButtonLabel = 'Import Menu';");
     expect(source).toContain('SKU');
     expect(source).toContain('Barcode');
-    expect(source).toContain('Edit');
+    expect(source).toContain('Edit Item');
     expect(source).toContain('Delete');
     expect(source).toContain('onClick={() => openEdit(item)}');
     expect(source).toContain('onClick={() => setDeleteConfirmItem(item)}');

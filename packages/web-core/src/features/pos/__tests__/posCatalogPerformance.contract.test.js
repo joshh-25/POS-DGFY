@@ -142,18 +142,18 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex-wrap items-center' : isTabletViewport ? 'flex-row items-center'");
     expect(checkoutSource).toContain("isTabletViewport ? 'lg:flex-row lg:items-start' : 'xl:flex-row xl:items-start'");
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
-    expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'flex h-10 min-w-0 flex-1 items-center gap-2");
+    expect(checkoutSource).toContain("inputClassName={isTabletViewport || isTabletPortraitMobileLayout ? 'h-10' : 'h-11'}");
     expect(checkoutSource).toContain('<div className="flex shrink-0">');
     expect(checkoutSource).toContain("isTabletPortraitMobileLayout ? 'h-10 w-auto gap-2 px-3 text-[12px]' : 'w-auto h-10 gap-2 px-3 text-[12px]'");
     expect(checkoutSource).not.toContain('title="Show or hide catalog filters"');
     expect(checkoutSource).not.toContain('<Filter size={18} />');
   });
 
-  it('clears the complete desktop catalog search from the delete button', () => {
+  it('uses the shared clear behavior for the complete catalog search', () => {
     const checkoutSource = readCheckoutRenderSource();
 
-    expect(checkoutSource).toContain('aria-label="Clear search"');
-    expect(checkoutSource).toContain("onClick={() => setSearch('')}");
+    expect(checkoutSource).toContain("onClear={() => setSearch('')}");
+    expect(checkoutSource).toContain('ariaLabel="Search POS-visible items"');
     expect(checkoutSource).not.toContain('aria-label="Backspace search"');
   });
 

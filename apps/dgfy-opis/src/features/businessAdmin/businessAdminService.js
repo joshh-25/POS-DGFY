@@ -30,7 +30,10 @@ export const businessAdminApi = {
     dismissNotification: (id) => api.post(`/business-admin/notifications/${encodeURIComponent(id)}/dismiss`).then(unwrap),
     acknowledgeNotification: (id, note = '') => api.post(`/business-admin/notifications/${encodeURIComponent(id)}/acknowledge`, { note }).then(unwrap),
     decideApproval: (id, decision, note = '') => api.post(`/business-admin/approvals/${encodeURIComponent(id)}/${decision}`, { note }).then(unwrap),
-    cancelApproval: (id, note = '') => api.post(`/business-admin/approvals/${encodeURIComponent(id)}/cancel`, { note }).then(unwrap)
+    cancelApproval: (id, note = '') => api.post(`/business-admin/approvals/${encodeURIComponent(id)}/cancel`, { note }).then(unwrap),
+    // #2159: transitional Legacy Promos surface (read/revoke only).
+    legacyPromos: () => get('/vouchers/legacy-promos'),
+    revokeLegacyPromo: (body) => api.post('/vouchers/legacy-promos/revoke', body).then(unwrap)
 };
 
 export const getBusinessAdminErrorMessage = (error) => {

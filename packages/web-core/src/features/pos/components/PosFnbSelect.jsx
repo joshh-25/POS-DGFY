@@ -35,13 +35,21 @@ export default function PosFnbSelect({
     const rect = trigger.getBoundingClientRect();
     const menuMaxHeight = 184;
     const viewportPadding = 8;
-    const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
-    const spaceAbove = rect.top - viewportPadding;
+    const scrollRegion = rootRef.current.closest('.pos-items-modal-scroll-region');
+    const scrollRegionRect = scrollRegion?.getBoundingClientRect();
+    const boundaryTop = scrollRegionRect
+      ? Math.max(viewportPadding, scrollRegionRect.top + viewportPadding)
+      : viewportPadding;
+    const boundaryBottom = scrollRegionRect
+      ? Math.min(window.innerHeight - viewportPadding, scrollRegionRect.bottom - viewportPadding)
+      : window.innerHeight - viewportPadding;
+    const spaceBelow = boundaryBottom - rect.bottom - 4;
+    const spaceAbove = rect.top - boundaryTop - 4;
     const openUpward = spaceBelow < menuMaxHeight && spaceAbove > spaceBelow;
     const availableHeight = Math.max(96, Math.min(menuMaxHeight, openUpward ? spaceAbove : spaceBelow));
 
     setMenuPosition({
-      top: openUpward ? Math.max(viewportPadding, rect.top - availableHeight - 4) : rect.bottom + 4,
+      top: openUpward ? Math.max(boundaryTop, rect.top - availableHeight - 4) : rect.bottom + 4,
       left: rect.left,
       width: rect.width,
       maxHeight: availableHeight
@@ -134,7 +142,9 @@ export default function PosFnbSelect({
         top: menuPosition.top,
         left: menuPosition.left,
         width: menuPosition.width,
-        maxHeight: menuPosition.maxHeight
+        maxHeight: menuPosition.maxHeight,
+        overflowX: 'hidden',
+        overflowY: 'auto'
       } : undefined}
     >
       {options.length ? options.map((option) => {

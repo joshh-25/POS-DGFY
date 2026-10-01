@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { POS_TABLE_HEADER_STANDARD_CLASS } from '../components/PosTableSurface.jsx';
 import {
   createDiscountRule,
   deleteDiscountRule,
@@ -263,14 +264,14 @@ export default function PosDiscountManagementPane({
         <div className="overflow-hidden rounded-2xl border border-[#DDE8F5] bg-white">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[900px] text-left">
-              <thead className="border-b border-slate-100 bg-slate-50">
+              <thead className={`${POS_TABLE_HEADER_STANDARD_CLASS} border-b border-slate-100 bg-slate-50`}>
                 <tr className="text-[10px] font-extrabold uppercase tracking-[0.08em] text-[#6F86A8]">
-                  <th className="px-4 py-3">Discount</th>
-                  <th className="px-4 py-3">Rate</th>
-                  <th className="px-4 py-3">Availability</th>
-                  <th className="px-4 py-3">Created</th>
-                  <th className="px-4 py-3">Last updated</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                  <th className="px-4">Discount</th>
+                  <th className="px-4">Rate</th>
+                  <th className="px-4">Availability</th>
+                  <th className="px-4">Created</th>
+                  <th className="px-4">Last updated</th>
+                  <th className="px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

@@ -1,7 +1,7 @@
 import React from 'react';
 import { toast } from 'sonner';
 import { DndContext, DragOverlay, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
-import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Phone, Truck, Search, Table2, LayoutGrid, Columns } from 'lucide-react';
+import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, CalendarClock, MapPin, Phone, Truck, Table2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalPagination } from '@/components/ui/pagination';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
@@ -16,6 +16,7 @@ import {
 import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 import DeliveryAddressEditControl from './DeliveryAddressEditControl.jsx';
 import PackingEvidenceControl from './PackingEvidenceControl.jsx';
+import PosSearchField from './PosSearchField.jsx';
 import QueueOrderSelectCheckbox from './QueueOrderSelectCheckbox.jsx';
 import DeliveryRunsWorkspacePanel from './DeliveryRunsWorkspacePanel.jsx';
 import DeliveryRunDropPanel from './DeliveryRunDropPanel.jsx';
@@ -285,20 +286,18 @@ function OnlineOrderHistoryPanel({
       </div>
 
       <form onSubmit={applyFilters} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-        <label className="min-w-0 text-xs font-bold text-slate-600">
-          Search invoice
-          <span className="relative mt-1 block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
+        <div className="min-w-0 text-xs font-bold text-slate-600">
+          <span>Search invoice</span>
+          <PosSearchField
+              ariaLabel="Search order history invoice"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
+              onClear={() => setSearchTerm('')}
               placeholder="Invoice number"
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm font-medium text-slate-800 outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100"
-              aria-label="Search order history invoice"
-            />
-          </span>
-        </label>
+              className="mt-1"
+              inputClassName="h-10 text-sm font-medium"
+          />
+        </div>
         <label className="text-xs font-bold text-slate-600">
           Fulfillment
           <select

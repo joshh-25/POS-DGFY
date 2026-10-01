@@ -1,6 +1,6 @@
 {
   "name": "dgfy-ims",
-  "version": "1.29.0",
+  "version": "1.30.0",
   "description": "DGFY SKUpervisor (IMS) frontend workspace (issue #322 split from apps/dgfy-web).",
   "author": "DGFY",
   "type": "module",
@@ -34,7 +34,7 @@
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
     "@sieitzz/web-core": "file:../../packages/web-core",
     "@zxing/browser": "^0.2.1",
-    "axios": "^1.18.1",
+    "axios": "^1.20.0",
     "clsx": "^2.1.1",
     "date-fns": "^2.30.0",
     "fuse.js": "^7.4.2",

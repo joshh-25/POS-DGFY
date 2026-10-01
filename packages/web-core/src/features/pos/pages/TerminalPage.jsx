@@ -721,6 +721,7 @@ export default function TerminalPage() {
     loading: false,
     locations: []
   });
+  const [itemsLocationScopeLoading, setItemsLocationScopeLoading] = useState(true);
   const [operatingLocationId, setOperatingLocationId] = useState(null);
   const [viewingLocationId, setViewingLocationId] = useState(null);
   const [queueLocationScopeId, setQueueLocationScopeId] = useState(null);
@@ -1753,6 +1754,8 @@ export default function TerminalPage() {
       if (!silent) {
         setLocationsState((prev) => ({ ...prev, loading: false }));
       }
+    } finally {
+      setItemsLocationScopeLoading(false);
     }
   }, [locked, operatingLocationId, viewingLocationId]);
 
@@ -7500,6 +7503,7 @@ function PosRestorationLoadingScreen() {
           handleForceCloseStaleShift={handleForceCloseStaleShift}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           locationsState={locationsState}
+          itemsLocationScopeLoading={itemsLocationScopeLoading}
           operatingLocationId={operatingLocationId}
           viewingLocationId={viewingLocationId}
           queueLocationScopeId={queueLocationScopeId}

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, Bell, CalendarCheck, Clock, ListChecks, RefreshCw, Search, UserRound, UsersRound } from 'lucide-react';
+import { AlertTriangle, Bell, CalendarCheck, Clock, ListChecks, RefreshCw, UserRound, UsersRound } from 'lucide-react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import PosSearchField from './PosSearchField.jsx';
 import { getAllUsers } from '@/services/userService.js';
 import {
   createServiceAssignment,
@@ -323,7 +324,7 @@ export default function PosServicesOperationsWorkspace({ permissions = {}, isOnl
     {activeTab === 'calendar' && <section className="space-y-4" aria-labelledby="pos-services-calendar-heading">
       <div><h2 id="pos-services-calendar-heading" className="text-lg font-bold text-slate-950">Calendar</h2><p className="text-sm text-slate-500">Review active appointments in chronological order and narrow the schedule by status or client.</p></div>
       <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-        <label className="relative block"><span className="sr-only">Search calendar bookings</span><Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><input aria-label="Search calendar bookings" value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} placeholder="Search ticket, service, or client" className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-sm" /></label>
+        <PosSearchField ariaLabel="Search calendar bookings" value={calendarSearch} onChange={(event) => setCalendarSearch(event.target.value)} onClear={() => setCalendarSearch('')} placeholder="Search ticket, service, or client" inputClassName="rounded-md" />
         <label><span className="sr-only">Filter calendar by status</span><select aria-label="Filter calendar by status" value={calendarStatus} onChange={(event) => setCalendarStatus(event.target.value)} className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm">{CALENDAR_STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status === 'all' ? 'All active statuses' : status.replace(/_/g, ' ')}</option>)}</select></label>
       </div>
       {calendarGroups.map(([day, rows]) => <section key={day} className="space-y-2"><h3 className="text-sm font-bold uppercase text-slate-500">{day}</h3><ServiceBookingTable bookings={rows} updatingBookingId={updatingBookingId} onStatusChange={updateBooking} emptyText="No appointments." canManage={permissions.manageBookings} canSettle={settlementReady} settlingBookingId={settlingBookingId} onSettle={(booking) => { setSettlementResult(null); setSettlementBooking(booking); }} /></section>)}

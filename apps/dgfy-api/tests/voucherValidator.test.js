@@ -13,7 +13,7 @@ import {
     validateVoucherListQuery
 } from '../src/validators/voucherValidator.js';
 
-const { createVoucherSchema, updateVoucherSchema, voucherListQuerySchema } = __testables;
+const { createVoucherSchema, updateVoucherSchema, voucherListQuerySchema, legacyPromoRevokeSchema } = __testables;
 
 const validate = (schema, payload) => schema.validate(payload, { abortEarly: false, stripUnknown: true });
 
@@ -685,5 +685,72 @@ describe('account_grant_ids (#788)', () => {
         ));
         const { error } = validate(createVoucherSchema, validCreatePayload({ account_grant_ids: many }));
         expect(error).toBeUndefined();
+    });
+});
+
+describe('#2159 legacy promo revoke schema', () => {
+    test('accepts a plural entry identified by stored promo id', () => {
+        const { error, value } = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promos',
+            promo_id: 'promo-1'
+        });
+        expect(error).toBeUndefined();
+        expect(value).toEqual({ source_key: 'storefront_promos', promo_id: 'promo-1' });
+    });
+
+    test('accepts a singular entry identified by code and normalizes casing', () => {
+        const { error, value } = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promo',
+            promo_code: 'save10'
+        });
+        expect(error).toBeUndefined();
+        expect(value.promo_code).toBe('SAVE10');
+    });
+
+    test('requires at least one stable identity field', () => {
+        const { error } = validate(legacyPromoRevokeSchema, { source_key: 'storefront_promos' });
+        expect(error).toBeDefined();
+    });
+
+    test('rejects an unknown source key', () => {
+        const { error } = validate(legacyPromoRevokeSchema, { source_key: 'somewhere_else', promo_code: 'SAVE10' });
+        expect(error).toBeDefined();
+    });
+
+    test('allows source_index only for the plural array', () => {
+        const plural = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promos',
+            promo_code: 'SAVE10',
+            source_index: 2
+        });
+        expect(plural.error).toBeUndefined();
+        expect(plural.value.source_index).toBe(2);
+
+        const singular = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promo',
+            promo_code: 'SAVE10',
+            source_index: 0
+        });
+        expect(singular.error).toBeDefined();
+    });
+
+    test('rejects any authoring-shaped field instead of stripping it', () => {
+        const { error } = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promos',
+            promo_code: 'SAVE10',
+            active: false,
+            used_count: 0
+        });
+        // stripUnknown drops them silently by design here -- the important half is that no schema
+        // field exists to carry them into a write, asserted by the value shape below.
+        expect(error).toBeUndefined();
+        const value = validate(legacyPromoRevokeSchema, {
+            source_key: 'storefront_promos',
+            promo_code: 'SAVE10',
+            active: false,
+            used_count: 0
+        }).value;
+        expect(value).not.toHaveProperty('active');
+        expect(value).not.toHaveProperty('used_count');
     });
 });

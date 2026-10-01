@@ -32,7 +32,9 @@ import {
     listFiscalTerminalRegistrationsUseCase,
     getDayCloseReadinessUseCase,
     closeDayZReadingUseCase,
+    listPosZReadingsUseCase,
     getDailyZReadingUseCase,
+    getDailyZReadingDetailsUseCase,
     getCurrentXReadingUseCase,
     incrementGovernedResetCounterUseCase,
     listPosCatalogOverridesUseCase,
@@ -2959,6 +2961,49 @@ export const getDailyZReading = async (req, res, next) => {
     }
 };
 
+export const listPosZReadings = async (req, res, next) => {
+    try {
+        const result = await listPosZReadingsUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getDailyZReadingDetails = async (req, res, next) => {
+    try {
+        const result = await getDailyZReadingDetailsUseCase({
+            businessDateInput: req.validatedParams?.date || req.params.date,
+            user: req.user,
+            locationId: req.validatedQuery?.location_id || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getCurrentXReading = async (req, res, next) => {
     try {
         const result = await getCurrentXReadingUseCase({
@@ -3224,7 +3269,9 @@ export default {
     getTransactionById,
     getDayCloseReadiness,
     closeDayZReading,
+    listPosZReadings,
     getDailyZReading,
+    getDailyZReadingDetails,
     getCurrentXReading,
     incrementGovernedResetCounter,
     listCatalogOverrides,

@@ -314,6 +314,26 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     }));
   });
 
+  // #2159: a revoked/exhausted/expired legacy code must not survive the row->response mapping even
+  // if it was materialized into an index row before the revoke.
+  it('withholds revoked, exhausted, and expired legacy promos from the discovery profile', async () => {
+    const repository = await loadRepository();
+    findOneMock.mockResolvedValue({
+      ...makeEntry({ tenant_id: 'tenant-promo', tenant_name: 'Promo Co', slug: 'promo-co' }),
+      storefront_promo: { active: true, promo_code: 'REVOKED30', discount_percent: 30, revoked: true },
+      storefront_promos: [
+        { active: true, promo_code: 'OK10', discount_percent: 10 },
+        { active: true, promo_code: 'EXHAUSTED20', discount_percent: 20, usage_limit: 5, used_count: 5 },
+        { active: true, promo_code: 'EXPIRED30', discount_percent: 30, valid_until: '2020-01-01' },
+        { active: true, promo_code: 'REVOKED40', discount_percent: 40, revoked: true }
+      ]
+    });
+
+    const result = await repository.getStorefrontBySlug('promo-co');
+    expect(result.storefront_promo).toBeNull();
+    expect(result.storefront_promos.map((promo) => promo.promo_code)).toEqual(['OK10']);
+  });
+
   // #776 (#713 regression): storefront_vouchers was computed correctly all the way through the
   // index sync, but the row->response mapping below is an explicit field allowlist, not a spread --
   // this field was missing from it, so it never reached the response even once it was correctly

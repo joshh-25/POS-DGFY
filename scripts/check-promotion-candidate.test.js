@@ -245,6 +245,21 @@ test('v3: requires initial apps_touched and rejects DEV-origin artifacts', () =>
   assert.throws(() => validatePromotionCandidate(devOrigin), /must be one of promotion, staging_repair/);
 });
 
+test('v3: permits independent paired backend revisions, rejects one-sided map entries and source lineage mismatch', () => {
+  const manifest = candidateV3();
+  assert.equal(manifest.release_revision.apps['dgfy-api'].revision, 8);
+  assert.equal(manifest.release_revision.apps['dgfy-migration-runner'].revision, 9);
+  assert.equal(validatePromotionCandidate(manifest).release_revision['dgfy-api'].revision, 8);
+
+  const oneSided = candidateV3();
+  delete oneSided.release_revision.apps['dgfy-migration-runner'];
+  assert.throws(() => validatePromotionCandidate(oneSided), /must include dgfy-api and dgfy-migration-runner.*together/);
+
+  const wrongSource = candidateV3();
+  wrongSource.release_revision.apps['dgfy-migration-runner'].source_sha = SHA('b');
+  assert.throws(() => validatePromotionCandidate(wrongSource), /source_sha must match its candidate apps_touched lineage/);
+});
+
 test('v2: accepts a frozen candidate with per-app revisions, repair_seq branches, and a plain release branch', () => {
   assert.deepEqual(validatePromotionCandidate(candidateV2()), {
     candidate_id: '2026-09-04-01',
