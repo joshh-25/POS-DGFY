@@ -5,7 +5,7 @@ last_reviewed: 2026-09-28
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-09-28-pos-reports-analytics-backend
 classification: regulatory
-surfaces: pos,terminal
+surfaces: pos,terminal,inventory
 reason_codes_impacted: ALLOWED
 policy_version: 2026.09.28
 verification_evidence: focused POS report breakdown repository/use-case/validator/route/handler tests,existing POS report overview/export regression tests,npm run check:architecture,npm run check:adr,npm run lint:docs,npm run check:compliance,git diff --check

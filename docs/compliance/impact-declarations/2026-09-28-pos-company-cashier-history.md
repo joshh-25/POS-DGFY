@@ -5,7 +5,7 @@ owner: engineering
 last_reviewed: 2026-09-28
 declaration_id: 2026-09-28-pos-company-cashier-history
 classification: major
-surfaces: pos,terminal
+surfaces: pos,terminal,inventory
 reason_codes_impacted: ALLOWED,AUTHORIZATION_FAILED,VALIDATION_FAILED
 policy_version: 2026.09.28
 verification_evidence: focused cashier-history Jest and Vitest suites,npm run lint,npm run build,npm run check:architecture,npm run check:compliance,git diff --check
