@@ -20,8 +20,8 @@ rollback_note: Revert this PR's diff. No migration or schema change is involved:
   ledger row, completed order, or discovery index row is deleted or recomputed by the revert.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-09-30T17:54:09.000Z
-preflight_request_ref: NOT-EXECUTED-2159-LEGACY-PROMO-REVOKE
+preflight_run_at: 2026-10-01T02:49:32.607Z
+preflight_request_ref: PREFLIGHT-36807224957-2026-10-01-LEGACY-PROMO-REVOKE
 ---
 
 # Legacy promo revoke (#2159)
