@@ -49,7 +49,7 @@ describe('Back Office canonical manifest contract', () => {
         ]));
 
         expect(itemsByGroup.Overview).toEqual(['overview']);
-        expect(itemsByGroup.Sales).toEqual(['sales', 'orders', 'payments']);
+        expect(itemsByGroup.Sales).toEqual(['sales', 'orders', 'payments', 'vouchers']);
         expect(itemsByGroup.Customers).toEqual(['customers']);
         expect(itemsByGroup.Inventory).toEqual(['catalog', 'inventory', 'suppliers', 'purchase-orders', 'stock-movements', 'recipes']);
         expect(itemsByGroup.Operations).toEqual(['locations', 'shifts', 'attendance', 'expenses', 'fnb', 'services', 'hospitality', 'job-orders', 'dispatch-orders']);
@@ -87,7 +87,8 @@ describe('Back Office canonical manifest contract', () => {
             'hospitality',
             'sales',
             'reports',
-            'ai-chat'
+            'ai-chat',
+            'vouchers'
         ].sort());
         for (const key of migratedKeys) {
             expect(getBackOfficeModuleDefinition(key)?.component).toBeTruthy();

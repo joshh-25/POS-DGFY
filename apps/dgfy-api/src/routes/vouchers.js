@@ -3,6 +3,7 @@ import { authenticate, checkAnyPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateCreateVoucher,
+    validateLegacyPromoRevoke,
     validateUpdateVoucher,
     validateVoucherIdParam,
     validateVoucherListQuery
@@ -16,6 +17,10 @@ import {
     pauseVoucher,
     updateVoucher
 } from '../modules/vouchers/controllers/voucherHandlers.js';
+import {
+    listLegacyPromos,
+    revokeLegacyPromo
+} from '../modules/vouchers/controllers/legacyPromoHandlers.js';
 
 // Voucher campaign administration (#614, Phase 103). Governed by ADR 0066.
 //
@@ -70,6 +75,25 @@ router.get(
     canViewVouchers,
     validateVoucherListQuery,
     listVouchers
+);
+
+// #2159: transitional Legacy Promos control (OPIS). Registered before `/:voucher_id` so the static
+// path is never captured by the numeric voucher-id route. Read is `vouchers:view`-equivalent
+// (canViewVouchers, unchanged from the rest of this router's read access); revoke stays STRICTLY
+// `vouchers:manage` -- no settings:edit arm, matching #1493's management restriction.
+router.get(
+    '/legacy-promos',
+    authenticate,
+    canViewVouchers,
+    listLegacyPromos
+);
+
+router.post(
+    '/legacy-promos/revoke',
+    authenticate,
+    canManageVouchers,
+    validateLegacyPromoRevoke,
+    revokeLegacyPromo
 );
 
 router.get(
