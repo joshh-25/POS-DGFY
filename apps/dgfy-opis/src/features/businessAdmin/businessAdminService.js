@@ -6,6 +6,7 @@ const get = (path, params = {}) => api.get(path, { params }).then(unwrap);
 
 export const businessAdminApi = {
     bootstrap: () => get('/business-admin/bootstrap'),
+    company: () => get('/business-admin/company'),
     overview: (params) => get('/business-admin/overview', params),
     notifications: (params) => get('/business-admin/notifications', params),
     reportDataset: (reportKey, params) => get(`/business-admin/reports/datasets/${encodeURIComponent(reportKey)}`, params),

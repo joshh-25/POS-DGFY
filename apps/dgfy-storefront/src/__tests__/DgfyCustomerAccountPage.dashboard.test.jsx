@@ -617,6 +617,57 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getAllByTestId('customer-business-card-desktop')).toHaveLength(5);
   });
 
+  it('keeps a pending company visible with a Pending label and disables business tools', () => {
+    const onOpenBusinessPos = vi.fn();
+    renderDashboard({
+      onOpenBusinessPos,
+      accountPanel: {
+        ...accountPanel,
+        businessCompanies: [{
+          ...accountPanel.businessCompanies[0],
+          membership_id: 'membership-pending-owner',
+          tenant_id: 'tenant-pending-owner',
+          company_name: 'Pending Foods',
+          membership_status: 'pending',
+          tenant_status: 'pending',
+          can_switch: false
+        }]
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business' }));
+
+    expect(screen.getByTestId('customer-business-status-membership-pending-owner').textContent).toBe('Pending');
+    expect(screen.getByText('Available after company approval.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Day Close' }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Go to POS' }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Business options for Pending Foods' }).disabled).toBe(true);
+    expect(onOpenBusinessPos).not.toHaveBeenCalled();
+  });
+
+  it('removes rejected companies from active business cards without deleting their registration record', () => {
+    renderDashboard({
+      accountPanel: {
+        ...accountPanel,
+        businessCompanies: [{
+          ...accountPanel.businessCompanies[0],
+          membership_id: 'membership-rejected',
+          tenant_id: 'tenant-rejected',
+          company_name: 'Rejected Foods',
+          membership_status: 'pending',
+          tenant_status: 'rejected',
+          can_switch: false
+        }]
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business' }));
+
+    expect(screen.queryByTestId('customer-business-card-desktop')).toBeNull();
+    expect(screen.queryByText('Rejected Foods')).toBeNull();
+    expect(screen.getByText('Grow your business')).toBeTruthy();
+  });
+
   it('renders compact mobile business rows with profile logos and active state dots', () => {
     renderDashboard({
       isMobileViewport: true,

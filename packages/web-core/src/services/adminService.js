@@ -305,6 +305,11 @@ export const rejectTenant = async (tenantId, reason = '') => {
     return response.data;
 };
 
+export const getTenantRegistration = async (tenantId) => (await adminApi.get(`/admin/tenants/${tenantId}/registration`, requireAdminAuthConfig())).data;
+export const listTenantRegistrationUploads = async (tenantId) => (await adminApi.get(`/admin/tenants/${tenantId}/registration/uploads`, requireAdminAuthConfig())).data;
+export const downloadTenantRegistrationUpload = async (tenantId, uploadId) => adminApi.get(`/admin/tenants/${tenantId}/registration/uploads/${uploadId}/download`, { ...requireAdminAuthConfig(), responseType: 'blob' });
+export const revokeTenantRegistrationUpload = async (tenantId, uploadId, reason = '') => (await adminApi.post(`/admin/tenants/${tenantId}/registration/uploads/${uploadId}/revoke`, { reason }, requireAdminAuthConfig())).data;
+
 /**
  * Update tenant details
  */

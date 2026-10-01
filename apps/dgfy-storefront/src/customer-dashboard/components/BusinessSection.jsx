@@ -31,10 +31,23 @@ export function BusinessSection({
   const normalizedCompanies = businessCompanies.length > 0
     ? businessCompanies
     : businessMemberships.map((membership) => ({ ...membership.company, ...membership, company_name: membership.company?.name }));
-  const pending = normalizedCompanies.filter((company) => company.requires_action === 'accept_invitation');
-  const accepted = normalizedCompanies.filter((company) => !pending.includes(company));
-  const hasExistingBusiness = accepted.length > 0;
-  const availableIndustryIds = new Set(accepted.map(getCustomerBusinessIndustry).filter(Boolean));
+  const normalizeBusinessStatus = (value) => String(value || '').trim().toLowerCase();
+  const isRejectedBusiness = (company) => [
+    company?.review_status,
+    company?.registration_status,
+    company?.tenant_status,
+    company?.membership_status,
+    company?.status
+  ].some((value) => normalizeBusinessStatus(value) === 'rejected');
+  const rejected = normalizedCompanies.filter(isRejectedBusiness);
+  const pending = normalizedCompanies.filter((company) => (
+    company.requires_action === 'accept_invitation' && !rejected.includes(company)
+  ));
+  const visibleCompanies = normalizedCompanies.filter((company) => (
+    !pending.includes(company) && !rejected.includes(company)
+  ));
+  const hasExistingBusiness = visibleCompanies.length > 0;
+  const availableIndustryIds = new Set(visibleCompanies.map(getCustomerBusinessIndustry).filter(Boolean));
   const visibleIndustryTabs = [
     { id: 'all', label: 'All' },
     ...CUSTOMER_BUSINESS_INDUSTRY_TABS.filter((tab) => availableIndustryIds.has(tab.id))
@@ -43,20 +56,24 @@ export function BusinessSection({
   const [activeIndustry, setActiveIndustry] = useState('all');
   const resolvedActiveIndustry = visibleIndustryKey.split('|').includes(activeIndustry) ? activeIndustry : 'all';
   const visibleAccepted = resolvedActiveIndustry === 'all'
-    ? accepted
-    : accepted.filter((company) => getCustomerBusinessIndustry(company) === resolvedActiveIndustry);
+    ? visibleCompanies
+    : visibleCompanies.filter((company) => getCustomerBusinessIndustry(company) === resolvedActiveIndustry);
 
-  const isBusinessActive = (company, statusLabel) => {
+  const canUseBusinessTools = (company, statusLabel) => {
+    if (company?.can_switch === false || normalizeBusinessStatus(company?.can_switch) === 'false') return false;
+    if (company?.can_switch === true) return true;
+
     const statusValues = [
       company?.tenant_status,
       company?.business_status,
+      company?.membership_status,
       company?.status,
       statusLabel
     ]
       .filter(Boolean)
-      .map((value) => String(value).trim().toLowerCase());
-    const hasInactiveStatus = statusValues.some((value) => ['inactive', 'disabled', 'suspended', 'revoked', 'deactivated'].some((token) => value.includes(token)));
-    return !hasInactiveStatus && statusValues.some((value) => value === 'active' || value.includes('active'));
+      .map(normalizeBusinessStatus);
+    const hasUnavailableStatus = statusValues.some((value) => ['inactive', 'disabled', 'suspended', 'revoked', 'deactivated', 'pending', 'rejected'].some((token) => value.includes(token)));
+    return !hasUnavailableStatus && statusValues.some((value) => value === 'active' || value.includes('active'));
   };
 
   return (
@@ -76,8 +93,8 @@ export function BusinessSection({
           {visibleIndustryTabs.map((tab) => {
             const selected = resolvedActiveIndustry === tab.id;
             const tabCount = tab.id === 'all'
-              ? accepted.length
-              : accepted.filter((company) => getCustomerBusinessIndustry(company) === tab.id).length;
+              ? visibleCompanies.length
+              : visibleCompanies.filter((company) => getCustomerBusinessIndustry(company) === tab.id).length;
             return <button key={tab.id} type="button" aria-label={`${tab.label} ${tabCount}`} onClick={() => setActiveIndustry(tab.id)} style={{ minHeight: isMobileViewport ? 44 : 40, flexShrink: 0, background: 'transparent', border: 'none', borderBottom: selected ? `2px solid ${theme.primary}` : '2px solid transparent', color: selected ? theme.primary : theme.muted, fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.tab.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.tab.desktop, fontWeight: selected ? 600 : 500, padding: isMobileViewport ? '0 12px' : '0 16px', borderRadius: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, whiteSpace: 'nowrap' }}><span>{tab.label}</span><span style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.badge, fontWeight: 700, background: selected ? '#fff' : theme.bg, color: selected ? theme.primary : theme.muted, padding: '2px 6px', borderRadius: 999 }}>{tabCount}</span></button>;
           })}
         </div>
@@ -95,7 +112,11 @@ export function BusinessSection({
             const roleLabel = getBusinessRoleLabel(company);
             const mobileRoleLabel = owned ? 'Owner' : roleLabel;
             const statusLabel = getBusinessStatusLabel(company);
-            const isActive = isBusinessActive(company, statusLabel);
+            const isActive = canUseBusinessTools(company, statusLabel);
+            const businessToolsDisabled = businessActionLoading || !isActive;
+            const unavailableMessage = statusLabel.toLowerCase().includes('pending')
+              ? 'Available after company approval.'
+              : 'Business tools are unavailable for this company.';
             const companyKey = company.membership_id || company.tenant_id || name;
 
             return (
@@ -115,19 +136,20 @@ export function BusinessSection({
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, alignSelf: 'flex-start', background: theme.infoBg, color: theme.primary, padding: '3px 6px', borderRadius: 999, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}><Store size={11} />{mobileRoleLabel}</span>
                       </div>
                       <p style={{ margin: 0, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, fontWeight: 500, color: theme.muted }}>{owned ? 'Company you own' : 'Company membership'}</p>
+                      {!isActive ? <><span data-testid={`customer-business-status-${companyKey}`} style={{ justifySelf: 'start', display: 'inline-flex', alignItems: 'center', background: theme.infoBg, color: theme.primary, padding: '3px 7px', borderRadius: 999, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, fontWeight: 700 }}>{statusLabel}</span><span role="status" style={{ color: theme.muted, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption }}>{unavailableMessage}</span></> : null}
                     </div>
                     <div style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 8 }}>
-                      <button type="button" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: theme.muted, padding: 0, minWidth: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label={`Business options for ${name}`}>
+                      <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} style={{ border: 'none', background: 'transparent', cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', color: theme.muted, padding: 0, minWidth: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: businessToolsDisabled ? 0.5 : 1 }} aria-label={`Business options for ${name}`}>
                         <MoreVertical size={20} />
                       </button>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
-                    <button type="button" aria-label={`Day Close for ${name}`} disabled={businessActionLoading} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                    <button type="button" aria-label={`Day Close for ${name}`} disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px', whiteSpace: 'nowrap' }}>
                       <KeyRound size={15} />
                       Day Close
                     </button>
-                    <button type="button" aria-label={`Go to POS for ${name}`} disabled={businessActionLoading} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 3px 8px rgba(26,78,141,0.18)', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                    <button type="button" aria-label={`Go to POS for ${name}`} disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, boxShadow: '0 3px 8px rgba(26,78,141,0.18)', padding: '0 8px', whiteSpace: 'nowrap' }}>
                       <Calculator size={15} />
                       Go to POS
                     </button>
@@ -141,7 +163,7 @@ export function BusinessSection({
                     <div style={{ position: 'absolute', top: 14, right: 14 }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 6, borderRadius: 999, background: '#fff', color: theme.text, padding: '4px 10px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.badge, fontWeight: 700, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
                         <span style={{ width: 6, height: 6, borderRadius: '50%', background: isActive ? theme.success : '#98A2B3' }} />
-                        {statusLabel}
+                        <span data-testid={`customer-business-status-${companyKey}`}>{statusLabel}</span>
                       </span>
                     </div>
                   </div>
@@ -152,7 +174,7 @@ export function BusinessSection({
                         {profileUrl ? <img src={profileUrl} alt={`${name} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', background: theme.infoBg, display: 'grid', placeItems: 'center', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.heroMetric.mobile, fontWeight: 900, color: theme.primary }}>{name.charAt(0).toUpperCase()}</div>}
                       </div>
                       <div style={{ marginTop: 12 }}>
-                        <button type="button" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: theme.muted, padding: 0, minWidth: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.desktop, minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.desktop, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label={`Business options for ${name}`}>
+                        <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} style={{ border: 'none', background: 'transparent', cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', color: theme.muted, padding: 0, minWidth: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.desktop, minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.desktop, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: businessToolsDisabled ? 0.5 : 1 }} aria-label={`Business options for ${name}`}>
                           <MoreVertical size={20} />
                         </button>
                       </div>
@@ -168,16 +190,17 @@ export function BusinessSection({
                         <Store size={14} />
                         {roleLabel}
                       </span>
+                      {!isActive ? <p role="status" style={{ margin: '8px 0 0', color: theme.muted, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption }}>{unavailableMessage}</p> : null}
                     </div>
 
                     <div style={{ flex: 1, minHeight: 24 }} />
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
-                      <button type="button" disabled={businessActionLoading} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 8px' }}>
+                      <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, padding: '0 8px' }}>
                         <KeyRound size={16} />
                         Day Close
                       </button>
-                      <button type="button" disabled={businessActionLoading} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(26,78,141,0.2)', padding: '0 8px' }}>
+                      <button type="button" disabled={businessToolsDisabled} aria-disabled={businessToolsDisabled} title={businessToolsDisabled ? unavailableMessage : undefined} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessToolsDisabled ? 'not-allowed' : 'pointer', opacity: businessToolsDisabled ? 0.55 : 1, boxShadow: '0 4px 12px rgba(26,78,141,0.2)', padding: '0 8px' }}>
                         <Calculator size={16} />
                         Go to POS
                       </button>
