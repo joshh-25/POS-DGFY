@@ -22,6 +22,7 @@ describe('POS reports overview query validator', () => {
                 cashier_id: '4',
                 payment_type: 'cash',
                 source: 'in_store',
+                delivery_provider: 'grab',
                 category: 'beverages'
             }
         };
@@ -35,6 +36,7 @@ describe('POS reports overview query validator', () => {
         expect(req.validatedQuery.date_from).toBeInstanceOf(Date);
         expect(req.validatedQuery.granularity).toBe('daily');
         expect(req.validatedQuery.cashier_id).toBe(4);
+        expect(req.validatedQuery.delivery_provider).toBe('grab');
     });
 
     it('defaults granularity to daily when omitted', () => {
@@ -121,6 +123,23 @@ describe('POS reports overview query validator', () => {
                 date_from: '2026-07-01',
                 date_to: '2026-07-06',
                 payment_type: 'crypto'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosReportsQuery(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(422);
+    });
+
+    it('rejects an unsupported delivery provider filter value', () => {
+        const req = {
+            query: {
+                date_from: '2026-07-01',
+                date_to: '2026-07-06',
+                delivery_provider: 'maxim'
             }
         };
         const res = mockRes();

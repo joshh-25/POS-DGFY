@@ -13,7 +13,8 @@ describe('POS transactions query validator', () => {
         const req = {
             query: {
                 order_source: 'online_store',
-                order_method: 'pickup'
+                order_method: 'pickup',
+                delivery_provider: 'grab'
             }
         };
         const res = mockRes();
@@ -24,6 +25,7 @@ describe('POS transactions query validator', () => {
         expect(res.status).not.toHaveBeenCalled();
         expect(next).toHaveBeenCalledTimes(1);
         expect(req.validatedQuery.order_source).toBe('online_store');
+        expect(req.validatedQuery.delivery_provider).toBe('grab');
     });
 
     it('accepts the Services walk-in order method', () => {

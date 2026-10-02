@@ -32,6 +32,10 @@ import {
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
 import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 import { getPosCashPaymentAmount, normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import {
+    aggregateDeliveryProviderBreakdown,
+    normalizeDeliveryProviderBreakdown
+} from '../utils/deliveryProviderBreakdown.js';
 import { buildPosTransactionHistorySearchConditions } from '../utils/posTransactionHistorySearch.js';
 import { resolvePosTaxPolicy } from '../../shared/constants/posTaxPolicy.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
@@ -138,6 +142,22 @@ const buildTransactionPaymentTypeWhere = (sequelize, paymentType) => {
             positiveBreakdownPayment
         ]
     };
+};
+const buildTransactionDeliveryProviderWhere = (sequelize, providerType) => {
+    const normalized = String(providerType || '').trim().toLowerCase();
+    if (!['foodpanda', 'grab', 'other'].includes(normalized)) return null;
+
+    const escapedProviderType = typeof sequelize.escape === 'function'
+        ? sequelize.escape(normalized)
+        : `'${normalized.replace(/'/g, "''")}'`;
+    const deliveryProviderBreakdownExpression = 'COALESCE(`PosTransaction`.`delivery_provider_breakdown`, JSON_ARRAY())';
+
+    // MariaDB 10.4 does not support JSON_TABLE. JSON_SEARCH is sufficient here because
+    // the report filter is by canonical provider type; Other intentionally matches any
+    // provider name stored under the provider_type "other".
+    return sequelize.literal(`
+        JSON_SEARCH(${deliveryProviderBreakdownExpression}, 'one', ${escapedProviderType}, NULL, '$[*].provider_type') IS NOT NULL
+    `);
 };
 const stableStringify = (value) => {
     if (Array.isArray(value)) {
@@ -1548,6 +1568,15 @@ const buildPosReportWhere = (filters = {}, { startAt, endAtExclusive, sequelize 
         where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), paymentTypeWhere];
     }
 
+    const deliveryProviderWhere = buildTransactionDeliveryProviderWhere(sequelize, filters.delivery_provider);
+    if (deliveryProviderWhere) {
+        where[Op.and] = [
+            ...(Array.isArray(where[Op.and]) ? where[Op.and] : []),
+            { order_method: 'delivery' },
+            deliveryProviderWhere
+        ];
+    }
+
     const source = String(filters.source || '').trim().toLowerCase();
     if (source === 'in_store') {
         where[Op.and] = [...(Array.isArray(where[Op.and]) ? where[Op.and] : []), {
@@ -2069,6 +2098,17 @@ const buildZReadingPaymentBreakdown = (rows = []) => {
     return normalizePosPaymentBreakdown(entries);
 };
 
+const normalizeTransactionDeliveryProviderSnapshot = (value) => {
+    if (value == null) return null;
+    try {
+        return normalizeDeliveryProviderBreakdown(value);
+    } catch {
+        return null;
+    }
+};
+
+const buildDeliveryProviderBreakdown = (rows = []) => aggregateDeliveryProviderBreakdown(rows);
+
 const buildSelectedTenderSummary = (transactions = [], paymentType, normalizedLines = []) => {
     const normalized = normalizePaymentType(paymentType);
     if (!normalized) return null;
@@ -2263,6 +2303,7 @@ const buildReportTransactionRows = (transactions = [], normalizedLines = []) => 
                 attribution_type: transaction.operator_session_id ? 'authenticated_operator' : 'legacy_cashier_snapshot',
                 payment_type: transaction.payment_type || null,
                 payment_methods: getTransactionPaymentAllocations(transaction).map((entry) => entry.payment_type),
+                delivery_provider_breakdown: normalizeTransactionDeliveryProviderSnapshot(transaction.delivery_provider_breakdown),
                 payment_status: transaction.payment_status || null,
                 order_source: transaction.order_source || null,
                 order_method: transaction.order_method || null,
@@ -2720,7 +2761,12 @@ const buildFilterOptions = (transactions = [], lineRows = [], categoryOptions = 
         cashiers: Array.from(cashierMap.values()).sort((left, right) => left.cashier_name.localeCompare(right.cashier_name)),
         categories,
         payment_methods: ['cash', 'gcash', 'maya', 'card', 'bank_transfer'],
-        sources: Object.entries(REPORT_SOURCE_LABELS).map(([value, label]) => ({ value, label }))
+        sources: Object.entries(REPORT_SOURCE_LABELS).map(([value, label]) => ({ value, label })),
+        delivery_providers: [
+            { value: 'foodpanda', label: 'Foodpanda' },
+            { value: 'grab', label: 'Grab' },
+            { value: 'other', label: 'Other' }
+        ]
     };
 };
 
@@ -2844,6 +2890,7 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 location_id: transaction?.location_id || transaction?.shift?.location_id || null,
                 payment_type: transaction?.payment_type || 'cash',
                 payment_breakdown: transaction?.payment_breakdown || null,
+                delivery_provider_breakdown: normalizeTransactionDeliveryProviderSnapshot(transaction?.delivery_provider_breakdown),
                 transaction_total_amount: transaction?.total_amount || 0,
                 source_label: sourceLabel,
                 order_source: transaction?.order_source || 'in_store',
@@ -3046,6 +3093,7 @@ const buildReportBreakdownAppliedFilters = (filters = {}, range = {}) => {
         terminal_id: String(filters.terminal_id || '').trim() || null,
         payment_type: String(filters.payment_type || '').trim().toLowerCase() || null,
         source: String(filters.source || '').trim().toLowerCase() || null,
+        delivery_provider: String(filters.delivery_provider || '').trim().toLowerCase() || null,
         category_id: toPositiveInt(filters.category_id),
         category: String(filters.category || '').trim() || null,
         sort_by: String(filters.sort_by || '').trim().toLowerCase() || null,
@@ -3221,6 +3269,7 @@ const buildReportPayloadFromTransactions = (
             terminal_id: String(filters.terminal_id || '').trim() || null,
             payment_type: String(filters.payment_type || '').trim() || null,
             source: String(filters.source || '').trim() || null,
+            delivery_provider: String(filters.delivery_provider || '').trim() || null,
             category_id: toPositiveInt(filters.category_id),
             category: String(filters.category || '').trim() || null
         },
@@ -3241,6 +3290,7 @@ const buildReportPayloadFromTransactions = (
             adjustment_rows: adjustmentRows,
             discount_breakdown: buildDiscountBreakdown(normalizedLines),
             payment_breakdown: buildPaymentBreakdown(normalizedLines),
+            delivery_provider_breakdown: buildDeliveryProviderBreakdown(normalizedLines),
             order_method_breakdown: buildOrderMethodBreakdown(normalizedLines),
             cashier_summary: cashierSummary,
             cash_reconciliation: Array.from(cashierReconciliation.values()),
@@ -3364,7 +3414,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     if (normalizedSection === 'sales') {
         rows.push(['Sales Transactions']);
         rows.push([]);
-        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
+        rows.push(['Date/Time', 'Transaction/Invoice', 'Cashier', 'Payment Method', 'Order Method', 'Delivery Provider(s)', 'Discount (PHP)', 'Gross Sales (PHP)', 'Net Sales (PHP)', 'POS Profit/Loss (PHP)']);
         (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
             rows.push([
                 entry.created_at || '',
@@ -3374,6 +3424,9 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
                     ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
                     : (entry.payment_type || ''),
                 entry.order_method || '',
+                Array.isArray(entry.delivery_provider_breakdown)
+                    ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label}: ${round4(provider.amount)}`).join(' + ')
+                    : '',
                 round4(entry.discount_amount),
                 round4(entry.gross_sales),
                 round4(entry.net_sales),
@@ -3395,6 +3448,11 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
     rows.push(['Payment Method', 'Transactions', 'Net Sales', 'POS Profit/Loss']);
     (payload?.daily_report?.payment_breakdown || []).forEach((entry) => {
         rows.push([entry.payment_method, entry.total_transactions, round4(entry.net_sales), round4(entry.pos_profit_loss)]);
+    });
+    rows.push([]);
+    rows.push(['Delivery Provider', 'Transactions', 'Amount']);
+    (payload?.daily_report?.delivery_provider_breakdown || []).forEach((entry) => {
+        rows.push([entry.display_label, entry.transaction_count, round4(entry.amount)]);
     });
     rows.push([]);
     rows.push(['Discount', 'Type', 'Promo Code', 'Transactions', 'Discount Total', 'VAT Removed']);
@@ -3439,7 +3497,7 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
         ]);
     });
     rows.push([]);
-    rows.push(['Invoice', 'Datetime (Asia/Manila)', 'Cashier', 'Payment', 'Status', 'Total', 'Gross Sales', 'Discount', 'VAT Sales', 'VAT', 'Net Sales']);
+    rows.push(['Invoice', 'Datetime (Asia/Manila)', 'Cashier', 'Payment', 'Delivery Provider', 'Status', 'Total', 'Gross Sales', 'Discount', 'VAT Sales', 'VAT', 'Net Sales']);
     (payload?.daily_report?.transaction_rows || []).forEach((entry) => {
         rows.push([
             entry.invoice_number || entry.pos_transaction_id,
@@ -3448,6 +3506,9 @@ const buildReportExportRows = (section = 'daily', payload = {}) => {
             Array.isArray(entry.payment_methods) && entry.payment_methods.length > 0
                 ? entry.payment_methods.map(toDisplayPaymentGroup).join(' + ')
                 : (entry.payment_type || ''),
+            Array.isArray(entry.delivery_provider_breakdown)
+                ? entry.delivery_provider_breakdown.map((provider) => `${provider.display_label || provider.provider_name || provider.provider_type}: ${round4(provider.amount)}`).join(' + ')
+                : '',
             entry.status || '',
             round4(entry.total_amount),
             round4(entry.gross_sales),
@@ -4554,6 +4615,11 @@ export const posRepository = {
         if (filters.order_method) where.order_method = filters.order_method;
         if (filters.order_source) where.order_source = filters.order_source;
         if (filters.status) where.status = filters.status;
+        const deliveryProviderWhere = buildTransactionDeliveryProviderWhere(PosTransaction.sequelize, filters.delivery_provider);
+        if (deliveryProviderWhere) {
+            whereAnd.push({ order_method: 'delivery' });
+            whereAnd.push(deliveryProviderWhere);
+        }
         const searchConditions = buildPosTransactionHistorySearchConditions({
             sequelize: PosTransaction.sequelize,
             search: filters.search
@@ -5058,7 +5124,7 @@ export const posRepository = {
 
         const paymentBreakdownRows = await PosTransaction.findAll({
             where,
-            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown'],
+            attributes: ['pos_transaction_id', 'payment_type', 'total_amount', 'payment_breakdown', 'delivery_provider_breakdown'],
             raw: true,
             transaction: options.transaction
         });
@@ -5333,6 +5399,7 @@ export const posRepository = {
                 net_profit: round4(row.amount) - round4(row.cost)
             })),
             payment_breakdown: buildZReadingPaymentBreakdown(paymentBreakdownRows),
+            delivery_provider_breakdown: buildDeliveryProviderBreakdown(paymentBreakdownRows),
             order_method_breakdown: orderMethodBreakdownRows.map((row) => ({
                 order_method: row.order_method,
                 count: Number.parseInt(row.count || 0, 10),
@@ -5526,7 +5593,7 @@ export const posRepository = {
             where: buildTerminalScopedSalesWhere({ startAt, endAt, locationId }),
             attributes: [
                 'pos_transaction_id', 'invoice_number', 'total_amount', 'payment_type',
-                'payment_breakdown', 'cashier_id', 'shift_id', 'operator_session_id', 'created_at'
+                'payment_breakdown', 'delivery_provider_breakdown', 'cashier_id', 'shift_id', 'operator_session_id', 'created_at'
             ],
             include: User ? [{
                 model: User,
@@ -5580,6 +5647,7 @@ export const posRepository = {
             sales_amount: 0,
             sale_rows: [],
             payment_rows: [],
+            provider_rows: [],
             cashier_sales: new Map(),
             void_transaction_count: 0,
             void_amount: 0,
@@ -5601,6 +5669,7 @@ export const posRepository = {
             activity.sales_amount = round4(activity.sales_amount + round4(row.total_amount));
             activity.sale_rows.push(row);
             activity.payment_rows.push(row);
+            activity.provider_rows.push(row);
 
             const sessionId = toPositiveInt(row.operator_session_id);
             const session = sessionId ? sessionById.get(sessionId) : null;
@@ -5669,6 +5738,7 @@ export const posRepository = {
                 transaction_count: activity.transaction_count,
                 sales_amount: round4(activity.sales_amount),
                 payment_breakdown: buildZReadingPaymentBreakdown(activity.payment_rows),
+                delivery_provider_breakdown: buildDeliveryProviderBreakdown(activity.provider_rows),
                 cashier_sales: Array.from(activity.cashier_sales.values()),
                 cash: {
                     opening_float_amount: shift.opening_float_amount == null ? null : round4(shift.opening_float_amount),
@@ -5704,6 +5774,7 @@ export const posRepository = {
                 }
             },
             refunds: refundTotals,
+            delivery_provider_breakdown: buildDeliveryProviderBreakdown(saleRows),
             shifts
         };
     },

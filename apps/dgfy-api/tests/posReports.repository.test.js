@@ -1245,6 +1245,27 @@ describe('posRepository reports analytics', () => {
         ]));
     });
 
+    it('builds a delivery provider filter against the persisted provider snapshot', async () => {
+        mockFindAll.mockResolvedValue([]);
+
+        await posRepository.getReportsOverview({
+            date_from: '2026-10-02',
+            date_to: '2026-10-02',
+            delivery_provider: 'other'
+        });
+
+        const where = mockFindAll.mock.calls[0][0].where;
+        expect(where[Op.and]).toEqual(expect.arrayContaining([
+            { order_method: 'delivery' },
+            expect.objectContaining({
+                literal: expect.stringContaining('JSON_SEARCH')
+            })
+        ]));
+        const providerPredicate = where[Op.and].find((entry) => entry?.literal);
+        expect(providerPredicate.literal).toContain('provider_type');
+        expect(providerPredicate.literal).toContain("'other'");
+    });
+
     it('reconciles a filtered GCash report with a GCash leg inside a Cash-primary split sale', async () => {
         const transactions = Array.from({ length: 6 }, (_, index) => {
             const amount = index === 5 ? 280 : 200;

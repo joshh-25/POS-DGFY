@@ -122,6 +122,19 @@ describe('POS transaction history repository query', () => {
         });
     });
 
+    it('adds a canonical delivery-provider predicate to transaction history filters', async () => {
+        await posRepository.listTransactions({ delivery_provider: 'other' });
+
+        const [options] = findAndCountAll.mock.calls[0];
+        const whereClauses = options.where[Op.and];
+        const providerPredicate = whereClauses.find((clause) => clause?.kind === 'literal');
+
+        expect(whereClauses).toEqual(expect.arrayContaining([{ order_method: 'delivery' }]));
+        expect(providerPredicate.value).toContain('JSON_SEARCH');
+        expect(providerPredicate.value).toContain("'one', 'other'");
+        expect(providerPredicate.value).not.toContain('JSON_TABLE');
+    });
+
     it('generates a valid MariaDB positive-allocation expression for split-payment filters', async () => {
         const realSequelize = new Sequelize('dgfy_sql_generation', 'root', '', {
             dialect: 'mysql',

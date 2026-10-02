@@ -5,6 +5,12 @@ import {
     resolvePosPaymentCategory
 } from '../src/modules/pos/utils/paymentBreakdown.js';
 import {
+    aggregateDeliveryProviderBreakdown,
+    assertDeliveryProviderBreakdown,
+    normalizeDeliveryProviderBreakdown
+} from '../src/modules/pos/utils/deliveryProviderBreakdown.js';
+import {
+    buildReceiptLines,
     buildShiftSummaryLines,
     buildZReadingLines
 } from '../device-bridge/receipts/receiptFormatter.js';
@@ -124,5 +130,109 @@ describe('POS close-report payment breakdown', () => {
         expect(zReadingLines).toContainEqual(expect.stringContaining('Checked'));
         expect(zReadingLines).toContain('Provider refunds are reconciled separately.');
         expect(zReadingLines).not.toContainEqual(expect.stringContaining('Lifetime total'));
+    });
+
+    it('prints delivery provider allocations on the physical receipt path', () => {
+        const receiptLines = buildReceiptLines({
+            business: { name: 'Test Kitchen' },
+            transaction: {
+                invoice_number: 'INV-001',
+                subtotal_amount: 270,
+                vat_amount: 0,
+                total_amount: 270,
+                delivery_provider_breakdown: [
+                    { provider_type: 'grab', amount: 180 },
+                    { provider_type: 'other', provider_name: 'Maxim', amount: 90 }
+                ],
+                lines: []
+            },
+            receipt_contract: { document_type: 'non_fiscal_slip', version: 'test' }
+        });
+
+        expect(receiptLines).toContain('DELIVERY PROVIDER BREAKDOWN');
+        expect(receiptLines).toContainEqual(expect.stringContaining('Grab'));
+        expect(receiptLines).toContainEqual(expect.stringContaining('Maxim (Other)'));
+    });
+});
+
+describe('POS delivery provider payment breakdown', () => {
+    it('validates one delivery provider against the server-calculated transaction total', () => {
+        expect(assertDeliveryProviderBreakdown({
+            orderMethod: 'delivery',
+            totalAmount: 270,
+            entries: [{ provider_type: 'grab', amount: 270 }]
+        })).toEqual([
+            { provider_type: 'grab', provider_name: null, amount: 270, display_label: 'Grab' }
+        ]);
+    });
+
+    it('rejects multiple providers, missing Other names, duplicate provider types, and mismatched totals', () => {
+        expect(() => normalizeDeliveryProviderBreakdown([
+            { provider_type: 'other', amount: 100 }
+        ])).toThrow('require a provider name');
+        expect(() => assertDeliveryProviderBreakdown({
+            orderMethod: 'delivery',
+            totalAmount: 270,
+            entries: [
+                { provider_type: 'grab', amount: 180 },
+                { provider_type: 'other', provider_name: 'Maxim', amount: 90 }
+            ]
+        })).toThrow('exactly one delivery provider');
+        expect(() => normalizeDeliveryProviderBreakdown([
+            { provider_type: 'grab', amount: 100 },
+            { provider_type: 'grab', amount: 50 }
+        ])).toThrow('only one Grab');
+        expect(() => assertDeliveryProviderBreakdown({
+            orderMethod: 'delivery',
+            totalAmount: 150,
+            entries: [{ provider_type: 'grab', amount: 100 }]
+        })).toThrow('must equal the transaction total');
+        expect(() => assertDeliveryProviderBreakdown({
+            orderMethod: 'dine_in',
+            totalAmount: 100,
+            entries: [{ provider_type: 'grab', amount: 100 }]
+        })).toThrow('allowed only for Delivery');
+    });
+
+    it('aggregates the same provider across transactions by canonical provider name', () => {
+        const result = aggregateDeliveryProviderBreakdown([
+            {
+                transaction_id: 101,
+                delivery_provider_breakdown: [{ provider_type: 'grab', amount: 100 }]
+            },
+            {
+                transaction_id: 101,
+                delivery_provider_breakdown: [{ provider_type: 'grab', amount: 100 }]
+            },
+            {
+                transaction_id: 102,
+                delivery_provider_breakdown: [{ provider_type: 'grab', amount: 50 }]
+            },
+            {
+                transaction_id: 103,
+                delivery_provider_breakdown: [{ provider_type: 'other', provider_name: ' maxim ', amount: 90 }]
+            },
+            {
+                transaction_id: 104,
+                delivery_provider_breakdown: [{ provider_type: 'other', provider_name: 'Maxim', amount: 10 }]
+            }
+        ]);
+
+        expect(result).toEqual([
+            {
+                provider_type: 'grab',
+                provider_name: null,
+                display_label: 'Grab',
+                transaction_count: 2,
+                amount: 150
+            },
+            {
+                provider_type: 'other',
+                provider_name: 'maxim',
+                display_label: 'maxim (Other)',
+                transaction_count: 2,
+                amount: 100
+            }
+        ]);
     });
 });
