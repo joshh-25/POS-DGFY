@@ -62,6 +62,8 @@ import {
     getStoreTokenConfig,
     normalizeTenantIdentifier,
     generateStoreGuestCheckoutProof,
+    generateStoreGuestCheckoutVerificationGrant,
+    verifyStoreGuestCheckoutVerificationGrant,
     verifyStoreCancelProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
@@ -3921,10 +3923,52 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
                     email,
                     idempotencyKey
                 }),
-                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn
+                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn,
+                guest_checkout_verification_grant: generateStoreGuestCheckoutVerificationGrant({
+                    tenantId: normalizedTenantId,
+                    email
+                }),
+                verification_grant_expires_in: 86400
             });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to verify guest checkout code'));
+        }
+    };
+};
+
+export const buildExchangeStoreGuestCheckoutGrantUseCase = ({ dgfyCustomerRepository }) => {
+    return async ({ tenantId, payload }) => {
+        try {
+            const normalizedTenantId = ensureTenantContext(tenantId);
+            const email = String(payload?.email || '').trim().toLowerCase();
+            const idempotencyKey = String(payload?.idempotency_key || '').trim();
+            const grant = verifyStoreGuestCheckoutVerificationGrant(payload?.verification_grant);
+            if (
+                grant?.type !== 'store_guest_checkout_verification_grant'
+                || grant?.tenant_id !== normalizedTenantId
+                || grant?.email !== email
+            ) {
+                throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Guest email verification has expired. Verify your email again.');
+            }
+            const account = await dgfyCustomerRepository.findDgfyAccountByEmail(email);
+            if (account) {
+                throw new DomainError(
+                    DomainErrorCode.DGFY_ACCOUNT_SIGN_IN_REQUIRED,
+                    'This email belongs to a DGFY account. Sign in to continue.'
+                );
+            }
+            return ok({
+                email,
+                idempotency_key: idempotencyKey,
+                guest_checkout_proof: generateStoreGuestCheckoutProof({
+                    tenantId: normalizedTenantId,
+                    email,
+                    idempotencyKey
+                }),
+                expires_in: getStoreTokenConfig().guestCheckoutProofExpiresIn
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to exchange guest checkout verification'));
         }
     };
 };

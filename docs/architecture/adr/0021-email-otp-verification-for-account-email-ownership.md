@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-17
-last_reviewed: 2026-08-07
+last_reviewed: 2026-10-02
 review_by: 2026-11-17
 applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change, dgfy_accounts
 topic: email_otp_verification
@@ -48,6 +48,7 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 13. Phone verification is out of scope for this ADR version. `phone_verified_at` on DGFY accounts is reserved for a future phone OTP flow and must stay nullable until that flow is implemented.
 14. Guest Storefront orders require a tenant-bound `storefront_guest_checkout` email OTP when `STOREFRONT_GUEST_OTP_REQUIRED` is not explicitly disabled. Verification consumes the six-digit OTP and returns a short-lived signed proof bound to the normalized email, tenant, and checkout idempotency key. The checkout endpoint validates that proof for non-DGFY customers; DGFY-authenticated customers continue through the authenticated account path without a guest OTP.
 15. The guest checkout proof may be replayed only with its bound idempotency key. Checkout idempotency returns the original order for a matching retry and rejects a changed payload, preventing the proof from creating multiple orders.
+16. The mobile Storefront may retain a signed guest email-verification grant for 24 hours after successful OTP verification. The grant is bound to the normalized email and tenant, and can be exchanged for a fresh short-lived proof bound to one checkout idempotency key. The exchange checks for an existing global DGFY account only after validating the grant; when one exists, it returns `DGFY_ACCOUNT_SIGN_IN_REQUIRED` and does not issue a guest proof. Existing PWA clients may continue using the direct OTP-verification proof until their separately tracked migration.
 
 ## Consequences
 1. Email ownership is proved before new login identities and email-to-tenant mappings are written.
@@ -57,6 +58,7 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 5. OTP rows are auditable and disposable; expired/consumed rows can be cleaned by future maintenance without changing account state.
 6. DGFY password reset reuses the email OTP registry and does not introduce phone OTP behavior.
 7. Guest checkout is protected from disposable browser retries and unverified email submissions without changing public browsing, Storefront catalog access, delivery routing, or payment-provider webhooks.
+8. Mobile shoppers can return to checkout within 24 hours without another OTP, while each order or payment-session attempt receives a fresh idempotency-bound proof. Registered DGFY email addresses cannot be used for guest checkout after email ownership has been verified; the client can safely direct the shopper to sign in.
 
 ## Rollback Notes
 1. Runtime rollback can set `EMAIL_OTP_ENFORCEMENT_ENABLED=false`; validators stop requiring `email_otp_code` and verification calls return a disabled-enforcement success result without querying OTP rows.
@@ -75,3 +77,8 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 - Clause amended: Decision 14 (`default`)
 - Change: The Storefront guest-checkout OTP request use case now returns success only when the OTP registry reports `delivery_status: sent`. Local development fallback states such as `recorded` and provider failures are surfaced as a `503` delivery error, and the Storefront resend cooldown starts only after the response confirms `sent`. The OTP value remains server-side and is never included in the success or failure response.
 - Validation: `apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js`, Storefront OTP hook/contract tests, Storefront production build, architecture checks, and F&B Playwright contract test.
+
+### 2026-10-02 — Mobile guest verification grant and account sign-in requirement
+- Clause amended: Decision 14 (`default`)
+- Change: Mobile clients receive a tenant/email-bound verification grant after OTP success, retain it for at most 24 hours, and exchange it for a fresh short-lived checkout proof bound to the current idempotency key. Grant exchange rejects registered DGFY account emails with `DGFY_ACCOUNT_SIGN_IN_REQUIRED` after grant validation. The legacy direct proof remains additive for PWA compatibility while the separately tracked PWA issue adopts the exchange flow.
+- Validation: `apps/dgfy-api/tests/storeGuestCheckoutOtp.unit.test.js` covers the grant and exchange boundary.

@@ -13,6 +13,7 @@ import {
     storeCartQuoteUseCase,
     requestStoreGuestCheckoutOtpUseCase,
     verifyStoreGuestCheckoutOtpUseCase,
+    exchangeStoreGuestCheckoutGrantUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
     reconcileStoreCheckoutPaymentSessionUseCase,
@@ -352,6 +353,22 @@ export const verifyGuestCheckoutOtp = async (req, res, next) => {
     }
 };
 
+export const exchangeGuestCheckoutVerificationGrant = async (req, res, next) => {
+    try {
+        const result = await exchangeStoreGuestCheckoutGrantUseCase({
+            tenantId: resolveTenantId(req),
+            payload: req.validatedData || req.body
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({ success: true, data: result.data, message: 'Guest checkout verification renewed', timestamp: timestamp() }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const checkout = async (req, res, next) => {
     try {
         const tenantId = resolveTenantId(req);
@@ -651,6 +668,7 @@ export default {
     cartQuote,
     requestGuestCheckoutOtp,
     verifyGuestCheckoutOtp,
+    exchangeGuestCheckoutVerificationGrant,
     createCheckoutPaymentSession,
     getCheckoutPaymentSession,
     reconcileCheckoutPaymentSession,

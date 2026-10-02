@@ -15,7 +15,7 @@ import {
     createPublicReservation as createPublicFnbReservation
 } from '../modules/fnb/controllers/fnbHandlers.js';
 import { authenticateStoreCustomer, optionalStoreCustomer } from '../middleware/storeAuth.js';
-import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storeVoucherLookupLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
+import { storeGuestCheckoutOtpRequestLimiter, storeGuestCheckoutOtpVerifyLimiter, storeGuestCheckoutGrantExchangeLimiter, storeAuthLimiter, storeTrackingLimiter, storeTrackingReadLimiter, storeLocationsLimiter, storeVoucherLookupLimiter, storefrontFollowLimiter, inventoryPushLimiter } from '../middleware/rateLimiter.js';
 import { validateInventoryPush } from '../validators/geoSearchValidator.js';
 import { enqueueInventoryPush } from '../workers/geoInventoryWorker.js';
 import { requireTenantContext } from '../middleware/requireTenantContext.js';
@@ -30,6 +30,7 @@ import {
     validateStoreCheckout,
     validateStoreGuestCheckoutOtpRequest,
     validateStoreGuestCheckoutOtpVerify,
+    validateStoreGuestCheckoutGrantExchange,
     validateStoreCheckoutPaymentSession,
     validateStoreCreateAddress,
     validateStoreUpdateAddress,
@@ -135,6 +136,7 @@ router.delete('/addresses/:id', setNoStoreCacheControl, authenticateStoreCustome
 router.post('/cart/quote', setNoStoreCacheControl, optionalStoreCustomer, validateStoreQuote, storeController.cartQuote);
 router.post('/checkout/guest-otp/request', setNoStoreCacheControl, storeGuestCheckoutOtpRequestLimiter, validateStoreGuestCheckoutOtpRequest, storeController.requestGuestCheckoutOtp);
 router.post('/checkout/guest-otp/verify', setNoStoreCacheControl, storeGuestCheckoutOtpVerifyLimiter, validateStoreGuestCheckoutOtpVerify, storeController.verifyGuestCheckoutOtp);
+router.post('/checkout/guest-otp/exchange', setNoStoreCacheControl, storeGuestCheckoutGrantExchangeLimiter, validateStoreGuestCheckoutGrantExchange, storeController.exchangeGuestCheckoutVerificationGrant);
 router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
 router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
 router.post('/checkout/payment-sessions/:payment_session_id/confirm-test', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.confirmCheckoutSandboxPayment);
