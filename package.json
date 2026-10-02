@@ -198,7 +198,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "concurrently": "^8.2.2",
+    "concurrently": "^10.0.5",
     "husky": "^9.0.0",
     "madge": "^8.0.0"
   },
